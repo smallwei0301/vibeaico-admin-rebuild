@@ -1,1088 +1,137 @@
 {
   "schemaVersion": 1,
   "entries": [
-    {
-      "repoFile": "0105_issue_44_traveler_risk_policies",
-      "impacts": [
-        {
-          "surface": "columns",
-          "objectKey": "public.traveler_risk_policies.id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.traveler_risk_policies.tenant_id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.traveler_risk_policies.customer_id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.traveler_risk_policies.policy"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.traveler_risk_policies.deposit_mode"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.traveler_risk_policies.deposit_value"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.traveler_risk_policies.reason"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.traveler_risk_policies.actor_user_id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.traveler_risk_policies.actor_label"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.traveler_risk_policies.created_at"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.traveler_risk_current_policy.id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.traveler_risk_current_policy.tenant_id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.traveler_risk_current_policy.customer_id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.traveler_risk_current_policy.policy"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.traveler_risk_current_policy.deposit_mode"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.traveler_risk_current_policy.deposit_value"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.traveler_risk_current_policy.reason"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.traveler_risk_current_policy.actor_user_id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.traveler_risk_current_policy.actor_label"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.traveler_risk_current_policy.created_at"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.traveler_risk_policies.traveler_risk_policies_pkey"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.traveler_risk_policies.traveler_risk_policies_tenant_id_fkey"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.traveler_risk_policies.traveler_risk_policies_policy_check"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.traveler_risk_policies.traveler_risk_policies_reason_check"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.traveler_risk_policies.traveler_risk_policies_actor_user_id_fkey"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.traveler_risk_policies.traveler_risk_policies_actor_label_check"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.traveler_risk_policies.traveler_risk_policies_customer_tenant_fk"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.traveler_risk_policies.traveler_risk_policies_deposit_domain_ck"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.traveler_risk_policies.traveler_risk_policies_pkey"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.traveler_risk_policies.traveler_risk_policies_lookup_idx"
-        },
-        {
-          "surface": "views",
-          "objectKey": "public.traveler_risk_current_policy"
-        },
-        {
-          "surface": "policies",
-          "objectKey": "public.traveler_risk_policies.p_trp_r"
-        },
-        {
-          "surface": "policies",
-          "objectKey": "public.traveler_risk_policies.p_trp_i"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "table:public.traveler_risk_policies"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "table:public.traveler_risk_current_policy"
-        }
-      ]
-    },
-    {
-      "repoFile": "0109_issue_41_schema_precondition_assertions",
-      "impacts": [
-        {
-          "surface": "columns",
-          "objectKey": "public.tour_orders.payment_status"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.trip_departures.min_to_depart_snapshot"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.trip_departures.formation_status"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.tour_orders.tour_orders_paid_amount_consistent"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.tour_orders.tour_orders_partial_paid_amount_ck"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.tour_orders.tour_orders_refund_pending_paid_amount_ck"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.tour_orders.tour_orders_refunded_paid_amount_ck"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.tour_orders.tour_orders_unpaid_amount_ck"
-        }
-      ]
-    },
-    {
-      "repoFile": "0110_issue_42_plan_duration_pricetype_yearround",
-      "impacts": [
-        {
-          "surface": "columns",
-          "objectKey": "public.trip_plans.duration_minutes"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.trip_plans.price_type"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.trip_plans.year_round"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.trip_plans.trip_plans_duration_minutes_positive"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.trip_plans.trip_plans_price_type_check"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "function:public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)"
-        }
-      ]
-    },
-    {
-      "repoFile": "0111_issue_46_guide_request_accept",
-      "impacts": [
-        {
-          "surface": "columns",
-          "objectKey": "public.trip_plans.request_hold_hours"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.tour_orders.seats_reserved"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.trip_plans.trip_plans_request_hold_hours_ck"
-        },
-        {
-          "surface": "routines",
-          "objectKey": "public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)"
-        },
-        {
-          "surface": "routines",
-          "objectKey": "public.accept_tour_request(p_tenant uuid, p_order uuid, p_hold_hours numeric)"
-        },
-        {
-          "surface": "routines",
-          "objectKey": "public.reject_tour_request(p_tenant uuid, p_order uuid, p_reason text)"
-        },
-        {
-          "surface": "routines",
-          "objectKey": "public.cancel_tour_order(p_tenant uuid, p_order uuid, p_reason text)"
-        },
-        {
-          "surface": "routines",
-          "objectKey": "public.expire_tour_order(p_tenant uuid, p_order uuid, p_reason text)"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "function:public.accept_tour_request(p_tenant uuid, p_order uuid, p_hold_hours numeric)"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "function:public.reject_tour_request(p_tenant uuid, p_order uuid, p_reason text)"
-        }
-      ]
-    },
-    {
-      "repoFile": "0113_issue_23_promotion_page_view_events",
-      "impacts": [
-        {
-          "surface": "columns",
-          "objectKey": "public.page_view_events.id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.page_view_events.tenant_id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.page_view_events.path"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.page_view_events.source"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.page_view_events.visitor_hash"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.page_view_events.user_agent_class"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.page_view_events.created_at"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.page_view_events.page_view_events_pkey"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.page_view_events.page_view_events_tenant_id_fkey"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.page_view_events.page_view_events_pkey"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.page_view_events.idx_page_view_events_tenant_created"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.page_view_events.idx_page_view_events_tenant_visitor"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.page_view_events.idx_page_view_events_created_at"
-        },
-        {
-          "surface": "policies",
-          "objectKey": "public.page_view_events.p_page_view_events_select"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "table:public.page_view_events"
-        }
-      ]
-    },
-    {
-      "repoFile": "0115_issue_21_external_calendars",
-      "impacts": [
-        {
-          "surface": "columns",
-          "objectKey": "public.external_calendars.id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.external_calendars.tenant_id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.external_calendars.staff_id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.external_calendars.name"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.external_calendars.ics_url"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.external_calendars.last_synced_at"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.external_calendars.last_sync_status"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.external_calendars.last_sync_error"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.external_calendars.active"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.external_calendars.created_at"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.external_calendar_events.id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.external_calendar_events.external_calendar_id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.external_calendar_events.tenant_id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.external_calendar_events.uid"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.external_calendar_events.title"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.external_calendar_events.start_at"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.external_calendar_events.end_at"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.external_calendar_events.all_day"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.external_calendar_events.created_at"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.external_calendars.external_calendars_pkey"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.external_calendars.external_calendars_tenant_id_fkey"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.external_calendars.external_calendars_staff_id_fkey"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.external_calendars.external_calendars_last_sync_status_check"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.external_calendar_events.external_calendar_events_pkey"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.external_calendar_events.external_calendar_events_external_calendar_id_fkey"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.external_calendar_events.external_calendar_events_tenant_id_fkey"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.external_calendars.external_calendars_pkey"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.external_calendars.idx_external_calendars_tenant"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.external_calendars.idx_external_calendars_active"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.external_calendar_events.external_calendar_events_pkey"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.external_calendar_events.idx_external_calendar_events_tenant_range"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.external_calendar_events.idx_external_calendar_events_subscription"
-        },
-        {
-          "surface": "policies",
-          "objectKey": "public.external_calendars.p_external_calendars_all"
-        },
-        {
-          "surface": "policies",
-          "objectKey": "public.external_calendar_events.p_external_calendar_events_select"
-        },
-        {
-          "surface": "routines",
-          "objectKey": "public.sync_replace_external_calendar_events(p_external_calendar_id uuid, p_tenant_id uuid, p_events jsonb)"
-        },
-        {
-          "surface": "routines",
-          "objectKey": "public.mark_external_calendar_sync_error(p_external_calendar_id uuid, p_tenant_id uuid, p_error text)"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "table:public.external_calendars"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "table:public.external_calendar_events"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "function:public.sync_replace_external_calendar_events(p_external_calendar_id uuid, p_tenant_id uuid, p_events jsonb)"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "function:public.mark_external_calendar_sync_error(p_external_calendar_id uuid, p_tenant_id uuid, p_error text)"
-        }
-      ]
-    },
-    {
-      "repoFile": "0124_issue_18_owner_notify_legacy_shape",
-      "impacts": []
-    },
-    {
-      "repoFile": "0116_issue_18_owner_notify",
-      "impacts": [
-        {
-          "surface": "columns",
-          "objectKey": "public.owner_notify_bind_requests.id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.owner_notify_bind_requests.tenant_id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.owner_notify_bind_requests.line_user_id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.owner_notify_bind_requests.status"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.owner_notify_bind_requests.created_at"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.owner_notify_bind_requests.expires_at"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.owner_notify_bind_requests.confirmed_at"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.owner_notify_recipients.id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.owner_notify_recipients.tenant_id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.owner_notify_recipients.line_user_id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.owner_notify_recipients.is_primary"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.owner_notify_recipients.notify_new_booking"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.owner_notify_recipients.notify_cancel"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.owner_notify_recipients.created_at"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.owner_notify_bind_requests.owner_notify_bind_requests_pkey"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.owner_notify_bind_requests.owner_notify_bind_requests_tenant_id_line_user_id_fkey"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.owner_notify_bind_requests.owner_notify_bind_requests_status_check"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.owner_notify_recipients.owner_notify_recipients_pkey"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.owner_notify_recipients.owner_notify_recipients_tenant_id_line_user_id_key"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.owner_notify_recipients.owner_notify_recipients_tenant_id_line_user_id_fkey"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.owner_notify_bind_requests.owner_notify_bind_requests_pkey"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.owner_notify_bind_requests.u_owner_notify_bind_requests_pending"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.owner_notify_bind_requests.idx_owner_notify_bind_requests_tenant"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.owner_notify_recipients.owner_notify_recipients_pkey"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.owner_notify_recipients.idx_owner_notify_recipients_tenant"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.owner_notify_recipients.u_owner_notify_recipients_primary"
-        },
-        {
-          "surface": "policies",
-          "objectKey": "public.owner_notify_bind_requests.p_owner_notify_bind_requests_all"
-        },
-        {
-          "surface": "policies",
-          "objectKey": "public.owner_notify_recipients.p_owner_notify_recipients_all"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "table:public.owner_notify_bind_requests"
-        }
-      ]
-    },
-    {
-      "repoFile": "0117_issue_25b_support_chat_threads",
-      "impacts": [
-        {
-          "surface": "columns",
-          "objectKey": "public.support_chat_threads.id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.support_chat_threads.tenant_id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.support_chat_threads.subject"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.support_chat_threads.status"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.support_chat_threads.created_by"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.support_chat_threads.created_by_email"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.support_chat_threads.notify_status"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.support_chat_threads.last_message_at"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.support_chat_threads.tenant_read_at"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.support_chat_threads.created_at"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.support_chat_threads.updated_at"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.support_chat_messages.id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.support_chat_messages.thread_id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.support_chat_messages.tenant_id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.support_chat_messages.sender_role"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.support_chat_messages.sender_email"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.support_chat_messages.body"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.support_chat_messages.created_at"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.support_chat_threads.support_chat_threads_pkey"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.support_chat_threads.support_chat_threads_tenant_id_fkey"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.support_chat_threads.support_chat_threads_created_by_fkey"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.support_chat_messages.support_chat_messages_pkey"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.support_chat_messages.support_chat_messages_thread_id_fkey"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.support_chat_messages.support_chat_messages_tenant_id_fkey"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.support_chat_threads.support_chat_threads_pkey"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.support_chat_threads.support_chat_threads_tenant_recent"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.support_chat_messages.support_chat_messages_pkey"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.support_chat_messages.support_chat_messages_thread_created"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.support_chat_messages.support_chat_messages_tenant"
-        },
-        {
-          "surface": "policies",
-          "objectKey": "public.support_chat_threads.p_sct_r"
-        },
-        {
-          "surface": "policies",
-          "objectKey": "public.support_chat_threads.p_sct_i"
-        },
-        {
-          "surface": "policies",
-          "objectKey": "public.support_chat_threads.p_sct_u"
-        },
-        {
-          "surface": "policies",
-          "objectKey": "public.support_chat_messages.p_scm_r"
-        },
-        {
-          "surface": "policies",
-          "objectKey": "public.support_chat_messages.p_scm_i"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "table:public.support_chat_threads"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "table:public.support_chat_messages"
-        }
-      ]
-    },
-    {
-      "repoFile": "0118_issue_25c_platform_donations",
-      "impacts": [
-        {
-          "surface": "columns",
-          "objectKey": "public.platform_donations.id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.platform_donations.donor_user_id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.platform_donations.display_name"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.platform_donations.amount"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.platform_donations.status"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.platform_donations.provider"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.platform_donations.merchant_trade_no"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.platform_donations.provider_trade_no"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.platform_donations.raw_callback"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.platform_donations.paid_at"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.platform_donations.created_at"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.platform_donations.updated_at"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.platform_donations.platform_donations_pkey"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.platform_donations.platform_donations_donor_user_id_fkey"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.platform_donations.platform_donations_amount_check"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.platform_donations.platform_donations_status_check"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.platform_donations.platform_donations_pkey"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.platform_donations.platform_donations_merchant_trade_no_uq"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.platform_donations.platform_donations_paid_at_idx"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.platform_donations.platform_donations_donor_created_idx"
-        },
-        {
-          "surface": "triggers",
-          "objectKey": "public.platform_donations.trg_platform_donations_updated_at"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "table:public.platform_donations"
-        }
-      ]
-    },
-    {
-      "repoFile": "0119_issue_18_owner_notify_confirm_atomic",
-      "impacts": [
-        {
-          "surface": "routines",
-          "objectKey": "public.owner_notify_max_recipients()"
-        },
-        {
-          "surface": "routines",
-          "objectKey": "public.confirm_owner_notify_bind(p_tenant_id uuid, p_request_id uuid, p_line_user_id text)"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "function:public.owner_notify_max_recipients()"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "function:public.confirm_owner_notify_bind(p_tenant_id uuid, p_request_id uuid, p_line_user_id text)"
-        }
-      ]
-    },
-    {
-      "repoFile": "0125_issue_17_booking_addons_legacy_enum",
-      "impacts": []
-    },
-    {
-      "repoFile": "0121_issue_17_booking_addons_hardening",
-      "impacts": [
-        {
-          "surface": "columns",
-          "objectKey": "public.booking_addons.performance_mode"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.booking_addons.performance_staff_id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.booking_addons.idempotency_key"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.booking_addons.notification_requested"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.booking_addons.deleted_at"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.booking_addons.updated_at"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.booking_addons.booking_addons_performance_mode_check"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.booking_addons.booking_addons_performance_consistency_check"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.booking_addons.booking_addons_performance_staff_id_fkey"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.booking_addons.ux_booking_addons_tenant_idempotency"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.booking_addons.i_booking_addons_booking_active"
-        },
-        {
-          "surface": "routines",
-          "objectKey": "public.create_booking_addon(p_tenant uuid, p_booking uuid, p_idempotency_key text, p_service_id uuid, p_name text, p_price numeric, p_quantity integer, p_duration_minutes integer, p_staff_id uuid, p_performance_mode text, p_performance_staff_id uuid, p_notification_requested boolean)"
-        },
-        {
-          "surface": "routines",
-          "objectKey": "public.delete_booking_addon(p_tenant uuid, p_addon uuid)"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "function:public.create_booking_addon(p_tenant uuid, p_booking uuid, p_idempotency_key text, p_service_id uuid, p_name text, p_price numeric, p_quantity integer, p_duration_minutes integer, p_staff_id uuid, p_performance_mode text, p_performance_staff_id uuid, p_notification_requested boolean)"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "function:public.delete_booking_addon(p_tenant uuid, p_addon uuid)"
-        }
-      ]
-    },
-    {
-      "repoFile": "0123_issue_589_richmenu_asset_retirement",
-      "impacts": [
-        {
-          "surface": "columns",
-          "objectKey": "public.richmenu_asset_retirements.tenant_id"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.richmenu_asset_retirements.image_url"
-        },
-        {
-          "surface": "columns",
-          "objectKey": "public.richmenu_asset_retirements.retired_at"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.richmenu_asset_retirements.richmenu_asset_retirements_pkey"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.richmenu_asset_retirements.richmenu_asset_retirements_tenant_id_fkey"
-        },
-        {
-          "surface": "indexes",
-          "objectKey": "public.richmenu_asset_retirements.richmenu_asset_retirements_pkey"
-        },
-        {
-          "surface": "routines",
-          "objectKey": "public.richmenu_asset_references(p_line jsonb)"
-        },
-        {
-          "surface": "routines",
-          "objectKey": "public.prevent_retired_richmenu_asset()"
-        },
-        {
-          "surface": "routines",
-          "objectKey": "public.retire_richmenu_asset(p_tenant_id uuid, p_image_url text)"
-        },
-        {
-          "surface": "triggers",
-          "objectKey": "public.tenant_settings.trg_prevent_retired_richmenu_asset"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "table:public.richmenu_asset_retirements"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "function:public.richmenu_asset_references(p_line jsonb)"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "function:public.prevent_retired_richmenu_asset()"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "function:public.retire_richmenu_asset(p_tenant_id uuid, p_image_url text)"
-        }
-      ]
-    },
-    {
-      "repoFile": "0126_issue_402_keyword_reply_images_authz",
-      "impacts": [
-        {
-          "surface": "policies",
-          "objectKey": "storage.objects.p_storage_write"
-        }
-      ]
-    },
-    {
-      "repoFile": "0127_issue_589_authz_constraint_reconciliation",
-      "impacts": [
-        {
-          "surface": "constraints",
-          "objectKey": "public.booking_addons.booking_addons_notified_check"
-        },
-        {
-          "surface": "policies",
-          "objectKey": "public.booking_addons.p_booking_addons_s"
-        },
-        {
-          "surface": "policies",
-          "objectKey": "public.booking_addons.p_booking_addons_i"
-        },
-        {
-          "surface": "policies",
-          "objectKey": "public.booking_addons.p_booking_addons_u"
-        },
-        {
-          "surface": "policies",
-          "objectKey": "public.booking_addons.p_booking_addons_d"
-        },
-        {
-          "surface": "policies",
-          "objectKey": "public.owner_notify_recipients.p_owner_notify_recipients_all"
-        },
-        {
-          "surface": "policies",
-          "objectKey": "public.owner_notify_recipients.p_owner_notify_recipients_s"
-        },
-        {
-          "surface": "policies",
-          "objectKey": "public.owner_notify_recipients.p_owner_notify_recipients_i"
-        },
-        {
-          "surface": "policies",
-          "objectKey": "public.owner_notify_recipients.p_owner_notify_recipients_u"
-        },
-        {
-          "surface": "policies",
-          "objectKey": "public.owner_notify_recipients.p_owner_notify_recipients_d"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "table:public.booking_addons"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "table:public.owner_notify_recipients"
-        }
-      ]
-    },
-    {
-      "repoFile": "0133_issue_680_booking_addons_composite_fk_expand",
-      "impacts": [
-        {
-          "surface": "constraints",
-          "objectKey": "public.staff.staff_tenant_id_id_key"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.booking_addons.booking_addons_performance_staff_id_fkey"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.booking_addons.booking_addons_tenant_id_performance_staff_id_fkey"
-        }
-      ]
-    }
+    { "repoFile": "0105_issue_44_traveler_risk_policies", "impacts": [
+      { "surface": "columns", "objectKey": "public.traveler_risk_policies.id" }, { "surface": "columns", "objectKey": "public.traveler_risk_policies.tenant_id" }, { "surface": "columns", "objectKey": "public.traveler_risk_policies.customer_id" },
+      { "surface": "columns", "objectKey": "public.traveler_risk_policies.policy" }, { "surface": "columns", "objectKey": "public.traveler_risk_policies.deposit_mode" }, { "surface": "columns", "objectKey": "public.traveler_risk_policies.deposit_value" },
+      { "surface": "columns", "objectKey": "public.traveler_risk_policies.reason" }, { "surface": "columns", "objectKey": "public.traveler_risk_policies.actor_user_id" }, { "surface": "columns", "objectKey": "public.traveler_risk_policies.actor_label" },
+      { "surface": "columns", "objectKey": "public.traveler_risk_policies.created_at" }, { "surface": "columns", "objectKey": "public.traveler_risk_current_policy.id" }, { "surface": "columns", "objectKey": "public.traveler_risk_current_policy.tenant_id" },
+      { "surface": "columns", "objectKey": "public.traveler_risk_current_policy.customer_id" }, { "surface": "columns", "objectKey": "public.traveler_risk_current_policy.policy" }, { "surface": "columns", "objectKey": "public.traveler_risk_current_policy.deposit_mode" },
+      { "surface": "columns", "objectKey": "public.traveler_risk_current_policy.deposit_value" }, { "surface": "columns", "objectKey": "public.traveler_risk_current_policy.reason" }, { "surface": "columns", "objectKey": "public.traveler_risk_current_policy.actor_user_id" },
+      { "surface": "columns", "objectKey": "public.traveler_risk_current_policy.actor_label" }, { "surface": "columns", "objectKey": "public.traveler_risk_current_policy.created_at" }, { "surface": "constraints", "objectKey": "public.traveler_risk_policies.traveler_risk_policies_pkey" },
+      { "surface": "constraints", "objectKey": "public.traveler_risk_policies.traveler_risk_policies_tenant_id_fkey" }, { "surface": "constraints", "objectKey": "public.traveler_risk_policies.traveler_risk_policies_policy_check" }, { "surface": "constraints", "objectKey": "public.traveler_risk_policies.traveler_risk_policies_reason_check" },
+      { "surface": "constraints", "objectKey": "public.traveler_risk_policies.traveler_risk_policies_actor_user_id_fkey" }, { "surface": "constraints", "objectKey": "public.traveler_risk_policies.traveler_risk_policies_actor_label_check" }, { "surface": "constraints", "objectKey": "public.traveler_risk_policies.traveler_risk_policies_customer_tenant_fk" },
+      { "surface": "constraints", "objectKey": "public.traveler_risk_policies.traveler_risk_policies_deposit_domain_ck" }, { "surface": "indexes", "objectKey": "public.traveler_risk_policies.traveler_risk_policies_pkey" }, { "surface": "indexes", "objectKey": "public.traveler_risk_policies.traveler_risk_policies_lookup_idx" },
+      { "surface": "views", "objectKey": "public.traveler_risk_current_policy" }, { "surface": "policies", "objectKey": "public.traveler_risk_policies.p_trp_r" }, { "surface": "policies", "objectKey": "public.traveler_risk_policies.p_trp_i" },
+      { "surface": "acl", "objectKey": "table:public.traveler_risk_policies" }, { "surface": "acl", "objectKey": "table:public.traveler_risk_current_policy" }
+    ] },
+    { "repoFile": "0109_issue_41_schema_precondition_assertions", "impacts": [
+      { "surface": "columns", "objectKey": "public.tour_orders.payment_status" }, { "surface": "columns", "objectKey": "public.trip_departures.min_to_depart_snapshot" }, { "surface": "columns", "objectKey": "public.trip_departures.formation_status" },
+      { "surface": "constraints", "objectKey": "public.tour_orders.tour_orders_paid_amount_consistent" }, { "surface": "constraints", "objectKey": "public.tour_orders.tour_orders_partial_paid_amount_ck" }, { "surface": "constraints", "objectKey": "public.tour_orders.tour_orders_refund_pending_paid_amount_ck" },
+      { "surface": "constraints", "objectKey": "public.tour_orders.tour_orders_refunded_paid_amount_ck" }, { "surface": "constraints", "objectKey": "public.tour_orders.tour_orders_unpaid_amount_ck" }
+    ] },
+    { "repoFile": "0110_issue_42_plan_duration_pricetype_yearround", "impacts": [
+      { "surface": "columns", "objectKey": "public.trip_plans.duration_minutes" }, { "surface": "columns", "objectKey": "public.trip_plans.price_type" }, { "surface": "columns", "objectKey": "public.trip_plans.year_round" },
+      { "surface": "constraints", "objectKey": "public.trip_plans.trip_plans_duration_minutes_positive" }, { "surface": "constraints", "objectKey": "public.trip_plans.trip_plans_price_type_check" }, { "surface": "acl", "objectKey": "function:public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)" }
+    ] },
+    { "repoFile": "0111_issue_46_guide_request_accept", "impacts": [
+      { "surface": "columns", "objectKey": "public.trip_plans.request_hold_hours" }, { "surface": "columns", "objectKey": "public.tour_orders.seats_reserved" }, { "surface": "constraints", "objectKey": "public.trip_plans.trip_plans_request_hold_hours_ck" },
+      { "surface": "routines", "objectKey": "public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)" }, { "surface": "routines", "objectKey": "public.accept_tour_request(p_tenant uuid, p_order uuid, p_hold_hours numeric)" }, { "surface": "routines", "objectKey": "public.reject_tour_request(p_tenant uuid, p_order uuid, p_reason text)" },
+      { "surface": "routines", "objectKey": "public.cancel_tour_order(p_tenant uuid, p_order uuid, p_reason text)" }, { "surface": "routines", "objectKey": "public.expire_tour_order(p_tenant uuid, p_order uuid, p_reason text)" }, { "surface": "acl", "objectKey": "function:public.accept_tour_request(p_tenant uuid, p_order uuid, p_hold_hours numeric)" },
+      { "surface": "acl", "objectKey": "function:public.reject_tour_request(p_tenant uuid, p_order uuid, p_reason text)" }
+    ] },
+    { "repoFile": "0113_issue_23_promotion_page_view_events", "impacts": [
+      { "surface": "columns", "objectKey": "public.page_view_events.id" }, { "surface": "columns", "objectKey": "public.page_view_events.tenant_id" }, { "surface": "columns", "objectKey": "public.page_view_events.path" },
+      { "surface": "columns", "objectKey": "public.page_view_events.source" }, { "surface": "columns", "objectKey": "public.page_view_events.visitor_hash" }, { "surface": "columns", "objectKey": "public.page_view_events.user_agent_class" },
+      { "surface": "columns", "objectKey": "public.page_view_events.created_at" }, { "surface": "constraints", "objectKey": "public.page_view_events.page_view_events_pkey" }, { "surface": "constraints", "objectKey": "public.page_view_events.page_view_events_tenant_id_fkey" },
+      { "surface": "indexes", "objectKey": "public.page_view_events.page_view_events_pkey" }, { "surface": "indexes", "objectKey": "public.page_view_events.idx_page_view_events_tenant_created" }, { "surface": "indexes", "objectKey": "public.page_view_events.idx_page_view_events_tenant_visitor" },
+      { "surface": "indexes", "objectKey": "public.page_view_events.idx_page_view_events_created_at" }, { "surface": "policies", "objectKey": "public.page_view_events.p_page_view_events_select" }, { "surface": "acl", "objectKey": "table:public.page_view_events" }
+    ] },
+    { "repoFile": "0115_issue_21_external_calendars", "impacts": [
+      { "surface": "columns", "objectKey": "public.external_calendars.id" }, { "surface": "columns", "objectKey": "public.external_calendars.tenant_id" }, { "surface": "columns", "objectKey": "public.external_calendars.staff_id" },
+      { "surface": "columns", "objectKey": "public.external_calendars.name" }, { "surface": "columns", "objectKey": "public.external_calendars.ics_url" }, { "surface": "columns", "objectKey": "public.external_calendars.last_synced_at" },
+      { "surface": "columns", "objectKey": "public.external_calendars.last_sync_status" }, { "surface": "columns", "objectKey": "public.external_calendars.last_sync_error" }, { "surface": "columns", "objectKey": "public.external_calendars.active" },
+      { "surface": "columns", "objectKey": "public.external_calendars.created_at" }, { "surface": "columns", "objectKey": "public.external_calendar_events.id" }, { "surface": "columns", "objectKey": "public.external_calendar_events.external_calendar_id" },
+      { "surface": "columns", "objectKey": "public.external_calendar_events.tenant_id" }, { "surface": "columns", "objectKey": "public.external_calendar_events.uid" }, { "surface": "columns", "objectKey": "public.external_calendar_events.title" },
+      { "surface": "columns", "objectKey": "public.external_calendar_events.start_at" }, { "surface": "columns", "objectKey": "public.external_calendar_events.end_at" }, { "surface": "columns", "objectKey": "public.external_calendar_events.all_day" },
+      { "surface": "columns", "objectKey": "public.external_calendar_events.created_at" }, { "surface": "constraints", "objectKey": "public.external_calendars.external_calendars_pkey" }, { "surface": "constraints", "objectKey": "public.external_calendars.external_calendars_tenant_id_fkey" },
+      { "surface": "constraints", "objectKey": "public.external_calendars.external_calendars_staff_id_fkey" }, { "surface": "constraints", "objectKey": "public.external_calendars.external_calendars_last_sync_status_check" }, { "surface": "constraints", "objectKey": "public.external_calendar_events.external_calendar_events_pkey" },
+      { "surface": "constraints", "objectKey": "public.external_calendar_events.external_calendar_events_external_calendar_id_fkey" }, { "surface": "constraints", "objectKey": "public.external_calendar_events.external_calendar_events_tenant_id_fkey" }, { "surface": "indexes", "objectKey": "public.external_calendars.external_calendars_pkey" },
+      { "surface": "indexes", "objectKey": "public.external_calendars.idx_external_calendars_tenant" }, { "surface": "indexes", "objectKey": "public.external_calendars.idx_external_calendars_active" }, { "surface": "indexes", "objectKey": "public.external_calendar_events.external_calendar_events_pkey" },
+      { "surface": "indexes", "objectKey": "public.external_calendar_events.idx_external_calendar_events_tenant_range" }, { "surface": "indexes", "objectKey": "public.external_calendar_events.idx_external_calendar_events_subscription" }, { "surface": "policies", "objectKey": "public.external_calendars.p_external_calendars_all" },
+      { "surface": "policies", "objectKey": "public.external_calendar_events.p_external_calendar_events_select" }, { "surface": "routines", "objectKey": "public.sync_replace_external_calendar_events(p_external_calendar_id uuid, p_tenant_id uuid, p_events jsonb)" }, { "surface": "routines", "objectKey": "public.mark_external_calendar_sync_error(p_external_calendar_id uuid, p_tenant_id uuid, p_error text)" },
+      { "surface": "acl", "objectKey": "table:public.external_calendars" }, { "surface": "acl", "objectKey": "table:public.external_calendar_events" }, { "surface": "acl", "objectKey": "function:public.sync_replace_external_calendar_events(p_external_calendar_id uuid, p_tenant_id uuid, p_events jsonb)" },
+      { "surface": "acl", "objectKey": "function:public.mark_external_calendar_sync_error(p_external_calendar_id uuid, p_tenant_id uuid, p_error text)" }
+    ] },
+    { "repoFile": "0124_issue_18_owner_notify_legacy_shape", "impacts": [
+    ] },
+    { "repoFile": "0116_issue_18_owner_notify", "impacts": [
+      { "surface": "columns", "objectKey": "public.owner_notify_bind_requests.id" }, { "surface": "columns", "objectKey": "public.owner_notify_bind_requests.tenant_id" }, { "surface": "columns", "objectKey": "public.owner_notify_bind_requests.line_user_id" },
+      { "surface": "columns", "objectKey": "public.owner_notify_bind_requests.status" }, { "surface": "columns", "objectKey": "public.owner_notify_bind_requests.created_at" }, { "surface": "columns", "objectKey": "public.owner_notify_bind_requests.expires_at" },
+      { "surface": "columns", "objectKey": "public.owner_notify_bind_requests.confirmed_at" }, { "surface": "columns", "objectKey": "public.owner_notify_recipients.id" }, { "surface": "columns", "objectKey": "public.owner_notify_recipients.tenant_id" },
+      { "surface": "columns", "objectKey": "public.owner_notify_recipients.line_user_id" }, { "surface": "columns", "objectKey": "public.owner_notify_recipients.is_primary" }, { "surface": "columns", "objectKey": "public.owner_notify_recipients.notify_new_booking" },
+      { "surface": "columns", "objectKey": "public.owner_notify_recipients.notify_cancel" }, { "surface": "columns", "objectKey": "public.owner_notify_recipients.created_at" }, { "surface": "constraints", "objectKey": "public.owner_notify_bind_requests.owner_notify_bind_requests_pkey" },
+      { "surface": "constraints", "objectKey": "public.owner_notify_bind_requests.owner_notify_bind_requests_tenant_id_line_user_id_fkey" }, { "surface": "constraints", "objectKey": "public.owner_notify_bind_requests.owner_notify_bind_requests_status_check" }, { "surface": "constraints", "objectKey": "public.owner_notify_recipients.owner_notify_recipients_pkey" },
+      { "surface": "constraints", "objectKey": "public.owner_notify_recipients.owner_notify_recipients_tenant_id_line_user_id_key" }, { "surface": "constraints", "objectKey": "public.owner_notify_recipients.owner_notify_recipients_tenant_id_line_user_id_fkey" }, { "surface": "indexes", "objectKey": "public.owner_notify_bind_requests.owner_notify_bind_requests_pkey" },
+      { "surface": "indexes", "objectKey": "public.owner_notify_bind_requests.u_owner_notify_bind_requests_pending" }, { "surface": "indexes", "objectKey": "public.owner_notify_bind_requests.idx_owner_notify_bind_requests_tenant" }, { "surface": "indexes", "objectKey": "public.owner_notify_recipients.owner_notify_recipients_pkey" },
+      { "surface": "indexes", "objectKey": "public.owner_notify_recipients.idx_owner_notify_recipients_tenant" }, { "surface": "indexes", "objectKey": "public.owner_notify_recipients.u_owner_notify_recipients_primary" }, { "surface": "policies", "objectKey": "public.owner_notify_bind_requests.p_owner_notify_bind_requests_all" },
+      { "surface": "policies", "objectKey": "public.owner_notify_recipients.p_owner_notify_recipients_all" }, { "surface": "acl", "objectKey": "table:public.owner_notify_bind_requests" }
+    ] },
+    { "repoFile": "0117_issue_25b_support_chat_threads", "impacts": [
+      { "surface": "columns", "objectKey": "public.support_chat_threads.id" }, { "surface": "columns", "objectKey": "public.support_chat_threads.tenant_id" }, { "surface": "columns", "objectKey": "public.support_chat_threads.subject" },
+      { "surface": "columns", "objectKey": "public.support_chat_threads.status" }, { "surface": "columns", "objectKey": "public.support_chat_threads.created_by" }, { "surface": "columns", "objectKey": "public.support_chat_threads.created_by_email" },
+      { "surface": "columns", "objectKey": "public.support_chat_threads.notify_status" }, { "surface": "columns", "objectKey": "public.support_chat_threads.last_message_at" }, { "surface": "columns", "objectKey": "public.support_chat_threads.tenant_read_at" },
+      { "surface": "columns", "objectKey": "public.support_chat_threads.created_at" }, { "surface": "columns", "objectKey": "public.support_chat_threads.updated_at" }, { "surface": "columns", "objectKey": "public.support_chat_messages.id" },
+      { "surface": "columns", "objectKey": "public.support_chat_messages.thread_id" }, { "surface": "columns", "objectKey": "public.support_chat_messages.tenant_id" }, { "surface": "columns", "objectKey": "public.support_chat_messages.sender_role" },
+      { "surface": "columns", "objectKey": "public.support_chat_messages.sender_email" }, { "surface": "columns", "objectKey": "public.support_chat_messages.body" }, { "surface": "columns", "objectKey": "public.support_chat_messages.created_at" },
+      { "surface": "constraints", "objectKey": "public.support_chat_threads.support_chat_threads_pkey" }, { "surface": "constraints", "objectKey": "public.support_chat_threads.support_chat_threads_tenant_id_fkey" }, { "surface": "constraints", "objectKey": "public.support_chat_threads.support_chat_threads_created_by_fkey" },
+      { "surface": "constraints", "objectKey": "public.support_chat_messages.support_chat_messages_pkey" }, { "surface": "constraints", "objectKey": "public.support_chat_messages.support_chat_messages_thread_id_fkey" }, { "surface": "constraints", "objectKey": "public.support_chat_messages.support_chat_messages_tenant_id_fkey" },
+      { "surface": "indexes", "objectKey": "public.support_chat_threads.support_chat_threads_pkey" }, { "surface": "indexes", "objectKey": "public.support_chat_threads.support_chat_threads_tenant_recent" }, { "surface": "indexes", "objectKey": "public.support_chat_messages.support_chat_messages_pkey" },
+      { "surface": "indexes", "objectKey": "public.support_chat_messages.support_chat_messages_thread_created" }, { "surface": "indexes", "objectKey": "public.support_chat_messages.support_chat_messages_tenant" }, { "surface": "policies", "objectKey": "public.support_chat_threads.p_sct_r" },
+      { "surface": "policies", "objectKey": "public.support_chat_threads.p_sct_i" }, { "surface": "policies", "objectKey": "public.support_chat_threads.p_sct_u" }, { "surface": "policies", "objectKey": "public.support_chat_messages.p_scm_r" },
+      { "surface": "policies", "objectKey": "public.support_chat_messages.p_scm_i" }, { "surface": "acl", "objectKey": "table:public.support_chat_threads" }, { "surface": "acl", "objectKey": "table:public.support_chat_messages" }
+    ] },
+    { "repoFile": "0118_issue_25c_platform_donations", "impacts": [
+      { "surface": "columns", "objectKey": "public.platform_donations.id" }, { "surface": "columns", "objectKey": "public.platform_donations.donor_user_id" }, { "surface": "columns", "objectKey": "public.platform_donations.display_name" },
+      { "surface": "columns", "objectKey": "public.platform_donations.amount" }, { "surface": "columns", "objectKey": "public.platform_donations.status" }, { "surface": "columns", "objectKey": "public.platform_donations.provider" },
+      { "surface": "columns", "objectKey": "public.platform_donations.merchant_trade_no" }, { "surface": "columns", "objectKey": "public.platform_donations.provider_trade_no" }, { "surface": "columns", "objectKey": "public.platform_donations.raw_callback" },
+      { "surface": "columns", "objectKey": "public.platform_donations.paid_at" }, { "surface": "columns", "objectKey": "public.platform_donations.created_at" }, { "surface": "columns", "objectKey": "public.platform_donations.updated_at" },
+      { "surface": "constraints", "objectKey": "public.platform_donations.platform_donations_pkey" }, { "surface": "constraints", "objectKey": "public.platform_donations.platform_donations_donor_user_id_fkey" }, { "surface": "constraints", "objectKey": "public.platform_donations.platform_donations_amount_check" },
+      { "surface": "constraints", "objectKey": "public.platform_donations.platform_donations_status_check" }, { "surface": "indexes", "objectKey": "public.platform_donations.platform_donations_pkey" }, { "surface": "indexes", "objectKey": "public.platform_donations.platform_donations_merchant_trade_no_uq" },
+      { "surface": "indexes", "objectKey": "public.platform_donations.platform_donations_paid_at_idx" }, { "surface": "indexes", "objectKey": "public.platform_donations.platform_donations_donor_created_idx" }, { "surface": "triggers", "objectKey": "public.platform_donations.trg_platform_donations_updated_at" },
+      { "surface": "acl", "objectKey": "table:public.platform_donations" }
+    ] },
+    { "repoFile": "0119_issue_18_owner_notify_confirm_atomic", "impacts": [
+      { "surface": "routines", "objectKey": "public.owner_notify_max_recipients()" }, { "surface": "routines", "objectKey": "public.confirm_owner_notify_bind(p_tenant_id uuid, p_request_id uuid, p_line_user_id text)" }, { "surface": "acl", "objectKey": "function:public.owner_notify_max_recipients()" },
+      { "surface": "acl", "objectKey": "function:public.confirm_owner_notify_bind(p_tenant_id uuid, p_request_id uuid, p_line_user_id text)" }
+    ] },
+    { "repoFile": "0125_issue_17_booking_addons_legacy_enum", "impacts": [
+    ] },
+    { "repoFile": "0121_issue_17_booking_addons_hardening", "impacts": [
+      { "surface": "columns", "objectKey": "public.booking_addons.performance_mode" }, { "surface": "columns", "objectKey": "public.booking_addons.performance_staff_id" }, { "surface": "columns", "objectKey": "public.booking_addons.idempotency_key" },
+      { "surface": "columns", "objectKey": "public.booking_addons.notification_requested" }, { "surface": "columns", "objectKey": "public.booking_addons.deleted_at" }, { "surface": "columns", "objectKey": "public.booking_addons.updated_at" },
+      { "surface": "constraints", "objectKey": "public.booking_addons.booking_addons_performance_mode_check" }, { "surface": "constraints", "objectKey": "public.booking_addons.booking_addons_performance_consistency_check" }, { "surface": "constraints", "objectKey": "public.booking_addons.booking_addons_performance_staff_id_fkey" },
+      { "surface": "indexes", "objectKey": "public.booking_addons.ux_booking_addons_tenant_idempotency" }, { "surface": "indexes", "objectKey": "public.booking_addons.i_booking_addons_booking_active" }, { "surface": "routines", "objectKey": "public.create_booking_addon(p_tenant uuid, p_booking uuid, p_idempotency_key text, p_service_id uuid, p_name text, p_price numeric, p_quantity integer, p_duration_minutes integer, p_staff_id uuid, p_performance_mode text, p_performance_staff_id uuid, p_notification_requested boolean)" },
+      { "surface": "routines", "objectKey": "public.delete_booking_addon(p_tenant uuid, p_addon uuid)" }, { "surface": "acl", "objectKey": "function:public.create_booking_addon(p_tenant uuid, p_booking uuid, p_idempotency_key text, p_service_id uuid, p_name text, p_price numeric, p_quantity integer, p_duration_minutes integer, p_staff_id uuid, p_performance_mode text, p_performance_staff_id uuid, p_notification_requested boolean)" }, { "surface": "acl", "objectKey": "function:public.delete_booking_addon(p_tenant uuid, p_addon uuid)" }
+    ] },
+    { "repoFile": "0123_issue_589_richmenu_asset_retirement", "impacts": [
+      { "surface": "columns", "objectKey": "public.richmenu_asset_retirements.tenant_id" }, { "surface": "columns", "objectKey": "public.richmenu_asset_retirements.image_url" }, { "surface": "columns", "objectKey": "public.richmenu_asset_retirements.retired_at" },
+      { "surface": "constraints", "objectKey": "public.richmenu_asset_retirements.richmenu_asset_retirements_pkey" }, { "surface": "constraints", "objectKey": "public.richmenu_asset_retirements.richmenu_asset_retirements_tenant_id_fkey" }, { "surface": "indexes", "objectKey": "public.richmenu_asset_retirements.richmenu_asset_retirements_pkey" },
+      { "surface": "routines", "objectKey": "public.richmenu_asset_references(p_line jsonb)" }, { "surface": "routines", "objectKey": "public.prevent_retired_richmenu_asset()" }, { "surface": "routines", "objectKey": "public.retire_richmenu_asset(p_tenant_id uuid, p_image_url text)" },
+      { "surface": "triggers", "objectKey": "public.tenant_settings.trg_prevent_retired_richmenu_asset" }, { "surface": "acl", "objectKey": "table:public.richmenu_asset_retirements" }, { "surface": "acl", "objectKey": "function:public.richmenu_asset_references(p_line jsonb)" },
+      { "surface": "acl", "objectKey": "function:public.prevent_retired_richmenu_asset()" }, { "surface": "acl", "objectKey": "function:public.retire_richmenu_asset(p_tenant_id uuid, p_image_url text)" }
+    ] },
+    { "repoFile": "0126_issue_402_keyword_reply_images_authz", "impacts": [
+      { "surface": "policies", "objectKey": "storage.objects.p_storage_write" }
+    ] },
+    { "repoFile": "0127_issue_589_authz_constraint_reconciliation", "impacts": [
+      { "surface": "constraints", "objectKey": "public.booking_addons.booking_addons_notified_check" },
+      { "surface": "policies", "objectKey": "public.booking_addons.p_booking_addons_s" },
+      { "surface": "policies", "objectKey": "public.booking_addons.p_booking_addons_i" },
+      { "surface": "policies", "objectKey": "public.booking_addons.p_booking_addons_u" },
+      { "surface": "policies", "objectKey": "public.booking_addons.p_booking_addons_d" },
+      { "surface": "policies", "objectKey": "public.owner_notify_recipients.p_owner_notify_recipients_all" },
+      { "surface": "policies", "objectKey": "public.owner_notify_recipients.p_owner_notify_recipients_s" },
+      { "surface": "policies", "objectKey": "public.owner_notify_recipients.p_owner_notify_recipients_i" },
+      { "surface": "policies", "objectKey": "public.owner_notify_recipients.p_owner_notify_recipients_u" },
+      { "surface": "policies", "objectKey": "public.owner_notify_recipients.p_owner_notify_recipients_d" },
+      { "surface": "acl", "objectKey": "table:public.booking_addons" },
+      { "surface": "acl", "objectKey": "table:public.owner_notify_recipients" }
+    ] },
+    { "repoFile": "0133_issue_680_booking_addons_composite_fk_expand", "impacts": [
+      { "surface": "constraints", "objectKey": "public.staff.staff_tenant_id_id_key" },
+      { "surface": "constraints", "objectKey": "public.booking_addons.booking_addons_performance_staff_id_fkey" },
+      { "surface": "constraints", "objectKey": "public.booking_addons.booking_addons_tenant_id_performance_staff_id_fkey" }
+    ] }
   ]
 }
