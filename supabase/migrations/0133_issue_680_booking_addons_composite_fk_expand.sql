@@ -21,7 +21,6 @@ DECLARE
   rls_before boolean;
   force_rls_before boolean;
   perf_fk_count integer;
-  replace_legacy_composite boolean := false;
 BEGIN
   IF child_oid IS NULL OR staff_oid IS NULL THEN
     RAISE EXCEPTION 'BOOKING_ADDONS_PERFORMANCE_STAFF_MISSING_TABLE';
@@ -115,34 +114,27 @@ BEGIN
       RAISE EXCEPTION 'BOOKING_ADDONS_PERFORMANCE_STAFF_SINGLE_FK_SHAPE: %', fk.conname;
     END IF;
 
-    IF fk.conname = 'booking_addons_tenant_id_performance_staff_id_fkey' THEN
-      IF NOT (
-        fk.confrelid = staff_oid
-        AND fk.conkey = ARRAY[child_tenant, child_perf]::smallint[]
-        AND fk.confkey = ARRAY[staff_tenant, staff_id]::smallint[]
-        AND fk.confupdtype = 'a'
-        AND fk.confmatchtype = 's'
-        AND fk.convalidated
-        AND NOT fk.condeferrable
-        AND NOT fk.condeferred
-      ) THEN
-        RAISE EXCEPTION 'BOOKING_ADDONS_PERFORMANCE_STAFF_COMPOSITE_FK_SHAPE: %', fk.conname;
-      END IF;
-      IF fk.confdeltype = 'n' AND fk.confdelsetcols = ARRAY[child_perf]::smallint[] THEN
-        replace_legacy_composite := true;
-      ELSIF NOT (fk.confdeltype = 'a' AND fk.confdelsetcols IS NULL) THEN
-        RAISE EXCEPTION 'BOOKING_ADDONS_PERFORMANCE_STAFF_COMPOSITE_FK_SHAPE: %', fk.conname;
-      END IF;
+    IF fk.conname = 'booking_addons_tenant_id_performance_staff_id_fkey' AND NOT (
+      fk.confrelid = staff_oid
+      AND fk.conkey = ARRAY[child_tenant, child_perf]::smallint[]
+      AND fk.confkey = ARRAY[staff_tenant, staff_id]::smallint[]
+      AND fk.confupdtype = 'a'
+      AND fk.confmatchtype = 's'
+      AND fk.convalidated
+      AND NOT fk.condeferrable
+      AND NOT fk.condeferred
+      AND (
+        (fk.confdeltype = 'a' AND fk.confdelsetcols IS NULL)
+        OR (fk.confdeltype = 'n' AND fk.confdelsetcols = ARRAY[child_perf]::smallint[])
+      )
+    ) THEN
+      RAISE EXCEPTION 'BOOKING_ADDONS_PERFORMANCE_STAFF_COMPOSITE_FK_SHAPE: %', fk.conname;
     END IF;
   END LOOP;
 
-  -- TEST's earlier composite shape used a column-specific delete action.  The
-  -- retained single-column compatibility FK still clears performance_staff_id; replace only
-  -- that exact legacy composite catalog shape with the transitional NO ACTION relationship.
-  IF replace_legacy_composite THEN
-    ALTER TABLE public.booking_addons
-      DROP CONSTRAINT booking_addons_tenant_id_performance_staff_id_fkey;
-  END IF;
+  -- EXPAND preserves either known composite delete action. The single-column
+  -- compatibility FK clears performance_staff_id in both variants; a later CONTRACT decision
+  -- may choose one composite action after Product runtime acceptance.
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint c
      WHERE c.conrelid = child_oid
@@ -199,9 +191,12 @@ BEGIN
           AND c.confrelid = staff_oid
           AND c.conkey = ARRAY[child_tenant, child_perf]::smallint[]
           AND c.confkey = ARRAY[staff_tenant, staff_id]::smallint[]
-          AND c.confupdtype = 'a' AND c.confdeltype = 'a' AND c.confmatchtype = 's'
+          AND c.confupdtype = 'a' AND c.confmatchtype = 's'
           AND c.convalidated AND NOT c.condeferrable AND NOT c.condeferred
-          AND c.confdelsetcols IS NULL
+          AND (
+            (c.confdeltype = 'a' AND c.confdelsetcols IS NULL)
+            OR (c.confdeltype = 'n' AND c.confdelsetcols = ARRAY[child_perf]::smallint[])
+          )
      ) THEN
     RAISE EXCEPTION 'BOOKING_ADDONS_PERFORMANCE_STAFF_POSTCONDITION';
   END IF;
