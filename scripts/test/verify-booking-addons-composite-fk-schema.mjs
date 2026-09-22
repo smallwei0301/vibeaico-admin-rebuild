@@ -79,7 +79,19 @@ END
 $fixture$;
 `;
 
-const proof = (expectedCompositeDelete) => `
+const compositeDeletePredicate = (variant) => {
+  if (variant === 'NO_ACTION') return "c.confdeltype='a' AND c.confdelsetcols IS NULL";
+  if (variant === 'LEGACY_PARTIAL_SET_NULL') {
+    return "c.confdeltype='n' AND c.confdelsetcols=ARRAY[perf_att]::smallint[]";
+  }
+  throw new Error('UNSAFE_BOOKING_ADDONS_FK_PROOF_VARIANT');
+};
+
+const proof = (expectedCompositeDelete) => {
+  // This template has no caller-controlled SQL. buildCases supplies only the two
+  // closed variants above, then embeds their fixed catalog predicate.
+  const expectedPredicate = compositeDeletePredicate(expectedCompositeDelete);
+  return `
 DO $proof$
 DECLARE
   a_tenant uuid;
@@ -123,10 +135,7 @@ BEGIN
         WHERE c.conrelid='public.booking_addons'::regclass
           AND c.conname='booking_addons_tenant_id_performance_staff_id_fkey'
           AND c.convalidated AND NOT c.condeferrable AND NOT c.condeferred
-          AND (
-            (expectedCompositeDelete = 'NO_ACTION' AND c.confdeltype='a' AND c.confdelsetcols IS NULL)
-            OR (expectedCompositeDelete = 'LEGACY_PARTIAL_SET_NULL' AND c.confdeltype='n' AND c.confdelsetcols=ARRAY[perf_att]::smallint[])
-          )
+          AND (${expectedPredicate})
      ) THEN
     RAISE EXCEPTION 'BOOKING_ADDONS_FK_PROOF_IDENTITY_VALIDATION_OR_DELETE_ACTION';
   END IF;
@@ -138,6 +147,7 @@ BEGIN
 END
 $proof$;
 `;
+};
 
 export function buildCases(migration) {
   return [
