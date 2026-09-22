@@ -24,6 +24,19 @@ const guardedBody = [
   `SCHEMA_ACTIVATION_GUARD_PATH: ${runtime}`,
   'SCHEMA_ACTIVATION_GATE_SYMBOL: isWidgetSchemaEnabled',
 ].join('\n');
+const splitDependencyBody = [
+  'MIGRATION_TOUCH: false',
+  'DEPENDS_ON_PR: #627 (migration-only: supabase/migrations/0127_issue_42_plan_seasonal_pricing.sql)',
+].join('\n');
+const splitGuardedBody = [
+  'MIGRATION_TOUCH: false',
+  'SCHEMA_DEPENDENCY: PR #627 / supabase/migrations/0127_issue_42_plan_seasonal_pricing.sql',
+  'SCHEMA_RELEASE_STAGE: PREPARE',
+  'SCHEMA_ACTIVATION_GATE: DEFAULT_OFF',
+  'SCHEMA_ACTIVATION_ENV: WIDGET_SCHEMA_ENABLED',
+  `SCHEMA_ACTIVATION_GUARD_PATH: ${runtime}`,
+  'SCHEMA_ACTIVATION_GATE_SYMBOL: isWidgetSchemaEnabled',
+].join('\n');
 const guard = `// schema-activation-gate: WIDGET_SCHEMA_ENABLED default-off symbol=isWidgetSchemaEnabled\nexport function isWidgetSchemaEnabled() { return process.env.WIDGET_SCHEMA_ENABLED === 'true'; }\nexport function readWidget() { if (!isWidgetSchemaEnabled()) return null; return { id: 'widget' }; }\n`;
 const receiptPath = 'docs/schema-truth/release-evidence/widget.json';
 const receipt = JSON.stringify({ schemaVersion: 1, preparedCommit: sha,
@@ -66,6 +79,35 @@ describe('#530 schema staged-release policy', () => {
   it('rejects module-load database/network work outside an otherwise gated exported entry', () => {
     const topLevelQuery = `${guard}\nconst unsafe = client.from('new_schema_table');`;
     assert.match(errors({ body: guardedBody, changedFiles: [migration, runtime], readFile: () => topLevelQuery }), /top-level database or network side effect/);
+  });
+
+  it('blocks the historical #625/#627 split-PR bypass unless the dependent runtime stays default-off', () => {
+    assert.match(
+      errors({ body: splitDependencyBody, changedFiles: [runtime] }),
+      /runtime with schema dependency requires SCHEMA_RELEASE_STAGE=PREPARE/,
+    );
+    assert.equal(errors({
+      body: splitGuardedBody,
+      changedFiles: [runtime],
+      readFile: () => guard,
+    }), '');
+    assert.equal(errors({
+      body: 'MIGRATION_TOUCH: false\nSCHEMA_DEPENDENCY: none',
+      changedFiles: [runtime],
+    }), '');
+  });
+
+  it('lets a split schema dependency activate only through the existing immutable readiness receipt path', () => {
+    const dependentActivation = `${activationBody}\nSCHEMA_DEPENDENCY: PR #627 / supabase/migrations/0127_issue_42_plan_seasonal_pricing.sql`;
+    assert.equal(errors({
+      body: dependentActivation,
+      changedFiles: [runtime],
+      readFile: (name: string) => name === receiptPath ? receipt : undefined,
+    }), '');
+    assert.match(errors({
+      body: dependentActivation.replace('SCHEMA_READINESS_EVIDENCE_PATH: docs/schema-truth/release-evidence/widget.json', ''),
+      changedFiles: [runtime],
+    }), /activation requires SCHEMA_READINESS_EVIDENCE_PATH/);
   });
 
   it('requires a later activation to cite canonical TEST and Production schema evidence with exact identities', () => {
