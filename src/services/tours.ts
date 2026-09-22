@@ -1,8 +1,9 @@
-import { adapt, request } from '@/lib/api';
+import { ApiError, adapt, request } from '@/lib/api';
 import type {
   DepartureConflict, Trip, TripAddon, TripDeparture, TripPlan, TripPlanSeason,
-  TourOrder, TourPaymentStatus, Paged,
+  TourOrder, TourOrderStatus, TourPaymentStatus, Paged,
 } from '@/lib/types';
+import { canTransitionTourOrder, shouldReleaseSeats } from '@/server/tour-domain';
 import {
   MOCK_TOUR_ORDERS, MOCK_TRIPS, MOCK_TRIP_ADDONS,
   MOCK_TRIP_DEPARTURES, MOCK_TRIP_PLANS,
@@ -336,15 +337,64 @@ export function parseTourOrdersDeepLink(search: string): {
   return { paymentStatus, orderId };
 }
 
+/**
+ * 這幾個狀態動作的 mock 分支過去是純 `() => undefined`，從不寫回
+ * `MOCK_TOUR_ORDERS`。`/tenant/tour-orders` 頁的 `runOrderAction()`（見上方
+ * #8-B 註解）在 mock 模式下因此永遠把狀態讀回原值——與真正的 #8-B 回歸
+ * 是同一種假成功，只是換了一個入口。
+ *
+ * 轉換條件重用 `canTransitionTourOrder()`（`src/server/tour-domain.ts`），
+ * 與真實路由（`src/app/api/tour-orders/[id]/{confirm-payment,complete,cancel}
+ * /route.ts`）同一份規則，不得在 mock 端各自漂移；轉換不合法時拋 `ApiError`
+ * 對映真實路由的 409，讓頁面走既有的失敗分支而不是靜默成功。
+ */
+function findMockTourOrder(id: string): TourOrder {
+  const o = MOCK_TOUR_ORDERS.find((x) => x.id === id);
+  if (!o) throw new ApiError('找不到此訂單', 'REQ_002', 404);
+  return o;
+}
+
+function requireMockTourOrderTransition(o: TourOrder, to: TourOrderStatus): void {
+  if (!canTransitionTourOrder(o.status, to)) {
+    throw new ApiError('此訂單狀態已變更', 'REQ_003', 409);
+  }
+}
+
+/**
+ * 取消時釋放名額：`TourOrder` 沒有存 `departureId`，用 tripId／方案名稱／
+ * 出發日期時間比對回對應團次（與清單/詳情頁顯示這幾欄的資料來源一致）。
+ * 找不到對應團次時（fixture 沒有對應資料）就只改訂單狀態，不當成錯誤。
+ */
+function releaseMockDeparture(o: TourOrder): void {
+  const d = MOCK_TRIP_DEPARTURES.find((x) => x.tripId === o.tripId
+    && x.planName === o.planName && x.departsOn === o.departsOn && x.startTime === o.startTime);
+  if (d) d.seatsBooked = Math.max(0, d.seatsBooked - o.partySize);
+}
+
 export const confirmTourOrderPayment = (id: string) =>
-  adapt(() => undefined, () =>
-    request<void>(`/api/tour-orders/${id}/confirm-payment`, { method: 'POST' }));
+  adapt(() => {
+    const o = findMockTourOrder(id);
+    requireMockTourOrderTransition(o, 'CONFIRMED');
+    o.status = 'CONFIRMED';
+    o.paymentStatus = 'PAID';
+    o.holdExpiresAt = null;
+  }, () => request<void>(`/api/tour-orders/${id}/confirm-payment`, { method: 'POST' }));
 
 export const completeTourOrder = (id: string) =>
-  adapt(() => undefined, () => request<void>(`/api/tour-orders/${id}/complete`, { method: 'POST' }));
+  adapt(() => {
+    const o = findMockTourOrder(id);
+    requireMockTourOrderTransition(o, 'COMPLETED');
+    o.status = 'COMPLETED';
+  }, () => request<void>(`/api/tour-orders/${id}/complete`, { method: 'POST' }));
 
 export const cancelTourOrder = (id: string, reason?: string) =>
-  adapt(() => undefined, () =>
+  adapt(() => {
+    const o = findMockTourOrder(id);
+    requireMockTourOrderTransition(o, 'CANCELLED');
+    if (shouldReleaseSeats(o.status)) releaseMockDeparture(o);
+    o.status = 'CANCELLED';
+    void reason;
+  }, () =>
     request<void>(`/api/tour-orders/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }));
 
 export const createManualTourOrder = (payload: {
@@ -365,14 +415,31 @@ export const createManualTourOrder = (payload: {
  * 畫出「接受／拒絕」按鈕與覆寫保留時數的輸入框，是比「換一顆按鈕」更大的 UI
  * 工作），本輪誠實只交付後端端點；UI 接線留給下一輪，見 PR 說明。
  */
+/**
+ * accept／reject 的 mock 分支同樣過去是 `() => undefined`：導遊按下「接受」，
+ * 畫面顯示已接受，重新整理又變回 PENDING、`holdExpiresAt` 也沒有更新。
+ * 真實路由 `accept_tour_request` 不改 `status`（一路留在 PENDING，見該路由
+ * 的說明），這裡比照只更新 `holdExpiresAt`；reject 才是唯一會把 PENDING
+ * 直接改成 CANCELLED 的動作。
+ */
 export const acceptTourOrder = (id: string, holdHours?: number) =>
-  adapt(() => undefined, () =>
+  adapt(() => {
+    const o = findMockTourOrder(id);
+    if (o.status !== 'PENDING') throw new ApiError('此訂單目前無法接受申請（非待處理的先申請再確認訂單）', 'TOUR_002', 409);
+    const hours = holdHours ?? 48;
+    o.holdExpiresAt = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+  }, () =>
     request<void>(`/api/tour-orders/${id}/accept`, {
       method: 'POST', body: JSON.stringify({ holdHours }),
     }));
 
 export const rejectTourOrder = (id: string, reason?: string) =>
-  adapt(() => undefined, () =>
+  adapt(() => {
+    const o = findMockTourOrder(id);
+    if (o.status !== 'PENDING') throw new ApiError('此訂單目前無法拒絕（非待處理的先申請再確認訂單）', 'TOUR_002', 409);
+    o.status = 'CANCELLED';
+    void reason;
+  }, () =>
     request<void>(`/api/tour-orders/${id}/reject`, {
       method: 'POST', body: JSON.stringify({ reason }),
     }));

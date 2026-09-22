@@ -39,18 +39,41 @@ export function listBookings(q: BookingQuery = {}): Promise<Paged<Booking>> {
   );
 }
 
+/**
+ * 這四個狀態動作的 mock 分支過去是純 `() => undefined`，從不寫回
+ * `MOCK_BOOKINGS`。`/tenant/bookings` 頁的 `runAction()`（#8-B 修過的同一個
+ * 模式：先呼叫端點、成功才 `void load()` 重讀）因此在 mock 模式下永遠把
+ * 狀態讀回原值——畫面顯示「已確認」/「已完成」，重新整理又變回舊狀態，
+ * 與真實後端 `PENDING/CONFIRMED → X` 的轉換規則對不上。
+ *
+ * 修法：就地把 `MOCK_BOOKINGS` 對應那筆改成新狀態，轉換條件抄真實路由
+ * （`src/app/api/bookings/[id]/{confirm,complete,cancel,no-show}/route.ts`）
+ * 的 `.eq`/`.in('status', …)` 條件；找不到該筆或狀態不符合轉換前提時拋
+ * `ApiError`，讓頁面走既有的失敗分支，不得靜默成功。
+ */
+function transitionMockBooking(id: string, from: BookingStatus[], to: BookingStatus): void {
+  const b = MOCK_BOOKINGS.find((x) => x.id === id);
+  if (!b || !from.includes(b.status)) {
+    throw new ApiError('此預約狀態已變更，請重新整理', 'CONFLICT', 409);
+  }
+  b.status = to;
+}
+
 export const confirmBooking = (id: string) =>
-  adapt(() => undefined, () => request<void>(`/api/bookings/${id}/confirm`, { method: 'POST' }));
+  adapt(() => transitionMockBooking(id, ['PENDING'], 'CONFIRMED'),
+    () => request<void>(`/api/bookings/${id}/confirm`, { method: 'POST' }));
 
 export const completeBooking = (id: string) =>
-  adapt(() => undefined, () => request<void>(`/api/bookings/${id}/complete`, { method: 'POST' }));
+  adapt(() => transitionMockBooking(id, ['PENDING', 'CONFIRMED'], 'COMPLETED'),
+    () => request<void>(`/api/bookings/${id}/complete`, { method: 'POST' }));
 
 export const cancelBooking = (id: string, reason?: string) =>
-  adapt(() => undefined, () =>
-    request<void>(`/api/bookings/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }));
+  adapt(() => transitionMockBooking(id, ['PENDING', 'CONFIRMED'], 'CANCELLED'),
+    () => request<void>(`/api/bookings/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }));
 
 export const markNoShow = (id: string) =>
-  adapt(() => undefined, () => request<void>(`/api/bookings/${id}/no-show`, { method: 'POST' }));
+  adapt(() => transitionMockBooking(id, ['CONFIRMED'], 'NO_SHOW'),
+    () => request<void>(`/api/bookings/${id}/no-show`, { method: 'POST' }));
 
 /* ========================================================================== */
 /* Phase 5 寫入操作（04 分冊 §B-1）                                            */
