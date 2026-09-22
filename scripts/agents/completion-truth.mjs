@@ -117,18 +117,31 @@ export function classifyVercelStatus(statuses = []) {
   return { ...base, state: "UNKNOWN", ready: false };
 }
 
-function classifySourceVerification(workflowRuns = [], exactHead = "") {
+// `cancelled` 一律歸類為「不知道」，永遠不是綠燈：一個被取消的 run 沒有跑完任何 job，
+// 把它當成通過，等同於用「沒人看到紅燈」冒充「沒有紅燈」。main 連續 15 次推送都沒有一次
+// success、其中 6 次是 cancelled，就是這樣一路無聲累積的。
+function classifyCiRun(workflowRuns = [], exactHead = "") {
+  const sha = String(exactHead ?? "").trim();
+  if (!sha) return { state: "NOT_REPORTED", verified: false, runId: null, url: null, conclusion: null };
   const run = [...workflowRuns]
-    .filter((item) => item?.name === "ci" && item?.head_sha === exactHead)
+    .filter((item) => item?.name === "ci" && item?.head_sha === sha)
     .sort((left, right) => Number(right.id ?? 0) - Number(left.id ?? 0))[0];
-  if (!run) return { state: "NOT_REPORTED", verified: false, runId: null, url: null };
-  if (run.status !== "completed") return { state: "PENDING", verified: false, runId: run.id ?? null, url: run.html_url ?? null };
-  return {
-    state: run.conclusion === "success" ? "VERIFIED" : String(run.conclusion ?? "FAILED").toUpperCase(),
-    verified: run.conclusion === "success",
-    runId: run.id ?? null,
-    url: run.html_url ?? null,
-  };
+  if (!run) return { state: "NOT_REPORTED", verified: false, runId: null, url: null, conclusion: null };
+  const base = { runId: run.id ?? null, url: run.html_url ?? null, conclusion: run.conclusion ?? null };
+  if (run.status !== "completed") return { ...base, state: "PENDING", verified: false };
+  if (run.conclusion === "success") return { ...base, state: "VERIFIED", verified: true };
+  return { ...base, state: String(run.conclusion ?? "FAILED").toUpperCase(), verified: false };
+}
+
+function classifySourceVerification(workflowRuns = [], exactHead = "") {
+  const { conclusion, ...result } = classifyCiRun(workflowRuns, exactHead);
+  return result;
+}
+
+// Completion Truth 第六點：合併之後，merge commit 上的 canonical `ci` 真的跑綠了沒有。
+// 前五點只證明「這個 PR 的 head 綠、而且進了 main」，證明不了合併後的 main 還是綠的。
+export function classifyMainCiAfterMerge(mainWorkflowRuns = [], mergeCommitSha = "") {
+  return classifyCiRun(mainWorkflowRuns, mergeCommitSha);
 }
 
 function classifySchemaTruth(body, migrationTouched) {
@@ -167,12 +180,14 @@ export function evaluateProductDeliveryTruth(input = {}) {
     compareStatus,
     changedFiles = [],
     sourceWorkflowRuns = [],
+    mainWorkflowRuns = [],
     commitStatuses = [],
   } = input;
   const pr = pullRequest ?? {};
   const body = String(pr.body ?? "");
   const merge = evaluateMergedPullRequest({ pullRequest: pr, defaultBranchHead, compareStatus });
   const source = classifySourceVerification(sourceWorkflowRuns, String(pr.head?.sha ?? ""));
+  const mainCi = classifyMainCiAfterMerge(mainWorkflowRuns, String(pr.merge_commit_sha ?? ""));
   const vercel = classifyVercelStatus(commitStatuses);
   const issueNumber = readLifecycleIssue(body);
   const deliveryUnitType = upper(readField(body, "DELIVERY_UNIT_TYPE"));
@@ -202,7 +217,13 @@ export function evaluateProductDeliveryTruth(input = {}) {
     : { state: "NOT_APPLICABLE", accepted: true, errors: [] };
   const errors = [...merge.errors, ...metadataErrors, ...schema.errors, ...acceptance.errors];
   if (requiresProductProof && !source.verified) errors.push(`exact-head source CI is not verified (${source.state})`);
+  if (requiresProductProof && merge.verified && acceptance.accepted && !mainCi.verified) {
+    errors.push(`authenticated Production acceptance requires a green canonical ci run on the merge commit (main ci is ${mainCi.state})`);
+  }
   const warnings = [];
+  if (merge.verified && ["FAILURE", "CANCELLED", "TIMED_OUT", "STARTUP_FAILURE", "ACTION_REQUIRED"].includes(mainCi.state)) {
+    warnings.push(`canonical ci on the merge commit ended as ${mainCi.state}; main is not proven green after this merge`);
+  }
   if (deliveryEligible && vercel.ready && /Production\s+(?:DDL\s*\/\s*DML\s*\/\s*)?deploy\s*:\s*NOT_RUN/i.test(body)) {
     warnings.push("legacy `Production deploy: NOT_RUN` conflicts with live Vercel READY; distinguish automatic deploy from manual promote");
   }
@@ -210,7 +231,7 @@ export function evaluateProductDeliveryTruth(input = {}) {
   return {
     verified: merge.verified && errors.length === 0,
     productionAccepted: Boolean(
-      deliveryEligible && source.verified && merge.verified && vercel.ready && schema.ready && acceptance.accepted && errors.length === 0
+      deliveryEligible && source.verified && merge.verified && mainCi.verified && vercel.ready && schema.ready && acceptance.accepted && errors.length === 0
     ),
     errors: [...new Set(errors)],
     warnings,
@@ -225,6 +246,7 @@ export function evaluateProductDeliveryTruth(input = {}) {
     manualPromote: upper(readField(body, "MANUAL_PRODUCTION_PROMOTE")) || "UNDECLARED",
     source,
     merge,
+    mainCi,
     vercel,
     schema,
     acceptance,
@@ -250,6 +272,7 @@ export function formatProductDeliveryTruth(result, verifiedAt = new Date().toISO
     `- DELIVERY_UNIT_TYPE: ${result.deliveryUnitType ?? "none"}`,
     `- SOURCE_VERIFIED: ${result.source.state}`,
     `- MERGED_TO_MAIN: ${result.merge.verified ? "VERIFIED" : "UNVERIFIED"}`,
+    `- MAIN_CI_AFTER_MERGE: ${result.mainCi?.state ?? "NOT_CHECKED"}`,
     `- AUTO_VERCEL_DEPLOYED: ${result.vercel.state}`,
     `- PRODUCTION_SCHEMA_READY: ${result.schema.state}`,
     `- AUTHENTICATED_PRODUCTION_ACCEPTED: ${result.acceptance.state}`,

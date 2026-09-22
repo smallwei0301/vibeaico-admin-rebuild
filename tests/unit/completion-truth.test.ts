@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   classifyEvidenceSinkError,
+  classifyMainCiAfterMerge,
   classifyVercelStatus,
   evaluateMergedPullRequest,
   evaluateProductDeliveryTruth,
@@ -45,6 +46,15 @@ const sourceRuns = [{
   status: "completed",
   conclusion: "success",
   html_url: "https://github.example/run/123",
+}];
+
+const mainRuns = [{
+  id: 456,
+  name: "ci",
+  head_sha: "merge-sha",
+  status: "completed",
+  conclusion: "success",
+  html_url: "https://github.example/run/456",
 }];
 
 const readyVercel = [{
@@ -150,6 +160,7 @@ describe("Completion Truth Gate", () => {
       compareStatus: "ahead",
       changedFiles: [{ filename: "src/app/page.tsx" }],
       sourceWorkflowRuns: sourceRuns,
+      mainWorkflowRuns: mainRuns,
       commitStatuses: readyVercel,
     });
 
@@ -158,6 +169,7 @@ describe("Completion Truth Gate", () => {
       deliveryEligible: true,
       migrationTouched: false,
       source: { state: "VERIFIED" },
+      mainCi: { state: "VERIFIED" },
       vercel: { state: "READY" },
       schema: { state: "NOT_REQUIRED" },
       acceptance: { state: "ACCEPTED" },
@@ -174,6 +186,7 @@ describe("Completion Truth Gate", () => {
       compareStatus: "ahead",
       changedFiles: [{ filename: "src/app/page.tsx" }],
       sourceWorkflowRuns: sourceRuns,
+      mainWorkflowRuns: mainRuns,
       commitStatuses: readyVercel,
     });
 
@@ -189,6 +202,7 @@ describe("Completion Truth Gate", () => {
       compareStatus: "ahead",
       changedFiles: [{ filename: "supabase/migrations/0074_example.sql" }],
       sourceWorkflowRuns: sourceRuns,
+      mainWorkflowRuns: mainRuns,
       commitStatuses: readyVercel,
     });
 
@@ -205,11 +219,103 @@ describe("Completion Truth Gate", () => {
       compareStatus: "ahead",
       changedFiles: [{ filename: "src/app/page.tsx" }],
       sourceWorkflowRuns: sourceRuns,
+      mainWorkflowRuns: mainRuns,
       commitStatuses: readyVercel,
     });
 
     expect(result.warnings).toContain(
       "legacy `Production deploy: NOT_RUN` conflicts with live Vercel READY; distinguish automatic deploy from manual promote",
     );
+  });
+
+  /*
+   * 第六點：合併之後 main 上的 canonical `ci` 真的綠了沒有。
+   * 前五點全綠、main 卻連續十五次推送沒有一次 success（其中六次 cancelled），
+   * 就是因為沒有任何 gate 看合併後的那顆 commit。
+   */
+  describe("Completion Truth 第六點：merge commit 上的 main CI", () => {
+    it("把 cancelled 當成未知而不是綠燈", () => {
+      expect(classifyMainCiAfterMerge([{
+        id: 9, name: "ci", head_sha: "merge-sha", status: "completed", conclusion: "cancelled",
+      }], "merge-sha")).toMatchObject({ state: "CANCELLED", verified: false });
+    });
+
+    it("只有 success 才算通過；還在跑是 PENDING、沒有 run 是 NOT_REPORTED", () => {
+      expect(classifyMainCiAfterMerge(mainRuns, "merge-sha")).toMatchObject({ state: "VERIFIED", verified: true });
+      expect(classifyMainCiAfterMerge([{
+        id: 9, name: "ci", head_sha: "merge-sha", status: "in_progress", conclusion: null,
+      }], "merge-sha")).toMatchObject({ state: "PENDING", verified: false });
+      expect(classifyMainCiAfterMerge([], "merge-sha")).toMatchObject({ state: "NOT_REPORTED", verified: false });
+      expect(classifyMainCiAfterMerge(mainRuns, "")).toMatchObject({ state: "NOT_REPORTED", verified: false });
+    });
+
+    it("不拿別的 workflow 或別顆 commit 的 run 充數", () => {
+      expect(classifyMainCiAfterMerge([{
+        id: 9, name: "agent-wip-guard", head_sha: "merge-sha", status: "completed", conclusion: "success",
+      }, {
+        id: 10, name: "ci", head_sha: "other-sha", status: "completed", conclusion: "success",
+      }], "merge-sha")).toMatchObject({ state: "NOT_REPORTED", verified: false });
+    });
+
+    it("main CI 紅燈時擋下 authenticated Production acceptance 並留下警告", () => {
+      const result = evaluateProductDeliveryTruth({
+        pullRequest: mergedPullRequest({ body: productBody }),
+        defaultBranchHead: "main-sha",
+        compareStatus: "ahead",
+        changedFiles: [{ filename: "src/app/page.tsx" }],
+        sourceWorkflowRuns: sourceRuns,
+        mainWorkflowRuns: [{
+          id: 456, name: "ci", head_sha: "merge-sha", status: "completed", conclusion: "failure",
+        }],
+        commitStatuses: readyVercel,
+      });
+
+      expect(result.productionAccepted).toBe(false);
+      expect(result.mainCi.state).toBe("FAILURE");
+      expect(result.errors).toContain(
+        "authenticated Production acceptance requires a green canonical ci run on the merge commit (main ci is FAILURE)",
+      );
+      expect(result.warnings).toContain(
+        "canonical ci on the merge commit ended as FAILURE; main is not proven green after this merge",
+      );
+      expect(formatProductDeliveryTruth(result)).toContain("MAIN_CI_AFTER_MERGE: FAILURE");
+    });
+
+    it("cancelled 同樣擋下 acceptance，不因為「沒有紅燈」就放行", () => {
+      const result = evaluateProductDeliveryTruth({
+        pullRequest: mergedPullRequest({ body: productBody }),
+        defaultBranchHead: "main-sha",
+        compareStatus: "ahead",
+        changedFiles: [{ filename: "src/app/page.tsx" }],
+        sourceWorkflowRuns: sourceRuns,
+        mainWorkflowRuns: [{
+          id: 456, name: "ci", head_sha: "merge-sha", status: "completed", conclusion: "cancelled",
+        }],
+        commitStatuses: readyVercel,
+      });
+
+      expect(result.productionAccepted).toBe(false);
+      expect(result.errors).toContain(
+        "authenticated Production acceptance requires a green canonical ci run on the merge commit (main ci is CANCELLED)",
+      );
+    });
+
+    it("沒有宣告 acceptance 的 PR 不因為 main CI 尚未回報而被判成錯誤", () => {
+      const result = evaluateProductDeliveryTruth({
+        pullRequest: mergedPullRequest({
+          body: productBody.replace("AUTHENTICATED_PRODUCTION_ACCEPTANCE: VERIFIED", "AUTHENTICATED_PRODUCTION_ACCEPTANCE: NOT_RUN"),
+        }),
+        defaultBranchHead: "main-sha",
+        compareStatus: "ahead",
+        changedFiles: [{ filename: "src/app/page.tsx" }],
+        sourceWorkflowRuns: sourceRuns,
+        mainWorkflowRuns: [],
+        commitStatuses: readyVercel,
+      });
+
+      expect(result.mainCi.state).toBe("NOT_REPORTED");
+      expect(result.errors).toEqual([]);
+      expect(result.warnings).toEqual([]);
+    });
   });
 });
