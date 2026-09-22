@@ -33,7 +33,7 @@ PR_METADATA_PROFILE_PASS profile=<PROFILE> generated=<N> output=/tmp/pr-body.md
 接著直接執行同一套本機 preflight：
 
 ```bash
-npm run agent:pr:preflight -- --body /tmp/pr-body.md
+node scripts/agents/agent-wip-preflight.mjs --body /tmp/pr-body.md
 ```
 
 預設會用 `git diff --name-status --find-renames origin/main...HEAD` 自動建立 changed-file inventory（變更檔案清單）；rename/copy 會同時保留舊路徑與新路徑，避免 migration 被改名後從 schema guard 的視線消失。只有需要指定不同 baseline（比較基準）時才傳 `--base <ref>`。既有 `--changed-files <files.txt>` 仍保留給需要明確固定清單的工具流程，但作者不再需要為一般 PR 手工製作這個檔案。
