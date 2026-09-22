@@ -91,7 +91,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 8,
+    "fullCiRuns": 10,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -138,7 +138,9 @@
     "2026-09-22T10:58:42Z：#681 16ea33ee 的 local-isolated 35717781006 與 schema bootstrap 35717780992 都在 current-main 的同一 chat-link.06 assertion（lastMessage '' vs OUT_TEXT）失敗；0133 disposable proof 已 PASS，故依實際 shared blocker 回 BUILD，移植既有 #676 的 test-only repair。",
     "2026-09-22T11:15:09Z：#681 d3bcbaa6 的 schema bootstrap 35718956244 與 local-isolated 35718956382 均通過 0133 disposable proof／integration，僅 booking-addons.17 E2E 被既有 canonical-only target guard 對 loopback ref 127 fail closed；依兩個 workflow 已提供的 LOCAL_ISOLATED/loopback/paired identity contract 回 BUILD，補最小 guard admission。未預寫本次新 head 的 full CI 結果。",
     "2026-09-22T11:22:10Z：review reread 更正 fullCiRuns=8；在既列七筆之外，d3bcbaa6 的 ci 35718956257 已在 5bc snapshot 引用前完成 success，故是 durable run evidence。現行 5bc head 的 35720435193 仍在執行，未計入。",
-    "2026-09-22T11:22:10Z：#681 5bc6915b 的 Final Spec review 指出 local admission 尚接受任意 pathname；review return（非 CI failure）回 BUILD，補根路徑與 incomplete-evidence fail-closed 反例。"
+    "2026-09-22T11:22:10Z：#681 5bc6915b 的 Final Spec review 指出 local admission 尚接受任意 pathname；review return（非 CI failure）回 BUILD，補根路徑與 incomplete-evidence fail-closed 反例。",
+    "2026-09-22T11:38:47Z：durable rerread 更正 fullCiRuns=10；新增兩筆 terminal exact-head ci success：5bc6915b 的 35720435193（第9）與 b43598d5 的 35721083150（第10）。不預寫本次修復 head 的結果。",
+    "2026-09-22T11:38:47Z：#681 b43598d5 的 schema bootstrap 35721083074 與 local-isolated 35721083116 都通過 0133 disposable proof／integration，並同在 booking-addons.17:153 失敗：POST /api/bookings 既有契約只回 id，E2E 卻讀取不存在的 finalPrice，導致 NT$非數值；依 durable 同根因回 BUILD，最小修復只讀回該 API 所建 booking 的 persisted final_price。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -311,6 +313,26 @@
         "head": "5bc6915bd32c4aa92459c370bb51500012761877",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "Recorded at the live Final Spec review return before the root-path guarded candidate receives new exact-head checks."
+      },
+      {
+        "id": "pr-681-build-enter-fix-required-b43598d5",
+        "at": "2026-09-22T11:38:47.000Z",
+        "kind": "BUILD_ENTER",
+        "pr": 681,
+        "issue": 680,
+        "head": "b43598d5fab8147ea84b49e91fb374ce23ba6d15",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Durable reread of schema bootstrap 35721083074 and local-isolated 35721083116 found the same booking-addons.17 E2E contract-use failure after 0133 proof/integration passed; #681 returned to bounded source BUILD."
+      },
+      {
+        "id": "pr-681-build-exit-fix-required-b43598d5",
+        "at": "2026-09-22T11:38:48.000Z",
+        "kind": "BUILD_EXIT",
+        "pr": 681,
+        "issue": 680,
+        "head": "b43598d5fab8147ea84b49e91fb374ce23ba6d15",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Recorded at the durable common-failure diagnosis before the persisted-price E2E repair receives a new exact-head CI."
       }
     ]
   },
