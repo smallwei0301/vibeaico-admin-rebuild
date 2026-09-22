@@ -36,6 +36,7 @@ DO $fixture$
 DECLARE
   a_tenant uuid;
   b_tenant uuid;
+  fk record;
 BEGIN
   -- The canonical seed has no cross-tenant staff guarantee. Insert an exact,
   -- rollback-scoped pair so this proof's positive and negative controls are deterministic.
