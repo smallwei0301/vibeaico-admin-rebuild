@@ -131,7 +131,8 @@
     "Issue #680：Owner 已選 A；本 Run 於當下開始 source-only FK expand。canonical TEST 仍由 #676 的既有失敗後釋放，不重跑或搶佔；TEST_VERIFIED/PRODUCTION_SCHEMA_READY 尚未成立。",
     "2026-09-22T10:20:53Z：#681 exact-head CI 35714460876 與 schema bootstrap 35714460916 的 FIX_REQUIRED 為目前可驗證的 reviewer return；依此即時記錄 9b4cff5 BUILD_ENTER/BUILD_EXIT，峰值回到 event-derived 1，未倒填此前歷史。",
     "2026-09-22T10:30:10Z：#681 3281f8f exact-head CI 35715564083／schema bootstrap 35715564128 的 FIX_REQUIRED 觸發第二組 BUILD lifecycle；以當下事件記錄，未倒填。",
-    "2026-09-22T10:33:39Z：#681 9d2f403 的 schema bootstrap 35716411934 以真實 disposable proof finding 回 BUILD；本組事件為當下記錄。"
+    "2026-09-22T10:33:39Z：#681 9d2f403 的 schema bootstrap 35716411934 以真實 disposable proof finding 回 BUILD；本組事件為當下記錄。",
+    "2026-09-22T10:41:03Z：#681 99207fdf exact-head CI 35716683611 的真實 FIX_REQUIRED 顯示 release plan 將 tenant-auth boundary 誤作 ADDITIVE，與既有 AUTHZ queue 形成 AUTHZ+ADDITIVE；依當下 finding 回 BUILD，修正為明確 RLS precondition/enable readback，未操作任何遠端資料庫。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -204,6 +205,26 @@
         "head": "9d2f4034301411fd329b5d12fdfe1a798b7b9d2b",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "Recorded at the live source repair boundary before exact-head CI for the iterator declaration fix."
+      },
+      {
+        "id": "pr-681-build-enter-fix-required-99207fdf",
+        "at": "2026-09-22T10:41:03.000Z",
+        "kind": "BUILD_ENTER",
+        "pr": 681,
+        "issue": 680,
+        "head": "99207fdf5ce820451753cfff5c155794dc5f6c99",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Exact-head CI 35716683611 returned FIX_REQUIRED: `MIXED_RISK_RELEASE_NOT_ADMITTED: AUTHZ+ADDITIVE`; #681 returned to bounded source BUILD for an explicit RLS auth-boundary precondition."
+      },
+      {
+        "id": "pr-681-build-exit-fix-required-99207fdf",
+        "at": "2026-09-22T10:41:04.000Z",
+        "kind": "BUILD_EXIT",
+        "pr": 681,
+        "issue": 680,
+        "head": "99207fdf5ce820451753cfff5c155794dc5f6c99",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Recorded at the live reviewer return before the RLS-boundary repaired candidate receives a new exact-head CI."
       }
     ]
   },
