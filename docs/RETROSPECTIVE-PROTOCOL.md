@@ -404,6 +404,26 @@ ACCEPTANCE
 9. **下一步**：最多兩個主要治理改良；Product bug 交 Product Issue。
 10. **Unproven**：所有還沒驗證的地方。
 
+### 10.1 Final execution gate
+
+`RETROSPECTIVE_EXECUTION_RECEIPT_REQUIRED`
+
+送出「完整複盤」前，必須附 Retrospective Execution Receipt。固定執行：
+
+```bash
+node scripts/agents/run-ledger-v2.mjs validate <latest-product-run.json>
+node scripts/agents/scorecard-readiness.mjs <latest-product-run.json> --json
+node scripts/agents/score-run-current.mjs <latest-product-run.json>
+node scripts/agents/review-runs-v2.mjs docs/metrics/agent-runs
+node scripts/metrics/governance-scoreboard.mjs <latest-reproducible-governance-run.json> <matching-review-evidence.json> docs/metrics/governance-scoreboard-policy.json
+node scripts/metrics/governance-observation.mjs --repo smallwei0301/vibeaico-admin-rebuild --since <WINDOW_START_UTC> --until <WINDOW_END_UTC> --json
+```
+
+Active Product Run 另外實跑 `scorecard-readiness --strict-live` 並保存真正 exit code；非 0 可以是正確的 `NEEDS_CAPTURE`，不得把它改成 0 或省略。
+每一項收據都要保存 command、input、terminal result/exit、output 或 artifact reference、observed main。
+正式 Governance Scoreboard 與 current observation 是兩層證據：前者驗可重建正式 contract，後者描述本次時間窗；不得互相冒充。
+若任一 mandatory command 未執行，final 必須標 `PARTIAL_RETROSPECTIVE` 並列出缺項。Product `NOT_GRADED` 不得跳過 Governance。
+
 ---
 
 ## 11. 復盤後治理整改的優先序
