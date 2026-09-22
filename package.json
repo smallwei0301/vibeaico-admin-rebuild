@@ -17,6 +17,7 @@
     "guard:repo-integrity": "node scripts/ci/repo-integrity-guard.mjs",
     "guard:ledger-alias-map": "node scripts/ci/verify-ledger-alias-map.mjs",
     "agent:pr-janitor": "node scripts/agents/pr-janitor.mjs",
+    "agent:pr:preflight": "node scripts/agents/agent-wip-preflight.mjs",
     "agent:issue:preflight": "node scripts/agents/issue-provenance-policy.mjs",
     "agent:schema-truth:report": "node scripts/agents/schema-truth-report.mjs",
     "agent:run:init": "node scripts/agents/run-ledger-v2.mjs init",
