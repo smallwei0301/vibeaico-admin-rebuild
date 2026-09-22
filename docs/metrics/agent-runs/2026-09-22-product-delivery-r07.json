@@ -5,7 +5,12 @@
   "startedAt": "2026-09-22T06:39:51.152Z",
   "endedAt": null,
   "sources": [
-    "issue/674"
+    {
+      "ref": "origin/main"
+    },
+    {
+      "ref": "issue/674"
+    }
   ],
   "main": {
     "startSha": "7b26e244",
