@@ -11,6 +11,7 @@ import {
   validateGithubRunLedgerChanges, validateGithubProductRunBinding,
 } from '../../scripts/agents/scorecard-required-gate.mjs';
 
+const emptyRoot = mkdtempSync(path.join(tmpdir(), 'product-run-binding-556-'));
 const id = '2026-09-16-cross-day-556';
 const ledger = `docs/metrics/agent-runs/${id}.json`;
 const body = `<!-- pr-lifecycle\nissue: 556\nstate: ACTIVE\nsupersedes:\n-->
@@ -34,7 +35,9 @@ function remote(run = makeRun(), text = body): any {
   const data: any = { encoding: 'base64', sha, size: bytes.length, content: bytes.toString('base64') };
   const tree: any = { truncated: false, tree: [{ path: ledger, type: 'blob', mode: '100644', sha }] };
   const requests: any[] = [];
-  return { data, tree, requests, owner: 'owner', repo: 'repo',
+  // #672：admission guard 讀 canonical checkout 的 Run 狀態；這裡指向空目錄，
+  // 讓這個案例只測 binding 本身，不受真實 repo 當下有幾個 Run 開著影響。
+  return { data, tree, requests, owner: 'owner', repo: 'repo', repositoryRoot: emptyRoot,
     current: { body: text, state: 'open', head: { sha: 'a'.repeat(40) }, changed_files: 1 },
     changedFiles: [{ filename: 'src/app/page.tsx', status: 'modified', sha: 'b'.repeat(40) }],
     github: { rest: { git: {
