@@ -2,13 +2,15 @@
 
 > Owner 首次裁示：2026-08-28
 >
-> 最近更新：2026-09-17
+> 最近更新：2026-09-22
 >
 > 現行 Product B+ 以本文件為單一操作入口。歷史基線見
 > `docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`；後續已收斂裁示包含：
 > 2026-09-07 交付完成／v4 結案／條件雙 Terra、2026-09-09 active candidate 上限、
 > 2026-09-10 lane 對應模型層級／多環境 base freshness／Product Final Risk、
-> 2026-09-11 雙 Workstream 與純治理模型解綁，以及 2026-09-15 qualified dual Terra continuous refill。
+> 2026-09-11 雙 Workstream 與純治理模型解綁、2026-09-15 qualified dual Terra continuous refill，
+> 以及 2026-09-22 的 Environment Delivery backpressure、跨 PR schema dependency #659、
+> merge 後 main CI truth #670、Run closeout grading preflight #675。
 >
 > 最新 Production DB 授權裁示：`docs/decisions/2026-09-14-owner-production-db-policy-gate.md`；見 §3.2。
 >
@@ -120,14 +122,55 @@ current truth
   相依缺檔是檢查器啟動失敗，不是 Product 分類錯誤；修補合併後重查目前事件，不重寫歷史結果。
 - 路徑與欄位檢查不能證明每個語意都正確；最終 exact-diff／反例審查及原有安全關卡仍必要。
 
+### 1.5 Environment Delivery backpressure：Source 不得無限制領先環境
+
+Product 主線的 throughput 目標是**可用成果**，不是單純增加 merge 數。每次 live inventory 後，先把已 merged／已存在 main 的 Product work 分成：
+
+```text
+SOURCE_ONLY
+TEST_VERIFIED
+PRODUCTION_SCHEMA_READY
+ACTIVATION_PENDING
+AUTHENTICATED_PRODUCTION_ACCEPTED
+```
+
+另保留 `HISTORICAL_SHAPE_WITHOUT_CANONICAL_LEDGER`、`VERIFIED_NOT_APPLIED`、`OWNER_BLOCKED`、
+`EXTERNAL_BLOCKED` 等真實例外；不得硬塞進成功階段。
+
+若已有 P0／P1 Product source 卡在 TEST、Production schema、runtime activation 或正式登入驗收，
+**預設下一個 Product 工作必須先把既有項目往下一階推**，而不是再開新的 source-only 功能。
+優先順序固定為：
+
+1. `TEST_VERIFIED → Production controlled release → PRODUCTION_SCHEMA_READY`。
+2. `SOURCE_ONLY migration/schema → canonical TEST → TEST_VERIFIED`。
+3. `PRODUCTION_SCHEMA_READY → 重新驗 current-main runtime → activation／merge／deploy`。
+4. `MERGED/AUTO_DEPLOYED → authenticated Production acceptance`。
+5. 上述沒有可安全推進的高優先尾項後，才新增新的 Product source slice。
+
+例外只限：Owner 明確改優先序、P0 安全／資料損失／付款事故、或新 source 是解除同一 release 阻塞的必要前置。
+即使例外成立，也要在 Run／PR 記錄原因；不能以「Terra slot 空著」作為新增 source 的理由。
+**continuous refill 是交付流水線補位，不是 source 產量 KPI。** 若唯一可選工作會與 shared TEST、
+同一 migration ledger、auth/RLS、payment/refund 或 mutable provider hot boundary 衝突，寧可序列化，
+不得為了把兩個 BUILD slots 填滿而製造更多 environment debt。
+
+Environment Delivery／Production acceptance 本身屬 `PRODUCT_MAINLINE` 的正式施工，不得被當成「只是部署」
+而排除於 Product Run。完成一個環境階段後，立即依 §9.0.2 更新 live Issue 與 §10 raw facts；
+不得等下一次複盤才發現 source 與 environment 已分岔。
+
 ## 2. 強制開工順序（低摩擦 default entry）
 
 原則：**本文件是 default execution entry，不再每輪無條件重讀整套治理背景。** 安全規則沒有減少，改成依任務 trigger 載入，降低 context、時間與「讀太多反而用錯舊規則」的摩擦。
 
 每次接手固定只做：
 
+**HARD STARTUP GATE：在完成第 1–2 步以前，不得做施工判斷、Issue／PR 寫入、TEST／Production 動作、merge、
+close 或部署。不得用記憶、舊 Session、先前下載副本代替 current-main 規則。**
+
 1. `git fetch origin --prune`，從 live GitHub 重建 current `main`、open Issue／PR、exact head、CI、shared TEST holder。
-2. 從 `origin/main` 讀 `AGENTS.md`、`CLAUDE.md`、**本文件**、`docs/OWNER-DECISIONS.md` 中與本 Issue／領域直接相關的現行裁示，以及比本文件更新且命中本範圍的 Owner Decision。
+2. 以剛取得的同一個 `origin/main` SHA **完整讀取 `AGENTS.md` 與 `docs/AGENT-EXECUTION.md`**；再讀 `CLAUDE.md`、
+   `docs/OWNER-DECISIONS.md` 中與本 Issue／領域直接相關的現行裁示，以及比本文件更新且命中本範圍的 Owner Decision。
+   交接／Run 至少記住本次 `RULES_MAIN_SHA`。若首次寫入前 main 因治理／release contract 的相關變更前進，
+   重新讀受影響章節；無關 main 前進不強迫整包重讀。
 3. 先確認 `WORKSTREAM`；只有 `PRODUCT_MAINLINE` 才套 Product B+ lane／model／Final Risk 規則。
 4. 讀 Issue 指定 canonical 文件與直接相關的 integration／testing 章節；Playbook 只搜尋本次錯誤、Issue 或領域，不全量重讀。
 5. Product Run 建立或接續 `RUN_ID`，記錄 main、open Issue／PR、lane、TEST holder 與 raw-event 基線，並跑一次 §10 Live Scorecard readiness。
@@ -192,6 +235,37 @@ PR body、`TEST_PROFILE`、lane、candidate、Closure、Final Risk metadata 等 
 在任何「等待 Owner」結論前，Agent 必須能回答三個問題：**到底哪個機械條件失敗？目前 actor 依法能否
 自行修復／提交？Owner 或外部人類是否真的是唯一剩餘動作？** 任一題沒有 live evidence，就繼續調查或走
 現有自主路徑，不得先停工再把責任上拋。
+
+### 2.0.3 Environment Delivery triage：先看真實環境，再選下一張 Product
+
+若本次 Goal 涉及 migration、schema-dependent runtime、正式功能驗收或「收尾」，在 Sol/Terra 選新 source 前，
+對**本次相關物件**做 bounded live readback，不要求每輪全庫掃描：
+
+- current-main canonical migration / runtime dependency；
+- TEST affected schema + migration ledger；
+- Production affected schema + migration ledger；
+- 對應 readiness receipt / G3 / Production release artifact 是否存在且仍綁 current source；
+- runtime PR 是否 PARKED / ACTIVATE / superseded；
+- authenticated Production acceptance 是否真的做過。
+
+然後建立最小 Environment Delivery queue，至少列：
+
+```text
+MIGRATION / FEATURE
+CURRENT_MAIN_SOURCE
+TEST_STATE
+PRODUCTION_STATE
+RUNTIME_ACTIVATION_STATE
+PRODUCTION_ACCEPTANCE_STATE
+NEXT_SAFE_ACTION
+```
+
+**live shape 與 ledger 必須分開記。**「table/column 已存在」不等於 canonical migration identity 已套；
+「ledger 有一筆」也不單獨證明目前 shape／ACL／RLS 正確。歷史等價 shape 不盲目重跑 migration，
+應記 `HISTORICAL_SHAPE_WITHOUT_CANONICAL_LEDGER` 並走 provenance／precondition 收斂。
+
+若 Issue 本文與這次 live readback 矛盾，先依 §9.0.2 把 CURRENT TRUTH／checklist／remaining scope 更新到 GitHub，
+再由下一位 Agent 接續；不得把過期 Issue body 當 release blocker 或重做已完成步驟。
 
 ### 2.1 Branch base freshness 現行規則
 
@@ -271,7 +345,21 @@ RECOVERY_BLOCKED、IMPLEMENTATION_BLOCKED／EXECUTION_BLOCKED。automation pendi
 遠端只套 main SQL 的規則不變。新 schema 使用「資料庫準備」與「功能啟用」兩段：
 先隔離演練與必要 source review／CI，再合併不會啟用相依程式的 schema 準備，
 之後套 canonical TEST 並驗收，再走正式庫關卡；正式 schema ready 後才啟用相依功能。
-一般 Product 驗收不變；既有 guard 不支援安全分段時先補接線，不繞過檢查。`agent-wip-preflight` 與必要的 `Agent WIP Policy` 共用 `schema-staged-release-policy.mjs`：migration 加 Product runtime/API/UI 預設拒絕，除非同張 PREPARE PR 的**每個變更 runtime 檔**都可機械追蹤至同一個 `DEFAULT_OFF` gate，且每個 exported entry 的第一個可執行分支都是 gate 關閉時 `return/throw` 的早退；所有 top-level DB/network 副作用也會被拒絕。因此相依操作在預設狀態不可達。之後的 ACTIVATE PR 不得再帶 migration，且只能引用 current base 已存在、不可由該 PR 補造的 schema readiness receipt。trusted guard 會重新查 canonical `ci` 內 integration 與 E2E steps 都真實成功，以及 read-only `agent-schema-drift-watch` 的真實成功結果；兩者 head 必須都是 receipt 的 schema-prep commit，並驗證該 commit 是目前 base 的祖先。單純 schema prep、或 migration 加文件／測試不會被此規則誤擋。
+一般 Product 驗收不變；既有 guard 不支援安全分段時先補接線，不繞過檢查。`agent-wip-preflight` 與必要的 `Agent WIP Policy` 共用 `schema-staged-release-policy.mjs`：
+
+- **同 PR migration + Product runtime/API/UI** 預設拒絕，除非 PREPARE 的**每個變更 runtime 檔**都可機械追蹤至同一個 `DEFAULT_OFF` gate，且每個 exported entry 的第一個可執行分支都是 gate 關閉時 `return/throw` 的早退；所有 top-level DB/network 副作用也會被拒絕。
+- **拆成不同 PR 不是豁免。** #659 起，runtime-only PR 若以 `SCHEMA_DEPENDENCY`，或 legacy `DEPENDS_ON_PR`
+  明確宣告依賴另一張 migration/schema PR，也必須走 staged release。readiness 尚未成立時只能是
+  PREPARE + mechanically proven default-off；後續 ACTIVATE 才能打開。
+- ACTIVATE PR 不得再帶 migration，且只能引用 current base 已存在、不可由該 PR 補造的 schema readiness receipt。
+  trusted guard 重新查 canonical `ci` 的 integration + E2E 真實成功，以及 read-only
+  `agent-schema-drift-watch` 成功；兩者 head 必須是 receipt 的 schema-prep commit，並驗證該 commit 是目前 base 祖先。
+- 單純 schema prep、migration 加文件／測試、或明確 `SCHEMA_DEPENDENCY: none` 的普通 runtime 不因本規則誤擋。
+
+Production release 也不得因 pending migration 很多就「照編號整批套」。先依 §2.0.3 的 queue 與相依／風險建立 bounded release plan：
+已 `TEST_VERIFIED` 的項目優先進 G0–G7；main-only 項目先取得唯一 canonical TEST holder；
+`PRODUCTION_SCHEMA_READY` 後才恢復 PARKED runtime。每個 release 都只認自己 exact planned set，
+不得把其他 pending migration 的存在視為順便放行。
 
 **政策制定不等於自動化已上線。** 本文件不建立生產排程、憑證或可寫工作；
 完整 gate／writer／備份／審查／互斥鎖未經實作驗證前，不得宣稱 AUTOMATION_READY 或直接套用。
@@ -329,7 +417,7 @@ LUNA_TASKS       default 4，max 6，另有 1 位 Aggregator
 - 雙 Terra qualification 不變：不同 primary Issue、`TERRA_SLOT` 1／2、不同 `TEST_ENV_ID`、零重疊 `FILE_OWNERSHIP`、各自健康的 local isolated 證據，且 Guard 在啟動前判定 qualified。兩張 BUILD 同時存在時 Reserve 固定為 0。
 - Source exact head 完成並凍結後，`TERRA_BUILD + LANE_STATE=ACTIVE + ACTIVE_CANDIDATE=true + COMPLETION_CLAIM=AUDIT_READY` 只有在 `DUAL_TERRA_PILOT=true` 且上述 isolation／ownership contract 完整時，才不再占 BUILD slot；它仍占 active candidate WIP，仍走原本 CI／TEST／Final Risk／merge。
 - `AUDIT_READY` verification tail 期間不得修改 source。CI／review／Final Risk 要求 source repair 時，必須先把 `COMPLETION_CLAIM` 降回 `IN_PROGRESS`，再改 source；修完並重新驗證後才能再次宣告 `AUDIT_READY`。
-- BUILD slot 因 `AUDIT_READY`、merge 或完整 blocker 釋放後，只要 `ACTIVE_CANDIDATE < 3` 且有另一張 qualified independent Product slice，就立即 continuous refill；不得因前一張仍在等 CI／Final Risk／merge而讓施工線空轉。
+- BUILD slot 因 `AUDIT_READY`、merge 或完整 blocker 釋放後，只要 `ACTIVE_CANDIDATE < 3` 且有另一張 qualified independent Product slice，就 continuous refill；但候選排序必須先套 §1.5 Environment Delivery backpressure。已 merged source 等待 TEST／Production／activation／acceptance 時，優先推既有交付尾段；不得為「不讓 Terra 空轉」而新增更多 source-only debt。
 - 新 BUILD 與 `AUDIT_READY` tail，以及兩個 verification tail 彼此的 `FILE_OWNERSHIP` 不得重疊。相同 schema／migration ledger、auth／RLS、payment／refund、mutable provider boundary 視為 hot boundary，不平行施工。
 - 必須一路做到 `CLOSED`、`AUDIT_READY` 或完整 `OWNER_BLOCKED`。`PR 已開`、`CI 綠`、`正在等 Preview` 本身不是完成。
 - WIP=3、Terra BUILD hard max=2、shared TEST=1、Final Risk=1、Merge=1 均不因 continuous refill 改變。
@@ -534,6 +622,28 @@ CI 失敗由 Luna 先壓縮：exact head、job／step、suite／case、錯誤碼
    都同步完成，才算 `POST_MERGE_CLOSEOUT=COMPLETE`。同一 Issue 在此之前不得被當成新的 executable slice；
    若 Issue 保持 open，下一個 Agent 只能接 `REMAINING_BOUNDED_SCOPE`，不得重做已 merged 範圍。
 
+### 9.0.2 STAGE_TRUTH_SYNC：環境階段一變，就更新，不等 closeout／複盤
+
+POST_MERGE_CLOSEOUT 不是唯一同步點。以下任何一項發生時，都視為 Product delivery stage change：
+
+- canonical TEST migration / integration / E2E / cleanup 變成 `TEST_VERIFIED` 或失敗；
+- Production G0–G7 的 blocker、readiness、apply、postcheck 狀態改變；
+- `PRODUCTION_SCHEMA_READY` 成立或失效；
+- PARKED runtime 因 schema ready 可恢復，或因 source/main drift 必須繼續 park；
+- Vercel Production deployment truth 改變；
+- authenticated Production acceptance 成功／失敗；
+- live readback 推翻 Issue body、PR body 或先前 blocker。
+
+同一工作回合內必須：
+
+1. 更新 Issue 的 `CURRENT TRUTH`、acceptance checklist、已解除／新增 blocker 與 `REMAINING_BOUNDED_SCOPE`；
+2. 若有 Run，立即寫對應 raw fact / Completion Truth claim，再跑 Live Scorecard readiness；
+3. 若 stage 產生可執行 successor（例如 schema ready → runtime activation），更新／解除 PARKED 狀態後才派工；
+4. 若只完成 source 或 environment 中間階段，明確保留下一階，不能關 Issue 或宣稱 shipped。
+
+目的不是增加留言，而是讓新的 Session **只讀 GitHub 就能知道下一個安全動作**，避免 #42／#46／#396
+這類「實際環境已前進、Issue 本文仍停在舊狀態」造成重工與錯誤優先序。
+
 ### 9.1 `CLOSED` 不等於 shipped
 
 Product Issue 只有以下五階全部成立，才可計為 `shipped_unit`：
@@ -585,6 +695,12 @@ after-merge ref=main 關鍵檔案重讀
 ```
 
 只送出 API 或只看到工作分支，只能記 `*_REQUESTED_UNVERIFIED`；不得把請求成功當成完成。
+
+**第六項：merge 後 main CI。** 前五項只證明「PR head 綠且 merge commit 已進 main」；
+宣稱正式 acceptance／shipped 前，還必須讀 `merge_commit_sha` 上 canonical `ci` workflow：
+只有 `conclusion=success` 是綠；`cancelled`、`timed_out`、`startup_failure` 是未知，不得當成成功；
+仍在執行是 `PENDING`，查無 run 是 `NOT_REPORTED`。由 Completion Truth 現行 helper 機械判定。
+main CI 未成功時不得建立 `AUTHENTICATED_PRODUCTION_ACCEPTED` 的完成主張。
 
 ## 10. Ledger、Scorecard 與復盤
 
@@ -644,6 +760,11 @@ node scripts/agents/scorecard-readiness.mjs docs/metrics/agent-runs/<RUN_ID>.jso
 2. **Observable event**：accepted/rejected Agent task、full CI、invalid rerun、Audit／Final Risk、TEST collision、安全事件、closure sweep 後，先寫 raw fact，再跑 readiness。
 3. **Delivery stage change**：merge、Issue close／owner-blocked、Vercel Production READY、Production schema readiness、authenticated Production acceptance 後，立即寫 Completion Truth evidence，再跑 readiness。
 4. **Pre-closeout**：`rawCaptureGaps=[]` 且 `consistencyWarnings=[]` 才進 terminal closeout；已失去的歷史觀測不得用推算或預設 0 補綠。
+5. **Grading preflight（#675）**：`status=COMPLETE` 前必須先讓 Completion Truth / `RUN_COMPLETE` 等現有評分條件成立。
+   `run-ledger-v2.mjs closeout` 會直接重用 current scorer 檢查；若結果會永久 `NOT_GRADED`，以
+   `CLOSEOUT_WOULD_NOT_GRADE` fail closed。先修 durable evidence，再關帳。
+   `--accept-not-graded <reason>` 只允許明確、非佔位理由的知情例外，會寫入 notes；它**不會**讓該 Run
+   變成 comparison-eligible，也不得用來湊 #104 的三輪樣本。
 
 readiness 會把 `endedAt`、`main.endSha`、end inventory、closeout、Completion Truth 等 active Run 合理尚未具備的欄位列為 `terminalOnlyPending`，**不因它們 pending 而失敗**。
 
@@ -717,5 +838,11 @@ Product `NOT_GRADED`、active Run、重大 Product blocker、Gmail/provider/DB �
 未完成，都仍算可施工的 Closure 工作；不得因 source 已 merge 就送終止性 final。
 
 結束前重新查 open Issue、open PR、CI、MAIN、RESERVE、Closure、TEST holder、Owner blockers、
-active governance work 與本輪 scorecard。最終報告不得只寫「目前進度」。
-符合 §3.2 的 DB 變更在 `POLICY_GATED_ACTIVE` 後不再以逐次人工批准為停止理由；automation pending 期間保留 bootstrap gate，技術關卡未過則保留其真實阻塞。
+active governance work、本輪 scorecard，**以及 §1.5 / §2.0.3 Environment Delivery queue**。
+只要仍有可安全自主推進的 `SOURCE_ONLY → TEST`、`TEST_VERIFIED → Production`、
+`PRODUCTION_SCHEMA_READY → activation` 或 `deployed → authenticated acceptance` 工作，就不符合停止條件；
+不得把「Production 尚未 ready」籠統寫成 blocker 後停止。最終報告不得只寫「目前進度」。
+
+符合 §3.2 的 DB 變更在 `POLICY_GATED_ACTIVE` 後不再以逐次人工批准為停止理由；automation pending 期間保留 bootstrap gate，
+技術關卡未過則保留**精確 G0–G7 stage / evidence blocker**。只有真的缺 Owner／外部人類且現有合法替代路徑不存在，
+才可用 Owner／External blocker 結束該路線。
