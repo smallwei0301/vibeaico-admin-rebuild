@@ -64,6 +64,20 @@ function planApiPayload(payload: Partial<TripPlan>) {
     durationMinutes: payload.durationMinutes,
     priceType: payload.priceType,
     yearRound: payload.yearRound,
+    /**
+     * Sol 稽核（#8 PR #661）：以下四個欄位（成團規則，18 分冊 §1–§2／0107）過去完全沒有
+     * 被序列化進這裡，導致真後端的 `PUT /api/trip-plans/:id`／`POST /api/trips/:id/plans`
+     * 永遠收不到它們——即使呼叫端（`planDuplicatePayload()`／表單）已經把值放進
+     * `Partial<TripPlan>`，也在這一層被靜默丟掉，等於一個看起來成功、值卻沒進資料庫的
+     * 假成功。**故意不帶 `bookingType`**：`src/server/mappers.ts` 的
+     * `deriveBookingType()` 註解記錄了 Owner 裁示——`bookingType` 是由 `sales_mode`
+     * derive 出來的顯示值，DB 沒有、也不該有獨立的 `booking_type` 欄位，帶了
+     * `planCreateSchema`／`planUpdateSchema` 也不認得這個 key，只是白送。
+     */
+    salesMode: payload.salesMode,
+    participationMode: payload.participationMode,
+    minToDepart: payload.minToDepart,
+    formationDeadlineDaysBefore: payload.formationDeadlineDaysBefore,
   };
 }
 
@@ -107,12 +121,56 @@ export const getTrip = (id: string) =>
     },
   );
 
+/**
+ * issue #8／2026-09-11 Owner Decision（`docs/decisions/2026-09-11-guide-trip-duplication.md`）：
+ * 完整複製需要先知道新 Trip 的 id 才能接著複製它底下的 TripPlan／TripAddon。
+ * `POST /api/trips` 早就在回應裡回傳完整的新列（`ok(mapTrip(data))`），過去這裡用
+ * `request<void>()` 把它丟掉——不是後端沒給，是前端沒接。
+ *
+ * mock 分支過去是 `() => undefined`：「新增行程」按鈕能動是因為呼叫端只在意
+ * 成功與否，從不讀回傳值。這裡改成真的在 `MOCK_TRIPS` 塞一筆完整草稿並回傳它，
+ * 這樣 `duplicateTripFully()`（下方）在 demo 模式下也能拿到新 id 繼續往下走，
+ * 而不是對著 `undefined.id` 丟例外。
+ */
 export const createTrip = (payload: Partial<Trip>) =>
-  adapt(() => undefined, () =>
-    request<void>('/api/trips', {
-      method: 'POST',
-      body: JSON.stringify(tripApiPayload(payload)),
-    }));
+  adapt<Trip>(
+    () => {
+      const now = new Date().toISOString();
+      const created: Trip = {
+        id: `t_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+        slug: payload.slug ?? `trip-${Date.now().toString(36)}`,
+        title: payload.title ?? '',
+        tagline: payload.tagline ?? '',
+        summary: payload.summary ?? '',
+        description: payload.description ?? '',
+        region: payload.region ?? '',
+        category: payload.category ?? '',
+        coverImageUrl: payload.coverImageUrl ?? '',
+        galleryUrls: payload.galleryUrls ?? [],
+        meetingPoint: payload.meetingPoint ?? '',
+        meetingPointMapUrl: payload.meetingPointMapUrl ?? '',
+        inclusions: payload.inclusions ?? [],
+        exclusions: payload.exclusions ?? [],
+        notices: payload.notices ?? [],
+        safetyNotice: payload.safetyNotice ?? '',
+        refundPolicyType: payload.refundPolicyType ?? 'STANDARD',
+        status: 'DRAFT',
+        midaoListing: 'NONE',
+        midaoListingNote: '',
+        planCount: 0,
+        upcomingDepartureCount: 0,
+        minPrice: 0,
+        updatedAt: now,
+      };
+      MOCK_TRIPS.push(created);
+      return created;
+    },
+    () =>
+      request<Trip>('/api/trips', {
+        method: 'POST',
+        body: JSON.stringify(tripApiPayload(payload)),
+      }),
+  );
 
 export const updateTrip = (id: string, payload: Partial<Trip>) =>
   adapt(() => undefined, () =>
@@ -121,8 +179,33 @@ export const updateTrip = (id: string, payload: Partial<Trip>) =>
       body: JSON.stringify(tripApiPayload(payload)),
     }));
 
+/**
+ * issue #8：mock 分支過去是純 `() => undefined`——`/tenant/trips` 的刪除按鈕在
+ * demo 模式下重讀清單（`listTrips()`）還是看得到剛刪的那筆，是與別處同一種假成功。
+ * `duplicateTripFully()` 的補償式回滾（複製到一半失敗要刪掉剛建立的新 Trip）
+ * 依賴這支函式真的把新 Trip 從資料集移除，這裡一併補上，並依照真實
+ * `on delete cascade`（`supabase/migrations/0066_issue_8_tour_domain_core.sql`：
+ * `trip_plans`／`trip_departures`／`trip_addons` 都 cascade 到 `trips`）在 mock
+ * 分支手動連帶清掉同一個 tripId 底下的方案／團次／加購，不留孤兒列。
+ */
 export const deleteTrip = (id: string) =>
-  adapt(() => undefined, () => request<void>(`/api/trips/${id}`, { method: 'DELETE' }));
+  adapt(
+    () => {
+      const idx = MOCK_TRIPS.findIndex((t) => t.id === id);
+      if (idx >= 0) MOCK_TRIPS.splice(idx, 1);
+      for (let i = MOCK_TRIP_PLANS.length - 1; i >= 0; i -= 1) {
+        if (MOCK_TRIP_PLANS[i].tripId === id) MOCK_TRIP_PLANS.splice(i, 1);
+      }
+      for (let i = MOCK_TRIP_DEPARTURES.length - 1; i >= 0; i -= 1) {
+        if (MOCK_TRIP_DEPARTURES[i].tripId === id) MOCK_TRIP_DEPARTURES.splice(i, 1);
+      }
+      for (let i = MOCK_TRIP_ADDONS.length - 1; i >= 0; i -= 1) {
+        if (MOCK_TRIP_ADDONS[i].tripId === id) MOCK_TRIP_ADDONS.splice(i, 1);
+      }
+      return undefined;
+    },
+    () => request<void>(`/api/trips/${id}`, { method: 'DELETE' }),
+  );
 
 /** 只影響 VibeAI 公開商店頁的可見性 */
 export const publishTrip = (id: string, publish: boolean) =>
@@ -154,20 +237,67 @@ export const listTripPlans = (tripId: string) =>
  * state；要讓新建也在 mock 模式下撐過重新掛載，需要調整呼叫端傳遞完整草稿，
  * 留給後續切片一起處理，避免這裡直接臆造欄位值。
  */
+/**
+ * issue #8：新建分支（`payload.id` 不存在）過去回傳 `void`——`POST /api/trips/:id/plans`
+ * 其實回傳完整新列（`ok(mapTripPlan(data))`），只是前端沒接。`duplicateTripFully()`
+ * 需要新方案的 id 才能接著複製它的季節定價（`trip_plan_seasons`），所以這裡把新建分支
+ * 改回傳 `TripPlan`；既有更新分支（`payload.id` 存在）維持 `void`，呼叫端本來就不讀它。
+ *
+ * mock 新建分支過去是純粹的 no-op（上面舊註解記錄過原因：`planApiPayload()` 只帶
+ * Quick/Advanced 表單各自的子集欄位，不足以拼出一筆完整新方案，頁面自己組
+ * `planDraft` 樂觀更新）。`duplicateTripFully()` 傳進來的是完整欄位（來源方案的全部
+ * 可複製欄位），因此這裡在新建分支也真的塞一筆進 `MOCK_TRIP_PLANS` 並回傳它，讓
+ * demo 模式下的複製也不是看起來成功而已；季節定價仍走 `saveTripPlanSeason()`。
+ */
 export const saveTripPlan = (tripId: string, payload: Partial<TripPlan>) =>
-  adapt(
+  adapt<TripPlan | undefined>(
     () => {
       if (payload.id) {
         const idx = MOCK_TRIP_PLANS.findIndex((p) => p.id === payload.id);
         if (idx >= 0) MOCK_TRIP_PLANS[idx] = { ...MOCK_TRIP_PLANS[idx], ...payload };
+        return undefined;
       }
-      return undefined;
+      const created: TripPlan = {
+        id: `pl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+        tripId,
+        name: payload.name ?? '',
+        description: payload.description ?? '',
+        durationMinutes: payload.durationMinutes ?? 60,
+        priceType: payload.priceType ?? 'PER_PERSON',
+        basePrice: payload.basePrice ?? 0,
+        childPrice: payload.childPrice ?? null,
+        minParticipants: payload.minParticipants ?? 1,
+        maxParticipants: payload.maxParticipants ?? 10,
+        bookingType: payload.bookingType ?? 'INSTANT',
+        depositMode: payload.depositMode ?? 'FULL',
+        depositValue: payload.depositValue ?? 0,
+        active: payload.active ?? true,
+        yearRound: payload.yearRound ?? true,
+        /**
+         * Sol 稽核（#8 PR #661）：這四個欄位過去在這個物件字面量裡整個沒出現——
+         * 即使呼叫端（`planDuplicatePayload()`）已經把值放進 `payload`，這裡也接不到，
+         * `created.salesMode` 永遠是 `undefined`，等於白帶。它們本身是 `TripPlan` 上的
+         * optional 欄位，未帶時維持 `undefined`（與其他方案手動建立的路徑一致，
+         * 不替沒有值的欄位假造一個看似真實的預設）。
+         */
+        salesMode: payload.salesMode,
+        participationMode: payload.participationMode,
+        minToDepart: payload.minToDepart,
+        formationDeadlineDaysBefore: payload.formationDeadlineDaysBefore,
+        seasons: [],
+        reviewState: 'NONE',
+        reviewNote: '',
+        sortOrder: payload.sortOrder ?? MOCK_TRIP_PLANS.filter((p) => p.tripId === tripId).length,
+        source: payload.source ?? 'GUIDE',
+      };
+      MOCK_TRIP_PLANS.push(created);
+      return created;
     },
     () => (payload.id
       ? request<void>(`/api/trip-plans/${payload.id}`, {
         method: 'PUT', body: JSON.stringify(planApiPayload(payload)),
-      })
-      : request<void>(`/api/trips/${tripId}/plans`, {
+      }).then(() => undefined)
+      : request<TripPlan>(`/api/trips/${tripId}/plans`, {
         method: 'POST', body: JSON.stringify(planApiPayload(payload)),
       })),
   );
@@ -194,14 +324,41 @@ export const deleteTripPlan = (planId: string) =>
  * 慣例：呼叫端（頁面）在 `USE_MOCK` 分支自己把改動寫回 `planDraft.seasons`
  * 這個 in-memory 陣列，這裡只負責在有真後端時真的打 API。
  */
+/**
+ * issue #8：mock 分支過去純粹是 no-op（上面舊註解記錄過原因：mock 沒有獨立的
+ * 季節子表，頁面自己在 `USE_MOCK` 分支把改動寫回 `planDraft.seasons` 這個
+ * in-memory 陣列）。`duplicateTripFully()` 需要季節定價真的掛到 `MOCK_TRIP_PLANS`
+ * 對應那筆新方案的 `seasons` 陣列上，demo 模式下複製出來的方案才不會「看起來
+ * 複製成功、季節定價卻不見了」。新建分支（`payload.id` 不存在）因此在這裡真的
+ * push 一筆進 `MOCK_TRIP_PLANS[planId].seasons`；更新分支維持 no-op，
+ * 沒有任何現有呼叫端依賴 mock 模式下更新既有季節會生效。
+ */
 export const saveTripPlanSeason = (planId: string, payload: Partial<TripPlanSeason>) =>
-  adapt<TripPlanSeason | undefined>(() => undefined, () => (payload.id
-    ? request<TripPlanSeason>(`/api/trip-plan-seasons/${payload.id}`, {
-      method: 'PUT', body: JSON.stringify(payload),
-    })
-    : request<TripPlanSeason>(`/api/trip-plans/${planId}/seasons`, {
-      method: 'POST', body: JSON.stringify(payload),
-    })));
+  adapt<TripPlanSeason | undefined>(
+    () => {
+      if (payload.id) return undefined;
+      const plan = MOCK_TRIP_PLANS.find((p) => p.id === planId);
+      if (!plan) return undefined;
+      const created: TripPlanSeason = {
+        id: `ss_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+        name: payload.name ?? '',
+        startMonth: payload.startMonth ?? 1,
+        startDay: payload.startDay ?? 1,
+        endMonth: payload.endMonth ?? 12,
+        endDay: payload.endDay ?? 31,
+        priceOverride: payload.priceOverride ?? null,
+        active: payload.active ?? true,
+      };
+      plan.seasons = [...plan.seasons, created];
+      return created;
+    },
+    () => (payload.id
+      ? request<TripPlanSeason>(`/api/trip-plan-seasons/${payload.id}`, {
+        method: 'PUT', body: JSON.stringify(payload),
+      })
+      : request<TripPlanSeason>(`/api/trip-plans/${planId}/seasons`, {
+        method: 'POST', body: JSON.stringify(payload),
+      })));
 
 export const deleteTripPlanSeason = (id: string) =>
   adapt(() => undefined, () => request<void>(`/api/trip-plan-seasons/${id}`, { method: 'DELETE' }));
@@ -260,13 +417,206 @@ export const listTripAddons = (tripId: string) =>
     () => request<TripAddon[]>(`/api/trips/${tripId}/addons`),
   );
 
+/**
+ * issue #8：新建分支的 mock 過去是純 no-op（頁面自己組完整草稿做樂觀更新）。
+ * `duplicateTripFully()` 傳進來的是來源加購項目的完整欄位，這裡在新建分支真的塞一筆
+ * 進 `MOCK_TRIP_ADDONS`，demo 模式下的「複製」才不會只複製到 Trip 本身。加購沒有像
+ * 方案季節那樣的子資源，新建後不需要回傳新 id 給呼叫端接續使用，維持回傳 `void`。
+ */
 export const saveTripAddon = (tripId: string, payload: Partial<TripAddon>) =>
-  adapt(() => undefined, () => (payload.id
-    ? request<void>(`/api/trip-addons/${payload.id}`, { method: 'PUT', body: JSON.stringify(payload) })
-    : request<void>(`/api/trips/${tripId}/addons`, { method: 'POST', body: JSON.stringify(payload) })));
+  adapt(
+    () => {
+      if (payload.id) {
+        const idx = MOCK_TRIP_ADDONS.findIndex((a) => a.id === payload.id);
+        if (idx >= 0) MOCK_TRIP_ADDONS[idx] = { ...MOCK_TRIP_ADDONS[idx], ...payload };
+        return undefined;
+      }
+      MOCK_TRIP_ADDONS.push({
+        id: `ad_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+        tripId,
+        name: payload.name ?? '',
+        price: payload.price ?? 0,
+        unit: payload.unit ?? 'PER_PERSON',
+        stock: payload.stock ?? null,
+        active: payload.active ?? true,
+        sortOrder: payload.sortOrder ?? MOCK_TRIP_ADDONS.filter((a) => a.tripId === tripId).length,
+      });
+      return undefined;
+    },
+    () => (payload.id
+      ? request<void>(`/api/trip-addons/${payload.id}`, { method: 'PUT', body: JSON.stringify(payload) })
+      : request<void>(`/api/trips/${tripId}/addons`, { method: 'POST', body: JSON.stringify(payload) })));
 
 export const deleteTripAddon = (id: string) =>
   adapt(() => undefined, () => request<void>(`/api/trip-addons/${id}`, { method: 'DELETE' }));
+
+/* ------------------------------------------------------------ 行程完整複製 */
+/**
+ * issue #8／2026-09-11 Owner Decision（`docs/decisions/2026-09-11-guide-trip-duplication.md`）：
+ * 「複製行程」必須是 Trip 本身 ＋ 全部 TripPlan（含季節定價）＋ 全部 TripAddon 的真正
+ * 持久化複製，三者同一操作全部成功或全部失敗。
+ *
+ * Decision 原文建議「單一可稽核交易邊界（例如原子 RPC 或等價 DB transaction）」，
+ * canonical `supabase/migrations/**` 目前**沒有** `trip_duplicate_atomic` 這類 RPC——
+ * 只在 `supabase/local-migrations/historical-integration-baseline/0033_trip_duplicate_atomic.sql`
+ * 這個 overlay 存在，而依本repo schema 授權規則（`CLAUDE.md`／`AGENTS.md`），overlay
+ * 自我宣告 `CANDIDATE_SOURCE_NOT_CANONICAL`，不得沿用其 RPC 或新增 migration 補一個。
+ *
+ * 因此這裡改用「新建 Trip → 依序複製 Plans（含 Seasons）→ 複製 Addons，任何一步失敗
+ * 就刪除剛建立的新 Trip」的補償式回滾：`trip_plans`／`trip_addons`／`trip_departures`
+ * 都是 `on delete cascade` 到 `trips`（見 `supabase/migrations/0066_issue_8_tour_domain_core.sql`），
+ * 新 Trip 這時候還沒有任何 TourOrder（它剛建立、還沒被公開過），`trips.id` 也沒有被
+ * `TourOrder` 以 `on delete restrict` 卡住，所以刪除新 Trip 一定會把已經建立的半套
+ * 方案／加購一起帶走，不會留下孤兒草稿。這不是單一原子交易，但同樣達成「不留半套
+ * 複本」——PR 說明會如實記錄這個差異，不假裝成一支原子 RPC。
+ *
+ * 明確不複製（Owner Decision 逐條列出的排除清單）：TripDeparture 團次與人員指派、
+ * TourOrder／TourOrderAddon、名額占用與成團快照、顧客關聯、付款／退款、評論、
+ * 通知／稽核事件、推廣成效——這個函式從頭到尾沒有讀寫上述任何一張表。
+ */
+export type TripDuplicationError = ApiError & { cleanupFailed?: boolean };
+
+function planDuplicatePayload(plan: TripPlan): Partial<TripPlan> {
+  return {
+    name: plan.name,
+    description: plan.description,
+    durationMinutes: plan.durationMinutes,
+    priceType: plan.priceType,
+    basePrice: plan.basePrice,
+    childPrice: plan.childPrice,
+    minParticipants: plan.minParticipants,
+    maxParticipants: plan.maxParticipants,
+    depositMode: plan.depositMode,
+    depositValue: plan.depositValue,
+    active: plan.active,
+    yearRound: plan.yearRound,
+    sortOrder: plan.sortOrder,
+    /**
+     * Sol 稽核（#8 PR #661）：過去漏了這五個欄位（販售方式／散客-包團／成團門檻與截止），
+     * 2026-09-11 Owner Decision 明文要求複製時要帶上「販售方式、散客／包團、成團門檻與
+     * 截止」。漏掉的具體後果：mock fixture `pl_2`（`src/mock/tours.ts`）的
+     * `bookingType: 'REQUEST'` 複製後因為沒帶到這個欄位，落到 `saveTripPlan()`
+     * 新建分支的 `payload.bookingType ?? 'INSTANT'` 預設值，一個「需要導遊確認」的
+     * 請求制方案複製後悄悄變成「即訂即確認」的即時制方案——不是顯示問題，是會影響
+     * 旅人能不能未經確認直接訂到的真實行為錯誤。
+     */
+    bookingType: plan.bookingType,
+    salesMode: plan.salesMode,
+    participationMode: plan.participationMode,
+    minToDepart: plan.minToDepart,
+    formationDeadlineDaysBefore: plan.formationDeadlineDaysBefore,
+  };
+}
+
+function seasonDuplicatePayload(season: TripPlanSeason): Partial<TripPlanSeason> {
+  return {
+    name: season.name,
+    startMonth: season.startMonth,
+    startDay: season.startDay,
+    endMonth: season.endMonth,
+    endDay: season.endDay,
+    priceOverride: season.priceOverride,
+    active: season.active,
+  };
+}
+
+function addonDuplicatePayload(addon: TripAddon): Partial<TripAddon> {
+  return {
+    name: addon.name,
+    price: addon.price,
+    unit: addon.unit,
+    stock: addon.stock,
+    active: addon.active,
+    sortOrder: addon.sortOrder,
+  };
+}
+
+/**
+ * `tripPayload` 是呼叫端（頁面）已經組好的「新 Trip 本身」欄位（含可辨識的複本標題
+ * 後綴）——標題後綴等文案屬於 i18n，`src/services/*` 依慣例不 import `src/i18n/**`，
+ * 所以維持由頁面組好整份 payload 再傳進來，這裡只負責串接與回滾。
+ *
+ * `sourceTripId` 只用來讀來源行程底下的 Plans／Addons；哪個 tenant 能不能複製哪個
+ * Trip 由既有的 `requireTenantManager()` ＋ `tenant_id` 過濾把關（`listTripPlans()`／
+ * `listTripAddons()` 打的都是既有已受權限保護的端點），這裡不重造一份授權邏輯。
+ */
+/**
+ * 依賴以參數注入、預設值指回本檔案自己的 service function——外部呼叫端（頁面）
+ * 不需要知道這件事，`duplicate(trip)` 一樣只傳 `sourceTripId`／`tripPayload` 兩個
+ * 參數。這裡加這一層純粹是為了讓單元測試能在不打真實網路、也不需要
+ * `vi.mock('@/services/tours')` 整檔 mock 掉的情況下，精準模擬「複製到一半失敗」
+ * ——同一個模組內部呼叫自己另一個具名匯出的函式，`vi.spyOn(module, 'fn')`
+ * 攔截不到那個內部呼叫（ESM live binding，不是透過 module 物件轉呼叫），
+ * 依賴注入是能可靠測到「中途失敗要回滾」這條路徑的做法，不是為了測試改動真實行為。
+ */
+export type TripDuplicationDeps = {
+  createTrip: typeof createTrip;
+  listTripPlans: typeof listTripPlans;
+  listTripAddons: typeof listTripAddons;
+  saveTripPlan: typeof saveTripPlan;
+  saveTripPlanSeason: typeof saveTripPlanSeason;
+  saveTripAddon: typeof saveTripAddon;
+  deleteTrip: typeof deleteTrip;
+};
+
+export async function duplicateTripFully(
+  sourceTripId: string,
+  tripPayload: Partial<Trip>,
+  deps: TripDuplicationDeps = {
+    createTrip, listTripPlans, listTripAddons, saveTripPlan, saveTripPlanSeason, saveTripAddon, deleteTrip,
+  },
+): Promise<Trip> {
+  const created = await deps.createTrip(tripPayload);
+  if (!created?.id) {
+    throw new ApiError('複製行程失敗：伺服器未回傳新行程編號', undefined, 500);
+  }
+
+  try {
+    const [plans, addons] = await Promise.all([
+      deps.listTripPlans(sourceTripId),
+      deps.listTripAddons(sourceTripId),
+    ]);
+
+    // 依序（非 Promise.all）複製方案：季節定價必須掛在對應新方案的 id 下，
+    // 並保留與來源相同的相對順序（新建端點在未帶 sortOrder 時以既有列數遞增）。
+    for (const plan of plans) {
+      const newPlan = await deps.saveTripPlan(created.id, planDuplicatePayload(plan));
+      // Sol 稽核（#8 PR #661）：這裡過去是 `if (newPlan?.id) { ... }`——真後端若回傳一個
+      // 沒有 `id` 的異常 body（畸形／不符預期的 API 回應），會靜默跳過這個方案的季節定價
+      // 複製，`duplicateTripFully()` 卻仍然回報整體成功：複本看起來複製完成，實際上
+      // 季節定價不見了。與上面 `createTrip` 沒回傳 id 時的處理方式一致，改成直接
+      // throw，交給下面既有的補償式回滾（刪除剛建立的新 Trip）處理，不能只是跳過。
+      if (!newPlan?.id) {
+        throw new ApiError('複製行程失敗：伺服器未回傳新方案編號', undefined, 500);
+      }
+      for (const season of plan.seasons) {
+        await deps.saveTripPlanSeason(newPlan.id, seasonDuplicatePayload(season));
+      }
+    }
+    for (const addon of addons) {
+      await deps.saveTripAddon(created.id, addonDuplicatePayload(addon));
+    }
+
+    return created;
+  } catch (e) {
+    let cleanupFailed = false;
+    try {
+      await deps.deleteTrip(created.id);
+    } catch {
+      cleanupFailed = true;
+    }
+    const message = e instanceof Error ? e.message : '複製行程失敗';
+    const wrapped = new ApiError(
+      cleanupFailed
+        ? `${message}（自動清理未完成的複本也失敗，請聯絡客服確認是否留下半套複本）`
+        : message,
+      e instanceof ApiError ? e.code : undefined,
+      e instanceof ApiError ? e.status : undefined,
+    ) as TripDuplicationError;
+    wrapped.cleanupFailed = cleanupFailed;
+    throw wrapped;
+  }
+}
 
 /* ------------------------------------------------------------- 旅遊訂單 */
 export type TourOrderQuery = {

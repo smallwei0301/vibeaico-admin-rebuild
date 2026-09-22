@@ -18,7 +18,7 @@ import { ConfirmModal } from '@/components/ui/Modal';
 import { Input, Select } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
-  createTrip, deleteTrip, listTrips, publishTrip, requestMidaoListing,
+  createTrip, deleteTrip, duplicateTripFully, listTrips, publishTrip, requestMidaoListing,
 } from '@/services/tours';
 import { ApiError } from '@/lib/api';
 import { navLabel } from '@/i18n/zh-TW/nav';
@@ -154,20 +154,18 @@ export default function TripsPage() {
   );
 
   /**
-   * issue #8：「複製」按鈕原本只在前端記憶體塞一筆假資料（id 加 `_copy`），
-   * 重整就消失，端點從未被呼叫。
+   * issue #8／2026-09-11 Owner Decision（`docs/decisions/2026-09-11-guide-trip-duplication.md`）：
+   * 「複製」按鈕原本只在前端記憶體塞一筆假資料（id 加 `_copy`），重整就消失，端點
+   * 從未被呼叫；後來修過一輪，變成真的持久化，但範圍刻意收在 Trip 本身，
+   * 不含 TripPlan／TripAddon（見 PR #456 留下的缺口，`src/services/tours.ts` 的
+   * `duplicateTripFully()` 開頭註解記錄了為什麼沒有用原子 RPC）。
    *
-   * `trip_duplicate_atomic` 只存在 `supabase/local-migrations/` 的歷史基準線
-   * overlay，**不在 `origin/main` 的 `supabase/migrations/**`**——依本репо schema
-   * 授權規則（`CLAUDE.md`／`AGENTS.md`），overlay 不是 canonical 來源，不得沿用其
-   * RPC。因此改用既有的 `createTrip` service，複製行程本身的欄位建立一筆新草稿。
-   *
-   * 範圍刻意收緊在「行程本身」：`createTrip` 目前不回傳新行程 id，要接著複製方案／
-   * 團次／加購需要先讓 service 多回傳一個 id 並串三支端點，牽動面比這次修復大，
-   * 留待下一輪（PR 說明會標明）。複本一律是 DRAFT／未申請 Midao，不會被旅客看到，
-   * 店家進詳情頁補方案與團次即可。
+   * 這裡改呼叫 `duplicateTripFully()`：新 Trip＋它底下全部 TripPlan（含季節定價）＋
+   * 全部 TripAddon 一起複製，任何一步失敗都會清掉剛建立的新 Trip，不留半套複本。
+   * 明確不複製 TripDeparture／TourOrder／人員指派等營運資料——`duplicateTripFully()`
+   * 完全不碰那幾張表。複本一律是 DRAFT／未申請 Midao，不會被旅客看到。
    */
-  const duplicate = (trip: Trip) => runAction(() => createTrip({
+  const duplicate = (trip: Trip) => runAction(() => duplicateTripFully(trip.id, {
     title: `${trip.title}${t.messages.duplicateTitleSuffix}`,
     slug: `${trip.slug}-copy-${Date.now().toString(36)}`,
     tagline: trip.tagline,

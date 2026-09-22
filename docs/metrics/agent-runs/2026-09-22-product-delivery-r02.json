@@ -1,0 +1,215 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-09-22-product-delivery-r02",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-09-22T02:05:00.000Z",
+  "endedAt": null,
+  "sources": [
+    {
+      "ref": "origin/main"
+    },
+    {
+      "ref": "issue/650"
+    },
+    {
+      "ref": "issue/8"
+    },
+    {
+      "ref": "issue/37"
+    },
+    {
+      "ref": "issue/42"
+    },
+    {
+      "ref": "pr/661"
+    }
+  ],
+  "main": {
+    "startSha": "893d87f85fb78a899a3f7e72e08ce05cd082caa7",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": null,
+    "openIssuesEnd": null,
+    "openPrsStart": null,
+    "openPrsEnd": null,
+    "mainTerraPeak": 0,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 0,
+    "sharedTestPeak": 0,
+    "closureSweeps": 1,
+    "closureAdvancedOrClosed": 1
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [
+      {
+        "id": "scout-live-triage-46-42-47-43-17",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Explore agent 即時查證 #46/#42/#47/#43/#17 live 狀態、驗收 checklist、最近 comment 與 open PR 引用；Agent tool 未顯式指定 model override，實際執行模型未可驗證，如實記 unknown。",
+        "count": 1
+      },
+      {
+        "id": "scout-luna-closure-sweep",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "luna",
+        "contextClass": "medium",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "LUNA_CLOSURE sweep 掃 open PR/Issue 找機械可結案候選；其中 #42 migration 落地結論與 git 事實矛盾（code-search 索引延遲），已用 git cat-file 直接核實推翻，未採信。",
+        "count": 1
+      },
+      {
+        "id": "scout-remaining-issue-candidate-search",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "luna",
+        "contextClass": "medium",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "在 #46/#42/#47/#43/#17/#31/#221/#33/#44 均排除後，掃描其餘 open Product issue 尋找有界、無 migration/裝置/付款依賴的安全候選；建議 #7/#8，主 session 進一步核實選定 #8 的 2026-09-11 Owner Decision 缺口。",
+        "count": 1
+      },
+      {
+        "id": "terra-verify-issue-650",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "派工修復 #650；到場發現 PR #651 已先行合併並完整實作，改為重新驗證（unit test 3/3、typecheck 0 錯誤）並正確關閉 Issue，避免重複實作。",
+        "count": 1
+      },
+      {
+        "id": "terra-build-issue-8-full-trip-duplication",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "PR #661：落實 2026-09-11 Owner Decision，行程複製補齊 TripPlan（含季節定價）與 TripAddon，失敗補償式回滾。typecheck 0 錯誤、全倉庫 3494 單元測試綠、build 成功；未跑即時 TEST 整合測試。",
+        "count": 1
+      },
+      {
+        "id": "terra-reserve-issue-37-atomic-migration",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "TERRA_RESERVE：#37 團次人員指派 delete-then-insert 非原子寫入的 migration-only 修復（新 RPC），source-only 單一 commit，未接線 runtime，未套用任何資料庫。",
+        "count": 1
+      }
+    ],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 3,
+    "issuesClosed": 1,
+    "auditReady": 0,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 0,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 3,
+    "lunaAccepted": 3,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 0,
+    "solIssues": 0
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
+  "notes": [
+    "本輪 TRIAGE 由主 session（claude-sonnet-5）直接執行，未派 Opus/Sol；規模與風險判斷後認為屬正常路由彈性內，如實記錄而非隱藏。",
+    "#42 的 migration 0128 已合併 main 但尚未套用 TEST/Production，屬 #447 release workflow 範圍，本輪僅更正 Issue 描述，未越權處理。"
+  ],
+  "deliveryTruthVersion": 4,
+  "closeout": {
+    "contractVersion": 1,
+    "ownerRole": "PRODUCT_MAIN_SESSION",
+    "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
+    "state": "OPEN",
+    "closedAt": null,
+    "evidenceRef": null
+  },
+  "wipLifecycle": {
+    "schemaVersion": 1,
+    "events": []
+  },
+  "completionTruth": {
+    "status": "VERIFIED",
+    "checkedAt": "2026-09-22T02:15:00.000Z",
+    "claims": [
+      {
+        "type": "ISSUE_CLOSED",
+        "subject": "#650",
+        "claimedState": "closed",
+        "observedState": "closed",
+        "verification": "VERIFIED",
+        "evidenceRef": "github:smallwei0301/vibeaico-admin-rebuild/issues/650"
+      }
+    ]
+  }
+}

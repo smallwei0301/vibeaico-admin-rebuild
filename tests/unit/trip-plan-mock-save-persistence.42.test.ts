@@ -54,10 +54,28 @@ describe('#42 saveTripPlan（mock 分支）真的把異動寫回 MOCK_TRIP_PLANS
     await saveTripPlan(target.tripId, { id: target.id, durationMinutes: originalDuration });
   });
 
-  it('不帶 id 的 payload（新建方案的呼叫方式）不動任何既有列', async () => {
+  /**
+   * issue #8／2026-09-11 Owner Decision：完整行程複製需要在 mock 模式下也真的
+   * 新建方案（`duplicateTripFully()` 才能在 demo 模式下把來源方案的季節定價接著
+   * 掛到新方案的 id 上）。這裡的斷言因此從「不帶 id 不該動到任何列」改成
+   * 「不帶 id 真的新增一列、且不動到既有列」——舊版是本測試檔一開始就記錄過的
+   * 已知限制（見檔案開頭 issue #42 的說明），這個 PR 就是把它補上的那一輪。
+   */
+  it('不帶 id 的 payload（新建方案的呼叫方式）新增一列、不動到既有列', async () => {
     const before = MOCK_TRIP_PLANS.length;
-    await saveTripPlan('some-trip-id', { name: '未帶 id，不該影響既有資料' });
-    expect(MOCK_TRIP_PLANS.length, '不該憑空新增或動到既有列').toBe(before);
+    const created = await saveTripPlan('some-trip-id', { name: '未帶 id，應該新增一列' });
+    expect(created, 'saveTripPlan() 新建分支應該回傳新建立的方案').toBeDefined();
+    expect(created!.id).toBeTruthy();
+    expect(created!.tripId).toBe('some-trip-id');
+    expect(created!.name).toBe('未帶 id，應該新增一列');
+    expect(MOCK_TRIP_PLANS.length, '應該新增剛好一列').toBe(before + 1);
+
+    const reread = await listTripPlans('some-trip-id');
+    expect(reread.some((p) => p.id === created!.id)).toBe(true);
+
+    // 還原，避免污染其他測試共用的同一份 MOCK_TRIP_PLANS。
+    const idx = MOCK_TRIP_PLANS.findIndex((p) => p.id === created!.id);
+    if (idx >= 0) MOCK_TRIP_PLANS.splice(idx, 1);
   });
 });
 
