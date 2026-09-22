@@ -31,11 +31,19 @@ export const metadata: Metadata = { title: t.status.metaTitle };
 
 function StatusBody({ order }: { order: TourOrder }) {
   if (order.status === 'PENDING') {
+    // #46：REQUEST 送出當下不鎖位，其餘 sales_mode（FIXED_DEPARTURE／INSTANT）
+    // 建單當下就已經真的鎖位（0111 的 reserve_seats 分流）。PENDING 對兩者是
+    // 完全不同的現況，文案不能共用——見 i18n 檔 `pendingLockedTitle` 的檔頭。
+    const locked = order.salesMode !== undefined && order.salesMode !== 'REQUEST';
     return (
       <section className="card">
         <div className="card-body flex flex-col gap-2">
-          <h1 className="text-xl font-semibold text-warning">{t.status.pendingTitle}</h1>
-          <p className="text-sm text-secondary">{t.status.pendingDescription}</p>
+          <h1 className="text-xl font-semibold text-warning">
+            {locked ? t.status.pendingLockedTitle : t.status.pendingTitle}
+          </h1>
+          <p className="text-sm text-secondary">
+            {locked ? t.status.pendingLockedDescription : t.status.pendingDescription}
+          </p>
         </div>
       </section>
     );

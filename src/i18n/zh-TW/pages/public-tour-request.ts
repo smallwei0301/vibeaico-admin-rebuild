@@ -63,6 +63,14 @@ export const publicTourRequestPage = {
      */
     pendingTitle: '已送出申請，等待導遊確認，尚未鎖位',
     pendingDescription: '導遊確認名額後會鎖定這個時段並通知您付款期限；在那之前，此名額仍可能被其他人申請走。',
+    /**
+     * #46：FIXED_DEPARTURE／INSTANT 訂單的 PENDING 與 REQUEST 完全不同——
+     * 建單當下就已經真的鎖位（`create_tour_order` 的 `reserve_seats`），只是
+     * 付款尚未完成。這裡絕對不能沿用上面 REQUEST 的「尚未鎖位」文案，那句話
+     * 對這裡是假的；也不能寫成「已付款」，那同樣是假的（#12 金流尚未落地）。
+     */
+    pendingLockedTitle: '已為您預約，名額已鎖定，尚未付款',
+    pendingLockedDescription: '店家會透過您填寫的聯絡方式與您確認付款方式與期限；在完成付款前，請留意店家通知。',
     confirmedTitle: '導遊已確認，名額已鎖定',
     confirmedDescription: (deadline: string) => `請於 ${deadline} 前完成付款，逾期名額將被釋放。`,
     confirmedNoDeadlineDescription: '導遊已確認此申請，請與店家確認付款方式與期限。',

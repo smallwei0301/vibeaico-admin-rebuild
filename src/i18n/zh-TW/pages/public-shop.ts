@@ -46,6 +46,12 @@ export const publicShopPage = {
     requestBadge: '可線上申請',
     requestCta: '線上申請（先申請，導遊確認後才鎖位）',
     /**
+     * #46：固定團次（FIXED_DEPARTURE）方案的線上預約。與上面的 REQUEST 徽章
+     * 刻意用不同字眼——這裡送出當下就真的鎖位，不是「先申請」，文案不得混用。
+     */
+    bookBadge: '可線上預約',
+    bookCta: '線上預約（送出後立即為您保留名額）',
+    /**
      * #46：下單前顯示現行取消／退款政策——與
      * `src/i18n/zh-TW/pages/public-tour-request.ts` 的 `cancellationPolicy`
      * 同一份商業條件，這裡用單行摘要（整頁列多個行程，逐一展開完整條文太長）；
