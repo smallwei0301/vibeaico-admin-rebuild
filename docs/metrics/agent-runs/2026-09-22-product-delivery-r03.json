@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-09-22-product-delivery-r03",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-09-22T02:53:59.380Z",
+  "endedAt": null,
+  "sources": [
+    {
+      "ref": "origin/main"
+    },
+    {
+      "ref": "issue/17"
+    }
+  ],
+  "main": {
+    "startSha": "48526c47",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": null,
+    "openIssuesEnd": null,
+    "openPrsStart": null,
+    "openPrsEnd": null,
+    "mainTerraPeak": 0,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 0,
+    "sharedTestPeak": 0,
+    "closureSweeps": 0,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [
+      {
+        "id": "terra-build-issue-17-booking-addons-e2e",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "TERRA_BUILD：補 Issue #17 2026-09-21 23:56 留言點名的最後缺口——tests/e2e/booking-addons.17.spec.ts（開詳情→真加購→重新整理持久化斷言→移除→重新整理已消失，含 admin client 對 booking_addons/bookings 交叉驗證）。typecheck 0 錯誤，只新增這一支測試檔，不動 runtime/API。對真實共用 TEST Supabase（nmwhwngojosmagjuvxol）實跑到底：登入、深連結開詳情、POST /api/bookings 建單、真點加購/刪除、reload 斷言全部執行。過程中發現一個真實、可重現的現有 bug（非本 spec 造成）：GET /api/bookings/{id}/addons 的 PostgREST embed 寫死 hint `booking_addons_performance_staff_id_fkey`，但 TEST 上該欄位實際 FK 名稱是既有 G2 drift（Issue #17 2026-09-21 23:56/2026-09-22 00:06 留言已記錄）的 `booking_addons_tenant_id_performance_staff_id_fkey`，導致 PGRST200 被 route 的安全降級誤判成「0121 未套用」而一律回空陣列——新加購因此不會出現在明細，但 bookings.final_price 透過 RPC 正確更新；用 Supabase execute_sql 直接查 pg_constraint 鎖定根因。未在本 PR 修復（超出本 PR 指派範圍，且該 drift 修復已在 Issue #17 記錄為卡在 #447 release-plan-builder 的 MIXED_RISK 衝突），已在 PR 說明如實記錄。",
+        "count": 1
+      }
+    ],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 1,
+    "issuesClosed": 0,
+    "auditReady": 0,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 1,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 0,
+    "lunaAccepted": 0,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 0,
+    "solIssues": 0
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
+  "notes": [
+    "本輪是單一、獨立的 TERRA_BUILD 派工（補 Issue #17 E2E 缺口），未執行完整六步 B+ loop 的 Luna 真實盤點／Sol TRIAGE（由派工者已直接指定 MAIN 與範圍），如實記錄而非隱藏；LUNA_CLOSURE 亦未在本輪執行，因為本輪範圍就是單一具名缺口，不是一輪完整 delivery loop。",
+    "共用 docs/metrics/agent-runs/2026-09-22-product-delivery-r02.json（同日期、PRODUCT_MAIN_SESSION 主導的 run）在本次執行時已被 auto-mode classifier 標記為 Shared Resources 拒絕直接編輯（其他並行 session 正在寫入），因此改開這支獨立 r03，只記錄本 PR 自己的施工事件，不與 r02 混寫。",
+    "E2E 實跑對真實共用 TEST Supabase（nmwhwngojosmagjuvxol）發現一個既有的真實 bug（非本 PR 造成）：GET /api/bookings/{id}/addons 因 G2 drift（Issue #17 已記錄）導致明細一律回空陣列，即使加購金額已正確套用到 bookings.final_price。詳見 modelUsage.tasks 該筆 note 與本 PR 說明。"
+  ],
+  "deliveryTruthVersion": 4,
+  "closeout": {
+    "contractVersion": 1,
+    "ownerRole": "PRODUCT_MAIN_SESSION",
+    "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
+    "state": "OPEN",
+    "closedAt": null,
+    "evidenceRef": null
+  },
+  "wipLifecycle": {
+    "schemaVersion": 1,
+    "events": []
+  },
+  "completionTruth": {
+    "status": "NOT_CHECKED",
+    "checkedAt": null,
+    "claims": []
+  }
+}
