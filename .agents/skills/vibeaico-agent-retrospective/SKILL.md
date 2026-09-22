@@ -302,9 +302,9 @@ A retrospective is complete only after the existing Product and Governance scori
 executed. Manual inspection of a ledger or a previously committed Markdown report does not substitute for
 execution. Before final:
 
-- run `run-ledger-v2 validate`, `scorecard-readiness --json`, `score-run-current`, and
-  `review-runs-v2` for the selected Product evidence; for an active Run also record the real
-  `scorecard-readiness --strict-live` exit/result;
+- run `run-ledger-v2.mjs validate`, `scorecard-readiness.mjs --json`, `score-run-current.mjs`, and
+  `review-runs-v2.mjs` for the selected Product evidence; for an active Run also record the real
+  `scorecard-readiness.mjs --strict-live` exit/result;
 - run `governance-scoreboard.mjs` on the latest reproducible formal Governance Run + matching review
   evidence + policy;
 - run `governance-observation.mjs` for the exact retrospective window when current observation applies;
