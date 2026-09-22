@@ -59,7 +59,7 @@ BEGIN
     ADD CONSTRAINT booking_addons_tenant_id_performance_staff_id_fkey
     FOREIGN KEY (tenant_id, performance_staff_id)
     REFERENCES public.staff(tenant_id, id)
-    ON DELETE SET NULL (performance_staff_id);
+    ON DELETE SET NULL (performance_staff_id); -- known legacy TEST start shape
   `}
 
   ${includeMismatch ? `
@@ -87,7 +87,7 @@ BEGIN
    WHERE attrelid='public.booking_addons'::regclass
      AND attname='performance_staff_id' AND NOT attisdropped;
 
-  -- Same-tenant is accepted by the stronger relationship.
+  -- Same-tenant is accepted by the transitional composite relationship.
   INSERT INTO public.booking_addons
     (tenant_id, booking_id, name, performance_mode, performance_staff_id)
   VALUES (a_tenant, gen_random_uuid(), 'same-tenant proof', 'INHERIT', a_staff);
@@ -119,7 +119,7 @@ BEGIN
         WHERE c.conrelid='public.booking_addons'::regclass
           AND c.conname='booking_addons_tenant_id_performance_staff_id_fkey'
           AND c.convalidated AND NOT c.condeferrable AND NOT c.condeferred
-          AND c.confdeltype='n' AND c.confdelsetcols=ARRAY[perf_att]::smallint[]
+          AND c.confdeltype='a' AND c.confdelsetcols IS NULL
      ) THEN
     RAISE EXCEPTION 'BOOKING_ADDONS_FK_PROOF_IDENTITY_VALIDATION_OR_DELETE_ACTION';
   END IF;
