@@ -11,8 +11,8 @@
 
 DO $booking_addons_perf_fk_expand$
 DECLARE
-  child_oid oid := to_regclass('public.booking_addons');
-  staff_oid oid := to_regclass('public.staff');
+  child_oid oid := pg_catalog.to_regclass('public.booking_addons');
+  staff_oid oid := pg_catalog.to_regclass('public.staff');
   child_tenant smallint;
   child_perf smallint;
   staff_tenant smallint;
@@ -26,7 +26,6 @@ BEGIN
     RAISE EXCEPTION 'BOOKING_ADDONS_PERFORMANCE_STAFF_MISSING_TABLE';
   END IF;
 
-  PERFORM set_config('lock_timeout', '5s', true);
   LOCK TABLE public.staff, public.booking_addons IN SHARE ROW EXCLUSIVE MODE;
 
   SELECT relrowsecurity, relforcerowsecurity INTO rls_before, force_rls_before
@@ -66,7 +65,7 @@ BEGIN
        AND NOT c.condeferred
        AND c.conkey = ARRAY[staff_tenant, staff_id]::smallint[]
   ) THEN
-    IF to_regclass('public.staff_tenant_id_id_key') IS NOT NULL THEN
+    IF pg_catalog.to_regclass('public.staff_tenant_id_id_key') IS NOT NULL THEN
       RAISE EXCEPTION 'BOOKING_ADDONS_PERFORMANCE_STAFF_PARENT_KEY_COLLISION';
     END IF;
     ALTER TABLE public.staff
@@ -202,7 +201,7 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'BOOKING_ADDONS_PERFORMANCE_STAFF_RLS_CHANGED';
   END IF;
-
-  PERFORM pg_notify('pgrst', 'reload schema');
 END
 $booking_addons_perf_fk_expand$;
+
+NOTIFY pgrst, 'reload schema';
