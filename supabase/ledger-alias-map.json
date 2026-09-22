@@ -641,6 +641,13 @@
       "classification": "NOT_APPLIED",
       "notAppliedReason": "PENDING_APPLY",
       "evidence": "#42 真缺口：0128 建立的 trip_plan_seasons 季節定價資料模型，0128 檔頭已明確保留『不改既有 departure/order 價格 snapshot』；0130 之後的 create_tour_order 仍無條件用 price_per_person，從未查過 trip_plan_seasons，導遊設定的季節加減價因此對任何成交訂單都不生效。本檔用同一簽章 create or replace create_tour_order，在算單價前先用 departure.departs_on 比對該 plan 目前 active 的季節（含跨年展期，precedence 為範圍最小者優先，檔頭已載明是本檔的 bounded 設計決策，非 Owner 產品決策），命中且 price_override 不為 null 時取代 price_per_person，其餘 0110 price_type／0111 REQUEST 不鎖位／0130 refund_policy_snapshot 行為原樣保留。尚未在任何本機/遠端 Supabase 實際套用；合併 main 後仍屬 PENDING_APPLY，canonical TEST 與 Production 的遠端套用各自需要 staged release 授權與回讀驗證。"
+    },
+    {
+      "repoFile": "0133_issue_680_booking_addons_composite_fk_expand",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#680 Owner 選擇 A：保留 0121 的單欄 performance_staff FK 供當前 runtime PostgREST hint 使用，同時新增／驗證 tenant-scoped 複合 FK，將 single-only、composite-only 或 BOTH 的已知起始形狀收斂成 transitional BOTH。migration 先驗同租戶資料、未知 FK、constraint identity、validated/nondeferred 與 ON DELETE SET NULL 範圍；不修資料、未操作 canonical TEST 或 Production。合併 main 後仍為 PENDING_APPLY，須依 shared TEST serialization 與 Production G0–G7 另行驗證／發布。"
     }
   ]
 }
