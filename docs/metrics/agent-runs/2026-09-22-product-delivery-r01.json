@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "runId": "2026-09-22-product-delivery-r01",
   "status": "IN_PROGRESS",
-  "startedAt": "2026-09-22T00:23:01.627Z",
+  "startedAt": "2026-09-22T00:10:00.000Z",
   "endedAt": null,
   "sources": [
     {
@@ -30,7 +30,7 @@
     "openIssuesEnd": 49,
     "openPrsStart": 1,
     "openPrsEnd": 3,
-    "mainTerraPeak": 1,
+    "mainTerraPeak": 2,
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 2,
     "sharedTestPeak": 0,
@@ -149,8 +149,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 2,
-    "lunaAccepted": 2,
+    "lunaTasks": 3,
+    "lunaAccepted": 3,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -181,7 +181,28 @@
   },
   "wipLifecycle": {
     "schemaVersion": 1,
-    "events": []
+    "events": [
+      {
+        "id": "wip-654-build-enter",
+        "at": "2026-09-22T00:14:34Z",
+        "kind": "BUILD_ENTER",
+        "pr": 654,
+        "issue": 42,
+        "head": "17edade55f40e889f24ddb614efd0e5d2c12acd2",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "TERRA_BUILD：mapTripPlan() bookingType 由 sales_mode 推導（#42 §A）"
+      },
+      {
+        "id": "wip-656-build-enter",
+        "at": "2026-09-22T00:22:25Z",
+        "kind": "BUILD_ENTER",
+        "pr": 656,
+        "issue": 655,
+        "head": "50433818b574540a6bb8ef4144d81cecc06a2d9e",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "TERRA_BUILD：bookings／tour-orders 狀態動作 mock 分支假成功修復（#655）"
+      }
+    ]
   },
   "completionTruth": {
     "status": "NOT_CHECKED",
