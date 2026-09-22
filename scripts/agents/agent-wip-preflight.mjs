@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import process from 'node:process';
@@ -74,6 +75,55 @@ function parseArgs(argv) {
     index += 1;
   }
   return result;
+}
+
+
+/**
+ * Parse `git diff --name-status --find-renames` so local preflight sees the
+ * same important inventory shape as the remote guard. Rename/copy entries
+ * include both old and new paths; that matters when a migration is renamed
+ * away, because the historical migration path must still trigger the schema
+ * staged-release policy.
+ */
+export function parseGitNameStatus(output = '') {
+  const files = [];
+  for (const rawLine of String(output ?? '').split(/\r?\n/)) {
+    if (!rawLine) continue;
+    const parts = rawLine.split('\t');
+    const status = parts.shift()?.trim() ?? '';
+    const kind = status[0] ?? '';
+    if (!/^[ACDMRTUXB]$/.test(kind)) {
+      throw new Error(`Unsupported git diff status: ${status || rawLine}`);
+    }
+    if (kind === 'R' || kind === 'C') {
+      if (parts.length !== 2 || parts.some((path) => !path)) {
+        throw new Error(`Malformed git rename/copy entry: ${rawLine}`);
+      }
+      files.push(parts[0], parts[1]);
+    } else {
+      if (parts.length !== 1 || !parts[0]) throw new Error(`Malformed git diff entry: ${rawLine}`);
+      files.push(parts[0]);
+    }
+  }
+  return [...new Set(files)];
+}
+
+export function discoverChangedFiles({
+  base = 'origin/main',
+  repositoryRoot = process.cwd(),
+  runGit = (args, options) => execFileSync('git', args, options),
+} = {}) {
+  const ref = String(base ?? '').trim();
+  if (!ref || !/^[A-Za-z0-9._/@{}~^:+-]+$/.test(ref)) {
+    throw new Error('A safe git base ref is required for automatic changed-file discovery');
+  }
+  const output = runGit(
+    ['diff', '--name-status', '--find-renames', `${ref}...HEAD`, '--'],
+    { cwd: repositoryRoot, encoding: 'utf8' },
+  );
+  const files = parseGitNameStatus(output);
+  if (!files.length) throw new Error(`No changed files found between ${ref} and HEAD`);
+  return files;
 }
 
 /**
@@ -188,20 +238,27 @@ export function validateWipPreflight(input = {}) {
 
 function runCli(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
-  if (!args.body || !args['changed-files']) {
-    throw new Error('Usage: agent-wip-preflight.mjs --body <pr-body.md> --changed-files <files.txt> [--number <pr>]');
+  if (!args.body) {
+    throw new Error('Usage: agent-wip-preflight.mjs --body <pr-body.md> [--changed-files <files.txt> | --base <git-ref>] [--number <pr>]');
   }
+  if (args['changed-files'] && args.base) {
+    throw new Error('Use either --changed-files or --base, not both');
+  }
+  const repositoryRoot = args.root ? resolve(args.root) : process.cwd();
   const body = readFileSync(args.body, 'utf8');
   const changedFiles = args['changed-files']
     ? readFileSync(args['changed-files'], 'utf8').split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
-    : null;
+    : discoverChangedFiles({
+        base: args.base ?? 'origin/main',
+        repositoryRoot,
+      });
   const result = validateWipPreflight({
     body,
     changedFiles,
     requireAstraClassification: true,
     prNumber: args.number ?? 1,
     action: args.action ?? 'opened',
-    repositoryRoot: args.root ? resolve(args.root) : process.cwd(),
+    repositoryRoot,
   });
 
   if (result.valid) {
