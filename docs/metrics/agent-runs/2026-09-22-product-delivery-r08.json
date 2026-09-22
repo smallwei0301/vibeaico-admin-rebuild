@@ -91,7 +91,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 1,
+    "fullCiRuns": 7,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -133,7 +133,9 @@
     "2026-09-22T10:30:10Z：#681 3281f8f exact-head CI 35715564083／schema bootstrap 35715564128 的 FIX_REQUIRED 觸發第二組 BUILD lifecycle；以當下事件記錄，未倒填。",
     "2026-09-22T10:33:39Z：#681 9d2f403 的 schema bootstrap 35716411934 以真實 disposable proof finding 回 BUILD；本組事件為當下記錄。",
     "2026-09-22T10:41:03Z：#681 99207fdf exact-head CI 35716683611 的真實 FIX_REQUIRED 顯示 release plan 將 tenant-auth boundary 誤作 ADDITIVE，與既有 AUTHZ queue 形成 AUTHZ+ADDITIVE；依當下 finding 回 BUILD，修正為明確 RLS precondition/enable readback，未操作任何遠端資料庫。",
-    "2026-09-22T10:45:10Z：#681 2927f849 的 schema bootstrap 35717431459 真實 FIX_REQUIRED：disposable proof 將 JavaScript variant 名稱原樣送進 PL/pgSQL，造成 `expectedCompositeDelete` identifier error；依當下 finding 回 BUILD，改為 closed allowlist 生成固定 catalog predicate，未操作任何遠端資料庫。"
+    "2026-09-22T10:45:10Z：#681 2927f849 的 schema bootstrap 35717431459 真實 FIX_REQUIRED：disposable proof 將 JavaScript variant 名稱原樣送進 PL/pgSQL，造成 `expectedCompositeDelete` identifier error；依當下 finding 回 BUILD，改為 closed allowlist 生成固定 catalog predicate，未操作任何遠端資料庫。",
+    "2026-09-22T10:58:42Z：依 durable workflow reread，fullCiRuns 由 1 更正為 7：35701338480 success；35714460876、35715564083、35716412007、35716683611 failure；35717431449、35717780994 success。取消的 local/schema run 不計入此 full-CI 計數。",
+    "2026-09-22T10:58:42Z：#681 16ea33ee 的 local-isolated 35717781006 與 schema bootstrap 35717780992 都在 current-main 的同一 chat-link.06 assertion（lastMessage '' vs OUT_TEXT）失敗；0133 disposable proof 已 PASS，故依實際 shared blocker 回 BUILD，移植既有 #676 的 test-only repair。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -246,6 +248,26 @@
         "head": "2927f84925f0583e109169cb3a83102421de09c0",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "Recorded at the live reviewer return before the closed-variant proof candidate receives a new exact-head CI."
+      },
+      {
+        "id": "pr-681-build-enter-fix-required-16ea33ee",
+        "at": "2026-09-22T10:58:42.000Z",
+        "kind": "BUILD_ENTER",
+        "pr": 681,
+        "issue": 680,
+        "head": "16ea33eef062252c0701fd35bcd2df70815b1c85",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Required local-isolated 35717781006 and schema bootstrap 35717780992 both returned the same current-main `chat-link.06` lastMessage assertion failure; #681 returned to bounded BUILD for the existing #676 test-only repair."
+      },
+      {
+        "id": "pr-681-build-exit-fix-required-16ea33ee",
+        "at": "2026-09-22T10:58:43.000Z",
+        "kind": "BUILD_EXIT",
+        "pr": 681,
+        "issue": 680,
+        "head": "16ea33eef062252c0701fd35bcd2df70815b1c85",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Recorded at the durable common-failure diagnosis before the superseding candidate receives a new exact-head CI."
       }
     ]
   },
