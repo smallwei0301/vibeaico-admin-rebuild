@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-09-22-product-delivery-r05",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-09-22T03:28:41.719Z",
+  "endedAt": null,
+  "sources": [
+    { "ref": "origin/main" },
+    { "ref": "issue/46" }
+  ],
+  "main": {
+    "startSha": "69f519ace59fd250a24998e225160ebe914b6510",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": 47,
+    "openIssuesEnd": null,
+    "openPrsStart": 4,
+    "openPrsEnd": null,
+    "mainTerraPeak": 0,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 0,
+    "sharedTestPeak": 0,
+    "closureSweeps": 0,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [
+      {
+        "id": "terra-build-issue-46-fixed-departure-booking",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "TERRA_BUILD：#46 真缺口——`/s/{shopCode}` 對 FIXED_DEPARTURE 方案先前只顯示 LINE/電話聯絡 fallback，旅客完全無法線上預約。新增 src/server/public-tour-booking.ts（挑方案/驗證 departure/呼叫既有 create_tour_order）、POST /api/public/tour-bookings、/s/{shopCode}/plans/{planId}/book 頁面與表單、public-shop.ts 頁面的 FIXED_DEPARTURE CTA 接線；同時修正狀態頁 PENDING 文案的真實性 bug——FIXED_DEPARTURE 建單當下已真的鎖位，不能沿用 REQUEST『尚未鎖位』的文案，新增 pendingLockedTitle 依 order.salesMode 分流。不造假付款：p_payment_method 傳 null，誠實顯示『已鎖定，尚未付款』。typecheck 0 錯誤、build 成功、全倉庫 3505 單元測試綠（含新增 10 則 schema 驗證測試）。純 runtime/UI，未觸碰任何 migration。",
+        "count": 1
+      }
+    ],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 1,
+    "issuesClosed": 0,
+    "auditReady": 0,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 0,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 0,
+    "lunaAccepted": 0,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 0,
+    "solIssues": 0
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
+  "notes": [],
+  "deliveryTruthVersion": 4,
+  "closeout": {
+    "contractVersion": 1,
+    "ownerRole": "PRODUCT_MAIN_SESSION",
+    "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
+    "state": "OPEN",
+    "closedAt": null,
+    "evidenceRef": null
+  },
+  "wipLifecycle": {
+    "schemaVersion": 1,
+    "events": []
+  },
+  "completionTruth": {
+    "status": "NOT_CHECKED",
+    "checkedAt": null,
+    "claims": []
+  }
+}

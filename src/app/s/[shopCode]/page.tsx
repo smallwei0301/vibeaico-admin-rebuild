@@ -223,6 +223,17 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
                               </Link>
                             </>
                           ) : null}
+                          {plan.salesMode === 'FIXED_DEPARTURE' ? (
+                            <>
+                              <span className="badge badge-success">{t.trips.bookBadge}</span>
+                              <Link
+                                href={`/s/${shopCode}/plans/${plan.id}/book`}
+                                className="btn btn-primary btn-sm"
+                              >
+                                {t.trips.bookCta}
+                              </Link>
+                            </>
+                          ) : null}
                         </li>
                       ))}
                     </ul>
