@@ -477,6 +477,14 @@ describe('傳出半邊：POST /api/chat/messages → push + OUT + 額度（04 §
 
 describe('GET /api/chat/conversations — 未讀數與最後訊息；read 後歸零（04 §B-5）', () => {
   it('未讀 = 2 筆 IN、最後訊息 = 最新的 OUT 回覆、displayName 來自 mock profile', async () => {
+    // #674 repair: make this assertion own its latest-text premise. The earlier
+    // image case writes a newer { imageUrl } OUT, whose correct preview is empty.
+    mock.reset();
+    const usedBefore = await quotaUsed();
+    const post = await ownerA.post('/api/chat/messages', { lineUserId: USER_CHAT, text: OUT_TEXT });
+    expect(post.status).toBe(200);
+    expect(await quotaUsed()).toBe(usedBefore + 1);
+
     const res = await ownerA.get('/api/chat/conversations');
     expect(res.status).toBe(200);
     const body = (await res.json()) as Envelope<
