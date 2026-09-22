@@ -45,7 +45,7 @@ describe('五個寫入操作都真的打端點（不是只改 state）', () => {
     const m = page.match(/import\s*\{([^}]*)\}\s*from\s*'@\/services\/tours'/);
     expect(m, '頁面沒有從 @/services/tours 匯入').not.toBeNull();
     const names = m![1].split(',').map((x) => x.trim());
-    for (const fn of ['createTrip', 'deleteTrip', 'publishTrip', 'requestMidaoListing']) {
+    for (const fn of ['createTrip', 'deleteTrip', 'duplicateTripFully', 'publishTrip', 'requestMidaoListing']) {
       expect(names, `${fn} 沒有被匯入`).toContain(fn);
     }
   });
@@ -56,7 +56,7 @@ describe('五個寫入操作都真的打端點（不是只改 state）', () => {
     ['doRequestMidao', 'requestMidaoListing(midaoTarget.id)'],
     ['doDelete', 'deleteTrip(deleteTarget.id)'],
     ['doCreate', 'createTrip('],
-    ['duplicate', 'createTrip('],
+    ['duplicate', 'duplicateTripFully(trip.id,'],
   ])('%s 呼叫 %s', (handler, call) => {
     expect(handlerBody(handler)).toContain(call);
   });
@@ -70,9 +70,14 @@ describe('五個寫入操作都真的打端點（不是只改 state）', () => {
     }
   });
 
+  /**
+   * issue #8／2026-09-11 Owner Decision：`duplicate` 現在呼叫
+   * `duplicateTripFully()`（Trip＋全部 Plan＋全部 Addon，見 `src/services/tours.ts`），
+   * 不再是只複製 Trip 本身的 `createTrip()`。
+   */
   it('duplicate 透過共用的 runAction（成功才重讀清單、失敗顯示真實訊息），不是自己另開一套', () => {
     const body = handlerBody('duplicate');
-    expect(body).toContain('runAction(() => createTrip(');
+    expect(body).toContain('runAction(() => duplicateTripFully(');
     expect(body).toContain('t.messages.duplicated');
   });
 
