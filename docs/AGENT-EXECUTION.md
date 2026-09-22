@@ -619,6 +619,14 @@ Markdown report 必須由 current dispatcher 重算；不得手工改分數或�
   有真實 task 與 issuesStarted，並通過既有 strict-live 一致性規則。空白 Run 不能替實際施工背書。
 - 同一 Run 可跨日接續，不要求每天新建檔案；不得把治理帳本、已關帳 Run、事後重建觀測冒充即時 Product capture。
   缺原始事件時保留 NEEDS_CAPTURE 與原因，交原 Product 工作線接續或如實交接，不補造零、不替它強行關帳。
+- **宣告新 `RUN_ID` 時，既有還開著的 Run 要交代。** PR body 加一行
+  `CONCURRENT_RUN_JUSTIFICATION:`，逐一點名 canonical main 上每個 `IN_PROGRESS`／`CLOSURE_RECOVERY`
+  且 `closeout.state=OPEN` 的 Run，寫明為什麼不接續、也不收尾它（例如由其他 Session 持有）。
+  只點名不寫理由、或寫 `none`／`TBD` 都不算交代。**接續既有 Run 不受這一關影響**，
+  非 `PRODUCT_MAINLINE` 的 PR 也不受影響——要的是看一眼，不是停工。
+  由 `scripts/agents/scorecard-required-gate.mjs` 的 `validateNewRunAdmission()` 機械執行。
+  起因：2026-09-21-product-delivery-r03 還開著就又宣告了 2026-09-22-product-delivery-r01，
+  兩份帳本各記一半，兩份都不是那一段時間的真相。
 - #569：OBSERVED_V1 的 WIP 事件必須落在該 Run 的 startedAt 至 endedAt（若有）之內，邊界相等有效。
   排序與峰值自洽不能讓跨輪事件取得 LIVE_CAPTURE_READY；不得為過檢查倒填 Run 起始時間，
   或把 PR 建立時間當代理派送時間。時間檢查只證明一致性，不代表事件來源已查證；歷史 replay 不改寫。

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFileSync, realpathSync } from 'node:fs';
+import { readFileSync, readdirSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { validateRunLedger } from './run-ledger.mjs';
 import { validateRunLedgerV2 } from './run-ledger-v2.mjs';
@@ -53,6 +53,71 @@ export function validateProductRunContent(body, content) {
     errors.push(...bindingFailure('Product PR needs observed task activity; an empty Run is not capture evidence'));
   }
   return errors;
+}
+
+// 新 Run 不得在既有 Run 還開著的時候無聲長出來。2026-09-22 複盤查到
+// 2026-09-21-product-delivery-r03 仍是 IN_PROGRESS／OPEN，同一條交付線就又開了
+// 2026-09-22-product-delivery-r01：兩份帳本各記一半，兩份都不是那一段時間的真相。
+// 這裡只擋「新宣告的 RUN_ID」，接續既有 Run 不受影響——要的是看一眼，不是停工。
+const CONCURRENT_JUSTIFICATION_FIELD = 'CONCURRENT_RUN_JUSTIFICATION';
+const admissionFailure = (reason) => [`NEW_RUN_ADMISSION_REJECTED: ${reason}`];
+
+/** Every Run recorded on the canonical default branch; the ledger file name is the RUN_ID. */
+export function readKnownProductRuns(repositoryRoot = process.cwd()) {
+  try {
+    return readdirSync(path.resolve(repositoryRoot, 'docs/metrics/agent-runs'))
+      .filter(name => name.endsWith('.json'))
+      .map(name => name.slice(0, -'.json'.length));
+  } catch { return []; }
+}
+
+/** Open Runs recorded on the canonical default branch, not on the candidate branch. */
+export function readOpenProductRuns(repositoryRoot = process.cwd()) {
+  const dir = path.resolve(repositoryRoot, 'docs/metrics/agent-runs');
+  let names;
+  try { names = readdirSync(dir).filter(name => name.endsWith('.json')); }
+  catch { return []; }
+  const open = [];
+  for (const name of names.sort()) {
+    let run;
+    try { run = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(readFileSync(path.join(dir, name)))); }
+    catch { continue; }
+    if (run?.schemaVersion !== 2) continue;
+    if (!['IN_PROGRESS', 'CLOSURE_RECOVERY'].includes(run.status)) continue;
+    if (run.closeout?.state !== 'OPEN') continue;
+    const runId = String(run.runId ?? '').trim();
+    if (runId) open.push(runId);
+  }
+  return open;
+}
+
+/**
+ * @param {{body?: string, openRuns?: string[], knownRuns?: string[]}} [input]
+ * A declared RUN_ID already present on the default branch is a resume, never a new Run.
+ */
+export function validateNewRunAdmission({ body = '', openRuns = [], knownRuns = [] } = {}) {
+  const binding = productRunBinding(body);
+  if (!binding || binding.errors.length) return [];
+  if (knownRuns.includes(binding.runId)) return [];
+  const others = openRuns.filter(runId => runId !== binding.runId);
+  if (others.length === 0) return [];
+  const justification = readField(body, CONCURRENT_JUSTIFICATION_FIELD);
+  const missing = others.filter(runId => !justification.includes(runId));
+  // 點名之外還要有話。把已點名的 Run id 拿掉之後只剩 `none`／`TBD`／標點，
+  // 那是填欄位不是交代——CLAUDE.md 對 B+ loop 講的就是這件事。
+  const remainder = others.reduce((text, runId) => text.split(runId).join(' '), justification)
+    .replace(/[\s,;.、，。：:()（）-]+/g, ' ').trim();
+  const usable = Boolean(remainder)
+    && !/^(?:none|n\/a|na|tbd|unknown)$/i.test(remainder)
+    && !justification.includes('<!--');
+  if (!usable || missing.length) {
+    return admissionFailure(
+      `new RUN_ID ${binding.runId} while ${others.length} Run(s) remain open (${others.join(', ')}); `
+      + `${CONCURRENT_JUSTIFICATION_FIELD} must name each open Run and say why it is not resumed or closed`
+      + (usable && missing.length ? ` (missing: ${missing.join(', ')})` : ''),
+    );
+  }
+  return [];
 }
 
 function readLocalLedger(repositoryRoot, name) {
@@ -132,11 +197,16 @@ export function validateLocalRunLedgerChanges({ changedFiles, repositoryRoot = p
     } catch { errors.push(...failure(name, 'regular ledger file unavailable')); }
   }
   errors.push(...validateLocalProductRunBinding({ body, repositoryRoot }));
+  errors.push(...validateNewRunAdmission({
+    body,
+    openRuns: readOpenProductRuns(repositoryRoot),
+    knownRuns: readKnownProductRuns(repositoryRoot),
+  }));
   return [...new Set(errors)];
 }
 
-/** @param {{github?: any, owner?: string, repo?: string, current?: any, changedFiles?: any[] | null}} [input] */
-export async function validateGithubRunLedgerChanges({ github, owner, repo, current, changedFiles } = {}) {
+/** @param {{github?: any, owner?: string, repo?: string, current?: any, changedFiles?: any[] | null, repositoryRoot?: string}} [input] */
+export async function validateGithubRunLedgerChanges({ github, owner, repo, current, changedFiles, repositoryRoot = process.cwd() } = {}) {
   if (!Array.isArray(changedFiles) || !Number.isInteger(current?.changed_files)
     || changedFiles.length !== current.changed_files
     || changedFiles.some(file => !file || typeof file.filename !== 'string')
@@ -162,5 +232,11 @@ export async function validateGithubRunLedgerChanges({ github, owner, repo, curr
     } catch { errors.push(...failure(file.filename, 'exact blob evidence unavailable')); }
   }
   errors.push(...await validateGithubProductRunBinding({ github, owner, repo, current }));
+  // The guard workspace is a checkout of the default branch, so this reads canonical Run state.
+  errors.push(...validateNewRunAdmission({
+    body: String(current?.body ?? ''),
+    openRuns: readOpenProductRuns(repositoryRoot),
+    knownRuns: readKnownProductRuns(repositoryRoot),
+  }));
   return [...new Set(errors)];
 }
