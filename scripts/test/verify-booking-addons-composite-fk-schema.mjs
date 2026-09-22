@@ -91,6 +91,12 @@ BEGIN
   SELECT attnum INTO perf_att FROM pg_attribute
    WHERE attrelid='public.booking_addons'::regclass
      AND attname='performance_staff_id' AND NOT attisdropped;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_class
+     WHERE oid='public.booking_addons'::regclass AND relrowsecurity
+  ) THEN
+    RAISE EXCEPTION 'BOOKING_ADDONS_FK_PROOF_RLS_DISABLED';
+  END IF;
   INSERT INTO public.booking_addons
     (tenant_id, booking_id, name, performance_mode, performance_staff_id)
   VALUES (a_tenant, gen_random_uuid(), 'same-tenant proof', 'INHERIT', '${A_STAFF}');
