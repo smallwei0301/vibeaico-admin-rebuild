@@ -5,8 +5,12 @@
   "startedAt": "2026-09-22T02:53:59.380Z",
   "endedAt": null,
   "sources": [
-    { "ref": "origin/main" },
-    { "ref": "issue/17" }
+    {
+      "ref": "origin/main"
+    },
+    {
+      "ref": "issue/17"
+    }
   ],
   "main": {
     "startSha": "48526c47",
@@ -17,10 +21,10 @@
     "openIssuesEnd": null,
     "openPrsStart": null,
     "openPrsEnd": null,
-    "mainTerraPeak": 1,
+    "mainTerraPeak": 0,
     "reserveTerraPeak": 0,
-    "activeCandidatePeak": 1,
-    "sharedTestPeak": 1,
+    "activeCandidatePeak": 0,
+    "sharedTestPeak": 0,
     "closureSweeps": 0,
     "closureAdvancedOrClosed": 0
   },
