@@ -159,6 +159,9 @@ describe('Issue #193 Run closeout contract', () => {
       openIssuesEnd: 8,
       openPrsEnd: 1,
       evidenceRef: 'github:issue#193',
+      // This fixture only exercises closeout envelope mechanics; Completion
+      // Truth is covered separately by run-ledger-closeout-grading-preflight.test.ts.
+      acceptNotGraded: 'closeout-mechanics fixture, not testing Completion Truth',
     });
 
     expect(validateRunLedgerV2(candidate)).toEqual([]);
@@ -184,6 +187,7 @@ describe('Issue #193 Run closeout contract', () => {
         '--open-prs-end', '1',
         '--evidence-ref', 'github:issue#193',
         '--output', output,
+        '--accept-not-graded', 'closeout-mechanics fixture, not testing Completion Truth',
       ]);
       expect(validateRunLedgerV2(JSON.parse(fs.readFileSync(output, 'utf8')))).toEqual([]);
       expect(JSON.parse(fs.readFileSync(input, 'utf8')).closeout.state).toBe('OPEN');

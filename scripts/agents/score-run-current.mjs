@@ -295,6 +295,23 @@ export function scoreRunCurrent(run) {
   return scoreObservedRun(run);
 }
 
+/**
+ * Pure grading-readiness check for a candidate Run, reusing scoreRunCurrent's
+ * own gap detection instead of re-deriving it. Used by run-ledger-v2.mjs's
+ * closeout preflight so that "would this Run be scoreable once closed" is
+ * answered by the same logic that scores it later, not a parallel copy that
+ * can drift from it.
+ *
+ * Returns the candidate's gradingGaps (empty when it would be gradeable).
+ * A HARD_FAIL result (contradicted claims etc.) is a distinct outcome from
+ * NOT_GRADED and is intentionally left out of this list — it is caught by
+ * validateRunLedgerV2 / the existing hard-fail-reason fields, not by this
+ * closeout gate, which exists specifically to stop the NOT_GRADED trap.
+ */
+export function closeoutGradingGaps(run) {
+  return scoreRunCurrent(run).gradingGaps;
+}
+
 const show = (value) => value === null || value === undefined ? "資料不足" : String(value);
 
 export function renderCurrentMarkdown(run, result) {
