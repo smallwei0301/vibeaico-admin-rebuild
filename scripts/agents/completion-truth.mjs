@@ -118,8 +118,8 @@ export function classifyVercelStatus(statuses = []) {
 }
 
 // `cancelled` 一律歸類為「不知道」，永遠不是綠燈：一個被取消的 run 沒有跑完任何 job，
-// 把它當成通過，等同於用「沒人看到紅燈」冒充「沒有紅燈」。main 連續 15 次推送都沒有一次
-// success、其中 6 次是 cancelled，就是這樣一路無聲累積的。
+// 把它當成通過，等同於用「沒人看到紅燈」冒充「沒有紅燈」。2026-09-22 查證 main 上最近的
+// 14 筆 `ci` run，沒有一筆 success（8 failure、6 cancelled），就是這樣一路無聲累積的。
 function classifyCiRun(workflowRuns = [], exactHead = "") {
   const sha = String(exactHead ?? "").trim();
   if (!sha) return { state: "NOT_REPORTED", verified: false, runId: null, url: null, conclusion: null };

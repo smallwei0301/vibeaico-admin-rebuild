@@ -196,7 +196,7 @@ canonical TEST 是**唯一一套**遠端共用環境，**全 repo 同時最多�
 結果寫在 `agent-completion-truth` 的 `MAIN_CI_AFTER_MERGE` 欄位；非 success 會留下 warning，
 而 `AUTHENTICATED_PRODUCTION_ACCEPTED` 在第六項綠燈之前不成立。
 
-**為什麼要多這一項**：2026-09-22 複盤查到 main 連續約 15 次推送沒有一次 `ci` success
+**為什麼要多這一項**：2026-09-22 複盤查證 main 上最近的 14 筆 `ci` run，沒有一筆 success
 （8 次 failure、6 次 cancelled），而每一個 PR 的前五項都齊備、每一輪都宣告完成。
 沒有任何 gate 看合併後的那顆 commit，於是紅燈一路無聲累積。cancelled 特別危險：它看起來
 不是紅的，但它沒有跑完任何 job，把它當成通過就是用「沒人看到紅燈」冒充「沒有紅燈」。
