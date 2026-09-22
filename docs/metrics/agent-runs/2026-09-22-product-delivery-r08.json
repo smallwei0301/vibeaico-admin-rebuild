@@ -130,7 +130,8 @@
     "OBSERVED_FULL_CI: exact-head ci run 35701338480 completed success after Run start; recorded during final-gate correction. This does not convert the separate schema-bootstrap failure into success.",
     "Issue #680：Owner 已選 A；本 Run 於當下開始 source-only FK expand。canonical TEST 仍由 #676 的既有失敗後釋放，不重跑或搶佔；TEST_VERIFIED/PRODUCTION_SCHEMA_READY 尚未成立。",
     "2026-09-22T10:20:53Z：#681 exact-head CI 35714460876 與 schema bootstrap 35714460916 的 FIX_REQUIRED 為目前可驗證的 reviewer return；依此即時記錄 9b4cff5 BUILD_ENTER/BUILD_EXIT，峰值回到 event-derived 1，未倒填此前歷史。",
-    "2026-09-22T10:30:10Z：#681 3281f8f exact-head CI 35715564083／schema bootstrap 35715564128 的 FIX_REQUIRED 觸發第二組 BUILD lifecycle；以當下事件記錄，未倒填。"
+    "2026-09-22T10:30:10Z：#681 3281f8f exact-head CI 35715564083／schema bootstrap 35715564128 的 FIX_REQUIRED 觸發第二組 BUILD lifecycle；以當下事件記錄，未倒填。",
+    "2026-09-22T10:33:39Z：#681 9d2f403 的 schema bootstrap 35716411934 以真實 disposable proof finding 回 BUILD；本組事件為當下記錄。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -183,6 +184,26 @@
         "head": "3281f8fa34a078c95348facd2330e286ba78b6e6",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "Recorded at live reviewer return before the repaired additive candidate receives a new exact-head CI."
+      },
+      {
+        "id": "pr-681-build-enter-fix-required-9d2f403",
+        "at": "2026-09-22T10:33:39.000Z",
+        "kind": "BUILD_ENTER",
+        "pr": 681,
+        "issue": 680,
+        "head": "9d2f4034301411fd329b5d12fdfe1a798b7b9d2b",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Schema bootstrap 35716411934 reached the new disposable proof and returned FIX_REQUIRED: its rollback fixture lacked a declared record loop variable."
+      },
+      {
+        "id": "pr-681-build-exit-fix-required-9d2f403",
+        "at": "2026-09-22T10:33:40.000Z",
+        "kind": "BUILD_EXIT",
+        "pr": 681,
+        "issue": 680,
+        "head": "9d2f4034301411fd329b5d12fdfe1a798b7b9d2b",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Recorded at the live source repair boundary before exact-head CI for the iterator declaration fix."
       }
     ]
   },
