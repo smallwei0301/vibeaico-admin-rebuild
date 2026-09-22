@@ -28,21 +28,20 @@ export function assertDisposableTarget(env, evidence, sql) {
   }
 }
 
-const A_TENANT = '68000000-0000-4000-8000-000000000001';
-const B_TENANT = '68000000-0000-4000-8000-000000000002';
 const A_STAFF = '68000000-0000-4000-8000-000000000011';
 const B_STAFF = '68000000-0000-4000-8000-000000000012';
 
 const reset = (shape, includeMismatch = false) => `
 DO $fixture$
 DECLARE
-  a_tenant uuid := '${A_TENANT}';
-  b_tenant uuid := '${B_TENANT}';
+  a_tenant uuid;
+  b_tenant uuid;
 BEGIN
   -- The canonical seed has no cross-tenant staff guarantee. Insert an exact,
   -- rollback-scoped pair so this proof's positive and negative controls are deterministic.
-  IF NOT EXISTS (SELECT 1 FROM public.tenants WHERE id = a_tenant)
-     OR NOT EXISTS (SELECT 1 FROM public.tenants WHERE id = b_tenant) THEN
+  SELECT id INTO a_tenant FROM public.tenants ORDER BY id LIMIT 1;
+  SELECT id INTO b_tenant FROM public.tenants ORDER BY id OFFSET 1 LIMIT 1;
+  IF a_tenant IS NULL OR b_tenant IS NULL THEN
     RAISE EXCEPTION 'BOOKING_ADDONS_FK_PROOF_REQUIRES_TWO_TENANTS';
   END IF;
   INSERT INTO public.staff (id, tenant_id, name) VALUES
@@ -82,19 +81,22 @@ $fixture$;
 const proof = (expectedCompositeDelete) => `
 DO $proof$
 DECLARE
+  a_tenant uuid;
   rejected boolean := false;
   perf_att smallint;
 BEGIN
+  SELECT tenant_id INTO a_tenant FROM public.staff WHERE id='${A_STAFF}';
+  IF a_tenant IS NULL THEN RAISE EXCEPTION 'BOOKING_ADDONS_FK_PROOF_STAFF_FIXTURE_MISSING'; END IF;
   SELECT attnum INTO perf_att FROM pg_attribute
    WHERE attrelid='public.booking_addons'::regclass
      AND attname='performance_staff_id' AND NOT attisdropped;
   INSERT INTO public.booking_addons
     (tenant_id, booking_id, name, performance_mode, performance_staff_id)
-  VALUES ('${A_TENANT}', gen_random_uuid(), 'same-tenant proof', 'INHERIT', '${A_STAFF}');
+  VALUES (a_tenant, gen_random_uuid(), 'same-tenant proof', 'INHERIT', '${A_STAFF}');
   BEGIN
     INSERT INTO public.booking_addons
       (tenant_id, booking_id, name, performance_mode, performance_staff_id)
-    VALUES ('${A_TENANT}', gen_random_uuid(), 'cross-tenant proof', 'INHERIT', '${B_STAFF}');
+    VALUES (a_tenant, gen_random_uuid(), 'cross-tenant proof', 'INHERIT', '${B_STAFF}');
   EXCEPTION WHEN foreign_key_violation THEN rejected := true;
   END;
   IF NOT rejected THEN RAISE EXCEPTION 'BOOKING_ADDONS_FK_PROOF_CROSS_TENANT_ACCEPTED'; END IF;
@@ -121,7 +123,7 @@ BEGIN
      ) THEN
     RAISE EXCEPTION 'BOOKING_ADDONS_FK_PROOF_IDENTITY_VALIDATION_OR_DELETE_ACTION';
   END IF;
-  DELETE FROM public.staff WHERE id='${A_STAFF}' AND tenant_id='${A_TENANT}';
+  DELETE FROM public.staff WHERE id='${A_STAFF}' AND tenant_id=a_tenant;
   IF EXISTS (SELECT 1 FROM public.booking_addons
               WHERE name='same-tenant proof' AND performance_staff_id IS NOT NULL) THEN
     RAISE EXCEPTION 'BOOKING_ADDONS_FK_PROOF_PARENT_DELETE_DID_NOT_CLEAR_STAFF';
