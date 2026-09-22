@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-09-22-product-delivery-r06",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-09-22T05:20:26.133Z",
+  "endedAt": null,
+  "sources": [
+    { "ref": "origin/main" },
+    { "ref": "issue/42" }
+  ],
+  "main": {
+    "startSha": "90261abe4bb551b837a542fbf619e4fa190d5bb4",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": 47,
+    "openIssuesEnd": null,
+    "openPrsStart": 1,
+    "openPrsEnd": null,
+    "mainTerraPeak": 0,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 0,
+    "sharedTestPeak": 0,
+    "closureSweeps": 0,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [
+      {
+        "id": "terra-build-issue-42-advanced-390px-acceptance",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "TERRA_BUILD：#42 Advanced UI 390px 驗收。用 npm run dev（NEXT_PUBLIC_USE_MOCK=true）+ Playwright 在 390x844 viewport 真跑瀏覽器，逐一截圖 Quick Edit modal、Advanced Settings modal（含季節定價新增子表單）與方案列表 table，確認皆無 document 層級橫向 overflow。過程中發現真實假成功缺陷：Advanced Settings modal 的兩處說明文字（quick.advancedHint／advanced.intro）仍寫『時長、成團門檻與季節等會在後續切片提供』，但同一表單其實已有可編輯的行程時長欄位與完整季節定價編輯器（0128 已落地）——導遊會被誤導成這兩項還沒做。已修正文案，只保留真正尚未接線的成團門檻／販售方式（sales_mode/participation_mode/min_to_depart/formation_deadline_days_before）。typecheck 0 錯誤、全倉庫 3505 單元測試綠。純文案修正，不涉及 runtime 邏輯／schema。",
+        "count": 1
+      }
+    ],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 1,
+    "issuesClosed": 0,
+    "auditReady": 0,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 0,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 0,
+    "lunaAccepted": 0,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 0,
+    "solIssues": 0
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
+  "notes": [],
+  "deliveryTruthVersion": 4,
+  "closeout": {
+    "contractVersion": 1,
+    "ownerRole": "PRODUCT_MAIN_SESSION",
+    "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
+    "state": "OPEN",
+    "closedAt": null,
+    "evidenceRef": null
+  },
+  "wipLifecycle": {
+    "schemaVersion": 1,
+    "events": []
+  },
+  "completionTruth": {
+    "status": "NOT_CHECKED",
+    "checkedAt": null,
+    "claims": []
+  }
+}
