@@ -674,6 +674,28 @@ Owner 說「復盤」或「複盤」時，載入
 - 若新 Run 仍因 raw evidence 缺失而 `NOT_GRADED`，復盤必須指出是**哪個 checkpoint 沒有留下資料**，而不是再用「資料不足」四字結案。
 - 只提出一到兩項最有影響的治理改良，不在復盤時順便改產品。
 
+### 10.4.1 Retrospective Execution Receipt（完整複盤 final hard gate）
+
+`RETROSPECTIVE_EXECUTION_RECEIPT_REQUIRED`
+
+任何回覆要稱為「完整複盤」，final 前都必須真的執行既有兩個 score surfaces，不能用人工讀 JSON／Markdown 代替：
+
+Product：
+- `run-ledger-v2.mjs validate <run.json>`
+- `scorecard-readiness.mjs <run.json> --json`；active Run 另記 `--strict-live` 的實際 exit/result
+- `score-run-current.mjs <run.json>`
+- `review-runs-v2.mjs docs/metrics/agent-runs`
+
+Governance：
+- 對最新可重建的正式 Governance Run 執行 `governance-scoreboard.mjs <ledger> <review-evidence> <policy>`；
+- 對本次固定時間窗執行既有 `governance-observation.mjs` current observation，兩者不得互相冒充。
+
+每一項 execution receipt 至少記：
+`COMMAND / INPUT / TERMINAL_RESULT_OR_EXIT / OUTPUT_OR_EVIDENCE_REF / OBSERVED_MAIN`。
+Product `NOT_GRADED`、active Run、重大 Product blocker、Gmail/provider/DB 調查都不得跳過 Governance score surface。
+若命令因工具或證據缺失無法執行，必須標 `MISSING`／`UNAVAILABLE` 並說明原因，整份只能標 `PARTIAL_RETROSPECTIVE`，不得稱「完整複盤」。
+這個 gate 不創造新分數、不改寫歷史 ledger；詳細步驟仍由 §10.4 載入的 retrospective skill 與 Protocol 執行。
+
 ## 11. 停止條件
 
 只有以下情況可送終止性 final：

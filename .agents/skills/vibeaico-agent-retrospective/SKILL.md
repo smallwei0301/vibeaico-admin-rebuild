@@ -3,7 +3,7 @@ name: vibeaico-agent-retrospective
 description: "Trigger when the Owner says 復盤 or 複盤, asks to review Agent efficiency, token/usage, delivery throughput, quality, CI waste, completion truth, governance scoreboard quality, or improve the B+ loop in smallwei0301/vibeaico-admin-rebuild. Finds recent reports, reads Gmail incident notifications, verifies completion claims against live systems, recomputes Product scores and Governance Scoreboards, compares eligible trends, and proposes at most two auditable governance changes."
 metadata:
   author: smallwei0301
-  version: "1.6.0"
+  version: "1.7.0"
 ---
 
 # VibeAI.co Agent Loop 復盤
@@ -293,6 +293,26 @@ No governance model identity metric belongs in this list.
   branch allowlists and whether one explicit acceptance deployment could replace intermediate Previews.
 - Gmail is quiet while live provider shows failures: inspect notification recipients, filters and provider
   email settings; do not conclude the provider was healthy.
+
+## Retrospective execution receipt
+
+`RETROSPECTIVE_EXECUTION_RECEIPT_REQUIRED`
+
+A retrospective is complete only after the existing Product and Governance scoring commands were actually
+executed. Manual inspection of a ledger or a previously committed Markdown report does not substitute for
+execution. Before final:
+
+- run `run-ledger-v2.mjs validate`, `scorecard-readiness.mjs --json`, `score-run-current.mjs`, and
+  `review-runs-v2.mjs` for the selected Product evidence; for an active Run also record the real
+  `scorecard-readiness.mjs --strict-live` exit/result;
+- run `governance-scoreboard.mjs` on the latest reproducible formal Governance Run + matching review
+  evidence + policy;
+- run `governance-observation.mjs` for the exact retrospective window when current observation applies;
+- record command, input, terminal result/exit, output/artifact reference and observed main for every item.
+
+If any mandatory item cannot execute, label the overall review `PARTIAL_RETROSPECTIVE`, preserve the
+specific `MISSING`／`UNAVAILABLE` reason, and do not call the result a complete retrospective.
+Product `NOT_GRADED` never waives the Governance score surface.
 
 ## Required output
 
