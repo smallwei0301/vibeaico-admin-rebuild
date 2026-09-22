@@ -627,6 +627,13 @@
       "classification": "NOT_APPLIED",
       "notAppliedReason": "PENDING_APPLY",
       "evidence": "#46：tour_orders.refund_policy_snapshot 補齊。src/server/mappers.ts 的 mapTourOrder 與旅客狀態頁（src/app/s/[shopCode]/requests/[orderId]/page.tsx）早就在讀寫此欄位，但欄位本身從未進入 main 的 migration 序列，導致每筆 REQUEST 訂單一律顯示「政策未提供」。本檔補上欄位、check constraint，並以目前 main 的 0111（seats_reserved 分流）函式本體為準重寫 create_tour_order，只多做 insert 當下 snapshot trips.refund_policy_type 這件事，不覆蓋 0111 已修好的名額鎖定行為。合併 main 後仍屬 PENDING_APPLY；canonical TEST 與 Production 的遠端套用各自需要 staged release 授權與回讀驗證。"
+    },
+    {
+      "repoFile": "0131_issue_37_atomic_departure_staff",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#37 真缺口 A：trip_departure_staff 的 assignment persistence 不是原子交易。src/server/departure-staff.ts 的 writeAssignment() 目前是兩次獨立 PostgREST 呼叫（DELETE 後 INSERT），DELETE 成功、INSERT 失敗會把一團的指派憑空清空。本檔只新增 service_role-only 的 replace_trip_departure_staff SECURITY DEFINER RPC，在單一交易內鎖住 departure、驗證租戶/staff 歸屬與重複，並完成先刪後插；不修改 src/server/departure-staff.ts 或任何呼叫端，接線屬後續切片。已於 CI 的 disposable 本機 Supabase replay（agent-schema-bootstrap／local-isolated-test）驗證可在全新安裝套用；合併 main 後仍屬 PENDING_APPLY，canonical TEST 與 Production 的遠端套用各自需要 staged release 授權與回讀驗證。"
     }
   ]
 }
