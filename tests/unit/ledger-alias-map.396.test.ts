@@ -431,13 +431,14 @@ describe('#396 已提交的正式資料', () => {
   // 已分別於 2026-09-14 經 Owner 具名授權套用並重新擷取本快照；0105 於 2026-09-15
   // 以唯讀查詢確認先前已套用於正式庫，本檔先前誤標記為 NOT_APPLIED，已一併更正，
   // 四者都在快照裡）。#455 不會重寫、拆分或新增既有 migration 歷史；數字以 current
-  // main 的實際檔案為準。
-  it('repo 有 77 個 migration 檔案，正式庫快照有 58 筆 ledger row', () => {
-    expect(repoFiles).toHaveLength(77);
+  // main 的實際檔案為準。2026-09-22：本 PR 新增 0131_issue_37_atomic_departure_staff
+  // （#37 真缺口 A：trip_departure_staff 原子性 RPC，77 → 78，NOT_APPLIED 20 → 21）。
+  it('repo 有 78 個 migration 檔案，正式庫快照有 58 筆 ledger row', () => {
+    expect(repoFiles).toHaveLength(78);
     expect(snapshot.ledgerRowNames).toHaveLength(58);
   });
 
-  it('supabase/ledger-alias-map.json 完全涵蓋這 76 個 repo 檔案與 58 筆 ledger row', () => {
+  it('supabase/ledger-alias-map.json 完全涵蓋這 78 個 repo 檔案與 58 筆 ledger row', () => {
     const result = verifyLedgerAliasMap({
       repoFiles,
       ledgerRowNames: snapshot.ledgerRowNames,
@@ -448,7 +449,7 @@ describe('#396 已提交的正式資料', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('分類統計符合已查證的事實：51 EXACT、6 ALIAS、18 NOT_APPLIED、1 LEDGER_ONLY', () => {
+  it('分類統計符合已查證的事實：51 EXACT、6 ALIAS、21 NOT_APPLIED、1 LEDGER_ONLY', () => {
     const counts: Record<string, number> = {};
     for (const entry of aliasMap.entries) {
       counts[entry.classification] = (counts[entry.classification] ?? 0) + 1;
@@ -473,14 +474,17 @@ describe('#396 已提交的正式資料', () => {
     // 與 #42 的季節子表；#42 本身的 migration-only reserve PR #627 已因與此重複而關閉），
     // 加上本 PR 的 0129_issue_15_chat_images_bucket（issue #15 只 insert 一列
     // storage.buckets 的 chat-images bucket birth，原檔名 0128 因與上述 0128_issue_42
-    // 撞號而改為 0129），所以 NOT_APPLIED 是 19。這 19 支依 AGENTS.md 的規則，
+    // 撞號而改為 0129），加上本 PR 的 0131_issue_37_atomic_departure_staff
+    // （#37 真缺口 A：trip_departure_staff 的 assignment persistence 原子性，
+    // 只新增 service_role-only 的 replace_trip_departure_staff RPC，不接線任何
+    // 呼叫端），所以 NOT_APPLIED 是 21。這 21 支依 AGENTS.md 的規則，
     // 在合併進 main 之前都不是任何環境的套用授權。
     // 0109 是 SCHEMA_REPAIR；0112、0114 是 AUTHZ+BACKFILL 混合風險。三者各自
     // 留在既有 migration 歷史中，並標為 VERIFIED_NOT_APPLIED，直到未來獨立
     // release 有對應的審查與執行器。
     expect(counts.EXACT).toBe(51);
     expect(counts.ALIAS).toBe(6);
-    expect(counts.NOT_APPLIED ?? 0).toBe(20);
+    expect(counts.NOT_APPLIED ?? 0).toBe(21);
     expect(counts.LEDGER_ONLY).toBe(1);
   });
 
@@ -755,11 +759,12 @@ describe('#396 NOT_APPLIED 的兩種狀態必須用列舉講清楚', () => {
     // #589 AUTHZ 批次不同 risk tier，依 production-db-release-plan.mjs #447 的單一 risk tier
     // 限制不能混批；原檔名 0128 因與上列 0128_issue_42_plan_seasonal_pricing 撞號而改為 0129）是
     // VERIFIED_NOT_APPLIED。0107／0108 已套用正式庫轉為 EXACT；0105 於
-    // 2026-09-15 以唯讀查詢確認先前已套用於正式庫，本檔誤標記已更正為 EXACT。保留 main 那一版的
-    // 意圖：釘住數量而不是只檢查「每一筆都有理由」，否則清單變空時這條規則會
-    // 靜悄悄變成空轉。任何人日後新增或移除 NOT_APPLIED 都會先撞到這一行，被迫
-    // 同時面對下面那條「必須有合法 notAppliedReason」的規則。
-    expect(notApplied.length).toBe(20);
+    // 2026-09-15 以唯讀查詢確認先前已套用於正式庫，本檔誤標記已更正為 EXACT。加上
+    // 0131_issue_37_atomic_departure_staff（#37 真缺口 A，PENDING_APPLY），共 21 筆。
+    // 保留 main 那一版的意圖：釘住數量而不是只檢查「每一筆都有理由」，否則清單變空時
+    // 這條規則會靜悄悄變成空轉。任何人日後新增或移除 NOT_APPLIED 都會先撞到這一行，
+    // 被迫同時面對下面那條「必須有合法 notAppliedReason」的規則。
+    expect(notApplied.length).toBe(21);
     for (const entry of notApplied) {
       expect(NOT_APPLIED_REASONS).toContain(entry.notAppliedReason);
     }
