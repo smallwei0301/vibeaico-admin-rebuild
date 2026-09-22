@@ -387,6 +387,52 @@ describe('Production DB G3 TEST artifact builders #447', () => {
     });
   });
 
+  it('binds 0130-0133 to explicit current-main AUTHZ assertions', () => {
+    const tourOrderFile = 'tests/integration/api/tour-order-authz.447.test.ts';
+    const departureStaffFile = 'tests/integration/api/departure-staff-rpc-acl.37.test.ts';
+    const bookingAddonsFile = 'tests/integration/api/booking-addons.17.test.ts';
+    const result = buildProductionDbTestCoverageEvidence({
+      plan: plan([
+        { repoFile: '0130_issue_46_refund_policy_snapshot', riskTier: 'AUTHZ', sha256: 'a'.repeat(64) },
+        { repoFile: '0131_issue_37_atomic_departure_staff', riskTier: 'AUTHZ', sha256: 'b'.repeat(64) },
+        { repoFile: '0132_issue_42_seasonal_price_resolution', riskTier: 'AUTHZ', sha256: 'c'.repeat(64) },
+        { repoFile: '0133_issue_680_booking_addons_composite_fk_expand', riskTier: 'AUTHZ', sha256: 'd'.repeat(64) },
+      ]),
+      report: report({
+        numTotalTests: 6,
+        numPassedTests: 6,
+        testResults: [
+          { name: tourOrderFile, assertionResults: [
+            { status: 'passed', fullName: 'cross-tenant owner cannot use another tenant departure' },
+            { status: 'passed', fullName: 'authenticated role cannot invoke SECURITY DEFINER create_tour_order directly' },
+          ] },
+          { name: departureStaffFile, assertionResults: [
+            { status: 'passed', fullName: 'service_role RPC rejects another tenant id for an existing departure without mutation' },
+            { status: 'passed', fullName: 'anon and authenticated roles cannot execute replace_trip_departure_staff directly' },
+          ] },
+          { name: bookingAddonsFile, assertionResults: [
+            { status: 'passed', fullName: 'A 店的 idempotency key 不得命中 B 店（即使字面值相同）' },
+            { status: 'passed', fullName: '未登入與已登入使用者都不得直接呼叫 create_booking_addon／delete_booking_addon rpc' },
+          ] },
+        ],
+      }),
+      sourceRunId: '1', sourceRunAttempt: 1,
+    });
+
+    for (const repoFile of [
+      '0130_issue_46_refund_policy_snapshot',
+      '0131_issue_37_atomic_departure_staff',
+      '0132_issue_42_seasonal_price_resolution',
+      '0133_issue_680_booking_addons_composite_fk_expand',
+    ]) {
+      expect(result.migrations[repoFile]).toMatchObject({
+        status: 'MIGRATION_TEST_COVERAGE_VERIFIED',
+        tenantBoundaryVerified: true,
+        negativeRoleTestsPassed: true,
+      });
+    }
+  });
+
   it('captures migration-scoped cleanup using GET only and the canonical SHOP_A tenant filter', async () => {
     const fetchSpy = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       expect(init?.method).toBe('GET');
