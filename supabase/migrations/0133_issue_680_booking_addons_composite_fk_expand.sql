@@ -45,9 +45,12 @@ BEGIN
   END IF;
   IF EXISTS (
     SELECT 1 FROM pg_attribute a
-     WHERE (a.attrelid = child_oid AND a.attnum IN (child_tenant, child_perf))
-        OR (a.attrelid = staff_oid AND a.attnum IN (staff_tenant, staff_id))
-      AND (a.atttypid <> 'uuid'::regtype OR (a.attnum IN (child_tenant, staff_tenant, staff_id) AND NOT a.attnotnull))
+     WHERE (
+       (a.attrelid = child_oid AND a.attnum IN (child_tenant, child_perf))
+       OR (a.attrelid = staff_oid AND a.attnum IN (staff_tenant, staff_id))
+     )
+       AND (a.atttypid <> 'uuid'::regtype
+         OR (a.attnum IN (child_tenant, staff_tenant, staff_id) AND NOT a.attnotnull))
   ) THEN
     RAISE EXCEPTION 'BOOKING_ADDONS_PERFORMANCE_STAFF_COLUMN_SHAPE';
   END IF;
