@@ -51,7 +51,8 @@ describe('#680 booking_addons tenant-scoped performance staff FK expansion', () 
       expect(item.sql).toContain('cross-tenant proof');
       expect(item.sql).toContain('BOOKING_ADDONS_FK_PROOF_IDENTITY_VALIDATION_OR_DELETE_ACTION');
       expect(item.sql).toContain('BOOKING_ADDONS_FK_PROOF_PARENT_DELETE_DID_NOT_CLEAR_STAFF');
-      expect(item.sql).toContain("DELETE FROM public.staff WHERE id='68000000-0000-4000-8000-000000000011'");
+      expect(item.sql).toContain("DELETE FROM public.staff WHERE id='68000000-0000-4000-8000-000000000011' AND tenant_id=a_tenant");
+      expect(item.sql).toContain('SELECT id INTO b_tenant FROM public.tenants ORDER BY id OFFSET 1 LIMIT 1');
     }
   });
 
