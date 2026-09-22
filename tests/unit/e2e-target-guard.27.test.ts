@@ -90,6 +90,15 @@ describe('assertTestSupabaseTarget', () => {
       ['mismatched ref', 'localhost', localEvidence()],
       ['URL credentials', '127', localEvidence({ testSupabaseUrl: 'http://user:pass@127.0.0.1:54321' })],
       ['URL query', '127', localEvidence({ testSupabaseUrl: 'http://127.0.0.1:54321?unsafe=1' })],
+      ['URL fragment', '127', localEvidence({ testSupabaseUrl: 'http://127.0.0.1:54321#unsafe' })],
+      ['non-root URL path', '127', localEvidence({ testSupabaseUrl: 'http://127.0.0.1:54321/anything' })],
+      ['missing URL', '127', localEvidence({ testSupabaseUrl: undefined })],
+      ['wrong profile', '127', localEvidence({ testProfile: 'LOCAL_ISOLATED_CANARY' })],
+      ['missing profile', '127', localEvidence({ testProfile: undefined })],
+      ['schema run mismatch', '127', localEvidence({
+        localProjectId: 'schema-proof-35718956244-1',
+        testEnvId: 'local-schema-35718956245',
+      })],
     ] as const;
     for (const [, ref, evidence] of rejected) {
       expect(isAdmittedLocalIsolatedTarget(ref, evidence)).toBe(false);
