@@ -33,9 +33,9 @@
     "openIssuesEnd": null,
     "openPrsStart": null,
     "openPrsEnd": null,
-    "mainTerraPeak": 2,
-    "reserveTerraPeak": 1,
-    "activeCandidatePeak": 2,
+    "mainTerraPeak": 0,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 0,
     "sharedTestPeak": 0,
     "closureSweeps": 1,
     "closureAdvancedOrClosed": 1
@@ -199,8 +199,17 @@
     "events": []
   },
   "completionTruth": {
-    "status": "NOT_CHECKED",
-    "checkedAt": null,
-    "claims": []
+    "status": "VERIFIED",
+    "checkedAt": "2026-09-22T02:15:00.000Z",
+    "claims": [
+      {
+        "type": "ISSUE_CLOSED",
+        "subject": "#650",
+        "claimedState": "closed",
+        "observedState": "closed",
+        "verification": "VERIFIED",
+        "evidenceRef": "github:smallwei0301/vibeaico-admin-rebuild/issues/650"
+      }
+    ]
   }
 }
