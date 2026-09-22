@@ -135,7 +135,8 @@
     "2026-09-22T10:41:03Z：#681 99207fdf exact-head CI 35716683611 的真實 FIX_REQUIRED 顯示 release plan 將 tenant-auth boundary 誤作 ADDITIVE，與既有 AUTHZ queue 形成 AUTHZ+ADDITIVE；依當下 finding 回 BUILD，修正為明確 RLS precondition/enable readback，未操作任何遠端資料庫。",
     "2026-09-22T10:45:10Z：#681 2927f849 的 schema bootstrap 35717431459 真實 FIX_REQUIRED：disposable proof 將 JavaScript variant 名稱原樣送進 PL/pgSQL，造成 `expectedCompositeDelete` identifier error；依當下 finding 回 BUILD，改為 closed allowlist 生成固定 catalog predicate，未操作任何遠端資料庫。",
     "2026-09-22T10:58:42Z：依 durable workflow reread，fullCiRuns 由 1 更正為 7：35701338480 success；35714460876、35715564083、35716412007、35716683611 failure；35717431449、35717780994 success。取消的 local/schema run 不計入此 full-CI 計數。",
-    "2026-09-22T10:58:42Z：#681 16ea33ee 的 local-isolated 35717781006 與 schema bootstrap 35717780992 都在 current-main 的同一 chat-link.06 assertion（lastMessage '' vs OUT_TEXT）失敗；0133 disposable proof 已 PASS，故依實際 shared blocker 回 BUILD，移植既有 #676 的 test-only repair。"
+    "2026-09-22T10:58:42Z：#681 16ea33ee 的 local-isolated 35717781006 與 schema bootstrap 35717780992 都在 current-main 的同一 chat-link.06 assertion（lastMessage '' vs OUT_TEXT）失敗；0133 disposable proof 已 PASS，故依實際 shared blocker 回 BUILD，移植既有 #676 的 test-only repair。",
+    "2026-09-22T11:15:09Z：#681 d3bcbaa6 的 schema bootstrap 35718956244 與 local-isolated 35718956382 均通過 0133 disposable proof／integration，僅 booking-addons.17 E2E 被既有 canonical-only target guard 對 loopback ref 127 fail closed；依兩個 workflow 已提供的 LOCAL_ISOLATED/loopback/paired identity contract 回 BUILD，補最小 guard admission。未預寫本次新 head 的 full CI 結果。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -268,6 +269,26 @@
         "head": "16ea33eef062252c0701fd35bcd2df70815b1c85",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "Recorded at the durable common-failure diagnosis before the superseding candidate receives a new exact-head CI."
+      },
+      {
+        "id": "pr-681-build-enter-fix-required-d3bcbaa6",
+        "at": "2026-09-22T11:15:09.000Z",
+        "kind": "BUILD_ENTER",
+        "pr": 681,
+        "issue": 680,
+        "head": "d3bcbaa69d3a6a1179f64d6db3f88bea0aa9d4c8",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Schema bootstrap 35718956244 and local-isolated 35718956382 both reached booking-addons.17 E2E then correctly failed closed on loopback ref 127 under the canonical-only target guard; #681 returned to bounded BUILD for verified LOCAL_ISOLATED admission."
+      },
+      {
+        "id": "pr-681-build-exit-fix-required-d3bcbaa6",
+        "at": "2026-09-22T11:15:10.000Z",
+        "kind": "BUILD_EXIT",
+        "pr": 681,
+        "issue": 680,
+        "head": "d3bcbaa69d3a6a1179f64d6db3f88bea0aa9d4c8",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Recorded at the paired durable local failures before the explicit target-evidence candidate receives new exact-head checks."
       }
     ]
   },
