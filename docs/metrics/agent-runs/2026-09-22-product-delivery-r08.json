@@ -91,7 +91,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 7,
+    "fullCiRuns": 8,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -136,7 +136,9 @@
     "2026-09-22T10:45:10Z：#681 2927f849 的 schema bootstrap 35717431459 真實 FIX_REQUIRED：disposable proof 將 JavaScript variant 名稱原樣送進 PL/pgSQL，造成 `expectedCompositeDelete` identifier error；依當下 finding 回 BUILD，改為 closed allowlist 生成固定 catalog predicate，未操作任何遠端資料庫。",
     "2026-09-22T10:58:42Z：依 durable workflow reread，fullCiRuns 由 1 更正為 7：35701338480 success；35714460876、35715564083、35716412007、35716683611 failure；35717431449、35717780994 success。取消的 local/schema run 不計入此 full-CI 計數。",
     "2026-09-22T10:58:42Z：#681 16ea33ee 的 local-isolated 35717781006 與 schema bootstrap 35717780992 都在 current-main 的同一 chat-link.06 assertion（lastMessage '' vs OUT_TEXT）失敗；0133 disposable proof 已 PASS，故依實際 shared blocker 回 BUILD，移植既有 #676 的 test-only repair。",
-    "2026-09-22T11:15:09Z：#681 d3bcbaa6 的 schema bootstrap 35718956244 與 local-isolated 35718956382 均通過 0133 disposable proof／integration，僅 booking-addons.17 E2E 被既有 canonical-only target guard 對 loopback ref 127 fail closed；依兩個 workflow 已提供的 LOCAL_ISOLATED/loopback/paired identity contract 回 BUILD，補最小 guard admission。未預寫本次新 head 的 full CI 結果。"
+    "2026-09-22T11:15:09Z：#681 d3bcbaa6 的 schema bootstrap 35718956244 與 local-isolated 35718956382 均通過 0133 disposable proof／integration，僅 booking-addons.17 E2E 被既有 canonical-only target guard 對 loopback ref 127 fail closed；依兩個 workflow 已提供的 LOCAL_ISOLATED/loopback/paired identity contract 回 BUILD，補最小 guard admission。未預寫本次新 head 的 full CI 結果。",
+    "2026-09-22T11:22:10Z：review reread 更正 fullCiRuns=8；在既列七筆之外，d3bcbaa6 的 ci 35718956257 已在 5bc snapshot 引用前完成 success，故是 durable run evidence。現行 5bc head 的 35720435193 仍在執行，未計入。",
+    "2026-09-22T11:22:10Z：#681 5bc6915b 的 Final Spec review 指出 local admission 尚接受任意 pathname；review return（非 CI failure）回 BUILD，補根路徑與 incomplete-evidence fail-closed 反例。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -289,6 +291,26 @@
         "head": "d3bcbaa69d3a6a1179f64d6db3f88bea0aa9d4c8",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "Recorded at the paired durable local failures before the explicit target-evidence candidate receives new exact-head checks."
+      },
+      {
+        "id": "pr-681-build-enter-review-return-5bc6915b",
+        "at": "2026-09-22T11:22:10.000Z",
+        "kind": "BUILD_ENTER",
+        "pr": 681,
+        "issue": 680,
+        "head": "5bc6915bd32c4aa92459c370bb51500012761877",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Final Spec review returned #681 for a bounded fail-closed correction: LOCAL_ISOLATED admission must reject non-root URL paths and incomplete target evidence; this is a review return, not a CI failure."
+      },
+      {
+        "id": "pr-681-build-exit-review-return-5bc6915b",
+        "at": "2026-09-22T11:22:11.000Z",
+        "kind": "BUILD_EXIT",
+        "pr": 681,
+        "issue": 680,
+        "head": "5bc6915bd32c4aa92459c370bb51500012761877",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Recorded at the live Final Spec review return before the root-path guarded candidate receives new exact-head checks."
       }
     ]
   },
