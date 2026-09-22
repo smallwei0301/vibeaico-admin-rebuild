@@ -58,14 +58,14 @@ describe('#680 booking_addons tenant-scoped performance staff FK expansion', () 
     expect(sql).toContain('DO $booking_addons_perf_fk_expand$');
     expect(sql).toContain('booking_addons_tenant_id_performance_staff_id_fkey');
     expect(sql).toContain('FOREIGN KEY (tenant_id, performance_staff_id)');
-    expect(sql).toContain('ON DELETE SET NULL (performance_staff_id)');
+    expect(sql).toContain('ON DELETE NO ACTION');
     expect(sql).toContain('booking_addons_performance_staff_id_fkey');
     expect(sql).toContain('FOREIGN KEY (performance_staff_id)');
     expect(sql).toContain('NOT VALID');
     expect(sql).toContain('VALIDATE CONSTRAINT');
     expect(sql).toContain('BOOKING_ADDONS_PERFORMANCE_STAFF_TENANT_MISMATCH');
     expect(sql).toContain('BOOKING_ADDONS_PERFORMANCE_STAFF_UNKNOWN_FK');
-    expect(sql).toContain('confdelsetcols = ARRAY[child_perf]::smallint[]');
+    expect(sql).toContain("fk.confdeltype = 'a' AND fk.confdelsetcols IS NULL");
     expect(sql).toContain("NOTIFY pgrst, 'reload schema';");
     expect(sql).toContain("pg_catalog.to_regclass('public.booking_addons')");
     expect(sql).not.toContain('PERFORM set_config');
