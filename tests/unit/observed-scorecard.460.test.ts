@@ -90,14 +90,11 @@ function observedRun() {
   run.flow.solTouches = 1;
   run.flow.solIssues = 1;
 
-  run = closeRunLedgerV2(run, {
-    status: 'COMPLETE',
-    endedAt: '2026-09-15T01:00:00Z',
-    mainEndSha: 'b'.repeat(40),
-    openIssuesEnd: 9,
-    openPrsEnd: 2,
-    evidenceRef: 'github:issue#460',
-  });
+  // Set before closeout: closeRunLedgerV2 now preflights that a COMPLETE
+  // candidate would actually score (see run-ledger-v2.mjs's grading
+  // preflight). Individual it() blocks below still freely mutate
+  // completionTruth afterward to exercise scoreRunCurrent's own gap/
+  // hard-fail detection on top of an already-closed envelope.
   run.completionTruth = {
     status: 'VERIFIED',
     checkedAt: '2026-09-15T01:01:00Z',
@@ -106,6 +103,15 @@ function observedRun() {
       claim('RUN_COMPLETE', run.runId, 'complete', 'complete', 'github:issue#460'),
     ],
   };
+
+  run = closeRunLedgerV2(run, {
+    status: 'COMPLETE',
+    endedAt: '2026-09-15T01:00:00Z',
+    mainEndSha: 'b'.repeat(40),
+    openIssuesEnd: 9,
+    openPrsEnd: 2,
+    evidenceRef: 'github:issue#460',
+  });
   return run;
 }
 

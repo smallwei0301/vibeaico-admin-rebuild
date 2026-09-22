@@ -5,6 +5,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { createRunLedger as createLegacyLedger, validateRunLedger as validateLegacyLedger } from "./run-ledger.mjs";
+import { closeoutGradingGaps } from "./score-run-current.mjs";
 
 const TRUTH_STATUS = new Set(["NOT_CHECKED", "VERIFIED", "FAILED"]);
 const CLAIM_TYPE = new Set([
@@ -51,6 +52,15 @@ function isValidUtcTimestamp(value) {
 function isUsableEvidenceRef(value) {
   const text = String(value ?? "").trim();
   return DURABLE_EVIDENCE_REF.test(text) && !text.includes("://");
+}
+
+const NOT_GRADED_ACCEPTANCE_PLACEHOLDER = /^(?:none|n\/?a|tbd|-)$/i;
+
+function isUsableAcceptNotGradedReason(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return false;
+  if (text.includes("<!--") || text.includes("|")) return false;
+  return !NOT_GRADED_ACCEPTANCE_PLACEHOLDER.test(text);
 }
 
 function normalizeCloseoutOwner(value) {
@@ -224,6 +234,7 @@ export function closeRunLedgerV2(run, {
   openIssuesEnd,
   openPrsEnd,
   evidenceRef,
+  acceptNotGraded,
 } = {}) {
   if (!run || typeof run !== 'object' || Array.isArray(run)) throw new Error('CLOSEOUT_INPUT_INVALID: run must be an object');
   if (run.deliveryTruthVersion !== 4) throw new Error('CLOSEOUT_REQUIRES_V4: only operational Delivery Truth v4 Runs may be closed by this helper');
@@ -244,6 +255,31 @@ export function closeRunLedgerV2(run, {
 
   const errors = validateRunLedgerV2(candidate);
   if (errors.length) throw new Error(`CLOSEOUT_CANDIDATE_INVALID:\n${errors.map((item) => `- ${item}`).join('\n')}`);
+
+  // Grading preflight (PB: connect closeout to the same scoring logic it will
+  // later be judged by). A COMPLETE Run whose closeout is structurally VALID_V2
+  // can still be permanently NOT_GRADED once closed, because closeRunLedgerV2
+  // does not itself score the Run. Fail closed here instead of letting a
+  // CLOSED, unscoreable Run become irreversible (CLOSEOUT_ALREADY_CLOSED).
+  if (candidate.status === 'COMPLETE') {
+    const gaps = closeoutGradingGaps(candidate);
+    if (gaps.length) {
+      if (!isUsableAcceptNotGradedReason(acceptNotGraded)) {
+        throw new Error(
+          `CLOSEOUT_WOULD_NOT_GRADE:\n${gaps.map((item) => `- ${item}`).join('\n')}\n` +
+          'This Run would close as terminal COMPLETE but permanently score NOT_GRADED ' +
+          '(closeout cannot be reopened once CLOSED). Fix Completion Truth before closing, ' +
+          'or pass a non-empty, non-placeholder --accept-not-graded reason to close it knowingly.',
+        );
+      }
+      const reason = String(acceptNotGraded).trim();
+      candidate.notes = [
+        ...(Array.isArray(candidate.notes) ? candidate.notes : []),
+        `CLOSEOUT_ACCEPTED_NOT_GRADED: ${reason}（gaps: ${gaps.join(', ')}）`,
+      ];
+    }
+  }
+
   return candidate;
 }
 
@@ -350,6 +386,7 @@ export function runCli(argv = process.argv.slice(2)) {
       openIssuesEnd: parseCount(input["open-issues-end"], "open-issues-end"),
       openPrsEnd: parseCount(input["open-prs-end"], "open-prs-end"),
       evidenceRef: input["evidence-ref"],
+      acceptNotGraded: typeof input["accept-not-graded"] === "string" ? input["accept-not-graded"] : undefined,
     });
     if (fs.existsSync(input.output)) throw new Error(`refusing to overwrite existing closeout candidate: ${input.output}`);
     fs.mkdirSync(path.dirname(path.resolve(input.output)), { recursive: true });
@@ -358,7 +395,7 @@ export function runCli(argv = process.argv.slice(2)) {
     return candidate;
   }
   throw new Error(
-    "Usage: run-ledger-v2.mjs init --run-id YYYY-MM-DD-name --closeout-owner PRODUCT_MAIN_SESSION|GOVERNANCE_MAIN_SESSION|OWNER | validate <file> | closeout <file> --status BASELINE|COMPLETE|OWNER_BLOCKED --ended-at <ISO UTC> --main-end-sha <sha> --open-issues-end <n> --open-prs-end <n> --evidence-ref <ref> --output <new-file>",
+    "Usage: run-ledger-v2.mjs init --run-id YYYY-MM-DD-name --closeout-owner PRODUCT_MAIN_SESSION|GOVERNANCE_MAIN_SESSION|OWNER | validate <file> | closeout <file> --status BASELINE|COMPLETE|OWNER_BLOCKED --ended-at <ISO UTC> --main-end-sha <sha> --open-issues-end <n> --open-prs-end <n> --evidence-ref <ref> --output <new-file> [--accept-not-graded <reason>]",
   );
 }
 
