@@ -99,6 +99,26 @@ async function querySnapshotViaPostgres({ connectionString, query, readOnly }) {
     await sql.end({ timeout: 5 });
   }
 }
+export function parseLocalSchemaObserverUrl(connectionString) {
+  const raw = String(connectionString ?? '').trim();
+  if (!raw) fail('MISSING_LOCAL_SCHEMA_OBSERVER_URL', 'Supabase CLI local DB_URL is required');
+  let parsed;
+  try { parsed = new URL(raw); } catch { fail('MALFORMED_LOCAL_SCHEMA_OBSERVER_URL', 'local DB_URL is not a valid PostgreSQL URL'); }
+  const host = String(parsed.hostname ?? '').toLowerCase();
+  if (!['postgres:', 'postgresql:'].includes(parsed.protocol) ||
+      !['127.0.0.1', 'localhost', '[::1]'].includes(host) ||
+      parsed.username !== 'postgres' || (parsed.pathname || '/postgres') !== '/postgres' || parsed.search || parsed.hash) {
+    fail('LOCAL_SCHEMA_OBSERVER_TARGET_INVALID', 'local observer URL must target the local postgres database over loopback');
+  }
+  return raw;
+}
+/**
+ * @param {{ connectionString?: string, directQuery?: (input: { connectionString: string, query: string, readOnly: boolean }) => Promise<unknown> }} options
+ */
+export async function captureLocalExpectedSnapshot({ connectionString, directQuery = querySnapshotViaPostgres } = {}) {
+  const localConnectionString = parseLocalSchemaObserverUrl(connectionString);
+  return directQuery({ connectionString: localConnectionString, query: READ_ONLY_SNAPSHOT_SQL, readOnly: true });
+}
 function observerConnectionStringFor(environment, value) {
   const raw = String(value ?? '').trim();
   if (!raw) return null;

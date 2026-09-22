@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   READ_ONLY_SNAPSHOT_SQL,
+  captureLocalExpectedSnapshot,
   captureEnvironmentSnapshot,
+  parseLocalSchemaObserverUrl,
   parseProjectBoundSchemaObserverUrl,
 } from '../../scripts/agents/schema-drift-watch.mjs';
 
@@ -25,6 +27,35 @@ describe('schema observer direct PostgreSQL transport #589', () => {
     expect(install).toBeGreaterThan(0);
     expect(replay).toBeGreaterThan(install);
     expect(workflow.slice(install, replay)).toContain('npm ci');
+    expect(workflow).toContain('supabase status --output json');
+    expect(workflow).toContain('captureLocalExpectedSnapshot');
+    expect(workflow).not.toContain('docker exec');
+  });
+
+  it('reads the disposable local database using the CLI URL and the same read-only snapshot query', async () => {
+    const directQuery = vi.fn(async ({ connectionString, query, readOnly }) => {
+      expect(connectionString).toBe('postgresql://postgres:postgres@127.0.0.1:54322/postgres');
+      expect(query).toBe(READ_ONLY_SNAPSHOT_SQL);
+      expect(readOnly).toBe(true);
+      return raw;
+    });
+    const snapshot = await captureLocalExpectedSnapshot({
+      connectionString: 'postgresql://postgres:postgres@127.0.0.1:54322/postgres', directQuery,
+    });
+    expect(snapshot).toEqual(raw);
+    expect(directQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects any non-loopback local database URL before opening a connection', async () => {
+    const directQuery = vi.fn();
+    expect(() => parseLocalSchemaObserverUrl('postgresql://postgres:password@db.example.com:5432/postgres'))
+      .toThrow(/LOCAL_SCHEMA_OBSERVER_TARGET_INVALID/);
+    expect(() => parseLocalSchemaObserverUrl('postgresql://postgres:password@127.0.0.1:54322/postgres?host=db.example.com'))
+      .toThrow(/LOCAL_SCHEMA_OBSERVER_TARGET_INVALID/);
+    await expect(captureLocalExpectedSnapshot({
+      connectionString: 'postgresql://postgres:password@db.example.com:5432/postgres', directQuery,
+    })).rejects.toThrow(/LOCAL_SCHEMA_OBSERVER_TARGET_INVALID/);
+    expect(directQuery).not.toHaveBeenCalled();
   });
 
   it('binds each observer URL to its exact environment and non-admin role', () => {
