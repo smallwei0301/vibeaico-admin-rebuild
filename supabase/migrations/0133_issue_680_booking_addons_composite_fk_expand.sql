@@ -30,6 +30,12 @@ BEGIN
 
   SELECT relrowsecurity, relforcerowsecurity INTO rls_before, force_rls_before
     FROM pg_class WHERE oid = child_oid;
+  IF NOT rls_before THEN
+    RAISE EXCEPTION 'BOOKING_ADDONS_PERFORMANCE_STAFF_RLS_DISABLED';
+  END IF;
+  -- The auth boundary is a precondition, never a repair: keep enabled RLS enabled,
+  -- and deliberately do not change FORCE ROW LEVEL SECURITY.
+  ALTER TABLE public.booking_addons ENABLE ROW LEVEL SECURITY;
 
   SELECT attnum INTO child_tenant FROM pg_attribute
    WHERE attrelid = child_oid AND attname = 'tenant_id' AND NOT attisdropped;
@@ -204,6 +210,7 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_class
      WHERE oid = child_oid
+       AND relrowsecurity
        AND relrowsecurity = rls_before
        AND relforcerowsecurity = force_rls_before
   ) THEN
