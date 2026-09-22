@@ -4,6 +4,9 @@ export const tripStatus = ['DRAFT', 'PUBLISHED', 'ARCHIVED'] as const;
 export const departureStatus = ['OPEN', 'CLOSED', 'CANCELLED'] as const;
 export const depositModes = ['NONE', 'DEPOSIT_FIXED', 'DEPOSIT_PERCENT', 'FULL'] as const;
 export const addonUnits = ['PER_PERSON', 'PER_GROUP'] as const;
+/** #41／0107：成團規則值域，與 `trip_plans_sales_mode_ck`／`_participation_mode_ck` 一致。 */
+export const salesModes = ['FIXED_DEPARTURE', 'INSTANT', 'REQUEST'] as const;
+export const participationModes = ['SHARED', 'PRIVATE'] as const;
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const timePattern = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
@@ -55,6 +58,18 @@ const planFields = {
   durationMinutes: z.number().int().positive().optional(),
   priceType: z.enum(['PER_PERSON', 'PER_GROUP']).optional(),
   yearRound: z.boolean().optional(),
+  /**
+   * Sol 稽核（#8 PR #661）：成團規則（18 分冊 §1–§2／0107）欄位在 `mapTripPlan()`
+   * 讀側早就支援（`src/server/mappers.ts`），但寫側（這裡＋下面的 `planRow()`）
+   * 一直沒有接上，`POST /api/trips/:id/plans` 收不到這四個 key。範圍與 0107 的
+   * DB check constraint 一致：`min_to_depart >= 1`、`formation_deadline_days_before`
+   * 介於 0–90。**刻意不收 `bookingType`**——它是由 `salesMode` derive 出來的顯示值
+   * （`deriveBookingType()`），DB 沒有 `booking_type` 欄位，Owner 已裁示不新增第二個。
+   */
+  salesMode: z.enum(salesModes).optional(),
+  participationMode: z.enum(participationModes).optional(),
+  minToDepart: z.number().int().min(1, '成團門檻必須至少為 1').optional(),
+  formationDeadlineDaysBefore: z.number().int().min(0).max(90, '成團截止天數需介於 0–90').optional(),
 };
 
 export const planCreateSchema = z.object({
@@ -289,6 +304,13 @@ export function planRow(
     duration_minutes: input.durationMinutes ?? 60,
     price_type: input.priceType ?? 'PER_PERSON',
     year_round: input.yearRound ?? true,
+    // Sol 稽核（#8 PR #661）：預設值與 0107 的 DB column default 保持一致
+    // （'FIXED_DEPARTURE' / 'SHARED' / 1 / 7），理由同上面 duration_minutes 那則註解——
+    // 同一筆資料在有無帶欄位兩條路徑下不能出現不同預設。
+    sales_mode: input.salesMode ?? 'FIXED_DEPARTURE',
+    participation_mode: input.participationMode ?? 'SHARED',
+    min_to_depart: input.minToDepart ?? 1,
+    formation_deadline_days_before: input.formationDeadlineDaysBefore ?? 7,
   };
 }
 

@@ -64,6 +64,20 @@ function planApiPayload(payload: Partial<TripPlan>) {
     durationMinutes: payload.durationMinutes,
     priceType: payload.priceType,
     yearRound: payload.yearRound,
+    /**
+     * Sol 稽核（#8 PR #661）：以下四個欄位（成團規則，18 分冊 §1–§2／0107）過去完全沒有
+     * 被序列化進這裡，導致真後端的 `PUT /api/trip-plans/:id`／`POST /api/trips/:id/plans`
+     * 永遠收不到它們——即使呼叫端（`planDuplicatePayload()`／表單）已經把值放進
+     * `Partial<TripPlan>`，也在這一層被靜默丟掉，等於一個看起來成功、值卻沒進資料庫的
+     * 假成功。**故意不帶 `bookingType`**：`src/server/mappers.ts` 的
+     * `deriveBookingType()` 註解記錄了 Owner 裁示——`bookingType` 是由 `sales_mode`
+     * derive 出來的顯示值，DB 沒有、也不該有獨立的 `booking_type` 欄位，帶了
+     * `planCreateSchema`／`planUpdateSchema` 也不認得這個 key，只是白送。
+     */
+    salesMode: payload.salesMode,
+    participationMode: payload.participationMode,
+    minToDepart: payload.minToDepart,
+    formationDeadlineDaysBefore: payload.formationDeadlineDaysBefore,
   };
 }
 
@@ -259,6 +273,17 @@ export const saveTripPlan = (tripId: string, payload: Partial<TripPlan>) =>
         depositValue: payload.depositValue ?? 0,
         active: payload.active ?? true,
         yearRound: payload.yearRound ?? true,
+        /**
+         * Sol 稽核（#8 PR #661）：這四個欄位過去在這個物件字面量裡整個沒出現——
+         * 即使呼叫端（`planDuplicatePayload()`）已經把值放進 `payload`，這裡也接不到，
+         * `created.salesMode` 永遠是 `undefined`，等於白帶。它們本身是 `TripPlan` 上的
+         * optional 欄位，未帶時維持 `undefined`（與其他方案手動建立的路徑一致，
+         * 不替沒有值的欄位假造一個看似真實的預設）。
+         */
+        salesMode: payload.salesMode,
+        participationMode: payload.participationMode,
+        minToDepart: payload.minToDepart,
+        formationDeadlineDaysBefore: payload.formationDeadlineDaysBefore,
         seasons: [],
         reviewState: 'NONE',
         reviewNote: '',
@@ -466,6 +491,20 @@ function planDuplicatePayload(plan: TripPlan): Partial<TripPlan> {
     active: plan.active,
     yearRound: plan.yearRound,
     sortOrder: plan.sortOrder,
+    /**
+     * Sol 稽核（#8 PR #661）：過去漏了這五個欄位（販售方式／散客-包團／成團門檻與截止），
+     * 2026-09-11 Owner Decision 明文要求複製時要帶上「販售方式、散客／包團、成團門檻與
+     * 截止」。漏掉的具體後果：mock fixture `pl_2`（`src/mock/tours.ts`）的
+     * `bookingType: 'REQUEST'` 複製後因為沒帶到這個欄位，落到 `saveTripPlan()`
+     * 新建分支的 `payload.bookingType ?? 'INSTANT'` 預設值，一個「需要導遊確認」的
+     * 請求制方案複製後悄悄變成「即訂即確認」的即時制方案——不是顯示問題，是會影響
+     * 旅人能不能未經確認直接訂到的真實行為錯誤。
+     */
+    bookingType: plan.bookingType,
+    salesMode: plan.salesMode,
+    participationMode: plan.participationMode,
+    minToDepart: plan.minToDepart,
+    formationDeadlineDaysBefore: plan.formationDeadlineDaysBefore,
   };
 }
 
@@ -542,10 +581,16 @@ export async function duplicateTripFully(
     // 並保留與來源相同的相對順序（新建端點在未帶 sortOrder 時以既有列數遞增）。
     for (const plan of plans) {
       const newPlan = await deps.saveTripPlan(created.id, planDuplicatePayload(plan));
-      if (newPlan?.id) {
-        for (const season of plan.seasons) {
-          await deps.saveTripPlanSeason(newPlan.id, seasonDuplicatePayload(season));
-        }
+      // Sol 稽核（#8 PR #661）：這裡過去是 `if (newPlan?.id) { ... }`——真後端若回傳一個
+      // 沒有 `id` 的異常 body（畸形／不符預期的 API 回應），會靜默跳過這個方案的季節定價
+      // 複製，`duplicateTripFully()` 卻仍然回報整體成功：複本看起來複製完成，實際上
+      // 季節定價不見了。與上面 `createTrip` 沒回傳 id 時的處理方式一致，改成直接
+      // throw，交給下面既有的補償式回滾（刪除剛建立的新 Trip）處理，不能只是跳過。
+      if (!newPlan?.id) {
+        throw new ApiError('複製行程失敗：伺服器未回傳新方案編號', undefined, 500);
+      }
+      for (const season of plan.seasons) {
+        await deps.saveTripPlanSeason(newPlan.id, seasonDuplicatePayload(season));
       }
     }
     for (const addon of addons) {

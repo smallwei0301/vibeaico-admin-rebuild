@@ -102,6 +102,18 @@ describe('duplicateTripFully()：Trip ＋ 全部 Plan（含季節）＋ 全部 A
         expect(np!.depositValue).toBe(sp.depositValue);
         expect(np!.active).toBe(sp.active);
         expect(np!.yearRound).toBe(sp.yearRound);
+        // Sol 稽核（PR #661）：這五個欄位過去完全沒被 `planDuplicatePayload()` 帶到——
+        // 這個測試案例當時沒有斷言它們，因此沒有攔下 `pl_2`（`bookingType: 'REQUEST'`／
+        // `salesMode: 'REQUEST'`）複製後悄悄變成 `bookingType: 'INSTANT'` 的真實 bug。
+        expect(np!.bookingType, `方案 ${sp.name} 的 bookingType 沒有對上`).toBe(sp.bookingType);
+        expect(np!.salesMode, `方案 ${sp.name} 的 salesMode 沒有對上`).toBe(sp.salesMode);
+        expect(np!.participationMode, `方案 ${sp.name} 的 participationMode 沒有對上`)
+          .toBe(sp.participationMode);
+        expect(np!.minToDepart, `方案 ${sp.name} 的 minToDepart 沒有對上`).toBe(sp.minToDepart);
+        expect(
+          np!.formationDeadlineDaysBefore,
+          `方案 ${sp.name} 的 formationDeadlineDaysBefore 沒有對上`,
+        ).toBe(sp.formationDeadlineDaysBefore);
 
         expect(np!.seasons.length, `方案 ${sp.name} 的季節定價數量沒有對上`).toBe(sp.seasons.length);
         for (const ss of sp.seasons) {
@@ -216,6 +228,36 @@ describe('duplicateTripFully()：Trip ＋ 全部 Plan（含季節）＋ 全部 A
 
     expect(MOCK_TRIP_PLANS.length, '不該嘗試複製任何方案').toBe(beforePlanCount);
     expect(MOCK_TRIP_ADDONS.length, '不該嘗試複製任何加購').toBe(beforeAddonCount);
+  });
+
+  /**
+   * Sol 稽核（PR #661）：`saveTripPlan()` 的真後端分支若回傳一個沒有 `id` 的異常
+   * body，過去的 `if (newPlan?.id) { ... }` 會靜默跳過季節定價複製，
+   * `duplicateTripFully()` 卻仍然 resolve 成功——複本看起來複製完成，實際上少了
+   * 季節定價。這裡用依賴注入模擬那個異常回應，斷言整個呼叫必須 throw／回滾，
+   * 不能悄悄成功。
+   */
+  it('saveTripPlan 回傳的新方案沒有 id 時必須整個 throw／回滾，不能悄悄跳過季節定價', async () => {
+    const beforeTripCount = MOCK_TRIPS.length;
+    const beforePlanCount = MOCK_TRIP_PLANS.length;
+
+    let capturedError: unknown;
+    try {
+      await duplicateTripFully(SOURCE_TRIP_ID, sourceDuplicatePayload(), {
+        createTrip, listTripPlans, listTripAddons, saveTripPlanSeason, saveTripAddon, deleteTrip,
+        // 模擬真後端回傳一個沒有 id 的異常 body。
+        saveTripPlan: async () => undefined,
+      });
+    } catch (e) {
+      capturedError = e;
+    }
+
+    expect(capturedError, '新方案沒有 id 時必須把錯誤往外拋，不能假裝複製成功').toBeDefined();
+    expect(capturedError).toBeInstanceOf(Error);
+
+    // 新 Trip 不應該留在 MOCK_TRIPS 裡——如果留下代表半套複本沒被清掉。
+    expect(MOCK_TRIPS.length, '失敗後不應該留下任何新增的 Trip').toBe(beforeTripCount);
+    expect(MOCK_TRIP_PLANS.length, '失敗後不應該留下任何新增的方案').toBe(beforePlanCount);
   });
 
   it('deleteTrip 本身也失敗時，仍然把原始錯誤往外拋（不吞掉、不假裝成功），並標記清理失敗', async () => {
