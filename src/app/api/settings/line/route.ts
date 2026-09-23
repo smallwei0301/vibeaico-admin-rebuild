@@ -1,7 +1,12 @@
-import { handle, ok } from '@/server/http';
+import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { encryptSecret } from '@/server/crypto';
 import { lineSettingsSchema } from '@/config/tenant-settings';
+import {
+  canonicalizeRichmenuLine,
+  cleanupRemovedRichmenuAssetsBestEffort,
+  isRetiredRichmenuAssetError,
+} from '@/server/storage-cleanup';
 
 /**
  * PUT /api/settings/line — body = Partial<LineSettings>。
@@ -36,14 +41,28 @@ export const PUT = handle(async (req) => {
   delete nextLine.channelSecret;
   delete nextLine.channelAccessToken;
 
-  const update: Record<string, unknown> = { tenant_id: t.tenantId, line: nextLine };
+  // Rich-menu Storage identity is canonicalized before the DB trigger sees it.
+  // This also prevents the generic line endpoint from bypassing Phase A when
+  // a caller supplies flexCards alongside the other line settings.
+  const canonicalNextLine = canonicalizeRichmenuLine(nextLine, t.tenantId);
+
+  const update: Record<string, unknown> = { tenant_id: t.tenantId, line: canonicalNextLine };
   if (channelSecret) update.line_channel_secret_enc = encryptSecret(channelSecret);
   if (channelAccessToken) update.line_channel_access_token_enc = encryptSecret(channelAccessToken);
 
   const { error } = await t.supabase
     .from('tenant_settings')
     .upsert(update, { onConflict: 'tenant_id' });
+  if (isRetiredRichmenuAssetError(error)) {
+    throw new ApiHttpError(409, '此 Rich Menu 圖片已失效，請重新上傳圖片', ERR.CONFLICT);
+  }
   if (error) throw error;
+
+  await cleanupRemovedRichmenuAssetsBestEffort({
+    previousLine: currentLine,
+    nextLine: canonicalNextLine,
+    tenantId: t.tenantId,
+  });
 
   return ok();
 });
