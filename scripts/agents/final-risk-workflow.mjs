@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { finalRiskReviewerErrors, selectFinalRiskReviewer } from './final-risk-cost-policy.mjs';
 import { readField } from './agent-wip-policy.mjs';
 import { validateWipPreflight } from './agent-wip-preflight.mjs';
-import { changeDigestOf, classifyAstra, parseAstraReviews, routing } from './astra-review-policy.mjs';
+import { changeDigestOf, classifyAstra, isAstraReviewRequired, parseAstraReviews, routing } from './astra-review-policy.mjs';
 
 const SHA40 = /^[a-f0-9]{40}$/;
 const DIGEST64 = /^[a-f0-9]{64}$/;
@@ -80,13 +80,16 @@ function validatePacketBudget(input = {}) {
 export function previousReviewFromCanonicalReviews(reviews = [], repository = '') {
   const latest = parseAstraReviews(reviews)[0] ?? null;
   if (!latest) return null;
+  const reviewedFiles = fileNames(latest.changedFileRecords);
+  const riskClass = upper(latest.riskClass);
+  const requiredForReviewedScope = isAstraReviewRequired([riskClass], reviewedFiles, routing);
 
   const canonicalTrustEligible =
     latest.parseError !== true &&
     finalRiskReviewerErrors(latest, routing).length === 0 &&
     (latest.reviewerTier === 'CURRENT_AGENT' || latest.identityEvidence === 'OPERATOR_ATTESTED') &&
     DIGEST64.test(text(latest.changeDigest)) &&
-    routing.highRisk.includes(upper(latest.riskClass)) &&
+    requiredForReviewedScope &&
     (!repository || text(latest.repository) === text(repository));
 
   return {

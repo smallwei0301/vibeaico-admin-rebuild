@@ -234,8 +234,14 @@ export function classifyAstra({ body = '', changedFiles = null, createdAt = '' }
   if (workstream.isModelGovernance) {
     return { ...workstream, required: false, risks, errors: [...new Set(errors)] };
   }
-  const sensitive = (changedFiles ?? []).some(path => policy.sensitivePaths.some(prefix => path.startsWith(prefix)));
-  return { ...workstream, required: sensitive || risks.some(r => policy.highRisk.includes(r)), risks, errors: [...new Set(errors)] };
+  return { ...workstream, required: isAstraReviewRequired(risks, changedFiles, policy), risks, errors: [...new Set(errors)] };
+}
+
+export function isAstraReviewRequired(risks = [], changedFiles = [], policy = routing) {
+  const files = Array.isArray(changedFiles) ? changedFiles : [];
+  const riskList = Array.isArray(risks) ? risks : [];
+  const sensitive = files.some(path => policy.sensitivePaths.some(prefix => String(path).startsWith(prefix)));
+  return sensitive || riskList.some(risk => policy.highRisk.includes(String(risk).trim().toUpperCase()));
 }
 
 // Only trusted GitHub review records supplied by the caller may become attestations.

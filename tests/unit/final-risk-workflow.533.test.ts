@@ -116,6 +116,26 @@ describe('Final Risk fail-early workflow (#533)', () => {
     expect(ordinary.status).toBe('NOT_REQUIRED');
   });
 
+  it('reuses a canonical exact-digest PASS for a sensitive path classified with ASTRA_RISK NONE', () => {
+    const sensitiveRecord = {
+      filename: '.github/workflows/agent-schema-drift-watch.yml', previous_filename: '', status: 'modified', sha: '4'.repeat(40),
+    };
+    const currentBody = body
+      .replace('ASTRA_RISK: PAYMENT_CONSISTENCY', 'ASTRA_RISK: NONE')
+      .replace('This semantic risk needs a concrete independent review.', 'The sensitive workflow path requires review even when semantic risk is none.');
+    const digest = changeDigestOf([sensitiveRecord]);
+    const review = canonicalReview({
+      riskClass: 'NONE', changeDigest: digest, changedFileRecords: [sensitiveRecord], verdict: 'PASS',
+    });
+    const result = buildFinalRiskPacket({
+      ...baseInput(), body: currentBody, changedFileRecords: [sensitiveRecord], changeDigest: digest, reviews: [review],
+    }, deps);
+
+    expect(result.status).toBe('READY');
+    expect('reviewMode' in result && result.reviewMode).toBe('REUSE');
+    expect('previousReviewSource' in result && result.previousReviewSource).toBe('CANONICAL_GITHUB_REVIEW');
+  });
+
   it('fails before dispatch when source is not frozen', () => {
     const result = evaluateFinalRiskReadiness({ ...baseInput(), sourceFrozen: false }, deps);
     expect(result.ready).toBe(false);
