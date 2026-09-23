@@ -27,7 +27,7 @@ describe('schema observer direct PostgreSQL transport #589', () => {
     expect(install).toBeGreaterThan(0);
     expect(replay).toBeGreaterThan(install);
     expect(workflow.slice(install, replay)).toContain('npm ci');
-    expect(workflow).toContain('supabase status --output json');
+    expect(workflow).toContain('(cd "$RUNNER_TEMP/schema-bootstrap" && supabase status --output json)');
     expect(workflow).toContain('captureLocalExpectedSnapshot');
     expect(workflow).not.toContain('docker exec');
   });

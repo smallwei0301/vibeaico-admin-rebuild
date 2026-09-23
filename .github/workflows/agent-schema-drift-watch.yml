@@ -70,7 +70,7 @@ jobs:
           supabase start -x studio,postgres-meta,edge-runtime,logflare,vector,supavisor
       - name: Capture local expected metadata without saving raw SQL
         run: |
-          supabase status --output json >"$RUNNER_TEMP/local-supabase-status.json"
+          (cd "$RUNNER_TEMP/schema-bootstrap" && supabase status --output json) >"$RUNNER_TEMP/local-supabase-status.json"
           node --input-type=module >"$RUNNER_TEMP/local-raw.json" <<'NODE'
           import { readFileSync } from 'node:fs';
           import { captureLocalExpectedSnapshot } from './scripts/agents/schema-drift-watch.mjs';
