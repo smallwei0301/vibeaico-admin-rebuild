@@ -21,6 +21,7 @@ const previousRecords = [
 const body = `
 WORKSTREAM: PRODUCT_MAINLINE
 ASTRA_RISK: PAYMENT_CONSISTENCY
+ASTRA_RATIONALE: This semantic risk needs a concrete independent review.
 ASTRA_TEST_BASELINE: local-payment-regression-42
 ASTRA_SCHEMA_BASELINE: schema-main-42
 `;
@@ -89,6 +90,52 @@ function canonicalReview(overrides: Record<string, unknown> = {}, submittedAt = 
 }
 
 describe('Final Risk fail-early workflow (#533)', () => {
+  it('uses the canonical path classifier even when semantic ASTRA_RISK is NONE', () => {
+    const sensitiveRecord = {
+      filename: '.github/workflows/agent-schema-drift-watch.yml', previous_filename: '', status: 'modified', sha: '4'.repeat(40),
+    };
+    const ordinaryRecord = {
+      filename: 'docs/example.md', previous_filename: '', status: 'modified', sha: '5'.repeat(40),
+    };
+    const sensitiveInput = {
+      ...baseInput(),
+      body: body.replace('ASTRA_RISK: PAYMENT_CONSISTENCY', 'ASTRA_RISK: NONE'),
+      changedFileRecords: [sensitiveRecord],
+      changeDigest: changeDigestOf([sensitiveRecord]),
+    };
+    const sensitive = buildFinalRiskPacket(sensitiveInput, deps);
+    expect(sensitive.status).toBe('READY');
+    expect('reviewMode' in sensitive && sensitive.reviewMode).toBe('FULL');
+    expect(sensitive.packet?.riskClass).toBe('NONE');
+
+    const ordinary = evaluateFinalRiskReadiness({
+      ...sensitiveInput,
+      changedFileRecords: [ordinaryRecord],
+      changeDigest: changeDigestOf([ordinaryRecord]),
+    }, deps);
+    expect(ordinary.status).toBe('NOT_REQUIRED');
+  });
+
+  it('reuses a canonical exact-digest PASS for a sensitive path classified with ASTRA_RISK NONE', () => {
+    const sensitiveRecord = {
+      filename: '.github/workflows/agent-schema-drift-watch.yml', previous_filename: '', status: 'modified', sha: '4'.repeat(40),
+    };
+    const currentBody = body
+      .replace('ASTRA_RISK: PAYMENT_CONSISTENCY', 'ASTRA_RISK: NONE')
+      .replace('This semantic risk needs a concrete independent review.', 'The sensitive workflow path requires review even when semantic risk is none.');
+    const digest = changeDigestOf([sensitiveRecord]);
+    const review = canonicalReview({
+      riskClass: 'NONE', changeDigest: digest, changedFileRecords: [sensitiveRecord], verdict: 'PASS',
+    });
+    const result = buildFinalRiskPacket({
+      ...baseInput(), body: currentBody, changedFileRecords: [sensitiveRecord], changeDigest: digest, reviews: [review],
+    }, deps);
+
+    expect(result.status).toBe('READY');
+    expect('reviewMode' in result && result.reviewMode).toBe('REUSE');
+    expect('previousReviewSource' in result && result.previousReviewSource).toBe('CANONICAL_GITHUB_REVIEW');
+  });
+
   it('fails before dispatch when source is not frozen', () => {
     const result = evaluateFinalRiskReadiness({ ...baseInput(), sourceFrozen: false }, deps);
     expect(result.ready).toBe(false);

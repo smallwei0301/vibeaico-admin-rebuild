@@ -70,11 +70,15 @@ jobs:
           supabase start -x studio,postgres-meta,edge-runtime,logflare,vector,supavisor
       - name: Capture local expected metadata without saving raw SQL
         run: |
-          node --input-type=module >"$RUNNER_TEMP/schema-observer.sql" <<'NODE'
-          import { READ_ONLY_SNAPSHOT_SQL } from './scripts/agents/schema-drift-watch.mjs';
-          process.stdout.write(READ_ONLY_SNAPSHOT_SQL);
+          (cd "$RUNNER_TEMP/schema-bootstrap" && supabase status --output json) >"$RUNNER_TEMP/local-supabase-status.json"
+          node --input-type=module >"$RUNNER_TEMP/local-raw.json" <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { captureLocalExpectedSnapshot } from './scripts/agents/schema-drift-watch.mjs';
+          const status = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/local-supabase-status.json`, 'utf8'));
+          if (typeof status.DB_URL !== 'string') throw new Error('SUPABASE_LOCAL_DB_URL_MISSING');
+          const snapshot = await captureLocalExpectedSnapshot({ connectionString: status.DB_URL });
+          process.stdout.write(`${JSON.stringify(snapshot)}\n`);
           NODE
-          docker exec -i "supabase_db_${LOCAL_PROJECT_ID}" psql -U postgres -d postgres -X -At -v ON_ERROR_STOP=1 <"$RUNNER_TEMP/schema-observer.sql" >"$RUNNER_TEMP/local-raw.json"
           node scripts/agents/schema-drift-watch.mjs --command normalize --environment LOCAL_EXPECTED --project-ref local-fresh --current-main-sha "$EXPECTED_MAIN_SHA" --raw-json "$RUNNER_TEMP/local-raw.json" --json-out "$RUNNER_TEMP/expected.json"
       - name: Capture TEST and Production through read-only API only
         env:
