@@ -105,7 +105,7 @@ describe('Final Risk fail-early workflow (#533)', () => {
     };
     const sensitive = buildFinalRiskPacket(sensitiveInput, deps);
     expect(sensitive.status).toBe('READY');
-    expect(sensitive.reviewMode).toBe('FULL');
+    expect('reviewMode' in sensitive && sensitive.reviewMode).toBe('FULL');
     expect(sensitive.packet?.riskClass).toBe('NONE');
 
     const ordinary = evaluateFinalRiskReadiness({
