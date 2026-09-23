@@ -21,6 +21,7 @@ const previousRecords = [
 const body = `
 WORKSTREAM: PRODUCT_MAINLINE
 ASTRA_RISK: PAYMENT_CONSISTENCY
+ASTRA_RATIONALE: This semantic risk needs a concrete independent review.
 ASTRA_TEST_BASELINE: local-payment-regression-42
 ASTRA_SCHEMA_BASELINE: schema-main-42
 `;
@@ -89,6 +90,32 @@ function canonicalReview(overrides: Record<string, unknown> = {}, submittedAt = 
 }
 
 describe('Final Risk fail-early workflow (#533)', () => {
+  it('uses the canonical path classifier even when semantic ASTRA_RISK is NONE', () => {
+    const sensitiveRecord = {
+      filename: '.github/workflows/agent-schema-drift-watch.yml', previous_filename: '', status: 'modified', sha: '4'.repeat(40),
+    };
+    const ordinaryRecord = {
+      filename: 'docs/example.md', previous_filename: '', status: 'modified', sha: '5'.repeat(40),
+    };
+    const sensitiveInput = {
+      ...baseInput(),
+      body: body.replace('ASTRA_RISK: PAYMENT_CONSISTENCY', 'ASTRA_RISK: NONE'),
+      changedFileRecords: [sensitiveRecord],
+      changeDigest: changeDigestOf([sensitiveRecord]),
+    };
+    const sensitive = buildFinalRiskPacket(sensitiveInput, deps);
+    expect(sensitive.status).toBe('READY');
+    expect(sensitive.reviewMode).toBe('FULL');
+    expect(sensitive.packet?.riskClass).toBe('NONE');
+
+    const ordinary = evaluateFinalRiskReadiness({
+      ...sensitiveInput,
+      changedFileRecords: [ordinaryRecord],
+      changeDigest: changeDigestOf([ordinaryRecord]),
+    }, deps);
+    expect(ordinary.status).toBe('NOT_REQUIRED');
+  });
+
   it('fails before dispatch when source is not frozen', () => {
     const result = evaluateFinalRiskReadiness({ ...baseInput(), sourceFrozen: false }, deps);
     expect(result.ready).toBe(false);

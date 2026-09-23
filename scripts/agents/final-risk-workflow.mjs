@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { finalRiskReviewerErrors, selectFinalRiskReviewer } from './final-risk-cost-policy.mjs';
 import { readField } from './agent-wip-policy.mjs';
 import { validateWipPreflight } from './agent-wip-preflight.mjs';
-import { changeDigestOf, parseAstraReviews, routing } from './astra-review-policy.mjs';
+import { changeDigestOf, classifyAstra, parseAstraReviews, routing } from './astra-review-policy.mjs';
 
 const SHA40 = /^[a-f0-9]{40}$/;
 const DIGEST64 = /^[a-f0-9]{64}$/;
@@ -109,9 +109,11 @@ export function evaluateFinalRiskReadiness(input = {}, deps = {}) {
   const records = Array.isArray(input.changedFileRecords) ? input.changedFileRecords : [];
   const changedFiles = fileNames(records);
   const riskClass = upper(readField(body, 'ASTRA_RISK'));
+  // Keep prepare aligned with the merge guard's path-based Final Risk requirement.
+  const classification = classifyAstra({ body, changedFiles });
   const errors = [];
 
-  if (!routing.highRisk.includes(riskClass)) {
+  if (!classification.required) {
     return {
       ready: false,
       status: 'NOT_REQUIRED',
