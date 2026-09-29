@@ -32,6 +32,12 @@ on:
         description: Optional ISO UTC plan timestamp for Production DB G3 validation; requires release_id
         required: false
         type: string
+      production_db_release_scope:
+        description: Exact trusted-main Production DB migration scope
+        required: false
+        default: FULL_PENDING_SET
+        type: choice
+        options: [FULL_PENDING_SET, ISSUES_17_680]
 
 permissions:
   contents: read
@@ -214,6 +220,7 @@ jobs:
         env:
           RELEASE_ID: ${{ inputs.production_db_release_id }}
           PLANNED_AT: ${{ inputs.production_db_planned_at }}
+          RELEASE_SCOPE: ${{ inputs.production_db_release_scope }}
           DISPATCH_REASON: ${{ inputs.dispatch_reason }}
           EXPECTED_HEAD: ${{ inputs.expected_head }}
         run: |
@@ -221,6 +228,8 @@ jobs:
           if [ -n "$RELEASE_ID" ] || [ -n "$PLANNED_AT" ]; then
             test -n "$RELEASE_ID"
             test -n "$PLANNED_AT"
+            test -n "$RELEASE_SCOPE"
+            case "$RELEASE_SCOPE" in FULL_PENDING_SET|ISSUES_17_680) ;; *) exit 1 ;; esac
             test "$GITHUB_REF" = 'refs/heads/main'
             test "$DISPATCH_REASON" = 'main_manual'
             test "$GITHUB_SHA" = "$EXPECTED_HEAD"
@@ -247,6 +256,7 @@ jobs:
         env:
           RELEASE_ID: ${{ inputs.production_db_release_id }}
           PLANNED_AT: ${{ inputs.production_db_planned_at }}
+          RELEASE_SCOPE: ${{ inputs.production_db_release_scope }}
           MAIN_SHA: ${{ github.sha }}
           TEST_PROJECT_REF: nmwhwngojosmagjuvxol
           TEST_DB_RELEASE_TOKEN: ${{ secrets.TEST_DB_RELEASE_TOKEN }}
@@ -257,7 +267,7 @@ jobs:
           test -s "$NODE_EXTRA_CA_CERTS"
           node scripts/db/validate-production-db-release-on-test.mjs plan \
             "$RELEASE_ID" "$MAIN_SHA" "$PLANNED_AT" \
-            "$RUNNER_TEMP/production-db-release-plan.json"
+            "$RUNNER_TEMP/production-db-release-plan.json" "$RELEASE_SCOPE"
           node scripts/db/validate-production-db-release-on-test.mjs apply \
             "$RUNNER_TEMP/production-db-release-plan.json" \
             "$RUNNER_TEMP/production-db-test-release-evidence.json"

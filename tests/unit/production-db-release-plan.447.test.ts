@@ -7,6 +7,7 @@ import {
   inferMigrationRiskTier,
   orderPendingProductionMigrations,
   pendingProductionMigrations,
+  selectedProductionMigrations,
   releasePlanDigestOf,
   verifyProductionDbReleasePlan,
 } from '../../scripts/agents/production-db-release-plan.mjs';
@@ -256,6 +257,36 @@ describe('Production DB release plan #447', () => {
 
   it('uses only PENDING_APPLY entries and excludes VERIFIED_NOT_APPLIED', () => {
     expect(pendingProductionMigrations(aliasMap())).toEqual(['0105_authz', '0109_assertions']);
+  });
+
+  it('admits only the exact #17/#680 dependency closure and binds it into the plan', () => {
+    const scoped = {
+      schemaVersion: 1,
+      entries: [
+        { repoFile: '0125_issue_17_booking_addons_legacy_enum', ledgerNames: [], classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', evidence: 'x' },
+        { repoFile: '0121_issue_17_booking_addons_hardening', ledgerNames: [], classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', evidence: 'x' },
+        { repoFile: '0133_issue_680_booking_addons_composite_fk_expand', ledgerNames: [], classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', evidence: 'x' },
+        { repoFile: '0132_unrelated', ledgerNames: [], classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', evidence: 'x' },
+      ],
+    };
+    expect(selectedProductionMigrations(scoped, 'ISSUES_17_680').migrations).toEqual([
+      '0125_issue_17_booking_addons_legacy_enum',
+      '0121_issue_17_booking_addons_hardening',
+      '0133_issue_680_booking_addons_composite_fk_expand',
+    ]);
+    const plan = buildProductionDbReleasePlan({
+      releaseId: 'release-20260929-17680', mainSha: MAIN, plannedAt: PLANNED_AT,
+      migrationScope: 'ISSUES_17_680', aliasMap: scoped, readCanonicalSql: () => sqlByPath['supabase/migrations/0105_authz.sql'],
+    });
+    expect(plan.migrationScope).toBe('ISSUES_17_680');
+    expect(plan.migrations).toHaveLength(3);
+    expect(verifyProductionDbReleasePlan({ plan, aliasMap: scoped, readCanonicalSql: () => sqlByPath['supabase/migrations/0105_authz.sql'] })).toMatchObject({ status: 'PLAN_VERIFIED', migrationCount: 3 });
+    const reordered = structuredClone(plan);
+    reordered.migrations.reverse();
+    reordered.planDigest = releasePlanDigestOf(reordered);
+    expect(() => verifyProductionDbReleasePlan({ plan: reordered, aliasMap: scoped, readCanonicalSql: () => sqlByPath['supabase/migrations/0105_authz.sql'] })).toThrow(/PENDING_SET_MISMATCH/);
+    expect(() => selectedProductionMigrations({ ...scoped, entries: scoped.entries.filter((entry) => entry.repoFile !== '0125_issue_17_booking_addons_legacy_enum') }, 'ISSUES_17_680')).toThrow(/MIGRATION_SCOPE_DEPENDENCY_NOT_PENDING/);
+    expect(() => selectedProductionMigrations(scoped, 'ARBITRARY_SUBSET')).toThrow(/UNSUPPORTED_MIGRATION_SCOPE/);
   });
 
   it('runs the newer owner-notify compatibility precondition before immutable 0116', () => {

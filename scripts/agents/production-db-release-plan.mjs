@@ -7,6 +7,22 @@ const RELEASE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{7,119}$/;
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 const LEDGER_VERSION = /^\d{14}$/;
 const RISK_ORDER = Object.freeze({ ADDITIVE: 1, SCHEMA_REPAIR: 2, AUTHZ: 3, BACKFILL: 4 });
+const FULL_PENDING_SET = 'FULL_PENDING_SET';
+const ISSUES_17_680 = 'ISSUES_17_680';
+
+// A Production release may select only this reviewed, bounded closure.  Keep
+// dependencies as canonical migration identities so a pending migration cannot
+// become selectable merely by sharing an issue number or filename prefix.
+const BOUNDED_RELEASE_SCOPE_ROOTS = Object.freeze({
+  [ISSUES_17_680]: Object.freeze([
+    '0121_issue_17_booking_addons_hardening',
+    '0133_issue_680_booking_addons_composite_fk_expand',
+  ]),
+});
+const BOUNDED_RELEASE_DEPENDENCIES = Object.freeze({
+  '0121_issue_17_booking_addons_hardening': Object.freeze(['0125_issue_17_booking_addons_legacy_enum']),
+  '0133_issue_680_booking_addons_composite_fk_expand': Object.freeze(['0121_issue_17_booking_addons_hardening']),
+});
 
 // A historical compatibility migration can have a newer identity while still
 // being a prerequisite for an older pending migration. Keep the file identity
@@ -113,6 +129,25 @@ export function pendingProductionMigrations(aliasMap = {}) {
     .map((entry) => normalizedRepoFile(entry.repoFile));
   if (new Set(pending).size !== pending.length) fail('DUPLICATE_PENDING_MIGRATION', 'pending repo migration names must be unique');
   return orderPendingProductionMigrations(pending);
+}
+
+export function selectedProductionMigrations(aliasMap = {}, migrationScope = FULL_PENDING_SET) {
+  const pending = pendingProductionMigrations(aliasMap);
+  const scope = String(migrationScope ?? '').trim() || FULL_PENDING_SET;
+  if (scope === FULL_PENDING_SET) return { migrationScope: scope, migrations: pending };
+  const roots = BOUNDED_RELEASE_SCOPE_ROOTS[scope];
+  if (!roots) fail('UNSUPPORTED_MIGRATION_SCOPE', `migration scope is not admitted: ${scope}`);
+
+  const closure = new Set();
+  const visit = (repoFile) => {
+    if (closure.has(repoFile)) return;
+    closure.add(repoFile);
+    for (const dependency of BOUNDED_RELEASE_DEPENDENCIES[repoFile] ?? []) visit(dependency);
+  };
+  for (const root of roots) visit(root);
+  const missing = [...closure].filter((repoFile) => !pending.includes(repoFile));
+  if (missing.length) fail('MIGRATION_SCOPE_DEPENDENCY_NOT_PENDING', `${scope} requires pending migrations: ${missing.join(', ')}`);
+  return { migrationScope: scope, migrations: orderPendingProductionMigrations([...closure]) };
 }
 
 export function orderPendingProductionMigrations(names = []) {
@@ -1019,8 +1054,9 @@ export function buildProductionDbReleasePlan({
   mainSha,
   plannedAt,
   aliasMap,
+  migrationScope = FULL_PENDING_SET,
   readCanonicalSql,
-} = {}) {
+} = /** @type {any} */ ({})) {
   const id = String(releaseId ?? '').trim();
   if (!RELEASE_ID.test(id)) fail('INVALID_RELEASE_ID', 'releaseId has an invalid shape');
   const sha = String(mainSha ?? '').trim().toLowerCase();
@@ -1028,7 +1064,8 @@ export function buildProductionDbReleasePlan({
   const normalizedPlannedAt = normalizePlannedAt(plannedAt);
   if (typeof readCanonicalSql !== 'function') fail('CANONICAL_READER_REQUIRED', 'readCanonicalSql is required');
 
-  const names = pendingProductionMigrations(aliasMap);
+  const selection = selectedProductionMigrations(aliasMap, migrationScope);
+  const names = selection.migrations;
   if (!names.length) fail('NO_PENDING_PRODUCTION_MIGRATIONS', 'alias map has no PENDING_APPLY migrations');
 
   const migrations = names.map((repoFile, index) => {
@@ -1051,6 +1088,7 @@ export function buildProductionDbReleasePlan({
     productionProjectRef: PRODUCTION_DB_POLICY.productionProjectRef,
     mainSha: sha,
     plannedAt: normalizedPlannedAt,
+    migrationScope: selection.migrationScope,
     riskTier: assertSingleRiskTier(migrations.map((entry) => entry.riskTier)),
     migrations,
   };
@@ -1066,9 +1104,10 @@ export function verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql
   normalizePlannedAt(plan.plannedAt);
   if (releasePlanDigestOf(plan) !== plan.planDigest) fail('PLAN_DIGEST_MISMATCH', 'release plan digest is stale or forged');
 
-  const pending = pendingProductionMigrations(aliasMap);
+  const selection = selectedProductionMigrations(aliasMap, plan.migrationScope);
+  const pending = selection.migrations;
   const names = (Array.isArray(plan.migrations) ? plan.migrations : []).map((entry) => normalizedRepoFile(entry?.repoFile));
-  if (pending.join('\n') !== orderPendingProductionMigrations(names).join('\n')) {
+  if (pending.join('\n') !== names.join('\n')) {
     fail('PENDING_SET_MISMATCH', `plan=[${names.join(', ')}], pending=[${pending.join(', ')}]`);
   }
   if (new Set(names).size !== names.length) fail('DUPLICATE_PLAN_MIGRATION', 'plan migrations must be unique');

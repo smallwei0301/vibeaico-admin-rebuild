@@ -121,7 +121,7 @@ export function buildProductionDbAutomationReadinessEvidence({
   const writer = {
     status: 'CONTROLLED_WRITER_VERIFIED',
     mainSha: sha,
-    exactPendingSetVerified: includesAll(controlledWriter, ['PENDING_SET_MISMATCH', 'pendingProductionMigrations']),
+    exactPendingSetVerified: includesAll(controlledWriter, ['PENDING_SET_MISMATCH', 'selectedProductionMigrations']),
     singleUseReceiptVerified: includesAll(receipt, ['CONSUMING', 'CONSUMED', 'UNKNOWN', 'APPLY_RECEIPT_REPLAY']),
     databaseLockVerified: includesAll(controlledWriter, ['pg_try_advisory_xact_lock', 'PRODUCTION_DB_WRITER_LOCK_BUSY']),
     durablePreparedEnvelopeVerified: includesAll(controlledWriter, ['CONTROLLED_APPLY_PREPARED', 'preparationDigest', 'DURABLE_PREPARED_ATTEMPT_REQUIRED']),

@@ -134,6 +134,7 @@ function readAliasMap(repoRoot) {
  *   releaseId: string,
  *   mainSha: string,
  *   plannedAt: string,
+ *   migrationScope?: string,
  *   repoRoot?: string,
  *   runner?: typeof spawnSync,
  * }} input
@@ -142,6 +143,7 @@ export function buildTestReleasePlanFromCheckout({
   releaseId,
   mainSha,
   plannedAt,
+  migrationScope,
   repoRoot = process.cwd(),
   runner = spawnSync,
 } = /** @type {any} */ ({})) {
@@ -151,6 +153,7 @@ export function buildTestReleasePlanFromCheckout({
     releaseId,
     mainSha: exactMain,
     plannedAt,
+    migrationScope,
     aliasMap: readAliasMap(repoRoot),
     readCanonicalSql: canonicalReader(repoRoot),
   });
@@ -382,9 +385,9 @@ async function main() {
   const [command, ...args] = process.argv.slice(2);
   try {
     if (command === 'plan') {
-      const [releaseId, mainSha, plannedAt, outputPath] = args;
-      if (!releaseId || !mainSha || !plannedAt || !outputPath) fail('USAGE', 'plan <releaseId> <mainSha> <plannedAt> <output.json>');
-      const plan = buildTestReleasePlanFromCheckout({ releaseId, mainSha, plannedAt });
+      const [releaseId, mainSha, plannedAt, outputPath, migrationScope] = args;
+      if (!releaseId || !mainSha || !plannedAt || !outputPath) fail('USAGE', 'plan <releaseId> <mainSha> <plannedAt> <output.json> [migrationScope]');
+      const plan = buildTestReleasePlanFromCheckout({ releaseId, mainSha, plannedAt, migrationScope });
       writeFileSync(outputPath, `${JSON.stringify(plan, null, 2)}\n`);
       return;
     }

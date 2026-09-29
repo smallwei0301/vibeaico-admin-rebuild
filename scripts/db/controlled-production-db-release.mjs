@@ -9,7 +9,7 @@ import {
 } from '../agents/production-db-apply-receipt.mjs';
 import { PRODUCTION_DB_POLICY, evaluateReleasePreflight } from '../agents/production-db-release-preflight.mjs';
 import { advanceReleaseJournal, assertReleaseJournalMatchesPlan, assertWriterAttemptAllowed } from '../agents/production-db-release-journal.mjs';
-import { pendingProductionMigrations, sha256, splitSqlStatements, stripSqlStringLiterals, verifyProductionDbReleasePlan } from '../agents/production-db-release-plan.mjs';
+import { selectedProductionMigrations, sha256, splitSqlStatements, stripSqlStringLiterals, verifyProductionDbReleasePlan } from '../agents/production-db-release-plan.mjs';
 import {
   CANONICAL_PRODUCTION_DB_OWNER_ROLE,
   parseProjectBoundProductionDbWriterUrl,
@@ -153,9 +153,9 @@ export function buildAtomicProductionApplySql({
 } = /** @type {any} */ ({})) {
   verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
   assertLiveLedgerMatchesAliasMap({ aliasMap, liveLedgerRows });
-  const pending = pendingProductionMigrations(aliasMap);
+  const pending = selectedProductionMigrations(aliasMap, plan.migrationScope).migrations;
   const planned = plan.migrations.map((entry) => entry.repoFile);
-  if (pending.join('\n') !== planned.join('\n')) fail('PENDING_SET_MISMATCH', 'live apply plan no longer equals canonical PENDING_APPLY set');
+  if (pending.join('\n') !== planned.join('\n')) fail('PENDING_SET_MISMATCH', 'live apply plan no longer equals its canonical scoped pending set');
 
   const baselineRows = normalizedLedgerRows(liveLedgerRows);
   const expectedPostApplyRows = expectedPostApplyLedgerRows({ plan, baselineRows });

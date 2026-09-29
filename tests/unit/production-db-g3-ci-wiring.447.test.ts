@@ -12,6 +12,8 @@ describe('Production DB G3 trusted-main CI wiring #447', () => {
   it('keeps release mode explicit and restricted to main_manual on main', () => {
     expect(source).toContain('production_db_release_id:');
     expect(source).toContain('production_db_planned_at:');
+    expect(source).toContain('production_db_release_scope:');
+    expect(source).toContain('options: [FULL_PENDING_SET, ISSUES_17_680]');
     const releaseStep = source.slice(position('- name: Validate exact Production DB release plan on canonical TEST'));
     const condition = releaseStep.slice(0, releaseStep.indexOf('shell: bash'));
     expect(condition).toContain("github.event_name == 'workflow_dispatch'");
@@ -19,6 +21,7 @@ describe('Production DB G3 trusted-main CI wiring #447', () => {
     expect(condition).toContain("inputs.dispatch_reason == 'main_manual'");
     expect(condition).toContain("inputs.production_db_release_id != ''");
     expect(condition).toContain("inputs.production_db_planned_at != ''");
+    expect(source).toContain('case "$RELEASE_SCOPE" in FULL_PENDING_SET|ISSUES_17_680)');
     expect(source).toContain("needs.classify-changes.outputs.run_test_validation == 'true'");
     expect(source).toContain("needs.classify-changes.outputs.docs_only == 'true' && needs.classify-changes.outputs.run_test_validation != 'true'");
   });
@@ -31,6 +34,8 @@ describe('Production DB G3 trusted-main CI wiring #447', () => {
     expect(releaseBlock).not.toContain('SUPABASE_ACCESS_TOKEN');
     expect(releaseBlock).toContain('TEST_PROJECT_REF: nmwhwngojosmagjuvxol');
     expect(releaseBlock).toContain('validate-production-db-release-on-test.mjs plan');
+    expect(releaseBlock).toContain('RELEASE_SCOPE: ${{ inputs.production_db_release_scope }}');
+    expect(releaseBlock).toContain('"$RUNNER_TEMP/production-db-release-plan.json" "$RELEASE_SCOPE"');
     expect(releaseBlock).toContain('validate-production-db-release-on-test.mjs apply');
   });
 
