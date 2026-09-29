@@ -26,9 +26,15 @@ const BOUNDED_RELEASE_SCOPE_ROOTS = Object.freeze({
 const BOUNDED_RELEASE_DEPENDENCIES = Object.freeze({
   '0121_issue_17_booking_addons_hardening': Object.freeze(['0125_issue_17_booking_addons_legacy_enum']),
   '0133_issue_680_booking_addons_composite_fk_expand': Object.freeze(['0121_issue_17_booking_addons_hardening']),
-  // 0131 depends on the already-applied tour/staff schema.  It has no pending
-  // migration prerequisite, so its bounded closure is exactly this RPC.
+  // 0131's tour/staff tables must already be applied. They are checked below;
+  // no pending migration prerequisite is silently pulled into this release.
   '0131_issue_37_atomic_departure_staff': Object.freeze([]),
+});
+const BOUNDED_APPLIED_PREREQUISITES = Object.freeze({
+  [ISSUE_37_0131]: Object.freeze([
+    '0066_issue_8_tour_domain_core',
+    '0092_trip_departure_staff',
+  ]),
 });
 
 // A historical compatibility migration can have a newer identity while still
@@ -144,6 +150,13 @@ export function selectedProductionMigrations(aliasMap = {}, migrationScope = FUL
   if (scope === FULL_PENDING_SET) return { migrationScope: scope, migrations: pending };
   const roots = BOUNDED_RELEASE_SCOPE_ROOTS[scope];
   if (!roots) fail('UNSUPPORTED_MIGRATION_SCOPE', `migration scope is not admitted: ${scope}`);
+  for (const repoFile of BOUNDED_APPLIED_PREREQUISITES[scope] ?? []) {
+    const matches = aliasMap.entries.filter((entry) => entry?.repoFile === repoFile);
+    if (matches.length !== 1 || matches[0].classification !== 'EXACT' ||
+        !Array.isArray(matches[0].ledgerNames) || matches[0].ledgerNames.length === 0) {
+      fail('MIGRATION_SCOPE_APPLIED_PREREQUISITE_MISSING', `${scope} requires an exact applied prerequisite: ${repoFile}`);
+    }
+  }
 
   const closure = new Set();
   const visit = (repoFile) => {
