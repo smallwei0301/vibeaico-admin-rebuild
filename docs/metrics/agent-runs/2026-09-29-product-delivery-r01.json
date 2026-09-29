@@ -164,13 +164,13 @@
         "id": "sol-20260929-issue37-final-risk-downgrade",
         "role": "final_risk",
         "requestedModel": "sol",
-        "actualModel": "unknown",
+        "actualModel": "sol",
         "contextClass": "compact",
         "accepted": true,
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null,
-        "note": "Downgrade review after premium attempt found missing exact applied 0066/0092 prerequisites at PR #688 2c1d6c20. Requested gpt-5.6-sol; actual model receipt unavailable. FIX_REQUIRED, source repaired and negative tests added; new exact-head review pending.",
+        "note": "Downgrade review after premium attempt found missing exact applied 0066/0092 prerequisites; source repaired and negative probes PASS on 4689753b. Requested gpt-5.6-sol via explicit successful collaboration.spawn_agent override; actual gpt-5.6-sol is OPERATOR_ATTESTED from that dispatch and completed independent review, not provider-signed telemetry. New exact head re-review pending.",
         "count": 1
       }
     ],
@@ -228,7 +228,8 @@
     "Stage truth: canonical TEST G3 workflow 36533459054 is TEST_VERIFIED; collect workflow 36537158416 is G2 blocked for #680/#17. These refs are observations only and do not claim Production readiness or activation.",
     "Issue #37 source gate selected exact 0131; G2 raw artifact 11018489287 shows 14 related table/policy/ACL/index/ledger differences and cannot safely be projected away. TEST readback has RPC+ledger; Production lacks both; no current exact release TEST claim.",
     "PR #688 final-risk cost event: premium attempt occurred before durable reservation; actual model unknown. Recorded after discovery at https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/688#issuecomment-5892641508; do not claim compliant premium attestation or reset budget.",
-    "PR #688 downgrade Final Risk FIX_REQUIRED at 2c1d6c20: 0131 needs 0066/0092 applied prerequisite proof. Added fail-closed check and missing/non-EXACT negative tests; no Production mutation."
+    "PR #688 downgrade Final Risk FIX_REQUIRED at 2c1d6c20: 0131 needs 0066/0092 applied prerequisite proof. Added fail-closed check and missing/non-EXACT negative tests; no Production mutation.",
+    "Reviewer identity: successful explicit gpt-5.6-sol model override and independent completed /root/finalrisk37_sol review are operator-attested execution evidence, not provider-signed telemetry. Prior premium actual remains unknown and its missing pre-dispatch reservation remains a recorded safety violation."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
