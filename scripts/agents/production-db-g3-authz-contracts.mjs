@@ -324,6 +324,27 @@ export const PRODUCTION_DB_G3_AUTHZ_CONTRACTS = Object.freeze({
       }),
     ]),
   }),
+  '0134_issue_37_rpc_invoker_owner_compat': Object.freeze({
+    requiredFiles: Object.freeze([
+      'tests/integration/api/departure-staff-rpc-acl.37.test.ts',
+    ]),
+    tenantBoundaryAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/api/departure-staff-rpc-acl.37.test.ts',
+        fragment: 'service_role RPC rejects another tenant id for an existing departure without mutation',
+      }),
+      Object.freeze({
+        file: 'tests/integration/api/departure-staff-rpc-acl.37.test.ts',
+        fragment: 'service_role atomically writes and reads back the current assignment',
+      }),
+    ]),
+    negativeRoleAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/api/departure-staff-rpc-acl.37.test.ts',
+        fragment: 'anon and authenticated roles cannot execute replace_trip_departure_staff directly',
+      }),
+    ]),
+  }),
   '0132_issue_42_seasonal_price_resolution': Object.freeze({
     requiredFiles: Object.freeze([
       'tests/integration/api/tour-order-authz.447.test.ts',
