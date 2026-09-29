@@ -1117,9 +1117,9 @@ make」）。時間真的不夠，正確做法是**不做**、留給下一輪。
 
 ### PB-037 — 把「欄位集合」當成「欄位順序」，然後用一次找不到的搜尋證明「它不存在」
 
-- 首次／最近：2026-09-14／2026-09-14
-- 發生次數：**2（同一支 migration、同一輪內）**
-- Issue／PR／CI：#44／PR #77；`agent-schema-bootstrap` run 34791455530、34791859620
+- 首次／最近：2026-09-14／2026-09-29
+- 發生次數：**4**
+- Issue／PR／CI：#44／PR #77；`agent-schema-bootstrap` run 34791455530、34791859620；#680／PR #685（merge `81154b42`；早期 Sol audit；G3 plan regression）
 - 分類：Schema／驗證方法
 - 事件：`0105` 需要一個 `customers` 上的唯一約束當複合 FK 的目標。兩次都在同一個
   觀念上出錯。
@@ -1140,6 +1140,16 @@ make」）。時間真的不夠，正確做法是**不做**、留給下一輪。
   `customers` 的 `id=attnum 1`、`tenant_id=2`，所以 `unique (tenant_id, id)` 的
   `conkey` 是 `{2,1}`，而我拿 `{1,2}` 去比，**永遠不相等**，於是那條「保護性」斷言
   必定誤報「約束不存在」並中止整支 migration。
+
+  **前一個第 3 次——closure sweep 的半結構化搜尋漏欄位。** 同日換領域時，closure
+  sweep 用 `grep '^- LANE_STATE:'` 取 PR 欄位，漏掉格式沒有項目符號的 #312，誤報
+  「無 lane metadata」並寫進兩份 PR；由委派 scout agent 訂正，結論碰巧仍正確。
+
+  **第 4 次——G3 plan verifier 把順序當集合。** #680 的受控 release closure
+  應依賴順序 `0125` → `0121` → `0133`，但 verifier 在 digest 已有效的情況下先排序
+  plan names 再比較，因此反轉的 `0133`／`0121`／`0125` 仍會通過。早期 Sol review
+  發現後，PR #685 在合併前改為保留 canonical 順序直接比較，並加入反轉 plan、重算
+  digest 仍應被 `PENDING_SET_MISMATCH` 擋下的 regression test。
 - 證據：
   ```sql
   -- 對 canonical TEST 實查（唯讀），一次看清兩件事
@@ -1172,9 +1182,13 @@ make」）。時間真的不夠，正確做法是**不做**、留給下一輪。
      餵一次判斷式，當場就會看到 `false`。
   4. **「我沒找到」不是「它不存在」。** 前者是關於我的搜尋的陳述，後者是關於世界的
      陳述。寫進 PR／Issue 前先分清楚自己在講哪一個。
-- 狀態：監看中。第 3 次再發生時，改為：任何 migration 內用來判定「物件是否已存在」
-  的述詞，必須在 PR 證據裡附上**對真實資料庫跑過的正向對照結果**，否則該 PR 不得
-  進入 Final Risk。
+  5. **集合與順序分開驗證。** 需要依賴順序的 plan／migration 名單必須直接與
+     canonical ordered list 比較；不得先排序兩邊再比。測試至少要包含「順序正確且
+     digest 有效」的正例，以及「只反轉順序、重算 digest」的負例。
+- 驗證：merge `81154b42` 的 unit regression 使正確 `0125` → `0121` → `0133` 通過，
+  反轉順序被 `PENDING_SET_MISMATCH` 擋下；早期 Sol audit 的 FIX_REQUIRED 已在合併前
+  重驗修正。
+- 狀態：監看中。
 
 ### PB-038 — 用 `;` 把退出碼吃掉，然後在測試是紅的情況下推上去
 
