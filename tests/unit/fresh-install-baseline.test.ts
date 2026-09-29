@@ -157,19 +157,25 @@ describe('fresh-install compatibility baseline', () => {
     expect(workflow).toContain("[ \"$FINAL_COUNT\" != \"100\" ]");
   });
 
-  it('rejects a stale or canonically changed pinned main source', () => {
+  it('accepts additive canonical migrations but rejects a stale or rewritten pinned source', () => {
     const pinnedMainHead = baseline.source.mainHead;
     expect(() => assertPinnedSource({
       pinnedMainHead,
       resolvedMainHead: pinnedMainHead,
+      mainIsAncestor: true,
+      canonicalAppendOnly: true,
+    })).not.toThrow();
+    expect(() => assertPinnedSource({
+      pinnedMainHead,
+      resolvedMainHead: pinnedMainHead,
       mainIsAncestor: false,
-      canonicalUnchanged: true,
+      canonicalAppendOnly: true,
     })).toThrow(/not an unchanged canonical ancestor/);
     expect(() => assertPinnedSource({
       pinnedMainHead,
       resolvedMainHead: pinnedMainHead,
       mainIsAncestor: true,
-      canonicalUnchanged: false,
+      canonicalAppendOnly: false,
     })).toThrow(/not an unchanged canonical ancestor/);
   });
 

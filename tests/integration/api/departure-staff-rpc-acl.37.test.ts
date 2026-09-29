@@ -28,7 +28,7 @@ beforeAll(async () => {
 });
 
 describe('0131 replace_trip_departure_staff AUTHZ boundary', () => {
-  it('service_role atomically writes and reads back the current assignment', async () => {
+  it('service_role writes and reads back a nonempty assignment, then restores the fixture', async () => {
     const readAssignments = async () => {
       const { data, error } = await admin.from('trip_departure_staff')
         .select('staff_id,role').eq('tenant_id', SHOP_A.id)
@@ -37,16 +37,28 @@ describe('0131 replace_trip_departure_staff AUTHZ boundary', () => {
       return data ?? [];
     };
     const before = await readAssignments();
-    const primary = before.find((row) => row.role === 'PRIMARY')?.staff_id ?? null;
-    const assistants = before.filter((row) => row.role === 'ASSISTANT').map((row) => row.staff_id);
-    const { error } = await admin.rpc('replace_trip_departure_staff', {
-      p_tenant: SHOP_A.id,
-      p_departure: TRIP_A.departure1,
-      p_primary: primary,
-      p_assistants: assistants,
-    });
-    expect(error).toBeNull();
-    expect(await readAssignments()).toEqual(before);
+    try {
+      const { error } = await admin.rpc('replace_trip_departure_staff', {
+        p_tenant: SHOP_A.id,
+        p_departure: TRIP_A.departure1,
+        p_primary: SHOP_A.staffA1,
+        p_assistants: [SHOP_A.staffA2],
+      });
+      expect(error).toBeNull();
+      expect(await readAssignments()).toEqual([
+        { staff_id: SHOP_A.staffA1, role: 'PRIMARY' },
+        { staff_id: SHOP_A.staffA2, role: 'ASSISTANT' },
+      ]);
+    } finally {
+      const { error } = await admin.rpc('replace_trip_departure_staff', {
+        p_tenant: SHOP_A.id,
+        p_departure: TRIP_A.departure1,
+        p_primary: before.find((row) => row.role === 'PRIMARY')?.staff_id ?? null,
+        p_assistants: before.filter((row) => row.role === 'ASSISTANT').map((row) => row.staff_id),
+      });
+      expect(error).toBeNull();
+      expect(await readAssignments()).toEqual(before);
+    }
   });
 
   it('service_role RPC rejects another tenant id for an existing departure without mutation', async () => {
