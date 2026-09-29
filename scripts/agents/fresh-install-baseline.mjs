@@ -255,7 +255,7 @@ export function createCandidate({ root, destination, expectedHead, projectId }) 
     mainIsAncestor: gitSucceeded(root, ['merge-base', '--is-ancestor', baseline.source.mainHead, expectedHead]),
     // New canonical migrations may extend the disposable replay, while the
     // pinned main's existing SQL must never be rewritten or removed.
-    canonicalAppendOnly: git(root, 'diff', '--name-status', baseline.source.mainHead,
+    canonicalAppendOnly: git('diff', '--name-status', baseline.source.mainHead,
       expectedHead, '--', CANONICAL_ROOT).split('\n').filter(Boolean)
       .every((line) => /^A\tsupabase\/migrations\/\d{4}_[a-z0-9_]+\.sql$/.test(line)),
   });
