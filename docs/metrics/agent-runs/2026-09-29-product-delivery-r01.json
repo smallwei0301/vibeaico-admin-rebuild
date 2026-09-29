@@ -146,6 +146,19 @@
         "cachedTokens": null,
         "note": "Independent exact-diff audit first found missing CI dispatch allowlist and stale test contract; after two focused fixes returned CLOSE_APPROVED at local 7822c5c7, byte-identical to remote PR #688 source files.",
         "count": 1
+      },
+      {
+        "id": "premium-20260929-issue37-final-risk-attempt",
+        "role": "final_risk",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Requested gpt-6-astra for PR #688 cf05dbac; actual provider model receipt unavailable. Adversarial source probes PASS, but premium Final Risk identity/procedure cannot be attested: durable reservation was written after dispatch (PR comment 5892641508). No second premium attempt.",
+        "count": 1
       }
     ],
     "fullContextReplays": 0,
@@ -174,8 +187,10 @@
     "unresolvedP1": 0,
     "reopenedIssues": 0,
     "postMergeRegressions": 0,
-    "safetyViolations": 0,
-    "hardFailReasons": []
+    "safetyViolations": 1,
+    "hardFailReasons": [
+      "FINAL_RISK_PREMIUM_RESERVATION_NOT_PRELOGGED"
+    ]
   },
   "flow": {
     "lunaTasks": 1,
@@ -198,7 +213,8 @@
     "RULES_MAIN_SHA=81e7141b6abeb7a2fb705388a2849e6b64126ba8; #680 bounded release source task began before this ledger was initialized, so that dispatch is not retroactively counted here. Concurrent open r08, r03, and r01 (2026-09-17/14) have separate historic/session ownership; their raw events are not rewritten. This run records only subsequent observed events.",
     "RULES_MAIN_SHA=71d1cc424969589a07e5ef75188f65ea583135b8 observed for the current session; accepted Luna scout, Sol triage, and Terra G2 task are recorded as new events only. No prior-session counters or raw events were rewritten.",
     "Stage truth: canonical TEST G3 workflow 36533459054 is TEST_VERIFIED; collect workflow 36537158416 is G2 blocked for #680/#17. These refs are observations only and do not claim Production readiness or activation.",
-    "Issue #37 source gate selected exact 0131; G2 raw artifact 11018489287 shows 14 related table/policy/ACL/index/ledger differences and cannot safely be projected away. TEST readback has RPC+ledger; Production lacks both; no current exact release TEST claim."
+    "Issue #37 source gate selected exact 0131; G2 raw artifact 11018489287 shows 14 related table/policy/ACL/index/ledger differences and cannot safely be projected away. TEST readback has RPC+ledger; Production lacks both; no current exact release TEST claim.",
+    "PR #688 final-risk cost event: premium attempt occurred before durable reservation; actual model unknown. Recorded after discovery at https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/688#issuecomment-5892641508; do not claim compliant premium attestation or reset budget."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
