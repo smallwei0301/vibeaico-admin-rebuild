@@ -9,6 +9,7 @@ const LEDGER_VERSION = /^\d{14}$/;
 const RISK_ORDER = Object.freeze({ ADDITIVE: 1, SCHEMA_REPAIR: 2, AUTHZ: 3, BACKFILL: 4 });
 const FULL_PENDING_SET = 'FULL_PENDING_SET';
 const ISSUES_17_680 = 'ISSUES_17_680';
+const ISSUE_37_0131 = 'ISSUE_37_0131';
 
 // A Production release may select only this reviewed, bounded closure.  Keep
 // dependencies as canonical migration identities so a pending migration cannot
@@ -18,10 +19,16 @@ const BOUNDED_RELEASE_SCOPE_ROOTS = Object.freeze({
     '0121_issue_17_booking_addons_hardening',
     '0133_issue_680_booking_addons_composite_fk_expand',
   ]),
+  [ISSUE_37_0131]: Object.freeze([
+    '0131_issue_37_atomic_departure_staff',
+  ]),
 });
 const BOUNDED_RELEASE_DEPENDENCIES = Object.freeze({
   '0121_issue_17_booking_addons_hardening': Object.freeze(['0125_issue_17_booking_addons_legacy_enum']),
   '0133_issue_680_booking_addons_composite_fk_expand': Object.freeze(['0121_issue_17_booking_addons_hardening']),
+  // 0131 depends on the already-applied tour/staff schema.  It has no pending
+  // migration prerequisite, so its bounded closure is exactly this RPC.
+  '0131_issue_37_atomic_departure_staff': Object.freeze([]),
 });
 
 // A historical compatibility migration can have a newer identity while still
