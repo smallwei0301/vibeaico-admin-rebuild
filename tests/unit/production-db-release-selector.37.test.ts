@@ -62,7 +62,7 @@ describe('#37 / 0131 bounded G3 release selector', () => {
     const manifest = normalizeProductionDbImpactManifest(JSON.parse(
       readFileSync('supabase/production-db-impact-manifest.json', 'utf8'),
     ));
-    const entry = manifest.entries.find((item) => item.repoFile === REPO_FILE);
+    const entry = manifest.entries.find((item: { repoFile: string }) => item.repoFile === REPO_FILE);
     expect(entry?.impacts).toEqual([
       { surface: 'routines', objectKey: RPC },
       { surface: 'acl', objectKey: `function:${RPC}` },
