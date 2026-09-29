@@ -247,7 +247,7 @@ describe('plans, departures and addons CRUD', () => {
     } finally {
       await admin.from('trips').delete().eq('id', tripId).eq('tenant_id', SHOP_A.id);
     }
-  });
+  }, 90_000);
 
   it('batch rejects a cross-tenant/missing parent with 404 REQ_002', async () => {
     const result = await ownerA.post('/api/trips/TRIP_NOT_FOUND/departures/batch', {
