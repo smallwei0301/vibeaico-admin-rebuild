@@ -64,7 +64,7 @@ function completeSyntheticRepo() {
     'production-db-terminal-result', 'if: ${{ always() }}',
   ].join('\n'));
   write(root, 'scripts/db/controlled-production-db-release.mjs', [
-    'PROJECT_BOUND_WRITER_TRANSPORT_REQUIRED', 'PENDING_SET_MISMATCH', 'pendingProductionMigrations', 'pg_try_advisory_xact_lock',
+    'PROJECT_BOUND_WRITER_TRANSPORT_REQUIRED', 'PENDING_SET_MISMATCH', 'selectedProductionMigrations', 'pg_try_advisory_xact_lock',
     'PRODUCTION_DB_WRITER_LOCK_BUSY', 'CONTROLLED_APPLY_PREPARED', 'preparationDigest',
     'async function executeAtomicProductionApply', 'parseProjectBoundProductionDbWriterUrl',
     'set local role ${CANONICAL_PRODUCTION_DB_OWNER_ROLE}', 'buildProductionDbCatalogFingerprintRecheckSql',

@@ -306,6 +306,26 @@ describe('Controlled Production DB writer #447', () => {
     expect(() => assertLiveLedgerMatchesAliasMap({ aliasMap: aliasMap(), liveLedgerRows: [...beforeRows, { version: 'x', name: 'manual_unknown' }] })).toThrow(/LIVE_LEDGER_DRIFT/);
   });
 
+  it('uses the immutable #17/#680 scoped closure instead of every pending migration', () => {
+    const scopedAliasMap = {
+      schemaVersion: 1,
+      entries: [
+        { repoFile: '0125_issue_17_booking_addons_legacy_enum', ledgerNames: [], classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', evidence: 'x' },
+        { repoFile: '0121_issue_17_booking_addons_hardening', ledgerNames: [], classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', evidence: 'x' },
+        { repoFile: '0133_issue_680_booking_addons_composite_fk_expand', ledgerNames: [], classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', evidence: 'x' },
+        { repoFile: '0132_unrelated', ledgerNames: [], classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', evidence: 'x' },
+      ],
+    };
+    const p = buildProductionDbReleasePlan({
+      releaseId: 'release-20260929-17680', mainSha: MAIN, plannedAt: PLANNED_AT,
+      migrationScope: 'ISSUES_17_680', aliasMap: scopedAliasMap, readCanonicalSql,
+    });
+    const sql = buildAtomicProductionApplySql({ plan: p, aliasMap: scopedAliasMap, liveLedgerRows: [], readCanonicalSql });
+    expect(sql).toContain('0125_issue_17_booking_addons_legacy_enum');
+    expect(sql).toContain('0133_issue_680_booking_addons_composite_fk_expand');
+    expect(sql).not.toContain('0132_unrelated');
+  });
+
   it('builds a valid ledger reconciliation for an empty live baseline', () => {
     const emptyAliasMap = {
       schemaVersion: 1,

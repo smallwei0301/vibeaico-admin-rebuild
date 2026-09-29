@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-09-29-product-delivery-r01",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-09-29T01:12:41.123Z",
+  "endedAt": null,
+  "sources": [{"ref":"origin/main"},{"ref":"issue/680"},{"ref":"issue/17"}],
+  "main": {
+    "startSha": "81e7141b6abeb7a2fb705388a2849e6b64126ba8",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": 50,
+    "openIssuesEnd": null,
+    "openPrsStart": 1,
+    "openPrsEnd": null,
+    "mainTerraPeak": 0,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 0,
+    "sharedTestPeak": 0,
+    "closureSweeps": 0,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [{"id":"sol-20260929-bounded-release-early-audit","role":"audit","requestedModel":"sol","actualModel":"unknown","contextClass":"compact","accepted":true,"inputTokens":null,"outputTokens":null,"cachedTokens":null,"note":"Early Sol audit FIX_REQUIRED: exact dependency order was not enforced by G3 plan verifier; source repair required before CI.","count":1},{"id":"terra-20260929-bounded-release-order-fix","role":"build","requestedModel":"terra","actualModel":"unknown","contextClass":"compact","accepted":true,"inputTokens":null,"outputTokens":null,"cachedTokens":null,"note":"After early audit, delegated exact-order verification repair and negative test; source-only, no shared TEST/Production mutation.","count":1}],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 1,
+    "issuesClosed": 0,
+    "auditReady": 0,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 0,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 0,
+    "lunaAccepted": 0,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 1,
+    "solIssues": 1
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
+  "notes": ["RULES_MAIN_SHA=81e7141b6abeb7a2fb705388a2849e6b64126ba8; #680 bounded release source task began before this ledger was initialized, so that dispatch is not retroactively counted here. Concurrent open r08, r03, and r01 (2026-09-17/14) have separate historic/session ownership; their raw events are not rewritten. This run records only subsequent observed events."],
+  "deliveryTruthVersion": 4,
+  "closeout": {
+    "contractVersion": 1,
+    "ownerRole": "PRODUCT_MAIN_SESSION",
+    "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
+    "state": "OPEN",
+    "closedAt": null,
+    "evidenceRef": null
+  },
+  "wipLifecycle": {
+    "schemaVersion": 1,
+    "events": []
+  },
+  "completionTruth": {
+    "status": "NOT_CHECKED",
+    "checkedAt": null,
+    "claims": []
+  }
+}
