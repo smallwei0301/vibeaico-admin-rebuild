@@ -19,6 +19,7 @@ const scopedAliasMap = () => ({
   schemaVersion: 1,
   entries: [
     { repoFile: '0066_issue_8_tour_domain_core', ledgerNames: ['0066_issue_8_tour_domain_core'], classification: 'EXACT', evidence: 'x' },
+    { repoFile: '0092_trip_departure_staff', ledgerNames: ['0092_trip_departure_staff'], classification: 'EXACT', evidence: 'x' },
     { repoFile: REPO_FILE, ledgerNames: [], classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', evidence: '0131 canonical source is pending G3' },
     { repoFile: '0133_issue_680_booking_addons_composite_fk_expand', ledgerNames: [], classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', evidence: 'unrelated pending migration' },
   ],
@@ -37,6 +38,21 @@ describe('#37 / 0131 bounded G3 release selector', () => {
     withoutRoot.entries = withoutRoot.entries.filter((entry) => entry.repoFile !== REPO_FILE);
     expect(() => selectedProductionMigrations(withoutRoot, 'ISSUE_37_0131'))
       .toThrow(/MIGRATION_SCOPE_DEPENDENCY_NOT_PENDING/);
+  });
+
+  it('fails closed when an already-applied table prerequisite is missing or unproven', () => {
+    for (const prerequisite of ['0066_issue_8_tour_domain_core', '0092_trip_departure_staff']) {
+      const missing = scopedAliasMap();
+      missing.entries = missing.entries.filter((entry) => entry.repoFile !== prerequisite);
+      expect(() => selectedProductionMigrations(missing, 'ISSUE_37_0131'))
+        .toThrow(/MIGRATION_SCOPE_APPLIED_PREREQUISITE_MISSING/);
+
+      const unproven = scopedAliasMap();
+      const entry = unproven.entries.find((item) => item.repoFile === prerequisite)!;
+      entry.classification = 'NOT_APPLIED';
+      expect(() => selectedProductionMigrations(unproven, 'ISSUE_37_0131'))
+        .toThrow(/MIGRATION_SCOPE_APPLIED_PREREQUISITE_MISSING/);
+    }
   });
 
   it('binds the exact one-migration AUTHZ plan to its canonical bytes', () => {
