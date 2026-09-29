@@ -9,7 +9,7 @@ const LEDGER_VERSION = /^\d{14}$/;
 const RISK_ORDER = Object.freeze({ ADDITIVE: 1, SCHEMA_REPAIR: 2, AUTHZ: 3, BACKFILL: 4 });
 const FULL_PENDING_SET = 'FULL_PENDING_SET';
 const ISSUES_17_680 = 'ISSUES_17_680';
-const ISSUE_37_0131 = 'ISSUE_37_0131';
+const ISSUE_37_0131_0134 = 'ISSUE_37_0131_0134';
 
 // A Production release may select only this reviewed, bounded closure.  Keep
 // dependencies as canonical migration identities so a pending migration cannot
@@ -19,8 +19,8 @@ const BOUNDED_RELEASE_SCOPE_ROOTS = Object.freeze({
     '0121_issue_17_booking_addons_hardening',
     '0133_issue_680_booking_addons_composite_fk_expand',
   ]),
-  [ISSUE_37_0131]: Object.freeze([
-    '0131_issue_37_atomic_departure_staff',
+  [ISSUE_37_0131_0134]: Object.freeze([
+    '0134_issue_37_rpc_invoker_owner_compat',
   ]),
 });
 const BOUNDED_RELEASE_DEPENDENCIES = Object.freeze({
@@ -29,9 +29,10 @@ const BOUNDED_RELEASE_DEPENDENCIES = Object.freeze({
   // 0131's tour/staff tables must already be applied. They are checked below;
   // no pending migration prerequisite is silently pulled into this release.
   '0131_issue_37_atomic_departure_staff': Object.freeze([]),
+  '0134_issue_37_rpc_invoker_owner_compat': Object.freeze(['0131_issue_37_atomic_departure_staff']),
 });
 const BOUNDED_APPLIED_PREREQUISITES = Object.freeze({
-  [ISSUE_37_0131]: Object.freeze([
+  [ISSUE_37_0131_0134]: Object.freeze([
     '0066_issue_8_tour_domain_core',
     '0092_trip_departure_staff',
   ]),

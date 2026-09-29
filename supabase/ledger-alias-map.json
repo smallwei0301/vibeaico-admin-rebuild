@@ -648,6 +648,13 @@
       "classification": "NOT_APPLIED",
       "notAppliedReason": "PENDING_APPLY",
       "evidence": "#680 Owner 選擇 A：保留 0121 的單欄 performance_staff FK 供當前 runtime PostgREST hint 使用，同時新增／驗證 tenant-scoped 複合 FK，將 single-only、composite-only 或 BOTH 的已知起始形狀收斂成 transitional BOTH。migration 要求 booking_addons 既有 RLS 已啟用（disabled 一律 fail closed），保持 FORCE RLS 原值；並先驗同租戶資料、未知 FK、constraint identity、validated/nondeferred 與兩個已知複合 FK delete-action variants；不修資料、未操作 canonical TEST 或 Production。合併 main 後仍為 PENDING_APPLY，須依 shared TEST serialization 與 Production G0–G7 另行驗證／發布。"
+    },
+    {
+      "repoFile": "0134_issue_37_rpc_invoker_owner_compat",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#37 0131 的受控 Production writer 會以 production_migration_owner 建立 SECURITY DEFINER 函式，但該 role 對舊表 trip_departure_staff 只有 SELECT/REFERENCES，沒有 DELETE/INSERT。此不可覆寫的後續 migration 改為 SECURITY INVOKER，讓唯一被授權的 service_role 呼叫者以既有 DML/BYPASSRLS 權限執行原子 RPC；0131 函式本體與租戶驗證、PUBLIC/anon/authenticated 撤權不變。0131-only 不再是安全完整 release；0134 與 0131 必須同一 bounded release 驗證。"
     }
   ]
 }

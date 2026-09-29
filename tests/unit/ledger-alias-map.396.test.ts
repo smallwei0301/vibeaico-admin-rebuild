@@ -435,12 +435,12 @@ describe('#396 已提交的正式資料', () => {
   // （#37 真缺口 A：trip_departure_staff 原子性 RPC，77 → 78，NOT_APPLIED 20 → 21），
   // 加上 0132_issue_42_seasonal_price_resolution（#42 真缺口：create_tour_order 季節
   // 定價解析與 0133 #680 複合 FK expand，79 → 80，NOT_APPLIED 22 → 23）。
-  it('repo 有 80 個 migration 檔案，正式庫快照有 58 筆 ledger row', () => {
-    expect(repoFiles).toHaveLength(80);
+  it('repo 有 81 個 migration 檔案，正式庫快照有 58 筆 ledger row', () => {
+    expect(repoFiles).toHaveLength(81);
     expect(snapshot.ledgerRowNames).toHaveLength(58);
   });
 
-  it('supabase/ledger-alias-map.json 完全涵蓋這 78 個 repo 檔案與 58 筆 ledger row', () => {
+  it('supabase/ledger-alias-map.json 完全涵蓋 repo 檔案與 58 筆 ledger row', () => {
     const result = verifyLedgerAliasMap({
       repoFiles,
       ledgerRowNames: snapshot.ledgerRowNames,
@@ -489,7 +489,7 @@ describe('#396 已提交的正式資料', () => {
     // release 有對應的審查與執行器。
     expect(counts.EXACT).toBe(51);
     expect(counts.ALIAS).toBe(6);
-    expect(counts.NOT_APPLIED ?? 0).toBe(23);
+    expect(counts.NOT_APPLIED ?? 0).toBe(24);
     expect(counts.LEDGER_ONLY).toBe(1);
   });
 
@@ -767,11 +767,12 @@ describe('#396 NOT_APPLIED 的兩種狀態必須用列舉講清楚', () => {
     // 2026-09-15 以唯讀查詢確認先前已套用於正式庫，本檔誤標記已更正為 EXACT。加上
     // 0131_issue_37_atomic_departure_staff（#37 真缺口 A，PENDING_APPLY）與
     // 0132_issue_42_seasonal_price_resolution（#42 真缺口，PENDING_APPLY）與
-    // 0133_issue_680_booking_addons_composite_fk_expand（#680 transitional BOTH，PENDING_APPLY），共 23 筆。
+    // 0133_issue_680_booking_addons_composite_fk_expand（#680 transitional BOTH）與
+    // 0134_issue_37_rpc_invoker_owner_compat（#37 受控 owner 相容），共 24 筆。
     // 保留 main 那一版的意圖：釘住數量而不是只檢查「每一筆都有理由」，否則清單變空時
     // 這條規則會靜悄悄變成空轉。任何人日後新增或移除 NOT_APPLIED 都會先撞到這一行，
     // 被迫同時面對下面那條「必須有合法 notAppliedReason」的規則。
-    expect(notApplied.length).toBe(23);
+    expect(notApplied.length).toBe(24);
     for (const entry of notApplied) {
       expect(NOT_APPLIED_REASONS).toContain(entry.notAppliedReason);
     }

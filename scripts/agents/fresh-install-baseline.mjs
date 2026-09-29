@@ -211,10 +211,10 @@ function gitSucceeded(root, args) {
   return spawnSync('git', args, { cwd: root, encoding: 'utf8', stdio: 'pipe' }).status === 0;
 }
 
-export function assertPinnedSource({ pinnedMainHead, resolvedMainHead, mainIsAncestor, canonicalUnchanged }) {
+export function assertPinnedSource({ pinnedMainHead, resolvedMainHead, mainIsAncestor, canonicalAppendOnly }) {
   if (!GIT_OBJECT_ID.test(pinnedMainHead ?? '') || resolvedMainHead !== pinnedMainHead ||
-      mainIsAncestor !== true || canonicalUnchanged !== true) {
-    reject('pinned main source is not an unchanged canonical ancestor of the checkout');
+      mainIsAncestor !== true || canonicalAppendOnly !== true) {
+    reject('pinned main source is not an unchanged canonical ancestor with additions only');
   }
 }
 
@@ -253,8 +253,11 @@ export function createCandidate({ root, destination, expectedHead, projectId }) 
     pinnedMainHead: baseline.source.mainHead,
     resolvedMainHead,
     mainIsAncestor: gitSucceeded(root, ['merge-base', '--is-ancestor', baseline.source.mainHead, expectedHead]),
-    canonicalUnchanged: gitSucceeded(root,
-      ['diff', '--quiet', baseline.source.mainHead, expectedHead, '--', CANONICAL_ROOT]),
+    // New canonical migrations may extend the disposable replay, while the
+    // pinned main's existing SQL must never be rewritten or removed.
+    canonicalAppendOnly: git('diff', '--name-status', baseline.source.mainHead,
+      expectedHead, '--', CANONICAL_ROOT).split('\n').filter(Boolean)
+      .every((line) => /^A\tsupabase\/migrations\/\d{4}_[a-z0-9_]+\.sql$/.test(line)),
   });
   const historicalSql = fs.readdirSync(path.join(root, path.dirname(HISTORICAL_MANIFEST)))
     .filter((name) => name.endsWith('.sql'));
