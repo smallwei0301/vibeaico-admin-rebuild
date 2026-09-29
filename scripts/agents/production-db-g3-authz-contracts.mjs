@@ -335,7 +335,7 @@ export const PRODUCTION_DB_G3_AUTHZ_CONTRACTS = Object.freeze({
       }),
       Object.freeze({
         file: 'tests/integration/api/departure-staff-rpc-acl.37.test.ts',
-        fragment: 'service_role atomically writes and reads back the current assignment',
+        fragment: 'service_role writes and reads back a nonempty assignment, then restores the fixture',
       }),
     ]),
     negativeRoleAssertions: Object.freeze([
