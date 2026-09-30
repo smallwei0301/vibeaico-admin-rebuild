@@ -628,7 +628,31 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 相關教訓：PB-016、PB-027、PB-029。
 - Review 問句：**「如果我現在故意把最重要的保護拿掉，哪一條測試一定會紅？」** 如果答不出來，該保護尚未被可靠驗證。
 
+<a id="pb-031"></a>
+
 ### PB-031 — 拿 Issue 內文當 Owner 決策，於是對一件早已裁示的事重新提案
+
+2026-09-30 #700／#699 補充：reviewer 已真實執行卻無獨立模型型號 telemetry 時，把 requested 當 actual 或無限等待都是錯誤。
+Owner 11:59 UTC 已裁示模型基礎設施失敗可走 EVIDENCE_FALLBACK：保存可回讀的失敗分類／診斷，
+連結真實替代審查和反例、核對舊 finding，明記 `actual=unknown`，再跑正常 gates。
+預防：先以共享 validator 的身份缺失／派送失敗反例證明替代路徑，再同步 WIP、semantic reuse、DB evidence adapter；
+不要等施工完成才發現各入口互相矛盾。實質安全 finding／CI 失敗仍必須修復；不把 missing raw instrumentation 補造為 PASS。
+成本教訓：重用 exact-diff review，一次集中政策／入口／反例；不重派昂貴模型或反覆重跑無關 CI。
+本次自動 review 補捉兩個邊界：已知身份不得借 fallback 使用 builder-tier／型號不符；Playbook 必須綁本 repo main。
+預防反例同時覆盖已知／未知身份、角色資格與 canonical 證據來源，而非只測 unknown happy path。
+後續 finding `4144692628` 證明非空 fragment 仍可偽造。PB-031 使用明確穩定 anchor，共享 validator
+只接受 canonical checkout 實際存在的明確 anchor；檔案缺失或 fragment 不存在時拒絕。
+預防：證據 URL 不只驗來源前綴，也驗可解析目的地；以 `#does-not-exist` 與缺失 anchor 的反例覆蓋。
+正常 prepare → reviewer packet 曾丟失 fallback 診斷（finding `4145796157`）。預防：packet 自動攜帶失敗事實與政策版本，
+列出 reviewer 必須新增的真實審查證據；以正常入口產出的契約直接通過共享 validator，並驗缺診斷／替代 review 仍拒絕。
+後續 findings `4146547160`／`4146547172`：URL 外形不是來源驗真，candidate checkout 也不是 canonical main。
+預防：失敗／替代引用只接受本 repo 的確切 GitHub comment／review ID；可信讀取端回讀實際內容、作者權限及 review 狀態，
+替代 PASS 必須綁同一 digest、execution、身份與 finding 核對。普通 Issue、跨 repo、缺記錄與無關留言全部拒絕。
+Playbook 由 GitHub 觀察 current-main SHA，再用該 immutable SHA 讀 bytes、核對 blob hash 與完整明確 anchor；讀取前後 main 前進則重新取證。
+candidate payload 的 `fallbackSourceEvidence` 一律丟棄；WIP 與 DB adapter 從可信讀取端重建，DB artifact 保留回讀 receipt 供同一共享 validator 使用。
+semantic reuse 也須帶入獨立回讀證據，CLI 未取得此證據時安全退回 FULL；不以候選自述補綠。
+反例固定涵蓋 normal prepare → packet → validator、跨 repo／普通 Issue／404／權限／dismissed、候選獨有 anchor／過時 main／blob 不符及 DB adapter。
+本 PR 新增的 `pb-031` 在本次觀察 main `58b7845` 尚不存在，合併前不能以此 anchor 宣稱 fallback 可放行；不得為過 gate 改寫 main 或放寬檢查。
 
 - 首次／最近：2026-09-09／2026-09-13
 - 發生次數：2（第 2 次一輪內同時犯了兩件）

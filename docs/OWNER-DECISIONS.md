@@ -8,6 +8,7 @@
 
 | 範圍 | 主題 | 裁示 | 影響 |
 |---|---|---|---|
+| repo governance #700 | 審查模型基礎設施失敗不再無限阻塞 | Owner 2026-09-30 11:59 UTC：保存模型派送／可用性／身份證據失敗原因，完成真實替代對抗審查及 Playbook 預防紀錄後，可依正常 gates 放行；未知 actual 如實記 unknown。 | `docs/AGENT-EXECUTION.md` §7.2；`scripts/agents/final-risk-cost-policy.mjs` 的 EVIDENCE_FALLBACK。不免除實質 finding、安全拒絕、可信提交、digest、CI／TEST／Production gate；不新增 builder 例外。#552 歷史紀錄不改寫。 |
 | repo governance | Lane 對應的模型層級 | **2026-09-30 current selection：PROVIDER_FIRST，先判 session/runtime provider 再選本地角色模型。** OpenAI：Luna=`gpt-6-luna`、Terra=`gpt-5.6-terra`、Sol=`gpt-6.1-sol`；Claude：Luna=`claude-haiku-4-5`、Terra=`claude-sonnet-5-5`、Sol=`claude-opus-5-5`。 | 其他 provider 缺席不是本地依賴；Product build-tier 與獨立 review 不變，不新增 Sol builder 例外。純治理依 §1.2 不指定模型。歷史裁示保留；current canonical：`docs/AGENT-EXECUTION.md` §4、`scripts/agents/model-routing.json`。 |
 
 ## 2026-09-17 已裁示

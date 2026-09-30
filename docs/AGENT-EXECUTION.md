@@ -538,6 +538,20 @@ Product 高後果範圍才需要 Final Risk，例如：
 
 Owner 2026-09-17 #552 已授權成本降級，取代 #533 的同級重試／互換：
 
+Owner 2026-09-30 11:59 UTC（#700）補充：模型派送、可用性或身份證據失敗不得形成無限阻塞。
+先保存可回讀的失敗原因，再由可用 reviewer／目前 agent 執行真實替代對抗審查，並把預防方式記入 Playbook；
+引用必須由可信讀取端回讀本 repo 的確切 comment／review 與 current-main immutable Playbook blob；候選 payload／工作樹不能自證來源。
+正常 release gates 通過後可放行，不因 `actualModel=unknown` 再向 Owner 索取授權。
+canonical review 使用 `reviewerTier=EVIDENCE_FALLBACK`、`fallbackPolicyVersion=2026-09-30.1`、
+`downgradeReason=REVIEWER_INFRASTRUCTURE_FAILURE`；記錄 `failureClass`、`failureEvidenceRef`、
+`failureDiagnosis`、`replacementReviewRef`、`playbookEvidenceRef`，以及原有 lineage／executionRef／反例／finding 核對。
+`executionEvidence=OPERATOR_ATTESTED` 只證明真實審查執行；未知模型必須 `actualModel=unknown`、`identityEvidence=UNKNOWN`，
+requested 型號不當成 actual 證據。共享驗證器仍要求可信提交者、精確 digest、實質 PASS、零 unresolved finding。
+已知 actual 必須為允許的 audit 模型且 requested=actual；未知身份的指定 reviewer 仍選 audit 層級，
+無 selector 的目前 agent 記 not_requested。Playbook ref 綁 review.repository 的 main，不借別 repo／未合併 branch。
+實質 code/security finding、SAFETY_REFUSAL／SAFETY_CLASSIFIER、失敗 CI／TEST 或 Production gate 不適用此替代路徑。
+此規則不擴張 Product builder 模型權限，不授予 Production 寫入；#552 的歷史有效證據仍可沿用。
+
 - 同一 reviewLineage 最多一次 Astra/Fable 昂貴諮詢，兩者合計，不是各一次。
 - 第一次諮詢後修改重審，或已派送無回應／環境不支援，直接 Sol／Opus，不再昂貴第二輪。
 - 派送起 300 秒沒有同 executionRef 的實際 RUNNING／token／tool 執行證據就降級；
