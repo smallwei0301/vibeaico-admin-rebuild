@@ -55,9 +55,14 @@ describe('lane → model tier（Owner 2026-09-30 版本更新）', () => {
   });
 
   it('Luna 開工委派是 provider-local，Product 施工一律保留 build tier', () => {
-    const startup = read('CLAUDE.md').split('## Lane → model tier')[0];
+    const startup = read('CLAUDE.md');
     expect(startup).toContain('OpenAI: `gpt-6-luna`');
     expect(startup).toContain('Claude: `claude-haiku-4-5`');
+    expect(startup).not.toContain('scout` 層（`claude-haiku-4-5`）');
+    const index = read('docs/OWNER-DECISIONS.md').split('Lane 對應的模型層級')[1].split('\n')[0];
+    expect(index).toContain('PROVIDER_FIRST');
+    expect(index).toContain('gpt-6-luna');
+    expect(index).toContain('claude-sonnet-5-5');
     const policy = read('docs/AGENT-EXECUTION.md');
     expect(policy).toContain('不得用 scout 或 audit 層模型做任何 Product 施工');
   });

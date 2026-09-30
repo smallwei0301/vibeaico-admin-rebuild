@@ -257,7 +257,7 @@ a specific model. The table records provider-local preferences; only the run its
 
 所以改成路徑判準：不看動機、不看大小、不看「只是順手」。
 
-下列路徑的產出屬 `scout` 層（`claude-haiku-4-5`）。audit 層直接編輯即為 routing violation：
+下列路徑的 Product Run 產出屬 `scout` 層，先依 PROVIDER_FIRST 選本地 scout（OpenAI: `gpt-6-luna`；Claude: `claude-haiku-4-5`）。audit 層代做依既有例外規則記錄；純 MODEL_GOVERNANCE 依 canonical §1.2 不指定模型，不借用 Product 埋點：
 
 ```
 docs/AGENT-PLAYBOOK.md
