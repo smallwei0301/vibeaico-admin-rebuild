@@ -55,10 +55,13 @@ describe('lane → model tier（Owner 2026-09-30 版本更新）', () => {
   });
 
   it('Luna 開工委派是 provider-local，Product 施工一律保留 build tier', () => {
-    const startup = read('CLAUDE.md');
-    expect(startup).toContain('OpenAI: `gpt-6-luna`');
-    expect(startup).toContain('Claude: `claude-haiku-4-5`');
-    expect(startup).not.toContain('scout` 層（`claude-haiku-4-5`）');
+    const text = read('CLAUDE.md');
+    const startup = text.split('### 1. 真實盤點')[1].split('### 2.')[0];
+    const scout = text.split('### 文件與盤點的 scout 歸屬')[1].split('## Final Risk')[0];
+    for (const section of [startup, scout]) {
+      expect(section).toContain('OpenAI: `gpt-6-luna`');
+      expect(section).toContain('Claude: `claude-haiku-4-5`');
+    }
     const index = read('docs/OWNER-DECISIONS.md').split('Lane 對應的模型層級')[1].split('\n')[0];
     expect(index).toContain('PROVIDER_FIRST');
     expect(index).toContain('gpt-6-luna');
@@ -74,6 +77,16 @@ describe('lane → model tier（Owner 2026-09-30 版本更新）', () => {
     expect(scope).toContain('MODEL_GOVERNANCE');
     expect(scope).toContain('§1.2');
     expect(scope).toContain('不借用 Product Run');
+  });
+
+  it('目前模型決策依實際日期登錄，歷史版本不被倒改', () => {
+    const index = read('docs/OWNER-DECISIONS.md');
+    expect(index).toContain('最後更新：2026-09-30');
+    expect(index.split('## 2026-09-30 已裁示')[1].split('## 2026-09-17')[0]).toContain('PROVIDER_FIRST');
+    const history = index.split('## 2026-09-10 已裁示')[1].split('## 2026-09-09')[0];
+    expect(history).toContain('Terra=`claude-sonnet-5`');
+    expect(history).toContain('原文保留為歷史');
+    expect(read('docs/AGENT-EXECUTION.md')).toContain('最近更新：2026-09-30');
   });
 
   it('目前開工文件先判 provider，再選本地角色模型，不要求跨 provider 依賴', () => {
