@@ -67,6 +67,15 @@ describe('lane → model tier（Owner 2026-09-30 版本更新）', () => {
     expect(policy).toContain('不得用 scout 或 audit 層模型做任何 Product 施工');
   });
 
+  it('Product B+ 操作段落不將純治理契約測試誤判為 Product builder', () => {
+    const text = read('CLAUDE.md');
+    const scope = text.split('## B+ delivery loop')[1].split('### 1.')[0];
+    expect(scope).toContain('本節六步只適用 `PRODUCT_MAINLINE`');
+    expect(scope).toContain('MODEL_GOVERNANCE');
+    expect(scope).toContain('§1.2');
+    expect(scope).toContain('不借用 Product Run');
+  });
+
   it('目前開工文件先判 provider，再選本地角色模型，不要求跨 provider 依賴', () => {
     for (const file of ['CLAUDE.md', 'docs/AGENT-EXECUTION.md', 'docs/MODEL-ROUTING.md']) {
       const text = read(file);

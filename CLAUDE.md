@@ -32,6 +32,8 @@ standing TEST authorization, credentials, CI/DB serialization, evidence, and sto
 
 ## B+ delivery loop — 每一輪都要真的做，不是只填欄位
 
+本節六步只適用 `PRODUCT_MAINLINE`；純 `MODEL_GOVERNANCE`（含治理契約測試）依 `docs/AGENT-EXECUTION.md` §1.2 的 bounded governance flow，不啟動 Product Terra／Reserve，不指定執行模型，也不借用 Product Run 或埋點。下方施工判準不把純治理變成 Product。
+
 `docs/AGENT-EXECUTION.md` 定義了這個 loop，但它被違反的方式幾乎總是同一種：
 **記帳的部分做了，施工的部分沒做**。欄位填得完整、Run ledger 建好了、closure sweep
 的表格也貼了，然後所有工作還是同一個模型自己從頭做到尾。那不是 B+ loop，那是把
