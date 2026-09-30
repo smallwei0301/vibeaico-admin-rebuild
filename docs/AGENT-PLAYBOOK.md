@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 51919)
-Total output lines: 1838
-
 # Agent 失敗與教訓 Playbook
 
 > 本檔保存「發生過什麼、為什麼、以後如何避免」。
@@ -94,7 +91,7 @@ Total output lines: 1838
 | PB-024 | FK constraint 名稱在不同安裝路徑上不同，不可綁進 runtime | canonical（`create table`）與整合測試的 historical overlay 產生的 constraint 名稱不是同一組；PostgREST 的 `!fk_name` embed hint 因此在其中一邊解不開。多條 FK 造成 ambiguous embed 時，改用多次一般查詢。 | `12-TESTING-TDD.md` §1.5；`supabase/local-migrations/**` |
 | PB-025 | mutation 有 entitlement 閘門、read path 沒有，等於留後門 | 讀取路徑若只看「資料庫有沒有資料」，訂閱到期的租戶只要歷史資料還在就照樣讀得到——**用「有沒有資料」代替「有沒有權利」**，且完全沒有症狀。閘門必須在任何 domain SELECT 之前。 | `docs/integration/10-TOUR-DOMAIN.md` §6.1；`docs/integration/09-*` §5 |
 | PB-026 | `create table if not exists` 遇到「同名但形狀不同」的表會靜默跳過 | 既有表可能來自另一條安裝路徑（historical overlay），欄位與 check constraint 都不同。migration 顯示成功、什麼都沒建，程式接著對著一個**不是自己定義的契約**寫入，直到某個約束把它擋下來才發現。帶新表的 migration 必須像 `0066` 那樣「加法且會協調」，不能只 `if not exists` 就當作冪等。 | `supabase/migrations/0066_*.sql`（協調範例）；`supabase/local-migrations/**` |
-| PB-027 | 用「名字出現幾次」代替「那件事真的會發生」 | 四種同型：規格存在≠功能可用、路由存在≠功能可用、政策提到≠物件存在、符號出現≠符號被使用。`grep -c` 數到的可能全是**定義本身**（一支 service 的 export ＋ 型別就兩次）。可機械檢查的判準是**「呼叫端在哪裡」**，不是名稱出現次數。 <br><br>**第五種同型（Owner 2026-09-14，來源 #425）：「檔案內容已合併進 main」≠「被 pin 的 commit 仍是 main 的祖先」。** #420 走 squash 之後，原分支的 commit 不在 main 的 ancestry 裡，即使它帶的檔案內容一字不差地進了 main；#77 走 merge commit，第二個 parent 被保留，原 commit 因此仍然可達。要驗的是 ancestry 這個性質本身（`git merge-base --is-ancestor`），不是內容相等。同一個家族的另一個實例見 PB-042：用 migration 帳本的檔名集合去推論「某環境缺什麼」，那個比對維度證明不了你真正要的性質。 | `docs/integration/14-GAP-AUDIT.md` §7.4.4 |
+| PB-027 | 用「名字出現幾次」代替「那件事真的會發生」 | 四種同型：規格存在≠功能可用、路由存在≠功能可用、政策提到≠物件存在、符號出現≠符號被使用。`grep -c` 數到的可能全是**定義本身**（一支 service 的 export ＋ 型別就兩次）。可機械檢查的判準是**「呼叫端在哪裡」**，不是名稱出現次數。 <br><br>**第五種同型（Owner 2026-09-14，來源 #425）：「檔案內容已合併進 main」≠「被 pin 的 commit 仍是 main 的祖先」。** #420 走 squash 之後，原分支的 commit 不在 main 的 ancestry 裡，即使它帶的檔案內容一字不差地進了 main；#77 走 merge commit，第二個 parent 被保留，原 commit 因此仍然可達。要驗的是 ancestry 這個性質本身（`git merge-base --is-ancestor`），不是內容相等。同一個家族的另一個實例見 PB-042：用 migration 帳本的檔名集合去推論「某環境缺什麼」，那個比對維度證明不了你真正要的性質。#698 同樣要求 scoped proof 逐項驗證固定 closure 的存在、保留完整 drift，不能由相等的缺漏快照推出 verified。 | `docs/integration/14-GAP-AUDIT.md` §7.4.4 |
 | PB-032 | `conclusion=success` 不等於測試執行過 | 共用 TEST 一次只允許一位 `TEST_VALIDATION` holder，非 holder 的 `integration` job 會印一行 `POLICY_SKIP` 後以 **success** 結束——跳過與通過在 check 層級長得一模一樣。宣稱測試通過前必須讀 job log 看到 `✓ tests/integration/...(N tests)`；`conclusion`／check 顏色不是執行證據。 | `docs/AGENT-EXECUTION.md` §3.1；Completion Truth Gate |
 | PB-033 | 對正式庫下了 revoke 之後，才回頭查有沒有呼叫端 | 把「這是安全修正」當成可以少一道查證。收權與加權在風險結構上對稱——兩者都可能讓線上功能當場停止，差別只在失敗方向。動線上資料庫的權限前，必須先完成呼叫端清查（全 repo grep 含測試 → client 建構函式 → 該 client 的角色 → 其他 SQL 函式內部呼叫）；migration 尾端的自我驗證要雙向，也檢查 service_role 有沒有被誤撤。 | 本檔 PB-028、PB-033 |
 | PB-034 | 用 CI 當規則查詢器；以及**預防本身涵蓋不全** | #352 退四次、#361 兩次、#370 一次、#397 一次，全是中繼資料錯、零程式碼問題。開 PR 前跑 `scripts/agents/agent-wip-preflight.mjs`，通過才推。**但 #370 證明跑了也可能不夠**：preflight 當時沒涵蓋 `local-isolated-test-policy.mjs`，於是 preflight 綠、CI 仍退。已讓 preflight 直接呼叫 CI 的同一支函式。**#397 再證一次**：`ASTRA_TEST_BASELINE`／`ASTRA_SCHEMA_BASELINE` 由 `astra-review-policy.mjs` 驗證，卻連 PR 模板都沒列出來——照模板填完仍然必退。preflight 已改呼叫 `evaluateAstra()`，但只留下本機真的能知道的那兩條錯誤；模板也補上了這兩個欄位。欄位錯常是 **lane 選錯的症狀**。 <br><br>**合併後必須重驗，PR 自己的綠燈不算（Owner 2026-09-14）。** 合併之後要重新抓 main，重新驗證 ancestry、canonical migration 內容與 fresh-install baseline。PR 在合併前的綠燈證明的是「合併前」的狀態，證明不了「合併後 ancestry 仍成立」——合併方式本身就可能改變 ancestry（見 PB-015、PB-027）。<br><br>**WORKSTREAM 與工作性質分開記（Owner 2026-09-14，來源 #425）。** 碰到 `supabase/**` 就屬 `PRODUCT_MAINLINE`，這是 workstream 的判定；但一支只修 baseline pin 的 PR 仍然可以是 `AGENT_LANE: GOVERNANCE`／`DELIVERY_UNIT_TYPE: GOVERNANCE`／`COUNT_IN_DELIVERY_OUTCOME: false`。WORKSTREAM 問的是「碰哪個領域的路徑」，AGENT_LANE 與 DELIVERY_UNIT_TYPE 問的是「做哪一類工作、宣稱了什麼」。**不得為了讓欄位看起來一致，就把治理性質的修補掛進 Product Run 去湊交付數。**<br><br>**#677：schema 與下游 binding 的結構契約必須共用驗證路徑。** 操作中的 v4 Run 先驗 `sources` 物件與非空 `ref`，再驗 exact issue；反例包含字串與 null，並保留已關閉帳本的原始重播。先跑這組 focused tests，避免用遠端 CI 才發現格式落差。 | `scripts/agents/agent-wip-preflight.mjs`、`scripts/ci/local-isolated-test-policy.mjs` |
@@ -475,10 +472,482 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 修正：#273 把四種形態並列寫進 `14-GAP-AUDIT.md` §7.4.4；#8 的錯誤結論已發留言更正。
 - 預防：① 判準一律改成**「呼叫端在哪裡」**：`grep -n "<symbol>(" <呼叫端檔案>`，而不是 `grep -c "<symbol>" .`。② `grep -c` 的結果**必須連同檔名一起看**（用 `-rn` 或 `-l`，不要用 `-c` 加總）。③ 對「文件說有」「路由檔在」「政策提到」三種線索，一律再走一步查到實際執行路徑；查不到就當作沒有。
 - **#37／PR #688 再發與修正：** 0131 的 SQL 名字已在 main，最初的 bounded selector 只驗 0131 pending，卻沒證明它依賴的 0066／0092 已按 canonical identity 套用；「migration 存在」再次被誤讀為「可單獨套用」。獨立 Final Risk 在合併前找出，補上 0066／0092 各恰好一筆 `EXACT` applied alias 與非空 ledger identity 的 fail-closed 檢查。缺少、非 EXACT、空 ledger、重複及偽造前置條件的負例均拒絕；PR head `2751af66` 的 CI `36586785630` 與 local-isolated `36586786188` 成功。預防：每個 bounded root 明列 pending closure 和已套用的前置，兩類都以 exact alias／ledger 證據驗證；這不替代 fresh G2 形狀比對或 G3 遠端實測。
-- **#698 續例：** 同一個 G2 proof 即使先比對三份快照相等，也不能把「三份都缺必要物件」當成成功；固定 closure 必須逐項驗證四表、0121／0125／0133 欄位與約束、兩支 RPC 的 definition/ACL 及 RLS 訊號存在。完整 observer report 仍保留，scope 外 drift 只能是 `GLOBAL_STATUS_NOT_VERIFIED`，不能被 adapter 投影成已驗證；source SQL 的註解文字也不能當可執行 migration 證據。預防：每個 scoped proof 都要有三環境同時缺欄位／FK／routine 的負例，並明示不可取代 writer 的 `CONSISTENCY_VERIFIED` 或 live G2／G3 證據。
 - 狀態：已防止
 
-### PB-028 — `revo…11919 tokens truncated…記帳（#556）
+### PB-028 — `revoke execute … from anon, authenticated` 不會關掉 PUBLIC 的預設授權
+
+- 首次／最近：2026-09-07／**2026-09-11**
+- 發生次數：3（`0087` 的四支 tour-order RPC；`0090` 的 `redeem_booking_points`；**正式庫 `egehnijjpgijmccagxac` 上三支 tour-seat RPC——實際處於可被利用狀態，非僅程式碼層**）
+- Issue／PR／CI：Issue #8-B、#218；PR #271（Sol audit P1，由 `0088` 補）、PR #280（開工時就用正確寫法）；PR #352 的 Final Risk 追查（2026-09-11）
+- 分類：權限
+- 事件：SECURITY DEFINER 的 RPC 繞過 RLS，所以執行權**就是**那道安全邊界。兩支 migration 都只寫了 `revoke execute on function … from anon, authenticated`，看起來已經把前端持有的兩個角色都撤掉了。
+- 證據：PostgreSQL 對新建函式**預設 grant EXECUTE 給 `PUBLIC`**，而 `anon` / `authenticated` 都是 PUBLIC 的成員。本機 Postgres 16 實測 —— 只撤那兩個角色之後 `has_function_privilege('anon', …, 'EXECUTE')` 仍然是 `true`；補上 `revoke all … from public` 之後才變 `false`。`pg_proc.proacl` 在只撤兩個角色時是 `NULL`（＝維持預設，PUBLIC 有權），這個「什麼都沒有」的樣子很容易被讀成「乾淨」。
+- 根因：把角色清單當成權限的全集。撤銷只能撤掉「直接授給該角色」的權限，撤不掉它**經由 PUBLIC 繼承**的那一份；而預設授權不是任何一支 migration 寫的，所以 grep 整個 `supabase/` 都看不到它。
+- 影響：任何登入者（甚至未登入者）可直接呼叫該 RPC，route 上的所有閘門——租戶檢查、角色檢查、金額與點數檢查——全部被繞過。#218 那支的具體後果是「扣別家店顧客的點數」。且完全沒有症狀。
+- 修正：三段式，缺一不可 —— `revoke all … from public;` → `revoke all … from anon, authenticated;` → `grant execute … to service_role;`。
+- 預防：① 每新增一支 SECURITY DEFINER 函式，執行權一律寫這三段，不要只寫角色那一段。② 驗收不能只 grep migration 文字，要**實際查權限**：`select has_function_privilege('anon', '<sig>', 'EXECUTE')` 必須是 `false`，`proacl` 必須有明確條目而不是 `NULL`。③ 整合測試的邊界案例要包含**真的登入過的** authenticated 角色，並斷言錯誤碼是 `42501`（沒有權利），而不是只斷言「有錯誤」——後者在函式根本沒被 expose 時也會通過。
+- 2026-09-11 第三次發生（正式庫，實際可被利用）：
+  - 實查 `egehnijjpgijmccagxac` 的 `reserve_seats(uuid,int)`、`release_seats(uuid,int)`、
+    `create_tour_order(...)`：三支皆 `prosecdef = true`，且
+    `has_function_privilege('anon', …, 'execute') = true`。**未登入即可執行**——anon key 是公開的、
+    會送到瀏覽器裡，而 SECURITY DEFINER 繞過 RLS，這三支又只驗參數之間的歸屬（團次是否屬於
+    `p_tenant`），不驗呼叫者是否為該租戶成員。後果：任何人可把任一店家的 `seats_booked` 歸零
+    造成超賣、吃掉任一店家的名額、在任一店家底下建假單。
+  - **為什麼既有三條預防沒接住**：它們全都是針對「每新增一支 SECURITY DEFINER 函式」的作者。
+    正式庫這三支來自 `0087` 之前的另一套實作（簽章是 `p_party` / `p_customer_name`，
+    與 repo 的 `0087` 完全不同），從未被這條規則涵蓋；而**從來沒有人去查過線上資料庫的實際權限**。
+    這條教訓寫過，但只擋得住未來的作者，擋不住既存的資料庫。
+  - 修正：以與正式庫實際簽章相符的 revoke 收回（`0088` 原文在此無法套用——它要 revoke 的是
+    repo `0087` 的簽章，那些函式在正式庫不存在，照套會因函式不存在而整個回滾）。migration 尾端
+    加自我驗證：任一支仍對 `anon`／`authenticated` 開放即 `raise` 回滾。套用前後
+    `has_function_privilege` 唯讀證據皆已記錄。
+- 預防（2026-09-11 新增，這條才擋得住既存資料庫）：
+  ④ **定期對每個線上資料庫實查權限，不是只檢查 migration 文字。** 最小查詢：
+  ```sql
+  select p.proname, pg_get_function_identity_arguments(p.oid) as args
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.prosecdef
+    and (has_function_privilege('anon', p.oid, 'execute')
+      or has_function_privilege('authenticated', p.oid, 'execute'));
+  ```
+  **這個查詢回傳任何一列，就是一個待處理的權限缺口。** 正式庫與 canonical TEST 都要查。
+  ⑤ 帶 SECURITY DEFINER 函式的 migration，尾端一律加自我驗證的 `do $$ … raise … $$`，
+  讓「收權沒生效」當場失敗回滾，而不是靠事後有人想起來去查。
+  ⑥ 線上資料庫的函式簽章**可能與 repo 的 migration 完全不同**（本例即是）。撰寫任何
+  revoke／grant 之前，先查 `pg_get_function_identity_arguments` 取得實際簽章；照抄 repo 的
+  簽章會因函式不存在而讓整個 migration 回滾，結果是缺口照樣開著而你以為修好了。
+- 2026-09-11 全面查證結果（以預防 ④ 的查詢實跑）：
+  - **正式庫 `egehnijjpgijmccagxac` 共 10 支** SECURITY DEFINER 函式對 anon／authenticated 開放。
+    `proacl` 逐字為 `{=X/postgres,postgres=X/postgres,service_role=X/postgres}`——開頭的 **`=X`
+    （grantee 空白）就是 PUBLIC 持有 EXECUTE 的字面證據**，這比「`proacl` 是 NULL」更容易辨識，
+    查核時應直接看 ACL 字串有沒有 `=X`。
+  - 已撤 8 支（分兩批）：`reserve_seats`、`release_seats`、`create_tour_order`；
+    `subscribe_feature`、`subscribe_bundle`、`user_id_by_email`、`email_exists`、`next_tour_order_no`。
+    撤權前逐一查證呼叫端皆為 `createAdminSupabase()`（`SUPABASE_SERVICE_ROLE_KEY`），
+    `next_tour_order_no` 則全 repo 無應用程式呼叫、僅由 `create_tour_order` 在 SQL 內部呼叫
+    （SECURITY DEFINER 內部呼叫以擁有者身分執行，不受撤權影響）。
+  - **最嚴重的一支是 `subscribe_feature`**：`p_price` 由呼叫端提供，`p_price=0` 即可免費開通
+    任意功能與月數；亦可指定他人 `tenant` 在其 `tenant_point_transactions` 寫入 CONSUME。
+    未登入即可執行。這不是理論風險，是當時的實際狀態。
+  - **必須保留開放、不得撤**：`is_tenant_member`、`tenant_role_at_least`——RLS policy 內部要用，
+    撤掉等於全站讀不到資料。
+  - **不能用撤權解決**：`reserve_catalog_positions` 是由 `requireTenant()` 正常路徑回傳的
+    **session client（authenticated 身分）**呼叫的，撤掉會讓「新增服務／商品／作品集」當場壞掉。
+    這類要改程式走 admin client，是一支 PR，不是一行 SQL。
+  - canonical TEST `nmwhwngojosmagjuvxol` 同一查詢回 11 支，尚未處理（測試庫，不含真實資料）。
+- 狀態：**監看中**——正式庫的 8 支已撤且留有套用前後證據；`reserve_catalog_positions` 待程式修正；
+  TEST 待清理；預防 ④ 目前仍靠人工執行，尚無自動化檢查會在新缺口出現時報警。
+
+### PB-029 — 測試名稱宣稱的，比它實際證明的多
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：2
+- Issue／PR／CI：Issue #218、#259；PR #280、#278（`local-isolated-a` 紅，head `4d60b2a`）
+- 分類：測試方法
+- 事件：兩個形態——
+  1. 一條測試叫「**已登入使用者**不得直接呼叫 `redeem_booking_points` rpc」，用的卻是**沒有登入**的 anon client，而且只斷言 `error` 非 null。它證明的是「未登入者叫不動」，名字宣稱的卻是 authenticated 角色；而 authenticated 才是危險的那個身分（見 PB-028）。
+  2. 一組整合測試宣稱「PUT 寫進去、重新 GET 還在」，但把 `GET /api/trips/:id` 的 `{ trip, plans }` 信封當成 trip 本身在讀。每個欄位都是 `undefined`。
+- 根因：第 1 種是寫測試時先想好名字、實作時走了最省事的 client，名字沒有跟著回頭校對。第 2 種是沒有先確認端點的**回應形狀**就寫斷言。共同點是：**測試名稱不是斷言**，沒有任何東西會檢查它們是否一致。
+- 影響：第 1 種是最壞的一類——它是綠的、名字看起來剛好覆蓋了那個風險，於是那個風險再也不會被人檢查。第 2 種相對無害（會紅），但如果斷言寫成 `toBeFalsy()` 或 `not.toBeNull()` 之類的寬鬆形式，一樣會假綠。
+- 修正：第 1 種改成未登入與真的 `signInWithPassword` 登入兩段都測，並收緊到錯誤碼 `42501`；第 2 種抽一支 `getTrip()` helper，內含 `expect(body.data?.trip).toBeTruthy()`，讓信封讀錯時**在那一行**就失敗而不是在下游變成 undefined。
+- 預防：① 寫完一條測試，把名字當成一句斷言念一遍，逐字問「這一段程式證明了這句話嗎」——特別是名字裡有身分（已登入／跨租戶／管理員）或條件（併發／逾期）的時候。② 斷言「東西存在」時要收斂到**具體值或具體錯誤碼**，不要停在 `not.toBeNull()` / `toBeTruthy()`；後者對「功能根本不存在」與「功能存在且正確擋下」給出同一個綠燈。③ 讀 API 回應前先確認信封形狀，並在 helper 的第一行就斷言它。
+- 狀態：已防止
+
+### PB-030 — 兩道 DB 閘門同時是「兩套寫法的超集」，於是它們天生偵測不到 repo↔正式庫的分歧
+
+- 首次／最近：2026-09-08／2026-09-08
+- 發生次數：1
+- Issue／PR／CI：Issue #197、#259；PR #278、#287
+- 分類：CI／環境真相
+- 事件：`trips` 與 `trip_plans` 在正式庫用的是一套欄位名（`region` / `inclusions` / `duration_minutes` …），repo 的程式用的是另一套（`location` / `includes` / `duration_hours` …）。四道閘門全綠，正式庫卻是壞的：
+
+  | 環境 | `trips` 欄位數 | 兩套名字 | 程式能動嗎 |
+  |---|---|---|---|
+  | 純 canonical build | 23 | 只有新那套 | 能 |
+  | CI `local-isolated` | 32 | **兩套都在** | 能 |
+  | canonical TEST | 32 | **兩套都在** | 能 |
+  | **正式庫（當時）** | **28** | 只有舊那套 | **不能** |
+
+- 根因：`local-isolated` 與 canonical TEST 都是「先套 historical overlay `0016`、再套 canonical 的調和 `0066`」建出來的，結果是一個**兩種寫法都滿足的超集**。超集對兩套寫法都回綠，所以它不只是「證明不了與線上一致」，而是**連不一致都顯示不出來**。
+- 影響：比 #197 §影響第 2 點原本的描述更嚴重。原文說 `local-isolated` 證明的是「migration 寫對了」不是「與線上一致」；實際上兩個環境同時綠燈，而正式庫是壞的——沒有任何一道閘門有機會紅。
+- 修正：以 `scripts/db/schema-fingerprint-diff.mjs` 取「欄位數 ＋ 排序後欄位名的 md5」逐表比對 repo 與線上，這才看得到分歧；並依擁有者具名授權把 canonical `0066`/`0067`/`0068` 補套到正式庫（`trips` 28 → 32 欄，指紋與 canonical TEST 逐字相同）。
+- 預防：① **建庫路徑不同的環境不能互相當對照組**——要驗「與線上一致」，唯一有效的對照組是線上本身，其餘都只是驗「migration 跑得完」。② 對兩套並存的欄位名，測試綠不構成證據；直接查 `information_schema.columns` 取指紋比對。③ 同族陷阱見 PB-026（`create table if not exists` 對同名不同形狀的表靜默跳過），那正是超集的成因之一。④ 我自己在本輪還多踩一層：看到「repo 用 A 名、正式庫用 B 名」就推論成**設計分歧**，沒有回頭讀 `0066` 到底做了什麼——那支 migration 就是為調和這件事而寫的，只是從未被套上去。**先讀那支 migration，再下結論。**
+- 狀態：已防止（工具已合併；#197 建議處置第 2 步「讓 repo 能重現線上」仍未完成）
+
+## 可重用工程設計準則（由 PR #294 萃取）
+
+> 來源：PR #294／Issue #37 的團次導遊指派與撞班修復。這一節不是新的產品規格，也不取代 `docs/integration/**`；它把一輪已被真實 HTTP、PostgreSQL 與變異測試驗證過的工程方法，抽成可跨領域重用的設計問題。
+>
+> 適用：排班、名額、庫存、點數、付款、退款、優惠券、LINE entitlement／routing，以及任何「現實世界不可能同時成立，系統也不應允許同時成立」的功能。
+
+### 原則 1：重要不變量放到最靠近資料真相的層級
+
+- UI 的責任是降低誤操作；API／server 的責任是做商業規則檢查並回人看得懂的錯誤；**DB 的責任是守住無論從哪個入口進來都絕對不能被破壞的不變量**。
+- 只靠「先查再寫」不能處理併發。兩個請求可能同時看到舊快照、同時判定可寫，再一起留下非法狀態。能由 unique／check／FK／transaction／atomic RPC 表達的不變量，優先由 DB 做最後保證。
+- #294 範例：一個團次最多一位 PRIMARY 不是只靠前端單選或 server `if`，而由 partial unique index 保證；同團同人不得重複也由資料層約束。
+- 相關教訓：PB-007、PB-026、PB-028。
+- Review 問句：**「如果 UI 壞掉、API 漏檢查，或兩個請求同時進來，資料庫仍會拒絕這個不可能狀態嗎？」**
+
+### 原則 2：同一個商業概念只維護一套判斷邏輯
+
+- 同一個概念若在不同入口各寫一份規則，兩份規則遲早漂移。不要讓「開團時說可以」與「一般預約時說不行」同時成立。
+- 把共通的「讀資料」與「判斷」拆開：資料可以一次讀取，判斷最好是純函式，讓不同入口共用同一套演算法，也方便單元測試。
+- #294 範例：團次建立／更新／批次開團與 `/api/bookings/available-slots` 共用 `staff-availability` 的占用區間與撞班規則，形成真正的雙向防撞。
+- 相關教訓：PB-025、PB-027。
+- Review 問句：**「這個商業概念在 repo 裡有幾份判斷？如果我改一條規則，需要改幾個地方？」** 理想答案是核心規則只有一份。
+
+### 原則 3：系統能推得出的事情，不要再要求使用者設定
+
+- 不為工程架構額外發明產品設定。當系統已經知道答案，就直接採用答案；只有真正存在選擇時才把選擇交給使用者。
+- 介面複雜度應隨現實複雜度成長，而不是一開始就塞滿模式開關。這可降低設定錯誤、空狀態與「設定和真實資料互相矛盾」的機會。
+- #294 範例：可接案導遊 0 人時阻擋 OPEN 並說明原因；1 人時自動指派、不顯示無意義的選擇器；2 人以上才要求選 PRIMARY／ASSISTANT。
+- Review 問句：**「這個欄位／開關真的是使用者的商業決策，還是系統其實可以從現有資料直接推得？」**
+
+### 原則 4：資訊不完整時，往安全方向失敗，不要樂觀猜測
+
+- 無法確定資料時，不得把「不知道」偷偷轉成「可以」。選擇較保守、可解釋、可人工解除的結果，優先於可能造成超賣、撞班、錯扣款、越權或其他不可逆後果的樂觀猜測。
+- 必須區分兩種代價：多擋一筆可人工處理的操作，通常比接受一筆事後無法履行或無法一致回滾的交易便宜。
+- #294 範例：無法得知團次時長時採整日占用。它可能多擋一個其實有空的時段，但不會因「算不出結束時間」就把同一位導遊排進兩個地方。
+- 相關教訓：PB-023、PB-025。
+- Review 問句：**「當必要資訊是 null、查詢失敗或規格與 schema 不一致時，程式現在是在說『不知道』、安全阻擋，還是偷偷假設『可以』？」**
+
+### 原則 5：每種測試只宣稱它真正能證明的那一層
+
+- Unit test 適合證明純邏輯、邊界與狀態轉換；它不能證明 HTTP route 真的接上、PostgREST 真的寫入、DB constraint 真的存在或外部 provider 真的接受。
+- Integration test 應走真 HTTP ＋真 DB，對持久化功能最好「操作後再讀一次」或直接查資料庫；對反向排除類測試要有正向對照組，避免空集合造成假綠。
+- Provider／Production 行為仍需對應層級的真實證據；不得拿 local／TEST 綠燈宣稱線上已生效。
+- #294 範例：23 個單元案例只證 0/1/2+、占用區間與衝突演算法；15 個整合案例才證 API 真的寫入 `trip_departure_staff`、`available-slots` 真的排除已被團次占用的人。這一層還實際抓到「只改導遊指派會因空 update 被誤判 404」的真缺陷。
+- 相關教訓：PB-001、PB-006、PB-029、PB-030。
+- Review 問句：**「這個測試名稱宣稱的事情，是否真的在它執行的層級被觀察到了？」**
+
+### 原則 6：關鍵規則要做變異測試，證明保險絲真的會叫
+
+- 「測試全綠」只證明現況通過；對金額、並發、租戶邊界、名額、庫存、權限、排班等高代價規則，還要刻意拔掉關鍵 guard／lock／filter／constraint，確認至少一條測試會轉紅，再還原。
+- 變異應對準要保護的性質，而不是隨便破壞語法。若拿掉規則後仍全綠，表示測試沒有保護到那個規則，不能因測試數量很多就當作有覆蓋。
+- #294 範例：刻意取消「未知時長視為整日占用」、忽略團次衝突、拿掉單人店自動指派，三種變異都讓指定測試轉紅後才還原。
+- 相關教訓：PB-016、PB-027、PB-029。
+- Review 問句：**「如果我現在故意把最重要的保護拿掉，哪一條測試一定會紅？」** 如果答不出來，該保護尚未被可靠驗證。
+
+### PB-031 — 拿 Issue 內文當 Owner 決策，於是對一件早已裁示的事重新提案
+
+- 首次／最近：2026-09-09／2026-09-13
+- 發生次數：2（第 2 次一輪內同時犯了兩件）
+- Issue／PR／CI：#25、#42；`docs/OWNER-DECISIONS.md:88`、`:108`；
+  #396／#27；`docs/decisions/2026-09-10-schema-canonical-source.md`、
+  `docs/decisions/2026-09-07-owner-production-ddl-0086-0087-0089.md` 第二節
+- 分類：Agent
+- 事件：Owner 詢問 #25 的 impersonate 做或不做時，我以「不做（推薦）」為預設選項提案，
+  並額外建議一個**與裁示相反**的替代方案（唯讀支援檢視）。實際上 Owner 早在 **2026-08-27**
+  就裁示「**要做，作為正式平台能力**」，2026-08-28 另有 #42／#25 的代建裁示補充實作方式。
+- 證據：
+  ```
+  docs/OWNER-DECISIONS.md:108（2026-08-27 已裁示）
+  | #25 | Midao 管理者代登入租戶 | 要做，作為正式平台能力 |
+    從 Midao 管理者後台進入指定租戶協助查看／修改。僅 platform admin；全程 audit；
+    租戶可查紀錄；不可取得租戶密碼或共用密碼。 |
+
+  docs/OWNER-DECISIONS.md:88（2026-08-28 已裁示）
+  | #42 / #25 | Midao 協助代建方案 | 平台可代建，但導遊仍是可編輯的資料 owner；
+    使用 platform-admin／impersonation + audit，不共用密碼。 |
+  ```
+  另有兩處 canonical 規格已把它當成既定能力引用：
+  `docs/integration/18-GUIDE-COMMERCE-LIFECYCLE.md:406`、
+  `docs/integration/19-GUIDE-PRODUCT-EXPERIENCE.md:446`。
+- 根因：三層疊加，全部是執行者的問題，不是紀錄的問題。
+  1. **沒有讀 `docs/OWNER-DECISIONS.md`。** CLAUDE.md「Mandatory start」第 2 點逐字點名這個檔案，
+     整個 session 一次都沒開過它。後面兩層都是這一層的結果。
+  2. **拿 Issue 內文當決策來源。** #25 的 body 仍寫著「⚠️ 決策（阻擋性）：impersonate 做還是
+     不做…**不做也是有效答案**」——那段文字寫於裁示之前且從未回填。CLAUDE.md 的真相優先序是
+     **main canonical docs ＞ Issue 內文**，我把它反過來用了。
+  3. **對已裁示事項重新提案。** 這比「重問」更糟：重問只是浪費一次往返，附帶一個有說服力的
+     反向建議則可能真的翻掉一個已定案的產品決策。
+- 影響：Owner 必須花一輪把已經做過的決定再講一次；#25 因此又多停一天。無程式碼或資料受影響。
+- 預防：
+  1. **開工第一件事就是 `grep -n -i "<關鍵字>" docs/OWNER-DECISIONS.md`**，在讀 Issue 內文之前。
+     Issue body 是提案時的快照，Owner 裁示後**不保證**會回填。
+  2. 任何準備向 Owner 提出的「決策題」，送出前一律先在 `docs/OWNER-DECISIONS.md`、
+     `docs/decisions/**`、`docs/integration/**` 三處各搜一次同義詞（本例：`impersonat`、
+     `代登`、`代建`、`platform.admin`）。**搜不到才問。**
+  3. 發現 Issue 內文與 `OWNER-DECISIONS.md` 不一致時，**當場回填 Issue**，不要只在留言裡講——
+     下一個 agent 讀到的還是 body。
+  4. 同族陷阱：PB-019（沒併回 main 的實作等於不存在）是「repo 落後於現實」；本條是
+     「Issue 內文落後於 repo」。兩者都來自「拿一份沒有回填義務的文字當現行事實」。
+- 相關教訓：PB-019、PB-024、PB-027。
+
+#### 第 2 次（2026-09-13）：一次把兩件已裁示的事列成「卡在 Owner 身上」
+
+#396 收尾與主線盤點後，我向 Owner 列了四件待辦，其中兩件**早已有 Owner Decision
+在 `main` 上**：
+
+| 我當時的說法 | 實際狀態 |
+|---|---|
+| 「#41 overlay 要認列為產品契約還是 TEST 殘留，這是產品判定，不是我能決定的」 | `docs/decisions/2026-09-10-schema-canonical-source.md`（**Status: DECIDED**）已給出分類法 `ACTIVE_RUNTIME`／`FUTURE_PRODUCT`／`LEGACY_RETIRED`／`COMPATIBILITY_ONLY`，並明文寫著 `TEST_ONLY` 只是**證據標籤，不是哪一邊正確的判定**。該 overlay 的 manifest 自標 `mode: LOCAL_ONLY_TRANSITIONAL`、`status: CANDIDATE_SOURCE_NOT_CANONICAL`，canonical 採納綁在 #41／PR #73 自己的驗收閘。正確分類是 `FUTURE_PRODUCT`，沒有待裁示的事。 |
+| 「#27 收尾要的 Preview 部署（環境變數指向 TEST Supabase）」 | `docs/decisions/2026-09-07-owner-production-ddl-0086-0087-0089.md` 第二節**已經授權**，連邊界都寫好：「只動 Preview 環境變數，不動 Production 的任何設定」。 |
+
+而且「二選一」這個框架本身就是錯的——那個 overlay 既不是產品契約也不是殘留，它是
+**開放中工作的候選基線**：repo 裡有專屬目錄 `supabase/local-migrations/issue-41-candidate-baseline/`、
+有 manifest、CI 還專門把它排除在 canonical bootstrap 證明之外。用二選一提問會逼出一個錯的答案。
+
+與第 1 次的差別值得記下來：第 1 次是把 Issue 內文當決策來源；這一次是**根本沒去查**
+決策來源。`CLAUDE.md` 的「Mandatory start」第 2 步就要求讀 `docs/OWNER-DECISIONS.md`
+與 `docs/decisions/**`，我在那一輪跳過了，因為當時的任務看起來是「盤點與回報」而不是
+「開工」——但把待辦丟回給 Owner 同樣是一個需要先確認現行裁示的動作。
+
+- 預防（在原本的基礎上追加）：
+  1. **任何「這件事卡在你身上」的陳述，送出前必須先 grep `docs/decisions/` 與
+     `docs/OWNER-DECISIONS.md`。** 這比開工前讀更重要——開工做錯還有 CI 會擋，
+     問錯問題不會有任何東西擋你，只會浪費 Owner 一輪往返並降低後續提問的可信度。
+  2. 狀態未明的東西不要寫成二選一。先問「這在現行治理下屬於哪一類」，再問「需要做什麼」。
+     分類法已經存在時就套用它，不要重新發明選項。
+- 狀態：監看中（第 3 次再發生時，把「送出 Owner 待辦前的決策查核」做成可執行檢查）
+
+### PB-032 — `conclusion=success` 不等於測試執行過：`POLICY_SKIP` 也是綠的
+
+- 首次／最近：2026-09-11／2026-09-11
+- 發生次數：1
+- Issue／PR／CI：#352；run 34546518776 job `integration`；run 34546915631 job `integration`
+- 分類：CI
+- 事件：PR #352 帶進一支新的整合測試 `tests/integration/api/product-positions.238.test.ts`。
+  CI 的 `integration` check 回報 `conclusion=success`，我據此向 Owner 宣稱「完整測試套件
+  （含整合測試）在這顆 head 上跑過且綠了」。**那支測試一次都沒有執行過。**
+  `integration` job 只印了一行 policy 訊息就以 success 結束。
+- 證據：
+  ```
+  POLICY_SKIP: this PR is not the sole active TEST_VALIDATION holder
+  (source_only_pr_without_test_lane).
+  ```
+  該 job 的完整 log 只有這一行實質輸出，沒有任何 vitest 輸出、沒有測試名稱、沒有通過數。
+  對照真正執行後的 log：
+  ```
+  ✓ tests/integration/api/product-positions.238.test.ts (6 tests) 15860ms
+  ```
+- 根因：兩層，第二層才是真正的問題。
+  1. **機制層**：共用 TEST 一次只允許一位 `TEST_VALIDATION` holder，非 holder 的 PR 依政策
+     記一筆成功的 `POLICY_SKIP`。這是**刻意設計**，不是缺陷——它讓非 holder 的 PR 不會因為
+     搶不到 TEST 而紅。副作用是「跳過」與「通過」在 check 層級長得一模一樣。
+  2. **判斷層**：我把 `conclusion=success` 當成「測試執行且通過」的證據。那是**狀態碼**，
+     不是**執行證據**。同一個綠燈可以來自「跑了而且過了」「依政策跳過」「job 提早結束」，
+     三者在 API 回應上無法區分。這與 PB-027（用「名字出現幾次」代替「那件事真的會發生」）
+     是同一種錯誤的不同外觀：拿一個**代理指標**代替**要證明的事實**。
+- 影響：我向 Owner 報出的是一個假綠。若當下合併，#352 會帶著一支從未執行過的整合測試進 main，
+  而該測試正是這支 PR 唯一能證明「排序真的落地到 DB」的證據。無資料受影響——因為在合併前
+  自己回頭讀 job log 才發現。
+- 修正：
+  1. 查出 `POLICY_SKIP` 的成因是 `classify` 因舊 PR 內文而紅，導致本 PR 未被認定為 TEST holder。
+  2. 修正 PR 內文的中繼資料，將 lane 由 `TERRA_BUILD` 轉入 `TEST_VALIDATION`。
+  3. 以 `ci.yml` 的 `workflow_dispatch`（`lane_transition`）重新派工——**不補 no-op commit、
+     不 close/reopen**，因為 `ci.yml` 只監聽 `[opened, synchronize, reopened]`，而重跑會重播
+     舊的 event payload、再次讀到舊內文。
+  4. 向 Owner 主動更正先前的錯誤宣稱。
+- 預防：
+  1. **宣稱任何測試通過之前，必須讀 job log 並看到測試名稱與通過數。**
+     `conclusion` / `state` / check 顏色一律不接受作為執行證據。
+  2. 整合測試尤其要查：它是唯一會因為共用資源政策而被整批跳過的一類，而且跳過時是綠的。
+     判準是 log 裡有沒有 `✓ tests/integration/...(N tests)` 這一行。
+  3. 同族陷阱：任何「依政策跳過」「matrix 條件不成立」「job 提早 return」都會產生同樣的綠。
+     `skipped` 至少還看得出來，`success` 的 `POLICY_SKIP` 看不出來。
+  4. 這條屬於 Completion Truth Gate 的第一項（「成功的工具呼叫只代表 REQUESTED」）在 CI 上的
+     具體形狀：**綠燈只代表 check 回報綠，不代表它驗過你以為它驗過的東西。**
+- 驗證：重新派工後讀 log 確認 `✓ tests/integration/api/product-positions.238.test.ts (6 tests)
+  15860ms`，6 條全過。
+- 狀態：已防止（判準已寫入本條預防第 1、2 點）
+- 相關教訓：PB-027、PB-029。
+
+#### 2026-09-30 — #692：同 SHA 的不同 CI 事件不能互相覆蓋
+
+- 最近發生：2026-09-30；本延伸 1 次，PB-032 原事件保留。
+- 證據：PR #691 source `a39e38d` 的 PR CI `36656526484` 成功，被較晚 manual TEST `36656829272` 的 cancelled 蓋成 source CANCELLED；main `5491032` push `36667500041` 成功，又被 G3 dispatch `36669805672` 的進行中狀態蓋掉。04:10 truth 留言也沒有在 CI 完成後刷新。
+- 根因：只按顯示名稱、SHA 與最大 run ID 選證據，混淆 source、main 與環境驗證；只監聽 push/status，漏了 CI 完成事件。
+- 修正／預防：canonical workflow path + exact SHA + stage event class，類內取最新 run／attempt 後才判結果；trusted-main completion refresh 重讀 live run／PR，拒絕 fork、非 main push 與 manual dispatch，不執行 head 程式或 artifacts。
+- 驗證：completion-truth 回歸涵蓋事件競爭、同類較新 failure/cancelled、錯 SHA/path、rerun、刷新安全邊界與 Production gate；正式 source CI 與合併回讀另留 #692 PR。修正不宣稱 #691 schema 已套或正式登入驗收完成。
+
+### PB-033 — 對正式庫下了 revoke 之後，才回頭查有沒有呼叫端
+
+- 首次／最近：2026-09-11／2026-09-18
+- 發生次數：2（第二次為 #447 dedicated writer bootstrap/readiness）
+- Issue／PR／CI：PR #352 的 Final Risk 追查；Issue #447；readiness run `35335418384`；正式庫 `egehnijjpgijmccagxac`
+- 分類：權限
+- 事件：查到正式庫三支 tour-seat RPC 對 `anon` 開放、取得 Owner 授權後立即套用 revoke。
+  **套用之後**才去讀 `requireTenant()`，發現它在正常路徑回傳的是 **session client（authenticated
+  身分）**，不是 admin client——也就是說「被 revoke 的函式是不是正好由 authenticated 呼叫」
+  這件事，我在動手時並不知道。
+- 證據：`src/server/tenant.ts:66-125`——只有代登入分支回 `supabase: admin`，其餘一律回 session client。
+  而 `src/app/api/tour-orders/manual/route.ts:62` 正是 `t.supabase.rpc('create_tour_order', …)`。
+- 根因：把「這是安全修正」當成「可以少一道查證」。收權與加權在風險結構上是對稱的——
+  兩者都可能讓線上功能當場停止運作，差別只在失敗的方向。而我對加權會謹慎，對收權沒有。
+- 影響：**這次沒有造成損害，但那是運氣不是判斷**。事後查證發現該 route 傳的是 `0087` 的參數名
+  （`p_order_no` / `p_party_size` / `p_contact`），而正式庫的函式是另一套簽章
+  （`p_party` / `p_customer_name`），PostgREST 本來就回 PGRST202——那條路徑在我撤權之前就已經是壞的。
+  若簽章恰好相符，我就會在無預警的情況下讓正式站的建單停止運作。
+- 修正：第二批（`subscribe_feature` 等五支）改為**先逐一查證呼叫端與其使用的 client，列出證據
+  給 Owner 確認，才執行**。查證項目：全 repo grep（含 `tests/`）、呼叫端用哪個 client 建構函式、
+  該 client 用哪把 key、以及是否被其他 SQL 函式內部呼叫。
+- 預防：
+  1. **對線上資料庫執行任何 `revoke`／`drop`／`alter` 之前，先完成呼叫端清查**，把清單與每一處
+     使用的 client 列出來。「這是安全修正」不是略過這一步的理由。
+  2. 清查必須包含四個面向，缺一不可：全 repo grep（含測試）→ 呼叫端的 client 建構函式 →
+     該 client 用的 key/角色 → `pg_proc.prosrc` 裡有沒有其他函式內部呼叫它。
+  3. migration 尾端的自我驗證要**雙向**：既檢查「權限有沒有撤乾淨」，也檢查「該保留的角色
+     （通常是 `service_role`）有沒有被誤撤」。只驗前者的話，「連 service_role 一起撤掉」這種
+     會弄壞正式站的錯誤會安靜通過。
+  4. 同時提供還原指令給 Owner，並說明「repo 之外的呼叫端我無法證明不存在」這個界線。
+  5. **同族（2026-09-11 同一輪再次發生）：用會寫入的指令去做只需要讀的事。**
+     為了找 TEST 重建工具而跑了 `git checkout -q origin/main -- .`——結尾那個 `.` 會把
+     整個工作區覆蓋掉。當時分支上是 #352 的未合併成果，於是產生一份「看起來像工作進度」
+     的未提交變更，內容其實是**把 #352 的修正全部移除**；若照 stop hook 的提示 commit 下去，
+     等於撤銷整支 PR。只想讀檔案時一律用 `git show <ref>:<path>`，不要用 `git checkout`。
+     這與本條主體同因：為了省一步，選了一個會改變狀態的動作去達成只需要觀察的目的。
+- 驗證：第二批五支撤權前後皆記錄 `has_function_privilege` 與 `proacl`；雙向自我驗證未觸發。
+  工作區污染於 commit 前查出方向（diff 顯示為移除 `reorderProducts` 接線），以
+  `git reset --hard HEAD` 丟棄，並確認被丟掉的兩份 docs 與 `origin/main` 逐位元組相同。
+
+  **2026-09-18 #447 同根因再發：** dedicated writer 已能登入 Production，但 trusted-main credential proof
+  先後回報 `permission denied for schema supabase_migrations` 與 `permission denied for schema extensions`。
+  根因不是密碼或連線，而是 bootstrap 只驗了 owner 對 ledger table／routine 的物件權限，沒有沿著
+  **每一個實際執行身分**列出 schema-resolution 權限：PREPARE/fingerprint 以 writer 執行，G6 lock 後
+  fingerprint 以 `production_migration_owner` 執行。修正只補最小必要權限：writer 對
+  `supabase_migrations` 取得 `USAGE`，但 `schema_migrations` 的 `SELECT/INSERT` 仍為 false；writer 與 owner
+  對 `extensions` 取得 `USAGE`，`CREATE` 仍為 false。`digest()` 的 EXECUTE 原本就由 PUBLIC 提供，沒有再加權。
+  最終 protected Environment 真憑證 proof 與 readiness run `35335418384` 全綠。
+
+  **新增預防：** Production role bootstrap 必須建立「phase × execution role × object dependency」最小權限矩陣，
+  不只列 table/function grant；凡 SQL 使用 fully-qualified schema、extension function、catalog helper，連同 schema
+  `USAGE` 一起驗。最後必須用 protected Environment 裡的真 dedicated credential 跑 read-only proof，不能只用
+  admin 角色的 `has_*_privilege()` 推論真 caller 會成功。
+- 狀態：已防止
+- 相關教訓：PB-028。
+
+### PB-034 — 用 CI 當規則查詢器：靠一次次被退來湊出正確的 PR 中繼資料
+
+- 2026-09-20 #589 Stage 1：Production impact manifest 若只補新 migration 檔名，G2 的 pending-diff allowlist 仍無法辨識實際 catalog surface；反過來把同一 routine 或 column 同時列在前、後 migration，會使 release 的最終 owner 不明。manifest 維持 v1 的 selected exact impact roots：13 個 plan migration 都要有 entry，compatibility-only predecessor 可明列空 impacts，而被後續 `create or replace`／canonical contract 覆寫的 root 只交給最後 owner；function ACL identity 必須使用 observer 的 named `pg_get_function_identity_arguments` 輸出，不能改成 call-style type list。既有 `AMBIGUOUS_IMPACT_OWNERSHIP` 保持 fail-closed；Stage 1 不把 migration 順序假稱成 catalog dependency closure，也不以 observer 的 1072 個未分類差異建立例外。v1 沒有 enum surface，現有 observer 也沒有 storage schema policy capture，故這兩類 coverage 仍是 Stage 3 adapter 的 blocker，不能寫成完整 catalog coverage。預防測試固定 13-entry root inventory digest、observer 實際 emit 的 function ACL keys 與 duplicate-owner 反例；此項是 source metadata，未執行 TEST／Production 或資料庫操作。
+
+- 2026-09-20 #589 collect 續例：G4 restore rehearsal 將 `LOCAL_PROJECT_ID` 寫成業務名稱，卻交給只接受 `schema-proof-` execution identity 的 fresh-install CLI；同時 workflow 只輸出 `BOUND_MAIN_SHA`，沒有輸出 CLI 必填的 `EXPECTED_HEAD`。修正 caller 以 `schema-proof-restore-<run>-<attempt>` 識別 disposable proof，並在 exact-main 驗證後將已驗證的 `BOUND_SHA` 匯出為 `EXPECTED_HEAD`；不放寬 CLI regex，也不以 `MAIN_SHA` 的未經同一檢查別名替代。G2 schema drift watch 的 `schema-drift-watch.mjs` 已在 lockfile 宣告 `postgres@3.4.9`，但 workflow 未先 `npm ci` 即 import，造成 `ERR_MODULE_NOT_FOUND`；在任何 local replay／capture 前安裝 exact lockfile tree。預防測試固定 caller identity、verified head propagation 及安裝步驟在 observer module 使用前；這是 source-only 接線修復，未執行 DB／TEST／Production 操作，也不把 collect failure 當 PASS。 同日 run `35522048199` 在本機 metadata SQL 成功後暴露 CLI 契約落差：workflow 使用 positional `normalize/capture/compare`，parser 只接受 `--command <value>`。三處命令一次修正，回歸需從 workflow 擷取實際 argv prefix 並執行 CLI，覆蓋 normalize 成功、compare 成功、capture 無效環境 fail-closed 與舊 positional 形式拒絕，不能只測函式或搜尋字串。診斷後綴需維持 Supabase CLI v2.116.0 的 project_id 40 字元上限；正式 g2/g7 後綴未受影響。
+
+- 2026-09-17 #566 續例（母單 #528）：#554 的分類器新增 final-risk-cost-policy.mjs import，
+  trusted sparse-checkout 卻漏下載該檔。分類入口在判定前即 ERR_MODULE_NOT_FOUND；
+  PR #562/#563/#564/#565 的分類紅燈與缺標籤因此不能直接歸因各張產品修改。
+  #566 原一行修補又漏填治理欄位，屬另一個已知 metadata 問題，不把兩者混成同一錯誤。
+  修正沿用既有 #566，補齊欄位與 sparse 路徑；不另開重複 PR、不改模型政策或產品原始碼。
+  預防測試從 workflow 真正的 sparse 清單建立乾淨目錄，在新 Node 程序 import 分類入口；
+  刻意移除 cost-policy 或 model-routing.json 時必須失敗，防止完整 checkout 掩蓋缺檔。
+  首次 focused 測試與 mutation 成功後，完整型別檢查抓到隔離程序 env 漏填必要 NODE_ENV；
+  明確補 NODE_ENV=test，不傳入全部 CI 環境或憑證，不用型別轉換隱藏問題。
+  驗證以 #566 對應版本的 focused mutation、preflight、required source CI 與合併後分類事件為準；
+  SOURCE_ONLY 不宣稱資料庫或產品驗收通過，舊失敗通知不覆寫。
+
+- 首次／最近：2026-09-11／2026-09-17
+- 發生次數：5（#352、#361、#370、#553、#586；次數是事件，不是 CI 執行總數）
+- Issue／PR／CI：PR #352、#361、#370
+- 分類：Agent
+- 事件：#352 開出後被守門與 CI 連退四次，**四次都是中繼資料填錯，沒有一次是程式碼問題**：
+  1. `FINAL_CANONICAL_REQUIRED: false` —— `TEST_PROFILE: LOCAL_ISOLATED` 強制要求 `true`
+  2. `CLOSURE_SWEEP_TARGET: #239` —— 只接受 `EMPTY_WITH_SCAN` 或 `REPORT:`，PR 編號不是合法值
+  3. `AGENT_LANE: TERRA_BUILD` —— 要派工共用 TEST 必須先轉 `TEST_VALIDATION`
+  4. `ACTIVE_CANDIDATE: true` —— `TEST_VALIDATION` 規定必須是 `false`
+- 證據：四條規則全部明文寫在 repo 裡且開工前可讀：`scripts/agents/dual-terra-wip-policy.mjs`
+  （第 283-291 行的 closure 規則、`isActiveTestValidation()`）與
+  `scripts/ci/local-isolated-test-policy.mjs`（`LOCAL_ISOLATED` 的 profile 檢查）。
+- 根因：把 PR 內文當成「填完送出、錯了再改」的表單，而不是一份**有明文規格的契約**。
+  我是從既有 PR 複製欄位再逐項猜，而不是先讀那兩支 policy 腳本。
+- 影響：四輪 CI 配額與 Owner 的等待時間。每一輪都要重跑守門與分類，其中一輪還佔用了
+  共用 TEST 的派工。無程式碼或資料受影響。
+- 修正：讀 `dual-terra-wip-policy.mjs` 與 `local-isolated-test-policy.mjs` 的實際判定式，
+  依規則一次補齊。
+- 2026-09-11 同一輪重演（PR #361），以及一個**更好的預防**：
+  寫完本條之後，我在同一個 session 開 #361，又被退了兩次中繼資料錯誤。
+  查規則時才發現 repo **本來就有 `scripts/agents/agent-wip-preflight.mjs`**——一支可以在
+  開 PR 前本機執行的檢查器：
+  ```bash
+  node scripts/agents/agent-wip-preflight.mjs \
+    --body <pr-body.md> --changed-files <files.txt> --number <pr>
+  # → WIP_PREFLIGHT_PASS issue=362 lane=GOVERNANCE
+  ```
+  也就是說本條原本的預防（「先讀那兩支腳本」）**比實際可用的工具還弱**——要人用眼睛
+  模擬一支可以直接跑的程式。這是本條會重演的真正原因。
+  實跑後它一次列出兩個 CI 當時**還沒報**的錯（`DELIVERY_UNIT_TYPE must be SLICE,
+  STANDALONE, EPIC, or GOVERNANCE`、`An active Product delivery lane must point to a
+  closable SLICE or STANDALONE Issue`），而且更嚴格：#352 填 `DELIVERY_UNIT_TYPE: PRODUCT`
+  時 CI 的守門並沒有擋，preflight 會擋。
+  那兩個錯也揭露了真正的問題不在欄位而在 **lane 選錯**：#361 改的是測試種子與 Playbook，
+  沒有任何使用者可見產出，宣告成 `TERRA_BUILD`／`SLICE` 會強制
+  `COUNT_IN_DELIVERY_OUTCOME=true`——把一支沒有交付的 PR 記成一個交付單位。改為
+  `GOVERNANCE` lane 後 preflight 一次通過。
+- 2026-09-11 第三次發生（PR #370），而且**預防 0 這次沒擋住**：
+  #370 的 `TEST_PROFILE` 被我填成 `CANONICAL_TEST`——一個不存在的值（合法值是
+  `SOURCE_ONLY`／`LOCAL_ISOLATED`／`LOCAL_ISOLATED_CANARY`／`SHARED_CANONICAL`）。
+  我**有**依預防 0 先跑 preflight，而且它回 `WIP_PREFLIGHT_PASS`；CI 的 `classify` job
+  照樣把 PR 退了：
+
+  ```
+  [local-test-policy] TEST_PROFILE is invalid: CANONICAL_TEST
+  ```
+
+  根因是 preflight **沒有涵蓋** `scripts/ci/local-isolated-test-policy.mjs`。它呼叫
+  `agent-wip-policy` 與 `dual-terra-wip-policy`，但 `TEST_PROFILE` /
+  `FINAL_CANONICAL_REQUIRED` 由第三支驗證器管，preflight 從來沒問過它。
+
+  **這比原本的失效模式更危險**：原本是「沒跑工具」，一旦跑了就會發現；現在是
+  **跑了工具、拿到綠燈、而綠燈是不完整的**。一條「通過才推」的預防，只有在檢查器
+  真的涵蓋 CI 會擋的規則時才成立；少涵蓋一支，預防就只是看起來有效，而這件事在
+  preflight 通過時完全看不出來。
+
+  修正不是「以後記得多讀一支腳本」——那又會退回被本條否定過的、用眼睛模擬程式的做法。
+  修正是讓 preflight **直接呼叫 CI 用的同一支函式**（`decideLocalIsolatedTest`），
+  而不是在 preflight 裡複製一份合法值清單：複製一份的話兩邊日後會分歧，而分歧同樣
+  在 preflight 通過時看不出來。已在 `agent-wip-preflight.mjs` 補上，並以
+  #370 被退的那份真實 PR 內文雙向驗證（填 `CANONICAL_TEST` → 擋下；填
+  `SHARED_CANONICAL` → 通過），另加變異驗證：拿掉那一行 → 新測試 3 條轉紅。
+- 狀態：監看中。前兩次的預防都在下一輪被繞過（第一次是工具比人弱，第二次是工具涵蓋不全），
+  所以本條不宣稱「已防止」。下一次若再以中繼資料被退，先問的不是「哪個欄位錯」，而是
+  **「preflight 是不是又少涵蓋了一支 CI 驗證器」**。
+- 預防：
+  0. **開 Agent PR 前先跑 `scripts/agents/agent-wip-preflight.mjs`，通過才推。**
+     這是唯一真正有效的一條；下面幾條是它擋不到時的備援。不要拿 CI 當規則查詢器。
+  1. 它報錯時，回頭讀會驗這份內文的腳本（`scripts/agents/dual-terra-wip-policy.mjs`、
+     `scripts/agents/agent-wip-policy.mjs`、`scripts/ci/local-isolated-test-policy.mjs`），
+     不要從別的 PR 複製欄位後逐項猜。
+  2. 欄位之間有**互相依賴**，不能逐欄獨立填：`TEST_PROFILE` 決定 `FINAL_CANONICAL_REQUIRED`；
+     `AGENT_LANE` 決定 `ACTIVE_CANDIDATE` 與能不能派工共用 TEST。改一欄要回頭檢查相依欄。
+  3. 有列舉值的欄位（`CLOSURE_SWEEP_TARGET`、`SELECTION_REASON`、`AGENT_LANE`、`LANE_STATE`）
+     一律回腳本確認合法值集合，不要憑語意自創。
+  4. 同族陷阱：PB-027 是「拿代理指標代替事實」，本條是「拿試誤代替讀規格」。兩者都是
+     **用便宜的動作取代一次應該做的查證**，而在有守門的專案裡，試誤的成本會由 CI 與 Owner 承擔。
+  5. 欄位錯常常是 **lane 選錯的症狀**，不是獨立的填寫失誤。改欄位之前先問：
+     這支 PR 真的是一個交付單位嗎？沒有使用者可見產出的，就不該佔 Product lane。
+- 驗證：#352 第四次修正後守門 `Agent WIP Policy=success`、`classify-changes=success`，
+  整合測試實際執行並通過。#361 改用 preflight 後，本機一次 `WIP_PREFLIGHT_PASS` 才推。
+- 狀態：監看中——預防 0 於 2026-09-11 才建立，尚未累積足夠的執行次數證明它真的擋得住。
+
+#### 2026-09-17 再發：#564 的排序合法不等於屬於本輪（#569）
+
+- 原件：#564 head 93f4de6，Run startedAt=03:54:26.487Z，兩筆 BUILD_ENTER 卻是03:15Z、03:24Z。
+  原作者在 comment5708493841 說明時間為事後估計，ci.fullCiRuns=0也是漏記，不是已證實零次。
+- 根因：既有驗證器只驗事件彼此排序及峰值，沒有驗事件是否落在 Run 起訖內；因此 strict-live 曾假綠。
+- 修法：同一 analyzeScorecardReadiness 補 OBSERVED_V1 時間邊界，由既有本機／遠端入口共同使用。
+  保留 legacy replay；不改原始帳本、不倒填起點、不把 PR created_at 冒充模型派送。
+- 驗證：專用測試覆蓋前於起點、後於終點、相等邊界、全部事件、輸入不變、歷史語意及真正 CLI 退出碼。
+  拿掉邊界判定必須重現假綠；恢復後拒絕。通過時間檢查仍不等於已驗證證據來源。
+- 首次準備 run35184377429 的 CLI 測試誤把拒絕碼寫成1；既有 strict-live 契約是2，執行例外才是1。
+  修正測試並同時驗證無執行例外、NEEDS_CAPTURE 與合法輸入回0；不修改正式 CLI 或放寬失敗判準。
+
+#### 2026-09-17 再發：#553 的 OWNER 來源漏過遠端交付驗證（#555）
+
+- 新增可核對事件：1 次；PB-034 原 3 次加本次合計 4 次。最近發生：2026-09-17。
+- 證據：#553 head f17347a45c119af78694238a0254bbcd4a439aee 的 Agent WIP Policy
+  run 35168676081 成功，合併後 comment 5706821404 才報 DELIVERY_METADATA_INVALID。
+- 精確根因：本機及 Completion Truth 已共用 validateDeliveryUnitBoundary，但 required workflow
+  把呼叫包在 AGENT+ACTIVE 條件中。OWNER 來源並不是交付契約豁免；共用函式不等於呼叫覆蓋一致。
+- 修正：required workflow 與 Completion Truth 共用 applicability；來源、Draft、lane 不再成漏驗開關。
+  不改模型政策、Product WIP 計數、安全審查或 closed-event 歷史保護。
+- 預防與驗證：直接執行真正 workflow 的內嵌程式，對 OWNER/UNKNOWN/AGENT 做合法與矛盾對照；
+  另檢查 open PARKED/COMPLETE、Product count=false、歷史不適用與 closed housekeeping。
+  故意恢復舊 AGENT+ACTIVE 條件必須讓反例轉紅，不能只測未接線的 helper。
+- 環境界線：本機無法解析 GitHub，使用無 TEST/Production secrets 的短命 branch-only 編輯載體；
+  發布前移除載體，正常 PR 仍須 exact-head 完整 source CI。無法 clone 不等於不能修改 GitHub。
+
+- #555 首次驗證 run 35171817256：23/24 通過；唯一失敗是測試把 UNKNOWN+AGENT_LANE 當合法。保留既有來源規則，僅修正對照組；不得為測試通過放寬身分契約。
+
+#### 2026-09-17 綁定入口缺口：只驗 changed ledger 不代表所有 Product 已記帳（#556）
 
 - #551 有 Product CI、隔離測試與審查，但當時正文無 RUN_ID/SCORECARD_PATH；#538 只遍歷變更 ledger，
   沒改帳本的 PR 沒有被要求提出有效綁定。這是檢查適用範圍缺口，不是再缺一套評分演算法。
