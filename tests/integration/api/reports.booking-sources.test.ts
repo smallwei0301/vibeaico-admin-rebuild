@@ -39,10 +39,29 @@ function taipeiMonthWindow(now = new Date()) {
   };
 }
 
-function isInTaipeiMonth(startAt: string, now = new Date()) {
-  const month = taipeiMonthWindow(now);
+function isInMonthWindow(startAt: string, month: ReturnType<typeof taipeiMonthWindow>) {
   const startAtMs = new Date(startAt).getTime();
   return startAtMs >= month.from && startAtMs < month.to;
+}
+
+function isInTaipeiMonth(startAt: string, now = new Date()) {
+  return isInMonthWindow(startAt, taipeiMonthWindow(now));
+}
+
+async function requestInStableTaipeiMonth(
+  request: () => Promise<Response>,
+  now: () => Date = () => new Date(),
+) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const month = taipeiMonthWindow(now());
+    const response = await request();
+    const afterRequest = taipeiMonthWindow(now());
+    if (month.from === afterRequest.from && month.to === afterRequest.to) {
+      return { month, response };
+    }
+  }
+
+  throw new Error('台北本月在 API 請求期間切換兩次，無法安全比較精確來源計數');
 }
 
 async function readJson<T = unknown>(res: Response): Promise<Envelope<T>> {
@@ -74,6 +93,46 @@ describe('booking-sources 的台北本月測試神諭', () => {
     expect(isInTaipeiMonth(cancelledAt, new Date('2026-10-01T00:00:00.000Z'))).toBe(true);
     expect(isInTaipeiMonth('2026-09-30T16:00:00.000Z', new Date('2026-10-01T00:00:00.000Z'))).toBe(true);
   });
+
+  it('請求跨月時只重試一次，並以同一次穩定窗口計算', async () => {
+    const times = [
+      '2026-09-30T15:59:59.999Z', '2026-09-30T16:00:00.000Z',
+      '2026-09-30T16:00:00.000Z', '2026-09-30T16:00:00.001Z',
+    ].map((iso) => new Date(iso));
+    const response = new Response();
+    let clockRead = 0;
+    let requestCount = 0;
+
+    const result = await requestInStableTaipeiMonth(
+      async () => {
+        requestCount += 1;
+        return response;
+      },
+      () => times[clockRead++],
+    );
+
+    expect(requestCount).toBe(2);
+    expect(result.response).toBe(response);
+    expect(result.month).toEqual(taipeiMonthWindow(new Date('2026-09-30T16:00:00.000Z')));
+  });
+
+  it('連續兩次跨月時明確失敗，不以不穩定窗口弱化斷言', async () => {
+    const times = [
+      '2026-09-30T15:59:59.999Z', '2026-09-30T16:00:00.000Z',
+      '2026-10-31T15:59:59.999Z', '2026-10-31T16:00:00.000Z',
+    ].map((iso) => new Date(iso));
+    let clockRead = 0;
+    let requestCount = 0;
+
+    await expect(requestInStableTaipeiMonth(
+      async () => {
+        requestCount += 1;
+        return new Response();
+      },
+      () => times[clockRead++],
+    )).rejects.toThrow('台北本月在 API 請求期間切換兩次');
+    expect(requestCount).toBe(2);
+  });
 });
 
 describe('GET /api/reports/booking-sources（Issue #7，預設本月）', () => {
@@ -93,13 +152,15 @@ describe('GET /api/reports/booking-sources（Issue #7，預設本月）', () => 
 
   it('以 seed 與台北本月時窗現算來源數，四個 key 都回傳', async () => {
     const expectedCounts: Record<string, number> = { LINE: 0, PUBLIC_PAGE: 0, MANUAL: 0, RECURRING: 0 };
+    const { month, response: res } = await requestInStableTaipeiMonth(
+      () => ownerA.get('/api/reports/booking-sources'),
+    );
     for (const booking of seedBookings) {
-      if (isInTaipeiMonth(booking.start_at)) {
+      if (isInMonthWindow(booking.start_at, month)) {
         expectedCounts[booking.source] = (expectedCounts[booking.source] ?? 0) + 1;
       }
     }
 
-    const res = await ownerA.get('/api/reports/booking-sources');
     expect(res.status).toBe(200);
     const body = await readJson<MonthSourcePoint[]>(res);
     expect(body.success).toBe(true);
