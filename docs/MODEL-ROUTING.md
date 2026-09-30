@@ -92,6 +92,12 @@ Product 仍走既有 B+ topology：Luna 窄盤點 → Sol TRIAGE → Product bui
 
 `models.build = gpt-5.6-terra` 是 OpenAI Product builder 預設。其他 provider 的 Product 主 Session 可依其可用模型執行等價 builder，但 PR 必須據實記錄 requested / actual model，不能從 lane 名稱推論模型真的跑過。
 
+## 2026-09-30 版本與相容性
+
+目前映射：Luna=`gpt-6-luna`、Sol=`gpt-6.1-sol`、Sonnet=`claude-sonnet-5-5`、Opus=`claude-opus-5-5`。Anthropic ID 已由[官方模型表](https://platform.claude.com/docs/en/models/overview)核實；本次 OpenAI runtime catalog 可選 Luna／Sol，沒有 Sonnet／Opus，不能宣稱可派工。Terra、Astra／Fable 不換版本，這不是 #7 builder 例外。
+
+`modelMappingVersion` 與 `anthropicEquivalents.version` 更新；頂層審查 `version` 保留，避免使既有 attestation 作廢。AUDIT downgrade 預設使用新 Sol／Opus；舊 ID 只保留既有可驗證 receipt／runtime 相容性，所有 identity、trust、lineage 與成本條件不變。歷史決策與 ledger／receipt 不重寫；当前派工以本表和設定為準。
+
 ## Lane 對應的模型層級（Owner 2026-09-10 裁示）
 
 本節只適用 PRODUCT_MAINLINE；MODEL_GOVERNANCE 依上方 2026-09-11 決策不指定模型。
@@ -103,9 +109,9 @@ lane 決定層級，層級決定模型：
 
 | Lane | 職責 | OpenAI | Anthropic |
 |---|---|---|---|
-| `scout` / Luna | 窄盤點、Closure、CI 摘要、文件、QA、Metrics | `gpt-5.6-luna` | `claude-haiku-4-5` |
-| `build` / Terra | **施工**（Product builder lane） | `gpt-5.6-terra` | **`claude-sonnet-5`** |
-| `audit` / Sol | TRIAGE、高風險設計、最終 AUDIT、結案判定 | `gpt-5.6-sol` | `claude-opus-5` |
+| `scout` / Luna | 窄盤點、Closure、CI 摘要、文件、QA、Metrics | `gpt-6-luna` | `claude-haiku-4-5` |
+| `build` / Terra | **施工**（Product builder lane） | `gpt-5.6-terra` | **`claude-sonnet-5-5`** |
+| `audit` / Sol | TRIAGE、高風險設計、最終 AUDIT、結案判定 | `gpt-6.1-sol` | `claude-opus-5-5` |
 
 機器可讀的來源是 `scripts/agents/model-routing.json` 的 `anthropicEquivalents`；本表與它必須一致。
 model ID 逐字取自 Anthropic 官方型號表，**本身即完整，不得附加日期後綴**。
@@ -154,7 +160,7 @@ Product 高後果類型維持：
 以 `docs/AGENT-EXECUTION.md` §7.2 與 2026-09-17 #552 決策為準。
 先用 prepare/recover 讀取整條 lineage 的可信 review／派送歷史；最多一輪昂貴諮詢，先記帳再派送。
 300 秒沒有可核對的實際執行證據即降級；明確失敗／無回應／不能切換模型立即降級。
-諮詢後修改重審一律 Sol (`gpt-5.6-sol`) 或 Opus (`claude-opus-5`)；不再 retry／互換 Astra/Fable。
+諮詢後修改重審一律 Sol (`gpt-6.1-sol`) 或 Opus (`claude-opus-5-5`)；不再 retry／互換 Astra/Fable。
 無 selector 時用 CURRENT_AGENT 模式，requested=not_requested；未知 actual/identity 明記 unknown/UNKNOWN。
 模型由 runtime 的 model selector 選擇，不是另開 plugin（外掛）或 connector（連接器）。
 不能把「主 Session 不是 Astra/Fable」誤報成需要外部 reviewer 通道。

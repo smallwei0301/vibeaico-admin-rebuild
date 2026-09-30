@@ -57,7 +57,7 @@ describe('Owner #552 startup timeout is exactly 300 seconds without execution pr
 describe('Owner #552 single premium consultation and immediate downgrade', () => {
   it('requires durable empty history before reserving the first premium consultation', () => {
     assert.equal(selectFinalRiskReviewer(history, routing).action, 'RESERVE_ONE_PREMIUM_CONSULTATION');
-    assert.equal(selectFinalRiskReviewer({}, routing).nextModel, 'gpt-5.6-sol');
+    assert.equal(selectFinalRiskReviewer({}, routing).nextModel, 'gpt-6.1-sol');
     assert.equal(selectFinalRiskReviewer({ ...history, historyVerified: false }, routing).reason, 'HISTORY_UNAVAILABLE');
   });
   it('does not reset the budget for source fixes, a new digest, or session changes', () => {
@@ -65,7 +65,7 @@ describe('Owner #552 single premium consultation and immediate downgrade', () =>
       { attemptedModels: ['claude-fable-5-1'] }, { premiumAttempts: [{ executionRef: 'historical-attempt' }] }]) {
       const result = selectFinalRiskReviewer({ ...history, ...snapshot, changeDigest: 'd'.repeat(64), session: 'new' }, routing);
       assert.equal(result.action, 'DOWNGRADE_REVIEWER_MODEL');
-      assert.equal(result.nextModel, 'gpt-5.6-sol');
+      assert.equal(result.nextModel, 'gpt-6.1-sol');
       assert.equal(result.premiumRetryAllowed, false);
     }
   });
@@ -73,7 +73,7 @@ describe('Owner #552 single premium consultation and immediate downgrade', () =>
     it(`downgrades the first ${failureClass}, never Fable to Astra`, () => {
       const result = decideFinalRiskRecovery({ failureClass, sameClassAttempts: 1, currentModel: 'claude-fable-5-1' });
       assert.equal(result.action, 'DOWNGRADE_REVIEWER_MODEL');
-      assert.equal(result.nextModel, 'gpt-5.6-sol');
+      assert.equal(result.nextModel, 'gpt-6.1-sol');
     });
   }
   it('uses Opus when Sol is unavailable, current agent only when selector is unavailable', () => {
@@ -92,7 +92,8 @@ describe('Owner #552 single premium consultation and immediate downgrade', () =>
 });
 
 describe('WIP admission remains evidence-bound with cheaper reviewers', () => {
-  for (const reviewer of [audit(), { ...audit(), requestedModel: 'claude-opus-5', actualModel: 'claude-opus-5' }, current()]) {
+  for (const reviewer of [audit(), { ...audit(), requestedModel: 'gpt-6.1-sol', actualModel: 'gpt-6.1-sol' },
+    { ...audit(), requestedModel: 'claude-opus-5-5', actualModel: 'claude-opus-5-5' }, { ...audit(), requestedModel: 'claude-opus-5', actualModel: 'claude-opus-5' }, current()]) {
     it(`accepts a truthful ${reviewer.reviewerTier}/${reviewer.actualModel} adversarial review`, () => {
       assert.deepEqual(finalRiskReviewerErrors(reviewer, routing), []);
       assert.equal(evaluate(reviewer).status, 'ASTRA_APPROVED');

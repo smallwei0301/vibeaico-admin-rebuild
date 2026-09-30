@@ -275,13 +275,13 @@ describe('Final Risk circuit breaker fallback (#533)', () => {
     const second = decideFinalRiskRecovery({ failureClass: 'TIMEOUT', sameClassAttempts: 2, currentModel: 'claude-fable-5-1', attemptedModels: ['claude-fable-5-1'], allowedModels: allowed });
     expect(first.action).toBe('DOWNGRADE_REVIEWER_MODEL');
     expect(second.action).toBe('DOWNGRADE_REVIEWER_MODEL');
-    expect(first.nextModel).toBe('gpt-5.6-sol');
-    expect(second.nextModel).toBe('gpt-5.6-sol');
+    expect(first.nextModel).toBe('gpt-6.1-sol');
+    expect(second.nextModel).toBe('gpt-6.1-sol');
   });
 
   it('parks only the blocked candidate and keeps the loop productive after reviewer paths are exhausted', () => {
-    const refill = decideFinalRiskRecovery({ failureClass: 'MODEL_DISPATCH', sameClassAttempts: 2, currentModel: 'gpt-6-astra', attemptedModels: [...allowed, 'gpt-5.6-sol', 'claude-opus-5'], independentSliceAvailable: true });
-    const closure = decideFinalRiskRecovery({ failureClass: 'SAFETY_CLASSIFIER', sameClassAttempts: 2, currentModel: 'gpt-6-astra', attemptedModels: [...allowed, 'gpt-5.6-sol', 'claude-opus-5'], independentSliceAvailable: false });
+    const refill = decideFinalRiskRecovery({ failureClass: 'MODEL_DISPATCH', sameClassAttempts: 2, currentModel: 'gpt-6-astra', attemptedModels: [...allowed, 'gpt-6.1-sol', 'claude-opus-5-5', 'gpt-5.6-sol', 'claude-opus-5'], independentSliceAvailable: true });
+    const closure = decideFinalRiskRecovery({ failureClass: 'SAFETY_CLASSIFIER', sameClassAttempts: 2, currentModel: 'gpt-6-astra', attemptedModels: [...allowed, 'gpt-6.1-sol', 'claude-opus-5-5', 'gpt-5.6-sol', 'claude-opus-5'], independentSliceAvailable: false });
     expect(refill.action).toBe('PARK_CURRENT_AND_REFILL_BUILD');
     expect(closure.action).toBe('PARK_CURRENT_AND_CONTINUE_CLOSURE_TRIAGE');
     expect(closure.action).not.toContain('STOP');

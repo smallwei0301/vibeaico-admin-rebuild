@@ -48,11 +48,11 @@ B+ 的表格填在單人作業上面。
 ### 2. TRIAGE 選 MAIN（Sol 層）
 
 選出這一輪的 MAIN、可選的 RESERVE 與 Closure target。高風險設計判定屬 `audit` 層
-（`claude-opus-5`）。寫進 `flow.solTouches` / `solIssues`。
+（`claude-opus-5-5`）。寫進 `flow.solTouches` / `solIssues`。
 
 ### 3. MAIN Terra 施工
 
-**`TERRA_BUILD` 一律委派給 `claude-sonnet-5`。** 判準很機械：**新增或修改
+**`TERRA_BUILD` 一律委派給 `claude-sonnet-5-5`。** 判準很機械：**新增或修改
 migration、route、server 模組、頁面或測試，就是施工**。在 audit 層模型上做施工是
 routing violation，要如實記為違規而不是中性註記——見 PB-036，它已經發生過三次，
 每一次的藉口都是「我人已經在跑了，順手做完比較快」。
@@ -220,9 +220,9 @@ The mapping is mandatory in both directions — the lane picks the tier, and the
 
 | Lane | 職責（`docs/AGENT-EXECUTION.md`／`AGENTS.md`） | OpenAI | Anthropic |
 |---|---|---|---|
-| `scout` / Luna | 窄盤點、Closure、CI 摘要、文件、QA、Metrics | `gpt-5.6-luna` | `claude-haiku-4-5` |
-| `build` / Terra | **施工**（MAIN／RESERVE 完整出貨線） | `gpt-5.6-terra` | **`claude-sonnet-5`** |
-| `audit` / Sol | TRIAGE、高風險設計、最終 AUDIT、結案判定 | `gpt-5.6-sol` | `claude-opus-5` |
+| `scout` / Luna | 窄盤點、Closure、CI 摘要、文件、QA、Metrics | `gpt-6-luna` | `claude-haiku-4-5` |
+| `build` / Terra | **施工**（MAIN／RESERVE 完整出貨線） | `gpt-5.6-terra` | **`claude-sonnet-5-5`** |
+| `audit` / Sol | TRIAGE、高風險設計、最終 AUDIT、結案判定 | `gpt-6.1-sol` | `claude-opus-5-5` |
 
 Model IDs are taken verbatim from Anthropic's model table and are **complete as written** — never
 append a date suffix (`claude-haiku-4-5`, not a dated variant).
