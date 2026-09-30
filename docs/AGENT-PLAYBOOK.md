@@ -25,6 +25,7 @@
 | CI 綠、PR 已合併、Issue 已關閉 | PB-001、PB-029、PB-032、PB-039 | 分開核對 exact head、實際執行案例、合併可達性、目標環境與驗收；不拿一項代替全部。 |
 | 要說物件不存在、migration 已套用或環境等價 | PB-017、PB-026、PB-027、PB-030、PB-035、PB-037 | 先驗搜尋正向對照，再查整體結構、權限、觸發器、來源與相依；一個 bucket 存在不是完整證據。 |
 | 要重跑 CI 或變更測試入口 | PB-015、PB-016、PB-021、PB-034、PB-038 | 核對本次輸入與失敗步驟；先用既有 preflight。真程式錯誤不盲重跑，失敗退出碼必須阻止下一步。 |
+| 月底測試 oracle 與 HTTP request 計數不一致 | PB-055 | 固定同一台北月份窗口，查 seed timestamp 是否跨界，並核對請求前後 clock。 |
 | 要把工作列成等 Owner、過時或已完成 | PB-019、PB-031、PB-032 | 先查現行決策、最新本文／留言及 live state，辨別已授權、真外部阻塞、選配與歷史快照。 |
 | 準備碰 TEST／Production、權限或外部服務 | PB-002、PB-018、PB-020、PB-028、PB-033 | 先確認環境、使用者、呼叫端、共用 TEST 持有者、授權與回復方式；安全修正也不能先做後查。 |
 | 已有另一個 Session／PR 在修相同問題 | PB-009、PB-010、PB-031、PB-034 | 讀最新 head、檔案範圍與剩餘步驟，沿用候選或正式交接，不另派重複工作。 |
@@ -826,10 +827,6 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
   publication preflight 必須同時驗 `run-ledger-v2 validate`、scorecard readiness，並確認
   `<RUN_ID>.md` 是 canonical scorecard 輸出；不得只靠 JSON 合法或等遠端 CI 補契約。
   這次不補造分數，report 保持 `NOT_GRADED`／in-progress；只記錄可觀察的失敗與修正。
-  同任務 post-merge finding `4145229088` 另揭露 oracle 與 GET 可跨月：每次請求固定一個
-  台北月份窗口，請求前後驗同月，跨界只重試一次；第二次不穩定明確拒絕，不省略精確計數。
-  預防以純 clock 序列測穩定窗口、一次跨月與連續跨月；#706 main CI `36730657034`
-  實跑 booking-sources 6 案、integration 746 passed／22 skipped、E2E 23 passed。
 
 - 2026-09-20 #589 Stage 1：Production impact manifest 若只補新 migration 檔名，G2 的 pending-diff allowlist 仍無法辨識實際 catalog surface；反過來把同一 routine 或 column 同時列在前、後 migration，會使 release 的最終 owner 不明。manifest 維持 v1 的 selected exact impact roots：13 個 plan migration 都要有 entry，compatibility-only predecessor 可明列空 impacts，而被後續 `create or replace`／canonical contract 覆寫的 root 只交給最後 owner；function ACL identity 必須使用 observer 的 named `pg_get_function_identity_arguments` 輸出，不能改成 call-style type list。既有 `AMBIGUOUS_IMPACT_OWNERSHIP` 保持 fail-closed；Stage 1 不把 migration 順序假稱成 catalog dependency closure，也不以 observer 的 1072 個未分類差異建立例外。v1 沒有 enum surface，現有 observer 也沒有 storage schema policy capture，故這兩類 coverage 仍是 Stage 3 adapter 的 blocker，不能寫成完整 catalog coverage。預防測試固定 13-entry root inventory digest、observer 實際 emit 的 function ACL keys 與 duplicate-owner 反例；此項是 source metadata，未執行 TEST／Production 或資料庫操作。
 
@@ -1847,3 +1844,11 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 修正：從本地完整 main 基線加預期增補取回全部內容，以 guarded Contents update 追加修復 commit `21cf6621edde0beb7157e48bb937e9609cd3561d`，不改寫歷史、不合併損壞版本。
 - 預防：全檔替換必須使用完整原始內容，確認讀取未截斷；提交後檢查 exact remote head 的檔案位元與差異，新增教訓不應大量刪除既有內容。畫面摘要不能作全檔寫入來源。
 - 驗證：修復後比較 current main 與遠端分支，Playbook 只增加預期教訓；提交 PR 前再次核對無刪除。此事故未影響 main、產品或資料庫。
+
+### PB-055 — 月份 oracle 與 HTTP request 各讀一次現在，跨月時驗成不同窗口
+
+- 首次／最近：2026-09-30／2026-09-30；範圍：#704、PR #705／#706，post-merge finding `4145229088`。
+- 根因：狀態為取消的 booking seed 使用 `+5h`，可跨越台北月底，不能以 seed 總筆數代表當月資料；逐列 oracle 與 GET 各讀 clock 時也可能分屬不同月份。這與 PB-034 的 PR metadata／report preflight 根因不同。
+- 修正／預防：依 seed timestamp 計算半開月份窗口；每次請求固定一個台北月份窗口，請求前後驗同月，跨界只重試一次，第二次不穩定明確拒絕。保留四個 source 精確計數、seed premise、401 及 tenant-isolation 斷言。
+- 回歸：純 clock 序列涵蓋穩定窗口、一次跨月及連續跨月；#706 main CI `36730657034` 的既有證據為 booking-sources 6 案、integration 746 passed／22 skipped、E2E 23 passed，本次未重跑。
+- 來源：PR #707 finding `4146362076` 要求分類修正；本條從 PB-034 搬移，不新增 Production 事故或產品行為主張。
