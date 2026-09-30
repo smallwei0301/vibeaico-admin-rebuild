@@ -826,6 +826,10 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
   publication preflight 必須同時驗 `run-ledger-v2 validate`、scorecard readiness，並確認
   `<RUN_ID>.md` 是 canonical scorecard 輸出；不得只靠 JSON 合法或等遠端 CI 補契約。
   這次不補造分數，report 保持 `NOT_GRADED`／in-progress；只記錄可觀察的失敗與修正。
+  同任務 post-merge finding `4145229088` 另揭露 oracle 與 GET 可跨月：每次請求固定一個
+  台北月份窗口，請求前後驗同月，跨界只重試一次；第二次不穩定明確拒絕，不省略精確計數。
+  預防以純 clock 序列測穩定窗口、一次跨月與連續跨月；#706 main CI `36730657034`
+  實跑 booking-sources 6 案、integration 746 passed／22 skipped、E2E 23 passed。
 
 - 2026-09-20 #589 Stage 1：Production impact manifest 若只補新 migration 檔名，G2 的 pending-diff allowlist 仍無法辨識實際 catalog surface；反過來把同一 routine 或 column 同時列在前、後 migration，會使 release 的最終 owner 不明。manifest 維持 v1 的 selected exact impact roots：13 個 plan migration 都要有 entry，compatibility-only predecessor 可明列空 impacts，而被後續 `create or replace`／canonical contract 覆寫的 root 只交給最後 owner；function ACL identity 必須使用 observer 的 named `pg_get_function_identity_arguments` 輸出，不能改成 call-style type list。既有 `AMBIGUOUS_IMPACT_OWNERSHIP` 保持 fail-closed；Stage 1 不把 migration 順序假稱成 catalog dependency closure，也不以 observer 的 1072 個未分類差異建立例外。v1 沒有 enum surface，現有 observer 也沒有 storage schema policy capture，故這兩類 coverage 仍是 Stage 3 adapter 的 blocker，不能寫成完整 catalog coverage。預防測試固定 13-entry root inventory digest、observer 實際 emit 的 function ACL keys 與 duplicate-owner 反例；此項是 source metadata，未執行 TEST／Production 或資料庫操作。
 
