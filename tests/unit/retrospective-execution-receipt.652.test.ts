@@ -43,4 +43,18 @@ describe('#652 retrospective execution receipt', () => {
     }
     expect(files.execution).toContain('COMMAND / INPUT / TERMINAL_RESULT_OR_EXIT / OUTPUT_OR_EVIDENCE_REF / OBSERVED_MAIN');
   });
+
+  it('#701 preflights executable scoring before deep retrospective evidence review', () => {
+    expect(files.execution).toContain('RETROSPECTIVE_EXECUTION_PREFLIGHT_REQUIRED');
+    expect(files.execution).toContain('execution-capability preflight');
+    expect(files.execution).toContain('UNAVAILABLE');
+    expect(files.execution).toContain('MISSING');
+  });
+
+  it('#701 keeps merge-state and Run capture truth synchronized in the same work turn', () => {
+    expect(files.execution).toContain('STATE_SYNC_PENDING');
+    expect(files.execution).toContain('RUN_CAPTURE_HANDOFF');
+    expect(files.execution).toContain('NEEDS_CAPTURE');
+    expect(files.execution).toContain('NEXT_SAFE_WRITE_PATH');
+  });
 });

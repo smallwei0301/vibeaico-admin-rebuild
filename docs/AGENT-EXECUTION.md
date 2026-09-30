@@ -642,6 +642,13 @@ CI 失敗由 Luna 先壓縮：exact head、job／step、suite／case、錯誤碼
    都同步完成，才算 `POST_MERGE_CLOSEOUT=COMPLETE`。同一 Issue 在此之前不得被當成新的 executable slice；
    若 Issue 保持 open，下一個 Agent 只能接 `REMAINING_BOUNDED_SCOPE`，不得重做已 merged 範圍。
 
+**PR current-state 同步也是 closeout 本體，不是可選美化。** PR 一旦 merge／close，若本文仍留下
+`MERGE_STATUS: NOT_REQUESTED`、`LANE_STATE: ACTIVE`、`ACTIVE_CANDIDATE: true`、舊 blocker 或其他會把
+下一個 Agent 導回施工中的 current-state 欄位，同一工作回合必須更新為 live terminal truth；不能只靠 Issue
+留言或 GitHub 的 merged badge 讓接手者自行猜。若工具／權限／併發使本文當回合無法更新，必須留下
+`STATE_SYNC_PENDING`，精確列出 PR、已驗證 terminal state、尚未同步欄位、失敗 action／error 與下一個合法
+寫入路徑；在清掉這個 pending 前不得宣稱 `POST_MERGE_CLOSEOUT=COMPLETE`。
+
 ### 9.0.2 STAGE_TRUTH_SYNC：環境階段一變，就更新，不等 closeout／複盤
 
 POST_MERGE_CLOSEOUT 不是唯一同步點。以下任何一項發生時，都視為 Product delivery stage change：
@@ -795,6 +802,12 @@ readiness 會把 `endedAt`、`main.endSha`、end inventory、closeout、Completi
 
 ### 10.3 事件發生時就記 raw facts
 
+**同回合 capture 是硬規則。** 可觀測事件一旦在本工作回合被確認，就先寫 owning Product Run 的 raw fact／
+Completion Truth，再繼續新的 Product 派工或送終止性 final。若目前 Session 不是該 Run owner、Run 檔不在可寫
+head、或工具失敗而無法安全寫入，不得默默略過；必須留下 `RUN_CAPTURE_HANDOFF`，至少包含
+`RUN_ID / EVENT / EVIDENCE_REF / OBSERVED_AT / WRITER_BLOCKER / NEXT_SAFE_WRITE_PATH`，並把該 Run readiness
+明確維持 `NEEDS_CAPTURE`。handoff 不是補造 ledger 的授權，也不能把未知 counter 填成 0。
+
 以下量必須在事件發生時即時寫入，不在 closeout 時倒推：
 
 - `modelUsage.tasks`（含 accepted/rejected 與 count）；
@@ -829,6 +842,13 @@ Owner 說「復盤」或「複盤」時，載入
 ### 10.4.1 Retrospective Execution Receipt（完整複盤 final hard gate）
 
 `RETROSPECTIVE_EXECUTION_RECEIPT_REQUIRED`
+`RETROSPECTIVE_EXECUTION_PREFLIGHT_REQUIRED`
+
+**先做 execution-capability preflight，再做深度複盤。** 鎖定本次 `OBSERVED_MAIN`、Product Run 候選與固定時間窗後，
+在大量 provider／DB／Gmail／歷史 evidence 讀取之前，先確認本 Session 真的有可執行 Node／repo runtime 與必需輸入，
+並實際啟動最小 mandatory command preflight。若 scorer／runtime／input 在當前工具環境不可執行，立即把本輪標成
+`PARTIAL_RETROSPECTIVE`，把缺失命令記為 `UNAVAILABLE`／`MISSING` 與原因；仍可繼續有價值的 live truth 調查，
+但不得一路到 final 才第一次揭露 receipt 根本無法產生，也不得以人工讀檔冒充執行成功。
 
 任何回覆要稱為「完整複盤」，final 前都必須真的執行既有兩個 score surfaces，不能用人工讀 JSON／Markdown 代替：
 
