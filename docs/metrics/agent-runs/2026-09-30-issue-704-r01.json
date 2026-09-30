@@ -18,9 +18,9 @@
     "openIssuesEnd": null,
     "openPrsStart": null,
     "openPrsEnd": null,
-    "mainTerraPeak": 0,
+    "mainTerraPeak": 1,
     "reserveTerraPeak": 0,
-    "activeCandidatePeak": 0,
+    "activeCandidatePeak": 1,
     "sharedTestPeak": 0,
     "closureSweeps": 0,
     "closureAdvancedOrClosed": 0
@@ -130,7 +130,18 @@
   },
   "wipLifecycle": {
     "schemaVersion": 1,
-    "events": []
+    "events": [
+      {
+        "id": "issue704-pr705-build-enter",
+        "at": "2026-09-30T13:11:52Z",
+        "kind": "BUILD_ENTER",
+        "pr": 705,
+        "issue": 704,
+        "head": "33ad0099b37123a87708d606f1f7f40e572c3967",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Draft PR #705 created for the unique bounded Terra repair after independent Sol audit; remote CI is the first permitted canonical integration execution."
+      }
+    ]
   },
   "completionTruth": {
     "status": "NOT_CHECKED",
