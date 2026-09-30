@@ -117,7 +117,7 @@
   "notes": [
     "2026-09-30: main CI 36713935051 exposed a month-end test oracle error; API behavior was not changed.",
     "Raw model identity and token telemetry are unavailable; requested roles are recorded without inferring actual models.",
-    "PR/CI/TEST lifecycle events are not yet observed and therefore remain absent from this open ledger."
+    "PR BUILD_ENTER is captured; CI and TEST lifecycle events are not yet observed and remain absent from this open ledger."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
