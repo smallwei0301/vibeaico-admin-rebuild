@@ -1,4 +1,4 @@
-import { finalRiskReviewerErrors } from './final-risk-cost-policy.mjs';
+import { fallbackReference, finalRiskReviewerErrors } from './final-risk-cost-policy.mjs';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { AMBIGUOUS_FIELD, readField } from './agent-wip-policy.mjs';
@@ -266,12 +266,13 @@ export function parseAstraReviews(reviews = []) {
     const match = body.match(/```astra-review\s*\n([\s\S]*?)\n```/);
     try {
       if (!match) throw new Error('Malformed attestation');
-      return [{ ...JSON.parse(match[1]), ...record }];
+      // Candidate payloads cannot manufacture a trusted source readback receipt.
+      return [{ ...JSON.parse(match[1]), fallbackSourceEvidence: undefined, ...record }];
     } catch { return [{ ...record, parseError: true }]; }
   }).sort((a, b) => String(b.submittedAt).localeCompare(String(a.submittedAt)) || Number(b.reviewId) - Number(a.reviewId));
 }
 
-/** @param {{body?: string, changedFiles?: string[] | null, context?: Record<string, string>, reviews?: Array<Record<string, any>>}} [input] */
+/** @param {{body?: string, changedFiles?: string[] | null, context?: Record<string, any>, reviews?: Array<Record<string, any>>}} [input] */
 export function evaluateAstra({ body = '', changedFiles = null, context = {}, reviews = [] } = {}, policy = routing) {
   const classification = classifyAstra({ body, changedFiles, createdAt: context.createdAt }, policy);
   if (classification.errors.length) return { ...classification, status: 'ASTRA_PENDING' };
@@ -293,7 +294,7 @@ export function evaluateAstra({ body = '', changedFiles = null, context = {}, re
     }
     if (!['COMMENTED', 'APPROVED'].includes(latest.reviewState)) errors.push('Astra review is dismissed or requests changes');
     if (latest.verdict !== 'PASS') errors.push('Astra verdict is not PASS');
-    if (finalRiskReviewerErrors(latest, policy).length) errors.push('Astra model identity is unverified');
+    if (finalRiskReviewerErrors(latest, policy, context.fallbackSourceEvidence).length) errors.push('Astra model identity is unverified');
     if (!['CURRENT_AGENT', 'EVIDENCE_FALLBACK'].includes(latest.reviewerTier) && latest.identityEvidence !== 'OPERATOR_ATTESTED') {
       errors.push('Missing explicit operator model attestation');
     }
@@ -301,6 +302,45 @@ export function evaluateAstra({ body = '', changedFiles = null, context = {}, re
     if (!meaningful(latest.findings)) errors.push('Missing Astra findings');
   }
   return { ...classification, errors, status: errors.length ? 'ASTRA_PENDING' : 'ASTRA_APPROVED' };
+}
+
+// Only a trusted read-only caller supplies this receipt; never copy it from an attestation.
+export async function loadFallbackSourceEvidence({ github, owner, repo, reviews }, policy = routing) {
+  const latest = parseAstraReviews(reviews)[0];
+  if (latest?.reviewerTier !== 'EVIDENCE_FALLBACK') return undefined;
+  const repository = `${owner}/${repo}`;
+  const refs = [...new Set([latest.failureEvidenceRef, latest.replacementReviewRef])];
+  if (latest.repository !== repository || refs.some(ref => !fallbackReference(ref, repository))) return undefined;
+  try {
+    const main = await github.rest.repos.getCommit({ owner, repo, ref: 'main' });
+    const currentMainSha = main.data.sha;
+    if (!SHA.test(currentMainSha)) return undefined;
+    const response = await github.rest.repos.getContent({ owner, repo, ref: currentMainSha, path: 'docs/AGENT-PLAYBOOK.md' });
+    const file = response.data;
+    if (Array.isArray(file) || file.type !== 'file' || file.encoding !== 'base64' || !SHA.test(file.sha)) return undefined;
+    const records = [];
+    for (const ref of refs) {
+      const identity = fallbackReference(ref, repository);
+      const response = identity.kind === 'pullrequestreview'
+        ? await github.rest.pulls.getReview({ owner, repo, pull_number: identity.number, review_id: identity.id })
+        : await github.rest.issues.getComment({ owner, repo, comment_id: identity.id });
+      const record = response.data;
+      if (record.id !== identity.id || record.html_url !== ref || !record.user?.login || !record.body) return undefined;
+      let trusted = isTrustedFinalRiskAgentUser(record.user, policy);
+      if (!trusted) {
+        const permission = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: record.user.login });
+        trusted = ['admin', 'maintain', 'write'].includes(permission.data.permission);
+      }
+      records.push({ ...identity, ref, body: record.body, state: record.state, trusted });
+    }
+    // Detect main movement during readback; recollect rather than accept stale-main proof.
+    const after = await github.rest.repos.getCommit({ owner, repo, ref: 'main' });
+    if (after.data.sha !== currentMainSha) return undefined;
+    return { repository, currentMainSha, records,
+      playbook: { mainSha: currentMainSha, blobSha: file.sha, content: Buffer.from(file.content, 'base64').toString('utf8') } };
+  } catch {
+    return undefined; // Missing records, denied access, or unavailable canonical main fail closed.
+  }
 }
 
 // REST calls are read-only. Never load policy/code from a PR or execute evidence content.
@@ -336,7 +376,9 @@ export async function evaluateGithubAstra({ github, owner, repo, current }, poli
     }
   }
   const digest = changeDigestOf(files);
+  const fallbackSourceEvidence = await loadFallbackSourceEvidence({ github, owner, repo, reviews }, policy);
   const result = evaluateAstra({ body, changedFiles, reviews, context: {
+    fallbackSourceEvidence,
     repository: `${owner}/${repo}`, baseSha: current.base.sha, headSha: current.head.sha,
     policyVersion: policy.version, testBaseline: readField(body, 'ASTRA_TEST_BASELINE'),
     schemaBaseline: readField(body, 'ASTRA_SCHEMA_BASELINE'),

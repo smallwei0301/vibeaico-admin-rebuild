@@ -1,14 +1,15 @@
 // Owner #552: consultation cost is bounded; review quality and source binding are not waived.
-import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 
-function hasCanonicalPlaybookAnchor(fragment) {
+function hasCanonicalPlaybookAnchor(fragment, evidence, repository) {
   if (!/^[a-z0-9-]+$/.test(fragment)) return false;
-  try {
-    const playbook = readFileSync(new URL('../../docs/AGENT-PLAYBOOK.md', import.meta.url), 'utf8');
-    return [...playbook.matchAll(/<a id="([a-z0-9-]+)"><\/a>/g)].some(match => match[1] === fragment);
-  } catch {
-    return false;
-  }
+  const source = evidence?.playbook;
+  if (evidence?.repository !== repository || !/^[a-f0-9]{40}$/.test(evidence?.currentMainSha ?? '') ||
+      source?.mainSha !== evidence.currentMainSha || typeof source?.content !== 'string') return false;
+  const bytes = Buffer.from(source.content, 'utf8');
+  const blobSha = createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+  return source.blobSha === blobSha && [...source.content.matchAll(/<a id="([a-z0-9-]+)"><\/a>/g)]
+    .some(match => match[1] === fragment);
 }
 const text = (value) => String(value ?? '').trim();
 const meaningful = (value) => text(value).length >= 8 && !/^(unknown|pending|none|n\/a)$/i.test(text(value));
@@ -19,6 +20,22 @@ const list = (value) => Array.isArray(value) ? value : [];
 const millis = (value) => typeof value === 'string' && /^\d{4}-\d\d-\d\dT.*Z$/.test(value)
   ? Date.parse(value) : NaN;
 const durable = (value) => /^https:\/\/github\.com\/[^/]+\/[^/]+\/(issues|pull|actions)\//.test(text(value));
+export function fallbackReference(value, repository) {
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository ?? '')) return null;
+  const prefix = `https://github.com/${repository}/`;
+  if (!text(value).startsWith(prefix)) return null;
+  const match = text(value).slice(prefix.length).match(/^(issues|pull)\/([1-9]\d*)#(issuecomment|pullrequestreview)-([1-9]\d*)$/);
+  if (!match || (match[3] === 'pullrequestreview' && match[1] !== 'pull')) return null;
+  return { number: Number(match[2]), kind: match[3], id: Number(match[4]) };
+}
+
+function sourceRecord(ref, review, evidence) {
+  const identity = fallbackReference(ref, review.repository);
+  if (!identity || evidence?.repository !== review.repository) return null;
+  return list(evidence?.records).find(record => record.ref === ref && record.id === identity.id &&
+    record.number === identity.number && record.kind === identity.kind && record.trusted === true &&
+    meaningful(record.body) && (identity.kind !== 'pullrequestreview' || ['COMMENTED', 'APPROVED'].includes(record.state)));
+}
 const REASONS = new Set(['PREMIUM_REVIEW_COMPLETED', 'PREMIUM_ATTEMPTED', 'MODEL_UNAVAILABLE',
   'MODEL_SELECTION_UNAVAILABLE', 'START_TIMEOUT', 'DISPATCH_NO_RESPONSE', 'HISTORY_UNAVAILABLE', 'REVIEWER_INFRASTRUCTURE_FAILURE']);
 export const FINAL_RISK_COST_POLICY_VERSION = '2026-09-17.1';
@@ -102,7 +119,7 @@ export function selectFinalRiskReviewer(input = {}, policy = {}) {
 }
 
 /** Shared identity contract for WIP/merge, semantic reuse and DB release evidence. */
-export function finalRiskReviewerErrors(review = {}, policy = {}) {
+export function finalRiskReviewerErrors(review = {}, policy = {}, sourceEvidence = review.fallbackSourceEvidence) {
   const tier = review.reviewerTier ?? 'PREMIUM';
   const requested = text(review.requestedModel);
   const actual = text(review.actualModel);
@@ -127,14 +144,24 @@ export function finalRiskReviewerErrors(review = {}, policy = {}) {
         review.downgradeReason !== 'REVIEWER_INFRASTRUCTURE_FAILURE' || !INFRASTRUCTURE_FAILURES.has(review.failureClass)) {
       errors.push('Missing supported infrastructure fallback policy/failure');
     }
-    if (!durable(review.failureEvidenceRef) || !meaningful(review.failureDiagnosis) || !durable(review.replacementReviewRef)) {
+    const failure = sourceRecord(review.failureEvidenceRef, review, sourceEvidence);
+    const replacement = sourceRecord(review.replacementReviewRef, review, sourceEvidence);
+    let replacementPayload;
+    try {
+      replacementPayload = JSON.parse(replacement?.body.match(/```astra-review\s*\n([\s\S]*?)\n```/)?.[1] ?? 'null');
+    } catch { replacementPayload = null; }
+    if (!meaningful(review.failureDiagnosis) || !failure?.body.includes(review.failureDiagnosis) ||
+        !replacementPayload || replacementPayload.verdict !== 'PASS' ||
+        ['repository', 'changeDigest', 'executionRef', 'adversarialEvidence', 'actualModel', 'requestedModel']
+          .some(key => !review[key] || replacementPayload[key] !== review[key]) ||
+        replacementPayload.priorFindingsReviewed !== true || replacementPayload.unresolvedFindingCount !== 0) {
       errors.push('Missing durable failure diagnosis/replacement review');
     }
     const repository = text(review.repository);
     const playbookPrefix = `https://github.com/${repository}/blob/main/docs/AGENT-PLAYBOOK.md#`;
     if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) ||
         !text(review.playbookEvidenceRef).startsWith(playbookPrefix) ||
-        !hasCanonicalPlaybookAnchor(text(review.playbookEvidenceRef).slice(playbookPrefix.length))) {
+        !hasCanonicalPlaybookAnchor(text(review.playbookEvidenceRef).slice(playbookPrefix.length), sourceEvidence, repository)) {
       errors.push('Missing Playbook prevention evidence');
     }
     if (!requested || !actual || review.executionEvidence !== 'OPERATOR_ATTESTED') errors.push('Missing truthful replacement execution attestation');

@@ -3,6 +3,7 @@ import {
   changeDigestOf,
   evaluateAstra,
   isTrustedFinalRiskAgentUser,
+  loadFallbackSourceEvidence,
   parseAstraReviews,
   routing,
 } from './astra-review-policy.mjs';
@@ -72,6 +73,7 @@ export function buildProductionDbFinalRiskEvidence({
 
   return {
     status: 'ASTRA_APPROVED',
+    changeDigest: latest.changeDigest,
     requestedModel: latest.requestedModel,
     actualModel: latest.actualModel,
     // Preserve the already-validated Owner #552 identity contract for G6.
@@ -92,6 +94,7 @@ export function buildProductionDbFinalRiskEvidence({
     releaseId,
     trustSource: latest.trustSource,
     databaseMutationAuthorized: false,
+    ...(latest.reviewerTier === 'EVIDENCE_FALLBACK' ? { fallbackSourceEvidence: context.fallbackSourceEvidence } : {}),
   };
 }
 
@@ -190,7 +193,9 @@ export async function buildProductionDbFinalRiskEvidenceFromGithub({
   const changedFiles = [...new Set(files.flatMap((file) => [file.filename, file.previous_filename].filter(Boolean)))];
   const body = current.body ?? '';
   const reviews = await loadTrustedGithubReviews({ github, owner, repo, prNumber }, policy);
+  const fallbackSourceEvidence = await loadFallbackSourceEvidence({ github, owner, repo, reviews }, policy);
   const context = {
+    fallbackSourceEvidence,
     repository,
     baseSha: current.base.sha,
     headSha: current.head.sha,

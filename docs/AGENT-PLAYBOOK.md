@@ -645,6 +645,14 @@ Owner 11:59 UTC 已裁示模型基礎設施失敗可走 EVIDENCE_FALLBACK：保�
 預防：證據 URL 不只驗來源前綴，也驗可解析目的地；以 `#does-not-exist` 與缺失 anchor 的反例覆蓋。
 正常 prepare → reviewer packet 曾丟失 fallback 診斷（finding `4145796157`）。預防：packet 自動攜帶失敗事實與政策版本，
 列出 reviewer 必須新增的真實審查證據；以正常入口產出的契約直接通過共享 validator，並驗缺診斷／替代 review 仍拒絕。
+後續 findings `4146547160`／`4146547172`：URL 外形不是來源驗真，candidate checkout 也不是 canonical main。
+預防：失敗／替代引用只接受本 repo 的確切 GitHub comment／review ID；可信讀取端回讀實際內容、作者權限及 review 狀態，
+替代 PASS 必須綁同一 digest、execution、身份與 finding 核對。普通 Issue、跨 repo、缺記錄與無關留言全部拒絕。
+Playbook 由 GitHub 觀察 current-main SHA，再用該 immutable SHA 讀 bytes、核對 blob hash 與完整明確 anchor；讀取前後 main 前進則重新取證。
+candidate payload 的 `fallbackSourceEvidence` 一律丟棄；WIP 與 DB adapter 從可信讀取端重建，DB artifact 保留回讀 receipt 供同一共享 validator 使用。
+semantic reuse 也須帶入獨立回讀證據，CLI 未取得此證據時安全退回 FULL；不以候選自述補綠。
+反例固定涵蓋 normal prepare → packet → validator、跨 repo／普通 Issue／404／權限／dismissed、候選獨有 anchor／過時 main／blob 不符及 DB adapter。
+本 PR 新增的 `pb-031` 在本次觀察 main `58b7845` 尚不存在，合併前不能以此 anchor 宣稱 fallback 可放行；不得為過 gate 改寫 main 或放寬檢查。
 
 - 首次／最近：2026-09-09／2026-09-13
 - 發生次數：2（第 2 次一輪內同時犯了兩件）
