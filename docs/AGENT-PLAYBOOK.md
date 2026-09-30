@@ -628,6 +628,8 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 相關教訓：PB-016、PB-027、PB-029。
 - Review 問句：**「如果我現在故意把最重要的保護拿掉，哪一條測試一定會紅？」** 如果答不出來，該保護尚未被可靠驗證。
 
+<a id="pb-031"></a>
+
 ### PB-031 — 拿 Issue 內文當 Owner 決策，於是對一件早已裁示的事重新提案
 
 2026-09-30 #700／#699 補充：reviewer 已真實執行卻無獨立模型型號 telemetry 時，把 requested 當 actual 或無限等待都是錯誤。
@@ -638,6 +640,9 @@ Owner 11:59 UTC 已裁示模型基礎設施失敗可走 EVIDENCE_FALLBACK：保�
 成本教訓：重用 exact-diff review，一次集中政策／入口／反例；不重派昂貴模型或反覆重跑無關 CI。
 本次自動 review 補捉兩個邊界：已知身份不得借 fallback 使用 builder-tier／型號不符；Playbook 必須綁本 repo main。
 預防反例同時覆盖已知／未知身份、角色資格與 canonical 證據來源，而非只測 unknown happy path。
+後續 finding `4144692628` 證明非空 fragment 仍可偽造。PB-031 使用明確穩定 anchor，共享 validator
+只接受 canonical checkout 實際存在的明確 anchor；檔案缺失或 fragment 不存在時拒絕。
+預防：證據 URL 不只驗來源前綴，也驗可解析目的地；以 `#does-not-exist` 與缺失 anchor 的反例覆蓋。
 
 - 首次／最近：2026-09-09／2026-09-13
 - 發生次數：2（第 2 次一輪內同時犯了兩件）

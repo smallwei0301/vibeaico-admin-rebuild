@@ -1,4 +1,15 @@
 // Owner #552: consultation cost is bounded; review quality and source binding are not waived.
+import { readFileSync } from 'node:fs';
+
+function hasCanonicalPlaybookAnchor(fragment) {
+  if (!/^[a-z0-9-]+$/.test(fragment)) return false;
+  try {
+    const playbook = readFileSync(new URL('../../docs/AGENT-PLAYBOOK.md', import.meta.url), 'utf8');
+    return [...playbook.matchAll(/<a id="([a-z0-9-]+)"><\/a>/g)].some(match => match[1] === fragment);
+  } catch {
+    return false;
+  }
+}
 const text = (value) => String(value ?? '').trim();
 const meaningful = (value) => text(value).length >= 8 && !/^(unknown|pending|none|n\/a)$/i.test(text(value));
 const validModels = (models) => Array.isArray(models) && models.length > 0 &&
@@ -115,7 +126,7 @@ export function finalRiskReviewerErrors(review = {}, policy = {}) {
     const playbookPrefix = `https://github.com/${repository}/blob/main/docs/AGENT-PLAYBOOK.md#`;
     if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) ||
         !text(review.playbookEvidenceRef).startsWith(playbookPrefix) ||
-        text(review.playbookEvidenceRef).length <= playbookPrefix.length) {
+        !hasCanonicalPlaybookAnchor(text(review.playbookEvidenceRef).slice(playbookPrefix.length))) {
       errors.push('Missing Playbook prevention evidence');
     }
     if (!requested || !actual || review.executionEvidence !== 'OPERATOR_ATTESTED') errors.push('Missing truthful replacement execution attestation');

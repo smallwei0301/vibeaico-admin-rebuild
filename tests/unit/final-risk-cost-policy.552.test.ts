@@ -210,6 +210,13 @@ describe('Owner #700 infrastructure fallback is evidence-based, not review bypas
     }
     assert.notDeepEqual(finalRiskReviewerErrors({ ...fallback(), repository: '' }, routing), []);
   });
+  it('rejects fabricated, partial and encoded Playbook fragments across shared admission', () => {
+    for (const fragment of ['does-not-exist', 'pb-03', 'pb-031-fake', 'pb%2D031', 'pb-031?fake']) {
+      const invalid = { ...fallback(), playbookEvidenceRef: fallback().playbookEvidenceRef.replace('#pb-031', `#${fragment}`) };
+      assert.equal(evaluate(invalid).status, 'ASTRA_PENDING');
+      assert.notDeepEqual(finalRiskReviewerErrors(invalid, routing), []);
+    }
+  });
   it('allows semantic reuse only after shared fallback validation', () => {
     const payload = { ...context, ...fallback(), report: ref, findings: 'Fixture findings reconciled', verdict: 'PASS',
       riskClass: 'GOVERNANCE_GATE', changedFileRecords: [{ filename: 'scripts/agents/fixture.mjs' }] };
