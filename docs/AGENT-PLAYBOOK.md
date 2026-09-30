@@ -819,6 +819,14 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 
 ### PB-034 — 用 CI 當規則查詢器：靠一次次被退來湊出正確的 PR 中繼資料
 
+- 2026-09-30 #704／PR #705 續例：新 v4 run ledger 通過 JSON/readiness，卻漏交
+  `score-run-current.mjs` 規定的同名 Markdown report，remote scorecard
+  `36720245829` 因此拒絕。這不是可重跑的暫態 CI；先以 canonical 產生器生成 report，
+  再重新生成並作 byte-equal 比對，才推送同一原子 bundle。預防：新增 v4 ledger 時，
+  publication preflight 必須同時驗 `run-ledger-v2 validate`、scorecard readiness，並確認
+  `<RUN_ID>.md` 是 canonical scorecard 輸出；不得只靠 JSON 合法或等遠端 CI 補契約。
+  這次不補造分數，report 保持 `NOT_GRADED`／in-progress；只記錄可觀察的失敗與修正。
+
 - 2026-09-20 #589 Stage 1：Production impact manifest 若只補新 migration 檔名，G2 的 pending-diff allowlist 仍無法辨識實際 catalog surface；反過來把同一 routine 或 column 同時列在前、後 migration，會使 release 的最終 owner 不明。manifest 維持 v1 的 selected exact impact roots：13 個 plan migration 都要有 entry，compatibility-only predecessor 可明列空 impacts，而被後續 `create or replace`／canonical contract 覆寫的 root 只交給最後 owner；function ACL identity 必須使用 observer 的 named `pg_get_function_identity_arguments` 輸出，不能改成 call-style type list。既有 `AMBIGUOUS_IMPACT_OWNERSHIP` 保持 fail-closed；Stage 1 不把 migration 順序假稱成 catalog dependency closure，也不以 observer 的 1072 個未分類差異建立例外。v1 沒有 enum surface，現有 observer 也沒有 storage schema policy capture，故這兩類 coverage 仍是 Stage 3 adapter 的 blocker，不能寫成完整 catalog coverage。預防測試固定 13-entry root inventory digest、observer 實際 emit 的 function ACL keys 與 duplicate-owner 反例；此項是 source metadata，未執行 TEST／Production 或資料庫操作。
 
 - 2026-09-20 #589 collect 續例：G4 restore rehearsal 將 `LOCAL_PROJECT_ID` 寫成業務名稱，卻交給只接受 `schema-proof-` execution identity 的 fresh-install CLI；同時 workflow 只輸出 `BOUND_MAIN_SHA`，沒有輸出 CLI 必填的 `EXPECTED_HEAD`。修正 caller 以 `schema-proof-restore-<run>-<attempt>` 識別 disposable proof，並在 exact-main 驗證後將已驗證的 `BOUND_SHA` 匯出為 `EXPECTED_HEAD`；不放寬 CLI regex，也不以 `MAIN_SHA` 的未經同一檢查別名替代。G2 schema drift watch 的 `schema-drift-watch.mjs` 已在 lockfile 宣告 `postgres@3.4.9`，但 workflow 未先 `npm ci` 即 import，造成 `ERR_MODULE_NOT_FOUND`；在任何 local replay／capture 前安裝 exact lockfile tree。預防測試固定 caller identity、verified head propagation 及安裝步驟在 observer module 使用前；這是 source-only 接線修復，未執行 DB／TEST／Production 操作，也不把 collect failure 當 PASS。 同日 run `35522048199` 在本機 metadata SQL 成功後暴露 CLI 契約落差：workflow 使用 positional `normalize/capture/compare`，parser 只接受 `--command <value>`。三處命令一次修正，回歸需從 workflow 擷取實際 argv prefix 並執行 CLI，覆蓋 normalize 成功、compare 成功、capture 無效環境 fail-closed 與舊 positional 形式拒絕，不能只測函式或搜尋字串。診斷後綴需維持 Supabase CLI v2.116.0 的 project_id 40 字元上限；正式 g2/g7 後綴未受影響。
