@@ -42,7 +42,7 @@ B+ 的表格填在單人作業上面。
 ### 1. 真實盤點（Luna 層）
 
 掃 open Issue／open PR／近期 CI／上一輪的 closeability 候選。這是**窄盤點**，
-按 `CLAUDE.md` 的 Lane → model tier 表屬 `scout` 層，**應委派給 `claude-haiku-4-5`**。
+先確認 session/runtime provider，再依本地 runtime catalog 選擇 scout（OpenAI: `gpt-6-luna`；Claude: `claude-haiku-4-5`）；不得要求另一 provider 的模型。
 每次委派即時寫進 `flow.lunaTasks` / `lunaAccepted`。
 
 ### 2. TRIAGE 選 MAIN（Sol 層）

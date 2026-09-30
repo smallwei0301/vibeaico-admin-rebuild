@@ -54,6 +54,14 @@ describe('lane → model tier（Owner 2026-09-30 版本更新）', () => {
     expect(intro).not.toMatch(/gpt-[\d.]+-\*/);
   });
 
+  it('Luna 開工委派是 provider-local，Product 施工一律保留 build tier', () => {
+    const startup = read('CLAUDE.md').split('## Lane → model tier')[0];
+    expect(startup).toContain('OpenAI: `gpt-6-luna`');
+    expect(startup).toContain('Claude: `claude-haiku-4-5`');
+    const policy = read('docs/AGENT-EXECUTION.md');
+    expect(policy).toContain('不得用 scout 或 audit 層模型做任何 Product 施工');
+  });
+
   it('目前開工文件先判 provider，再選本地角色模型，不要求跨 provider 依賴', () => {
     for (const file of ['CLAUDE.md', 'docs/AGENT-EXECUTION.md', 'docs/MODEL-ROUTING.md']) {
       const text = read(file);

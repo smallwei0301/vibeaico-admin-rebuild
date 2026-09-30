@@ -404,7 +404,7 @@ Terra、Astra／Fable 及角色／風險／可信審查契約保留。設定的 
 與審查 `policyVersion` 分開，既有 receipt 不改寫。派工前查 runtime catalog；
 模型已發布或已寫入設定，不代表本 runtime 可用；目前派工依上方 PROVIDER_FIRST 選擇原則。
 
-Product lane 決定工作責任與所需能力。Terra 一律使用 build 層；不得用 scout 做高風險施工，
+Product lane 決定工作責任與所需能力。Terra 一律使用 build 層；不得用 scout 或 audit 層模型做任何 Product 施工，
 也不得把 builder 自審宣稱為獨立 audit。模型版本表是 provider-local 選擇起點，不是跨 provider 強制派工。平台無法證明 actual model 時填 `actual=unknown`，
 不得由 lane 名稱推定。
 
