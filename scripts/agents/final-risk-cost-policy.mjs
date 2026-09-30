@@ -9,8 +9,11 @@ const millis = (value) => typeof value === 'string' && /^\d{4}-\d\d-\d\dT.*Z$/.t
   ? Date.parse(value) : NaN;
 const durable = (value) => /^https:\/\/github\.com\/[^/]+\/[^/]+\/(issues|pull|actions)\//.test(text(value));
 const REASONS = new Set(['PREMIUM_REVIEW_COMPLETED', 'PREMIUM_ATTEMPTED', 'MODEL_UNAVAILABLE',
-  'MODEL_SELECTION_UNAVAILABLE', 'START_TIMEOUT', 'DISPATCH_NO_RESPONSE', 'HISTORY_UNAVAILABLE']);
+  'MODEL_SELECTION_UNAVAILABLE', 'START_TIMEOUT', 'DISPATCH_NO_RESPONSE', 'HISTORY_UNAVAILABLE', 'REVIEWER_INFRASTRUCTURE_FAILURE']);
 export const FINAL_RISK_COST_POLICY_VERSION = '2026-09-17.1';
+export const REVIEWER_FALLBACK_POLICY_VERSION = '2026-09-30.1';
+const INFRASTRUCTURE_FAILURES = new Set(['IDENTITY_UNAVAILABLE', 'MODEL_UNAVAILABLE', 'MODEL_SELECTION_UNAVAILABLE',
+  'MODEL_DISPATCH', 'TIMEOUT', 'START_TIMEOUT', 'DISPATCH_NO_RESPONSE', 'RATE_LIMIT', 'TOOLING', 'ENVIRONMENT']);
 export const PREMIUM_START_TIMEOUT_MS = 300_000;
 
 /** A queue acknowledgement is not execution. This is a startup deadline, not a total-review limit. */
@@ -42,15 +45,21 @@ export function selectFinalRiskReviewer(input = {}, policy = {}) {
     reviewLineage: text(input.reviewLineage), evidenceRef: text(input.historyEvidenceRef) });
   const park = () => result('NONE', input.independentSliceAvailable === true
     ? 'PARK_CURRENT_AND_REFILL_BUILD' : 'PARK_CURRENT_AND_CONTINUE_CLOSURE_TRIAGE', null, 'REVIEWER_UNAVAILABLE');
+  const diagnosedFailure = durable(input.failureEvidenceRef) && meaningful(input.failureDiagnosis);
   // A genuine safety refusal is not a dispatch fault and must not be routed around.
   if (['SAFETY_CLASSIFIER', 'SAFETY_REFUSAL'].includes(input.failureClass)) return park();
+  if (input.failureClass === 'CONTENT_FINDING') return result('NONE', 'RETURN_TO_SOURCE_FIX', null, 'CONTENT_FINDING');
+  if (input.failureClass === 'IDENTITY_UNAVAILABLE') {
+    return diagnosedFailure ? result('EVIDENCE_FALLBACK', 'REVIEW_WITH_EVIDENCE_FALLBACK', null, 'REVIEWER_INFRASTRUCTURE_FAILURE') : park();
+  }
   const downgrade = (reason) => {
     if (input.modelSelectionAvailable === false) {
       return result('CURRENT_AGENT', 'REVIEW_WITH_CURRENT_AGENT', null, 'MODEL_SELECTION_UNAVAILABLE');
     }
     const available = Array.isArray(input.availableModels) ? new Set(input.availableModels) : null;
     const next = audit.find(model => !unavailable.has(model) && !attempted.has(model) && (!available || available.has(model)));
-    return next ? result('AUDIT', 'DOWNGRADE_REVIEWER_MODEL', next, reason) : park();
+    return next ? result('AUDIT', 'DOWNGRADE_REVIEWER_MODEL', next, reason)
+      : diagnosedFailure ? result('EVIDENCE_FALLBACK', 'REVIEW_WITH_EVIDENCE_FALLBACK', null, 'REVIEWER_INFRASTRUCTURE_FAILURE') : park();
   };
   if (input.modelSelectionAvailable === false) return downgrade('MODEL_SELECTION_UNAVAILABLE');
   if (input.failureClass) return downgrade('DISPATCH_NO_RESPONSE');
@@ -86,7 +95,7 @@ export function finalRiskReviewerErrors(review = {}, policy = {}) {
     return validPremium && requested === actual && allowed.includes(actual) ? [] : ['Unverified premium reviewer identity'];
   }
   const errors = [];
-  if (!['AUDIT', 'CURRENT_AGENT'].includes(tier)) return ['Unknown Final Risk reviewer tier'];
+  if (!['AUDIT', 'CURRENT_AGENT', 'EVIDENCE_FALLBACK'].includes(tier)) return ['Unknown Final Risk reviewer tier'];
   if (policy.finalRiskCostControl?.version !== FINAL_RISK_COST_POLICY_VERSION ||
       review.costPolicyVersion !== FINAL_RISK_COST_POLICY_VERSION) errors.push('Missing current downgrade policy version');
   if (!REASONS.has(review.downgradeReason)) errors.push('Missing supported downgrade reason');
@@ -94,7 +103,21 @@ export function finalRiskReviewerErrors(review = {}, policy = {}) {
   if (!meaningful(review.reviewLineage) || !meaningful(review.executionRef)) errors.push('Missing review lineage/execution reference');
   if (!meaningful(review.adversarialEvidence)) errors.push('Missing real adversarial review evidence');
   if (review.priorFindingsReviewed !== true || review.unresolvedFindingCount !== 0) errors.push('Prior findings are not reconciled');
-  if (tier === 'AUDIT') {
+  if (tier === 'EVIDENCE_FALLBACK') {
+    if (review.fallbackPolicyVersion !== REVIEWER_FALLBACK_POLICY_VERSION ||
+        review.downgradeReason !== 'REVIEWER_INFRASTRUCTURE_FAILURE' || !INFRASTRUCTURE_FAILURES.has(review.failureClass)) {
+      errors.push('Missing supported infrastructure fallback policy/failure');
+    }
+    if (!durable(review.failureEvidenceRef) || !meaningful(review.failureDiagnosis) || !durable(review.replacementReviewRef)) {
+      errors.push('Missing durable failure diagnosis/replacement review');
+    }
+    if (!/^https:\/\/github\.com\/[^/]+\/[^/]+\/blob\/[^/]+\/docs\/AGENT-PLAYBOOK\.md#.+$/.test(text(review.playbookEvidenceRef))) {
+      errors.push('Missing Playbook prevention evidence');
+    }
+    if (!requested || !actual || review.executionEvidence !== 'OPERATOR_ATTESTED') errors.push('Missing truthful replacement execution attestation');
+    if ((actual === 'unknown' && review.identityEvidence !== 'UNKNOWN') ||
+        (actual !== 'unknown' && review.identityEvidence !== 'OPERATOR_ATTESTED')) errors.push('Replacement identity is overstated');
+  } else if (tier === 'AUDIT') {
     const models = list(policy.models?.finalRiskDowngradeAllowedModels);
     if (!validModels(models) || !validModels(catalog) || models.some(model => !catalog.includes(model)) || requested !== actual || !models.includes(actual)) {
       errors.push('Unverified audit-tier reviewer identity');

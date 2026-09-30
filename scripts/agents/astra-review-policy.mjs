@@ -294,7 +294,7 @@ export function evaluateAstra({ body = '', changedFiles = null, context = {}, re
     if (!['COMMENTED', 'APPROVED'].includes(latest.reviewState)) errors.push('Astra review is dismissed or requests changes');
     if (latest.verdict !== 'PASS') errors.push('Astra verdict is not PASS');
     if (finalRiskReviewerErrors(latest, policy).length) errors.push('Astra model identity is unverified');
-    if (latest.reviewerTier !== 'CURRENT_AGENT' && latest.identityEvidence !== 'OPERATOR_ATTESTED') {
+    if (!['CURRENT_AGENT', 'EVIDENCE_FALLBACK'].includes(latest.reviewerTier) && latest.identityEvidence !== 'OPERATOR_ATTESTED') {
       errors.push('Missing explicit operator model attestation');
     }
     if (!meaningful(latest.report) || !/^https:\/\/github\.com\//.test(latest.report)) errors.push('Missing durable review report URL');

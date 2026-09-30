@@ -22,6 +22,10 @@ const TRANSIENT_FAILURES = new Set([
   'RATE_LIMIT',
   'TIMEOUT',
   'SAFETY_CLASSIFIER',
+  'IDENTITY_UNAVAILABLE',
+  'MODEL_UNAVAILABLE',
+  'START_TIMEOUT',
+  'DISPATCH_NO_RESPONSE',
 ]);
 const PRECHECK_FAILURES = new Set(['READINESS', 'INVALID_INPUT', 'PACKET_BUDGET']);
 
@@ -87,7 +91,7 @@ export function previousReviewFromCanonicalReviews(reviews = [], repository = ''
   const canonicalTrustEligible =
     latest.parseError !== true &&
     finalRiskReviewerErrors(latest, routing).length === 0 &&
-    (latest.reviewerTier === 'CURRENT_AGENT' || latest.identityEvidence === 'OPERATOR_ATTESTED') &&
+    (['CURRENT_AGENT', 'EVIDENCE_FALLBACK'].includes(latest.reviewerTier) || latest.identityEvidence === 'OPERATOR_ATTESTED') &&
     DIGEST64.test(text(latest.changeDigest)) &&
     requiredForReviewedScope &&
     (!repository || text(latest.repository) === text(repository));

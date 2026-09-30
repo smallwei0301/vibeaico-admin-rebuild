@@ -630,6 +630,13 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 
 ### PB-031 — 拿 Issue 內文當 Owner 決策，於是對一件早已裁示的事重新提案
 
+2026-09-30 #700／#699 補充：reviewer 已真實執行卻無獨立模型型號 telemetry 時，把 requested 當 actual 或無限等待都是錯誤。
+Owner 11:59 UTC 已裁示模型基礎設施失敗可走 EVIDENCE_FALLBACK：保存可回讀的失敗分類／診斷，
+連結真實替代審查和反例、核對舊 finding，明記 `actual=unknown`，再跑正常 gates。
+預防：先以共享 validator 的身份缺失／派送失敗反例證明替代路徑，再同步 WIP、semantic reuse、DB evidence adapter；
+不要等施工完成才發現各入口互相矛盾。實質安全 finding／CI 失敗仍必須修復；不把 missing raw instrumentation 補造為 PASS。
+成本教訓：重用 exact-diff review，一次集中政策／入口／反例；不重派昂貴模型或反覆重跑無關 CI。
+
 - 首次／最近：2026-09-09／2026-09-13
 - 發生次數：2（第 2 次一輪內同時犯了兩件）
 - Issue／PR／CI：#25、#42；`docs/OWNER-DECISIONS.md:88`、`:108`；

@@ -3,8 +3,9 @@ import { describe, it } from 'vitest';
 import { premiumExecutionState, selectFinalRiskReviewer, finalRiskReviewerErrors,
   FINAL_RISK_COST_POLICY_VERSION } from '../../scripts/agents/final-risk-cost-policy.mjs';
 import { evaluateAstra, routing } from '../../scripts/agents/astra-review-policy.mjs';
-import { decideFinalRiskRecovery } from '../../scripts/agents/final-risk-workflow.mjs';
+import { decideFinalRiskRecovery, previousReviewFromCanonicalReviews } from '../../scripts/agents/final-risk-workflow.mjs';
 import { evaluateReleasePreflight, releaseEvidenceDigestOf } from '../../scripts/agents/production-db-release-preflight.mjs';
+import { buildProductionDbFinalRiskEvidence } from '../../scripts/agents/production-db-final-risk-evidence.mjs';
 
 // Fixtures are not claims that a model was run or a real release was admitted.
 const ref = 'https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/552';
@@ -20,6 +21,12 @@ const audit = () => ({ reviewerTier: 'AUDIT', requestedModel: 'gpt-5.6-sol', act
 const current = () => ({ ...audit(), reviewerTier: 'CURRENT_AGENT', requestedModel: 'not_requested', actualModel: 'unknown',
   identityEvidence: 'UNKNOWN', executionEvidence: 'OPERATOR_ATTESTED', modelSelectionAvailable: false,
   downgradeReason: 'MODEL_SELECTION_UNAVAILABLE' });
+const fallback = () => ({ ...audit(), reviewerTier: 'EVIDENCE_FALLBACK', requestedModel: 'gpt-6.1-sol',
+  actualModel: 'unknown', identityEvidence: 'UNKNOWN', executionEvidence: 'OPERATOR_ATTESTED',
+  fallbackPolicyVersion: '2026-09-30.1', failureClass: 'IDENTITY_UNAVAILABLE',
+  failureEvidenceRef: ref, failureDiagnosis: 'Fixture dispatch executed; runtime exposes no independent model identity',
+  replacementReviewRef: ref, playbookEvidenceRef: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/blob/main/docs/AGENT-PLAYBOOK.md#pb-031',
+  downgradeReason: 'REVIEWER_INFRASTRUCTURE_FAILURE' });
 const context = { repository: 'smallwei0301/vibeaico-admin-rebuild', createdAt: start,
   baseSha: 'a'.repeat(40), headSha: 'b'.repeat(40), changeDigest: 'c'.repeat(64),
   policyVersion: routing.version, testBaseline: 'Fixture source tests passed', schemaBaseline: 'Fixture schema unchanged' };
@@ -143,10 +150,58 @@ describe('DB release uses the same downgrade gate without granting DB write perm
     assert.equal(result.status, 'READY_FOR_LOCK');
     assert.equal(result.databaseMutationAuthorized, false);
   });
+  it('accepts documented unknown identity without granting DB mutation authority', () => {
+    const value = packet(); Object.assign(value.finalRisk, fallback());
+    assert.equal(evaluateReleasePreflight(value, { now: start }).databaseMutationAuthorized, false);
+  });
+  it('preserves validated fallback through the DB evidence adapter', () => {
+    const value = packet();
+    const payload = { ...context, ...fallback(), report: ref, findings: 'Fixture findings reconciled', verdict: 'PASS',
+      productionDbReviewScope: 'PRODUCTION_DB_RELEASE', productionDbReleaseId: value.releaseId,
+      productionDbPlanDigest: value.planDigest, productionDbEvidenceDigest: releaseEvidenceDigestOf(value) };
+    const evidence: Record<string, unknown> = buildProductionDbFinalRiskEvidence({ body, changedFiles: ['src/server/payment/fixture.ts'], context,
+      releasePacket: value, reviews: [{ trusted: true, id: 700, state: 'COMMENTED', commit_id: context.headSha,
+        submitted_at: start, body: '```astra-review\n' + JSON.stringify(payload) + '\n```' }] });
+    assert.deepEqual(finalRiskReviewerErrors(evidence, routing), []);
+    assert.equal(evidence.failureDiagnosis, payload.failureDiagnosis);
+    assert.equal(evidence.databaseMutationAuthorized, false);
+  });
   it('rejects fake downgrade and mismatched release evidence', () => {
     const bad = packet(); bad.finalRisk.adversarialEvidence = '';
     assert.throws(() => evaluateReleasePreflight(bad, { now: start }), /FINAL_RISK_MODEL_UNVERIFIED/);
     const stale = packet(); stale.finalRisk.evidenceDigest = 'f'.repeat(64);
     assert.throws(() => evaluateReleasePreflight(stale, { now: start }), /FINAL_RISK_EVIDENCE_MISMATCH/);
+  });
+});
+
+describe('Owner #700 infrastructure fallback is evidence-based, not review bypass', () => {
+  it('admits a real replacement review despite unavailable identity telemetry', () => {
+    assert.deepEqual(finalRiskReviewerErrors(fallback(), routing), []);
+    assert.equal(evaluate(fallback()).status, 'ASTRA_APPROVED');
+    const diagnosed = { ...history, failureEvidenceRef: ref, failureDiagnosis: fallback().failureDiagnosis };
+    assert.equal(selectFinalRiskReviewer({ ...diagnosed, failureClass: 'IDENTITY_UNAVAILABLE' }, routing).action, 'REVIEW_WITH_EVIDENCE_FALLBACK');
+    assert.equal(decideFinalRiskRecovery({ ...diagnosed, failureClass: 'IDENTITY_UNAVAILABLE' }).action, 'REVIEW_WITH_EVIDENCE_FALLBACK');
+    assert.equal(selectFinalRiskReviewer({ ...diagnosed, premiumUnavailable: true, availableModels: [] }, routing).action, 'REVIEW_WITH_EVIDENCE_FALLBACK');
+  });
+  for (const patch of [{ failureClass: 'CONTENT_FINDING' }, { failureClass: 'SAFETY_REFUSAL' },
+    { failureDiagnosis: '' }, { failureEvidenceRef: 'unknown' }, { replacementReviewRef: '' },
+    { playbookEvidenceRef: ref }, { fallbackPolicyVersion: 'old' }, { executionEvidence: 'UNKNOWN' },
+    { identityEvidence: 'OPERATOR_ATTESTED' }, { unresolvedFindingCount: 1 }, { priorFindingsReviewed: false }]) {
+    it(`rejects unsafe/incomplete fallback ${JSON.stringify(patch)}`, () => {
+      assert.equal(evaluate({ ...fallback(), ...patch }).status, 'ASTRA_PENDING');
+    });
+  }
+  it('retains exact digest, trusted submitter and substantive verdict gates', () => {
+    assert.equal(evaluate(fallback(), { verdict: 'FIX_REQUIRED' }).status, 'ASTRA_PENDING');
+    assert.equal(evaluate(fallback(), { changeDigest: 'd'.repeat(64) }).status, 'ASTRA_PENDING');
+    assert.equal(evaluate(fallback(), {}, false).status, 'ASTRA_PENDING');
+  });
+  it('allows semantic reuse only after shared fallback validation', () => {
+    const payload = { ...context, ...fallback(), report: ref, findings: 'Fixture findings reconciled', verdict: 'PASS',
+      riskClass: 'GOVERNANCE_GATE', changedFileRecords: [{ filename: 'scripts/agents/fixture.mjs' }] };
+    const record = (value: typeof payload) => [{ trusted: true, id: 700, state: 'COMMENTED', commit_id: context.headSha,
+      submitted_at: start, body: '```astra-review\n' + JSON.stringify(value) + '\n```' }];
+    assert.equal(previousReviewFromCanonicalReviews(record(payload), context.repository)?.canonicalTrustEligible, true);
+    assert.equal(previousReviewFromCanonicalReviews(record({ ...payload, unresolvedFindingCount: 1 }), context.repository)?.canonicalTrustEligible, false);
   });
 });
