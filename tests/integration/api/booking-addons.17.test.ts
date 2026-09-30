@@ -175,6 +175,34 @@ afterEach(async () => {
   }
 });
 
+describe.skipIf(!rpcAvailable)('#17 加購詳情持久讀回', () => {
+  it('寫入後以正確人員與金額讀回，重讀仍存在，跨租戶拒絕', async () => {
+    const customerId = await insertCustomer();
+    const { id: bookingId } = await insertBooking(customerId, 500, SHOP_A.staffA1);
+    const created = await ownerA.post(`/api/bookings/${bookingId}/addons`, {
+      name: '詳情讀回加購', price: 120, quantity: 2, durationMinutes: 0,
+      staffId: SHOP_A.staffA1, performanceMode: 'SPECIFIC_STAFF',
+      performanceStaffId: SHOP_A.staffA2, notify: false, idempotencyKey: randomUUID(),
+    });
+    expect(created.status).toBe(200);
+    const addonId = (await readJson<any>(created)).data.id;
+
+    for (let read = 0; read < 2; read += 1) {
+      const response = await ownerA.get(`/api/bookings/${bookingId}/addons`);
+      expect(response.status).toBe(200);
+      expect((await readJson<any[]>(response)).data).toEqual([expect.objectContaining({
+        id: addonId, name: '詳情讀回加購', appliedAmount: 240,
+        staffId: SHOP_A.staffA1, staffName: '設計師 A1（測試）',
+        performanceStaffId: SHOP_A.staffA2, performanceStaffName: '設計師 A2（測試，對應 STAFF_A2 登入帳號）',
+      })]);
+    }
+    expect((await dbBooking(bookingId)).finalPrice).toBe(740);
+    expect(await dbAddonRows(bookingId)).toHaveLength(1);
+    const otherTenant = await ownerB.get(`/api/bookings/${bookingId}/addons`);
+    expect(otherTenant.status).toBe(404);
+  });
+});
+
 // 這兩條在 zod 層就會被擋下（見 route.ts bodySchema），根本不會呼叫
 // create_booking_addon rpc，所以不管 migration 0121 套用與否都必須一樣是
 // 400——是本 PR 今天就該保證的行為，不用等 rpc。
