@@ -117,31 +117,46 @@ export function classifyVercelStatus(statuses = []) {
   return { ...base, state: "UNKNOWN", ready: false };
 }
 
-// `cancelled` 一律歸類為「不知道」，永遠不是綠燈：一個被取消的 run 沒有跑完任何 job，
-// 把它當成通過，等同於用「沒人看到紅燈」冒充「沒有紅燈」。2026-09-22 查證 main 上最近的
-// 14 筆 `ci` run，沒有一筆 success（8 failure、6 cancelled），就是這樣一路無聲累積的。
-function classifyCiRun(workflowRuns = [], exactHead = "") {
+export const CANONICAL_CI_PATH = ".github/workflows/ci.yml";
+
+// Source PR, main push and manual TEST runs are separate evidence classes.
+// Select the latest run/attempt first, then inspect its result; never pick any green.
+function classifyCiRun(workflowRuns = [], exactHead = "", event = "") {
   const sha = String(exactHead ?? "").trim();
-  if (!sha) return { state: "NOT_REPORTED", verified: false, runId: null, url: null, conclusion: null };
+  const missing = { state: "NOT_REPORTED", verified: false, runId: null, url: null, conclusion: null };
+  if (!sha) return missing;
   const run = [...workflowRuns]
-    .filter((item) => item?.name === "ci" && item?.head_sha === sha)
-    .sort((left, right) => Number(right.id ?? 0) - Number(left.id ?? 0))[0];
-  if (!run) return { state: "NOT_REPORTED", verified: false, runId: null, url: null, conclusion: null };
-  const base = { runId: run.id ?? null, url: run.html_url ?? null, conclusion: run.conclusion ?? null };
+    .filter((item) => item?.path === CANONICAL_CI_PATH && item?.head_sha === sha && item?.event === event)
+    .sort((left, right) => Number(right.id ?? 0) - Number(left.id ?? 0)
+      || Number(right.run_attempt ?? 1) - Number(left.run_attempt ?? 1))[0];
+  if (!run) return missing;
+  const base = {
+    runId: run.id ?? null, runAttempt: run.run_attempt ?? 1, event: run.event,
+    workflowPath: run.path, url: run.html_url ?? null, conclusion: run.conclusion ?? null,
+  };
   if (run.status !== "completed") return { ...base, state: "PENDING", verified: false };
   if (run.conclusion === "success") return { ...base, state: "VERIFIED", verified: true };
   return { ...base, state: String(run.conclusion ?? "FAILED").toUpperCase(), verified: false };
 }
 
 function classifySourceVerification(workflowRuns = [], exactHead = "") {
-  const { conclusion, ...result } = classifyCiRun(workflowRuns, exactHead);
-  return result;
+  return classifyCiRun(workflowRuns, exactHead, "pull_request");
 }
 
-// Completion Truth 第六點：合併之後，merge commit 上的 canonical `ci` 真的跑綠了沒有。
-// 前五點只證明「這個 PR 的 head 綠、而且進了 main」，證明不了合併後的 main 還是綠的。
 export function classifyMainCiAfterMerge(mainWorkflowRuns = [], mergeCommitSha = "") {
-  return classifyCiRun(mainWorkflowRuns, mergeCommitSha);
+  return classifyCiRun(mainWorkflowRuns, mergeCommitSha, "push");
+}
+
+// Called with a freshly fetched run and canonical workflow identity. A workflow_run
+// wake-up must never select code from the triggering head or trust its artifacts.
+export function completionRefreshSha(run, repository, workflowId) {
+  if (!repository?.id || !workflowId || run?.workflow_id !== workflowId
+    || run?.repository?.id !== repository.id || run?.head_repository?.id !== repository.id
+    || run?.path !== CANONICAL_CI_PATH || run?.status !== "completed"
+    || !/^[a-f0-9]{40}$/.test(run?.head_sha ?? "")) return null;
+  if (run.event === "push" && run.head_branch === repository.default_branch) return run.head_sha;
+  if (run.event === "pull_request") return run.head_sha;
+  return null;
 }
 
 function classifySchemaTruth(body, migrationTouched) {
