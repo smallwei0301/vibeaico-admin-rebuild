@@ -297,7 +297,21 @@ export function validateRunLedgerV2(run) {
   delete legacy.completionTruth;
   errors.push(...validateLegacyLedger(legacy));
 
-  if (run.deliveryTruthVersion === 4) errors.push(...validateCloseoutContract(run));
+  if (run.deliveryTruthVersion === 4) {
+    errors.push(...validateCloseoutContract(run));
+    // Terminal receipts retain their original schema for historical replay.
+    // Reopening a v4 Run restores the operational sources contract; binding
+    // independently refuses historical/closed Runs as current Product proof.
+    const historical = FINAL_RUN_STATUS.has(run.status) && run.closeout?.state === "CLOSED";
+    if (!historical && Array.isArray(run.sources)) {
+      run.sources.forEach((source, index) => {
+        if (!isObject(source)) errors.push(`sources[${index}] must be an object`);
+        else if (typeof source.ref !== "string" || !source.ref.trim()) {
+          errors.push(`sources[${index}].ref must be a non-empty string`);
+        }
+      });
+    }
+  }
   errors.push(...validateWipLifecycle(run));
 
   const truth = run.completionTruth;
