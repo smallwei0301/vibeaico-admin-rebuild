@@ -391,9 +391,14 @@ LUNA_FAN_OUT → LUNA_FAN_IN → SOL_TRIAGE
 
 | 角色 | 主要工作 | OpenAI | Anthropic | 禁止事項 |
 |---|---|---|---|---|
-| Luna / scout | 真實盤點、Closure、CI 摘要、Janitor、文件、QA、Metrics | `gpt-5.6-luna` | `claude-haiku-4-5` | 不做產品／安全決策，不展開大型 code |
-| Terra / build | Product 施工（MAIN／RESERVE） | `gpt-5.6-terra` | `claude-sonnet-5` | 不擴大驗收、不自行關 Issue |
-| Sol / audit | TRIAGE、早期 diff audit、模糊 CI、高風險設計、final Audit | `gpt-5.6-sol` | `claude-opus-5` | 不做 grep、輪詢、一般 CRUD、完整舊對話重讀 |
+| Luna / scout | 真實盤點、Closure、CI 摘要、Janitor、文件、QA、Metrics | `gpt-6-luna` | `claude-haiku-4-5` | 不做產品／安全決策，不展開大型 code |
+| Terra / build | Product 施工（MAIN／RESERVE） | `gpt-5.6-terra` | `claude-sonnet-5-5` | 不擴大驗收、不自行關 Issue |
+| Sol / audit | TRIAGE、早期 diff audit、模糊 CI、高風險設計、final Audit | `gpt-6.1-sol` | `claude-opus-5-5` | 不做 grep、輪詢、一般 CRUD、完整舊對話重讀 |
+
+2026-09-30 Owner 只更新目前 role model 版本：Sol 6.1、Luna 6、Sonnet／Opus 5.5；
+Terra、Astra／Fable 及角色／風險／可信審查契約保留。設定的 `modelMappingVersion`
+與審查 `policyVersion` 分開，既有 receipt 不改寫。派工前查 runtime catalog；
+模型已發布或已寫入設定，不代表本 runtime 可用，缺 builder 不得拿 Sol 代替。
 
 Product lane 決定層級，層級決定模型。Terra 一律使用 build 層；拿 audit 層模型施工或 scout
 層模型施工都要如實記為 routing violation。平台無法證明 actual model 時填 `actual=unknown`，
