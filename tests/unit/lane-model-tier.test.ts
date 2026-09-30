@@ -54,6 +54,16 @@ describe('lane → model tier（Owner 2026-09-30 版本更新）', () => {
     expect(intro).not.toMatch(/gpt-[\d.]+-\*/);
   });
 
+  it('目前開工文件先判 provider，再選本地角色模型，不要求跨 provider 依賴', () => {
+    for (const file of ['CLAUDE.md', 'docs/AGENT-EXECUTION.md', 'docs/MODEL-ROUTING.md']) {
+      const text = read(file);
+      expect(text).toContain('PROVIDER_FIRST');
+      expect(text).toContain('runtime catalog');
+      expect(text).toContain('requested');
+      expect(text).toContain('actual');
+    }
+  });
+
   it('目前開工文件都載明對應，歷史決策不改寫', () => {
     const DOCS = ['CLAUDE.md', 'docs/MODEL-ROUTING.md', 'docs/AGENT-EXECUTION.md'];
     for (const path of DOCS) {
