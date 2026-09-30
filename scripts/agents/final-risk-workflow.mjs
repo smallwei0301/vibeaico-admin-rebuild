@@ -307,8 +307,24 @@ export function buildFinalRiskPacket(input = {}, deps = {}) {
       copyExactly: {
         riskClass: readiness.riskClass,
         changedFileRecords: input.changedFileRecords,
+        ...(reviewerRoute.reviewerTier === 'EVIDENCE_FALLBACK' ? {
+          reviewerTier: reviewerRoute.reviewerTier,
+          costPolicyVersion: reviewerRoute.costPolicyVersion,
+          fallbackPolicyVersion: reviewerRoute.fallbackPolicyVersion,
+          downgradeReason: reviewerRoute.downgradeReason,
+          downgradeEvidenceRef: reviewerRoute.downgradeEvidenceRef,
+          reviewLineage: reviewerRoute.reviewLineage,
+          failureClass: reviewerRoute.failureClass,
+          failureEvidenceRef: reviewerRoute.failureEvidenceRef,
+          failureDiagnosis: reviewerRoute.failureDiagnosis,
+        } : {}),
       },
-      reviewerStructuredFields: ['findingDetails', 'supportFiles'],
+      reviewerStructuredFields: ['findingDetails', 'supportFiles',
+        ...(reviewerRoute.reviewerTier === 'EVIDENCE_FALLBACK' ? [
+          'executionRef', 'adversarialEvidence', 'priorFindingsReviewed',
+          'unresolvedFindingCount', 'replacementReviewRef', 'playbookEvidenceRef',
+          'executionEvidence',
+        ] : [])],
       keepExistingRequiredFields: ['findings', 'report', 'requestedModel', 'actualModel', 'identityEvidence'],
     },
     reviewerContract: [
@@ -318,6 +334,10 @@ export function buildFinalRiskPacket(input = {}, deps = {}) {
       'For blocking findings, persist findingDetails [{id, paths, summary}] and optional supportFiles; keep findings as the existing human-readable string.',
       'DELTA mode still requires a fresh trusted verdict for the current changeDigest.',
       'If the fix creates new scope or uncertainty, require FULL reset.',
+      ...(reviewerRoute.reviewerTier === 'EVIDENCE_FALLBACK' ? [
+        'Copy the preserved failure diagnosis exactly; supply real replacement/adversarial review and retrievable main Playbook evidence.',
+        'Reconcile prior findings; attest execution truthfully and keep unknown identity UNKNOWN. Fallback does not waive substantive review or CI.',
+      ] : []),
     ],
   };
 

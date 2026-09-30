@@ -53,7 +53,15 @@ export function selectFinalRiskReviewer(input = {}, policy = {}) {
   const unavailable = new Set(list(input.unavailableModels));
   const result = (tier, action, nextModel, reason) => ({ reviewerTier: tier, action, nextModel, reason,
     costPolicyVersion: FINAL_RISK_COST_POLICY_VERSION, premiumRetryAllowed: false,
-    reviewLineage: text(input.reviewLineage), evidenceRef: text(input.historyEvidenceRef) });
+    reviewLineage: text(input.reviewLineage), evidenceRef: text(input.historyEvidenceRef),
+    ...(tier === 'EVIDENCE_FALLBACK' ? {
+      fallbackPolicyVersion: REVIEWER_FALLBACK_POLICY_VERSION,
+      downgradeReason: reason,
+      downgradeEvidenceRef: text(input.failureEvidenceRef),
+      failureClass: input.failureClass,
+      failureEvidenceRef: text(input.failureEvidenceRef),
+      failureDiagnosis: text(input.failureDiagnosis),
+    } : {}) });
   const park = () => result('NONE', input.independentSliceAvailable === true
     ? 'PARK_CURRENT_AND_REFILL_BUILD' : 'PARK_CURRENT_AND_CONTINUE_CLOSURE_TRIAGE', null, 'REVIEWER_UNAVAILABLE');
   const diagnosedFailure = durable(input.failureEvidenceRef) && meaningful(input.failureDiagnosis);

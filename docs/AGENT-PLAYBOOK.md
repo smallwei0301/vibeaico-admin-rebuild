@@ -643,6 +643,8 @@ Owner 11:59 UTC 已裁示模型基礎設施失敗可走 EVIDENCE_FALLBACK：保�
 後續 finding `4144692628` 證明非空 fragment 仍可偽造。PB-031 使用明確穩定 anchor，共享 validator
 只接受 canonical checkout 實際存在的明確 anchor；檔案缺失或 fragment 不存在時拒絕。
 預防：證據 URL 不只驗來源前綴，也驗可解析目的地；以 `#does-not-exist` 與缺失 anchor 的反例覆蓋。
+正常 prepare → reviewer packet 曾丟失 fallback 診斷（finding `4145796157`）。預防：packet 自動攜帶失敗事實與政策版本，
+列出 reviewer 必須新增的真實審查證據；以正常入口產出的契約直接通過共享 validator，並驗缺診斷／替代 review 仍拒絕。
 
 - 首次／最近：2026-09-09／2026-09-13
 - 發生次數：2（第 2 次一輪內同時犯了兩件）

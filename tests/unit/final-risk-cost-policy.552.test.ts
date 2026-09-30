@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { premiumExecutionState, selectFinalRiskReviewer, finalRiskReviewerErrors,
   FINAL_RISK_COST_POLICY_VERSION } from '../../scripts/agents/final-risk-cost-policy.mjs';
-import { evaluateAstra, routing } from '../../scripts/agents/astra-review-policy.mjs';
-import { decideFinalRiskRecovery, previousReviewFromCanonicalReviews } from '../../scripts/agents/final-risk-workflow.mjs';
+import { changeDigestOf, evaluateAstra, routing } from '../../scripts/agents/astra-review-policy.mjs';
+import { buildFinalRiskPacket, decideFinalRiskRecovery, previousReviewFromCanonicalReviews } from '../../scripts/agents/final-risk-workflow.mjs';
 import { evaluateReleasePreflight, releaseEvidenceDigestOf } from '../../scripts/agents/production-db-release-preflight.mjs';
 import { buildProductionDbFinalRiskEvidence } from '../../scripts/agents/production-db-final-risk-evidence.mjs';
 
@@ -37,6 +37,38 @@ const evaluate = (reviewer = {}, extra = {}, trusted = true) => evaluateAstra({ 
     body: '```astra-review\n' + JSON.stringify({ ...context, ...reviewer, report: ref, findings: 'Synthetic findings reconciled', verdict: 'PASS', ...extra }) + '\n```' }] });
 
 describe('Owner #552 startup timeout is exactly 300 seconds without execution proof', () => {
+  it('carries diagnosed failure through normal prepare into a validator-complete reviewer contract', () => {
+    const records = [{ filename: 'src/server/payment/fixture.ts', previous_filename: '', status: 'modified', sha: '1'.repeat(40) }];
+    const deps = { preflightEvaluator: () => ({ valid: true, errors: [], metadata: {} }) };
+    const input = { body: body + '\nASTRA_TEST_BASELINE: fixture-tests-pass\nASTRA_SCHEMA_BASELINE: fixture-schema-unchanged',
+      repository: context.repository, prNumber: 703, exactHead: context.headSha,
+      changedFileRecords: records, changeDigest: changeDigestOf(records),
+      sourceFrozen: true, sourceCiStatus: 'PASS', testEvidenceStatus: 'PASS', coreRegressionStatus: 'PASS', policyVersion: routing.version,
+      triageSummary: 'Fixture payment boundary independent review', evidenceRefs: [ref], failureClass: 'IDENTITY_UNAVAILABLE',
+      failureEvidenceRef: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/700#issuecomment-1',
+      failureDiagnosis: 'Dispatch executed but independent provider identity telemetry is unavailable.',
+      reviewLineage: 'issue-700-independent-review' };
+    const result = buildFinalRiskPacket(input, deps);
+    expect(result.nextAction).toBe('REVIEW_WITH_EVIDENCE_FALLBACK');
+    const persistence = result.packet!.attestationPersistence;
+    expect(result.packet!.reviewerRoute.failureDiagnosis).toBe(input.failureDiagnosis);
+    expect(persistence.copyExactly).toMatchObject({ failureClass: input.failureClass,
+      failureEvidenceRef: input.failureEvidenceRef, failureDiagnosis: input.failureDiagnosis });
+    const reviewerFacts = {
+      executionRef: 'independent-review-execution-1', adversarialEvidence: 'Negative controls challenged and findings reconciled.',
+      priorFindingsReviewed: true, unresolvedFindingCount: 0,
+      replacementReviewRef: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/703#pullrequestreview-1',
+      playbookEvidenceRef: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/blob/main/docs/AGENT-PLAYBOOK.md#pb-031',
+      executionEvidence: 'OPERATOR_ATTESTED', requestedModel: 'not_requested', actualModel: 'unknown', identityEvidence: 'UNKNOWN',
+    };
+    for (const field of persistence.reviewerStructuredFields.filter((field: string) => !['findingDetails', 'supportFiles'].includes(field))) {
+      expect(reviewerFacts).toHaveProperty(field);
+    }
+    const review = { repository: result.packet!.repository, ...persistence.copyExactly, ...reviewerFacts };
+    expect(finalRiskReviewerErrors(review, routing)).toEqual([]);
+    expect(finalRiskReviewerErrors({ ...review, replacementReviewRef: '' }, routing)).not.toEqual([]);
+    expect(buildFinalRiskPacket({ ...input, failureDiagnosis: '' }, deps).nextAction).toBe('PARK_CURRENT_AND_CONTINUE_CLOSURE_TRIAGE');
+  });
   it('waits before 300 seconds and downgrades at the boundary', () => {
     assert.equal(premiumExecutionState(dispatch, '2026-09-17T01:04:59Z').state, 'WAITING');
     assert.equal(premiumExecutionState(dispatch, '2026-09-17T01:05:00Z').state, 'START_TIMEOUT');
