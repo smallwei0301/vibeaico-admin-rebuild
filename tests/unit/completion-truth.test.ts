@@ -468,7 +468,7 @@ describe("CI completion workflow wiring", () => {
         if (method === associated) { expect(args.commit_sha).toBe(run.head_sha); return [{ number: pr.number }]; }
         if (method === files) return [{ filename: "src/app/page.tsx" }];
         if (method === runs) {
-          expect(args.workflow_id).toBe(".github/workflows/ci.yml");
+          expect(args.workflow_id).toBe("ci.yml");
           return args.event === "pull_request"
             ? [{ ...sourceRuns[0], head_sha: pr.head.sha }]
             : [{ ...mainRuns[0], head_sha: pr.merge_commit_sha }];
@@ -479,6 +479,9 @@ describe("CI completion workflow wiring", () => {
     const context = { repo: { owner: "smallwei0301", repo: "vibeaico-admin-rebuild" },
       eventName: "workflow_run", sha: "wrong-workflow-default-sha", payload: { repository, workflow_run: { id: 42 } } };
     await execute(github, context, core, truth);
+    expect(github.rest.actions.getWorkflow).toHaveBeenCalledWith({
+      owner: "smallwei0301", repo: "vibeaico-admin-rebuild", workflow_id: "ci.yml",
+    });
     expect(createComment).toHaveBeenCalledOnce();
     expect(createComment.mock.calls[0][0].body).toContain("MAIN_CI_AFTER_MERGE: VERIFIED");
     expect(core.setFailed).not.toHaveBeenCalled();

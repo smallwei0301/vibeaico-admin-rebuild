@@ -54,6 +54,7 @@ jobs:
             )).href);
 
             const { owner, repo } = context.repo;
+            const ciWorkflowFile = truth.CANONICAL_CI_PATH.split('/').at(-1);
             const defaultBranch = context.payload.repository?.default_branch ?? 'main';
             const branch = await github.rest.repos.getBranch({ owner, repo, branch: defaultBranch });
             const defaultBranchHead = branch.data.commit.sha;
@@ -78,7 +79,7 @@ jobs:
                 owner, repo, run_id: context.payload.workflow_run.id,
               })).data;
               const workflow = (await github.rest.actions.getWorkflow({
-                owner, repo, workflow_id: truth.CANONICAL_CI_PATH,
+                owner, repo, workflow_id: ciWorkflowFile,
               })).data;
               targetSha = truth.completionRefreshSha(run, context.payload.repository, workflow.id);
               if (!targetSha) {
@@ -159,11 +160,11 @@ jobs:
                 per_page: 100,
               });
               const sourceWorkflowRuns = await github.paginate(github.rest.actions.listWorkflowRuns, {
-                owner, repo, workflow_id: truth.CANONICAL_CI_PATH,
+                owner, repo, workflow_id: ciWorkflowFile,
                 head_sha: pr.head.sha, event: 'pull_request', per_page: 100,
               });
               const mainWorkflowRuns = await github.paginate(github.rest.actions.listWorkflowRuns, {
-                owner, repo, workflow_id: truth.CANONICAL_CI_PATH,
+                owner, repo, workflow_id: ciWorkflowFile,
                 head_sha: pr.merge_commit_sha, event: 'push', per_page: 100,
               });
               const statusResponse = pr.merge_commit_sha
