@@ -753,6 +753,14 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 狀態：已防止（判準已寫入本條預防第 1、2 點）
 - 相關教訓：PB-027、PB-029。
 
+#### 2026-09-30 — #692：同 SHA 的不同 CI 事件不能互相覆蓋
+
+- 最近發生：2026-09-30；本延伸 1 次，PB-032 原事件保留。
+- 證據：PR #691 source `a39e38d` 的 PR CI `36656526484` 成功，被較晚 manual TEST `36656829272` 的 cancelled 蓋成 source CANCELLED；main `5491032` push `36667500041` 成功，又被 G3 dispatch `36669805672` 的進行中狀態蓋掉。04:10 truth 留言也沒有在 CI 完成後刷新。
+- 根因：只按顯示名稱、SHA 與最大 run ID 選證據，混淆 source、main 與環境驗證；只監聽 push/status，漏了 CI 完成事件。
+- 修正／預防：canonical workflow path + exact SHA + stage event class，類內取最新 run／attempt 後才判結果；trusted-main completion refresh 重讀 live run／PR，拒絕 fork、非 main push 與 manual dispatch，不執行 head 程式或 artifacts。
+- 驗證：completion-truth 回歸涵蓋事件競爭、同類較新 failure/cancelled、錯 SHA/path、rerun、刷新安全邊界與 Production gate；正式 source CI 與合併回讀另留 #692 PR。修正不宣稱 #691 schema 已套或正式登入驗收完成。
+
 ### PB-033 — 對正式庫下了 revoke 之後，才回頭查有沒有呼叫端
 
 - 首次／最近：2026-09-11／2026-09-18

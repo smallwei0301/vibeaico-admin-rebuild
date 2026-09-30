@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   status:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
   workflow_dispatch:
     inputs:
       pull_request_number:
@@ -19,11 +22,17 @@ permissions:
   statuses: read
 
 concurrency:
-  group: agent-completion-truth-${{ github.repository }}-${{ github.event.sha || github.event.after || github.run_id }}
+  group: agent-completion-truth-${{ github.repository }}-${{ github.event.workflow_run.head_sha || github.event.sha || github.event.after || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   verify-main-completion:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.head_repository.id == github.event.repository.id &&
+       (github.event.workflow_run.event == 'pull_request' ||
+        (github.event.workflow_run.event == 'push' &&
+         github.event.workflow_run.head_branch == github.event.repository.default_branch)))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout verified main state
@@ -45,6 +54,7 @@ jobs:
             )).href);
 
             const { owner, repo } = context.repo;
+            const ciWorkflowFile = truth.CANONICAL_CI_PATH.split('/').at(-1);
             const defaultBranch = context.payload.repository?.default_branch ?? 'main';
             const branch = await github.rest.repos.getBranch({ owner, repo, branch: defaultBranch });
             const defaultBranchHead = branch.data.commit.sha;
@@ -64,6 +74,22 @@ jobs:
               })).data;
               pullRequests = [requestedPr];
               targetSha = requestedPr.merge_commit_sha ?? null;
+            } else if (context.eventName === 'workflow_run') {
+              const run = (await github.rest.actions.getWorkflowRun({
+                owner, repo, run_id: context.payload.workflow_run.id,
+              })).data;
+              const workflow = (await github.rest.actions.getWorkflow({
+                owner, repo, workflow_id: ciWorkflowFile,
+              })).data;
+              targetSha = truth.completionRefreshSha(run, context.payload.repository, workflow.id);
+              if (!targetSha) {
+                core.notice('Ignoring a CI completion outside the canonical repository/event scope.');
+                return;
+              }
+              pullRequests = await github.paginate(
+                github.rest.repos.listPullRequestsAssociatedWithCommit,
+                { owner, repo, commit_sha: targetSha, per_page: 100 },
+              );
             } else {
               targetSha = context.eventName === 'status'
                 ? context.payload.sha
@@ -76,10 +102,15 @@ jobs:
               }
             }
 
-            const candidates = pullRequests.filter((pr) => (
-              pr.base?.ref === defaultBranch &&
-              (context.eventName !== 'status' || Boolean(pr.merged_at))
-            ));
+            // Association responses are discovery only; re-read current merge/head truth.
+            const candidates = [];
+            for (const associated of pullRequests) {
+              const pr = (await github.rest.pulls.get({ owner, repo, pull_number: associated.number })).data;
+              if (pr.base?.repo?.id !== context.payload.repository.id || pr.base.ref !== defaultBranch
+                || !pr.merged_at || pr.state !== 'closed') continue;
+              if (!requested && pr.head.sha !== targetSha && pr.merge_commit_sha !== targetSha) continue;
+              candidates.push(pr);
+            }
             if (candidates.length === 0) {
               await core.summary
                 .addHeading('Product Delivery Truth Ladder')
@@ -128,20 +159,14 @@ jobs:
                 pull_number: pr.number,
                 per_page: 100,
               });
-              const workflowResponse = await github.rest.actions.listWorkflowRunsForRepo({
-                owner,
-                repo,
-                head_sha: pr.head.sha,
-                per_page: 100,
+              const sourceWorkflowRuns = await github.paginate(github.rest.actions.listWorkflowRuns, {
+                owner, repo, workflow_id: ciWorkflowFile,
+                head_sha: pr.head.sha, event: 'pull_request', per_page: 100,
               });
-              const mainWorkflowResponse = pr.merge_commit_sha
-                ? await github.rest.actions.listWorkflowRunsForRepo({
-                    owner,
-                    repo,
-                    head_sha: pr.merge_commit_sha,
-                    per_page: 100,
-                  })
-                : { data: { workflow_runs: [] } };
+              const mainWorkflowRuns = await github.paginate(github.rest.actions.listWorkflowRuns, {
+                owner, repo, workflow_id: ciWorkflowFile,
+                head_sha: pr.merge_commit_sha, event: 'push', per_page: 100,
+              });
               const statusResponse = pr.merge_commit_sha
                 ? await github.rest.repos.getCombinedStatusForRef({
                     owner,
@@ -156,8 +181,8 @@ jobs:
                 defaultBranchHead,
                 compareStatus,
                 changedFiles,
-                sourceWorkflowRuns: workflowResponse.data.workflow_runs,
-                mainWorkflowRuns: mainWorkflowResponse.data.workflow_runs,
+                sourceWorkflowRuns,
+                mainWorkflowRuns,
                 commitStatuses: statusResponse.data.statuses,
               });
               const body = truth.formatProductDeliveryTruth(result);

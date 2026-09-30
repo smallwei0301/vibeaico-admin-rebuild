@@ -698,6 +698,9 @@ after-merge ref=main 關鍵檔案重讀
 
 **第六項：merge 後 main CI。** 前五項只證明「PR head 綠且 merge commit 已進 main」；
 宣稱正式 acceptance／shipped 前，還必須讀 `merge_commit_sha` 上 canonical `ci` workflow：
+依 `.github/workflows/ci.yml` 與 exact SHA 分類：source 只採 `pull_request`，merge commit 只採 `push`；
+manual TEST／G3 dispatch 另留環境證據，不互相覆蓋。每類先取最新 run／attempt 再判結果，不能挑歷史綠燈。
+canonical CI 完成後由 trusted-main `workflow_run` 刷新 merged PR 證據，不執行觸發分支程式或下載其 artifacts。
 只有 `conclusion=success` 是綠；`cancelled`、`timed_out`、`startup_failure` 是未知，不得當成成功；
 仍在執行是 `PENDING`，查無 run 是 `NOT_REPORTED`。由 Completion Truth 現行 helper 機械判定。
 main CI 未成功時不得建立 `AUTHENTICATED_PRODUCTION_ACCEPTED` 的完成主張。
