@@ -3,16 +3,10 @@
 //      duration_minutes/end_at（`create_booking_addon` rpc），並依 `notify`
 //      嘗試一次消費明細通知（結果與加購本身是否成功分離，見 04 §B-1.1）。
 //
-// ⚠️ 排程與 schema 安全降級：本 PR 依 #530 staged schema release 政策把
-// migration（`0121_issue_17_booking_addons_hardening.sql`，`agent/
-// issue-17-addons-migration` 分支）拆成獨立 PR，兩支 PR 的合併／套用順序不
-// 保證同時發生。若本 PR 先於 migration 套用到某個環境上線，`booking_addons`
-// 還沒有 performance_mode 等新欄位、`create_booking_addon`／
-// `delete_booking_addon` 兩支 rpc 也還不存在——GET 對缺欄位（Postgres
-// `42703 undefined_column`）安全收斂成空陣列（比照 #46 `mapTourOrder` 對缺
-// 欄位收斂成 null 的既有先例，見 `src/server/tour-orders.ts`），POST/DELETE
-// 對呼叫不到的 rpc（PostgREST `PGRST202` 或 Postgres `42883
-// undefined_function`）回可讀的 503，而不是未分類的 500。
+// 若 0121 尚未套用，GET 只在確認該 booking 真的沒有加購時回空陣列；
+// 已有加購卻缺欄位時回 503，避免把讀取失敗冒充「沒有加購」。POST/DELETE
+// 對缺少的 rpc 回 503。人員名稱以 tenant-scoped 查詢取得，不依賴不同環境
+// 的 FK constraint 名稱。
 import { z } from 'zod';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
@@ -24,11 +18,9 @@ const ADDON_SELECT = [
   'id', 'booking_id', 'service_id', 'name', 'price', 'quantity', 'duration_minutes',
   'staff_id', 'applied_amount', 'applied_minutes', 'performance_mode', 'performance_staff_id',
   'notification_requested', 'notified', 'created_at',
-  'executor:staff!booking_addons_staff_id_fkey(name)',
-  'performance:staff!booking_addons_performance_staff_id_fkey(name)',
 ].join(', ');
 
-function toBookingAddon(row: any): BookingAddon {
+function toBookingAddon(row: any, staffNames: Map<string, string>): BookingAddon {
   return {
     id: row.id,
     bookingId: row.booking_id,
@@ -38,12 +30,12 @@ function toBookingAddon(row: any): BookingAddon {
     quantity: Number(row.quantity),
     durationMinutes: Number(row.duration_minutes),
     staffId: row.staff_id,
-    staffName: row.executor?.name ?? null,
+    staffName: row.staff_id ? staffNames.get(row.staff_id) ?? null : null,
     appliedAmount: Number(row.applied_amount),
     appliedMinutes: Number(row.applied_minutes),
     performanceMode: row.performance_mode,
     performanceStaffId: row.performance_staff_id,
-    performanceStaffName: row.performance?.name ?? null,
+    performanceStaffName: row.performance_staff_id ? staffNames.get(row.performance_staff_id) ?? null : null,
     notificationRequested: !!row.notification_requested,
     notified: row.notified,
     createdAt: row.created_at,
@@ -66,21 +58,34 @@ export const GET = handle(async (req, { params }) => {
     .is('deleted_at', null)
     .order('created_at', { ascending: true });
   if (error) {
-    // 42703 = undefined_column：搭配的 migration（0121）尚未套用到這個環境，
-    // 新欄位（如 performance_staff_id）還不存在。
-    // PGRST200 = PostgREST「relationship not found」：上面的 select 內嵌了
-    // `performance:staff!booking_addons_performance_staff_id_fkey(name)`，這個
-    // FK 同樣由 0121 建立，尚未套用時 PostgREST 找不到這個關聯，回的是
-    // PGRST200 而不是 42703（欄位缺失走 Postgres 錯誤碼、關聯缺失走
-    // PostgREST 自己的錯誤碼），兩者都是「這個環境還沒套 0121」的同一種情境。
-    // 兩者都不是「這筆預約真的沒有加購」以外的錯誤，但對使用者而言效果相
-    // 同——安全收斂成空陣列，不讓整頁因為 500 掛掉。
     const code = String((error as any)?.code ?? '');
-    if (code === '42703' || code === 'PGRST200') return ok([]);
+    if (code === '42703') {
+      const { data: existing, error: probeError } = await t.supabase.from('booking_addons')
+        .select('id').eq('tenant_id', t.tenantId).eq('booking_id', id)
+        .is('deleted_at', null).limit(1);
+      if (probeError) throw probeError;
+      if (!existing?.length) return ok([]);
+      throw new ApiHttpError(503, '加購明細暫時無法讀取', ERR.INTERNAL);
+    }
     throw error;
   }
 
-  return ok((data ?? []).map(toBookingAddon));
+  // The dynamic column list cannot be inferred by supabase-js as a literal select type.
+  const addons = (data ?? []) as unknown as Array<Record<string, any>>;
+  const staffIds = [...new Set(addons.flatMap((row) =>
+    [row.staff_id, row.performance_staff_id].filter((value): value is string => typeof value === 'string')))];
+  const staffNames = new Map<string, string>();
+  if (staffIds.length) {
+    const { data: staff, error: staffError } = await t.supabase.from('staff')
+      .select('id,name').eq('tenant_id', t.tenantId).in('id', staffIds);
+    if (staffError) throw staffError;
+    for (const member of staff ?? []) staffNames.set(member.id, member.name);
+    if (staffIds.some((staffId) => !staffNames.has(staffId))) {
+      throw new ApiHttpError(503, '加購人員資料暫時無法讀取', ERR.INTERNAL);
+    }
+  }
+
+  return ok(addons.map((row) => toBookingAddon(row, staffNames)));
 });
 
 const bodySchema = z.object({
