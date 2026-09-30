@@ -22,6 +22,7 @@ const current = () => ({ ...audit(), reviewerTier: 'CURRENT_AGENT', requestedMod
   identityEvidence: 'UNKNOWN', executionEvidence: 'OPERATOR_ATTESTED', modelSelectionAvailable: false,
   downgradeReason: 'MODEL_SELECTION_UNAVAILABLE' });
 const fallback = () => ({ ...audit(), reviewerTier: 'EVIDENCE_FALLBACK', requestedModel: 'gpt-6.1-sol',
+  repository: 'smallwei0301/vibeaico-admin-rebuild',
   actualModel: 'unknown', identityEvidence: 'UNKNOWN', executionEvidence: 'OPERATOR_ATTESTED',
   fallbackPolicyVersion: '2026-09-30.1', failureClass: 'IDENTITY_UNAVAILABLE',
   failureEvidenceRef: ref, failureDiagnosis: 'Fixture dispatch executed; runtime exposes no independent model identity',
@@ -195,6 +196,19 @@ describe('Owner #700 infrastructure fallback is evidence-based, not review bypas
     assert.equal(evaluate(fallback(), { verdict: 'FIX_REQUIRED' }).status, 'ASTRA_PENDING');
     assert.equal(evaluate(fallback(), { changeDigest: 'd'.repeat(64) }).status, 'ASTRA_PENDING');
     assert.equal(evaluate(fallback(), {}, false).status, 'ASTRA_PENDING');
+  });
+  it('rejects known builder identity or mismatched requested/actual audit models', () => {
+    for (const actualModel of ['gpt-5.6-terra', 'claude-opus-5-5']) {
+      assert.equal(evaluate({ ...fallback(), actualModel, identityEvidence: 'OPERATOR_ATTESTED' }).status, 'ASTRA_PENDING');
+    }
+    assert.equal(evaluate({ ...fallback(), actualModel: 'gpt-6.1-sol', identityEvidence: 'OPERATOR_ATTESTED' }).status, 'ASTRA_APPROVED');
+  });
+  it('requires canonical Playbook in this review repository', () => {
+    for (const playbookEvidenceRef of [fallback().playbookEvidenceRef.replace('smallwei0301', 'other-owner'),
+      fallback().playbookEvidenceRef.replace('/main/', '/feature/'), fallback().playbookEvidenceRef.replace('#pb-031', '')]) {
+      assert.equal(evaluate({ ...fallback(), playbookEvidenceRef }).status, 'ASTRA_PENDING');
+    }
+    assert.notDeepEqual(finalRiskReviewerErrors({ ...fallback(), repository: '' }, routing), []);
   });
   it('allows semantic reuse only after shared fallback validation', () => {
     const payload = { ...context, ...fallback(), report: ref, findings: 'Fixture findings reconciled', verdict: 'PASS',

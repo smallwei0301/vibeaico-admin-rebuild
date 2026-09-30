@@ -82,7 +82,7 @@ export function buildProductionDbFinalRiskEvidence({
       'modelSelectionAvailable', 'downgradeReason', 'downgradeEvidenceRef',
       'reviewLineage', 'adversarialEvidence', 'priorFindingsReviewed', 'unresolvedFindingCount',
       'fallbackPolicyVersion', 'failureClass', 'failureEvidenceRef', 'failureDiagnosis',
-      'replacementReviewRef', 'playbookEvidenceRef',
+      'replacementReviewRef', 'playbookEvidenceRef', 'repository',
     ].filter((key) => latest[key] !== undefined).map((key) => [key, latest[key]])),
     planDigest,
     evidenceDigest,

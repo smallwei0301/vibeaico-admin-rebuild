@@ -636,6 +636,8 @@ Owner 11:59 UTC 已裁示模型基礎設施失敗可走 EVIDENCE_FALLBACK：保�
 預防：先以共享 validator 的身份缺失／派送失敗反例證明替代路徑，再同步 WIP、semantic reuse、DB evidence adapter；
 不要等施工完成才發現各入口互相矛盾。實質安全 finding／CI 失敗仍必須修復；不把 missing raw instrumentation 補造為 PASS。
 成本教訓：重用 exact-diff review，一次集中政策／入口／反例；不重派昂貴模型或反覆重跑無關 CI。
+本次自動 review 補捉兩個邊界：已知身份不得借 fallback 使用 builder-tier／型號不符；Playbook 必須綁本 repo main。
+預防反例同時覆盖已知／未知身份、角色資格與 canonical 證據來源，而非只測 unknown happy path。
 
 - 首次／最近：2026-09-09／2026-09-13
 - 發生次數：2（第 2 次一輪內同時犯了兩件）

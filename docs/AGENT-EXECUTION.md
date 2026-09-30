@@ -546,6 +546,8 @@ canonical review 使用 `reviewerTier=EVIDENCE_FALLBACK`、`fallbackPolicyVersio
 `failureDiagnosis`、`replacementReviewRef`、`playbookEvidenceRef`，以及原有 lineage／executionRef／反例／finding 核對。
 `executionEvidence=OPERATOR_ATTESTED` 只證明真實審查執行；未知模型必須 `actualModel=unknown`、`identityEvidence=UNKNOWN`，
 requested 型號不當成 actual 證據。共享驗證器仍要求可信提交者、精確 digest、實質 PASS、零 unresolved finding。
+已知 actual 必須為允許的 audit 模型且 requested=actual；未知身份的指定 reviewer 仍選 audit 層級，
+無 selector 的目前 agent 記 not_requested。Playbook ref 綁 review.repository 的 main，不借別 repo／未合併 branch。
 實質 code/security finding、SAFETY_REFUSAL／SAFETY_CLASSIFIER、失敗 CI／TEST 或 Production gate 不適用此替代路徑。
 此規則不擴張 Product builder 模型權限，不授予 Production 寫入；#552 的歷史有效證據仍可沿用。
 

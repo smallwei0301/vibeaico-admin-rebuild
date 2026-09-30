@@ -111,10 +111,20 @@ export function finalRiskReviewerErrors(review = {}, policy = {}) {
     if (!durable(review.failureEvidenceRef) || !meaningful(review.failureDiagnosis) || !durable(review.replacementReviewRef)) {
       errors.push('Missing durable failure diagnosis/replacement review');
     }
-    if (!/^https:\/\/github\.com\/[^/]+\/[^/]+\/blob\/[^/]+\/docs\/AGENT-PLAYBOOK\.md#.+$/.test(text(review.playbookEvidenceRef))) {
+    const repository = text(review.repository);
+    const playbookPrefix = `https://github.com/${repository}/blob/main/docs/AGENT-PLAYBOOK.md#`;
+    if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) ||
+        !text(review.playbookEvidenceRef).startsWith(playbookPrefix) ||
+        text(review.playbookEvidenceRef).length <= playbookPrefix.length) {
       errors.push('Missing Playbook prevention evidence');
     }
     if (!requested || !actual || review.executionEvidence !== 'OPERATOR_ATTESTED') errors.push('Missing truthful replacement execution attestation');
+    const models = list(policy.models?.finalRiskDowngradeAllowedModels);
+    if (!validModels(models) || !validModels(catalog) || models.some(model => !catalog.includes(model)) ||
+        (actual !== 'unknown' && (requested !== actual || !models.includes(actual))) ||
+        (actual === 'unknown' && requested !== 'not_requested' && !models.includes(requested))) {
+      errors.push('Replacement must retain qualified audit model selection');
+    }
     if ((actual === 'unknown' && review.identityEvidence !== 'UNKNOWN') ||
         (actual !== 'unknown' && review.identityEvidence !== 'OPERATOR_ATTESTED')) errors.push('Replacement identity is overstated');
   } else if (tier === 'AUDIT') {
