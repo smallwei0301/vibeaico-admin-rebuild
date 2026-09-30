@@ -62,7 +62,7 @@ export const GET = handle(async (req, { params }) => {
     if (code === '42703') {
       const { data: existing, error: probeError } = await t.supabase.from('booking_addons')
         .select('id').eq('tenant_id', t.tenantId).eq('booking_id', id)
-        .is('deleted_at', null).limit(1);
+        .limit(1);
       if (probeError) throw probeError;
       if (!existing?.length) return ok([]);
       throw new ApiHttpError(503, '加購明細暫時無法讀取', ERR.INTERNAL);

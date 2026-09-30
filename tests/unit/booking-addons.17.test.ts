@@ -109,6 +109,9 @@ describe('schema 尚未就緒時的安全降級（migration 拆到獨立 PR，�
     expect(postRoute).toMatch(/code === '42703'/);
     expect(postRoute).toMatch(/existing\?\.length/);
     expect(postRoute).toMatch(/throw new ApiHttpError\(503, '加購明細暫時無法讀取'/);
+    const probe = postRoute.slice(postRoute.indexOf("const { data: existing"), postRoute.indexOf('if (probeError)'));
+    expect(probe).toContain(".select('id')");
+    expect(probe).not.toContain(".is('deleted_at'"); // 0121 前的表尚無 deleted_at
   });
 
   it('POST：找不到 create_booking_addon rpc（PGRST202/42883）時回可讀的 503，不是未分類 500', () => {
