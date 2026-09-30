@@ -215,7 +215,7 @@ they split one `/tenant` prefix across two layout trees. The exception list live
 ## Lane → model tier (Owner decision, 2026-09-10)
 
 The `Luna / Terra / Sol` lane names in `scripts/agents/model-routing.json` name a **tier of work**,
-not a vendor. On the OpenAI side they map to `gpt-5.6-*`; on the Anthropic side they map as below.
+not a vendor. For either provider, use the role-specific model IDs in that config and the table below.
 The mapping is mandatory in both directions — the lane picks the tier, and the tier picks the model.
 
 | Lane | 職責（`docs/AGENT-EXECUTION.md`／`AGENTS.md`） | OpenAI | Anthropic |

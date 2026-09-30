@@ -47,6 +47,13 @@ describe('lane → model tier（Owner 2026-09-30 版本更新）', () => {
     expect(routing.models.audit).toBe('gpt-6.1-sol');
   });
 
+  it('開工摘要不能把不同 role 概括成單一 OpenAI model family', () => {
+    const text = read('CLAUDE.md');
+    const intro = text.split('## Lane → model tier')[1].split('| Lane |')[0];
+    expect(intro).toContain('scripts/agents/model-routing.json');
+    expect(intro).not.toMatch(/gpt-[\d.]+-\*/);
+  });
+
   it('目前開工文件都載明對應，歷史決策不改寫', () => {
     const DOCS = ['CLAUDE.md', 'docs/MODEL-ROUTING.md', 'docs/AGENT-EXECUTION.md'];
     for (const path of DOCS) {
