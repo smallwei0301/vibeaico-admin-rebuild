@@ -92,9 +92,11 @@ Product 仍走既有 B+ topology：Luna 窄盤點 → Sol TRIAGE → Product bui
 
 `models.build = gpt-5.6-terra` 是 OpenAI Product builder 預設。其他 provider 的 Product 主 Session 可依其可用模型執行等價 builder，但 PR 必須據實記錄 requested / actual model，不能從 lane 名稱推論模型真的跑過。
 
-## 2026-09-30 版本與相容性
+## 2026-09-30 Provider 選擇與版本相容性
 
-目前映射：Luna=`gpt-6-luna`、Sol=`gpt-6.1-sol`、Sonnet=`claude-sonnet-5-5`、Opus=`claude-opus-5-5`。Anthropic ID 已由[官方模型表](https://platform.claude.com/docs/en/models/overview)核實；本次 OpenAI runtime catalog 可選 Luna／Sol，沒有 Sonnet／Opus，不能宣稱可派工。Terra、Astra／Fable 不換版本，這不是 #7 builder 例外。
+PROVIDER_FIRST：先從 session/runtime provider metadata 判定環境，再查該 provider 的 runtime catalog，按角色、任務大小與風險選擇可用模型。requested/actual 據實記錄；其他 provider 缺席不是 blocker。開工與本地角色選擇契約見 `docs/AGENT-EXECUTION.md` §4，保持獨立 review。
+
+目前映射：Luna=`gpt-6-luna`、Sol=`gpt-6.1-sol`、Sonnet=`claude-sonnet-5-5`、Opus=`claude-opus-5-5`。Anthropic ID 已由[官方模型表](https://platform.claude.com/docs/en/models/overview)核實；本次 OpenAI runtime catalog 可選 Luna／Sol，沒有 Sonnet／Opus，不能宣稱可派工。Terra、Astra／Fable 不換版本；本次 Owner 澄清的是 provider-local 選擇原則，不把 Anthropic 缺席當作 OpenAI blocker。
 
 `modelMappingVersion` 與 `anthropicEquivalents.version` 更新；頂層審查 `version` 保留，避免使既有 attestation 作廢。AUDIT downgrade 預設使用新 Sol／Opus；舊 ID 只保留既有可驗證 receipt／runtime 相容性，所有 identity、trust、lineage 與成本條件不變。歷史決策與 ledger／receipt 不重寫；当前派工以本表和設定為準。
 
@@ -105,7 +107,7 @@ Product 仍走既有 B+ topology：Luna 窄盤點 → Sol TRIAGE → Product bui
 上一節說「其他 provider 的 Product 主 Session 可依其可用模型執行等價 builder」。本節就是
 **Anthropic 側「等價 builder」的定義**——它收窄該句，不與之衝突。
 
-lane 決定層級，層級決定模型：
+Claude 環境依 lane 選對應層級；OpenAI 按 PROVIDER_FIRST 與任務大小選擇，本表是偏好：
 
 | Lane | 職責 | OpenAI | Anthropic |
 |---|---|---|---|
@@ -116,7 +118,7 @@ lane 決定層級，層級決定模型：
 機器可讀的來源是 `scripts/agents/model-routing.json` 的 `anthropicEquivalents`；本表與它必須一致。
 model ID 逐字取自 Anthropic 官方型號表，**本身即完整，不得附加日期後綴**。
 
-**Terra 一律用 Sonnet。** 拿 audit 層的 Opus 施工是超規，不是謹慎——它把審核層的成本花在施工上，
+**在 Claude 環境，Terra 一律用 Sonnet。** 拿 audit 層的 Opus 施工是超規，不是謹慎——它把審核層的成本花在施工上，
 並讓審核層去審自己的產出；拿 scout 層的 Haiku 施工則是不足。兩個方向都不由執行者自行裁量。
 
 因此 `AGENT_LANE: TERRA_BUILD` 的 PR，其 `REQUESTED_MODEL / ACTUAL_MODEL` 必須宣告 build 層級的

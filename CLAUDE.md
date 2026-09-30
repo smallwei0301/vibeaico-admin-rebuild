@@ -32,6 +32,8 @@ standing TEST authorization, credentials, CI/DB serialization, evidence, and sto
 
 ## B+ delivery loop — 每一輪都要真的做，不是只填欄位
 
+本節六步只適用 `PRODUCT_MAINLINE`；純 `MODEL_GOVERNANCE`（含治理契約測試）依 `docs/AGENT-EXECUTION.md` §1.2 的 bounded governance flow，不啟動 Product Terra／Reserve，不指定執行模型，也不借用 Product Run 或埋點。下方施工判準不把純治理變成 Product。
+
 `docs/AGENT-EXECUTION.md` 定義了這個 loop，但它被違反的方式幾乎總是同一種：
 **記帳的部分做了，施工的部分沒做**。欄位填得完整、Run ledger 建好了、closure sweep
 的表格也貼了，然後所有工作還是同一個模型自己從頭做到尾。那不是 B+ loop，那是把
@@ -42,18 +44,18 @@ B+ 的表格填在單人作業上面。
 ### 1. 真實盤點（Luna 層）
 
 掃 open Issue／open PR／近期 CI／上一輪的 closeability 候選。這是**窄盤點**，
-按 `CLAUDE.md` 的 Lane → model tier 表屬 `scout` 層，**應委派給 `claude-haiku-4-5`**。
+先確認 session/runtime provider，再依本地 runtime catalog 選擇 scout（OpenAI: `gpt-6-luna`；Claude: `claude-haiku-4-5`）；不得要求另一 provider 的模型。
 每次委派即時寫進 `flow.lunaTasks` / `lunaAccepted`。
 
 ### 2. TRIAGE 選 MAIN（Sol 層）
 
 選出這一輪的 MAIN、可選的 RESERVE 與 Closure target。高風險設計判定屬 `audit` 層
-（`claude-opus-5-5`）。寫進 `flow.solTouches` / `solIssues`。
+（Claude 可選 `claude-opus-5-5`，OpenAI 可選 `gpt-6.1-sol`）。寫進 `flow.solTouches` / `solIssues`。
 
 ### 3. MAIN Terra 施工
 
-**`TERRA_BUILD` 一律委派給 `claude-sonnet-5-5`。** 判準很機械：**新增或修改
-migration、route、server 模組、頁面或測試，就是施工**。在 audit 層模型上做施工是
+**在 Claude 環境，`TERRA_BUILD` 選擇 `claude-sonnet-5-5`。** 判準很機械：**新增或修改
+migration、route、server 模組、頁面或測試，就是施工**。在 Claude 的 audit 層模型上做施工是
 routing violation，要如實記為違規而不是中性註記——見 PB-036，它已經發生過三次，
 每一次的藉口都是「我人已經在跑了，順手做完比較快」。
 
@@ -215,8 +217,10 @@ they split one `/tenant` prefix across two layout trees. The exception list live
 ## Lane → model tier (Owner decision, 2026-09-10)
 
 The `Luna / Terra / Sol` lane names in `scripts/agents/model-routing.json` name a **tier of work**,
-not a vendor. On the OpenAI side they map to `gpt-5.6-*`; on the Anthropic side they map as below.
-The mapping is mandatory in both directions — the lane picks the tier, and the tier picks the model.
+not a vendor. For either provider, use the role-specific model IDs in that config and the table below.
+PROVIDER_FIRST (Owner clarification, 2026-09-30): establish the actual provider from session/runtime metadata, then use that provider's runtime catalog to choose a model by role, task size and risk. Record requested/actual identity honestly; unavailable Claude models are not OpenAI dependencies. See `docs/AGENT-EXECUTION.md` §4 for provider-local build choices and independent review.
+
+Role separation is mandatory; the table records provider-local preferences, not cross-provider dependencies.
 
 | Lane | 職責（`docs/AGENT-EXECUTION.md`／`AGENTS.md`） | OpenAI | Anthropic |
 |---|---|---|---|
@@ -227,7 +231,7 @@ The mapping is mandatory in both directions — the lane picks the tier, and the
 Model IDs are taken verbatim from Anthropic's model table and are **complete as written** — never
 append a date suffix (`claude-haiku-4-5`, not a dated variant).
 
-**Terra 一律用 Sonnet.** Doing `TERRA_BUILD` work on Opus is over-spec, not diligence: it burns the
+**Claude 環境的 Terra 一律用 Sonnet.** Doing `TERRA_BUILD` work on Opus is over-spec, not diligence: it burns the
 audit tier's cost on construction and leaves the audit tier reviewing its own output. Doing it on
 Haiku is under-spec. Neither substitutes for the other, and neither is the runner's call to make.
 
@@ -245,7 +249,7 @@ Two consequences worth stating, because both have already been violated in pract
 
 A scorecard's `requested` / `actual` fields must record what **actually** served the lane, never
 this table by assumption — verify per `docs/AGENT-PROJECT-COMMANDS-AND-TRUTH.md` when a run claims
-a specific model. The table says what should have run; only the run itself says what did.
+a specific model. The table records provider-local preferences; only the run itself says what did.
 
 ### 文件與盤點的 scout 歸屬 —— 機械判準（Owner decision, 2026-09-14）
 
@@ -255,7 +259,7 @@ a specific model. The table says what should have run; only the run itself says 
 
 所以改成路徑判準：不看動機、不看大小、不看「只是順手」。
 
-下列路徑的產出屬 `scout` 層（`claude-haiku-4-5`）。audit 層直接編輯即為 routing violation：
+下列路徑的 Product Run 產出屬 `scout` 層，先依 PROVIDER_FIRST 選本地 scout（OpenAI: `gpt-6-luna`；Claude: `claude-haiku-4-5`）。audit 層代做依既有例外規則記錄；純 MODEL_GOVERNANCE 依 canonical §1.2 不指定模型，不借用 Product 埋點：
 
 ```
 docs/AGENT-PLAYBOOK.md

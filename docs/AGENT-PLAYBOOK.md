@@ -1364,6 +1364,15 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 - 狀態：監看中；#104 的正式比較仍等待真實合格資料，不以本次手冊更新宣稱完成。
 
+### PB-031 補充：provider 選擇澄清不自動新增角色例外（#695）
+
+- 首次／最近：2026-09-30／2026-09-30；本延伸發生 1 次，既有歷史次數不改。
+- Issue／PR／CI：#695、PR #696／#697；review finding `4142175458`；#696 source CI `36685927574`、main CI `36686404332` 成功，#697 以 final exact-head CI 為準。
+- 根因：只檢查版本表會漏掉相鄰開工摘要；把「先判 provider 再選本地模型」外推成 Sol builder 授權，也超出 Owner 原意。
+- 修正：刪除過時 wildcard 摘要，三份入口先查 session/runtime provider metadata 與本地 catalog；獨立 reviewer 指出的 Sol-builder 草稿例外已在發布前移除；後續 P1 再抓到 Luna 開工摘要、完整 scout 角色段／Owner current index 與非高風險施工邊界遺漏，同 PR 修正並補反例。Claude 缺席不是 OpenAI blocker，本地 builder 仍須符合既有角色授權。
+- 預防／驗證：版本更新同時檢查完整 operative flow、適用 workstream、直接 current index、決策實際日期／revision header 與 table；Product B+ 不套用純治理契約測試，純治理依 canonical §1.2；保留 requested/actual unknown 真相、角色分離及 provider-local 契約。`lane-model-tier` 11 個 targeted tests、typecheck 與 final-diff review PASS；CI 綠燈不取代 merge/main readback。
+- 埋點／資源：可回讀事件在 PR commits、CI runs、review receipts 與 finding thread；本輪沒有 Governance Run／scoreboard packet，不補造歷史 dispatch/token raw events，score comparison 為 NOT_GRADED。沿用一位 reviewer 的 context、targeted checks；Playbook 在同一 follow-up PR 補齊，避免另起工作線。先前全文輸出被截斷造成兩次序列化失敗，改採 bounded chunks 並驗 tree SHA，沒有觸發 CI rerun；下次上傳前先確認輸出大小。
+
 ### 已採納的兩項操作優化與仍在外部的工作
 
 1. **先情境速查，再讀相關原條目。** 先核對現行決策、已存在的修補和責任人；不全量回放

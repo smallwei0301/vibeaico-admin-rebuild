@@ -2,7 +2,13 @@
 
 > 本檔是跨領域 Owner 決策索引，讓 Agent 在開工前快速知道哪些題目已經裁示，避免重複詢問。
 > 正式領域規格仍以各 `docs/integration/**` canonical 文件為準；Issue 負責施工範圍與驗收。
-> 最後更新：2026-09-17。
+> 最後更新：2026-09-30。
+
+## 2026-09-30 已裁示
+
+| 範圍 | 主題 | 裁示 | 影響 |
+|---|---|---|---|
+| repo governance | Lane 對應的模型層級 | **2026-09-30 current selection：PROVIDER_FIRST，先判 session/runtime provider 再選本地角色模型。** OpenAI：Luna=`gpt-6-luna`、Terra=`gpt-5.6-terra`、Sol=`gpt-6.1-sol`；Claude：Luna=`claude-haiku-4-5`、Terra=`claude-sonnet-5-5`、Sol=`claude-opus-5-5`。 | 其他 provider 缺席不是本地依賴；Product build-tier 與獨立 review 不變，不新增 Sol builder 例外。純治理依 §1.2 不指定模型。歷史裁示保留；current canonical：`docs/AGENT-EXECUTION.md` §4、`scripts/agents/model-routing.json`。 |
 
 ## 2026-09-17 已裁示
 
@@ -27,6 +33,8 @@
 | #359 | 原生模型身分收集器 | **OPTIONAL_NONBLOCKING（選配、不阻擋）** | 不要求模型 API key，不阻擋治理開工／PR／merge；只作日後可觀測性改良，沒有可靠證據仍記 `actual=unknown`。 |
 
 ## 2026-09-10 已裁示
+
+> 本節模型版本／provider 適用範圍已由上方 2026-09-30 current selection 更新；下列原文保留為歷史，不是目前派工指令。
 
 | 範圍 | 主題 | 裁示 | 影響 |
 |---|---|---|---|

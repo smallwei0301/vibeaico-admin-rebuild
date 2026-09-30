@@ -47,6 +47,58 @@ describe('lane → model tier（Owner 2026-09-30 版本更新）', () => {
     expect(routing.models.audit).toBe('gpt-6.1-sol');
   });
 
+  it('開工摘要不能把不同 role 概括成單一 OpenAI model family', () => {
+    const text = read('CLAUDE.md');
+    const intro = text.split('## Lane → model tier')[1].split('| Lane |')[0];
+    expect(intro).toContain('scripts/agents/model-routing.json');
+    expect(intro).not.toMatch(/gpt-[\d.]+-\*/);
+  });
+
+  it('Luna 開工委派是 provider-local，Product 施工一律保留 build tier', () => {
+    const text = read('CLAUDE.md');
+    const startup = text.split('### 1. 真實盤點')[1].split('### 2.')[0];
+    const scout = text.split('### 文件與盤點的 scout 歸屬')[1].split('## Final Risk')[0];
+    for (const section of [startup, scout]) {
+      expect(section).toContain('OpenAI: `gpt-6-luna`');
+      expect(section).toContain('Claude: `claude-haiku-4-5`');
+    }
+    const index = read('docs/OWNER-DECISIONS.md').split('Lane 對應的模型層級')[1].split('\n')[0];
+    expect(index).toContain('PROVIDER_FIRST');
+    expect(index).toContain('gpt-6-luna');
+    expect(index).toContain('claude-sonnet-5-5');
+    const policy = read('docs/AGENT-EXECUTION.md');
+    expect(policy).toContain('不得用 scout 或 audit 層模型做任何 Product 施工');
+  });
+
+  it('Product B+ 操作段落不將純治理契約測試誤判為 Product builder', () => {
+    const text = read('CLAUDE.md');
+    const scope = text.split('## B+ delivery loop')[1].split('### 1.')[0];
+    expect(scope).toContain('本節六步只適用 `PRODUCT_MAINLINE`');
+    expect(scope).toContain('MODEL_GOVERNANCE');
+    expect(scope).toContain('§1.2');
+    expect(scope).toContain('不借用 Product Run');
+  });
+
+  it('目前模型決策依實際日期登錄，歷史版本不被倒改', () => {
+    const index = read('docs/OWNER-DECISIONS.md');
+    expect(index).toContain('最後更新：2026-09-30');
+    expect(index.split('## 2026-09-30 已裁示')[1].split('## 2026-09-17')[0]).toContain('PROVIDER_FIRST');
+    const history = index.split('## 2026-09-10 已裁示')[1].split('## 2026-09-09')[0];
+    expect(history).toContain('Terra=`claude-sonnet-5`');
+    expect(history).toContain('原文保留為歷史');
+    expect(read('docs/AGENT-EXECUTION.md')).toContain('最近更新：2026-09-30');
+  });
+
+  it('目前開工文件先判 provider，再選本地角色模型，不要求跨 provider 依賴', () => {
+    for (const file of ['CLAUDE.md', 'docs/AGENT-EXECUTION.md', 'docs/MODEL-ROUTING.md']) {
+      const text = read(file);
+      expect(text).toContain('PROVIDER_FIRST');
+      expect(text).toContain('runtime catalog');
+      expect(text).toContain('requested');
+      expect(text).toContain('actual');
+    }
+  });
+
   it('目前開工文件都載明對應，歷史決策不改寫', () => {
     const DOCS = ['CLAUDE.md', 'docs/MODEL-ROUTING.md', 'docs/AGENT-EXECUTION.md'];
     for (const path of DOCS) {
