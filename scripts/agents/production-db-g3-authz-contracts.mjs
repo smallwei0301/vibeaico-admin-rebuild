@@ -1,4 +1,58 @@
 export const PRODUCTION_DB_G3_AUTHZ_CONTRACTS = Object.freeze({
+  // Remote G3 requires every semantic case; the isolated raw catalog case
+  // remains explicitly NOT_RUN remotely and cannot establish catalog evidence.
+  '0135_issue_46_guide_interval_availability': Object.freeze({
+    requiredFiles: Object.freeze(["tests/integration/db/guide-interval-availability.46.test.ts"]),
+    requiredAssertions: Object.freeze([
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate persists canonical default and two-value CHECK, refusing unknown/null policy",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate allows default policy without shifts but excludes foreign/missing/inactive/unbookable staff",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate fails closed for invalid interval null/2030-01-15T03:00:00Z",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate fails closed for invalid interval 2030-01-15T02:00:00Z/null",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate fails closed for invalid interval 2030-01-15T03:00:00Z/2030-01-15T02:00:00Z",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate fails closed for invalid interval 2030-01-15T02:00:00Z/2030-01-15T02:00:00Z",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate fails closed for invalid interval -infinity/2030-01-15T03:00:00Z",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate fails closed for invalid interval 2030-01-15T02:00:00Z/infinity",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate revokes both authenticated and anonymous invocation while service role works",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate requires whole interval union coverage; adjacent shifts join, a gap rejects",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate uses tenant Tokyo and New York DST calendar wall times for shifts",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate fails closed for DST gap/fold shift 2030-03-10",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate fails closed for DST gap/fold shift 2030-11-03",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate fails closed for corrupt timezone null",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate fails closed for corrupt timezone",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate fails closed for corrupt timezone invalid/zone",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate fails closed for corrupt timezone 8",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate uses default only for missing legacy settings",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate booking PENDING has the canonical occupancy behavior",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate booking CONFIRMED has the canonical occupancy behavior",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate booking CANCELLED has the canonical occupancy behavior",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate booking COMPLETED has the canonical occupancy behavior",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate single block includes whole-tenant/personal scope null",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate single block includes whole-tenant/personal scope personal",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate weekly block follows tenant calendar and retained duration across DST, not fixed +08",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate full-day weekly block ends at next local midnight 2030-11-03T04:00:00Z",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate full-day weekly block ends at next local midnight 2030-03-10T05:00:00Z",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate unrelated historical/future ambiguous shifts and departures do not poison a covered interval",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate ambiguous recurring block wall time cannot report available",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate noncancelled departure blocks PRIMARY using Plan duration; cancellation releases",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate noncancelled departure blocks ASSISTANT using Plan duration; cancellation releases",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate no-time departure occupies the tenant calendar day (23-hour DST day)",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate active external ERROR keeps cached UTC busy truth, inactive does not block",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate fails closed for a mismatched cached-event tenant instead of silently ignoring it",
+      "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate rejects Kwajalein 23-hour fold, while unambiguous adjacent calendar dates are covered",
+    ].map((fullName) => Object.freeze({ file: "tests/integration/db/guide-interval-availability.46.test.ts", fullName }))),
+    localOnlyPending: Object.freeze({
+      file: "tests/integration/db/guide-interval-availability.46.test.ts",
+      fullName: "Issue #46 admitted native availability contract 0135 staff policy and service-only tenant interval predicate reads actual isolated PostgreSQL tzdata and function ACL/catalog",
+    }),
+    tenantBoundaryAssertions: Object.freeze([Object.freeze({
+      file: "tests/integration/db/guide-interval-availability.46.test.ts",
+      fragment: 'allows default policy without shifts but excludes foreign/missing/inactive/unbookable staff',
+    })]),
+    negativeRoleAssertions: Object.freeze([Object.freeze({
+      file: "tests/integration/db/guide-interval-availability.46.test.ts",
+      fragment: 'revokes both authenticated and anonymous invocation while service role works',
+    })]),
+  }),
   '0105_issue_44_traveler_risk_policies': Object.freeze({
     requiredFiles: Object.freeze([
       'tests/integration/db/traveler-risk-policy.44.test.ts',

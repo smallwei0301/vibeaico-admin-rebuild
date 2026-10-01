@@ -10,11 +10,13 @@ const RISK_ORDER = Object.freeze({ ADDITIVE: 1, SCHEMA_REPAIR: 2, AUTHZ: 3, BACK
 const FULL_PENDING_SET = 'FULL_PENDING_SET';
 const ISSUES_17_680 = 'ISSUES_17_680';
 const ISSUE_37_0131_0134 = 'ISSUE_37_0131_0134';
+const ISSUE_46_0135 = 'ISSUE_46_0135';
 
 // A Production release may select only this reviewed, bounded closure.  Keep
 // dependencies as canonical migration identities so a pending migration cannot
 // become selectable merely by sharing an issue number or filename prefix.
 const BOUNDED_RELEASE_SCOPE_ROOTS = Object.freeze({
+  [ISSUE_46_0135]: Object.freeze(['0135_issue_46_guide_interval_availability']),
   [ISSUES_17_680]: Object.freeze([
     '0121_issue_17_booking_addons_hardening',
     '0133_issue_680_booking_addons_composite_fk_expand',
@@ -32,6 +34,16 @@ const BOUNDED_RELEASE_DEPENDENCIES = Object.freeze({
   '0134_issue_37_rpc_invoker_owner_compat': Object.freeze(['0131_issue_37_atomic_departure_staff']),
 });
 const BOUNDED_APPLIED_PREREQUISITES = Object.freeze({
+  [ISSUE_46_0135]: Object.freeze([
+    '0003_tenants_and_accounts',
+    '0004_core_business_tables',
+    '0005_line_marketing_other',
+    '0066_issue_8_tour_domain_core',
+    '0074_block_times_recurrence_fields',
+    '0092_trip_departure_staff',
+    '0110_issue_42_plan_duration_pricetype_yearround',
+    '0115_issue_21_external_calendars',
+  ]),
   [ISSUE_37_0131_0134]: Object.freeze([
     '0066_issue_8_tour_domain_core',
     '0092_trip_departure_staff',
@@ -154,7 +166,8 @@ export function selectedProductionMigrations(aliasMap = {}, migrationScope = FUL
   for (const repoFile of BOUNDED_APPLIED_PREREQUISITES[scope] ?? []) {
     const matches = aliasMap.entries.filter((entry) => entry?.repoFile === repoFile);
     if (matches.length !== 1 || matches[0].classification !== 'EXACT' ||
-        !Array.isArray(matches[0].ledgerNames) || matches[0].ledgerNames.length === 0) {
+        !Array.isArray(matches[0].ledgerNames) || matches[0].ledgerNames.length === 0 ||
+        (scope === ISSUE_46_0135 && (matches[0].ledgerNames.length !== 1 || matches[0].ledgerNames[0] !== repoFile))) {
       fail('MIGRATION_SCOPE_APPLIED_PREREQUISITE_MISSING', `${scope} requires an exact applied prerequisite: ${repoFile}`);
     }
   }

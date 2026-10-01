@@ -558,3 +558,35 @@ describe('Production DB release plan #447', () => {
     })).toThrow(/MIXED_RISK_RELEASE_NOT_ADMITTED/);
   });
 });
+
+describe('#46 bounded 0135 selector', () => {
+  const prerequisites = ['0003_tenants_and_accounts', '0004_core_business_tables', '0005_line_marketing_other',
+    '0066_issue_8_tour_domain_core', '0074_block_times_recurrence_fields', '0092_trip_departure_staff',
+    '0110_issue_42_plan_duration_pricetype_yearround', '0115_issue_21_external_calendars'];
+  const target = '0135_issue_46_guide_interval_availability';
+  function fixture() {
+    return { schemaVersion: 1, entries: [...prerequisites.map(repoFile => ({ repoFile, classification: 'EXACT', ledgerNames: [repoFile] })),
+      { repoFile: target, classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', ledgerNames: [] },
+      { repoFile: '0133_unrelated', classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', ledgerNames: [] }] };
+  }
+  it('selects only exact 0135 and verifies its current SQL classifier', () => {
+    expect(selectedProductionMigrations(fixture(), 'ISSUE_46_0135')).toEqual({migrationScope:'ISSUE_46_0135',migrations:[target]});
+    expect(inferMigrationRiskTier(readFileSync(`supabase/migrations/${target}.sql`, 'utf8'), target)).toBe('AUTHZ');
+  });
+  it('rejects each missing, aliased, duplicated or empty-ledger prerequisite without expanding closure', () => {
+    for (const name of prerequisites) {
+      for (const variant of ['missing', 'alias', 'duplicate', 'empty', 'wrongIdentity']) {
+        const map = fixture(); const row = map.entries.find(entry => entry.repoFile === name)!;
+        if (variant === 'missing') map.entries = map.entries.filter(entry => entry !== row);
+        if (variant === 'alias') row.classification = 'ALIAS';
+        if (variant === 'duplicate') map.entries.push({...row});
+        if (variant === 'empty') row.ledgerNames = [];
+        if (variant === 'wrongIdentity') row.ledgerNames = ['other'];
+        expect(() => selectedProductionMigrations(map, 'ISSUE_46_0135')).toThrow(/MIGRATION_SCOPE_APPLIED_PREREQUISITE_MISSING/);
+      }
+    }
+    const map = fixture(); map.entries = map.entries.filter(entry => entry.repoFile !== target);
+    expect(() => selectedProductionMigrations(map, 'ISSUE_46_0135')).toThrow(/MIGRATION_SCOPE_DEPENDENCY_NOT_PENDING/);
+    expect(() => selectedProductionMigrations(fixture(), 'ISSUE_46_ANY')).toThrow(/UNSUPPORTED_MIGRATION_SCOPE/);
+  });
+});

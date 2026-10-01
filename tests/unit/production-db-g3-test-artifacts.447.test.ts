@@ -1,3 +1,4 @@
+import { getProductionDbG3AuthzContract } from '../../scripts/agents/production-db-g3-authz-contracts.mjs';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -580,5 +581,53 @@ describe('Production DB G3 TEST artifact builders #447', () => {
       scopeKind: 'NO_RELEASE_SPECIFIC_FIXTURES',
       checkedScopes: [],
     });
+  });
+});
+
+describe('#46 exact semantic coverage and fixture cleanup', () => {
+  const file = 'tests/integration/db/guide-interval-availability.46.test.ts';
+  const target = '0135_issue_46_guide_interval_availability';
+  const targetPlan = () => plan([{repoFile:target,riskTier:'AUTHZ',sha256:'d'.repeat(64)}]);
+  function semanticReport() {
+    const contract = getProductionDbG3AuthzContract(target)!;
+    const passed = contract.requiredAssertions.map((row: any) => ({status:'passed',fullName:row.fullName}));
+    return report({numTotalTests:36,numPassedTests:35,numPendingTests:1,testResults:[{name:file,assertionResults:[...passed,{status:'pending',fullName:contract.localOnlyPending.fullName}]}]});
+  }
+  const coverage = (raw: any, selected = targetPlan()) => buildProductionDbTestCoverageEvidence({report:raw,plan:selected,sourceRunId:'123',sourceRunAttempt:1});
+  it('requires 35 exact passed semantic cases, labels the sole isolated catalog case NOT_RUN', () => {
+    const result = coverage(semanticReport());
+    expect(result.executedTests).toBe(35); expect(result.localOnlyNotRun).toHaveLength(1);
+    expect(result.migrations[target]).toMatchObject({tenantBoundaryVerified:true,negativeRoleTestsPassed:true});
+  });
+  it('rejects altered names/files, semantic pending, blanket pending and absent executed cases', () => {
+    for (const mutation of ['name','file','semanticPending','allPending','missing']) {
+      const raw = semanticReport(); const rows = raw.testResults[0].assertionResults;
+      if (mutation === 'name') rows[35].fullName += '!';
+      if (mutation === 'file') raw.testResults[0].name += '.wrong';
+      if (mutation === 'semanticPending') { rows[0].status='pending';raw.numPassedTests=34;raw.numPendingTests=2; }
+      if (mutation === 'allPending') { rows.forEach((row:any)=>{row.status='pending';});raw.numPassedTests=0;raw.numPendingTests=36; }
+      if (mutation === 'missing') { rows.shift();raw.numTotalTests=35;raw.numPassedTests=34; }
+      expect(()=>coverage(raw)).toThrow();
+    }
+  });
+  it('permits only exact POLICY_SKIP names when 0135 is absent from the plan', () => {
+    const raw = semanticReport();const rows=raw.testResults[0].assertionResults;
+    rows.forEach((row:any)=>{row.status='pending';row.fullName=row.fullName.replace('Issue #46 admitted native availability contract ', '#46 POLICY_SKIP/NOT_RUN: SOURCE_PREPARE not admitted; no hooks/fixtures/auth ');});
+    const other = report();raw.testResults.push(...other.testResults);raw.numTotalTests=39;raw.numPassedTests=3;raw.numPendingTests=36;
+    expect(coverage(raw,plan()).allowedPendingTests).toBe(36);
+    expect(()=>coverage(raw)).toThrow(/UNAPPROVED_VITEST_PENDING/);
+    rows[0].fullName += '!';expect(()=>coverage(raw,plan())).toThrow(/UNAPPROVED_VITEST_PENDING/);
+  });
+  it('checks g46 tenant fixtures using read-only GET and rejects residue/errors', async () => {
+    for (const outcome of ['clean','residue','error']) {
+      const fetchImpl=vi.fn(async (url:any,init:any)=>{
+        expect(init.method).toBe('GET');const parsed=new URL(url);
+        expect(parsed.pathname).toBe('/rest/v1/tenants');expect(parsed.searchParams.get('shop_code')).toBe('like.g46-%');
+        return new Response(JSON.stringify(outcome==='residue'?[{id:'leftover'}]:[]),{status:outcome==='error'?500:200});
+      });
+      const run=captureProductionDbTestCleanupEvidence({plan:targetPlan(),testSupabaseUrl:TEST_URL,serviceRoleKey:'mock',sourceRunId:'123',sourceRunAttempt:1,fetchImpl});
+      if(outcome==='clean') expect(await run).toMatchObject({scopeKind:'PRODUCTION_DB_RELEASE_MIGRATION_FIXTURES',residueCount:0});
+      else await expect(run).rejects.toThrow(outcome==='residue'?'TEST_CLEANUP_RESIDUE':'TEST_CLEANUP_READ_FAILED');
+    }
   });
 });

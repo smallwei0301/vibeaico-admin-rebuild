@@ -116,7 +116,16 @@ function pendingAssertions(report) {
   return rows;
 }
 
-function isAllowedCanonicalTestPending(row) {
+function isAllowedCanonicalTestPending(row, plan) {
+  const target = '0135_issue_46_guide_interval_availability';
+  const contract = getProductionDbG3AuthzContract(target);
+  if (row.file === contract.requiredFiles[0]) {
+    const selected = plan.migrations.some((migration) => migration.repoFile === target);
+    if (selected) return row.name === contract.localOnlyPending.fullName;
+    return row.name.startsWith('#46 POLICY_SKIP/NOT_RUN: SOURCE_PREPARE not admitted; no hooks/fixtures/auth 0135 staff policy and service-only tenant interval predicate ')
+      && [...contract.requiredAssertions, contract.localOnlyPending].some((assertion) =>
+        row.name === '#46 POLICY_SKIP/NOT_RUN: SOURCE_PREPARE not admitted; no hooks/fixtures/auth ' + assertion.fullName.slice('Issue #46 admitted native availability contract '.length));
+  }
   return CANONICAL_TEST_PENDING_ALLOWLIST.some((entry) =>
     row.file === entry.file && row.name.includes(entry.suite));
 }
@@ -151,7 +160,7 @@ export function buildProductionDbTestCoverageEvidence({ report, plan, sourceRunI
   if (pendingRows.length !== pending) {
     fail('INCOMPLETE_VITEST_COVERAGE', `Vitest reported ${pending} pending tests but exposed ${pendingRows.length} pending assertion rows`);
   }
-  const unapprovedPending = pendingRows.filter((row) => !isAllowedCanonicalTestPending(row));
+  const unapprovedPending = pendingRows.filter((row) => !isAllowedCanonicalTestPending(row, plan));
   if (unapprovedPending.length) {
     fail('UNAPPROVED_VITEST_PENDING', `canonical TEST pending assertions are outside the explicit allowlist: ${unapprovedPending.map((row) => `${row.file}:${row.name}`).join(' | ')}`);
   }
@@ -172,6 +181,11 @@ export function buildProductionDbTestCoverageEvidence({ report, plan, sourceRunI
     for (const requiredFile of contract.requiredFiles) {
       if (!executedFiles.includes(requiredFile)) {
         fail('AUTHZ_REQUIRED_TEST_FILE_MISSING', `${repoFile} did not execute ${requiredFile}`);
+      }
+    }
+    for (const required of contract.requiredAssertions ?? []) {
+      if (!assertions.some((row) => row.file === required.file && row.name === required.fullName)) {
+        fail('REQUIRED_SEMANTIC_TEST_MISSING', `${repoFile} lacks a passed exact assertion: ${required.fullName}`);
       }
     }
     const tenantBoundaryVerified = contract.tenantBoundaryAssertions.every((assertion) =>
@@ -199,6 +213,10 @@ export function buildProductionDbTestCoverageEvidence({ report, plan, sourceRunI
     totalTests: total,
     pendingTests: pending,
     allowedPendingTests: pendingRows.length,
+    localOnlyNotRun: pendingRows.filter((row) => {
+      const localOnly = getProductionDbG3AuthzContract('0135_issue_46_guide_interval_availability').localOnlyPending;
+      return row.file === localOnly.file && row.name === localOnly.fullName;
+    }).map((row) => ({ ...row, status: 'NOT_RUN', reason: 'LOCAL_ONLY_RAW_POSTGRES_CATALOG' })),
     executedFiles,
     migrations,
     reportSuccess: true,
@@ -222,6 +240,9 @@ function canonicalTestUrl(value) {
 
 function cleanupScopes(plan) {
   const scopes = [];
+  if (plan.migrations.some((migration) => migration.repoFile === '0135_issue_46_guide_interval_availability')) {
+    scopes.push({migration:'0135_issue_46_guide_interval_availability',table:'tenants',filterColumn:'shop_code',filterOperator:'like',filterValue:'g46-%'});
+  }
   if (plan.migrations.some((migration) => String(migration?.repoFile ?? '') === '0105_issue_44_traveler_risk_policies')) {
     scopes.push({
       migration: '0105_issue_44_traveler_risk_policies',
