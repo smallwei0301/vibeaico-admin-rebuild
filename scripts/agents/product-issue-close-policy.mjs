@@ -73,7 +73,7 @@ export function findCloseReadyHandoff(comments = [], closedAt = '') {
   }
   if (!latest.writerBlocker) errors.push('ISSUE_CLOSE_READY handoff requires WRITER_BLOCKER');
   if (!latest.nextSafeWritePath) errors.push('ISSUE_CLOSE_READY handoff requires NEXT_SAFE_WRITE_PATH');
-  return { handoff: latest, errors };
+  return { handoff: latest, commentCreatedAt: selected.comment?.created_at ?? null, errors };
 }
 
 export function linkedOpenProductPulls(issueNumber, pulls = []) {
@@ -105,6 +105,8 @@ export function evaluateProductIssueClose({
   openPullRequests = [],
   comments = [],
   verifiedCi = null,
+  verifiedRun = null,
+  lastClosedCaptureAt = null,
 } = {}) {
   const applicability = productApplicability(issue);
   if (!applicability.applicable) {
@@ -126,6 +128,30 @@ export function evaluateProductIssueClose({
   }
 
   if (ready.handoff) {
+    const lastCaptureMs = validIso(lastClosedCaptureAt);
+    const readyCommentMs = validIso(ready.commentCreatedAt);
+    if (lastCaptureMs !== null && readyCommentMs !== null && readyCommentMs <= lastCaptureMs) {
+      errors.push('ISSUE_CLOSE_READY handoff was already consumed by an earlier successful close; publish a fresh close-ready handoff');
+    }
+
+    if (!verifiedRun || typeof verifiedRun !== 'object') {
+      errors.push('ISSUE_CLOSE_READY RUN_ID was not verified against current-main Product Run ledger');
+    } else {
+      if (verifiedRun.runId !== ready.handoff.runId) errors.push('ISSUE_CLOSE_READY RUN_ID differs from verified Product Run ledger');
+      if (verifiedRun.schemaVersion !== 2 || verifiedRun.deliveryTruthVersion !== 4) {
+        errors.push('ISSUE_CLOSE_READY requires a schema v2 / DeliveryTruth v4 Product Run');
+      }
+      if (!['IN_PROGRESS', 'CLOSURE_RECOVERY'].includes(verifiedRun.status)) {
+        errors.push('ISSUE_CLOSE_READY requires an active Product Run before Issue close');
+      }
+      if (verifiedRun.closeout?.state !== 'OPEN' || !['PRODUCT_MAIN_SESSION', 'OWNER'].includes(verifiedRun.closeout?.ownerRole)) {
+        errors.push('ISSUE_CLOSE_READY requires an OPEN Product-owned closeout envelope');
+      }
+      if (!Array.isArray(verifiedRun.sources) || !verifiedRun.sources.some((source) => source?.ref === `issue/${issueNumber}`)) {
+        errors.push(`ISSUE_CLOSE_READY Product Run sources must include issue/${issueNumber}`);
+      }
+    }
+
     const workflowId = Number(ready.handoff.evidenceRef.match(/^github:workflow#(\d+)$/)?.[1] ?? 0);
     if (!verifiedCi || verifiedCi.workflowId !== workflowId) {
       errors.push('ISSUE_CLOSE_READY workflow evidence was not independently verified');
