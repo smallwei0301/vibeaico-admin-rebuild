@@ -62,8 +62,9 @@ function trustedSolReview() {
 }
 
 describe('Owner #447 Sol review continues under the permanent #552 downgrade policy', () => {
-  it('keeps Fable as initial premium default and Sol in the conditional downgrade allowlist', () => {
-    expect(routing.models.finalRisk).toBe('claude-fable-5-1');
+  it('uses the current OpenAI Astra default while retaining Fable and conditional Sol downgrade', () => {
+    expect(routing.models.finalRisk).toBe('gpt-6-astra');
+    expect(routing.models.finalRiskAllowedModels).toContain('claude-fable-5-1');
     expect(routing.models.finalRiskAllowedModels).not.toContain('gpt-5.6-sol');
     expect(routing.models.finalRiskDowngradeAllowedModels).toContain('gpt-5.6-sol');
     expect(routing.finalRiskCostControl.version).toBe(FINAL_RISK_COST_POLICY_VERSION);
