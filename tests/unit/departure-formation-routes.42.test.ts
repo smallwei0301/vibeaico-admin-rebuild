@@ -2,6 +2,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { departureCreateSchema, departureUpdateSchema } from '@/server/tour-domain';
 
 const state = vi.hoisted(() => ({
+  blockedDates: [] as string[], durationHours: 2,
   plans: [] as Record<string, unknown>[], rows: [] as Record<string, unknown>[], assignmentWrites: [] as string[],
 }));
 const TENANT = '11111111-1111-4111-8111-111111111111';
@@ -28,7 +29,9 @@ vi.mock('@/server/departure-staff', async (original) => ({
 }));
 vi.mock('@/server/staff-availability', async (original) => ({
   ...await original<typeof import('@/server/staff-availability')>(),
-  loadStaffLoad: async () => ({ bookings: [], blocks: [], shifts: [], shiftDates: new Set(), departures: [] }),
+  loadStaffLoad: async () => ({ bookings: [], blocks: state.blockedDates.map((date) => ({
+    staffId: STAFF, start: Date.parse(`${date}T00:00:00+08:00`), end: Date.parse(`${date}T00:00:00+08:00`) + 86400000,
+  })), shifts: [], shiftDates: new Set(), departures: [] }),
 }));
 
 const fakeDb = {
@@ -39,7 +42,7 @@ const fakeDb = {
     let ids: string[] | undefined;
     const read = () => {
       if (inserted) return { data: inserted, error: null };
-      if (table === 'trips') return { data: { duration_hours: 2 }, error: null };
+      if (table === 'trips') return { data: { duration_hours: state.durationHours }, error: null };
       const rows = table === 'trip_plans' ? state.plans : state.rows;
       const found = rows.find((row) => Object.entries(filters).every(([key, value]) => row[key] === value));
       const data = found && columns !== '*'
@@ -83,6 +86,8 @@ beforeEach(() => {
   vi.setSystemTime(new Date('2030-01-01T00:00:00Z'));
   state.plans = [{ id: PLAN, tenant_id: TENANT, trip_id: TRIP, min_to_depart: 4, formation_deadline_days_before: 7 }];
   state.rows = [];
+  state.blockedDates = [];
+  state.durationHours = 2;
   state.assignmentWrites = [];
 });
 afterEach(() => vi.useRealTimers());
@@ -141,6 +146,42 @@ describe('#42 real single/batch route insert seam (fake DB, no real acceptance c
     await saveTripDeparture(TRIP, { ...body, id: 'existing', formationDeadlineAt: deadline });
     expect(JSON.parse(request.mock.calls[0][1]!.body as string)).not.toHaveProperty('formationDeadlineAt');
     vi.unstubAllGlobals();
+  });
+  it('skips an existing near-date duplicate before validating only the future new candidate', async () => {
+    const existing = { id: 'existing-near', tenant_id: TENANT, trip_id: TRIP, plan_id: PLAN,
+      departs_on: '2030-01-03', start_time: '00:30', capacity: 8,
+      min_to_depart_snapshot: 2, formation_deadline_at: '2029-12-27T16:30:00.000Z' };
+    state.rows.push(existing);
+    const result = await create({ ...bulk, from: '2030-01-03', to: '2030-01-10', weekdays: [4] }, true);
+    expect(result.status).toBe(200);
+    expect((await result.json()).data).toMatchObject({ created: 1, skipped: 1 });
+    expect(state.rows).toHaveLength(2);
+    expect(state.rows[0]).toEqual(existing);
+    expect(state.rows[1]).toMatchObject({ departs_on: '2030-01-10', min_to_depart_snapshot: 4,
+      formation_deadline_at: '2030-01-02T16:30:00.000Z' });
+  });
+  it('after filtering a duplicate, an invalid true new candidate rejects before any new write', async () => {
+    const existing = { id: 'existing-near', tenant_id: TENANT, trip_id: TRIP, plan_id: PLAN,
+      departs_on: '2030-01-03', start_time: '00:30' };
+    state.rows.push(existing);
+    const result = await create({ ...bulk, from: '2030-01-03', to: '2030-01-10', weekdays: [4, 5] }, true);
+    expect(result.status).toBe(400);
+    expect(state.rows).toEqual([existing]);
+    expect(state.assignmentWrites).toEqual([]);
+  });
+  it('skips a blocked near date before validating the future new candidate', async () => {
+    state.blockedDates = ['2030-01-03'];
+    const result = await create({ ...bulk, from: '2030-01-03', to: '2030-01-10', weekdays: [4] }, true);
+    expect(result.status).toBe(200);
+    expect((await result.json()).data).toMatchObject({ created: 1, skipped: 1, conflicts: [expect.objectContaining({ date: '2030-01-03', reason: 'BLOCK' })] });
+    expect(state.rows[0].departs_on).toBe('2030-01-10');
+  });
+  it('still skips same-batch self-overlap and reports the actual earlier inserted departure id', async () => {
+    state.durationHours = 26;
+    const result = await create(bulk, true);
+    expect(result.status).toBe(200);
+    expect((await result.json()).data).toMatchObject({ created: 1, skipped: 1, conflicts: [expect.objectContaining({ departureId: state.rows[0].id, reason: 'DEPARTURE' })] });
+    expect(state.rows).toHaveLength(1);
   });
   it('schema accepts offset overrides only at creation, never rewrites through update', () => {
     expect(departureCreateSchema.safeParse({ ...body, formationDeadlineAt: '2030-01-02T12:00:00' }).success).toBe(false);

@@ -36,13 +36,6 @@ export const POST = handle(async (req, { params }: Context) => {
     return body.weekdays.includes(day);
   });
 
-  // Validate every new-date rule before the first insert: a bad deadline must
-  // not leave the earlier dates of this batch silently created.
-  const now = Date.now();
-  const formationByDate = new Map(selected.map((date) => [
-    date, departureFormationSnapshot(plan, { ...body, departsOn: date }, now),
-  ]));
-
   // batch 建立的團次一律 OPEN，所以 0 位導遊會在這裡就被擋下（不是逐日各擋一次）。
   const bookable = await bookableStaffIds(t.supabase, t.tenantId);
   const assignment: ResolvedAssignment = resolveAssignment({
@@ -81,28 +74,27 @@ export const POST = handle(async (req, { params }: Context) => {
   const conflicts: DepartureConflict[] = [];
   let skipped = 0;
 
-  for (const date of selected) {
-    // 撞班先判：一個「因為撞班而跳過」的日期不該先去 DB 查重複。
-    if (load) {
-      const slot = departureInterval({ departsOn: date, startTime, durationHours });
-      const dayConflicts = findStaffConflicts(assignedIds, slot, date, load);
-      if (dayConflicts.length > 0) {
-        skipped += 1;
-        for (const c of dayConflicts) {
-          conflicts.push({
-            date,
-            staffId: c.staffId,
-            staffName: names.get(c.staffId) ?? '',
-            reason: c.reason,
-            text: CONFLICT_REASON_TEXT[c.reason],
-            conflictStart: c.conflictStart,
-            conflictEnd: c.conflictEnd,
-            departureId: c.departureId,
-          });
-        }
-        continue;
-      }
+  const candidates: string[] = [];
+  const skipConflictingDate = (date: string): boolean => {
+    if (!load) return false;
+    const slot = departureInterval({ departsOn: date, startTime, durationHours });
+    const dayConflicts = findStaffConflicts(assignedIds, slot, date, load);
+    if (dayConflicts.length === 0) return false;
+    skipped += 1;
+    for (const c of dayConflicts) {
+      conflicts.push({
+        date, staffId: c.staffId, staffName: names.get(c.staffId) ?? '', reason: c.reason,
+        text: CONFLICT_REASON_TEXT[c.reason], conflictStart: c.conflictStart,
+        conflictEnd: c.conflictEnd, departureId: c.departureId,
+      });
     }
+    return true;
+  };
+
+  for (const date of selected) {
+    // Existing/conflicting dates remain skips, even when their current Plan
+    // default would now produce a past deadline: no new row is being created.
+    if (skipConflictingDate(date)) continue;
 
     let existingQuery = t.supabase.from('trip_departures').select('id')
       .eq('tenant_id', t.tenantId).eq('plan_id', body.planId).eq('departs_on', date);
@@ -115,6 +107,20 @@ export const POST = handle(async (req, { params }: Context) => {
       skipped += 1;
       continue;
     }
+    candidates.push(date);
+  }
+
+  // Validate every genuinely new candidate before the first insert. Rejecting
+  // one new cutoff must not leave earlier candidates silently created.
+  const now = Date.now();
+  const formationByDate = new Map(candidates.map((date) => [
+    date, departureFormationSnapshot(plan, { ...body, departsOn: date }, now),
+  ]));
+
+  for (const date of candidates) {
+    // As before, successful earlier inserts are accumulated in load. Recheck
+    // here to preserve same-batch self-overlap and real conflict departure IDs.
+    if (skipConflictingDate(date)) continue;
     const { data, error } = await t.supabase.from('trip_departures').insert({
       ...formationByDate.get(date),
       tenant_id: t.tenantId, trip_id: id, plan_id: body.planId, departs_on: date,

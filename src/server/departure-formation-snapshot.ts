@@ -13,7 +13,8 @@ type NewDeparture = {
 
 /**
  * Snapshot only at creation. GUIDE currently uses fixed Asia/Taipei (+08:00),
- * matching tz.ts / availability; no tenant-specific timezone setting exists.
+ * matching the existing departure availability path. This bounded slice does
+ * not implement configurable timezone resolution for formation snapshots.
  * A missing time means the start of that local day, as in departureInterval.
  * Plan columns are NOT NULL with canonical defaults 1/7: missing/invalid values
  * here indicate a broken read/contract, and must not become invented defaults.
