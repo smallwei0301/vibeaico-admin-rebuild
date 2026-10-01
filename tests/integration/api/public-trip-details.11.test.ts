@@ -256,7 +256,7 @@ describe('#11 公開行程詳情頁與 API', () => {
     expect(response.data.trip.galleryUrls).toEqual(['https://example.com/public-trip-image.webp']);
     const requestPlan = response.data.trip.plans.find((plan) => plan.name === `${TAG} REQUEST 方案`);
     const fixedPlan = response.data.trip.plans.find((plan) => plan.name === `${TAG} FIXED 方案`);
-    expect(requestPlan?.departures.map((departure) => departure.seatsLeft)).toEqual([5]);
+    expect(requestPlan?.departures.map((departure) => departure.seatsLeft)).toEqual([5, 8, 8, 8, 8, 8]);
     expect(fixedPlan?.departures.map((departure) => departure.seatsLeft)).toEqual([6]);
   });
 
