@@ -1399,6 +1399,8 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 ### PB-040 — 把埋點欄位建好，然後沒有埋
 
+- 2026-10-01 防復發補強：既有 modelUsage task／readiness 不證明 Luna → Aggregator → Sol TRIAGE 的順序。新 Product TRIAGE 以 `product-scout-preflight.mjs` 檢查當次 provider-local catalog、明確 requested scout ID、scoped output、不同 actor 去重 receipt 與時間先後；unknown actual 不升為 served verified。例外只有 invoker 獨立查證的 scoped Owner／policy 授權，Agent 自寫理由不可放行。此為本地 prospective contract，不追溯補造 ledger，不宣稱能攔截外部工具或認證 runtime 身分；纯治理 exemption 保留。
+
 - 首次／最近：2026-09-14／2026-09-14
 - 發生次數：1（但它讓一整輪的 B+ loop 形同虛設）
 - Issue／PR／CI：#411、PR #418、PR #428；`docs/metrics/agent-runs/2026-09-14-product-delivery-r01.json`
