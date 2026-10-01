@@ -27,9 +27,9 @@
     "openIssuesEnd": null,
     "openPrsStart": null,
     "openPrsEnd": null,
-    "mainTerraPeak": 0,
+    "mainTerraPeak": 1,
     "reserveTerraPeak": 0,
-    "activeCandidatePeak": 0,
+    "activeCandidatePeak": 1,
     "sharedTestPeak": 0,
     "closureSweeps": 0,
     "closureAdvancedOrClosed": 0
@@ -127,13 +127,26 @@
         "cachedTokens": null,
         "note": "Independent source review dispatched to /root/review42 on source090113420ff5b2e9de511a25d0fd183df52c4639; outcome pending; requested gpt-6.1-sol actual unknown; distinct actor from /root/build42.",
         "count": 1
+      },
+      {
+        "id": "20261001-builder-47",
+        "role": "build",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "New single active construction actor /root/build47 admitted for existing wizard retry/verification truth after builder42 source frozen. No dual-qualified DB claim; requestedgpt6.1-sol actualunknown.",
+        "count": 1
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 1,
+    "issuesStarted": 2,
     "issuesClosed": 0,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -143,7 +156,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 0,
+    "fullCiRuns": 1,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -185,7 +198,9 @@
     "Pre-PR capture correction: the optional wipLifecycle stream is unavailable before an actual PR identity exists, rather than an empty stream claiming zero WIP transitions. Observed BUILD=1/candidate=1/TEST=0 snapshots remain intact as RECORDED_ONLY counters; append the first actual lifecycle event after PR creation, with its real PR/head and observation time. No historical event was deleted or backfilled.",
     "Root capability update: Node v22.23.3 is now available at /home/agent/.npm/_npx/52027bd8fc0022aa/node_modules/node/bin/node; Supabase CLI 2.116.0 also available. Docker daemon healthy but no cached images; public.ecr.aws registry pull returned Forbidden. No isolated DB or canonical TEST result established.",
     "WIP denominator clarification before first PR: the canonical wipLifecycle schema requires an actual positive PR identity/head for every transition and reconstructs open-PR lane peaks. No PR has been created for this Run, so observed open-PR BUILD/candidate/TEST peaks are currently 0/0/0. The separately recorded active pre-PR builder snapshot (one agent) and task/issueStarted evidence remain preserved above; it is not an open-PR lifecycle event. Earlier peak=1 conflated the pre-PR agent snapshot with canonical PR-lane counters. After creating a real PR, capture BUILD_ENTER at the actual observation time and advance these PR counters to 1; never invent or backdate a PR identity.",
-    "SOURCE_ONLY receipt for issue42 source head090113420ff5b2e9de511a25d0fd183df52c4639: Node22 npmci/typecheck/fullunit282files3610tests/focused24/build passed;390px mock save/reopen passed. Actual realDB/canonicalTEST/Production acceptance NOT_RUN. Independent ordinary Sol review dispatched to distinct actor /root/review42; pending outcome, requestedgpt6.1-sol actualunknown."
+    "SOURCE_ONLY receipt for issue42 source head090113420ff5b2e9de511a25d0fd183df52c4639: Node22 npmci/typecheck/fullunit282files3610tests/focused24/build passed;390px mock save/reopen passed. Actual realDB/canonicalTEST/Production acceptance NOT_RUN. Independent ordinary Sol review dispatched to distinct actor /root/review42; pending outcome, requestedgpt6.1-sol actualunknown.",
+    "Actual ci workflow36810577850 started for PR713 headc14f01e; source CI pending. Agent-run-scorecard36810577964 failed report reproduction: new audit task increased computed usage33 but committed MD remained27. Root had incorrectly assumed score-run-current writes MD; it prints stdout. Correct by redirecting current dispatcher stdout to paired MD, then reproduce exact workflow check before push; no blind rerun.",
+    "Independent /root/review42 exactheadc14f01ef4f2f795f3efaabe524bfebfee7cc055f verdict CLOSE_APPROVED FOR BOUNDED SOURCE ONLY; Standards0 Spec0 FinalRiskNONE. Issue42 remainsOPEN, rawDB/provider/Production NOT_RUN. Report/workspace/issue42-independent-review.md."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -203,6 +218,17 @@
   },
   "wipLifecycle": {
     "schemaVersion": 1,
-    "events": []
+    "events": [
+      {
+        "id": "713-observed-build",
+        "at": "2026-10-01T03:30:06.074Z",
+        "kind": "BUILD_ENTER",
+        "pr": 713,
+        "issue": 42,
+        "head": "c14f01ef4f2f795f3efaabe524bfebfee7cc055f",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Actual PR713 fetched live: open ACTIVE TERRA_BUILD with headc14f01e, guard reports BUILD1/candidate1/TEST0; observed now, no pre-PR backfill."
+      }
+    ]
   }
 }
