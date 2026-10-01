@@ -1,0 +1,208 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-10-01-product-delivery-r01",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-10-01T03:14:56.585Z",
+  "endedAt": null,
+  "sources": [
+    {
+      "ref": "origin/main"
+    },
+    {
+      "ref": "issue/42"
+    },
+    {
+      "ref": "issue/46"
+    },
+    {
+      "ref": "issue/47"
+    }
+  ],
+  "main": {
+    "startSha": "58b7845f7b4ccac96c720443cf1a8e7d70d86868",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": null,
+    "openIssuesEnd": null,
+    "openPrsStart": null,
+    "openPrsEnd": null,
+    "mainTerraPeak": 0,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 0,
+    "sharedTestPeak": 0,
+    "closureSweeps": 0,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [
+      {
+        "id": "20261001-scout-live-triage",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Read-only scoped live issue/source triage; requested gpt-6-luna, actual model unverified.",
+        "count": 1
+      },
+      {
+        "id": "20261001-sol-scope-42",
+        "role": "triage",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Owner-accepted Sol scope dispatch for #42; actual model unverified.",
+        "count": 1
+      },
+      {
+        "id": "20261001-builder-42",
+        "role": "build",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "TERRA_BUILD execution lane under Owner-authorized gpt-6.1-sol routing; task role=build; actual model unverified. Builder start receipt 2026-10-01T03:14:49Z predates Run start and is kept in outside-run handoff. At 2026-10-01T03:20:51Z builder reported local dev/build harness stopped with ENOENT; this is an environment wait, not a Product failure.",
+        "count": 1
+      },
+      {
+        "id": "20261001-sol-scope-46-followup",
+        "role": "triage",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Accepted follow-up scope admission for #46, pending design because atomic availability support and existing INSTANT RPC path are absent; no build started.",
+        "count": 1
+      },
+      {
+        "id": "20261001-sol-scope-47",
+        "role": "triage",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Owner-accepted Sol selector follow-up for #47; actual model unverified; no provider test or LINE notification.",
+        "count": 1
+      },
+      {
+        "id": "20261001-sol-review-42",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Independent source review dispatched to /root/review42 on source090113420ff5b2e9de511a25d0fd183df52c4639; outcome pending; requested gpt-6.1-sol actual unknown; distinct actor from /root/build42.",
+        "count": 1
+      }
+    ],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 1,
+    "issuesClosed": 0,
+    "auditReady": 0,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 0,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 1,
+    "lunaAccepted": 1,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 4,
+    "solIssues": 3
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
+  "notes": [
+    "CONCURRENT_RUN_JUSTIFICATION: New Run is required because no prior active Run ownership was transferred to this continuation. Preserve original ownership and counters: 2026-09-13-issue-44-traveler-risk-r01 is separate #44 work; 2026-09-14-product-delivery-r01 and 2026-09-17-product-delivery-r01 have no ownership transfer and distinct prior scopes; 2026-09-21-product-delivery-r03 is prior #46/#47/#42 work with no transfer; 2026-09-22-product-delivery-r08 and 2026-09-29-product-delivery-r01 retain their unrelated #396/#680/#37 environmental work; #709 / 2026-09-30-register-admission-r01 remains PARKED and owner-held. No prior Run is repurposed or edited.",
+    "Builder #42 start receipt is 2026-10-01T03:14:49Z, seven seconds before this Run startedAt=2026-10-01T03:14:56.585Z. Do not backdate the Run or represent this as a post-start lifecycle event; see /workspace/scout-production-acceptance-evidence.md and current continuation handoff. issueStarted counts the actual #42 build receipt only; #46 is scope admission, not implementation.",
+    "Actual model identities are unknown; requested model labels reflect Owner-authorized task routing only. No Node 22 or cached Docker images; Docker pull public.ecr.aws/v2 returned Forbidden on root observed attempt. No retry. One local isolated build only is currently qualified; persistence/database acceptance is not claimed.",
+    "Source-level seams: #42 Advanced Plan UI serializer omits salesMode/minToDepart/formationDeadlineDaysBefore while API and schema support them. #46 INSTANT remains contact-only and lacks public self-scheduling/availability path; do not conflate existing-order RPC with availability or claim safe end-to-end persistence.",
+    "WIP snapshot captured at 2026-10-01T03:20:51Z: one active #42 TERRA_BUILD candidate, no TEST holder. This is a point-in-time snapshot, not a fabricated PR lifecycle event. No PR identity/head was supplied for #42, so wipLifecycle remains empty; scorecard-readiness will flag snapshot-vs-event reconstruction until the owner records the real PR event or preserves an explicit unresolved capture gap.",
+    "Builder reported local dev/build harness stopped with ENOENT at 2026-10-01T03:20:51Z and is waiting for build environment recovery. Record as environment blocker, not Product failure.",
+    "Pre-PR capture correction: the optional wipLifecycle stream is unavailable before an actual PR identity exists, rather than an empty stream claiming zero WIP transitions. Observed BUILD=1/candidate=1/TEST=0 snapshots remain intact as RECORDED_ONLY counters; append the first actual lifecycle event after PR creation, with its real PR/head and observation time. No historical event was deleted or backfilled.",
+    "Root capability update: Node v22.23.3 is now available at /home/agent/.npm/_npx/52027bd8fc0022aa/node_modules/node/bin/node; Supabase CLI 2.116.0 also available. Docker daemon healthy but no cached images; public.ecr.aws registry pull returned Forbidden. No isolated DB or canonical TEST result established.",
+    "WIP denominator clarification before first PR: the canonical wipLifecycle schema requires an actual positive PR identity/head for every transition and reconstructs open-PR lane peaks. No PR has been created for this Run, so observed open-PR BUILD/candidate/TEST peaks are currently 0/0/0. The separately recorded active pre-PR builder snapshot (one agent) and task/issueStarted evidence remain preserved above; it is not an open-PR lifecycle event. Earlier peak=1 conflated the pre-PR agent snapshot with canonical PR-lane counters. After creating a real PR, capture BUILD_ENTER at the actual observation time and advance these PR counters to 1; never invent or backdate a PR identity.",
+    "SOURCE_ONLY receipt for issue42 source head090113420ff5b2e9de511a25d0fd183df52c4639: Node22 npmci/typecheck/fullunit282files3610tests/focused24/build passed;390px mock save/reopen passed. Actual realDB/canonicalTEST/Production acceptance NOT_RUN. Independent ordinary Sol review dispatched to distinct actor /root/review42; pending outcome, requestedgpt6.1-sol actualunknown."
+  ],
+  "deliveryTruthVersion": 4,
+  "closeout": {
+    "contractVersion": 1,
+    "ownerRole": "PRODUCT_MAIN_SESSION",
+    "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
+    "state": "OPEN",
+    "closedAt": null,
+    "evidenceRef": null
+  },
+  "completionTruth": {
+    "status": "NOT_CHECKED",
+    "checkedAt": null,
+    "claims": []
+  },
+  "wipLifecycle": {
+    "schemaVersion": 1,
+    "events": []
+  }
+}
