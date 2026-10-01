@@ -690,3 +690,38 @@ it('#46 closure REQUEST marker cleanup rejects residue and HTTP errors', async (
     await expect(captureProductionDbTestCleanupEvidence({plan:{...plan([{repoFile:'0111_issue_46_guide_request_accept',riskTier:'AUTHZ',sha256:'f'.repeat(64)}]),migrationScope:ISSUE_46_CLOSURE_COVERAGE.scope},testSupabaseUrl:TEST_URL,serviceRoleKey:'mock',sourceRunId:'123',sourceRunAttempt:1,fetchImpl})).rejects.toThrow(outcome==='residue'?'TEST_CLEANUP_RESIDUE':'TEST_CLEANUP_READ_FAILED');
   }
 });
+
+
+// Captured from actual main a30acac native collection with lock-pinned
+// Vitest 4.1.11; these are formatter outputs, not reconstructed scenario names.
+const actualSeasonalRendered46 = [
+  "#42 persisted seasonal prices become immutable TourOrder snapshots 'normal PER_PERSON × 3'",
+  "#42 persisted seasonal prices become immutable TourOrder snapshots 'normal PER_GROUP ignores party multip…'",
+  "#42 persisted seasonal prices become immutable TourOrder snapshots 'cross-year January inclusive endpoint'",
+  "#42 persisted seasonal prices become immutable TourOrder snapshots 'cross-year December inclusive endpoint'",
+  "#42 persisted seasonal prices become immutable TourOrder snapshots 'cross-year outside range uses base'",
+  "#42 persisted seasonal prices become immutable TourOrder snapshots 'winning null override uses base, not …'",
+  "#42 persisted seasonal prices become immutable TourOrder snapshots 'shortest span beats earlier sortOrder…'",
+  "#42 persisted seasonal prices become immutable TourOrder snapshots 'equal span chooses smaller sortOrder'",
+  "#42 persisted seasonal prices become immutable TourOrder snapshots 'zero override is a real free price, n…'",
+  "#42 persisted seasonal prices become immutable TourOrder snapshots 'equal span and sortOrder uses stable …'"
+];
+it('#46 binds actual rendered seasonal titles and rejects the old raw names', () => {
+  const seasonal='tests/integration/db/plan-seasonal-order-snapshot.42.test.ts';
+  const requirements=ISSUE_46_CLOSURE_COVERAGE.requiredAssertions;
+  const rows: Array<{file:string;fullName:string;status:string}>=requirements.filter(row=>row.file!==seasonal).map(row=>({...row,status:'passed'}));
+  rows.push(...actualSeasonalRendered46.map(fullName=>({file:seasonal,fullName,status:'passed'})));
+  const aclFile='tests/integration/api/tour-order-authz.447.test.ts';
+  const acl=getProductionDbG3AuthzContract('0130_issue_46_refund_policy_snapshot');
+  rows.push(...[...acl.tenantBoundaryAssertions,...acl.negativeRoleAssertions].map((row:any)=>({file:aclFile,fullName:row.fragment,status:'passed'})));
+  const files=[...new Set(rows.map(row=>row.file))];
+  const raw=report({numTotalTests:rows.length,numPassedTests:rows.length,testResults:files.map(file=>({name:file,assertionResults:rows.filter(row=>row.file===file)}))});
+  const selected={...plan([{repoFile:'0130_issue_46_refund_policy_snapshot',riskTier:'AUTHZ',sha256:'f'.repeat(64)}]),migrationScope:ISSUE_46_CLOSURE_COVERAGE.scope};
+  const build=(value:any)=>buildProductionDbTestCoverageEvidence({report:value,plan:selected,sourceRunId:'123',sourceRunAttempt:1});
+  expect(build(raw).reportSuccess).toBe(true);
+  const wrong=structuredClone(raw);
+  wrong.testResults.find((file:any)=>file.name===seasonal)!.assertionResults[0].fullName='#42 persisted seasonal prices become immutable TourOrder snapshots normal PER_PERSON × 3';
+  expect(()=>build(wrong)).toThrow(/REQUIRED_SEMANTIC_TEST_MISSING/);
+  const pending=structuredClone(raw);pending.testResults.find((file:any)=>file.name===seasonal)!.assertionResults[0].status='pending';pending.numPassedTests--;pending.numPendingTests++;
+  expect(()=>build(pending)).toThrow(/UNAPPROVED_VITEST_PENDING/);
+});
