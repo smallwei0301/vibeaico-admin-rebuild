@@ -1,5 +1,4 @@
-import { evaluateOrdinaryReview } from './ordinary-review-admission.mjs';
-import { finalRiskReviewerErrors } from './final-risk-cost-policy.mjs';
+import { finalRiskReviewerErrors, independentRoleErrors } from './final-risk-cost-policy.mjs';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { AMBIGUOUS_FIELD, readField } from './agent-wip-policy.mjs';
@@ -320,6 +319,36 @@ export function evaluateAstra({ body = '', changedFiles = null, context = {}, re
   return { ...classification, errors, status: errors.length ? 'ASTRA_PENDING' : 'ASTRA_APPROVED' };
 }
 
+const ordinaryConcrete = value => typeof value === 'string' && value.trim().length >= 8 && !/^(unknown|none|tbd)$/i.test(value);
+/** Ordinary merge review. Inputs are trusted adapter read-back, not body stage/proof claims.
+ * No premium model dispatch, cost policy or schema-baseline requirement is created.
+ */
+export function evaluateOrdinaryReview(reviews = [], context = {}, policy = {}) {
+  const errors = [];
+  const review = reviews[0]; // trusted parser keeps latest negative/malformed records, never skips to older PASS
+  if (!review) errors.push('Missing trusted ordinary Sol review');
+  else {
+    for (const key of ['repository', 'headSha', 'changeDigest', 'policyVersion']) {
+      if (review[key] !== context[key]) errors.push(`Ordinary review is stale: ${key}`);
+    }
+    if (review.commitId !== context.headSha || !['APPROVED', 'COMMENTED'].includes(review.reviewState)
+      || review.verdict !== 'PASS') errors.push('Latest ordinary review is not current PASS');
+    errors.push(...independentRoleErrors(review, context));
+    const reviewer = context.roleEvidence?.reviewer;
+    const model = reviewer?.provider === 'OPENAI' ? policy.models?.audit
+      : reviewer?.provider === 'ANTHROPIC' ? policy.anthropicEquivalents?.audit : null;
+    if (!model || !ordinaryConcrete(reviewer?.providerEvidenceRef) || reviewer?.requestedModel !== model
+      || review.requestedModel !== model) errors.push('Ordinary reviewer needs attested provider-local Sol/Opus request');
+    if (review.servedVerified !== undefined && typeof review.servedVerified !== 'boolean') errors.push('Malformed ordinary served verification claim');
+    if (review.actualModel === 'unknown') {
+      if (review.identityEvidence !== 'UNKNOWN' || review.servedVerified === true) errors.push('Ordinary unknown actual cannot claim served identity');
+    } else if (review.actualModel !== model || review.identityEvidence !== 'OPERATOR_ATTESTED') errors.push('Ordinary model identity is unverified');
+    if (!ordinaryConcrete(review.findings) || !ordinaryConcrete(review.report)
+      || !review.report.startsWith(`https://github.com/${context.repository}/`)) errors.push('Missing durable ordinary findings/report');
+  }
+  return { status: errors.length ? 'SOL_REVIEW_PENDING' : 'SOL_REVIEW_APPROVED', errors };
+}
+
 // REST calls are read-only. Never load policy/code from a PR or execute evidence content.
 export async function evaluateGithubAstra({ github, owner, repo, current }, policy = routing) {
   const files = await github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number: current.number, per_page: 100 });
@@ -399,4 +428,33 @@ export async function evaluateGithubAstra({ github, owner, repo, current }, poli
     changeDigest: digest, createdAt: current.created_at, roleEvidence, ordinaryReviewRequired,
   } }, policy);
   return { ...result, changeDigest: digest };
+}
+
+/** Wake-up only: trust REST run/workflow/PR metadata, never producer artifacts or conclusions.
+ * Missing/ambiguous association rejects refresh rather than guessing a PR.
+ */
+export async function resolveReviewWakeup({ github, owner, repo, runId }) {
+  if (!Number.isSafeInteger(runId) || runId < 1) throw new Error('Invalid review wake-up run id');
+  const { data: workflow } = await github.rest.actions.getWorkflow({ owner, repo, workflow_id: 'agent-review-wakeup.yml' });
+  const { data: run } = await github.rest.actions.getWorkflowRun({ owner, repo, run_id: runId });
+  const repository = `${owner}/${repo}`;
+  if (workflow.path !== '.github/workflows/agent-review-wakeup.yml' || workflow.state !== 'active'
+    || String(run.path ?? '').split('@')[0] !== workflow.path
+    || run.id !== runId || run.workflow_id !== workflow.id || run.event !== 'pull_request_review'
+    || run.status !== 'completed' || run.repository?.full_name !== repository) throw new Error('Invalid canonical review producer run');
+  let numbers = [...new Set((run.pull_requests ?? []).map(pr => pr.number))];
+  if (!numbers.length) {
+    const headOwner = run.head_repository?.owner?.login;
+    if (!/^[\w.-]+$/.test(headOwner ?? '') || typeof run.head_branch !== 'string'
+      || !run.head_branch || !run.head_repository?.full_name) throw new Error('Missing canonical review PR association');
+    const pulls = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'all', head: `${headOwner}:${run.head_branch}`, per_page: 100 });
+    numbers = [...new Set(pulls.filter(pr => pr.base?.repo?.full_name === repository
+      && pr.head?.repo?.full_name === run.head_repository.full_name && pr.head?.ref === run.head_branch).map(pr => pr.number))];
+  }
+  if (numbers.length !== 1 || !Number.isSafeInteger(numbers[0]) || numbers[0] < 1) throw new Error('Review wake-up needs one canonical PR association');
+  const { data: current } = await github.rest.pulls.get({ owner, repo, pull_number: numbers[0] });
+  if (current.number !== numbers[0] || current.base?.repo?.full_name !== repository
+    || current.head?.repo?.full_name !== run.head_repository?.full_name
+    || current.head?.ref !== run.head_branch) throw new Error('Review wake-up PR source differs from canonical run');
+  return current.number;
 }

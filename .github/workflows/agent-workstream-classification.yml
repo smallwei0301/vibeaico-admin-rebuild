@@ -37,7 +37,6 @@ jobs:
             scripts/agents/model-routing.json
             scripts/agents/governance-workstream-boundary.mjs
             scripts/agents/final-risk-cost-policy.mjs
-            scripts/agents/ordinary-review-admission.mjs
           sparse-checkout-cone-mode: false
           persist-credentials: false
 

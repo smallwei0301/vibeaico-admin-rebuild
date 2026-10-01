@@ -4,6 +4,10 @@ on:
   pull_request_target:
     types: [opened, edited, reopened, synchronize, ready_for_review, converted_to_draft, closed]
 
+  workflow_run:
+    workflows: [agent-review-wakeup]
+    types: [completed]
+
   issue_comment:
     types: [created]
 
@@ -15,10 +19,31 @@ permissions:
   statuses: write
 
 jobs:
+  review_wakeup:
+    if: github.event_name == 'workflow_run'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      pr_number: ${{ steps.resolve.outputs.pr_number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - id: resolve
+        uses: actions/github-script@v9
+        with:
+          script: >-
+            const { pathToFileURL } = require('node:url'); const path = require('node:path'); const astra = await import(pathToFileURL(path.join(process.env.GITHUB_WORKSPACE, 'scripts/agents/astra-review-policy.mjs')).href); const { owner, repo } = context.repo; core.setOutput('pr_number', await astra.resolveReviewWakeup({ github, owner, repo, runId: context.payload.workflow_run.id }));
+
   guard:
-    if: github.event_name == 'pull_request_target' || (github.event.issue.pull_request && (github.event.comment.body == '/astra-review-check' || startsWith(github.event.comment.body, '/astra-review-check')))
+    needs: [review_wakeup]
+    if: always() && (github.event_name == 'pull_request_target' || (github.event_name == 'workflow_run' && needs.review_wakeup.result == 'success') || (github.event.issue.pull_request && (github.event.comment.body == '/astra-review-check' || startsWith(github.event.comment.body, '/astra-review-check'))))
     concurrency:
-      group: agent-wip-guard-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}
+      group: agent-wip-guard-${{ github.repository }}-${{ needs.review_wakeup.outputs.pr_number || github.event.pull_request.number || github.event.issue.number }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
@@ -29,6 +54,8 @@ jobs:
           persist-credentials: false
 
       - name: Validate B+ lane metadata and WIP limits
+        env:
+          REVIEW_WAKEUP_PR: ${{ needs.review_wakeup.outputs.pr_number }}
         uses: actions/github-script@v9
         with:
           script: |
@@ -60,7 +87,10 @@ jobs:
             )).href);
 
             const { owner, repo } = context.repo;
-            const payloadCurrent = context.payload.pull_request ?? { number: context.payload.issue.number };
+            const reviewWakeup = context.eventName === 'workflow_run';
+            const payloadCurrent = reviewWakeup ? { number: Number(process.env.REVIEW_WAKEUP_PR) }
+              : context.payload.pull_request ?? { number: context.payload.issue.number };
+            if (!Number.isSafeInteger(payloadCurrent.number) || payloadCurrent.number < 1) throw new Error('Invalid canonical PR number');
             const { data: current } = await github.rest.pulls.get({
               owner,
               repo,
@@ -76,6 +106,23 @@ jobs:
                 if (!['admin', 'maintain', 'write'].includes(actor.data.permission)) throw new Error('Review refresh requires write permission or a trusted Final Risk Agent identity');
               }
             }
+            // REVIEW_WAKEUP_INVALIDATION_BEGIN
+            if (context.eventName === 'workflow_run') {
+              if (current.state !== 'open') return;
+              await github.rest.repos.createCommitStatus({ owner, repo, sha: current.head.sha, state: 'pending', context: 'Agent WIP Policy', description: 'Refreshing current review evidence; not an approval' });
+              const metadata = policy.parseLaneMetadata(current);
+              if (astra.shouldEnforceFinalRisk({ pullRequestState: current.state, draft: current.draft === true, laneState: metadata.state })) {
+                const review = await astra.evaluateGithubAstra({ github, owner, repo, current });
+                if (review.errors.length) {
+                  const { data: fresh } = await github.rest.pulls.get({ owner, repo, pull_number: current.number });
+                  if (fresh.head.sha !== current.head.sha || fresh.body !== current.body || fresh.draft !== current.draft || fresh.state !== current.state) throw new Error('PR changed during review refresh');
+                  await github.rest.repos.createCommitStatus({ owner, repo, sha: current.head.sha, state: 'failure', context: 'Agent WIP Policy', description: 'Latest trusted review/role evidence rejected; see review findings' });
+                  await core.summary.addHeading('Review lifecycle invalidated policy').addRaw(review.errors.join('; ')).write();
+                  return;
+                }
+              }
+            }
+            // REVIEW_WAKEUP_INVALIDATION_END
             // Closed-event housekeeping must not overwrite historical guard evidence or dispatch TEST.
             const terminal = boundary.terminalLabelPlan(current);
             if (terminal) {
@@ -244,7 +291,7 @@ jobs:
               'governance:wip-violation': ['B60205', 'B+ Terra, Reserve, Closure, TEST or candidate limit is exceeded.'],
             };
 
-            for (const [name, [color, description]] of Object.entries(labels)) {
+            for (const [name, [color, description]] of Object.entries(reviewWakeup ? {} : labels)) {
               try {
                 await github.rest.issues.getLabel({ owner, repo, name });
               } catch (error) {
@@ -283,16 +330,17 @@ jobs:
             if (wipErrors.length) nextLabels.push('governance:wip-violation');
 
             // Update only this guard's labels, so concurrent classification cannot lose its labels.
-            for (const name of liveExisting.filter(name => managed.has(name) && !nextLabels.includes(name))) {
+            for (const name of (reviewWakeup ? [] : liveExisting.filter(name => managed.has(name) && !nextLabels.includes(name)))) {
               try { await github.rest.issues.removeLabel({ owner, repo, issue_number: current.number, name }); }
               catch (error) { if (error.status !== 404) throw error; }
             }
             const additions = [...new Set(nextLabels)].filter(name => managed.has(name) && !liveExisting.includes(name));
-            if (additions.length) await github.rest.issues.addLabels({
+            if (!reviewWakeup && additions.length) await github.rest.issues.addLabels({
               owner, repo, issue_number: current.number, labels: additions,
             });
 
             const shouldDispatchTest =
+              context.eventName !== 'workflow_run' &&
               context.payload.action === 'edited' &&
               isAgent &&
               metadata.lane === 'TEST_VALIDATION' &&
@@ -421,7 +469,7 @@ jobs:
               ])
               .write();
 
-            if (isAgent) {
+            if (isAgent && !reviewWakeup) {
               const body = errors.length
                 ? `${marker}\n## Agent WIP Guard: blocked\n\n- EXACT_HEAD: ${current.head.sha}\n- FINAL_RISK_GATE: ${finalRiskRequired ? 'ENFORCED' : 'DEFERRED_NON_ACTIVE'}\n- ERROR_FINGERPRINT: ${fingerprint}\n- ASTRA_CHANGE_DIGEST: ${astraResult.changeDigest || 'not-computed'}\n- DUPLICATE_NOTIFICATION_SUPPRESSED: ${duplicateFailure}\n\n${errors.map((error) => `- ${error}`).join('\n')}\n\nFix the metadata or WIP state before continuing. Do not add no-op commits or rerun CI to work around this guard. The custom commit status \`Agent WIP Policy\` remains failed until the errors are resolved.`
                 : !finalRiskRequired
