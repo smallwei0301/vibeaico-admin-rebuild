@@ -145,6 +145,17 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 驗證：新增單元測試區分 missing table、missing column、missing function；待有新 TEST CI 時驗證會在 schema mismatch 的原始錯誤停止，且不產生子表 FK 錯誤。
 - 狀態：監看中
 
+### PB-004 — 身分已驗證，不代表預設店家就是測試指定店家
+
+- 本次首次／最近：2026-10-01／2026-10-01；本次同類身分判讀事件 1 件，不追填既有 401 事件次數。
+- Issue／PR／CI：#42／#46；#723 merge main `a30acac04aad838d4b04da9c5464b5b6f33e06b6` 的 `36846439984`；來源修正 #727 exact `ec1d55084d6ad167861b47018ae4d1da780d1373`。
+- 事件／證據：welcome E2E attempt0 只有 30.1 秒總 timeout，卡點未定位；retry1／2 的 `/api/auth/me` 均為 HTTP200、success=true、正確 owner email／OWNER，但 tenantId 是同一其他合法 membership。不能把三次失敗都診斷為登入失敗或 network timeout。
+- 根因：沒有 active-tenant cookie 時，現行 `requireTenant` 可取使用者的第一個合法 membership；測試直接假設它必為 SHOP_A，未先使用真實 membership-checked switch。其他 membership 的來源及首次 timeout 是否留下 fixture 尚未證明，不宣稱 Auth 越權或污染根因。
+- 影響：main acceptance 失敗；#46 canonical tail 需先修正必要前置條件。既有 seasonal source 與真實訂單 snapshot 的歷史驗收不因此被改寫。
+- 修正／預防：先核對登入 email，透過現有 `/api/auth/switch-tenant` 明確選 SHOP_A，再重新 `/me` 完整驗 email／tenantId／OWNER；不得偽造 cookie、改 seed 權限、忽略租戶／角色斷言或猜測加長 timeout。保留 disposable fixture、Storage 退役、owned cleanup 的 fail-closed 與零殘留讀回。
+- 驗證：#727 的獨立 EARLY 審查 Standards／Spec 0 blocking、Risk NONE；來源 CI `36852969928` 成功。新 LOCAL／canonical／merge-main 驗收仍需獨立記錄；本條不把來源修正當成首次 timeout 已解、cleanup 已完成或 Production accepted。
+- 狀態：監看中；只解除已確認的 default-tenant 測試假設，原始 timeout 根因仍未知。
+
 ### PB-007 — migration 必須在實際 runner 的交易邊界內驗證
 
 - 本次首次／最近：2026-09-20／2026-09-20；本次同根因事件 1 件，兩條 replay 同時暴露；不追填既有 PB-007 的歷史次數。
