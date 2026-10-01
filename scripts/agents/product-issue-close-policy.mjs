@@ -26,6 +26,7 @@ export function parseRunCaptureHandoff(body = '') {
     writerBlocker: readField(text, 'WRITER_BLOCKER'),
     nextSafeWritePath: readField(text, 'NEXT_SAFE_WRITE_PATH'),
     closeApprovedRef: readField(text, 'CLOSE_APPROVED_REF'),
+    reviewedHead: readField(text, 'REVIEWED_HEAD'),
   };
 }
 
@@ -79,6 +80,7 @@ export function findCloseReadyHandoff(comments = [], closedAt = '') {
   if (!/^github:issuecomment#\d+$/.test(latest.closeApprovedRef)) {
     errors.push('ISSUE_CLOSE_READY handoff requires CLOSE_APPROVED_REF: github:issuecomment#<id>');
   }
+  if (!SHA40.test(latest.reviewedHead)) errors.push('ISSUE_CLOSE_READY handoff requires REVIEWED_HEAD: <40-char sha>');
   return { handoff: latest, commentCreatedAt: selected.comment?.created_at ?? null, errors };
 }
 
@@ -191,10 +193,13 @@ export function evaluateProductIssueClose({
     } else {
       if (verifiedCloseApproval.verdict !== 'CLOSE_APPROVED') errors.push('Product Issue close requires final Sol CLOSE_APPROVED');
       if (verifiedCloseApproval.role !== 'SOL') errors.push('Product Issue close approval must declare REVIEW_ROLE: SOL');
+      if (verifiedCloseApproval.runId !== ready.handoff.runId) errors.push('final Sol CLOSE_APPROVED RUN_ID must match ISSUE_CLOSE_READY RUN_ID');
       if (!SHA40.test(String(verifiedCloseApproval.exactHead ?? ''))) errors.push('final Sol CLOSE_APPROVED requires EXACT_HEAD');
+      if (verifiedCloseApproval.exactHead !== ready.handoff.reviewedHead) errors.push('final Sol CLOSE_APPROVED EXACT_HEAD must match ISSUE_CLOSE_READY REVIEWED_HEAD');
       if (verifiedCloseApproval.reachableFromCurrentMain !== true) errors.push('final Sol CLOSE_APPROVED exact head is not reachable from current main');
       if (verifiedCloseApproval.trusted !== true) errors.push('final Sol CLOSE_APPROVED submitter is not trusted');
       if (verifiedCloseApproval.beforeClose !== true) errors.push('final Sol CLOSE_APPROVED must exist before Issue close');
+      if (verifiedCloseApproval.afterLastClose !== true) errors.push('final Sol CLOSE_APPROVED must belong to the current close generation');
     }
 
     const workflowId = Number(ready.handoff.evidenceRef.match(/^github:workflow#(\d+)$/)?.[1] ?? 0);
