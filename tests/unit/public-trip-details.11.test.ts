@@ -6,14 +6,18 @@ const ROOT = process.cwd();
 const loader = readFileSync(resolve(ROOT, 'src/server/public-shop.ts'), 'utf8');
 const shopPage = readFileSync(resolve(ROOT, 'src/app/s/[shopCode]/page.tsx'), 'utf8');
 const detailPage = readFileSync(resolve(ROOT, 'src/app/s/[shopCode]/trips/[slug]/page.tsx'), 'utf8');
+const detailClient = readFileSync(resolve(ROOT, 'src/components/public/PublicTripDetailsClient.tsx'), 'utf8');
 const route = readFileSync(
   resolve(ROOT, 'src/app/api/public/shops/[shopCode]/trips/[slug]/route.ts'), 'utf8',
 );
 
 describe('#11 公開行程詳情', () => {
-  it('從店家頁可到 slug 詳情頁，並以同一個 tenant-scoped loader 供頁面與 API 使用', () => {
+  it('從店家頁可到 slug 詳情頁，並由安全頁殼與公開 API 分工載入資料', () => {
     expect(shopPage).toContain('`/s/${shopCode}/trips/${encodeURIComponent(trip.slug)}`');
-    expect(detailPage).toContain('loadPublicTripDetails(shopCode, slug)');
+    expect(detailPage).toContain('<PublicTripDetailsClient');
+    expect(detailPage).not.toContain('loadPublicTripDetails');
+    expect(detailClient).toContain("fetch(path, { cache: 'no-store' })");
+    expect(detailClient).toContain('/api/public/shops/');
     expect(route).toContain('loadPublicTripDetails(shopCode, slug)');
     expect(route).not.toMatch(/createAdminSupabase|\.from\(['"]trips['"]\)/);
   });
@@ -34,7 +38,7 @@ describe('#11 公開行程詳情', () => {
     expect(loader).toContain(".eq('plan_id', plan.id)");
     expect(loader).toContain('.range(offset, offset + pageSize - 1)');
     expect(loader).toContain('departuresMayBeTruncated');
-    expect(detailPage).toContain('t.departures.truncated');
+    expect(detailClient).toContain('t.departures.truncated');
   });
 
   it('公開 API 有節流、CORS 與不快取設定，並以 404 隱藏未公開行程', () => {
@@ -51,14 +55,14 @@ describe('#11 公開行程詳情', () => {
   });
 
   it('詳情頁沿用真實 REQUEST／FIXED 入口，INSTANT 只顯示聯絡說明', () => {
-    expect(detailPage).toContain("href={`/s/${shopCode}/plans/${plan.id}/request`}");
-    expect(detailPage).toContain("href={`/s/${shopCode}/plans/${plan.id}/book`}");
-    expect(detailPage).toContain("plan.salesMode === 'INSTANT'");
-    expect(detailPage).not.toMatch(/href=\{`\/s\/\$\{shopCode\}\/plans\/\$\{plan\.id\}\/instant/);
-    expect(detailPage).toContain('plan.departures');
-    expect(detailPage).toContain('trip.meetingPointMapUrl');
-    expect(detailPage).toContain('trip.inclusions');
-    expect(detailPage).toContain('trip.exclusions');
-    expect(detailPage).toContain('trip.notices');
+    expect(detailClient).toContain("href={`/s/${shopCode}/plans/${plan.id}/request`}");
+    expect(detailClient).toContain("href={`/s/${shopCode}/plans/${plan.id}/book`}");
+    expect(detailClient).toContain("plan.salesMode === 'INSTANT'");
+    expect(detailClient).not.toMatch(/href=\{`\/s\/\$\{shopCode\}\/plans\/\$\{plan\.id\}\/instant/);
+    expect(detailClient).toContain('plan.departures');
+    expect(detailClient).toContain('trip.meetingPointMapUrl');
+    expect(detailClient).toContain('trip.inclusions');
+    expect(detailClient).toContain('trip.exclusions');
+    expect(detailClient).toContain('trip.notices');
   });
 });

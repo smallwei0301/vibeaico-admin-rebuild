@@ -184,25 +184,15 @@ afterAll(async () => {
 });
 
 describe('#11 公開行程詳情頁與 API', () => {
-  it('略過較早售罄團次後，匿名旅客仍可看到每個方案較晚的可用團次', async () => {
-    const { status, body } = await request(`/s/${SHOP_A.shopCode}/trips/${encodeURIComponent(SLUG)}`);
+  it('匿名行程頁只輸出載入殼層；公開資料由白名單 API 載入', async () => {
+    const { status, body } = await request('/s/' + SHOP_A.shopCode + '/trips/' + encodeURIComponent(SLUG));
     expect(status).toBe(200);
-    expect(body).toContain(TITLE);
-    expect(body).toContain(`${TAG} 行程詳細介紹`);
-    expect(body).toContain(`${TAG} 費用包含一`);
-    expect(body).toContain(`${TAG} 費用不含`);
-    expect(body).toContain(`${TAG} 行前須知`);
-    expect(body).toContain(`${TAG} 安全提醒`);
-    expect(body).toContain(`${TAG} REQUEST 方案`);
-    expect(body).toContain(`${TAG} FIXED 方案`);
-    expect(body).toContain('提出預約申請');
-    expect(body).toContain('選擇日期並預約');
-    expect(body).toContain('剩 5 位');
-    expect(body).toContain('剩 6 位');
-    expect(body).toContain('本頁每個方案最多列出 6 筆近期團次');
+    expect(body).toContain('正在載入行程詳情…');
+    expect(body).not.toContain(TITLE);
     expect(body).not.toContain(SECRET_REVIEW_NOTE);
     expect(body).not.toContain(UNSAFE_URL);
     expect(body).not.toContain(SHOP_A.id);
+    expect(body).not.toContain('channelId');
   });
 
   it('公開 API 回報六筆顯示上限，並保留最早的有名額團次', async () => {
@@ -266,14 +256,19 @@ describe('#11 公開行程詳情頁與 API', () => {
 
   it('每家店可有自己的同 slug 行程，且公開讀取依 shopCode 隔離', async () => {
     const draft = await request(`/s/${SHOP_A.shopCode}/trips/${encodeURIComponent(`${SLUG}-draft`)}`);
+    const draftApi = await request(`/api/public/shops/${SHOP_A.shopCode}/trips/${encodeURIComponent(`${SLUG}-draft`)}`);
     const otherTenant = await request(`/s/${SHOP_B.shopCode}/trips/${encodeURIComponent(SLUG)}`);
     const otherTenantApi = await request(
       `/api/public/shops/${SHOP_B.shopCode}/trips/${encodeURIComponent(SLUG)}`,
     );
     const missing = await request(`/api/public/shops/${SHOP_A.shopCode}/trips/no-such-trip`);
-    expect(draft.status).toBe(404);
+    expect(draft.status).toBe(200);
+    expect(draft.body).toContain('正在載入行程詳情…');
+    expect(draft.body).not.toContain(`${TAG} 草稿不可公開`);
+    expect(draftApi.status).toBe(404);
     expect(otherTenant.status).toBe(200);
-    expect(otherTenant.body).toContain(OTHER_TENANT_TITLE);
+    expect(otherTenant.body).toContain('正在載入行程詳情…');
+    expect(otherTenant.body).not.toContain(OTHER_TENANT_TITLE);
     expect(otherTenant.body).not.toContain(TITLE);
     expect(otherTenantApi.status).toBe(200);
     expect(JSON.parse(otherTenantApi.body).data.trip.title).toBe(OTHER_TENANT_TITLE);

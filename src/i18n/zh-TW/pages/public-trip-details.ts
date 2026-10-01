@@ -1,10 +1,16 @@
 /** 旅客公開行程詳情 `/s/{shopCode}/trips/{slug}`（issue #11）。 */
 export const publicTripDetailsPage = {
   metadata: {
+    title: '行程詳情',
+    pageDescription: '查看行程介紹、可選方案與近期出發資訊。',
     notFound: '找不到這個行程',
     description: (title: string) => `${title}的行程內容、方案與近期出發資訊`,
   },
+  loading: '正在載入行程詳情…',
+  loadError: '目前無法載入行程，請稍後重試。',
+  retry: '重新載入',
   navigation: {
+    backToStorefront: '返回店家頁',
     backToShop: (shopName: string) => `返回 ${shopName}`,
   },
   trip: {
