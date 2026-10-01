@@ -175,6 +175,8 @@ close 或部署。不得用記憶、舊 Session、先前下載副本代替 curre
 4. 讀 Issue 指定 canonical 文件與直接相關的 integration／testing 章節；Playbook 只搜尋本次錯誤、Issue 或領域，不全量重讀。
 5. Product Run 建立或接續 `RUN_ID`，記錄 main、open Issue／PR、lane、TEST holder 與 raw-event 基線，並跑一次 §10 Live Scorecard readiness。
 6. Product B+ 由窄範圍 Luna/scout 盤點，再由一位 Aggregator 去重；Sol 只根據精簡包選 MAIN、可選 RESERVE 與 Closure target。
+   2026-10-01 起新進 Product TRIAGE 使用 prospective 本地 packet preflight（補強既有順序，不追溯改寫歷史 Run）：先保存 `schemaVersion: 1`、`stage: PRE_SOL_TRIAGE` packet，再跑 `node scripts/agents/product-scout-preflight.mjs <packet.json>`，PASS 才進 TRIAGE。packet 記 workstream／runId／完整 bounded relative file scope、startedAt／transitionRequestedAt／triageActor（transitionRequestedAt 是現在請求進入 TRIAGE 的觀測時間，不是已執行 TRIAGE 或補造歷史事件）、當次 provider-local catalog observation（provider／models／observedAt／evidenceRef）、scout 開始／完成／actor／evidenceRef、明確 requestedModelId、ledger vocabulary task、scoped nonempty output；一位不同 actor Aggregator 的去重 summary／sourceOutputIds／同 scope／時間／evidenceRef 必須介於 scout 與 transition request 之間。OpenAI scout 明確 request `gpt-6-luna`，Anthropic 保留 Haiku mapping；actual unknown 不得宣稱 served verified。
+   例外必須有明確 scoped Owner／policy 授權，不接受 Agent 自己寫理由；invoker 先獨立查證 authority，再以 `--approved-authorities <separately-verified-authorities.json>` 傳入 type=OWNER|POLICY、ref、runId、scope、permission=SCOUT_BYPASS、quote、approvedAt，packet 不可自行提供 approved allowlist。本機 validator 只驗 recorded contract，不認證授權來源或 runtime identity、不攔截外部工具。純 MODEL_GOVERNANCE 的完整 scope 通過現有 classifier 才免 scout／Aggregator，不能用 Product scope 自稱治理；既有 ledger／#709 准入規則不追溯加欄位。
 7. 同一 Run 若有兩張 executable Guard 判定 qualified、互不衝突的 Product slices，應主動維持兩個 BUILD slots；沒有第二張安全候選、candidate cap 不足或隔離／hot-boundary 條件不成立時安全降級為一條。
 
 以下文件改為 **trigger-based load**，不是每輪 mandatory read：
@@ -189,6 +191,9 @@ close 或部署。不得用記憶、舊 Session、先前下載副本代替 curre
 | 最近 1～3 份 Run | 接續同一 Run、做 score/retro、或需要比較上一輪建議時 |
 
 ### 2.0.1 Deterministic metadata：preflight-first
+
+高風險 premium 派送另先用 `final-risk-workflow.mjs dispatch-preflight --input <input.json>`；prepare 的 reserve 不是 permit。真正 dispatch caller 必須呼叫同一 exported `preflightFinalRiskDispatch`，注入獨立 trusted durable reservation readback adapter，精確核對成本理由、classifier風險、scope／head／digest／lineage／executionRef／requestedID、當次 catalog與總attempt=1。CLI 無遠端 readback adapter，僅本地 fail-closed 檢查，不可把輸入 trusted=true 當授權。dispatch 後 `observe-dispatch` 保留 actual unknown、結果ref／未執行／300秒timeout或首次環境故障fallback；沒有 review PASS／release 授權推論。完整角色語意見現行路由決策（#711）；本補強不追溯改 prepare／歷史 receipt schema。
+dispatch caller 另須注入獨立可信 `readCurrentSource(repository, headSha)`：重新回讀 current body、exact head、完整 immutable changed-file inventory／SHA，重算 digest／scope後由 snapshot 重新 classifier；reservation 只證預算已占用，不能證 source／risk。缺 snapshot 或與 candidate 任一項不一致一律拒派送，candidate 自附 snapshot／risk 不可取代可信 adapter。
 
 PR body、`TEST_PROFILE`、lane、candidate、Closure、Final Risk metadata 等 deterministic contract，**不得把 remote CI 當互動式表單驗證器**。
 

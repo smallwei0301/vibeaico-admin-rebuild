@@ -46,6 +46,7 @@ B+ 的表格填在單人作業上面。
 掃 open Issue／open PR／近期 CI／上一輪的 closeability 候選。這是**窄盤點**，
 先確認 session/runtime provider，再依本地 runtime catalog 選擇 scout（OpenAI: `gpt-6-luna`；Claude: `claude-haiku-4-5`）；不得要求另一 provider 的模型。
 每次委派即時寫進 `flow.lunaTasks` / `lunaAccepted`。
+新 Product TRIAGE 前先取得一位不同 actor Aggregator 的 scoped 去重 receipt，再跑 `node scripts/agents/product-scout-preflight.mjs <packet.json>`；packet 契約與授權例外見 canonical `docs/AGENT-EXECUTION.md` §2。模型 unknown 如實記錄，不冒充 served verification；純治理免 Product scout gate。
 
 ### 2. TRIAGE 選 MAIN（Sol 層）
 

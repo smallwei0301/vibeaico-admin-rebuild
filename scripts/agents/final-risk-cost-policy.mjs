@@ -13,6 +13,59 @@ const REASONS = new Set(['PREMIUM_REVIEW_COMPLETED', 'PREMIUM_ATTEMPTED', 'MODEL
 export const FINAL_RISK_COST_POLICY_VERSION = '2026-09-17.1';
 export const PREMIUM_START_TIMEOUT_MS = 300_000;
 
+/** Actual dispatch callers must supply a separately trusted durable readback adapter.
+ * Candidate input/prepare reservations are not proof of occupied lineage budget.
+ */
+export function premiumDispatchPreflight(input = {}, policy = {}, deps = {}) {
+  const errors = [];
+  const reject = reason => errors.push(reason);
+  const scope = value => Array.isArray(value) && value.length > 0 && value.every(path =>
+    typeof path === 'string' && path.length > 0 && !/^[/.]|[\\*?\x00-\x1f]/.test(path)
+    && !path.split('/').some(part => ['..', '.', ''].includes(part))) && new Set(value).size === value.length;
+  const equal = (a, b) => scope(a) && scope(b) && a.length === b.length && a.every(path => b.includes(path));
+  const ref = value => /^https:\/\/github\.com\/[^/]+\/[^/]+\/(issues|pull)\/\d+#issuecomment-\d+$/.test(text(value));
+  if (input.riskClassification?.isModelGovernance !== false || input.riskClassification?.required !== true
+    || list(input.riskClassification?.errors).length || !validModels(input.riskClassification?.risks)) reject('Premium is restricted to classified Product high risk');
+  if (!scope(input.scope) || !/^[a-f0-9]{40}$/.test(input.headSha ?? '') || !/^[a-f0-9]{64}$/.test(input.changeDigest ?? '')
+    || !meaningful(input.reviewLineage) || !meaningful(input.executionRef) || !meaningful(input.requestedBy)) reject('Exact scope/head/digest/lineage/execution/actor reference required');
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(input.repository ?? '') || !ref(input.reservationRef)
+    || !text(input.reservationRef).startsWith(`https://github.com/${input.repository}/`) || !meaningful(input.costReason)) reject('Same-repository durable reservation reference and cost justification required');
+  if (input.modelSelectionAvailable !== true || !list(policy.models?.finalRiskAllowedModels).includes(input.requestedModel)
+    || !validModels(input.availableModels) || !input.availableModels.includes(input.requestedModel)) reject('Explicit available premium model selector required');
+  if (input.historyVerified !== true || !durable(input.historyEvidenceRef) || input.priorPremiumAttemptCount !== 0
+    || input.failureClass || input.previousPremiumReview || input.previousReview
+    || list(input.premiumAttempts).length || list(input.attemptedModels).some(model => list(policy.models?.finalRiskAllowedModels).includes(model))) reject('Verified zero prior premium attempts required; session/reset cannot clear lineage history');
+  let readback;
+  try { if (typeof deps.readReservation === 'function') readback = deps.readReservation(input.reservationRef); } catch { /* fail closed */ }
+  const receipt = readback?.receipt;
+  if (readback?.trusted !== true || readback?.ref !== input.reservationRef || !ref(readback?.ref)
+    || !Number.isFinite(millis(readback?.observedAt)) || !receipt) reject('Separately trusted durable reservation readback required');
+  else {
+    const runtime = readback.runtime;
+    const providerModel = runtime?.provider === 'OPENAI' ? 'gpt-6-astra' : runtime?.provider === 'ANTHROPIC' ? 'claude-fable-5-1' : null;
+    if (!providerModel || input.provider !== runtime.provider || input.requestedModel !== providerModel
+      || runtime.modelSelectionAvailable !== true || !equal(runtime.models, input.availableModels)
+      || !meaningful(runtime.evidenceRef) || !Number.isFinite(millis(runtime.observedAt))
+      || millis(runtime.observedAt) > millis(readback.observedAt)) reject('Separately observed provider-local runtime catalog must select the matching premium model');
+    const lineage = readback.lineageHistory;
+    const entries = lineage?.premiumReservations;
+    if (lineage?.complete !== true || lineage?.repository !== input.repository || lineage?.reviewLineage !== input.reviewLineage || !durable(lineage?.evidenceRef)
+      || !Array.isArray(entries) || entries.length !== 1 || entries[0]?.executionRef !== input.executionRef
+      || entries[0]?.state !== 'RESERVED' || entries[0]?.dispatched !== false) reject('Trusted complete lineage history must contain only this unique undispached reservation');
+    const observed = millis(readback.observedAt), reserved = millis(receipt.reservedAt), now = millis(input.now);
+    if (!Number.isFinite(reserved) || !Number.isFinite(now) || reserved > observed || observed > now) reject('Invalid reservation/readback observation times');
+    if (receipt.state !== 'RESERVED' || receipt.lineageAttemptCount !== 1 || receipt.dispatched !== false) reject('Exactly one occupied, not-yet-dispatched lineage reservation required');
+    for (const key of ['repository', 'provider', 'headSha', 'changeDigest', 'reviewLineage', 'executionRef', 'requestedBy', 'requestedModel', 'costReason']) {
+      if (!(key === 'provider' ? ['OPENAI', 'ANTHROPIC'].includes(receipt[key]) : meaningful(receipt[key])) || receipt[key] !== input[key]) reject(`Reservation ${key} differs from current request`);
+    }
+    if (!equal(receipt.scope, input.scope) || !equal(receipt.risks, input.riskClassification?.risks)) reject('Reservation exact scope/risk classification mismatch');
+  }
+  return { status: errors.length ? 'NOT_READY' : 'DISPATCH_READY', errors, dispatchAllowed: errors.length === 0,
+    assurance: 'Trusted readback adapter authenticates durable source; this validator does not send a model request',
+    reservationRef: input.reservationRef, requestedModel: input.requestedModel, actualModel: 'unknown',
+    premiumRetryAllowed: false, costPolicyVersion: FINAL_RISK_COST_POLICY_VERSION };
+}
+
 /** A queue acknowledgement is not execution. This is a startup deadline, not a total-review limit. */
 export function premiumExecutionState(dispatch = {}, now = new Date().toISOString()) {
   const start = millis(dispatch.requestedAt);
