@@ -8,10 +8,12 @@ import {
   describeConflicts, readAssignments, resolveAssignment, writeAssignment,
 } from '@/server/departure-staff';
 
+import { departureFormationSnapshot, readDepartureFormationTimeZone } from '@/server/departure-formation-snapshot';
+
 type Context = { params: Promise<{ id: string }> };
 
 async function findTripPlan(t: Awaited<ReturnType<typeof requireTenant>>, tripId: string, planId: string) {
-  const { data, error } = await t.supabase.from('trip_plans').select('id, trip_id')
+  const { data, error } = await t.supabase.from('trip_plans').select('id, trip_id, min_to_depart, formation_deadline_days_before')
     .eq('tenant_id', t.tenantId).eq('id', planId).maybeSingle();
   if (error) throw error;
   return data && data.trip_id === tripId ? data : null;
@@ -40,7 +42,10 @@ export const POST = handle(async (req, { params }: Context) => {
   const t = await requireTenantManager();
   await requireFeature(t.tenantId, 'TOUR_MODULE');
   const body = departureCreateSchema.parse(await req.json());
-  if (!await findTripPlan(t, id, body.planId)) return fail(404, '找不到此方案', ERR.NOT_FOUND);
+  const plan = await findTripPlan(t, id, body.planId);
+  if (!plan) return fail(404, '找不到此方案', ERR.NOT_FOUND);
+  const timeZone = await readDepartureFormationTimeZone(t.supabase, t.tenantId, body.formationTimeZone);
+  const formation = departureFormationSnapshot(plan, body, Date.now(), timeZone);
 
   const status = body.status ?? 'OPEN';
   const startTime = body.startTime ? body.startTime : null;
@@ -67,6 +72,7 @@ export const POST = handle(async (req, { params }: Context) => {
   }
 
   const { data, error } = await t.supabase.from('trip_departures').insert({
+    ...formation,
     tenant_id: t.tenantId,
     trip_id: id,
     plan_id: body.planId,
