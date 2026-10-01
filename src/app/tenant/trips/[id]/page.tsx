@@ -68,6 +68,7 @@ const emptyPlan = (tripId: string): TripPlan => ({
   id: '', tripId, name: '', description: '', durationMinutes: 180,
   priceType: 'PER_PERSON', basePrice: 0, childPrice: null,
   minParticipants: 1, maxParticipants: 10, bookingType: 'SCHEDULED',
+  salesMode: 'FIXED_DEPARTURE', participationMode: 'SHARED', minToDepart: 1, formationDeadlineDaysBefore: 7,
   depositMode: 'FULL', depositValue: 0,
   active: true, yearRound: true, seasons: [], reviewState: 'NONE',
   reviewNote: '', sortOrder: 0, source: 'GUIDE',
@@ -369,6 +370,16 @@ export default function TripDetailPage() {
       toast.show(t.messages.planChildPriceInvalid, 'danger');
       return;
     }
+    const formationErrors = {
+      salesMode: t.messages.planSalesModeInvalid,
+      participationMode: t.messages.planParticipationModeInvalid,
+      minToDepart: t.messages.planMinToDepartInvalid,
+      formationDeadlineDaysBefore: t.messages.planFormationDeadlineInvalid,
+    };
+    if (validationError && validationError in formationErrors) {
+      toast.show(formationErrors[validationError as keyof typeof formationErrors], 'danger');
+      return;
+    }
     if (validationError === 'minParticipants') {
       toast.show(t.messages.planMinParticipantsInvalid, 'danger');
       return;
@@ -407,7 +418,16 @@ export default function TripDetailPage() {
       } else {
         // The success toast is only shown after a fresh server read. This is
         // the persistence check for the real tenant-scoped API path.
-        setPlans(await listTripPlans(tripId));
+        const reloadedPlans = await listTripPlans(tripId);
+        if (planEditorMode === 'advanced') {
+          const expected = toAdvancedPlanPayload(planDraft);
+          const saved = reloadedPlans.find((plan) => plan.id === planDraft.id);
+          const fields = ['salesMode', 'participationMode', 'minToDepart', 'formationDeadlineDaysBefore'] as const;
+          if (!saved || fields.some((field) => toAdvancedPlanPayload(saved)[field] !== expected[field])) {
+            throw new Error(t.messages.planAdvancedReadbackFailed);
+          }
+        }
+        setPlans(reloadedPlans);
       }
 
       const needsReview = trip?.midaoListing === 'LISTED';
@@ -1367,6 +1387,41 @@ export default function TripDetailPage() {
             ) : (
               <>
                 <Alert tone="info">{t.plans.advanced.intro}</Alert>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FormGroup>
+                    <Label htmlFor="plan-advanced-sales-mode" required>{t.plans.fields.salesModeLabel}</Label>
+                    <Select id="plan-advanced-sales-mode" value={planDraft.salesMode ?? 'FIXED_DEPARTURE'}
+                      onChange={(e) => patchPlan({ salesMode: e.target.value as TripPlan['salesMode'] })}>
+                      {Object.entries(t.plans.salesMode).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </Select>
+                  </FormGroup>
+                  <FormGroup>
+                    <Label htmlFor="plan-advanced-participation-mode" required>{t.plans.fields.participationModeLabel}</Label>
+                    <Select id="plan-advanced-participation-mode" value={planDraft.participationMode ?? 'SHARED'}
+                      onChange={(e) => patchPlan({ participationMode: e.target.value as TripPlan['participationMode'] })}>
+                      {Object.entries(t.plans.participationMode).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </Select>
+                  </FormGroup>
+                </div>
+                <FormText>{t.plans.fields.participationModeHelp}</FormText>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FormGroup>
+                    <Label htmlFor="plan-advanced-formation-min" required>{t.plans.fields.minToDepartLabel}</Label>
+                    <Input id="plan-advanced-formation-min" type="number" min={1} step={1}
+                      value={Number.isNaN(planDraft.minToDepart) ? '' : planDraft.minToDepart ?? 1}
+                      onChange={(e) => patchPlan({ minToDepart: e.target.valueAsNumber })} />
+                    <FormText>{t.plans.fields.minToDepartHelp}</FormText>
+                  </FormGroup>
+                  <FormGroup>
+                    <Label htmlFor="plan-advanced-formation-deadline" required>{t.plans.fields.formationDeadlineLabel}</Label>
+                    <Input id="plan-advanced-formation-deadline" type="number" min={0} max={90} step={1}
+                      value={Number.isNaN(planDraft.formationDeadlineDaysBefore) ? '' : planDraft.formationDeadlineDaysBefore ?? 7}
+                      onChange={(e) => patchPlan({ formationDeadlineDaysBefore: e.target.valueAsNumber })} />
+                    <FormText>{t.plans.fields.formationDeadlineHelp}</FormText>
+                  </FormGroup>
+                </div>
+                {planDraft.formationDeadlineDaysBefore === 0 ? <Alert tone="warning">{t.plans.fields.formationDeadlineZeroWarning}</Alert> : null}
+
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <FormGroup>
