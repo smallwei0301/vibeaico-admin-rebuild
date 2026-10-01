@@ -39,15 +39,23 @@ export function findCloseReadyHandoff(comments = [], closedAt = '') {
 
   const parsed = comments
     .map((comment) => ({ comment, handoff: parseRunCaptureHandoff(comment?.body ?? '') }))
-    .filter((entry) => entry.handoff?.event === CLOSE_READY_EVENT)
-    .sort((a, b) => (validIso(b.handoff.observedAt) ?? -Infinity) - (validIso(a.handoff.observedAt) ?? -Infinity));
+    .filter((entry) => entry.handoff?.event === CLOSE_READY_EVENT && entry.comment?.trusted === true)
+    .sort((a, b) => (validIso(b.comment?.created_at) ?? -Infinity) - (validIso(a.comment?.created_at) ?? -Infinity));
 
   if (!parsed.length) {
-    return { handoff: null, errors: ['missing RUN_CAPTURE_HANDOFF with EVENT: ISSUE_CLOSE_READY before Product Issue close'] };
+    return { handoff: null, errors: ['missing trusted RUN_CAPTURE_HANDOFF with EVENT: ISSUE_CLOSE_READY before Product Issue close'] };
   }
 
-  const latest = parsed[0].handoff;
+  const selected = parsed[0];
+  const latest = selected.handoff;
   const errors = [];
+  const commentMs = validIso(selected.comment?.created_at);
+  if (commentMs === null) {
+    errors.push('ISSUE_CLOSE_READY requires the trusted GitHub comment created_at timestamp');
+  } else {
+    if (commentMs > closedMs) errors.push('ISSUE_CLOSE_READY trusted comment must be created before the Issue close event');
+    if (closedMs - commentMs > SIX_HOURS_MS) errors.push('ISSUE_CLOSE_READY trusted comment is stale (>6h before Issue close)');
+  }
   if (!RUN_ID.test(latest.runId) || /^(?:none|unknown|null|undefined)$/i.test(latest.runId)) {
     errors.push('ISSUE_CLOSE_READY handoff requires a concrete RUN_ID');
   }
@@ -55,8 +63,10 @@ export function findCloseReadyHandoff(comments = [], closedAt = '') {
   if (observedMs === null) {
     errors.push('ISSUE_CLOSE_READY handoff requires a valid OBSERVED_AT timestamp');
   } else {
-    if (observedMs > closedMs) errors.push('ISSUE_CLOSE_READY handoff must exist before the Issue close event');
-    if (closedMs - observedMs > SIX_HOURS_MS) errors.push('ISSUE_CLOSE_READY handoff is stale (>6h before Issue close)');
+    if (observedMs > closedMs) errors.push('ISSUE_CLOSE_READY OBSERVED_AT must precede the Issue close event');
+    if (commentMs !== null && observedMs > commentMs + 60_000) {
+      errors.push('ISSUE_CLOSE_READY OBSERVED_AT cannot be later than its trusted GitHub comment');
+    }
   }
   if (!/^github:workflow#\d+$/.test(latest.evidenceRef)) {
     errors.push('ISSUE_CLOSE_READY EVIDENCE_REF must be github:workflow#<main-ci-run-id>');
