@@ -59,8 +59,6 @@ jobs:
             });
             const trustedComments = [];
             for (const comment of comments) {
-              const handoff = policy.parseRunCaptureHandoff(comment.body ?? '');
-              if (handoff?.event !== policy.PRODUCT_ISSUE_CLOSE_READY_EVENT) continue;
               const login = comment.user?.login ?? '';
               if (!login) continue;
               try {
@@ -71,7 +69,7 @@ jobs:
                   trustedComments.push({ ...comment, trusted: true });
                 }
               } catch (error) {
-                core.warning(`Unable to verify close-ready commenter ${login}: ${error.status ?? error.message}`);
+                core.warning(`Unable to verify Issue commenter ${login}: ${error.status ?? error.message}`);
               }
             }
             const openPullRequests = await github.paginate(github.rest.pulls.list, {
@@ -107,6 +105,44 @@ jobs:
               }
             }
 
+            let verifiedCloseApproval = null;
+            const approvalCommentId = Number(
+              ready.handoff?.closeApprovedRef?.match(/^github:issuecomment#(\d+)$/)?.[1] ?? 0,
+            );
+            if (approvalCommentId > 0) {
+              try {
+                const { data: approval } = await github.rest.issues.getComment({
+                  owner, repo, comment_id: approvalCommentId,
+                });
+                const approvalBody = approval.body ?? '';
+                const role = approvalBody.match(/^[ \t]*REVIEW_ROLE[ \t]*:[ \t]*(.+)$/mi)?.[1]?.trim()?.toUpperCase() ?? '';
+                const verdict = approvalBody.match(/^[ \t]*VERDICT[ \t]*:[ \t]*(.+)$/mi)?.[1]?.trim()?.toUpperCase() ?? '';
+                const exactHead = approvalBody.match(/^[ \t]*EXACT_HEAD[ \t]*:[ \t]*([0-9a-f]{40})$/mi)?.[1] ?? '';
+                let reachableFromCurrentMain = false;
+                if (/^[0-9a-f]{40}$/.test(exactHead)) {
+                  const { data: compare } = await github.rest.repos.compareCommits({
+                    owner, repo, base: exactHead, head: currentMainSha,
+                  });
+                  reachableFromCurrentMain = ['ahead', 'identical'].includes(compare.status);
+                }
+                const createdAt = Date.parse(approval.created_at ?? '');
+                const updatedAt = Date.parse(approval.updated_at ?? approval.created_at ?? '');
+                const closedAt = Date.parse(issue.closed_at ?? '');
+                verifiedCloseApproval = {
+                  commentId: approval.id,
+                  role,
+                  verdict,
+                  exactHead,
+                  reachableFromCurrentMain,
+                  trusted: trustedComments.some((comment) => comment.id === approval.id),
+                  beforeClose: Number.isFinite(createdAt) && Number.isFinite(updatedAt) && Number.isFinite(closedAt) &&
+                    createdAt <= closedAt && updatedAt <= closedAt,
+                };
+              } catch (error) {
+                core.warning(`Unable to verify CLOSE_APPROVED comment #${approvalCommentId}: ${error.status ?? error.message}`);
+              }
+            }
+
             let verifiedCi = null;
             const workflowId = Number(
               ready.handoff?.evidenceRef?.match(/^github:workflow#(\d+)$/)?.[1] ?? 0,
@@ -116,20 +152,13 @@ jobs:
                 const { data: run } = await github.rest.actions.getWorkflowRun({
                   owner, repo, run_id: workflowId,
                 });
-                let reachableFromCurrentMain = false;
-                if (/^[0-9a-f]{40}$/.test(run.head_sha ?? '')) {
-                  const { data: compare } = await github.rest.repos.compareCommits({
-                    owner, repo, base: run.head_sha, head: currentMainSha,
-                  });
-                  reachableFromCurrentMain = ['ahead', 'identical'].includes(compare.status);
-                }
                 verifiedCi = {
                   workflowId: run.id,
                   name: run.name,
+                  workflowPath: run.path,
                   event: run.event,
                   conclusion: run.conclusion,
                   headSha: run.head_sha,
-                  reachableFromCurrentMain,
                 };
               } catch (error) {
                 core.warning(`Unable to verify close-ready workflow #${workflowId}: ${error.status ?? error.message}`);
@@ -143,6 +172,7 @@ jobs:
               comments: trustedComments,
               verifiedCi,
               verifiedRun,
+              verifiedCloseApproval,
               lastClosedCaptureAt,
             });
 
