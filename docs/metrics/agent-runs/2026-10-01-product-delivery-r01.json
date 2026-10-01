@@ -33,7 +33,7 @@
     "mainTerraPeak": 1,
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 1,
-    "sharedTestPeak": 0,
+    "sharedTestPeak": 1,
     "closureSweeps": 1,
     "closureAdvancedOrClosed": 0
   },
@@ -182,6 +182,45 @@
         "cachedTokens": null,
         "note": "Actual dispatch to /root/build47 as sole TERRA_RESERVE43 after42sourcefreeze+CIstart; distinct frozen47 source unchanged. Requestedgpt6.1-sol by Owner session builder override; one atomic commit, noAudit/PR/TEST, READY_FOR_PROMOTION. Noactualmodelproof.",
         "count": 1
+      },
+      {
+        "id": "20261001-sol-scope43",
+        "role": "triage",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Distinct Issue43 bounded acceptance triage by same product_scope actor; found falseempty onAPIerror, acceptedreserve scope. requestedgpt6.1-sol actualunknown; source0andnoDBwrites.",
+        "count": 1
+      },
+      {
+        "id": "20261001-luna-ci42",
+        "role": "ci",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Bounded exacthead713localCI summary/poll toscout actor after47draft completed; requestedgpt6-luna actualunknown, noPARKEDpoll/rerun/mutation. SourceCI36813096694andscorecard36813096718success,local36813096704integrationrunning.",
+        "count": 1
+      },
+      {
+        "id": "20261001-sol-scope46-prepare",
+        "role": "diagnose",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Existing46scopeactor additionalboundedDBdesign diagnosis afterGitHublocal alternative becamehealthy; smallestPREPARE availabilitypolicy/readonlyprimitive/all-writer occupancyclosure, no source/DBmutation, noactivation. requestedgpt6.1-sol actualunknown.",
+        "count": 1
       }
     ],
     "fullContextReplays": 0,
@@ -207,21 +246,21 @@
     "acceptanceEvidenceCoveragePercent": null,
     "auditFirstPassRatePercent": null,
     "unresolvedP0": 0,
-    "unresolvedP1": 1,
+    "unresolvedP1": 0,
     "reopenedIssues": 0,
     "postMergeRegressions": 0,
     "safetyViolations": 0,
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 2,
-    "lunaAccepted": 2,
+    "lunaTasks": 3,
+    "lunaAccepted": 3,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 5,
-    "solIssues": 3
+    "solTouches": 7,
+    "solIssues": 4
   },
   "auditability": {
     "evidenceFieldsCompletePercent": null,
@@ -249,7 +288,12 @@
     "Independent review47 on sourcec3aae685773b18f3e611d8013ebb4866fee40299 CLOSE_APPROVED FOR BOUNDED SOURCE ONLY: actual verifyAPI/service/pagekeycontract checked; Standards0/Spec0blocking. Browserstubdoesnotcoveractualpageoverlap/unmount/incompletechecks, onlygateunit/sourceinspection; doNOTclaimthesebrowsercases orprovider/LINEinapp/authacceptance.",
     "Luna closure sweep observed2026-10-01T03:47:00Z: liveboundedfetch #709/#699/#611/#711/#712 andissues42/47; allopen/ownedwithspecificremaininggates, advanced/closed0. Evidence/workspace/goal-closure-sweep.md. Nofullinventorycounts inferred. RequiredsamecausePlaybookdelta editedONLYdocs/AGENT-PLAYBOOK.md in42worktree (PB034reportreproduction,PB027savedfieldvsconsumerP1), gitdiffcheckPASS; sourceconsumerfixpending, noDBsuccessclaim.",
     "Observed continuation: source frozen286b1daa at03:49:54Z, Node22typecheck/build/unit284files3645/focused52 PASS, realDBpending. Same review42 actor preliminary confirmed priorP1sourcefix but newP2batchvalidates duplicate dates before skip; FIX_REQUIRED retained and same build42 actor repairing with realroutecounterexample before push. No new audit actor/premium consultation. EffectiveTaipei runtime is distinct from basicSettings timezone contract (which exists); previous tenants.timezone-column absence observation doesnot prove settings contract absent. Same product_scope actor continuing boundedreadonly43acceptance triage, no newbuild/admittedIssue.",
-    "Observed ac8d565 pushed, actualci36813096694/local36813096704/scorecard36813096718 inprogress. fullCiRuns3. P2 sourcefreeze036d622 latestfocused62/typecheckPASS; fullunit3645/build onlyolder286bsource, notlatestacceptance. Same review42 chain awaits source/DBgates. Scout prepared unposted47body /workspace/issue47-pr-body.md, noGitHubwrites. Scope43readonlyfound dashboardAPIerror becomes falseempty; boundedreservebuildadmitted after42sourcefrozenwaitingCI, no openPRidentity so no inventedreserveWIPevent/peak."
+    "Observed ac8d565 pushed, actualci36813096694/local36813096704/scorecard36813096718 inprogress. fullCiRuns3. P2 sourcefreeze036d622 latestfocused62/typecheckPASS; fullunit3645/build onlyolder286bsource, notlatestacceptance. Same review42 chain awaits source/DBgates. Scout prepared unposted47body /workspace/issue47-pr-body.md, noGitHubwrites. Scope43readonlyfound dashboardAPIerror becomes falseempty; boundedreservebuildadmitted after42sourcefrozenwaitingCI, no openPRidentity so no inventedreserveWIPevent/peak.",
+    "Independent review42 preliminary on ac8d565 confirmed bothP1/P2 source repaired, Standards0/Spec0unresolvedsourcefindings,FinalRiskNONE; FINAL_APPROVAL_HOLD for latestsourceCI+LOCAL/canonical. GitHub local36813096704 startup/apply/export/localtargetproof completed successfully, realintegrationstep now running at04:03:24Z; workspace registry blocker doesnot block this disposable GitHub alternative. NoISOLATED_GREEN/CANONICAL_GREENclaimed yet. Reserve43 taskstart04:01:12Z receipt/workspace/build43-receipt.md; ownershipdashboard/i18n plusnewguide-inbox-load helper/unit/browserharness, no42/47sourcecollision.",
+    "Capture clarification: followup actor continuity doesnot erase distinct new task usage.43triage and42CI summaryeachreceivedown taskrecords now; same audit42headrepairfollowups remainone auditlineage. Reserve43fullunitfailedsingleobsolete source-string assertion setActionInbox([]) afterstatecontractrepair; authorizedonly existingtests/unit/guide-action-inbox.43.test.ts ownershipextension. Newrealasynclifecycle unitand390/1280stubconsumerchecksPASS; finalcorrectedfullunitpending. NoProductionacceptanceclaimed.",
+    "Reserve43 READY_FOR_PROMOTION at04:07:29Z, sourceb82c82e0b2294b7b31913c1c98803e1908664efc singleatomiccommit6files165+/20-, clean/noPRpushAudit. Node22typecheck/build/fullunit282files3597/focused30 andactualdashboardstub390/1280APIerror→retry→empty/data/tenantlate-responsePASS; realDB/domaintransition/Production NOT_RUN. Olderassertionfailure preserved, correctedfocused/fullunitnecessaryrerunpassed.47sourcefrozenc3aae685 unchanged, rootmetadataheadb91263fd preparedunposted. Bothbuildersidle; 42awaitsrealLOCALintegration, no inventedreleaseBUILDcontract or dualhealth.",
+    "Current completeGitHubissuescollection fetched <100entries:53openIssues plus8openPR at04:08approx; this is currentinventorysnapshot notRunstart/end fabricatedcount. Issue43/47body synced unmergedcandidate/frozenheads/sourcechecks andremainingrealacceptance, bothOPEN. SourceCI36813096694passed current713head; LOCALintegrationstep success/E2Erunning, new42casecountsawaitterminallogs.",
+    "LOCAL36813096704 exactac8d565terminalsuccess; actuallocal-pr-713-a/freshreplay/seed/integration80files767pass3skip/new42snapshot2PASS0skip/37assignment13PASS; E2E22PASS3skip1flaky bookings-export30sdownloadtimeout passedbuilt-inretry, unresolvedtimingcause preserved not cleanfirstpass. cleanuprecordsuccess/containersstopped. Evidence/workspace/issue42-local-ci-summary.md. PR713nowsoleTEST_VALIDATION; canonicaldispatchpending, fullCiRunsprevious3 untilactualmanualrunobserved. NecessaryboundedTESTreadonly7columnsconfirmed/noDDL."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -277,6 +321,26 @@
         "head": "c14f01ef4f2f795f3efaabe524bfebfee7cc055f",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "Actual PR713 fetched live: open ACTIVE TERRA_BUILD with headc14f01e, guard reports BUILD1/candidate1/TEST0; observed now, no pre-PR backfill."
+      },
+      {
+        "id": "713-build-to-test-exit",
+        "at": "2026-10-01T04:14:57.505Z",
+        "kind": "BUILD_EXIT",
+        "pr": 713,
+        "issue": 42,
+        "head": "c14f01ef4f2f795f3efaabe524bfebfee7cc055f",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Exit original captured BUILD state/head after verified latestPR713metadata TEST_VALIDATION, source advanced through preservedcommits toac8d565; no historicalhead/timestamp rewrite."
+      },
+      {
+        "id": "713-observed-canonical-test-enter",
+        "at": "2026-10-01T04:14:57.505Z",
+        "kind": "TEST_ENTER",
+        "pr": 713,
+        "issue": 42,
+        "head": "ac8d56541bd95fa0b957011a1594ae5afaaa9b25",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "LatestLOCAL36813096704terminalsuccess+cleanup/new42HTTPDB2testsPASS verified; freshopenPRinventoryhadno otherTESTholder; PR713metadataupdatedTEST_VALIDATION/ACTIVE/candidatefalse, standingTESTprojectnmwhwngojosmagjuvxol. Dispatchpendingguard."
       }
     ]
   }
