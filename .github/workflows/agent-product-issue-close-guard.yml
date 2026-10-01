@@ -57,11 +57,28 @@ jobs:
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner, repo, issue_number: issueNumber, per_page: 100,
             });
+            const trustedComments = [];
+            for (const comment of comments) {
+              const handoff = policy.parseRunCaptureHandoff(comment.body ?? '');
+              if (handoff?.event !== policy.PRODUCT_ISSUE_CLOSE_READY_EVENT) continue;
+              const login = comment.user?.login ?? '';
+              if (!login) continue;
+              try {
+                const { data: permission } = await github.rest.repos.getCollaboratorPermissionLevel({
+                  owner, repo, username: login,
+                });
+                if (['admin', 'maintain', 'write'].includes(permission.permission)) {
+                  trustedComments.push({ ...comment, trusted: true });
+                }
+              } catch (error) {
+                core.warning(`Unable to verify close-ready commenter ${login}: ${error.status ?? error.message}`);
+              }
+            }
             const openPullRequests = await github.paginate(github.rest.pulls.list, {
               owner, repo, state: 'open', per_page: 100,
             });
 
-            const ready = policy.findCloseReadyHandoff(comments, issue.closed_at ?? '');
+            const ready = policy.findCloseReadyHandoff(trustedComments, issue.closed_at ?? '');
             let verifiedCi = null;
             const workflowId = Number(
               ready.handoff?.evidenceRef?.match(/^github:workflow#(\d+)$/)?.[1] ?? 0,
@@ -95,7 +112,7 @@ jobs:
               issue,
               currentMainSha,
               openPullRequests,
-              comments,
+              comments: trustedComments,
               verifiedCi,
             });
 
