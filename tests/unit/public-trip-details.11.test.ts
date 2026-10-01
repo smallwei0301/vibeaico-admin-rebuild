@@ -27,10 +27,14 @@ describe('#11 公開行程詳情', () => {
     expect(loader).toContain(".eq('slug', slug)");
     expect(loader).toContain(".eq('status', 'PUBLISHED')");
     expect(columns?.[1]).not.toMatch(/midao_listing_note|midao_listing|tenant_settings|customers|staff|tour_orders/);
-    expect(loader).toContain(".select('id, plan_id, departs_on, start_time, capacity, seats_booked')");
+    expect(loader).toContain(".select('id, departs_on, start_time, capacity, seats_booked')");
     expect(loader).toContain(".eq('trip_id', knownTrip.id)");
-    expect(loader).toContain(".in('plan_id', planIds)");
+    expect(loader).toContain(".eq('plan_id', plan.id)");
     expect(loader).toContain(".eq('status', 'OPEN')");
+    expect(loader).toContain(".eq('plan_id', plan.id)");
+    expect(loader).toContain('.range(offset, offset + pageSize - 1)');
+    expect(loader).toContain('departuresMayBeTruncated');
+    expect(detailPage).toContain('t.departures.truncated');
   });
 
   it('公開 API 有節流、CORS 與不快取設定，並以 404 隱藏未公開行程', () => {

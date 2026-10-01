@@ -12,12 +12,20 @@ const REQUEST_PLAN = randomUUID();
 const FIXED_PLAN = randomUUID();
 const REQUEST_DEPARTURE = randomUUID();
 const FIXED_DEPARTURE = randomUUID();
+const SOLD_OUT_DEPARTURES = Array.from({ length: 125 }, () => randomUUID());
 const SLUG = `issue-11-${randomUUID().slice(0, 8)}`;
 const TITLE = `${TAG} 已發布公開行程`;
 const SECRET_REVIEW_NOTE = `${TAG}-internal-review-note-must-not-leak`;
 const UNSAFE_URL = `${TAG}-javascript-url-must-not-leak`;
-const FUTURE = '2028-06-15';
-const FUTURE_SECOND = '2028-06-16';
+function dateAfter(days: number): string {
+  const date = new Date();
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+const FUTURE = dateAfter(300);
+const FUTURE_SECOND = dateAfter(301);
 
 let admin: SupabaseClient;
 
@@ -106,6 +114,11 @@ beforeAll(async () => {
       plan_id: FIXED_PLAN, departs_on: FUTURE_SECOND, start_time: '10:00',
       capacity: 8, seats_booked: 2, status: 'OPEN',
     },
+    ...SOLD_OUT_DEPARTURES.map((id, index) => ({
+      id, tenant_id: SHOP_A.id, trip_id: PUBLISHED_TRIP,
+      plan_id: REQUEST_PLAN, departs_on: dateAfter(index + 1), start_time: '08:00',
+      capacity: 1, seats_booked: 1, status: 'OPEN',
+    })),
   ]));
 
   const readback = await admin.from('trips').select('id').in('id', [
@@ -118,20 +131,22 @@ beforeAll(async () => {
   mustWrite('方案讀回核實', seededPlans);
   expect((seededPlans.data ?? []).length, '兩筆方案前置資料未完整寫入').toBe(2);
   const seededDepartures = await admin.from('trip_departures').select('id')
-    .in('id', [REQUEST_DEPARTURE, FIXED_DEPARTURE]);
+    .in('id', [REQUEST_DEPARTURE, FIXED_DEPARTURE, ...SOLD_OUT_DEPARTURES]);
   mustWrite('團次讀回核實', seededDepartures);
-  expect((seededDepartures.data ?? []).length, '兩筆團次前置資料未完整寫入').toBe(2);
+  expect((seededDepartures.data ?? []).length, '團次前置資料未完整寫入')
+    .toBe(2 + SOLD_OUT_DEPARTURES.length);
 });
 
 afterAll(async () => {
   if (!admin) return;
-  await admin.from('trip_departures').delete().in('id', [REQUEST_DEPARTURE, FIXED_DEPARTURE]);
+  await admin.from('trip_departures').delete()
+    .in('id', [REQUEST_DEPARTURE, FIXED_DEPARTURE, ...SOLD_OUT_DEPARTURES]);
   await admin.from('trip_plans').delete().in('id', [REQUEST_PLAN, FIXED_PLAN]);
   await admin.from('trips').delete().in('id', [PUBLISHED_TRIP, DRAFT_TRIP, OTHER_TENANT_TRIP]);
 });
 
 describe('#11 公開行程詳情頁與 API', () => {
-  it('匿名旅客可從 slug 詳情頁讀到已發布內容、方案與真實預約入口', async () => {
+  it('略過較早售罄團次後，匿名旅客仍可看到每個方案較晚的可用團次', async () => {
     const { status, body } = await request(`/s/${SHOP_A.shopCode}/trips/${encodeURIComponent(SLUG)}`);
     expect(status).toBe(200);
     expect(body).toContain(TITLE);

@@ -33,7 +33,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { loadPublicShop, type PublicShopData } from '@/server/public-shop';
+import { loadPublicShop } from '@/server/public-shop';
+import { PublicContactActions } from '@/components/public/PublicContactActions';
 import { recordPromotionPageView } from '@/server/promotion-events';
 import { publicShopPage as t } from '@/i18n/zh-TW/pages/public-shop';
 import { formatCurrency } from '@/lib/utils';
@@ -89,42 +90,6 @@ function formatDepartureDate(departsOn: string): string {
   return `${m}/${d}（${WEEKDAYS[weekday]}）`;
 }
 
-function ContactActions({ shop }: { shop: PublicShopData['shop'] }) {
-  const actions: React.ReactNode[] = [];
-  if (shop.lineBasicId) {
-    // LINE 官方帳號基本 ID 形如 @abc1234x；加好友連結是 line.me/R/ti/p/{basicId}
-    actions.push(
-      <a
-        key="line"
-        className="btn btn-primary"
-        href={`https://line.me/R/ti/p/${encodeURIComponent(shop.lineBasicId)}`}
-        target="_blank"
-        rel="noreferrer noopener"
-      >
-        {t.booking.viaLine}
-      </a>,
-    );
-  }
-  if (shop.phone) {
-    actions.push(
-      <a key="tel" className="btn btn-outline" href={`tel:${shop.phone.replace(/[^\d+]/g, '')}`}>
-        {t.booking.viaPhone(shop.phone)}
-      </a>,
-    );
-  }
-  if (shop.email) {
-    actions.push(
-      <a key="mail" className="btn btn-outline" href={`mailto:${shop.email}`}>
-        {t.booking.viaEmail(shop.email)}
-      </a>,
-    );
-  }
-  if (actions.length === 0) {
-    return <p className="text-sm text-secondary">{t.booking.noContact}</p>;
-  }
-  return <div className="flex flex-wrap gap-2">{actions}</div>;
-}
-
 export default async function PublicShopPage({ params, searchParams }: Params) {
   const { shopCode } = await params;
   const data = await loadPublicShop(shopCode);
@@ -156,7 +121,7 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
         <div className="card-body flex flex-col gap-3">
           <h2 className="text-base font-medium">{t.booking.title}</h2>
           <p className="text-sm text-secondary">{t.booking.howTo}</p>
-          <ContactActions shop={shop} />
+          <PublicContactActions shop={shop} labels={t.booking} />
           <Link href={`/s/${shopCode}/my-orders`} className="text-sm text-secondary underline w-fit">
             {t.booking.myOrdersLink}
           </Link>

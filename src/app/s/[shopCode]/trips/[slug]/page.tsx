@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { loadPublicTripDetails, type PublicShop } from '@/server/public-shop';
+import { loadPublicTripDetails } from '@/server/public-shop';
+import { PublicContactActions } from '@/components/public/PublicContactActions';
 import { publicShopPage } from '@/i18n/zh-TW/pages/public-shop';
 import { publicTripDetailsPage as t } from '@/i18n/zh-TW/pages/public-trip-details';
 import { formatCurrency } from '@/lib/utils';
@@ -37,40 +38,6 @@ function formatDepartureDate(departsOn: string): string {
   const [year, month, day] = departsOn.split('-').map(Number);
   const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
   return `${month}/${day}（${t.departures.weekdays[weekday] ?? ''}）`;
-}
-
-function ContactActions({ shop }: { shop: PublicShop }) {
-  const actions: React.ReactNode[] = [];
-  if (shop.lineBasicId) {
-    actions.push(
-      <a
-        key="line"
-        className="btn btn-line"
-        href={`https://line.me/R/ti/p/${encodeURIComponent(shop.lineBasicId)}`}
-        target="_blank"
-        rel="noreferrer noopener"
-      >
-        {t.contact.viaLine}
-      </a>,
-    );
-  }
-  if (shop.phone) {
-    actions.push(
-      <a key="phone" className="btn btn-outline" href={`tel:${shop.phone.replace(/[^\d+]/g, '')}`}>
-        {t.contact.viaPhone(shop.phone)}
-      </a>,
-    );
-  }
-  if (shop.email) {
-    actions.push(
-      <a key="email" className="btn btn-outline" href={`mailto:${shop.email}`}>
-        {t.contact.viaEmail(shop.email)}
-      </a>,
-    );
-  }
-  return actions.length ? <div className="flex flex-wrap gap-2">{actions}</div> : (
-    <p className="text-sm text-secondary">{t.contact.noContact}</p>
-  );
 }
 
 export default async function PublicTripDetailsPage({ params }: Params) {
@@ -238,8 +205,13 @@ export default async function PublicTripDetailsPage({ params }: Params) {
                         <p className="text-2xs text-secondary">{t.departures.availabilityNote}</p>
                       </div>
                     ) : (
-                      <p className="text-sm text-secondary">{t.departures.empty}</p>
+                      <p className="text-sm text-secondary">
+                        {plan.departuresMayBeTruncated ? t.departures.truncated : t.departures.empty}
+                      </p>
                     )}
+                    {plan.departuresMayBeTruncated && plan.departures.length > 0 ? (
+                      <p className="text-sm text-secondary">{t.departures.truncated}</p>
+                    ) : null}
                     {plan.salesMode === 'REQUEST' ? (
                       <Link className="btn btn-primary w-fit" href={`/s/${shopCode}/plans/${plan.id}/request`}>
                         {t.plans.requestCta}
@@ -266,7 +238,7 @@ export default async function PublicTripDetailsPage({ params }: Params) {
           <h2 className="text-base font-medium">{t.trip.cancellationPolicyTitle}</h2>
           <p className="text-sm text-secondary">{refundPolicy}</p>
           <h2 className="text-base font-medium">{t.contact.title}</h2>
-          <ContactActions shop={shop} />
+          <PublicContactActions shop={shop} labels={t.contact} />
         </div>
       </section>
     </main>

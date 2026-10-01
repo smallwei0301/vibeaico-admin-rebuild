@@ -101,6 +101,8 @@ export type PublicTripDetailDeparture = {
 
 export type PublicTripDetailPlan = PublicPlan & {
   departures: PublicTripDetailDeparture[];
+  /** True when more future rows remain beyond the bounded public read window. */
+  departuresMayBeTruncated: boolean;
 };
 
 export type PublicTripDetails = {
@@ -153,9 +155,14 @@ export type PublicShopData = {
 
 /** 一個行程最多顯示幾個近期團次——公開頁不是後台，不需要全部列出來。 */
 const MAX_DEPARTURES_PER_TRIP = 6;
-/** 詳情頁各方案的近期團次上限與單次查詢總上限。 */
+/** 詳情頁每個方案最多顯示的近期團次。 */
 const MAX_DETAIL_DEPARTURES_PER_PLAN = 6;
-const MAX_DETAIL_DEPARTURES_PER_TRIP = 120;
+/**
+ * Scan future OPEN rows per plan so sold-out dates cannot hide a later available date.
+ * A bounded scan protects public request latency; the UI marks the list when rows remain.
+ */
+const DETAIL_DEPARTURE_PAGE_SIZE = 120;
+const MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN = 1200;
 
 /**
  * ⚠️ 店家代碼的形狀與長度上限由 `@/lib/shop-code` 統一提供，**每一個會寫入
@@ -420,36 +427,77 @@ async function loadPublicTripDetailsUncached(
   const row = rawRow as Record<string, unknown> | null;
   if (!row) return null;
 
-  const planIds = knownTrip.plans.map((plan) => plan.id);
-  const { data: departureRows, error: departuresError } = planIds.length === 0
-    ? { data: [], error: null }
-    : await admin.from('trip_departures')
-      .select('id, plan_id, departs_on, start_time, capacity, seats_booked')
-      .eq('tenant_id', shopData.tenantId)
-      .eq('trip_id', knownTrip.id)
-      .in('plan_id', planIds)
-      .eq('status', 'OPEN')
-      .gte('departs_on', taipeiToday())
-      .order('departs_on', { ascending: true })
-      .order('start_time', { ascending: true, nullsFirst: true })
-      .limit(MAX_DETAIL_DEPARTURES_PER_TRIP);
-  if (departuresError) throw queryTripDetailsFailed('trip_departures', departuresError);
+  const planDepartureResults = await Promise.all(knownTrip.plans.map(async (plan) => {
+    const departures: PublicTripDetailDeparture[] = [];
+    let offset = 0;
+    let scanned = 0;
+    let exhausted = false;
 
-  const departuresByPlan = new Map<string, PublicTripDetailDeparture[]>();
-  for (const departure of departureRows ?? []) {
-    const planId = departure.plan_id as string;
-    const list = departuresByPlan.get(planId) ?? [];
-    const capacity = Number(departure.capacity ?? 0);
-    const seatsBooked = Number(departure.seats_booked ?? 0);
-    if (seatsBooked >= capacity || list.length >= MAX_DETAIL_DEPARTURES_PER_PLAN) continue;
-    list.push({
-      id: departure.id as string,
-      departsOn: departure.departs_on as string,
-      startTime: departure.start_time == null ? '' : String(departure.start_time).slice(0, 5),
-      seatsLeft: capacity - seatsBooked,
-    });
-    departuresByPlan.set(planId, list);
-  }
+    // Query each plan independently. A busy plan must not consume another plan's window.
+    while (departures.length < MAX_DETAIL_DEPARTURES_PER_PLAN
+      && scanned < MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN) {
+      const pageSize = Math.min(
+        DETAIL_DEPARTURE_PAGE_SIZE,
+        MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN - scanned,
+      );
+      const { data, error: departureError } = await admin.from('trip_departures')
+        .select('id, departs_on, start_time, capacity, seats_booked')
+        .eq('tenant_id', shopData.tenantId)
+        .eq('trip_id', knownTrip.id)
+        .eq('plan_id', plan.id)
+        .eq('status', 'OPEN')
+        .gte('departs_on', taipeiToday())
+        .order('departs_on', { ascending: true })
+        .order('start_time', { ascending: true, nullsFirst: true })
+        .order('id', { ascending: true })
+        .range(offset, offset + pageSize - 1);
+      if (departureError) throw queryTripDetailsFailed('trip_departures', departureError);
+
+      const rows = data ?? [];
+      scanned += rows.length;
+      offset += rows.length;
+      for (const departure of rows) {
+        const capacity = Number(departure.capacity ?? 0);
+        const seatsBooked = Number(departure.seats_booked ?? 0);
+        if (seatsBooked >= capacity) continue;
+        departures.push({
+          id: departure.id as string,
+          departsOn: departure.departs_on as string,
+          startTime: departure.start_time == null ? '' : String(departure.start_time).slice(0, 5),
+          seatsLeft: capacity - seatsBooked,
+        });
+        if (departures.length >= MAX_DETAIL_DEPARTURES_PER_PLAN) break;
+      }
+
+      if (rows.length < pageSize) {
+        exhausted = true;
+        break;
+      }
+    }
+
+    // If the bounded window ended before six available dates were found, check whether
+    // another future row exists so the page can say that this list is incomplete.
+    let mayBeTruncated = false;
+    if (!exhausted && departures.length < MAX_DETAIL_DEPARTURES_PER_PLAN
+      && scanned >= MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN) {
+      const { data, error: lookaheadError } = await admin.from('trip_departures')
+        .select('id')
+        .eq('tenant_id', shopData.tenantId)
+        .eq('trip_id', knownTrip.id)
+        .eq('plan_id', plan.id)
+        .eq('status', 'OPEN')
+        .gte('departs_on', taipeiToday())
+        .order('departs_on', { ascending: true })
+        .order('start_time', { ascending: true, nullsFirst: true })
+        .order('id', { ascending: true })
+        .range(scanned, scanned);
+      if (lookaheadError) throw queryTripDetailsFailed('trip_departures', lookaheadError);
+      mayBeTruncated = (data ?? []).length > 0;
+    }
+
+    return [plan.id, { departures, mayBeTruncated }] as const;
+  }));
+  const departuresByPlan = new Map(planDepartureResults);
 
   const gallery = publicStringList(row.gallery)
     .map(safePublicHttpsUrl).filter(Boolean);
@@ -478,7 +526,8 @@ async function loadPublicTripDetailsUncached(
         ? row.refund_policy_type : 'STANDARD',
       plans: knownTrip.plans.map((plan) => ({
         ...plan,
-        departures: departuresByPlan.get(plan.id) ?? [],
+        departures: departuresByPlan.get(plan.id)?.departures ?? [],
+        departuresMayBeTruncated: departuresByPlan.get(plan.id)?.mayBeTruncated ?? false,
       })),
     },
   };

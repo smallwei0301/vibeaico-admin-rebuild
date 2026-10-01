@@ -44,6 +44,7 @@ export const publicTripDetailsPage = {
   departures: {
     title: '此方案近期開放日期',
     empty: '目前尚未顯示此方案的出發日期，請從方案入口查看或聯絡店家確認。',
+    truncated: '此方案日期較多，目前只顯示已確認名額的近期日期；請聯絡店家查詢更多時段。',
     seatsLeft: (count: number) => `剩 ${count} 位`,
     noStartTime: '時間未定',
     availabilityNote: '名額會隨預約變動，送出前仍會再次確認。',
