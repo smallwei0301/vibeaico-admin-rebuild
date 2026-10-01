@@ -377,6 +377,19 @@
         "cachedTokens": null,
         "count": 1,
         "note": "Distinctreview42 vsbuilder42 EARLY exact11d194e source9releaseCIunit+refundnativepreconditionfiles on263b. Two-axis currentselectors/exactclosure/prereqs/0099literalalias/35+1pending/requiredexactcases/fixturecleanup; sourceplan92units notnative. GOV_GATE independentFinalRisk separatepending. NoCLOSE_APPROVE beforefreshnative/CI/canonical/requiredRisk. Main723 branchonlyseasonalrequiredfile mapping barrier; manifest+lastwriterG2technicalgapexplicit notOwnerpermission. Requestedgpt6.1sol OwnerSESSION actualunknown."
+      },
+      {
+        "id": "20261001-luna-closeout42-seasonal-lessons",
+        "role": "closure",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "CanonicalLUNA_CLOSURE newlyadmitted boundedPB-onlypatch after723maina30 merge. Scope conditionalsharedoriginalasset retirement/restore flaw, lossresponsepath/logonlyStoragecleanup, disposabletenant+unknownlatecommitfailclosed, actual30stimeoutDELETEwait/retry29.6PASS timingmargin; no inferredStorage/provider rootcause orfakezerojournal. Search/updateexistingPBroot; freshmainAGENTSCLAUDEEXEC read beforeedit. RootalonewritesRunJSONMD. PureGovpublicationnotProductCI/outcome/modelgate; suppliespatchonly noPRpush/DB/provider/Source/Issuewrite."
       }
     ],
     "fullContextReplays": 0,
@@ -393,7 +406,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 17,
+    "fullCiRuns": 19,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -409,8 +422,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 5,
-    "lunaAccepted": 5,
+    "lunaTasks": 6,
+    "lunaAccepted": 6,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -523,7 +536,17 @@
     "2026-10-01T09:37:18.187426+00:00 Source-contract probes (synthetic only/no DB): current7 plan+actualmanifest rejects MISSING_IMPACT_MANIFEST_ENTRY0128; in-memory prospective0130/0132 same canonicalroutine impacts rejects AMBIGUOUS_IMPACT_OWNERSHIP create_tour_order. Therefore adding entries alone cannotcompleteG2; existing consistency evidence needs explicit exact reviewed finalwriter closure handling, notgenericduplicate allowance or removalofSQLimpact truth. This is a separate necessaryboundedsource gap, no699 takeover/remote permission.",
     "2026-10-01T09:40:22.986802+00:00 Task22 frozen11d194e clean9sourcefiles cumulative263b461+/9-;92units/type/integrity/sourceplanexact7AUTHZ+mappingdiscoveryPASS nativeNOT_RUN. Task25 distinctreview42 EARLY review admitted before dispatch oncurrentfreeze; nootherordinaryFINAL inprogress. Run25tasks/full17/soltouch15; no newBUILDPR/CIcount. Root formalpublication follows head/base/materialparent723 proof and metadata preflight; missingmanifest/finalwriterG2 followon unresolved, no release readiness.",
     "2026-10-01T09:43:20.765129+00:00 Task25 EARLY current11d P2 FIX_REQUIRED: REQUEST required7 nativecases afterEach ignores resolvedDELETE error/nozero readback; selectedclosurecleanup lacks REQUEST ownedorderscope, thus residue can green. SameTask22 Source claim loweredIN_PROGRESS BEFORE repair, explicit10thownedfile tests/integration/api/tour-request-accept.46.test.ts added beforedispatch. Minimalorders tag prefix request-accept-46- pertest lifecycle,discover lostresponse children byownedtag,delete error+zero readback+retainprimarycleanupfailures; closure read-only tagScopezero withnegativeunit. Do notredo REQUEST business or alterSQL/runtime/G2. NativefullCI NOT_RUN; source11d no acceptance; sameEARLYchain supplement afterfreshfix notsecondEARLY/Final.",
-    "2026-10-01T09:48:21.380820+00:00 SameTask22 P2 Sourcefix frozenea75f885f382f69d5ab52dd07bc4ad4940b91766 clean/0b11d ancestry10files532+/18-; exactREQUEST markersdiscovery/resolvedDELETEerror/noteIDzero/dualPlanrestore/readback/AggregateError withprimary retention; G3REQUESTprefixreadonlyzero/residueHTTPerrorunits. Node22type93focused/noDB17REQUESTcollection/integrityPASS, initialmockscopefailurefixednotguard. Newnative/CI NOT_RUN. SameTask25 EARLY supplement admittedcurrentea75 afterP2fix, nosecondEARLY/newtask/counter; formalpublication next afterexactmetadata/currentownership proof, noSourceVerified/FinalRisk/TESTrelease/Prodclaim."
+    "2026-10-01T09:48:21.380820+00:00 SameTask22 P2 Sourcefix frozenea75f885f382f69d5ab52dd07bc4ad4940b91766 clean/0b11d ancestry10files532+/18-; exactREQUEST markersdiscovery/resolvedDELETEerror/noteIDzero/dualPlanrestore/readback/AggregateError withprimary retention; G3REQUESTprefixreadonlyzero/residueHTTPerrorunits. Node22type93focused/noDB17REQUESTcollection/integrityPASS, initialmockscopefailurefixednotguard. Newnative/CI NOT_RUN. SameTask25 EARLY supplement admittedcurrentea75 afterP2fix, nosecondEARLY/newtask/counter; formalpublication next afterexactmetadata/currentownership proof, noSourceVerified/FinalRisk/TESTrelease/Prodclaim.",
+    "2026-10-01T09:52:42.888178Z PR725 formalMAIN exactb9/base263b createdlive/12files643+/23-/bodymatchespreflight. Currentmain263b unchanged; Rootpublication onlyRun2 beyondreviewedea75.Source preflightPASS/integrityPASS afterone local symbolicHEAD rejection correctedfullSHA(noCI). SourceCI/LOCAL notyetobserved, nofullCIcountinvented.",
+    "2026-10-01T09:52:42.888178Z Task23 freshcanonical23 complete: run36840741621 exact0d workflow_dispatch started09:08:04Z/terminalSUCCESS09:49:11Z; integration759PASS58SKIP/78files4skip/seasonal10+formation3PASS; interval36POLICY_SKIPNOTRUN. E2E21PASS3SKIP2flaky addons+welcome retry1PASS; welcome firstattempt30s failedremoveStage line142waitDELETEupload,response retry29.6sPASS. Own rawsettingsStorageempty assertions executed onpass, noindependentzerocountjournal; fixtureassignmentrestore1.036sPASS/Nextstop09:44:37.758/jobcleanup09:49:08.885. G3allSKIPnotrelease/Prodreadiness. SameTask23 FINAL ordinaryreview admittedafterfreshnative/currentheadcleanup; soleFinal nowreview47, explicitlyassessflaky/timeout/sourceunknown nofalseprimarygreen. NoSourceVerified/mergeclaimyet. Summary /workspace/issue42-canonical-test-summary.md.",
+    "2026-10-01T09:57:01.466246+00:00 Actualfirst725SourceCI36845329688 andLOCAL36845329621 bothstarted09:50:37Z exactb9 capturedasonefullcycle18. SourceCI success/checktypeunitbuild actual/sourceonlyintegrationE2EpolicySKIP notcanonical; LOCALactualsetup/integrationrunning noNativegreenyet. FirstWIP36845329907 noTrustedAstra attestationfailure; metadataedit triggersnormalautorefresh36845727501 latestsuccess noFinalRiskrevieweverdispatched/claimed. Fixedbody TEST_ENV_ID local-pr-725-a matchesdeterministicactualworkflow identity, noSource/noCIrerun. SameTask23FINALfresh0d CLOSE_APPROVED StandardsSpec0 RiskNONE09:53:31Z boundedSourceacceptance only, flakywelcome0.4s timingmarginnonblocking andnoindependentcleanupUUIDjournal preserved.",
+    "2026-10-01T10:03:14.096Z PR723 sourceacceptance mergedverifiedmaina30. MandatorycloseoutIssue42/PR/PBmain stillpending; roleterminal SourceOnly verified true. Source725b9 nativeE2EPASS lastobserved10:01:30destroyingstack NOTterminal. Canonical723 seasonalfile nowmaincreatesmaterial acceptance-precondition change for725 exactG3requiredcases, so AFTER oldLOCAL terminalcleanup normalmergea30 (notunrelatedrebase/noforce); actualnewSource/nativechecks required freshbeforeFinalRisk. Oldb9source93units/Native cannotpretendnewmaincase10 acceptance. FirstWIPpolicyerror duplicate-suppressedworkflowSuccess persistspolicyblocker NoAstra; notapproved/Ownerblocked. RootpreparedmetadataStage_SOURCE_VERIFIED723 preflightcheckedPASS beforemerge; review5377767185 actualindependentreceipt submittedCOMMENTno selfAPPROVE.",
+    "2026-10-01T10:04:09.450865+00:00 Task26 LUNA_CLOSURE acceptedbeforedelegation onnewworktree/product-42-seasonal-closeout branchdocs/issue42-seasonal-closeout-20261001 fromactualmaina30. Mandatory723sourcecloseoutPBdelta pending untilpatchnormalprotectedmerge/mainreread; RootownsRun. 725firstb9 LOCALterminalSUCCESS10:01:36Z 807PASS3skip/E2E23PASS3skip/refund3REQUEST17interval36/welcome17.1/loopbacklocal-pr725a/vibeaico725a/stackstop+LOCAL_CLEANUP_VERIFIED. This is isolatedsourceproof noG3/Prod/FinalRisk. Required723test nowmain ismaterialacceptanceprecondition; normalmergea30 into725 thenfreshnative/CI legitimate notblindrerun.",
+    "2026-10-01T10:09:37.762185+00:00 Actualmain723mergepushCI36846439984 exacta30 started10:01:01Z/firstobserved10:05:19Z, integrationjob110318669365 actualremoteRun integrationtests at10:06:10Z currentsoleholder; checktype/unit/buildsuccess/G3releaseplanSKIP. fullCI19 capturedactualnotprediction, mainacceptancepending.",
+    "2026-10-01T10:09:37.762185+00:00 Source725materialnormalmerge currentmaina30 required723canonicalcasefile completeddf861fcc89c69dbd3d83bd2ebaee0b10dca9c246, only parent2tests mainSource adopted noSQL/alias/G2/Source10changes; byteparityseasonalmainPASS. Roottypecheckfirstattemptmissingnode_modules/tsc NOT_RUN; unguardednpx attemptedvitestlatest fetch butno testPASS/dependencyfilechange claimed, noactiveprocessremains. Existingrepo dependency package+lockbyteparitycheckedthenownedsymlink restored canonicalcache; actualNode22.23.3 Vitest4.1.11/TS5.7.3 typecheck/93focusedPASS. SameTask22 builder receivesboundedactualmain-case discovery validation beforeformalpush/newCI, noDB/Source/Run/push; no newtask/touch. Oldb9LOCAL807/3historynotproofseasonal10; nextnewheadnative/CI mustfresh. NewlypublishedRunJSONupdatewillbeRootonlynoforce/cherry.",
+    "2026-10-01T10:14:15.701210+00:00 SameTask22 actualmain collectiondf861 found genuineSourceFIX_REQUIRED beforepublish: seasonal all10 renderedfullNames quoted/truncated by pinnedVitest4.1.11, preparedrawscenario names allmismatch; refund3/REQUEST7 actualmatch/seasonmainBYTEparity/integrityPASS. SourceclaimremainsIN_PROGRESS. Rootauthorizesminimal same-ownedAUTHZcontract+meaningful existingG3unit actual-rendered fixture positive/rawunquoted negatives/pending/missing refuse, noParent723test/SQL/G2/SourceScopeexpansion. Actual10namesmustuniquebind, no fuzzylookup/genericACL/textprefixacceptance. CommitnecessaryfixthenRootfreshmetadata/CI; nofullCI20untilactualnewrun. Crossbranch728case inferredstrings bugcaughttrustedpreflight/discovery notremote interactivefailure.",
+    "2026-10-01T10:23:46.880466+00:00 Resumedgoal HARD_START fetchprune actualorigin/main a30acac04aad838d4b04da9c5464b5b6f33e06b6 FULLAGENTS/CLAUDE/EXEC read; RULES_MAIN_SHA a30. SameTask22 freeze cfefefe1cb150e461f62d6b96a97b7659c270513 rendered-namefix 2ownedfiles45+/10- noParentSQLG2aliaschange, actual20bindingsPASS30collected0nativeexecuted; 94focused/type/exactintegrityPASS builderreceipt, no push. Root accepts for sameTask25 EARLY supplement; old b9 native remains historical, newhead native NOT_RUN; no new task/touch/CI counter. Scout currentmain36846439984 remainsintegrationactive at10:19:51 sole sharedTEST. OwnerSESSION Sol6.1 build/audit distinctactors override currentmain stale §4; #711 unmerged ownedother remainsnotpolicy.",
+    "2026-10-01T10:25:39.579363+00:00 SameTask25 supplementary EARLY cfefefe1 SOURCE_CLEAR_FINAL_HOLD independentactual30collection20exactbindings nofuzzy; prior0099/exact7/P2cleanup unchanged. Newnative/GOV_GATE FinalRisk/G2pending. PureGov PR72662b71b277b790734a988961db2d276db9f6810e1 onePB052docs7+/3- preflightPASS beforepush/create; noProducttask/CI/outcome counter. Issue42 authoritativecloseout5929466676 statesPlaybookPending and wholeOPEN, removedmerged723stalelane verifiedmutationresponse."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -624,7 +647,23 @@
         "claimedState": "MERGED_TO_MAIN",
         "observedState": "MERGED_TO_MAIN",
         "verification": "VERIFIED",
-        "evidenceRef": "pr719 mergedtrue/merged_at2026-10-01T07:37:57Z merge701845e4783f9eb87a19e3b3da52f49018134ea9; freshoriginmain701845e/reachable; d009SQLpinancestorretained; sixsourceblobsidentical7a/actualmainSQLreread. Source/local/bootstrap+distinctCLOSE_APPROVED verified; mainpushCI/remoteG3/Production/auth/atomicjourneypending. MAIN_CI_AFTER_MERGE=failure exact701845e/push ci36831447495 terminal2026-10-01T08:22:12Z; integration749PASS58SKIP/46whole36NOT_RUN/E2E1failed2flaky20PASS3SKIP welcome-card-upload30s; latest main263b ci36833333706 pending, no authenticated acceptance."
+        "evidenceRef": "pr719 mergedtrue/merged_at2026-10-01T07:37:57Z merge701845e4783f9eb87a19e3b3da52f49018134ea9; freshoriginmain701845e/reachable; d009SQLpinancestorretained; sixsourceblobsidentical7a/actualmainSQLreread. Source/local/bootstrap+distinctCLOSE_APPROVED verified; mainpushCI/remoteG3/Production/auth/atomicjourneypending. MAIN_CI_AFTER_MERGE=failure exact701845e/push ci36831447495 terminal2026-10-01T08:22:12Z; integration749PASS58SKIP/46whole36NOT_RUN/E2E1failed2flaky20PASS3SKIP welcome-card-upload30s; latest main263b ci36833333706 terminalSUCCESS09:02:47Z distinctnewmain749PASS58skip/E2E20PASS3skip3flaky retriesPASS, no authenticated acceptance."
+      },
+      {
+        "type": "SOURCE_VERIFIED",
+        "subject": "issue#42 pr#723 boundedseasonal snapshot acceptance anddisposable welcomeE2E exact0d178dc8f40748e0d29a4213c564dc6a03f4042c",
+        "claimedState": "SOURCE_VERIFIED",
+        "observedState": "SOURCE_VERIFIED",
+        "verification": "VERIFIED",
+        "evidenceRef": "exact0d source36838286092SUCCESS/LOCAL36838286306 integration814PASS3skip seasonal10 E2E23PASS3skip welcome23.3/ownedcleanup+stackstop08:56:15; canonical36840741621 SUCCESS09:49:11/integration759PASS58skip seasonal10formation3/E2E21PASS3skip2flaky welcomefirst30stimeoutremoveDELETEwait/retry29.6PASS; fixtureassignmentrestore/Nextstop09:44:37.758/jobcleanup09:49:08.885. Distinctreview47 finalCLOSE_APPROVED StandardsSpec0 RiskNONE/issue42-seasonal-independent-review.md09:53:31. G3interval36policyNOTRUN/noProdacceptance/fullIssueclose. Cleanupsuccessfulretryforcedassertions executed noindependentzerojournal."
+      },
+      {
+        "type": "MERGED_TO_MAIN",
+        "subject": "issue#42 pr#723 boundedseasonal-order snapshot acceptance anddisposable welcomeE2E",
+        "claimedState": "MERGED_TO_MAIN",
+        "observedState": "MERGED_TO_MAIN",
+        "verification": "VERIFIED",
+        "evidenceRef": "PR723live mergedtrue/merged_at2026-10-01T10:00:58Z mergea30acac04aad838d4b04da9c5464b5b6f33e06b6; freshfetchmaina30/reachable andboth sourcefiles rereadBYTE_IDENTICAL0d. Current sourceLOCALcanonical+distinctreview47FinalCLOSE_APPROVED StandardsSpec0 RiskNONE verified withflakyfirstattempt/welcome29.6retry+cleanupjournalUNKNOWNpreserved. MainpushCI/AUTOdeploy/ProductionSchema/authpending; #42wholeOPEN; necessaryPBdelta/Issuecloseoutpendinguntilactualmain. Sourceacceptance only no transactionshipped."
       }
     ]
   },
@@ -800,6 +839,26 @@
         "head": "0d178dc8f40748e0d29a4213c564dc6a03f4042c",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "Actual PRbodysoleTEST_VALIDATION after263mainterminalSUCCESS; standingTESTrefnmwhwngojosmagjuvxol. Guardauto-dispatchpending; no runtime/schema/G3/provider mutation claim."
+      },
+      {
+        "id": "725-closure-release-main-build-enter",
+        "at": "2026-10-01T09:52:42.888Z",
+        "kind": "BUILD_ENTER",
+        "pr": 725,
+        "issue": 46,
+        "head": "b9ca220324f796eee0a7535ab5f6ed91c4980331",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Actual livePR725 verified opened9:50:34,base263b/exactb9/12files643+/23-. SameTask22 formally published MAIN after723actualTESTrole releasesBUILD. Ten ownedsource release+nativefiles andRootRun2; Task25 EARLY SourceP2fixclear ea75/currentb9 onlymetrics. Native/CI/FinalRiskpending/noSourceVerified/G3/Prod, singleBUILD fallback1/noReserve."
+      },
+      {
+        "id": "723-merged-canonical-test-exit",
+        "at": "2026-10-01T10:03:14.096Z",
+        "kind": "TEST_EXIT",
+        "pr": 723,
+        "issue": 42,
+        "head": "0d178dc8f40748e0d29a4213c564dc6a03f4042c",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "ActualPR723normalmergea30verified/freshmain/reachable/twoblobs; canonicalTESTterminalsuccess09:49:11 andindependentordinaryFINAL. ClosedPRnolongerholder, Source725stillsoleBUILD/LOCALnotshared; newmainpushmayholderpendingactualCIobservation. NoG3/Prod/wholeIssueclose/shipped."
       }
     ]
   }
