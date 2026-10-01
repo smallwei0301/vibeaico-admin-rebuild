@@ -385,7 +385,9 @@
     "Independent necessary docs-closeout718 review found two LOCAL_TEST_GREEN claim states used ISOLATED_GREEN_WITH_CLEANUP unsupported bycurrent scorer. Normalizeclaimed/observed tosuccess based actual terminal successful ac8/f1LOCAL workflows; cleanup remains explicit evidenceRef. Preserveoriginalstate wording in thisnote, no historicalCI/result rewrite/newProducttest. Pairedreport regenerates, samegov reviewchain rechecks.718merge helduntil713mainpushterminal toavoid sharedmutexpending replacement.",
     "715exactf1 source/LOCALgreen withcleanup, CanonicalNOT_RUN andFinalHOLD. FrozenPARKEDonlylane afterlocalacceptancewaiting sharedmain716then713; do not replacequeued713acceptancebynewdispatch/merge. Root selects soleMAIN promotionofprivateReserve46nativeSourcePrepare+knownIANAfoldrepair; no sourceOutcome/shipped claim.",
     "Govclosure718 merged06:35:03Z at4b8b86d freshfetch/reachable/PB027 status reread; 3docs only/independent0f3PASS/requiredchecksallgreen. Mergehold condition was toprotect queued713; after716terminal713startedactive06:26 cancel-in-progressfalse prevents replacement, soRootlegallymergedsuccessor. Source42Issuebody/checklist/PRterminal/labels/authoritativecloseout synced, PLAYBOOK_DELTA nowVERIFIED_IN_MAIN andboundedsourcecloseoutCOMPLETE; whole42OPEN/mainCI schemaauthpending. Govmerge/CI is separatelynotProductOutcome ornewProducttask. SoleMAIN46continuedsamebuilderTasklineage knownfold+nativeadmission repair noPR/pushyet;715PARKEDnoIndividualPoll.",
-    "MAIN46source61f9435 freeze threeownedpaths, nativecompile/DBNOT_RUN. WholeLOCAL/G3fixedartifactadmission addednotfunctionexistskip; ordinary33POLICY_SKIP/NOT_RUN. Source-static26/type/integrityPASS only. Necessary followoncanonical0135selector+pendingcoveragewiring missing, noProduction ready/activation/atomicreservation. EARLY distinctreview46dispatchobserved beforepublication=>task18/SolTouches10; previousReserve46logicalbuilder reusedformalpromotion/nosecondactor."
+    "MAIN46source61f9435 freeze threeownedpaths, nativecompile/DBNOT_RUN. WholeLOCAL/G3fixedartifactadmission addednotfunctionexistskip; ordinary33POLICY_SKIP/NOT_RUN. Source-static26/type/integrityPASS only. Necessary followoncanonical0135selector+pendingcoveragewiring missing, noProduction ready/activation/atomicreservation. EARLY distinctreview46dispatchobserved beforepublication=>task18/SolTouches10; previousReserve46logicalbuilder reusedformalpromotion/nosecondactor.",
+    "Actual719created06:46:44Z exact473050c source61f+RootlatestRun. EARLY review46 sourceclearfinalHOLD onthreepaths andindependentriskNONE onlyreadonlyPREPARE. Rootpreflightmissingpr-lifecycle caughtbeforepush/PR thenfixedheaderPASS, noinvalidCIrerun. SourceBody TEST_ENV_ID descriptiveissue46-local-a, runneractualexpectedlocal-pr-719-a; adjustbody truthfulspecificvalue onceactualpipelineobserved, notinventhealth.",
+    "2026-10-01T06:55:21.626+00:00 PR719 native/source workflows NOT_REPORTED because live mergeable=false/dirty. merge-tree confirms conflicts only owning Run JSON/MD after governance718; Root normal merge currentmain4b and resolves using owning current raw ledger, regenerates MD. No source conflict, no no-op rerun, no CI success/counter inferred. Initial publication failed to detect this merge conflict; corrected before native acceptance. Exact new head needs fresh CI."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -580,6 +582,16 @@
         "head": "dec730fdced46d369d7be7e2f3c4e97973cb8521",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "Exit originallycapturedBUILDheaddec; actualPRnewheadf1c0438PARKED afterLOCAL terminalsuccesscleanup; solecanonical mutex716then713queues prevent fresh canonical admissionwithoutreplacingqueued713. Frozen noagent/push/poll untilreactriage."
+      },
+      {
+        "id": "719-promoted46-observed-build",
+        "at": "2026-10-01T06:47:34.328Z",
+        "kind": "BUILD_ENTER",
+        "pr": 719,
+        "issue": 46,
+        "head": "473050c564b4dc5b1e39bac1eeb06ad91ac1e057",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "ActualPR719created06:46:44Z ACTIVE soleBUILD LOCAL_ISOLATED SOURCE_PREPARE, frozen61f nativeNOT_RUN +RootRunmetadata473. 715/714PARKED, main713sharedTEST active, no remoteDDL; futurecanonical13selector/coverage missingfollowon."
       }
     ]
   }
