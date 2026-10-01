@@ -26,6 +26,8 @@ import {
   getTrip, listTripAddons, listTripDepartures, listTripPlans, requestMidaoListing,
   saveTripAddon, saveTripDeparture, saveTripPlan, saveTripPlanSeason, updateTrip,
 } from '@/services/tours';
+import { getTenantSettings } from '@/services/settings';
+import { formationTimeZone, formationLocalDateTime, formationWallTimeToIso } from '@/lib/departure-formation-time';
 import { listStaff } from '@/services/catalog';
 import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
@@ -68,6 +70,7 @@ const emptyPlan = (tripId: string): TripPlan => ({
   id: '', tripId, name: '', description: '', durationMinutes: 180,
   priceType: 'PER_PERSON', basePrice: 0, childPrice: null,
   minParticipants: 1, maxParticipants: 10, bookingType: 'SCHEDULED',
+  salesMode: 'FIXED_DEPARTURE', participationMode: 'SHARED', minToDepart: 1, formationDeadlineDaysBefore: 7,
   depositMode: 'FULL', depositValue: 0,
   active: true, yearRound: true, seasons: [], reviewState: 'NONE',
   reviewNote: '', sortOrder: 0, source: 'GUIDE',
@@ -89,6 +92,27 @@ const emptyDeparture = (tripId: string, planId: string): TripDeparture => ({
   capacity: 10, seatsBooked: 0, status: 'OPEN', note: '',
   primaryStaffId: null, assistantStaffIds: [],
 });
+
+function confirmedFormationDeadline(local: string, zone: string): string | undefined {
+  if (!local) return undefined;
+  const [date, time] = local.split('T');
+  return formationWallTimeToIso(date, time, zone);
+}
+
+function FormationDeadlineField({ id, value, onChange, plan, timeZone, editing = false, snapshotMin = 1, batch = false }: {
+  id: string; value: string; onChange: (value: string) => void; plan?: TripPlan; timeZone: string | null;
+  editing?: boolean; snapshotMin?: number; batch?: boolean;
+}) {
+  return (
+    <FormGroup>
+      <Label htmlFor={id}>{t.departures.formationDeadline.overrideLabel(timeZone ?? t.departures.formationDeadline.loading)}</Label>
+      <Input id={id} type="datetime-local" value={value} disabled={!timeZone} onChange={(e) => onChange(e.target.value)} />
+      <FormText>{editing ? t.departures.formationDeadline.editSnapshot(snapshotMin)
+        : t.departures.formationDeadline.rule(plan?.minToDepart ?? 1, plan?.formationDeadlineDaysBefore ?? 7, timeZone ?? '')}</FormText>
+      <FormText>{editing ? t.departures.formationDeadline.editHelp : batch ? t.departures.formationDeadline.batchHelp : t.departures.formationDeadline.overrideHelp}</FormText>
+    </FormGroup>
+  );
+}
 
 /**
  * issue #37：導遊指派欄位。0/1/2+ 自動適應（Owner 2026-08-27）。
@@ -185,6 +209,12 @@ export default function TripDetailPage() {
   const [busy, setBusy] = React.useState(false);
   const [addonDraft, setAddonDraft] = React.useState<TripAddon | null>(null);
   const [departureDraft, setDepartureDraft] = React.useState<TripDeparture | null>(null);
+  const [departureDeadlineLocal, setDepartureDeadlineLocal] = React.useState('');
+  const [departureDeadlineChanged, setDepartureDeadlineChanged] = React.useState(false);
+  const [departureTimeZone, setDepartureTimeZone] = React.useState<string | null>(null);
+  const tenantIdentityRef = React.useRef(currentTenant.id);
+  tenantIdentityRef.current = currentTenant.id;
+  const [batchDeadlineLocal, setBatchDeadlineLocal] = React.useState('');
   const [batchOpen, setBatchOpen] = React.useState(false);
   const [batch, setBatch] = React.useState({
     planId: '', from: '', to: '', startTime: '09:00', capacity: 10,
@@ -203,11 +233,15 @@ export default function TripDetailPage() {
 
   const load = React.useCallback(async () => {
     setLoading(true);
+    setDepartureTimeZone(null);
+    const tenantAtLoad = currentTenant.id;
     try {
-      const [tr, pl, dp, ad, st] = await Promise.all([
+      const [tr, pl, dp, ad, st, settings] = await Promise.all([
         getTrip(tripId), listTripPlans(tripId),
-        listTripDepartures(tripId), listTripAddons(tripId), listStaff(),
+        listTripDepartures(tripId), listTripAddons(tripId), listStaff(), getTenantSettings(),
       ]);
+      if (tenantIdentityRef.current !== tenantAtLoad) return;
+      setDepartureTimeZone(formationTimeZone(settings.basic.timezone));
       setTrip(tr ?? null);
       setForm(tr ?? null);
       setPlans(pl);
@@ -215,11 +249,11 @@ export default function TripDetailPage() {
       setAddons(ad);
       setGuides(st.filter((m) => m.active && m.bookable));
     } catch {
-      toast.show(t.messages.loadFailed, 'danger');
+      if (tenantIdentityRef.current === tenantAtLoad) toast.show(t.messages.loadFailed, 'danger');
     } finally {
-      setLoading(false);
+      if (tenantIdentityRef.current === tenantAtLoad) setLoading(false);
     }
-  }, [tripId, toast]);
+  }, [tripId, toast, currentTenant.id]);
 
   React.useEffect(() => { void load(); }, [load]);
 
@@ -369,6 +403,16 @@ export default function TripDetailPage() {
       toast.show(t.messages.planChildPriceInvalid, 'danger');
       return;
     }
+    const formationErrors = {
+      salesMode: t.messages.planSalesModeInvalid,
+      participationMode: t.messages.planParticipationModeInvalid,
+      minToDepart: t.messages.planMinToDepartInvalid,
+      formationDeadlineDaysBefore: t.messages.planFormationDeadlineInvalid,
+    };
+    if (validationError && validationError in formationErrors) {
+      toast.show(formationErrors[validationError as keyof typeof formationErrors], 'danger');
+      return;
+    }
     if (validationError === 'minParticipants') {
       toast.show(t.messages.planMinParticipantsInvalid, 'danger');
       return;
@@ -407,7 +451,16 @@ export default function TripDetailPage() {
       } else {
         // The success toast is only shown after a fresh server read. This is
         // the persistence check for the real tenant-scoped API path.
-        setPlans(await listTripPlans(tripId));
+        const reloadedPlans = await listTripPlans(tripId);
+        if (planEditorMode === 'advanced') {
+          const expected = toAdvancedPlanPayload(planDraft);
+          const saved = reloadedPlans.find((plan) => plan.id === planDraft.id);
+          const fields = ['salesMode', 'participationMode', 'minToDepart', 'formationDeadlineDaysBefore'] as const;
+          if (!saved || fields.some((field) => toAdvancedPlanPayload(saved)[field] !== expected[field])) {
+            throw new Error(t.messages.planAdvancedReadbackFailed);
+          }
+        }
+        setPlans(reloadedPlans);
       }
 
       const needsReview = trip?.midaoListing === 'LISTED';
@@ -455,6 +508,12 @@ export default function TripDetailPage() {
   };
 
   /* ------------------------------------------------------------- 團次 */
+  const openDepartureEditor = (departure: TripDeparture) => {
+    setDepartureDeadlineChanged(false);
+    setDepartureDeadlineLocal(departure.formationDeadlineAt && departureTimeZone
+      ? formationLocalDateTime(departure.formationDeadlineAt, departureTimeZone).slice(0, 16) : '');
+    setDepartureDraft(departure);
+  };
   const saveDeparture = async () => {
     if (!departureDraft) return;
     if (departureDraft.capacity < departureDraft.seatsBooked) {
@@ -462,8 +521,21 @@ export default function TripDetailPage() {
       return;
     }
     const isNew = !departureDraft.id;
+    const minimum = isNew ? plans.find((plan) => plan.id === departureDraft.planId)?.minToDepart ?? 1 : departureDraft.minToDepartSnapshot ?? 1;
+    if (departureDraft.capacity < minimum) {
+      toast.show(t.departures.capacityBelowFormation(minimum), 'danger');
+      return;
+    }
+    if (!departureTimeZone || (!isNew && departureDeadlineChanged && !departureDeadlineLocal)) {
+      toast.show(t.departures.formationDeadline.invalid, 'danger');
+      return;
+    }
     const ok = await runAction(
-      () => saveTripDeparture(tripId, departureDraft),
+      () => saveTripDeparture(tripId, {
+        ...departureDraft,
+        formationDeadlineAt: isNew || departureDeadlineChanged ? confirmedFormationDeadline(departureDeadlineLocal, departureTimeZone) : undefined,
+        formationTimeZone: departureTimeZone,
+      }),
       isNew ? t.messages.departureCreated : t.messages.departureUpdated,
     );
     if (ok) setDepartureDraft(null);
@@ -489,7 +561,7 @@ export default function TripDetailPage() {
    */
   const runBatch = async () => {
     const plan = plans.find((p) => p.id === batch.planId);
-    if (!plan || batchCount === 0) return;
+    if (!plan || batchCount === 0 || !departureTimeZone) return;
     let result: { created: number; skipped: number; conflicts?: DepartureConflict[] } =
       { created: 0, skipped: 0, conflicts: [] };
     const ok = await runAction(
@@ -501,6 +573,8 @@ export default function TripDetailPage() {
           weekdays: batch.weekdays,
           startTime: batch.startTime,
           capacity: batch.capacity,
+          formationDeadlineAt: confirmedFormationDeadline(batchDeadlineLocal, departureTimeZone),
+          formationTimeZone: departureTimeZone,
           primaryStaffId: batch.primaryStaffId,
           assistantStaffIds: batch.assistantStaffIds,
         });
@@ -526,7 +600,7 @@ export default function TripDetailPage() {
      */
     const target = departures.find((d) => d.id === id);
     if (status === 'OPEN' && guides.length >= 2 && target && !target.primaryStaffId) {
-      setDepartureDraft({ ...target, status: 'OPEN' });
+      openDepartureEditor({ ...target, status: 'OPEN' });
       toast.show(t.departures.guide.reopenNeedsGuide, 'info');
       return;
     }
@@ -769,7 +843,7 @@ export default function TripDetailPage() {
         <div className="btn-group">
           <Button
             variant="outline" size="sm" title={t.actions.edit} aria-label={t.actions.edit}
-            onClick={() => setDepartureDraft(d)}
+            onClick={() => openDepartureEditor(d)}
           >
             <Pencil size={13} />
           </Button>
@@ -1126,12 +1200,12 @@ export default function TripDetailPage() {
             title={t.departures.sectionTitle}
             actions={
               <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" onClick={() => setBatchOpen(true)}>
+                <Button size="sm" variant="outline" onClick={() => { setBatchDeadlineLocal(''); setBatchOpen(true); }}>
                   <CalendarPlus size={14} />{t.departures.batchCreate}
                 </Button>
                 <Button
                   size="sm"
-                  onClick={() => setDepartureDraft(emptyDeparture(tripId, plans[0]?.id ?? ''))}
+                  onClick={() => openDepartureEditor(emptyDeparture(tripId, plans[0]?.id ?? ''))}
                 >
                   <Plus size={14} />{t.departures.create}
                 </Button>
@@ -1149,7 +1223,7 @@ export default function TripDetailPage() {
                 title={t.departures.empty.title}
                 description={t.departures.empty.description}
                 action={
-                  <Button onClick={() => setDepartureDraft(emptyDeparture(tripId, plans[0]?.id ?? ''))}>
+                  <Button onClick={() => openDepartureEditor(emptyDeparture(tripId, plans[0]?.id ?? ''))}>
                     <Plus size={15} />{t.departures.create}
                   </Button>
                 }
@@ -1367,6 +1441,41 @@ export default function TripDetailPage() {
             ) : (
               <>
                 <Alert tone="info">{t.plans.advanced.intro}</Alert>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FormGroup>
+                    <Label htmlFor="plan-advanced-sales-mode" required>{t.plans.fields.salesModeLabel}</Label>
+                    <Select id="plan-advanced-sales-mode" value={planDraft.salesMode ?? 'FIXED_DEPARTURE'}
+                      onChange={(e) => patchPlan({ salesMode: e.target.value as TripPlan['salesMode'] })}>
+                      {Object.entries(t.plans.salesMode).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </Select>
+                  </FormGroup>
+                  <FormGroup>
+                    <Label htmlFor="plan-advanced-participation-mode" required>{t.plans.fields.participationModeLabel}</Label>
+                    <Select id="plan-advanced-participation-mode" value={planDraft.participationMode ?? 'SHARED'}
+                      onChange={(e) => patchPlan({ participationMode: e.target.value as TripPlan['participationMode'] })}>
+                      {Object.entries(t.plans.participationMode).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </Select>
+                  </FormGroup>
+                </div>
+                <FormText>{t.plans.fields.participationModeHelp}</FormText>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FormGroup>
+                    <Label htmlFor="plan-advanced-formation-min" required>{t.plans.fields.minToDepartLabel}</Label>
+                    <Input id="plan-advanced-formation-min" type="number" min={1} step={1}
+                      value={Number.isNaN(planDraft.minToDepart) ? '' : planDraft.minToDepart ?? 1}
+                      onChange={(e) => patchPlan({ minToDepart: e.target.valueAsNumber })} />
+                    <FormText>{t.plans.fields.minToDepartHelp}</FormText>
+                  </FormGroup>
+                  <FormGroup>
+                    <Label htmlFor="plan-advanced-formation-deadline" required>{t.plans.fields.formationDeadlineLabel}</Label>
+                    <Input id="plan-advanced-formation-deadline" type="number" min={0} max={90} step={1}
+                      value={Number.isNaN(planDraft.formationDeadlineDaysBefore) ? '' : planDraft.formationDeadlineDaysBefore ?? 7}
+                      onChange={(e) => patchPlan({ formationDeadlineDaysBefore: e.target.valueAsNumber })} />
+                    <FormText>{t.plans.fields.formationDeadlineHelp}</FormText>
+                  </FormGroup>
+                </div>
+                {planDraft.formationDeadlineDaysBefore === 0 ? <Alert tone="warning">{t.plans.fields.formationDeadlineZeroWarning}</Alert> : null}
+
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <FormGroup>
@@ -1666,11 +1775,15 @@ export default function TripDetailPage() {
             <FormGroup>
               <Label required>{t.departures.fields.capacityLabel}</Label>
               <Input
-                type="number" min={departureDraft.seatsBooked} value={departureDraft.capacity}
+                type="number" min={Math.max(departureDraft.seatsBooked, departureDraft.id ? departureDraft.minToDepartSnapshot ?? 1 : plans.find((plan) => plan.id === departureDraft.planId)?.minToDepart ?? 1)} value={departureDraft.capacity}
                 onChange={(e) => setDepartureDraft({ ...departureDraft, capacity: Number(e.target.value) })}
               />
               <FormText>{t.departures.fields.capacityHelp}</FormText>
             </FormGroup>
+            <FormationDeadlineField id="departure-formation-deadline" value={departureDeadlineLocal} timeZone={departureTimeZone}
+              onChange={(value) => { setDepartureDeadlineLocal(value); setDepartureDeadlineChanged(true); }}
+              plan={plans.find((plan) => plan.id === departureDraft.planId)} editing={!!departureDraft.id}
+              snapshotMin={departureDraft.minToDepartSnapshot ?? 1} />
             <GuidePicker
               guides={guides}
               primaryStaffId={departureDraft.primaryStaffId}
@@ -1756,6 +1869,8 @@ export default function TripDetailPage() {
               />
             </FormGroup>
           </div>
+          <FormationDeadlineField id="batch-formation-deadline" value={batchDeadlineLocal}
+            onChange={setBatchDeadlineLocal} plan={plans.find((plan) => plan.id === batch.planId)} timeZone={departureTimeZone} batch />
           <GuidePicker
             guides={guides}
             primaryStaffId={batch.primaryStaffId}
