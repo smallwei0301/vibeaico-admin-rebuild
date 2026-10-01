@@ -193,6 +193,25 @@ function queryFailed(stage: string, cause: unknown): Error {
   return new Error(`PUBLIC_SHOP_QUERY_FAILED:${stage}`, { cause });
 }
 
+type QueryFailure = (stage: string, cause: unknown) => Error;
+
+/**
+ * Map Supabase rows before an awaited promise crosses a React Server Component boundary.
+ * In Next development responses, async component diagnostics can include the resolved value
+ * of awaited promises. Returning raw PostgREST results can expose fields removed by a later DTO.
+ */
+function mapPublicQueryResult<TSource, TResult>(
+  query: PromiseLike<{ data: TSource; error: unknown }>,
+  stage: string,
+  map: (data: TSource) => TResult,
+  onError: QueryFailure = queryFailed,
+): Promise<TResult> {
+  return Promise.resolve(query).then(({ data, error }) => {
+    if (error) throw onError(stage, error);
+    return map(data);
+  });
+}
+
 /**
  * 台北「今天」的日期字串。
  *
@@ -218,55 +237,79 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
 
   // ① 店家 ＋ 公開的基本設定。白名單欄位；tenant_settings 只取 basic 與 line 兩塊，
   //    而 line 那塊底下只會用到 lineBasicId（見下方），加密欄位一概不取。
-  const { data: tenantRow, error: tenantError } = await admin
-    .from('tenants')
-    .select('id, shop_code, name, business_type, tenant_settings(basic, line)')
-    .eq('shop_code', shopCode)
-    .maybeSingle();
-  // PB-023：丟掉 error 會讓「查詢失敗」冒充「查無此店」，於是一次 DB 故障就會讓
-  // 所有店家的公開頁一起變成 404，而錯誤訊息是「找不到這家店」——完全誤導。
-  if (tenantError) throw queryFailed('tenants', tenantError);
-  if (!tenantRow) return null;
+  const tenantResult = await mapPublicQueryResult(
+    admin.from('tenants')
+      .select('id, shop_code, name, business_type, tenant_settings(basic, line)')
+      .eq('shop_code', shopCode)
+      .maybeSingle(),
+    'tenants',
+    (tenantRow) => {
+      // PB-023: preserve query errors rather than making an outage look like a missing shop.
+      if (!tenantRow) return null;
+      const rawSettings = (tenantRow as Record<string, unknown>).tenant_settings;
+      const settings = (Array.isArray(rawSettings) ? rawSettings[0] : rawSettings) as
+        | { basic?: Record<string, unknown>; line?: Record<string, unknown> }
+        | null
+        | undefined;
+      const basic = settings?.basic ?? {};
 
-  const rawSettings = (tenantRow as Record<string, unknown>).tenant_settings;
-  const settings = (Array.isArray(rawSettings) ? rawSettings[0] : rawSettings) as
-    | { basic?: Record<string, unknown>; line?: Record<string, unknown> }
-    | null
-    | undefined;
-  const basic = settings?.basic ?? {};
-
-  const shop: PublicShop = {
-    shopCode: tenantRow.shop_code as string,
-    name: (basic.tenantName as string) || (tenantRow.name as string),
-    description: (basic.tenantDescription as string) ?? '',
-    phone: (basic.tenantPhone as string) ?? '',
-    email: (basic.tenantEmail as string) ?? '',
-    address: (basic.tenantAddress as string) ?? '',
-    // 只取這一個欄位。channelSecret / channelAccessToken 是加密祕密，永遠不出現在這裡。
-    lineBasicId: (settings?.line?.lineBasicId as string) ?? '',
-    businessType: (tenantRow.business_type as string | null) ?? null,
-  };
-
-  const tenantId = tenantRow.id as string;
+      return {
+        tenantId: tenantRow.id as string,
+        shop: {
+          shopCode: tenantRow.shop_code as string,
+          name: (basic.tenantName as string) || (tenantRow.name as string),
+          description: (basic.tenantDescription as string) ?? '',
+          phone: (basic.tenantPhone as string) ?? '',
+          email: (basic.tenantEmail as string) ?? '',
+          address: (basic.tenantAddress as string) ?? '',
+          // Only the public LINE ID survives; encrypted channel credentials do not.
+          lineBasicId: (settings?.line?.lineBasicId as string) ?? '',
+          businessType: (tenantRow.business_type as string | null) ?? null,
+        } satisfies { tenantId: string; shop: PublicShop },
+      };
+    },
+  );
+  if (!tenantResult) return null;
+  const { tenantId, shop } = tenantResult;
   const today = taipeiToday();
 
   // ② 已發布的行程 ＋ 其方案。`status = 'PUBLISHED'` 是這裡的閘門：草稿與封存
   //    的行程不得出現在公開頁上。
-  const [{ data: tripRows, error: tripError }, { data: serviceRows, error: serviceError }] =
-    await Promise.all([
+  const [tripRows, serviceRows] = await Promise.all([
+    mapPublicQueryResult(
       admin.from('trips')
         // #46：多取 refund_policy_type，讓公開頁在下單前就顯示現行取消／退款政策
         // （原本只有送出 REQUEST 申請的表單頁才看得到）。仍是白名單 select。
         .select('id, slug, title, summary, location, cover_image_url, duration_hours, refund_policy_type')
         .eq('tenant_id', tenantId).eq('status', 'PUBLISHED')
         .order('created_at', { ascending: false }),
+      'trips',
+      (rows) => (rows ?? []).map((row) => ({
+        id: row.id,
+        slug: row.slug,
+        title: row.title,
+        summary: row.summary,
+        location: row.location,
+        cover_image_url: safePublicHttpsUrl(row.cover_image_url),
+        duration_hours: row.duration_hours,
+        refund_policy_type: row.refund_policy_type,
+      })),
+    ),
+    mapPublicQueryResult(
       admin.from('services')
         .select('id, name, description, duration_minutes, price')
         .eq('tenant_id', tenantId).eq('active', true)
         .order('sort_order', { ascending: true }),
-    ]);
-  if (tripError) throw queryFailed('trips', tripError);
-  if (serviceError) throw queryFailed('services', serviceError);
+      'services',
+      (rows) => (rows ?? []).map((row) => ({
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        duration_minutes: row.duration_minutes,
+        price: row.price,
+      })),
+    ),
+  ]);
 
   const tripIds = (tripRows ?? []).map((t) => t.id as string);
 
@@ -418,15 +461,26 @@ async function loadPublicTripDetailsUncached(
   if (!knownTrip) return null;
 
   const admin = createAdminSupabase();
-  const { data: rawRow, error } = await admin.from('trips')
-    .select(PUBLIC_TRIP_DETAILS_COLUMNS.join(', '))
-    .eq('tenant_id', shopData.tenantId)
-    .eq('id', knownTrip.id)
-    .eq('slug', slug)
-    .eq('status', 'PUBLISHED')
-    .maybeSingle();
-  if (error) throw queryTripDetailsFailed('trips', error);
-  const row = rawRow as Record<string, unknown> | null;
+  const row = await mapPublicQueryResult(
+    admin.from('trips')
+      .select(PUBLIC_TRIP_DETAILS_COLUMNS.join(', '))
+      .eq('tenant_id', shopData.tenantId)
+      .eq('id', knownTrip.id)
+      .eq('slug', slug)
+      .eq('status', 'PUBLISHED')
+      .maybeSingle(),
+    'trips',
+    (rawRow) => {
+      if (!rawRow) return null;
+      return {
+        ...rawRow,
+        cover_image_url: safePublicHttpsUrl(rawRow.cover_image_url),
+        gallery: publicStringList(rawRow.gallery).map(safePublicHttpsUrl).filter(Boolean),
+        meeting_point_map_url: safePublicHttpsUrl(rawRow.meeting_point_map_url),
+      } as Record<string, unknown>;
+    },
+    queryTripDetailsFailed,
+  );
   if (!row) return null;
 
   const planDepartureResults = await Promise.all(knownTrip.plans.map(async (plan) => {
