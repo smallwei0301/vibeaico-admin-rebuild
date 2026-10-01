@@ -18,6 +18,14 @@ let ownerB: AuthedApi;
 const planIds: string[] = [];
 const departureIds: string[] = [];
 const orderIds: string[] = [];
+const peerTripIds: string[] = [];
+const peerPlanIds: string[] = [];
+const peerDepartureIds: string[] = [];
+const peerOrderIds: string[] = [];
+let peerBusinessSnapshot: { business_type: string } | null = null;
+let peerSubscriptionSnapshot: Record<string, unknown> | null | undefined;
+let peerBusinessPatched = false;
+let peerSubscriptionPatched = false;
 
 async function read<T>(response: Response): Promise<T> {
   expect(response.status).toBe(200);
@@ -43,6 +51,28 @@ beforeAll(async () => {
   });
   ownerA = await loginAs(SHOP_A.owner.email, SHOP_A.owner.password);
   ownerB = await loginAs(SHOP_B.owner.email, SHOP_B.owner.password);
+  // Seed intentionally grants TOUR_MODULE only to A. Without a comparable B capability,
+  // reject returns FEAT_001 before the tenant-scoped lookup and proves no isolation.
+  const business = await admin.from('tenants').select('business_type').eq('id', SHOP_B.id).single();
+  expect(business.error).toBeNull();
+  peerBusinessSnapshot = business.data!;
+  const subscription = await admin.from('feature_subscriptions').select('*')
+    .eq('tenant_id', SHOP_B.id).eq('code', 'TOUR_MODULE').maybeSingle();
+  expect(subscription.error).toBeNull();
+  peerSubscriptionSnapshot = subscription.data;
+  if (peerBusinessSnapshot!.business_type !== 'GUIDE') {
+    peerBusinessPatched = true; // Mark before mutation so an ambiguous transport error still restores.
+    const guide = await admin.from('tenants').update({ business_type: 'GUIDE' }).eq('id', SHOP_B.id);
+    expect(guide.error).toBeNull();
+  }
+  if (!subscription.data?.active || (subscription.data.expires_at && Date.parse(subscription.data.expires_at) <= Date.now())) {
+    peerSubscriptionPatched = true;
+    const granted = await admin.from('feature_subscriptions').upsert({
+      tenant_id: SHOP_B.id, code: 'TOUR_MODULE', active: true, expires_at: null,
+      source: 'GRANTED', cancelled_at: null,
+    }, { onConflict: 'tenant_id,code' });
+    expect(granted.error).toBeNull();
+  }
 });
 
 afterAll(async () => {
@@ -50,15 +80,39 @@ afterAll(async () => {
   // Continue through every table if a cleanup step fails, then fail the suite closed.
   const failures: unknown[] = [];
   for (const [table, ids] of [
-    ['tour_orders', orderIds], ['trip_departures', departureIds], ['trip_plans', planIds],
+    ['tour_orders', [...orderIds, ...peerOrderIds]],
+    ['trip_departures', [...departureIds, ...peerDepartureIds]],
+    ['trip_plans', [...planIds, ...peerPlanIds]], ['trips', peerTripIds],
   ] as const) {
     if (!ids.length) continue;
     try {
-      const removed = await admin.from(table).delete().eq('tenant_id', SHOP_A.id).in('id', ids);
+      const removed = await admin.from(table).delete().in('tenant_id', [SHOP_A.id, SHOP_B.id]).in('id', ids);
       if (removed.error) throw removed.error;
       const remaining = await admin.from(table).select('id').in('id', ids);
       if (remaining.error) throw remaining.error;
       expect(remaining.data, `${table} fixture cleanup must leave zero recorded IDs`).toEqual([]);
+    } catch (error) { failures.push(error); }
+  }
+  // Restore both previously observed peer settings even if fixture cleanup failed.
+  if (peerSubscriptionPatched && peerSubscriptionSnapshot !== undefined) {
+    try {
+      const restored = peerSubscriptionSnapshot
+        ? await admin.from('feature_subscriptions').upsert(peerSubscriptionSnapshot, { onConflict: 'tenant_id,code' })
+        : await admin.from('feature_subscriptions').delete().eq('tenant_id', SHOP_B.id).eq('code', 'TOUR_MODULE');
+      if (restored.error) throw restored.error;
+      const actual = await admin.from('feature_subscriptions').select('*')
+        .eq('tenant_id', SHOP_B.id).eq('code', 'TOUR_MODULE').maybeSingle();
+      if (actual.error) throw actual.error;
+      expect(actual.data).toEqual(peerSubscriptionSnapshot);
+    } catch (error) { failures.push(error); }
+  }
+  if (peerBusinessPatched && peerBusinessSnapshot) {
+    try {
+      const restored = await admin.from('tenants').update(peerBusinessSnapshot).eq('id', SHOP_B.id);
+      if (restored.error) throw restored.error;
+      const actual = await admin.from('tenants').select('business_type').eq('id', SHOP_B.id).single();
+      if (actual.error) throw actual.error;
+      expect(actual.data).toEqual(peerBusinessSnapshot);
     } catch (error) { failures.push(error); }
   }
   if (failures.length) throw new AggregateError(failures, '#43 lifecycle fixture cleanup failed');
@@ -102,6 +156,56 @@ describe('GUIDE REQUEST inbox real lifecycle (#43)', () => {
       contact: { name: `REQUEST ${fixture.hours}h fixture` }, source: 'MANUAL',
     })));
     expect(orders.error).toBeNull();
+
+    // Independent B parents satisfy composite tenant/trip/plan/departure foreign keys.
+    // Successful own-order rejection is the positive control for the same HTTP guard/RPC.
+    const peerTripId = randomUUID(); peerTripIds.push(peerTripId);
+    const peerTrip = await admin.from('trips').insert({
+      id: peerTripId, tenant_id: SHOP_B.id, slug: `i43-peer-${peerTripId}`,
+      title: '#43 B tenant positive-control trip', status: 'PUBLISHED', duration_hours: 3,
+    });
+    expect(peerTrip.error).toBeNull();
+    const peerPlanId = randomUUID(); peerPlanIds.push(peerPlanId);
+    const peerPlan = await admin.from('trip_plans').insert({
+      id: peerPlanId, tenant_id: SHOP_B.id, trip_id: peerTripId,
+      name: '#43 B REQUEST positive control', sales_mode: 'REQUEST', participation_mode: 'PRIVATE',
+      price_per_person: 1500, price_type: 'PER_PERSON', min_party: 1, max_party: 8,
+      deposit_mode: 'NONE', deposit_value: 0, request_hold_hours: 96, active: true, ...fields.plan,
+    });
+    expect(peerPlan.error).toBeNull();
+    const peerDepartureId = randomUUID(); peerDepartureIds.push(peerDepartureId);
+    const peerDeparture = await admin.from('trip_departures').insert({
+      id: peerDepartureId, tenant_id: SHOP_B.id, trip_id: peerTripId, plan_id: peerPlanId,
+      departs_on: new Date(now + 21 * 86_400_000).toISOString().slice(0, 10),
+      start_time: '10:00', capacity: 8, seats_booked: 0, status: 'OPEN',
+      formation_status: 'COLLECTING', ...fields.departure,
+    });
+    expect(peerDeparture.error).toBeNull();
+    const peerOrderId = randomUUID(); peerOrderIds.push(peerOrderId);
+    const peerOrder = await admin.from('tour_orders').insert({
+      id: peerOrderId, tenant_id: SHOP_B.id, order_no: `I43-PEER-${peerOrderId}`,
+      trip_id: peerTripId, plan_id: peerPlanId, departure_id: peerDepartureId,
+      party_size: 1, unit_price: 1500, total_amount: 1500, deposit_amount: 0,
+      deposit_mode_snapshot: 'NONE', upfront_required_amount: 0, paid_amount: 0, refunded_amount: 0,
+      status: 'PENDING', payment_status: 'UNPAID', seats_reserved: false,
+      hold_expires_at: fixtures[0].deadline, contact: { name: '#43 B positive control' }, source: 'MANUAL',
+    });
+    expect(peerOrder.error).toBeNull();
+    const peerInbox = await read<GuideActionInboxItem[]>(await ownerB.get('/api/guide/action-inbox'));
+    expect(peerInbox.find((item) => item.id === peerOrderId)).toMatchObject({ kind: 'TOUR_REQUEST' });
+    expect(peerInbox.some((item) => orderIds.includes(item.id))).toBe(false);
+    const peerRejected = await read<{ id: string; status: string }>(await ownerB.post(
+      `/api/tour-orders/${peerOrderId}/reject`, { reason: '#43 B positive control' },
+    ));
+    expect(peerRejected).toMatchObject({ id: peerOrderId, status: 'CANCELLED' });
+    const peerRaw = await admin.from('tour_orders').select('status,seats_reserved')
+      .eq('tenant_id', SHOP_B.id).eq('id', peerOrderId).single();
+    expect(peerRaw.error).toBeNull();
+    expect(peerRaw.data).toEqual({ status: 'CANCELLED', seats_reserved: false });
+    const peerSeats = await admin.from('trip_departures').select('seats_booked').eq('id', peerDepartureId).single();
+    expect(peerSeats.error).toBeNull(); expect(peerSeats.data?.seats_booked).toBe(0);
+    const peerReload = await read<GuideActionInboxItem[]>(await ownerB.get('/api/guide/action-inbox'));
+    expect(peerReload.some((item) => item.id === peerOrderId || orderIds.includes(item.id))).toBe(false);
     const sorted = [...fixtures].sort((a, b) => a.hours - b.hours);
     const inbox = async (api: AuthedApi) => (await read<GuideActionInboxItem[]>(await api.get('/api/guide/action-inbox')))
       .filter((item) => orderIds.includes(item.id));
