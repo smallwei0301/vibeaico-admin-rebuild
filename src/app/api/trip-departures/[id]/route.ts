@@ -8,6 +8,8 @@ import {
   describeConflicts, readAssignments, resolveAssignment, writeAssignment,
 } from '@/server/departure-staff';
 
+import { departureFormationUpdate, readDepartureFormationTimeZone } from '@/server/departure-formation-snapshot';
+
 type Context = { params: Promise<{ id: string }> };
 
 export const PUT = handle(async (req, { params }: Context) => {
@@ -28,7 +30,8 @@ export const PUT = handle(async (req, { params }: Context) => {
     if (error) throw error;
     if (!plan || plan.trip_id !== current.trip_id) return fail(404, '找不到此方案', ERR.NOT_FOUND);
   }
-  const patch: Record<string, unknown> = {};
+  const timeZone = await readDepartureFormationTimeZone(t.supabase, t.tenantId, body.formationTimeZone);
+  const patch: Record<string, unknown> = departureFormationUpdate(current, body, timeZone);
   if (body.planId !== undefined) patch.plan_id = body.planId;
   if (body.departsOn !== undefined) patch.departs_on = body.departsOn;
   if (body.startTime !== undefined) patch.start_time = timeValue(body.startTime);

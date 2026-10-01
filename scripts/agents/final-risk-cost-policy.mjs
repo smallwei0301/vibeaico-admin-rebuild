@@ -37,6 +37,14 @@ export function selectFinalRiskReviewer(input = {}, policy = {}) {
   const audit = list(policy.models?.finalRiskDowngradeAllowedModels);
   const attempted = new Set(list(input.attemptedModels));
   const unavailable = new Set(list(input.unavailableModels));
+  const catalog = input.runtimeCatalog;
+  const captured = millis(catalog?.captureStartedAt), observed = millis(catalog?.observedAt);
+  const now = millis(input.now ?? new Date().toISOString());
+  const catalogValid = ['OPENAI', 'ANTHROPIC'].includes(input.provider) && catalog?.provider === input.provider
+    && validModels(catalog?.models) && validModels(input.availableModels)
+    && input.availableModels.every(model => catalog.models.includes(model))
+    && durable(catalog?.evidenceRef) && meaningful(catalog?.providerEvidenceRef)
+    && Number.isFinite(captured) && Number.isFinite(observed) && captured <= observed && observed <= now;
   const result = (tier, action, nextModel, reason) => ({ reviewerTier: tier, action, nextModel, reason,
     costPolicyVersion: FINAL_RISK_COST_POLICY_VERSION, premiumRetryAllowed: false,
     reviewLineage: text(input.reviewLineage), evidenceRef: text(input.historyEvidenceRef) });
@@ -48,8 +56,10 @@ export function selectFinalRiskReviewer(input = {}, policy = {}) {
     if (input.modelSelectionAvailable === false) {
       return result('CURRENT_AGENT', 'REVIEW_WITH_CURRENT_AGENT', null, 'MODEL_SELECTION_UNAVAILABLE');
     }
-    const available = Array.isArray(input.availableModels) ? new Set(input.availableModels) : null;
-    const next = audit.find(model => !unavailable.has(model) && !attempted.has(model) && (!available || available.has(model)));
+    if (!catalogValid) return park(); // no selector evidence is not permission to guess either provider's audit model
+    const available = new Set(input.availableModels);
+    const next = audit.find(model => (input.provider === 'OPENAI' ? model.startsWith('gpt-') : model.startsWith('claude-'))
+      && !unavailable.has(model) && !attempted.has(model) && available.has(model));
     return next ? result('AUDIT', 'DOWNGRADE_REVIEWER_MODEL', next, reason) : park();
   };
   if (input.modelSelectionAvailable === false) return downgrade('MODEL_SELECTION_UNAVAILABLE');
@@ -68,13 +78,18 @@ export function selectFinalRiskReviewer(input = {}, policy = {}) {
   if (input.historyVerified !== true || !meaningful(input.reviewLineage) || !durable(input.historyEvidenceRef)) {
     return downgrade('HISTORY_UNAVAILABLE');
   }
-  const available = Array.isArray(input.availableModels) ? input.availableModels : premium;
-  const next = [policy.models?.finalRisk, ...premium].find(model => premium.includes(model) && available.includes(model));
+  const providerModel = input.provider === 'OPENAI' ? 'gpt-6-astra'
+    : input.provider === 'ANTHROPIC' ? 'claude-fable-5-1' : null;
+  if (!providerModel || !catalogValid) {
+    return downgrade('HISTORY_UNAVAILABLE');
+  }
+  const next = premium.includes(providerModel) && catalog.models.includes(providerModel)
+    && input.availableModels.includes(providerModel) ? providerModel : null;
   return next ? result('PREMIUM', 'RESERVE_ONE_PREMIUM_CONSULTATION', next, 'FIRST_CONSULTATION') : downgrade('MODEL_UNAVAILABLE');
 }
 
 /** Shared identity contract for WIP/merge, semantic reuse and DB release evidence. */
-export function finalRiskReviewerErrors(review = {}, policy = {}) {
+export function finalRiskReviewerErrors(review = {}, policy = {}, context = {}) {
   const tier = review.reviewerTier ?? 'PREMIUM';
   const requested = text(review.requestedModel);
   const actual = text(review.actualModel);
@@ -82,10 +97,33 @@ export function finalRiskReviewerErrors(review = {}, policy = {}) {
   const catalog = list(policy.models?.finalRiskModelCatalog);
   const validPremium = validModels(allowed) && validModels(catalog) &&
     allowed.every(model => catalog.includes(model)) && allowed.includes(policy.models?.finalRisk);
-  if (tier === 'PREMIUM') {
-    return validPremium && requested === actual && allowed.includes(actual) ? [] : ['Unverified premium reviewer identity'];
-  }
   const errors = [];
+  if (policy.openaiBuilderDecision?.independentReviewerRequired === true) {
+    const proof = context.roleEvidence;
+    const builder = proof?.builder, reviewer = proof?.reviewer;
+    const source = value => typeof value === 'string' && value.startsWith(`https://github.com/${context.repository}/`)
+      && /^https:\/\/github\.com\/[^/]+\/[^/]+\/(issues|pull)\/\d+#issuecomment-\d+$/.test(value);
+    if (proof?.trusted !== true || !builder || !reviewer) errors.push('Missing independently read-back builder/reviewer role evidence');
+    else {
+      for (const [record, role] of [[builder, 'BUILD'], [reviewer, 'REVIEW']]) {
+        if (record.role !== role || record.repository !== context.repository || record.headSha !== context.headSha
+          || record.changeDigest !== context.changeDigest || !source(record.sourceRef)
+          || !['actorId', 'sessionId', 'executionRef'].every(key => meaningful(record[key]))
+          || record.executionEvidence !== 'OPERATOR_ATTESTED' || !Number.isFinite(millis(record.startedAt))
+          || !Number.isFinite(millis(record.completedAt)) || millis(record.completedAt) < millis(record.startedAt)) {
+          errors.push(`Invalid current ${role} role execution receipt`);
+        }
+      }
+      if (builder.actorId === reviewer.actorId || builder.sessionId === reviewer.sessionId
+        || builder.executionRef === reviewer.executionRef || builder.sourceRef === reviewer.sourceRef
+        || reviewer.freshContext !== true || reviewer.executionRef !== review.executionRef
+        || millis(reviewer.startedAt) < millis(builder.completedAt)) errors.push('Builder cannot approve its own actor/session; fresh independent review required');
+    }
+  }
+  if (tier === 'PREMIUM') {
+    if (!(validPremium && requested === actual && allowed.includes(actual))) errors.push('Unverified premium reviewer identity');
+    return errors;
+  }
   if (!['AUDIT', 'CURRENT_AGENT'].includes(tier)) return ['Unknown Final Risk reviewer tier'];
   if (policy.finalRiskCostControl?.version !== FINAL_RISK_COST_POLICY_VERSION ||
       review.costPolicyVersion !== FINAL_RISK_COST_POLICY_VERSION) errors.push('Missing current downgrade policy version');

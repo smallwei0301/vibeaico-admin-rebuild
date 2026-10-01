@@ -458,8 +458,8 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 
 ### PB-027 — 用「名字出現幾次」代替「那件事真的會發生」
 
-- 首次／最近：2026-09-07／2026-09-29
-- 發生次數：5（原輪四種形態，加 #37／PR #688 一次）
+- 首次／最近：2026-09-07／2026-10-01
+- 發生次數：6（原輪四種形態，加 #37／PR #688 與 #42／PR #713 各一次）
 - Issue／PR／CI：Issue #27、#50、#8；PR #264、#268、#271、#273
 - 分類：稽核方法
 - 事件：同一輪出現四種同型的誤判——
@@ -472,7 +472,10 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 修正：#273 把四種形態並列寫進 `14-GAP-AUDIT.md` §7.4.4；#8 的錯誤結論已發留言更正。
 - 預防：① 判準一律改成**「呼叫端在哪裡」**：`grep -n "<symbol>(" <呼叫端檔案>`，而不是 `grep -c "<symbol>" .`。② `grep -c` 的結果**必須連同檔名一起看**（用 `-rn` 或 `-l`，不要用 `-c` 加總）。③ 對「文件說有」「路由檔在」「政策提到」三種線索，一律再走一步查到實際執行路徑；查不到就當作沒有。
 - **#37／PR #688 再發與修正：** 0131 的 SQL 名字已在 main，最初的 bounded selector 只驗 0131 pending，卻沒證明它依賴的 0066／0092 已按 canonical identity 套用；「migration 存在」再次被誤讀為「可單獨套用」。獨立 Final Risk 在合併前找出，補上 0066／0092 各恰好一筆 `EXACT` applied alias 與非空 ledger identity 的 fail-closed 檢查。缺少、非 EXACT、空 ledger、重複及偽造前置條件的負例均拒絕；PR head `2751af66` 的 CI `36586785630` 與 local-isolated `36586786188` 成功。預防：每個 bounded root 明列 pending closure 和已套用的前置，兩類都以 exact alias／ledger 證據驗證；這不替代 fresh G2 形狀比對或 G3 遠端實測。
-- 狀態：已防止
+- **#42／PR #713 第六種代理證據再發（2026-10-01）：** helper、Plan PUT/readback 與 focused unit 都通過，卻沒有涵蓋下游 single/batch Departure 建立 consumer；獨立 Sol review 以真實 route consumer 對照發現未保存 `min_to_depart_snapshot`／`formation_deadline_at`，撤回先前 bounded-source approval 並報 P1 FIX_REQUIRED。證據與可重現反例在 `/workspace/issue42-independent-review.md`（2026-10-01T03:36:50Z finding）；此證據是 code-path review，不是真 DB write。後續同一 PR／同一 review chain 又確認三個規格缺口（04:31:11Z）：departure 截止時間固定 +08、未採用 tenant settings 已有的 IANA timezone；單筆編輯無法明確更新 deadline override，reschedule 可留下晚於新出發時間的 deadline；capacity 可低於既有 `min_to_depart_snapshot`，造成 DB constraint 失敗並落成 500。這些是同一交付事件的後續範圍發現，不另增本條事件次數；完整反例及有界契約見該 review 的 CURRENT VERDICT。
+- 預防：涉及「未來新建物件繼承設定」時，驗收必須從每個 single/batch consumer 的實際 insert seam追到 persisted snapshot；producer UI／PUT／helper 測試不構成消費端覆蓋。編輯路徑還須對照現存 tenant settings、更新後日期與容量，以及已持久化 snapshot 的約束。修正後由不同 reviewer 重審 exact head；未完成前不恢復 audit approval，也不宣稱資料庫／Production 驗收通過。此 PR 的先前 bounded-source approval 已於 03:36:50Z 因 consumer P1 撤回；其後任何 provisional source verdict 也不代表後續發現已解決。與 PB-046 相同的代理證據家族；此處屬呼叫端／消費者與更新路徑證據，不是新增一筆 PB-046 migration 漂移事件。
+- 本條近期總數依既有 5 次記錄新增 #42／PR #713 交付事件 1 次；不把同一事件的後續 finding、report reproduction 或各 workflow run 拆作額外 Product finding。
+- 狀態：#713 exact head 仍為 FIX_REQUIRED；三個後續發現待修正及 exact-head reviewer 驗證。ordinary canonical TEST integration/E2E 通過不等於 G3 migration/release 證據或 Production 驗收；不可因先前 #37 修正宣稱已防止。
 
 ### PB-028 — `revoke execute … from anon, authenticated` 不會關掉 PUBLIC 的預設授權
 
@@ -819,6 +822,9 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 
 ### PB-034 — 用 CI 當規則查詢器：靠一次次被退來湊出正確的 PR 中繼資料
 
+- 2026-10-01 #713 paired-scorecard report reproduction 續例：exact-head workflow `36810577964` rejected the generated Markdown because it recorded weighted usage 27 while the ledger/scorer computed 33 after the new audit task. Root initially treated `score-run-current.mjs` as a file writer; it prints to stdout. The repair at `4a7c8a0abc00d97c502abe5ebfa1dcc24df7664b` generated the paired report from stdout and reproduced it byte-for-byte; exact-head workflow `36810825595` passed. Preserve the original failure as a report-generation failure, not a Product feature failure. Prevention: generate with `node scripts/agents/score-run-current.mjs <ledger> > <RUN_ID>.md`, then rerun and `diff -u` the canonical output against the paired Markdown before publishing; a green ledger validator/readiness alone does not verify the paired report.
+- 新增可核對事件：+1 report-generation reproduction（截至 2026-10-01）；既有次數按本條最新已記 5 件加一，非 CI 執行總數。
+
 - 2026-09-30 #704／PR #705 續例：新 v4 run ledger 通過 JSON/readiness，卻漏交
   `score-run-current.mjs` 規定的同名 Markdown report，remote scorecard
   `36720245829` 因此拒絕。這不是可重跑的暫態 CI；先以 canonical 產生器生成 report，
@@ -847,9 +853,9 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
   驗證以 #566 對應版本的 focused mutation、preflight、required source CI 與合併後分類事件為準；
   SOURCE_ONLY 不宣稱資料庫或產品驗收通過，舊失敗通知不覆寫。
 
-- 首次／最近：2026-09-11／2026-09-17
-- 發生次數：5（#352、#361、#370、#553、#586；次數是事件，不是 CI 執行總數）
-- Issue／PR／CI：PR #352、#361、#370
+- 首次／最近：2026-09-11／2026-10-01
+- 發生次數：6（#352、#361、#370、#553、#586，加 #713 paired-scorecard reproduction；次數是事件，不是 CI 執行總數）
+- Issue／PR／CI：PR #352、#361、#370；PR #713／exact-head workflows `36810577964` and `36810825595`
 - 分類：Agent
 - 事件：#352 開出後被守門與 CI 連退四次，**四次都是中繼資料填錯，沒有一次是程式碼問題**：
   1. `FINAL_CANONICAL_REQUIRED: false` —— `TEST_PROFILE: LOCAL_ISOLATED` 強制要求 `true`
@@ -1077,6 +1083,8 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 相關教訓：PB-026、PB-027、PB-032、PB-033。
 
 ### PB-036 — `TERRA_BUILD` 的施工跑在 audit 層模型上，因為「反正我已經在跑了」
+
+- 2026-10-01 根因補強：configuration 的 independentReviewerRequired flag 不等於 runtime 准入。live evaluator 必須由 GitHub canonical source 獨立回讀 current builder／reviewer actor-session-execution，精確綁 head/digest，再驗 fresh context／非自審；payload 自填 proof 或 GitHub 提交者不能冒充 runtime builder。未知 actor 不回填歷史，缺證據就 pending。相關反例：sameactor／samesession／foreign-stale proof／latest finding；歷史事件次數與 actual 保留。
 
 - 首次／最近：2026-09-12／2026-09-14
 - 發生次數：**5**（第 5 次見本條最末「2026-09-14 第五次」）
@@ -1768,6 +1776,10 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 
 ### PB-051：昂貴審查反覆重派，且入口／WIP／release 各保留一份模型規則
+
+- 2026-10-01 CI 相容性教訓：PR #716 full source CI `36819205130`／job `110230922644` 的4個失敗揭露舊 downgrade fixture 缺當次 provider/catalog，及擴充拒絕診斷時遺失既有 identity 摘要。正向 fixture 必須提供合成當次 catalog，缺 catalog 仍 park；`evaluateAstra` 保留既有摘要並附全部 role／tier diagnostics，不能為測試通過放寬准入。變更共用 evaluator／selector 後驗 full unit，targeted 綠不代表其餘呼叫端相容。
+
+- 2026-10-01 防復發：省略 runtime catalog 不能默認成整個 premium／audit allowlist；global default 不得跨 provider。prepare 與 fallback 共用 provider-local catalog capture 判準，缺證據 park、明確無 selector 才 CURRENT_AGENT；OpenAI Astra、Anthropic Fable 的唯一昂貴預算與300秒／首次infra降級不變。catalog record 驗證不假稱 provider-signed 可用性，歷史 usage 不改。
 
 - 最近發生：2026-09-29；次數：3 個可重用事件（#552 成本政策收斂；#447 實戰驗證；#37／PR #688 派工前記帳失序），歷史昂貴諮詢總數未知，不補零。
 - 證據：Owner 成本超支回報、#552；#455/#551/#561/#581/#591；#447 readiness run `35335418384`。
