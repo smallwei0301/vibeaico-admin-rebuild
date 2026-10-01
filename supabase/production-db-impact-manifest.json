@@ -1108,6 +1108,27 @@
           "objectKey": "table:public.booking_addons"
         }
       ]
+    },
+    {
+      "repoFile": "0135_issue_46_guide_interval_availability",
+      "impacts": [
+        {
+          "surface": "columns",
+          "objectKey": "public.staff.availability_policy"
+        },
+        {
+          "surface": "constraints",
+          "objectKey": "public.staff.staff_availability_policy_check"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.guide_staff_interval_available(p_tenant uuid, p_staff uuid, p_start timestamp with time zone, p_end timestamp with time zone)"
+        },
+        {
+          "surface": "acl",
+          "objectKey": "function:public.guide_staff_interval_available(p_tenant uuid, p_staff uuid, p_start timestamp with time zone, p_end timestamp with time zone)"
+        }
+      ]
     }
   ]
 }
