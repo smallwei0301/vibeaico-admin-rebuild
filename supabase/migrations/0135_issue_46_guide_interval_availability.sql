@@ -125,11 +125,19 @@ begin
       v_local := case when v_i=1 then r.local_start else r.local_end end;
       v_utc := v_local at time zone v_zone;
       if not isfinite(v_local) or (v_utc at time zone v_zone)<>v_local then return false; end if;
-      -- Includes half-hour DST folds. A local clock that has more than one UTC
-      -- interpretation is unknown, even if the selected candidate misses it.
-      if exists (select 1 from generate_series(-180,180) m(minutes)
-        where m.minutes<>0 and ((v_utc+make_interval(mins=>m.minutes)) at time zone v_zone)=v_local)
-        then return false; end if;
+      -- Obtain actual offsets from the surrounding tenant calendar dates,
+      -- rather than guessing a maximum number of repeated minutes. This also
+      -- finds the +11/-12 offsets of Kwajalein's 1969 23-hour backward change.
+      -- An offset is only evidence of ambiguity when its constructed UTC
+      -- candidate roundtrips to this exact wall clock and differs from v_utc.
+      if exists (
+        select 1 from unnest(array[v_local::date-1,v_local::date,v_local::date+1]) sample(day)
+        cross join lateral (select sample.day::timestamp at time zone v_zone instant) observed
+        cross join lateral (select (observed.instant at time zone v_zone)
+          -(observed.instant at time zone 'UTC') utc_offset) offsets
+        cross join lateral (select (v_local-offsets.utc_offset) at time zone 'UTC' instant) candidate
+        where candidate.instant<>v_utc and (candidate.instant at time zone v_zone)=v_local
+      ) then return false; end if;
       if v_i=1 then v_start:=v_utc; else v_end:=v_utc; end if;
     end loop;
     if r.local_end is null then v_end:=v_start+r.elapsed; end if;

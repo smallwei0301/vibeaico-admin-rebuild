@@ -1,11 +1,14 @@
 /** #46 SOURCE_PREPARE: native DB/ACL contract. Run only in an admitted isolated
  * or canonical lane. This predicate is read-only and is NOT a reservation proof. */
 import { randomUUID } from 'node:crypto';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import postgres from 'postgres';
 import { SHOP_A, SHOP_B } from '../../fixtures';
 
 const RPC = 'guide_staff_interval_available';
+let sql: ReturnType<typeof postgres> | undefined;
+const isLocal = process.env.TEST_PROFILE === 'LOCAL_ISOLATED' && /^local-pr-|^vibeaico-/.test(String(process.env.TEST_ENV_ID ?? process.env.LOCAL_PROJECT_ID ?? ''));
 let admin: SupabaseClient;
 let anon: SupabaseClient;
 let owner: SupabaseClient;
@@ -44,6 +47,7 @@ beforeAll(async () => {
   owner = client(process.env.TEST_SUPABASE_ANON_KEY!);
   expect((await owner.auth.signInWithPassword(SHOP_A.owner)).error).toBeNull();
 });
+afterAll(async () => { await sql?.end({ timeout: 2 }); });
 beforeEach(async () => {
   tenant = await insert('tenants', { shop_code: `g46-${randomUUID()}`, name: '#46 disposable availability', business_type: 'GUIDE' });
   staff = await insert('staff', { tenant_id: tenant, name: 'isolated guide' });
@@ -179,6 +183,40 @@ describe('0135 staff policy and service-only tenant interval predicate', () => {
     await insert('external_calendar_events', { tenant_id: SHOP_B.id, external_calendar_id: calendar,
       uid: randomUUID(), title: 'mismatched tenant fixture', start_at: start, end_at: end });
     expect(await available()).toBe(false);
+  });
+
+  it('rejects Kwajalein 23-hour fold, while unambiguous adjacent calendar dates are covered', async () => {
+    await timezone('Pacific/Kwajalein'); await policy('EXPLICIT_ONLY');
+    const earlier = await shift('1969-09-29', '12:00', '13:00');
+    expect(await available('1969-09-29T01:00:00Z', '1969-09-29T01:30:00Z')).toBe(true);
+    expect((await admin.from('shifts').delete().eq('id', earlier)).error).toBeNull();
+    const later = await shift('1969-10-01', '12:00', '13:00');
+    expect(await available('1969-10-02T00:00:00Z', '1969-10-02T00:30:00Z')).toBe(true);
+    expect((await admin.from('shifts').delete().eq('id', later)).error).toBeNull();
+    await shift('1969-09-30', '12:00', '13:00');
+    // Both UTC interpretations must be unavailable, including the second one
+    // that PostgreSQL normally chooses and the old +/-180m search missed.
+    expect(await available('1969-09-30T01:00:00Z', '1969-09-30T01:30:00Z')).toBe(false);
+    expect(await available('1969-10-01T00:00:00Z', '1969-10-01T00:30:00Z')).toBe(false);
+  });
+  it.runIf(isLocal)('reads actual isolated PostgreSQL tzdata and function ACL/catalog', async () => {
+    // Same admitted local transport as production-db-writer-mechanics.447;
+    // never guess a remote DB URL or use Python timezone data as a PG proof.
+    sql = postgres('postgresql://postgres:postgres@127.0.0.1:54322/postgres', { max: 1, prepare: false });
+    const wall = await sql`
+      select to_char('1969-09-30T01:00:00Z'::timestamptz at time zone 'Pacific/Kwajalein', 'YYYY-MM-DD HH24:MI') early,
+        to_char('1969-10-01T00:00:00Z'::timestamptz at time zone 'Pacific/Kwajalein', 'YYYY-MM-DD HH24:MI') late`;
+    expect(wall[0]).toEqual({ early: '1969-09-30 12:00', late: '1969-09-30 12:00' });
+    const catalog = await sql`
+      select p.prosecdef, p.provolatile, p.proconfig,
+        has_function_privilege('anon',p.oid,'EXECUTE') anon_exec,
+        has_function_privilege('authenticated',p.oid,'EXECUTE') auth_exec,
+        has_function_privilege('service_role',p.oid,'EXECUTE') service_exec
+      from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid=p.pronamespace
+      where n.nspname='public' and p.proname='guide_staff_interval_available'`;
+    expect(catalog).toHaveLength(1);
+    expect(catalog[0]).toMatchObject({ prosecdef: false, provolatile: 's', anon_exec: false, auth_exec: false, service_exec: true });
+    expect(catalog[0].proconfig).toContain('search_path=pg_catalog, public');
   });
 
 });
