@@ -24,6 +24,7 @@ import {
 import { getSetupStatus } from '@/services/settings';
 import { listBookings } from '@/services/bookings';
 import { getGuideActionInbox } from '@/services/guide-action-inbox';
+import { createGuideInboxLoader, guideInboxForTenant, type GuideInboxLoadState } from '@/lib/guide-inbox-load';
 import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { APP_URL } from '@/config/env';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
@@ -285,10 +286,14 @@ export default function DashboardPage() {
   const [setup, setSetup] = React.useState<SetupStatus | null>(null);
   const [performance, setPerformance] = React.useState<StaffPerformance[]>([]);
   const [todayRows, setTodayRows] = React.useState<Booking[]>([]);
-  const [actionInbox, setActionInbox] = React.useState<GuideActionInboxItem[]>([]);
+  const [inboxState, setInboxState] = React.useState<GuideInboxLoadState<GuideActionInboxItem>>({
+    tenantId: currentTenant.id, status: 'loading',
+  });
+  const inboxLoader = React.useRef(createGuideInboxLoader<GuideActionInboxItem>(setInboxState));
+  const visibleInbox = guideInboxForTenant(inboxState, currentTenant.id);
+  const actionInbox = visibleInbox.status === 'success' ? visibleInbox.items : [];
 
   const [loadingToday, setLoadingToday] = React.useState(true);
-  const [loadingActionInbox, setLoadingActionInbox] = React.useState(false);
   const [loadingPerformance, setLoadingPerformance] = React.useState(true);
   const [loadingActivity, setLoadingActivity] = React.useState(true);
   const [activity, setActivity] = React.useState<RecentActivity[]>([]);
@@ -342,22 +347,15 @@ export default function DashboardPage() {
     })();
   }, [fail]);
 
+  const reloadActionInbox = React.useCallback(() => {
+    if (modePreset.showActionInbox) void inboxLoader.current.load(currentTenant.id, getGuideActionInbox);
+  }, [currentTenant.id, modePreset.showActionInbox]);
+
   React.useEffect(() => {
-    let mounted = true;
-    setActionInbox([]);
-    setLoadingActionInbox(true);
-    void (async () => {
-      try {
-        const items = await getGuideActionInbox();
-        if (mounted) setActionInbox(items);
-      } catch (e) {
-        if (mounted) fail(t.errors.actionInbox, e);
-      } finally {
-        if (mounted) setLoadingActionInbox(false);
-      }
-    })();
-    return () => { mounted = false; };
-  }, [businessType, fail]);
+    const loader = inboxLoader.current;
+    reloadActionInbox();
+    return () => loader.invalidate();
+  }, [reloadActionInbox]);
 
   const copyPublicUrl = async () => {
     try {
@@ -436,7 +434,7 @@ export default function DashboardPage() {
             <CardTitle>
               <ClipboardList size={16} className="text-primary" />
               {t.actionInbox.title}
-              <span className="form-text">{t.actionInbox.count(actionInbox.length)}</span>
+              {visibleInbox.status === 'success' ? <span className="form-text">{t.actionInbox.count(actionInbox.length)}</span> : null}
             </CardTitle>
             <div className="flex flex-wrap gap-2">
               {actionInbox.some((item) => item.kind === 'BOOKING_REQUEST') ? (
@@ -452,8 +450,15 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardBody>
-            {loadingActionInbox ? (
+            {visibleInbox.status === 'loading' ? (
               <div className="py-4 text-center text-muted">{t.actionInbox.loading}</div>
+            ) : visibleInbox.status === 'error' ? (
+              <Alert tone="danger" title={t.actionInbox.loadErrorTitle}>
+                <p>{t.actionInbox.loadErrorBody}</p>
+                <Button variant="outline" className="mt-3" onClick={reloadActionInbox}>
+                  {t.actionInbox.retry}
+                </Button>
+              </Alert>
             ) : actionInbox.length === 0 ? (
               <EmptyState icon={ClipboardList} title={t.actionInbox.empty} />
             ) : (

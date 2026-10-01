@@ -47,6 +47,9 @@ export const dashboardPage = {
   /* ---------------------------------------------------------- GUIDE 待處理事項 */
   actionInbox: {
     title: '待處理事項',
+    loadErrorTitle: '暫時無法讀取待辦',
+    loadErrorBody: '目前無法確認是否有需要處理的事項。請重新讀取；若仍失敗，稍後再試。',
+    retry: '重新讀取待辦',
     bookingRequest: '待確認預約',
     bookingPayment: '待收款預約',
     /* ---- #43 類別 1（GUIDE 旅遊側）：待導遊接受／拒絕的 REQUEST（先申請再確認） ---- */
