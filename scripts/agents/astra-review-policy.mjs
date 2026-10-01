@@ -458,3 +458,50 @@ export async function resolveReviewWakeup({ github, owner, repo, runId }) {
     || current.head?.ref !== run.head_branch) throw new Error('Review wake-up PR source differs from canonical run');
   return current.number;
 }
+
+/** Receipt events are wake-up locators, never proof; fan out to every canonical referenced PR. */
+export async function resolveRoleReceiptWakeup({ github, owner, repo, repository, issueNumber, commentId, nativePr = false }) {
+  const expected = `${owner}/${repo}`;
+  if (repository !== expected || !Number.isSafeInteger(issueNumber) || issueNumber < 1
+    || !Number.isSafeInteger(commentId) || commentId < 1) throw new Error('Invalid canonical receipt event locator');
+  const sources = new Set(['issues', 'pull'].map(kind => `https://github.com/${expected}/${kind}/${issueNumber}#issuecomment-${commentId}`));
+  const affected = new Set();
+  let associationIncomplete = false;
+  if (nativePr) {
+    const { data: current } = await github.rest.pulls.get({ owner, repo, pull_number: issueNumber });
+    if (current.number !== issueNumber || current.base?.repo?.full_name !== expected || !SHA.test(current.head?.sha ?? '')) throw new Error('Foreign or invalid native receipt PR');
+    if (current.state === 'open') affected.add(issueNumber);
+  }
+  let inventory;
+  try { inventory = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', per_page: 100 }); }
+  catch { return { numbers: [...affected], associationIncomplete: true }; }
+  const open = inventory.filter(pr => pr.base?.repo?.full_name === expected && pr.state === 'open' && SHA.test(pr.head?.sha ?? ''));
+  // Capture every body-linked head before optional review association reads can fail.
+  for (const pr of open) if (sources.has(readField(pr.body ?? '', 'BUILDER_EXECUTION_RECEIPT'))) affected.add(pr.number);
+  for (const pr of open) {
+    let records;
+    try { records = await github.paginate(github.rest.pulls.listReviews, { owner, repo, pull_number: pr.number, per_page: 100 }); }
+    catch { associationIncomplete = true; continue; }
+    const trusted = [];
+    for (const record of records) {
+      const login = record.user?.login;
+      if (!login) continue;
+      let allowed = isTrustedFinalRiskAgentUser(record.user);
+      if (!allowed) {
+        try {
+          const response = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: login });
+          allowed = ['admin', 'maintain', 'write'].includes(response.data.permission);
+        } catch (error) { if (error?.status !== 404) associationIncomplete = true; }
+      }
+      if (allowed) trusted.push({ ...record, trusted: true });
+    }
+    // Older canonical references remain wake-up links even if newer negative/dismissed reviews supersede PASS.
+    for (const kind of ['sol-review', 'astra-review']) for (const receipt of parseAstraReviews(trusted, kind)) {
+      if (receipt.commitId === receipt.headSha && sources.has(receipt.reviewerExecutionReceipt)) affected.add(pr.number);
+    }
+  }
+  const numbers = [...affected].sort((a, b) => a - b);
+  if (numbers.some(number => !Number.isSafeInteger(number) || number < 1)) throw new Error('Invalid canonical affected PR');
+
+  return { numbers, associationIncomplete };
+}

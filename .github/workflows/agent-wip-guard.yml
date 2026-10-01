@@ -9,7 +9,7 @@ on:
     types: [completed]
 
   issue_comment:
-    types: [created]
+    types: [created, edited, deleted]
 
 permissions:
   actions: write
@@ -20,14 +20,15 @@ permissions:
 
 jobs:
   review_wakeup:
-    if: github.event_name == 'workflow_run'
+    if: github.event_name == 'workflow_run' || (github.event_name == 'issue_comment' && (github.event.action == 'edited' || github.event.action == 'deleted'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
       actions: read
       pull-requests: read
     outputs:
-      pr_number: ${{ steps.resolve.outputs.pr_number }}
+      pr_numbers: ${{ steps.resolve.outputs.pr_numbers }}
+      association_incomplete: ${{ steps.resolve.outputs.association_incomplete }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,13 +38,17 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: >-
-            const { pathToFileURL } = require('node:url'); const path = require('node:path'); const astra = await import(pathToFileURL(path.join(process.env.GITHUB_WORKSPACE, 'scripts/agents/astra-review-policy.mjs')).href); const { owner, repo } = context.repo; core.setOutput('pr_number', await astra.resolveReviewWakeup({ github, owner, repo, runId: context.payload.workflow_run.id }));
+            const { pathToFileURL } = require('node:url'); const path = require('node:path'); const astra = await import(pathToFileURL(path.join(process.env.GITHUB_WORKSPACE, 'scripts/agents/astra-review-policy.mjs')).href); const { owner, repo } = context.repo; const packet = context.eventName === 'workflow_run' ? { numbers: [await astra.resolveReviewWakeup({ github, owner, repo, runId: context.payload.workflow_run.id })], associationIncomplete: false } : await astra.resolveRoleReceiptWakeup({ github, owner, repo, repository: context.payload.repository.full_name, issueNumber: context.payload.issue.number, commentId: context.payload.comment.id, nativePr: Boolean(context.payload.issue.pull_request) }); core.setOutput('pr_numbers', JSON.stringify(packet.numbers)); core.setOutput('association_incomplete', String(packet.associationIncomplete)); if (packet.associationIncomplete) core.warning('Receipt association reads incomplete: known heads are invalidated pending; unknown associations require recovery');
 
   guard:
     needs: [review_wakeup]
-    if: always() && (github.event_name == 'pull_request_target' || (github.event_name == 'workflow_run' && needs.review_wakeup.result == 'success') || (github.event.issue.pull_request && (github.event.comment.body == '/astra-review-check' || startsWith(github.event.comment.body, '/astra-review-check'))))
+    if: always() && (github.event_name == 'pull_request_target' || ((github.event_name == 'workflow_run' || (github.event_name == 'issue_comment' && (github.event.action == 'edited' || github.event.action == 'deleted'))) && needs.review_wakeup.result == 'success' && needs.review_wakeup.outputs.pr_numbers != '[]') || (github.event.issue.pull_request && (github.event.comment.body == '/astra-review-check' || startsWith(github.event.comment.body, '/astra-review-check'))))
+    strategy:
+      fail-fast: false
+      matrix:
+        pr_number: ${{ fromJSON(needs.review_wakeup.outputs.pr_numbers || format('[{0}]', github.event.pull_request.number || github.event.issue.number)) }}
     concurrency:
-      group: agent-wip-guard-${{ github.repository }}-${{ needs.review_wakeup.outputs.pr_number || github.event.pull_request.number || github.event.issue.number }}
+      group: agent-wip-guard-${{ github.repository }}-${{ matrix.pr_number }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
@@ -55,7 +60,8 @@ jobs:
 
       - name: Validate B+ lane metadata and WIP limits
         env:
-          REVIEW_WAKEUP_PR: ${{ needs.review_wakeup.outputs.pr_number }}
+          REVIEW_WAKEUP_PR: ${{ matrix.pr_number }}
+          RECEIPT_ASSOCIATION_INCOMPLETE: ${{ needs.review_wakeup.outputs.association_incomplete }}
         uses: actions/github-script@v9
         with:
           script: |
@@ -87,7 +93,7 @@ jobs:
             )).href);
 
             const { owner, repo } = context.repo;
-            const reviewWakeup = context.eventName === 'workflow_run';
+            const reviewWakeup = context.eventName === 'workflow_run' || (context.eventName === 'issue_comment' && ['edited', 'deleted'].includes(context.payload.action));
             const payloadCurrent = reviewWakeup ? { number: Number(process.env.REVIEW_WAKEUP_PR) }
               : context.payload.pull_request ?? { number: context.payload.issue.number };
             if (!Number.isSafeInteger(payloadCurrent.number) || payloadCurrent.number < 1) throw new Error('Invalid canonical PR number');
@@ -96,7 +102,7 @@ jobs:
               repo,
               pull_number: payloadCurrent.number,
             });
-            if (context.eventName === 'issue_comment') {
+            if (context.eventName === 'issue_comment' && !reviewWakeup) {
               const firstLine = String(context.payload.comment?.body ?? '').split(/\r?\n/, 1)[0].trim();
               if (firstLine !== '/astra-review-check') throw new Error('Invalid Final Risk refresh command');
               const commentUser = context.payload.comment?.user ?? {};
@@ -107,9 +113,10 @@ jobs:
               }
             }
             // REVIEW_WAKEUP_INVALIDATION_BEGIN
-            if (context.eventName === 'workflow_run') {
+            if (reviewWakeup) {
               if (current.state !== 'open') return;
               await github.rest.repos.createCommitStatus({ owner, repo, sha: current.head.sha, state: 'pending', context: 'Agent WIP Policy', description: 'Refreshing current review evidence; not an approval' });
+              if (process.env.RECEIPT_ASSOCIATION_INCOMPLETE === 'true') throw new Error('Receipt association inventory is incomplete; current-head pending requires recovery');
               const metadata = policy.parseLaneMetadata(current);
               if (astra.shouldEnforceFinalRisk({ pullRequestState: current.state, draft: current.draft === true, laneState: metadata.state })) {
                 const review = await astra.evaluateGithubAstra({ github, owner, repo, current });
@@ -340,7 +347,7 @@ jobs:
             });
 
             const shouldDispatchTest =
-              context.eventName !== 'workflow_run' &&
+              !reviewWakeup && context.eventName !== 'workflow_run' &&
               context.payload.action === 'edited' &&
               isAgent &&
               metadata.lane === 'TEST_VALIDATION' &&
