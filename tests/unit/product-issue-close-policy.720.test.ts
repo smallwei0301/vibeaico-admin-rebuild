@@ -54,6 +54,15 @@ const verifiedCi = {
   reachableFromCurrentMain: true,
 };
 
+const verifiedRun = {
+  schemaVersion: 2,
+  deliveryTruthVersion: 4,
+  runId: '2026-10-01-product-r01',
+  status: 'IN_PROGRESS',
+  sources: [{ ref: 'origin/main' }, { ref: 'issue/704' }],
+  closeout: { state: 'OPEN', ownerRole: 'PRODUCT_MAIN_SESSION' },
+};
+
 describe('#720 executable Product Issue close gate', () => {
   it('does not apply Product close policy to MODEL_GOVERNANCE issues', () => {
     const result = evaluateProductIssueClose({
@@ -90,6 +99,7 @@ describe('#720 executable Product Issue close gate', () => {
       }],
       comments: [readyComment()],
       verifiedCi,
+      verifiedRun,
     });
     expect(result.allowed).toBe(false);
     expect(result.errors.join('\n')).toContain('#706');
@@ -107,6 +117,7 @@ describe('#720 executable Product Issue close gate', () => {
       openPullRequests: [],
       comments: [readyComment()],
       verifiedCi: { ...verifiedCi, conclusion: 'failure', reachableFromCurrentMain: false },
+      verifiedRun,
     });
     expect(result.errors.join('\n')).toContain('conclude success');
     expect(result.errors.join('\n')).toContain('not reachable');
@@ -133,9 +144,55 @@ describe('#720 executable Product Issue close gate', () => {
       openPullRequests: [],
       comments: [afterClose],
       verifiedCi,
+      verifiedRun,
     });
     expect(late.allowed).toBe(false);
     expect(late.errors.join('\n')).toContain('created before');
+  });
+
+  it('requires the close-ready RUN_ID to resolve to an open Product-owned v4 ledger containing the Issue', () => {
+    const missing = evaluateProductIssueClose({
+      issue: issue(),
+      currentMainSha: main,
+      openPullRequests: [],
+      comments: [readyComment()],
+      verifiedCi,
+      verifiedRun: null,
+    });
+    expect(missing.errors.join('\n')).toContain('not verified against current-main Product Run');
+
+    const wrong = evaluateProductIssueClose({
+      issue: issue(),
+      currentMainSha: main,
+      openPullRequests: [],
+      comments: [readyComment()],
+      verifiedCi,
+      verifiedRun: {
+        ...verifiedRun,
+        runId: 'different-run',
+        status: 'COMPLETE',
+        sources: [{ ref: 'issue/999' }],
+        closeout: { state: 'CLOSED', ownerRole: 'PRODUCT_MAIN_SESSION' },
+      },
+    });
+    expect(wrong.errors.join('\n')).toContain('differs from verified Product Run');
+    expect(wrong.errors.join('\n')).toContain('active Product Run');
+    expect(wrong.errors.join('\n')).toContain('OPEN Product-owned');
+    expect(wrong.errors.join('\n')).toContain('issue/704');
+  });
+
+  it('does not allow an earlier successful close-ready handoff to be consumed twice after reopen', () => {
+    const result = evaluateProductIssueClose({
+      issue: issue(),
+      currentMainSha: main,
+      openPullRequests: [],
+      comments: [readyComment()],
+      verifiedCi,
+      verifiedRun,
+      lastClosedCaptureAt: '2026-10-01T00:50:00Z',
+    });
+    expect(result.allowed).toBe(false);
+    expect(result.errors.join('\n')).toContain('already consumed');
   });
 
   it('accepts a fresh handoff with successful reachable canonical main CI and no linked open PR', () => {
@@ -145,6 +202,7 @@ describe('#720 executable Product Issue close gate', () => {
       openPullRequests: [],
       comments: [readyComment()],
       verifiedCi,
+      verifiedRun,
     });
     expect(result.allowed).toBe(true);
     expect(result.runId).toBe('2026-10-01-product-r01');
@@ -169,6 +227,8 @@ describe('#720 executable Product Issue close gate', () => {
     expect(workflow).toContain("state: 'open'");
     expect(workflow).toContain('ISSUE_CLOSED_OBSERVED');
     expect(workflow).toContain('getCollaboratorPermissionLevel');
+    expect(workflow).toContain('docs/metrics/agent-runs/');
+    expect(workflow).toContain('github-actions[bot]');
   });
   it('allows only the exact close-guard workflow in MODEL_GOVERNANCE scope', () => {
     const governanceBody = [
