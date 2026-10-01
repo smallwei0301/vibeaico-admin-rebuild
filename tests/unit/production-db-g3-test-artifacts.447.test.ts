@@ -1,4 +1,4 @@
-import { getProductionDbG3AuthzContract } from '../../scripts/agents/production-db-g3-authz-contracts.mjs';
+import { getProductionDbG3AuthzContract, ISSUE_46_CLOSURE_COVERAGE } from '../../scripts/agents/production-db-g3-authz-contracts.mjs';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -630,4 +630,46 @@ describe('#46 exact semantic coverage and fixture cleanup', () => {
       else await expect(run).rejects.toThrow(outcome==='residue'?'TEST_CLEANUP_RESIDUE':'TEST_CLEANUP_READ_FAILED');
     }
   });
+});
+
+
+describe('#46 closure requires exact native snapshot evidence', () => {
+  const closurePlan=()=>({...plan([{repoFile:'0130_issue_46_refund_policy_snapshot',riskTier:'AUTHZ',sha256:'f'.repeat(64)}]),migrationScope:ISSUE_46_CLOSURE_COVERAGE.scope});
+  const build=(raw:any)=>buildProductionDbTestCoverageEvidence({report:raw,plan:closurePlan(),sourceRunId:'123',sourceRunAttempt:1});
+  it('fails closed for generic ACL green and missing REQUEST/seasonal exact cases', () => {
+    expect(()=>build(report())).toThrow(/REQUIRED_SEMANTIC_TEST_MISSING/);
+    expect(ISSUE_46_CLOSURE_COVERAGE.requiredAssertions.some(row=>row.file==='tests/integration/db/plan-seasonal-order-snapshot.42.test.ts')).toBe(true);
+    expect(ISSUE_46_CLOSURE_COVERAGE.requiredAssertions.some(row=>row.fullName.includes('409 TOUR_001'))).toBe(true);
+  });
+  it('rejects missing/pending refund cases even if all other synthetic cases claim passed', () => {
+    const rows=ISSUE_46_CLOSURE_COVERAGE.requiredAssertions;
+    const files=[...new Set(rows.map(row=>row.file))];
+    const raw=report({numTotalTests:rows.length,numPassedTests:rows.length,testResults:files.map(file=>({name:file,assertionResults:rows.filter(row=>row.file===file).map(row=>({status:'passed',fullName:row.fullName}))}))});
+    // This synthetic report only exercises the exact-name gate; add current ACL
+    // proof to distinguish missing behavior evidence from generic authz failure.
+    const aclFile='tests/integration/api/tour-order-authz.447.test.ts';
+    const contract=getProductionDbG3AuthzContract('0130_issue_46_refund_policy_snapshot');
+    const acl=[...contract.tenantBoundaryAssertions,...contract.negativeRoleAssertions].map((row:any)=>({status:'passed',fullName:row.fragment}));
+    raw.testResults.push({name:aclFile,assertionResults:acl});raw.numTotalTests+=acl.length;raw.numPassedTests+=acl.length;
+    expect(build(raw).reportSuccess).toBe(true);
+    const incomplete=structuredClone(raw);incomplete.testResults[0].assertionResults[0].fullName+='!';
+    expect(()=>build(incomplete)).toThrow(/REQUIRED_SEMANTIC_TEST_MISSING/);
+    const pending=structuredClone(raw);pending.testResults[0].assertionResults[0].status='pending';pending.numPassedTests--;pending.numPendingTests++;
+    expect(()=>build(pending)).toThrow(/UNAPPROVED_VITEST_PENDING/);
+  });
+});
+
+
+it('#46 closure independently reads owned refund/seasonal parent prefixes and rejects residue', async () => {
+  for(const residue of [false,true]) {
+    const seen:string[]=[];
+    const fetchImpl=vi.fn(async(url:any,init:any)=>{
+      const parsed=new URL(url);expect(init.method).toBe('GET');expect(parsed.pathname).toBe('/rest/v1/trips');
+      const filter=parsed.searchParams.get('slug')!;seen.push(filter);
+      return new Response(JSON.stringify(residue&&filter==='like.refund-snapshot-46-%'?[{id:'leftover'}]:[]),{status:200});
+    });
+    const run=captureProductionDbTestCleanupEvidence({plan:{...plan([{repoFile:'0130_issue_46_refund_policy_snapshot',riskTier:'AUTHZ',sha256:'f'.repeat(64)}]),migrationScope:ISSUE_46_CLOSURE_COVERAGE.scope},testSupabaseUrl:TEST_URL,serviceRoleKey:'mock',sourceRunId:'123',sourceRunAttempt:1,fetchImpl});
+    if(residue)await expect(run).rejects.toThrow(/TEST_CLEANUP_RESIDUE/);
+    else {expect((await run).residueCount).toBe(0);expect(seen).toEqual(['like.refund-snapshot-46-%','like.snapshot-42-%']);}
+  }
 });

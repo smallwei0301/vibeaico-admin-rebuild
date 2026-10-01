@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
 import {
   getProductionDbG3AuthzContract,
+  ISSUE_46_CLOSURE_COVERAGE,
   PRODUCTION_DB_G3_AUTHZ_CONTRACTS,
 } from './production-db-g3-authz-contracts.mjs';
 
@@ -166,6 +167,14 @@ export function buildProductionDbTestCoverageEvidence({ report, plan, sourceRunI
   }
 
   const assertions = passedAssertions(report);
+  if (plan.migrationScope === ISSUE_46_CLOSURE_COVERAGE.scope) {
+    for (const required of ISSUE_46_CLOSURE_COVERAGE.requiredAssertions) {
+      if (!assertions.some((row) => row.file === required.file && row.name === required.fullName)) {
+        fail('REQUIRED_SEMANTIC_TEST_MISSING', `closure lacks a passed exact assertion: ${required.fullName}`);
+      }
+    }
+  }
+
   const executedFiles = [...new Set((Array.isArray(report.testResults) ? report.testResults : [])
     .map((item) => repoTestPath(item?.name ?? item?.testFilePath ?? ''))
     .filter(Boolean))].sort();
@@ -240,6 +249,11 @@ function canonicalTestUrl(value) {
 
 function cleanupScopes(plan) {
   const scopes = [];
+  if (plan.migrationScope === ISSUE_46_CLOSURE_COVERAGE.scope) {
+    scopes.push({migration:'0130_issue_46_refund_policy_snapshot',table:'trips',filterColumn:'slug',filterOperator:'like',filterValue:'refund-snapshot-46-%'});
+    scopes.push({migration:'0132_issue_42_seasonal_price_resolution',table:'trips',filterColumn:'slug',filterOperator:'like',filterValue:'snapshot-42-%'});
+  }
+
   if (plan.migrations.some((migration) => migration.repoFile === '0135_issue_46_guide_interval_availability')) {
     scopes.push({migration:'0135_issue_46_guide_interval_availability',table:'tenants',filterColumn:'shop_code',filterOperator:'like',filterValue:'g46-%'});
   }

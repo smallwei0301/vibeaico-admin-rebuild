@@ -1,3 +1,33 @@
+// The closure's final create_tour_order body must preserve these observed
+// REQUEST/seasonal contracts. The seasonal file is currently pending main merge;
+// no synthetic passing report proves execution of either native snapshot suite.
+export const ISSUE_46_CLOSURE_COVERAGE = Object.freeze({
+  scope: 'ISSUE_46_0110_0135_CLOSURE',
+
+  requiredAssertions: Object.freeze([
+    Object.freeze({ file: 'tests/integration/db/tour-refund-snapshot.46.test.ts', fullName: '#46 refund policy stays immutable on real TourOrders persists STANDARD, preserves the old whole order and updates only new snapshots' }),
+    Object.freeze({ file: 'tests/integration/db/tour-refund-snapshot.46.test.ts', fullName: '#46 refund policy stays immutable on real TourOrders persists FLEXIBLE, preserves the old whole order and updates only new snapshots' }),
+    Object.freeze({ file: 'tests/integration/db/tour-refund-snapshot.46.test.ts', fullName: '#46 refund policy stays immutable on real TourOrders persists STRICT, preserves the old whole order and updates only new snapshots' }),
+    Object.freeze({"file": "tests/integration/api/tour-request-accept.46.test.ts", "fullName": "REQUEST 訂單送出申請時不鎖名額（18 分冊 §0.2；0111 修正的假成功） 建立 REQUEST 訂單後 seats_booked 完全不動，訂單以 PENDING／seats_reserved=false 入列"}),
+    Object.freeze({"file": "tests/integration/api/tour-request-accept.46.test.ts", "fullName": "導遊接受 REQUEST 訂單（accept） 接受成功：鎖名額、hold_expires_at 用 plan 預設算出、狀態轉 CONFIRMED"}),
+    Object.freeze({"file": "tests/integration/api/tour-request-accept.46.test.ts", "fullName": "導遊接受 REQUEST 訂單（accept） 重查名額時已被別的案件用掉 → 409 TOUR_001，且不改動任何資料"}),
+    Object.freeze({"file": "tests/integration/api/tour-request-accept.46.test.ts", "fullName": "導遊接受 REQUEST 訂單（accept） 別家店的訂單 → 404，不改動任何資料"}),
+    Object.freeze({"file": "tests/integration/api/tour-request-accept.46.test.ts", "fullName": "導遊拒絕 REQUEST 訂單（reject） 別家店的訂單 → 404，不改動任何資料"}),
+    Object.freeze({"file": "tests/integration/api/tour-request-accept.46.test.ts", "fullName": "cancel_tour_order 對 seats_reserved 的守門（0111 Final Risk B1，claude-fable-5-1） 取消一筆從未被接受的 PENDING REQUEST 訂單 → 200，seats_booked 完全不動（從未鎖過，不該被放）"}),
+    Object.freeze({"file": "tests/integration/api/tour-request-accept.46.test.ts", "fullName": "cancel_tour_order 對 seats_reserved 的守門（0111 Final Risk B1，claude-fable-5-1） 取消一筆已被接受（CONFIRMED，seats_reserved=true）的 REQUEST 訂單 → 名額釋放剛好一次"}),
+    Object.freeze({"file": "tests/integration/db/plan-seasonal-order-snapshot.42.test.ts", "fullName": "#42 persisted seasonal prices become immutable TourOrder snapshots normal PER_PERSON × 3"}),
+    Object.freeze({"file": "tests/integration/db/plan-seasonal-order-snapshot.42.test.ts", "fullName": "#42 persisted seasonal prices become immutable TourOrder snapshots normal PER_GROUP ignores party multiplier / fixed deposit"}),
+    Object.freeze({"file": "tests/integration/db/plan-seasonal-order-snapshot.42.test.ts", "fullName": "#42 persisted seasonal prices become immutable TourOrder snapshots cross-year January inclusive endpoint"}),
+    Object.freeze({"file": "tests/integration/db/plan-seasonal-order-snapshot.42.test.ts", "fullName": "#42 persisted seasonal prices become immutable TourOrder snapshots cross-year December inclusive endpoint"}),
+    Object.freeze({"file": "tests/integration/db/plan-seasonal-order-snapshot.42.test.ts", "fullName": "#42 persisted seasonal prices become immutable TourOrder snapshots cross-year outside range uses base"}),
+    Object.freeze({"file": "tests/integration/db/plan-seasonal-order-snapshot.42.test.ts", "fullName": "#42 persisted seasonal prices become immutable TourOrder snapshots winning null override uses base, not broader season price"}),
+    Object.freeze({"file": "tests/integration/db/plan-seasonal-order-snapshot.42.test.ts", "fullName": "#42 persisted seasonal prices become immutable TourOrder snapshots shortest span beats earlier sortOrder and inactive narrower season"}),
+    Object.freeze({"file": "tests/integration/db/plan-seasonal-order-snapshot.42.test.ts", "fullName": "#42 persisted seasonal prices become immutable TourOrder snapshots equal span chooses smaller sortOrder"}),
+    Object.freeze({"file": "tests/integration/db/plan-seasonal-order-snapshot.42.test.ts", "fullName": "#42 persisted seasonal prices become immutable TourOrder snapshots zero override is a real free price, not base fallback"}),
+    Object.freeze({"file": "tests/integration/db/plan-seasonal-order-snapshot.42.test.ts", "fullName": "#42 persisted seasonal prices become immutable TourOrder snapshots equal span and sortOrder uses stable id tie-break"}),
+  ]),
+});
+
 export const PRODUCTION_DB_G3_AUTHZ_CONTRACTS = Object.freeze({
   // Remote G3 requires every semantic case; the isolated raw catalog case
   // remains explicitly NOT_RUN remotely and cannot establish catalog evidence.
