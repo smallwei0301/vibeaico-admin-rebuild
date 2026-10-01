@@ -192,6 +192,9 @@ close 或部署。不得用記憶、舊 Session、先前下載副本代替 curre
 
 ### 2.0.1 Deterministic metadata：preflight-first
 
+高風險 premium 派送另先用 `final-risk-workflow.mjs dispatch-preflight --input <input.json>`；prepare 的 reserve 不是 permit。真正 dispatch caller 必須呼叫同一 exported `preflightFinalRiskDispatch`，注入獨立 trusted durable reservation readback adapter，精確核對成本理由、classifier風險、scope／head／digest／lineage／executionRef／requestedID、當次 catalog與總attempt=1。CLI 無遠端 readback adapter，僅本地 fail-closed 檢查，不可把輸入 trusted=true 當授權。dispatch 後 `observe-dispatch` 保留 actual unknown、結果ref／未執行／300秒timeout或首次環境故障fallback；沒有 review PASS／release 授權推論。完整角色語意見現行路由決策（#711）；本補強不追溯改 prepare／歷史 receipt schema。
+dispatch caller 另須注入獨立可信 `readCurrentSource(repository, headSha)`：重新回讀 current body、exact head、完整 immutable changed-file inventory／SHA，重算 digest／scope後由 snapshot 重新 classifier；reservation 只證預算已占用，不能證 source／risk。缺 snapshot 或與 candidate 任一項不一致一律拒派送，candidate 自附 snapshot／risk 不可取代可信 adapter。
+
 PR body、`TEST_PROFILE`、lane、candidate、Closure、Final Risk metadata 等 deterministic contract，**不得把 remote CI 當互動式表單驗證器**。
 
 ```text

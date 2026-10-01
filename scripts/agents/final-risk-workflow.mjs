@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-import { finalRiskReviewerErrors, selectFinalRiskReviewer } from './final-risk-cost-policy.mjs';
+import { finalRiskReviewerErrors, selectFinalRiskReviewer, premiumDispatchPreflight, premiumExecutionState } from './final-risk-cost-policy.mjs';
 import { readField } from './agent-wip-policy.mjs';
 import { validateWipPreflight } from './agent-wip-preflight.mjs';
 import { changeDigestOf, classifyAstra, isAstraReviewRequired, parseAstraReviews, routing } from './astra-review-policy.mjs';
@@ -32,6 +32,40 @@ const meaningful = (value) => !PLACEHOLDER.test(text(value)) && text(value).leng
 const unique = (values = []) => [...new Set((Array.isArray(values) ? values : []).map(text).filter(Boolean))];
 const sorted = (values = []) => [...unique(values)].sort();
 const sameMembers = (left = [], right = []) => sorted(left).join('\0') === sorted(right).join('\0');
+
+export function preflightFinalRiskDispatch(input = {}, deps = {}) {
+  // A reservation proves occupied budget, not the current PR source or its risk.
+  let source;
+  try { if (typeof deps.readCurrentSource === 'function') source = deps.readCurrentSource(input.repository, input.headSha); } catch { /* fail closed */ }
+  const files = source?.changedFiles;
+  const complete = Array.isArray(files) && files.length > 0 && source?.changedFileCount === files.length
+    && files.every(file => typeof file?.filename === 'string' && file.filename.length > 0
+      && ['added', 'modified', 'removed', 'renamed'].includes(file?.status) && SHA40.test(file?.sha ?? '')
+      && (file.status !== 'renamed' || meaningful(file.previous_filename)))
+    && new Set(files.map(file => file.filename)).size === files.length;
+  const sourceValid = source?.trusted === true && source?.repository === input.repository
+    && source?.headSha === input.headSha && SHA40.test(source?.headSha ?? '')
+    && meaningful(source?.body) && source.body === input.body && complete
+    && source.changeDigest === changeDigestOf(files) && source.changeDigest === input.changeDigest
+    && sameMembers(files.map(file => file.filename), input.scope) && meaningful(source.evidenceRef)
+    && Number.isFinite(Date.parse(source.observedAt)) && Date.parse(source.observedAt) <= Date.parse(input.now);
+  const riskClassification = sourceValid ? classifyAstra({ body: source.body,
+    changedFiles: files.flatMap(file => [file.filename, ...(file.previous_filename ? [file.previous_filename] : [])]) }) : {};
+  const result = premiumDispatchPreflight({ ...input, riskClassification }, routing, deps);
+  if (!sourceValid) return { ...result, status: 'NOT_READY', dispatchAllowed: false,
+    errors: [...result.errors, 'Independently trusted complete current source/head/body/digest/scope snapshot required'] };
+  return result;
+}
+
+export function observeFinalRiskDispatch(input = {}) {
+  const state = premiumExecutionState(input.dispatch, input.now);
+  const selection = selectFinalRiskReviewer(input, routing);
+  return { status: 'EXECUTION_OBSERVED_ONLY', state, selection, executionReceipt: {
+    requestedModel: input.dispatch?.requestedModel ?? 'unknown', actualModel: 'unknown', identityEvidence: 'UNKNOWN',
+    executionRef: input.dispatch?.executionRef, requestedAt: input.dispatch?.requestedAt,
+    resultRef: input.resultRef ?? null, verdict: input.verdict ?? 'NOT_RECORDED',
+  }, releaseApproved: false };
+}
 
 function fileNames(records = []) {
   return unique((Array.isArray(records) ? records : []).map((record) => record?.filename));
@@ -369,12 +403,14 @@ function parseArgs(argv) {
 
 function runCli(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
-  if (!args.input) throw new Error('Usage: final-risk-workflow.mjs <prepare|recover> --input <input.json> [--output <result.json>]');
+  if (!args.input || !['prepare', 'recover', 'dispatch-preflight', 'observe-dispatch'].includes(args.action)) throw new Error('Usage: final-risk-workflow.mjs <prepare|recover|dispatch-preflight|observe-dispatch> --input <input.json> [--output <result.json>]');
   const input = JSON.parse(readFileSync(resolve(args.input), 'utf8'));
   if (input.bodyPath && !input.body) input.body = readFileSync(resolve(input.bodyPath), 'utf8');
-  const result = args.action === 'recover'
-    ? decideFinalRiskRecovery(input)
-    : buildFinalRiskPacket(input);
+  // CLI is local validation only: it deliberately has no durable GitHub readback credentials/adapter.
+  // A real caller injects the trusted read-only adapter into preflightFinalRiskDispatch before dispatch.
+  const result = args.action === 'recover' ? decideFinalRiskRecovery(input)
+    : args.action === 'dispatch-preflight' ? preflightFinalRiskDispatch(input)
+      : args.action === 'observe-dispatch' ? observeFinalRiskDispatch(input) : buildFinalRiskPacket(input);
   const output = `${JSON.stringify(result, null, 2)}\n`;
   if (args.output) writeFileSync(resolve(args.output), output, 'utf8');
   else process.stdout.write(output);
