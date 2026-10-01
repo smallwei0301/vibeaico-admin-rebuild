@@ -2,7 +2,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { departureCreateSchema, departureUpdateSchema } from '@/server/tour-domain';
 
 const state = vi.hoisted(() => ({
-  blockedDates: [] as string[], durationHours: 2,
+  blockedDates: [] as string[], durationHours: 2, timezone: 'Asia/Taipei' as unknown, settingsError: false, updates: 0,
   plans: [] as Record<string, unknown>[], rows: [] as Record<string, unknown>[], assignmentWrites: [] as string[],
 }));
 const TENANT = '11111111-1111-4111-8111-111111111111';
@@ -39,12 +39,15 @@ const fakeDb = {
     const filters: Record<string, unknown> = {};
     let columns = '*';
     let inserted: Record<string, unknown> | undefined;
+    let patch: Record<string, unknown> | undefined;
     let ids: string[] | undefined;
     const read = () => {
       if (inserted) return { data: inserted, error: null };
+      if (table === 'tenant_settings') return { data: { basic: { timezone: state.timezone } }, error: state.settingsError ? new Error('settings read failed') : null };
       if (table === 'trips') return { data: { duration_hours: state.durationHours }, error: null };
       const rows = table === 'trip_plans' ? state.plans : state.rows;
       const found = rows.find((row) => Object.entries(filters).every(([key, value]) => row[key] === value));
+      if (found && patch) { Object.assign(found, patch); state.updates++; patch = undefined; }
       const data = found && columns !== '*'
         ? Object.fromEntries(columns.split(',').map((key) => key.trim()).map((key) => [key, found[key]]))
         : found;
@@ -55,6 +58,7 @@ const fakeDb = {
       eq: (key: string, value: unknown) => { filters[key] = value; return query; },
       is: (key: string, value: unknown) => { filters[key] = value; return query; },
       in: (_key: string, value: string[]) => { ids = value; return query; },
+      update: (value: Record<string, unknown>) => { patch = value; return query; },
       insert: (value: Record<string, unknown>) => {
         inserted = { id: `departure-${state.rows.length}`, seats_booked: 0, ...value };
         state.rows.push(inserted);
@@ -73,6 +77,7 @@ const fakeDb = {
 
 import { saveTripDeparture, batchCreateDepartures } from '@/services/tours';
 import { POST as single } from '@/app/api/trips/[id]/departures/route';
+import { PUT as update } from '@/app/api/trip-departures/[id]/route';
 import { POST as batch } from '@/app/api/trips/[id]/departures/batch/route';
 const create = (body: Record<string, unknown>, bulk = false, tripId = TRIP) =>
   (bulk ? batch : single)(new Request(`http://localhost/api/trips/${tripId}/departures${bulk ? '/batch' : ''}`, {
@@ -86,6 +91,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date('2030-01-01T00:00:00Z'));
   state.plans = [{ id: PLAN, tenant_id: TENANT, trip_id: TRIP, min_to_depart: 4, formation_deadline_days_before: 7 }];
   state.rows = [];
+  state.timezone = 'Asia/Taipei'; state.settingsError = false; state.updates = 0;
   state.blockedDates = [];
   state.durationHours = 2;
   state.assignmentWrites = [];
@@ -144,7 +150,7 @@ describe('#42 real single/batch route insert seam (fake DB, no real acceptance c
     const request = vi.fn(async (_url: string, _init?: RequestInit) => Response.json({ success: true }));
     vi.stubGlobal('fetch', request);
     await saveTripDeparture(TRIP, { ...body, id: 'existing', formationDeadlineAt: deadline });
-    expect(JSON.parse(request.mock.calls[0][1]!.body as string)).not.toHaveProperty('formationDeadlineAt');
+    expect(JSON.parse(request.mock.calls[0][1]!.body as string)).toHaveProperty('formationDeadlineAt', deadline);
     vi.unstubAllGlobals();
   });
   it('skips an existing near-date duplicate before validating only the future new candidate', async () => {
@@ -183,8 +189,69 @@ describe('#42 real single/batch route insert seam (fake DB, no real acceptance c
     expect((await result.json()).data).toMatchObject({ created: 1, skipped: 1, conflicts: [expect.objectContaining({ departureId: state.rows[0].id, reason: 'DEPARTURE' })] });
     expect(state.rows).toHaveLength(1);
   });
-  it('schema accepts offset overrides only at creation, never rewrites through update', () => {
+  it('schema accepts explicit offset overrides for creation and editing', () => {
     expect(departureCreateSchema.safeParse({ ...body, formationDeadlineAt: '2030-01-02T12:00:00' }).success).toBe(false);
-    expect(departureUpdateSchema.parse({ formationDeadlineAt: '2030-01-02T12:00:00+08:00' })).toEqual({});
+    expect(departureUpdateSchema.parse({ formationDeadlineAt: '2030-01-02T12:00:00+08:00' })).toEqual({ formationDeadlineAt: '2030-01-02T12:00:00+08:00' });
   });
+  it.each([['Asia/Tokyo', '2030-01-07T15:30:00.000Z'], ['America/New_York', '2030-01-08T05:30:00.000Z']])('uses canonical settings timezone %s for single and batch', async (zone, deadline) => {
+    state.timezone = zone;
+    expect((await create(body)).status).toBe(200);
+    expect((await create({ ...bulk, from: '2030-01-17', to: '2030-01-17' }, true)).status).toBe(200);
+    expect(state.rows[0].formation_deadline_at).toBe(deadline);
+  });
+  it.each([null, 'invalid/zone'])('fails closed for corrupt timezone %s with no insert', async (zone) => {
+    state.timezone = zone;
+    expect((await create(body)).status).toBe(400);
+    expect(state.rows).toEqual([]);
+  });
+  it('uses legacy default when timezone is missing and rejects DST gaps before any insert', async () => {
+    state.timezone = undefined;
+    expect((await create(body)).status).toBe(200);
+    expect(state.rows[0].formation_deadline_at).toBe('2030-01-07T16:30:00.000Z');
+    state.rows = []; state.timezone = 'America/New_York';
+    expect((await create({ ...body, departsOn: '2030-03-10', startTime: '02:30' })).status).toBe(400);
+    expect((await create({ ...bulk, from: '2030-03-09', to: '2030-03-10', startTime: '02:30' }, true)).status).toBe(400);
+    expect(state.rows).toEqual([]);
+    expect(state.assignmentWrites).toHaveLength(1); // Only the earlier successful legacy creation.
+  });
+  it('fails closed on settings read failure and stale UI timezone', async () => {
+    state.settingsError = true;
+    expect((await create(body)).status).toBe(500);
+    state.settingsError = false;
+    expect((await create({ ...body, formationTimeZone: 'Asia/Tokyo' })).status).toBe(409);
+    expect(state.rows).toEqual([]);
+  });
+  const edit = (patch: Record<string, unknown>) => update(new Request('http://localhost/api/trip-departures/saved', {
+    method: 'PUT', body: JSON.stringify(patch), headers: { 'Content-Type': 'application/json' },
+  }), { params: Promise.resolve({ id: 'saved' }) });
+  const saved = () => state.rows.push({ id: 'saved', tenant_id: TENANT, trip_id: TRIP, plan_id: PLAN,
+    departs_on: '2030-01-15', start_time: '00:30:00', capacity: 8, seats_booked: 2, status: 'OPEN',
+    min_to_depart_snapshot: 4, formation_deadline_at: '2030-01-07T16:30:00.000Z' });
+  it('rejects reschedule behind the saved cutoff and capacity below snapshot/booked before writes', async () => {
+    saved();
+    expect((await edit({ departsOn: '2030-01-05' })).status).toBe(400);
+    expect((await edit({ capacity: 3 })).status).toBe(400);
+    expect((await edit({ capacity: 1 })).status).toBe(409);
+    expect(state.updates).toBe(0);
+    expect(state.assignmentWrites).toEqual([]);
+  });
+  it('service serializes an explicit edit cutoff, preserving saved threshold after Plan edits', async () => {
+    saved(); state.plans[0].min_to_depart = 7;
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => edit(JSON.parse(init!.body as string))));
+    await saveTripDeparture(TRIP, { id: 'saved', departsOn: '2030-01-05', formationDeadlineAt: '2030-01-04T00:00:00Z', formationTimeZone: 'Asia/Taipei' });
+    vi.unstubAllGlobals();
+    expect(state.rows[0]).toMatchObject({ departs_on: '2030-01-05', formation_deadline_at: '2030-01-04T00:00:00.000Z', min_to_depart_snapshot: 4 });
+  });
+  it.each([null, '2029-12-20T00:00:00Z'])('permits unrelated legacy edits with elapsed/null cutoff %s', async (cutoff) => {
+    saved(); state.rows[0].formation_deadline_at = cutoff;
+    expect((await edit({ note: 'keep snapshot', capacity: 4 })).status).toBe(200);
+    expect(state.rows[0]).toMatchObject({ formation_deadline_at: cutoff, min_to_depart_snapshot: 4, note: 'keep snapshot' });
+  });
+  it('rejects elapsed explicit overrides and null legacy reschedule without any update', async () => {
+    saved(); state.rows[0].formation_deadline_at = null;
+    expect((await edit({ departsOn: '2030-01-16' })).status).toBe(400);
+    expect((await edit({ formationDeadlineAt: '2029-12-31T00:00:00Z' })).status).toBe(400);
+    expect(state.updates).toBe(0);
+  });
+
 });

@@ -8,7 +8,7 @@ import {
   describeConflicts, readAssignments, resolveAssignment, writeAssignment,
 } from '@/server/departure-staff';
 
-import { departureFormationSnapshot } from '@/server/departure-formation-snapshot';
+import { departureFormationSnapshot, readDepartureFormationTimeZone } from '@/server/departure-formation-snapshot';
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -44,7 +44,8 @@ export const POST = handle(async (req, { params }: Context) => {
   const body = departureCreateSchema.parse(await req.json());
   const plan = await findTripPlan(t, id, body.planId);
   if (!plan) return fail(404, '找不到此方案', ERR.NOT_FOUND);
-  const formation = departureFormationSnapshot(plan, body);
+  const timeZone = await readDepartureFormationTimeZone(t.supabase, t.tenantId, body.formationTimeZone);
+  const formation = departureFormationSnapshot(plan, body, Date.now(), timeZone);
 
   const status = body.status ?? 'OPEN';
   const startTime = body.startTime ? body.startTime : null;

@@ -152,6 +152,8 @@ const departureFields = {
   capacity: z.number().int('名額必須為整數').min(1, '名額必須大於 0').optional(),
   status: z.enum(departureStatus).optional(),
   note: optionalText,
+  formationTimeZone: z.string().trim().min(1).optional(),
+  formationDeadlineAt: z.string().datetime({ offset: true, message: '成團截止時間須包含有效時區' }).optional(),
   /* ---- issue #37：團次實際執行人員。null = 明確清空；undefined = 這次不動它 ---- */
   primaryStaffId: z.string().uuid('請選擇主導遊').nullable().optional(),
   assistantStaffIds: z.array(z.string().uuid('協同導遊 id 格式錯誤')).optional(),
@@ -162,13 +164,12 @@ export const departureCreateSchema = z.object({
   planId: departureFields.planId.unwrap(),
   departsOn: departureFields.departsOn.unwrap(),
   capacity: departureFields.capacity.unwrap(),
-  // Create-only explicit confirmation; update cannot rewrite existing snapshots.
-  formationDeadlineAt: z.string().datetime({ offset: true, message: '成團截止時間須包含有效時區' }).optional(),
 });
 
 export const departureUpdateSchema = z.object(departureFields);
 
 export const departureBatchSchema = z.object({
+  formationTimeZone: z.string().trim().min(1).optional(),
   formationDeadlineAt: z.string().datetime({ offset: true, message: '成團截止時間須包含有效時區' }).optional(),
   planId: z.string().uuid('請選擇方案'),
   from: dateField,

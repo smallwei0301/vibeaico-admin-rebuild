@@ -12,7 +12,7 @@ import {
 } from '@/server/staff-availability';
 import type { DepartureConflict } from '@/lib/types';
 
-import { departureFormationSnapshot } from '@/server/departure-formation-snapshot';
+import { departureFormationSnapshot, readDepartureFormationTimeZone } from '@/server/departure-formation-snapshot';
 
 type Context = { params: Promise<{ id: string }> };
 const MAX_DAYS = 366;
@@ -112,9 +112,10 @@ export const POST = handle(async (req, { params }: Context) => {
 
   // Validate every genuinely new candidate before the first insert. Rejecting
   // one new cutoff must not leave earlier candidates silently created.
+  const timeZone = await readDepartureFormationTimeZone(t.supabase, t.tenantId, body.formationTimeZone);
   const now = Date.now();
   const formationByDate = new Map(candidates.map((date) => [
-    date, departureFormationSnapshot(plan, { ...body, departsOn: date }, now),
+    date, departureFormationSnapshot(plan, { ...body, departsOn: date }, now, timeZone),
   ]));
 
   for (const date of candidates) {

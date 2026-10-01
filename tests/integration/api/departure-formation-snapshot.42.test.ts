@@ -9,6 +9,7 @@ let admin: SupabaseClient;
 let owner: AuthedApi;
 let otherOwner: AuthedApi;
 const trips: string[] = [];
+let originalBasic: Record<string, unknown> | undefined;
 const json = async (response: Response) => response.json() as Promise<{ success: boolean; data: any; message?: string }>;
 
 beforeAll(async () => {
@@ -19,6 +20,10 @@ beforeAll(async () => {
   otherOwner = await loginAs(SHOP_B.owner.email, SHOP_B.owner.password);
 });
 afterEach(async () => {
+  if (originalBasic) {
+    expect((await owner.put('/api/settings', { basic: originalBasic })).status).toBe(200);
+    originalBasic = undefined;
+  }
   if (trips.length) {
     const { error } = await admin.from('trips').delete().eq('tenant_id', SHOP_A.id).in('id', trips.splice(0));
     expect(error).toBeNull();
@@ -114,4 +119,41 @@ describe('#42 Plan rules are consumed by future single and batch departures', ()
     expect((await rows(tripId)).every((row) => row.min_to_depart_snapshot === 4
       && new Date(row.formation_deadline_at).toISOString() === override)).toBe(true);
   });
+  it('tenant Tokyo/New York calendar snapshots and PUT guards persist through HTTP/raw DB', async () => {
+    const settings = await json(await owner.get('/api/settings'));
+    originalBasic = { ...settings.data.basic };
+    const setZone = async (timezone: string) => expect((await owner.put('/api/settings', { basic: { ...originalBasic, timezone } })).status).toBe(200);
+    const { tripId, planId } = await newPlan();
+    expect((await owner.put(`/api/trip-plans/${planId}`, { minToDepart: 4, formationDeadlineDaysBefore: 7 })).status).toBe(200);
+    await setZone('Asia/Tokyo');
+    const tokyo = await owner.post(`/api/trips/${tripId}/departures`, {
+      planId, departsOn: '2042-01-15', startTime: '00:30', capacity: 8, primaryStaffId: SHOP_A.staffA2, formationTimeZone: 'Asia/Tokyo',
+    });
+    expect(tokyo.status).toBe(200);
+    const saved = (await rows(tripId))[0];
+    expect(new Date(saved.formation_deadline_at).toISOString()).toBe('2042-01-07T15:30:00.000Z');
+    expect((await owner.put(`/api/trip-departures/${saved.id}`, { capacity: 3 })).status).toBe(400);
+    expect((await owner.put(`/api/trip-departures/${saved.id}`, { departsOn: '2042-01-05' })).status).toBe(400);
+    expect((await rows(tripId))[0]).toEqual(saved);
+    expect((await owner.put(`/api/trip-plans/${planId}`, { minToDepart: 7 })).status).toBe(200);
+    expect((await owner.put(`/api/trip-departures/${saved.id}`, {
+      departsOn: '2042-01-05', formationDeadlineAt: '2042-01-04T00:00:00Z', formationTimeZone: 'Asia/Tokyo',
+    })).status).toBe(200);
+    expect((await rows(tripId))[0]).toMatchObject({ departs_on: '2042-01-05', min_to_depart_snapshot: 4 });
+    expect(new Date((await rows(tripId))[0].formation_deadline_at).toISOString()).toBe('2042-01-04T00:00:00.000Z');
+    await setZone('America/New_York');
+    const batch = await owner.post(`/api/trips/${tripId}/departures/batch`, {
+      planId, from: '2042-03-12', to: '2042-03-13', weekdays: [0, 1, 2, 3, 4, 5, 6], startTime: '10:00', capacity: 8,
+      primaryStaffId: SHOP_A.staffA2, formationTimeZone: 'America/New_York',
+    });
+    expect(batch.status).toBe(200);
+    const all = await rows(tripId);
+    expect(all.slice(1).map(row => new Date(row.formation_deadline_at).toISOString())).toEqual(['2042-03-05T15:00:00.000Z', '2042-03-06T15:00:00.000Z']);
+    // Legacy elapsed/null cutoffs must not prevent unrelated edits.
+    const legacy = all[1];
+    expect((await admin.from('trip_departures').update({ formation_deadline_at: null }).eq('tenant_id', SHOP_A.id).eq('id', legacy.id)).error).toBeNull();
+    expect((await owner.put(`/api/trip-departures/${legacy.id}`, { note: 'legacy snapshot preserved', capacity: 7 })).status).toBe(200);
+    expect((await rows(tripId))[1]).toMatchObject({ formation_deadline_at: null, min_to_depart_snapshot: 7, note: 'legacy snapshot preserved' });
+  });
+
 });

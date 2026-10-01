@@ -302,11 +302,14 @@ export const tripsPage = {
   /* --------------------------------------------------------------- 團次 */
   departures: {
     formationDeadline: {
-      overrideLabel: '本次成團截止時間（選填，台北時間）',
-      rule: (min: number, days: number) => `方案預設：合計 ${min} 人成團，出發前 ${days} 天截止；未指定出發時間時，以台北當天 00:00 計算。`,
+      overrideLabel: (zone: string) => `成團截止時間（選填，${zone}）`,
+      loading: '讀取店家時區中',
+      editSnapshot: (min: number) => `此團次合計 ${min} 人成團；保留建立時的門檻，不套用方案後來的修改。`,
+      editHelp: '既有截止時間依店家時區顯示。修改此欄位即確認覆寫本團截止；須晚於現在且不晚於出發。改期若使既有截止晚於出發，請一併確認新的截止時間。未修改此欄位則保留原快照。',
+      rule: (min: number, days: number, zone: string) => `方案預設：合計 ${min} 人成團，出發前 ${days} 天截止；未指定出發時間時，以 ${zone} 當天 00:00 計算。`,
       overrideHelp: '留空沿用方案預設。距出發不足預設天數時，請選擇新的成團截止時間並確認；須晚於現在且不晚於出發時間。只影響本次新建團次。',
       batchHelp: '留空逐團沿用方案預設。填入即確認將同一截止時間套用本批全部新團次；須晚於現在且不晚於最早出發時間，否則整批不建立。',
-      invalid: '請選擇有效的成團截止時間（台北時間）',
+      invalid: '請確認店家時區並選擇有效的成團截止時間',
     },
 
     sectionTitle: '團次與名額',
@@ -397,6 +400,7 @@ export const tripsPage = {
     reopenAction: '恢復銷售',
     cancelAction: '取消團次',
     cancelConfirm: '取消團次後，已成立的訂單需要你另行聯繫旅客處理。確定要取消嗎？',
+    capacityBelowFormation: (min: number) => `名額不可低於此團次的最低成團人數 ${min} 位`,
     capacityTooLow: (booked: number) => `名額不可低於已售出的 ${booked} 位`,
   },
 
