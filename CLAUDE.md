@@ -221,11 +221,12 @@ not a vendor. For either provider, use the role-specific model IDs in that confi
 PROVIDER_FIRST (Owner clarification, 2026-09-30): establish the actual provider from session/runtime metadata, then use that provider's runtime catalog to choose a model by role, task size and risk. Record requested/actual identity honestly; unavailable Claude models are not OpenAI dependencies. See `docs/AGENT-EXECUTION.md` §4 for provider-local build choices and independent review.
 
 Role separation is mandatory; the table records provider-local preferences, not cross-provider dependencies.
+Owner 2026-10-01T00:01:00Z changed the OpenAI build model to `gpt-6.1-sol` for cost and availability. Build and audit may share that model ID but require different actors/sessions; a builder cannot approve its own work. Anthropic tiers, capacity, risk gates and historical actual identities remain unchanged. See `docs/decisions/2026-10-01-owner-openai-sol61-builder.md`.
 
 | Lane | 職責（`docs/AGENT-EXECUTION.md`／`AGENTS.md`） | OpenAI | Anthropic |
 |---|---|---|---|
 | `scout` / Luna | 窄盤點、Closure、CI 摘要、文件、QA、Metrics | `gpt-6-luna` | `claude-haiku-4-5` |
-| `build` / Terra | **施工**（MAIN／RESERVE 完整出貨線） | `gpt-5.6-terra` | **`claude-sonnet-5-5`** |
+| `build` / Terra | **施工**（MAIN／RESERVE 完整出貨線） | `gpt-6.1-sol` | **`claude-sonnet-5-5`** |
 | `audit` / Sol | TRIAGE、高風險設計、最終 AUDIT、結案判定 | `gpt-6.1-sol` | `claude-opus-5-5` |
 
 Model IDs are taken verbatim from Anthropic's model table and are **complete as written** — never

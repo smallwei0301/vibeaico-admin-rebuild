@@ -2,7 +2,7 @@
 
 > Owner 首次裁示：2026-08-28
 >
-> 最近更新：2026-09-30
+> 最近更新：2026-10-01
 >
 > 現行 Product B+ 以本文件為單一操作入口。歷史基線見
 > `docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`；後續已收斂裁示包含：
@@ -391,20 +391,20 @@ LUNA_FAN_OUT → LUNA_FAN_IN → SOL_TRIAGE
 
 PROVIDER_FIRST（Owner 2026-09-30 澄清）：先以 session／runtime 的 provider metadata 判定 OpenAI 或 Claude；不能由 `CLAUDE.md` 檔名、repo SDK 或模型前綴猜 actual。再查該環境的 runtime catalog，依角色、任務大小與風險選擇可用模型，記錄 provider 證據及 requested／actual；無可靠 observed identity 就填 unknown。其他 provider 的模型缺席不是 blocker，禁止派送不可用的跨 provider 模型。
 
-OpenAI：Luna6 做窄盤點／QA，Sol6.1 做判案／review；build 預設 Terra 不換版本，可用時優先。若 Terra 不在本地 catalog，須區分本地 build 選項缺席與無關的 Claude 模型缺席；本次 provider 澄清不自動新增 Sol builder 例外，依既有角色授權選擇，無適任且獲授權的本地 builder 才報 blocker。Claude：依任務選 Haiku／Sonnet5.5／Opus5.5，Sonnet 對應 build、Opus 對應 audit；這些名稱只適用 Claude 環境。真正缺少本地適任 builder 才記 local builder blocker。
+OpenAI：Luna6 做窄盤點／QA；Owner 2026-10-01T00:01:00Z 因成本／可用性將 OpenAI Terra 施工模型改為 `gpt-6.1-sol`，同 ID 可分別承擔 build 與 audit，但必須由不同 actor／session 獨立審查，builder 不得自審放行。Claude：依任務選 Haiku／Sonnet5.5／Opus5.5，Sonnet 對應 build、Opus 對應 audit；對應不變。真正缺少本地適任 builder 才記 local builder blocker。決策：`docs/decisions/2026-10-01-owner-openai-sol61-builder.md`。
 
 | 角色 | 主要工作 | OpenAI | Anthropic | 禁止事項 |
 |---|---|---|---|---|
 | Luna / scout | 真實盤點、Closure、CI 摘要、Janitor、文件、QA、Metrics | `gpt-6-luna` | `claude-haiku-4-5` | 不做產品／安全決策，不展開大型 code |
-| Terra / build | Product 施工（MAIN／RESERVE） | `gpt-5.6-terra` | `claude-sonnet-5-5` | 不擴大驗收、不自行關 Issue |
+| Terra / build | Product 施工（MAIN／RESERVE） | `gpt-6.1-sol` | `claude-sonnet-5-5` | 不擴大驗收、不自行關 Issue、不自審放行 |
 | Sol / audit | TRIAGE、早期 diff audit、模糊 CI、高風險設計、final Audit | `gpt-6.1-sol` | `claude-opus-5-5` | 不做 grep、輪詢、一般 CRUD、完整舊對話重讀 |
 
 2026-09-30 Owner 只更新目前 role model 版本：Sol 6.1、Luna 6、Sonnet／Opus 5.5；
-Terra、Astra／Fable 及角色／風險／可信審查契約保留。設定的 `modelMappingVersion`
+該歷史版本裁示的 OpenAI Terra 已由 2026-10-01 決策更新；Astra／Fable 及角色／風險／可信審查契約保留。設定的 `modelMappingVersion`
 與審查 `policyVersion` 分開，既有 receipt 不改寫。派工前查 runtime catalog；
 模型已發布或已寫入設定，不代表本 runtime 可用；目前派工依上方 PROVIDER_FIRST 選擇原則。
 
-Product lane 決定工作責任與所需能力。Terra 一律使用 build 層；不得用 scout 或 audit 層模型做任何 Product 施工，
+Product lane 決定工作責任與所需能力。Terra 一律使用 build 層；不得用 scout 或未獲 build 授權的 audit 層模型做任何 Product 施工（OpenAI `gpt-6.1-sol` 已獲 build 授權；Anthropic Opus 仍禁止施工），
 也不得把 builder 自審宣稱為獨立 audit。模型版本表是 provider-local 選擇起點，不是跨 provider 強制派工。平台無法證明 actual model 時填 `actual=unknown`，
 不得由 lane 名稱推定。
 

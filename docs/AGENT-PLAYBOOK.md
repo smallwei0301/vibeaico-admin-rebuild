@@ -1078,6 +1078,8 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 
 ### PB-036 — `TERRA_BUILD` 的施工跑在 audit 層模型上，因為「反正我已經在跑了」
 
+- 2026-10-01 路由更新／防復發（歷史事件與次數保留）：Owner 因成本／可用性將 OpenAI build 改為 `gpt-6.1-sol`；不同 build／audit actor 可同 ID，builder 不得自審。Anthropic Opus 施工禁令不變。不能僅改文件卻讓 config／測試仍要求不可用 Terra；每次 current model 決策同步入口、mapping、Owner index 與 targeted tests，查實際 guard 是否有 model hardcode。lane／容量／Loop 埋點不改，歷史 actual 不回填。證據：`docs/decisions/2026-10-01-owner-openai-sol61-builder.md`。
+
 - 首次／最近：2026-09-12／2026-09-14
 - 發生次數：**5**（第 5 次見本條最末「2026-09-14 第五次」）
 - Issue／PR／CI：#370（migration＋RPC＋route＋測試，掛在 `TEST_VALIDATION` lane 上）；

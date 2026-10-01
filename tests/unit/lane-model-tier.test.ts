@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { routing } from '../../scripts/agents/astra-review-policy.mjs';
+import { classifyAstra, routing } from '../../scripts/agents/astra-review-policy.mjs';
 
 /**
  * Owner 2026-09-10 裁示：lane 決定層級、層級決定模型，Terra 一律用 Sonnet。
@@ -43,7 +43,7 @@ describe('lane → model tier（Owner 2026-09-30 版本更新）', () => {
 
   it('OpenAI 側三個 lane 仍在，對應表是新增而非取代', () => {
     expect(routing.models.scout).toBe('gpt-6-luna');
-    expect(routing.models.build).toBe('gpt-5.6-terra');
+    expect(routing.models.build).toBe('gpt-6.1-sol');
     expect(routing.models.audit).toBe('gpt-6.1-sol');
   });
 
@@ -67,7 +67,7 @@ describe('lane → model tier（Owner 2026-09-30 版本更新）', () => {
     expect(index).toContain('gpt-6-luna');
     expect(index).toContain('claude-sonnet-5-5');
     const policy = read('docs/AGENT-EXECUTION.md');
-    expect(policy).toContain('不得用 scout 或 audit 層模型做任何 Product 施工');
+    expect(policy).toContain('不得用 scout 或未獲 build 授權的 audit 層模型做任何 Product 施工');
   });
 
   it('Product B+ 操作段落不將純治理契約測試誤判為 Product builder', () => {
@@ -81,12 +81,33 @@ describe('lane → model tier（Owner 2026-09-30 版本更新）', () => {
 
   it('目前模型決策依實際日期登錄，歷史版本不被倒改', () => {
     const index = read('docs/OWNER-DECISIONS.md');
-    expect(index).toContain('最後更新：2026-09-30');
+    expect(index).toContain('最後更新：2026-10-01');
     expect(index.split('## 2026-09-30 已裁示')[1].split('## 2026-09-17')[0]).toContain('PROVIDER_FIRST');
     const history = index.split('## 2026-09-10 已裁示')[1].split('## 2026-09-09')[0];
     expect(history).toContain('Terra=`claude-sonnet-5`');
     expect(history).toContain('原文保留為歷史');
-    expect(read('docs/AGENT-EXECUTION.md')).toContain('最近更新：2026-09-30');
+    expect(read('docs/AGENT-EXECUTION.md')).toContain('最近更新：2026-10-01');
+  });
+
+  it('OpenAI 同 ID 角色仍須獨立 actor，不改歷史 identity 或審查 policy version', () => {
+    expect(routing.models.build).toBe(routing.models.audit);
+    expect(routing.openaiBuilderDecision.effectiveAt).toBe('2026-10-01T00:01:00Z');
+    expect(routing.openaiBuilderDecision.independentReviewerRequired).toBe(true);
+    expect(routing.openaiBuilderDecision.historicalIdentityRewriteAllowed).toBe(false);
+    expect(routing.version).toBe('2026-09-08.4');
+    for (const file of ['CLAUDE.md', 'docs/AGENT-EXECUTION.md', 'docs/MODEL-ROUTING.md']) {
+      expect(read(file)).toMatch(/不同 actor／session|different actors\/sessions/);
+    }
+    expect(read(routing.openaiBuilderDecision.ownerDecision)).toContain('Sentinel_254c7297e58c819183454711263dde7c');
+  });
+
+  it('build 與 audit 同模型不豁免 Product Auth Final Risk', () => {
+    const result = classifyAstra({
+      body: 'WORKSTREAM: PRODUCT_MAINLINE\nASTRA_RISK: TENANT_AUTH_BOUNDARY\nASTRA_RATIONALE: Auth registration upstream error classification',
+      changedFiles: ['src/app/api/auth/tenant/register/route.ts'],
+    });
+    expect(result.errors).toEqual([]);
+    expect(result.required).toBe(true);
   });
 
   it('目前開工文件先判 provider，再選本地角色模型，不要求跨 provider 依賴', () => {

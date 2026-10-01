@@ -1,9 +1,15 @@
 {
   "version": "2026-09-08.4",
-  "modelMappingVersion": "2026-09-30.1",
+  "modelMappingVersion": "2026-10-01.1",
+  "openaiBuilderDecision": {
+    "effectiveAt": "2026-10-01T00:01:00Z",
+    "ownerDecision": "docs/decisions/2026-10-01-owner-openai-sol61-builder.md",
+    "independentReviewerRequired": true,
+    "historicalIdentityRewriteAllowed": false
+  },
   "models": {
     "scout": "gpt-6-luna",
-    "build": "gpt-5.6-terra",
+    "build": "gpt-6.1-sol",
     "audit": "gpt-6.1-sol",
     "finalRisk": "claude-fable-5-1",
     "finalRiskModelCatalog": ["gpt-6-astra", "claude-fable-5-1", "gpt-6.1-sol", "claude-opus-5-5", "gpt-5.6-sol", "claude-opus-5"],
