@@ -367,6 +367,9 @@ Production release 也不得因 pending migration 很多就「照編號整批套
 
 ## 4. Product B+ 角色與模型路由
 
+Owner 2026-10-01 00:47 UTC 細化：在同一執行環境用 subagent／multiagent 明確 request 角色模型，主 Agent 保留 ownership，回收結果後核對來源／exact diff／測試再繼續；委派不是交給外人後停工。OpenAI Luna=`gpt-6-luna` 做窄盤點／Aggregator，Sol=`gpt-6.1-sol` 做施工與普通審查，獨立 reviewer 用不同 actor／fresh context。Astra=`gpt-6-astra` 只做 classifier 確定的高風險 Final Risk，不施工、不盤點、不處理普通風險；Anthropic 對應不變。無 model selector 如實記限制並用既有合法 fallback，不假稱 served model；歷史 context／role unknown 不改寫。
+CURRENT_AGENT fallback 不得讓 builder 自審放行；仍需不同 actor／fresh context 做對抗審查並如實 actual unknown。沒有獨立 actor 可用就 park，不虛稱獨立 PASS，不改 #552 attestation 身份／來源契約。
+
 本節只適用 `PRODUCT_MAINLINE`。
 
 ```text

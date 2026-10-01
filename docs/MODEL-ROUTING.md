@@ -142,7 +142,7 @@ model ID 逐字取自 Anthropic 官方型號表，**本身即完整，不得附�
 
 以下規則只適用 Product mainline，不適用純 MODEL_GOVERNANCE。
 
-第一輪昂貴模型預設 `claude-fable-5-1`，另有 `gpt-6-astra`；兩者合計最多一次。Owner #552 已授權後續直接降為 Sol／Opus，無法選模型時用目前 agent 做對抗審查。型號是 runtime 模型選擇，不是外部 reviewer channel。
+OpenAI 第一輪高風險 reviewer 預設 `gpt-6-astra`；Anthropic 保留 `claude-fable-5-1`，两者同 lineage 合計最多一次。普通風險不得 dispatch premium；Astra 不施工或盤點。Owner #552 已授權後續直接降為 Sol／Opus，無法選模型時用目前 agent 做對抗審查。型號是同環境 subagent 的 runtime 模型選擇，不是外部 reviewer channel；主 Agent 保留 ownership、收回驗證並繼續，獨立 reviewer actor／fresh context 不因模型同 ID 而取消。
 
 Product 高後果類型維持：
 

@@ -90,6 +90,8 @@ describe('lane → model tier（Owner 2026-09-30 版本更新）', () => {
   });
 
   it('OpenAI 同 ID 角色仍須獨立 actor，不改歷史 identity 或審查 policy version', () => {
+    expect(routing.models.finalRisk).toBe('gpt-6-astra');
+    expect(routing.models.finalRiskAllowedModels).toContain('claude-fable-5-1');
     expect(routing.models.build).toBe(routing.models.audit);
     expect(routing.openaiBuilderDecision.effectiveAt).toBe('2026-10-01T00:01:00Z');
     expect(routing.openaiBuilderDecision.independentReviewerRequired).toBe(true);
