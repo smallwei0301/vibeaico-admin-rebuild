@@ -293,7 +293,8 @@ export function evaluateAstra({ body = '', changedFiles = null, context = {}, re
     }
     if (!['COMMENTED', 'APPROVED'].includes(latest.reviewState)) errors.push('Astra review is dismissed or requests changes');
     if (latest.verdict !== 'PASS') errors.push('Astra verdict is not PASS');
-    errors.push(...finalRiskReviewerErrors(latest, policy, context));
+    const reviewerErrors = finalRiskReviewerErrors(latest, policy, context);
+    if (reviewerErrors.length) errors.push('Astra model identity is unverified', ...reviewerErrors);
     if (latest.reviewerTier !== 'CURRENT_AGENT' && latest.identityEvidence !== 'OPERATOR_ATTESTED') {
       errors.push('Missing explicit operator model attestation');
     }

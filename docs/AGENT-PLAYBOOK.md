@@ -1771,6 +1771,8 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 ### PB-051：昂貴審查反覆重派，且入口／WIP／release 各保留一份模型規則
 
+- 2026-10-01 CI 相容性教訓：PR #716 full source CI `36819205130`／job `110230922644` 的4個失敗揭露舊 downgrade fixture 缺當次 provider/catalog，及擴充拒絕診斷時遺失既有 identity 摘要。正向 fixture 必須提供合成當次 catalog，缺 catalog 仍 park；`evaluateAstra` 保留既有摘要並附全部 role／tier diagnostics，不能為測試通過放寬准入。變更共用 evaluator／selector 後驗 full unit，targeted 綠不代表其餘呼叫端相容。
+
 - 2026-10-01 防復發：省略 runtime catalog 不能默認成整個 premium／audit allowlist；global default 不得跨 provider。prepare 與 fallback 共用 provider-local catalog capture 判準，缺證據 park、明確無 selector 才 CURRENT_AGENT；OpenAI Astra、Anthropic Fable 的唯一昂貴預算與300秒／首次infra降級不變。catalog record 驗證不假稱 provider-signed 可用性，歷史 usage 不改。
 
 - 最近發生：2026-09-29；次數：3 個可重用事件（#552 成本政策收斂；#447 實戰驗證；#37／PR #688 派工前記帳失序），歷史昂貴諮詢總數未知，不補零。

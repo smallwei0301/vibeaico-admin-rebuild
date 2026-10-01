@@ -252,7 +252,10 @@ describe('Astra risk review contract', () => {
     for (const key of Object.keys(context)) expect(evaluateAstra(candidate([makeReview({ [key]: 'stale' })])).status).toBe('ASTRA_PENDING');
   });
   it('rejects unknown actual model, self-declared body pass and untrusted reviewers', () => {
-    expect(evaluateAstra(candidate([makeReview({ actualModel: 'unknown' })])).status).toBe('ASTRA_PENDING');
+    const unknownIdentity = evaluateAstra(candidate([makeReview({ actualModel: 'unknown' })]));
+    expect(unknownIdentity.status).toBe('ASTRA_PENDING');
+    expect(unknownIdentity.errors).toContain('Astra model identity is unverified');
+    expect(unknownIdentity.errors).toContain('Unverified premium reviewer identity');
     expect(evaluateAstra(candidate([makeReview({}, { trusted: false })])).status).toBe('ASTRA_PENDING');
     expect(evaluateAstra(candidate([], { body: body + '\nASTRA_STATUS: PASS' })).status).toBe('ASTRA_PENDING');
   });

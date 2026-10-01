@@ -85,6 +85,15 @@ describe('prospective independent role and provider admission regressions', () =
   });
 });
 
+describe('compatible identity rejection summary retains tier diagnostics', () => {
+  it('reports both the established summary and current AUDIT rejection details', () => {
+    const result = evaluate({ ...audit(), actualModel: 'unknown' });
+    assert.equal(result.status, 'ASTRA_PENDING');
+    assert.ok(result.errors.includes('Astra model identity is unverified'));
+    assert.ok(result.errors.some(error => error !== 'Astra model identity is unverified' && /audit|AUDIT|model/i.test(error)));
+  });
+});
+
 describe('Owner #552 startup timeout is exactly 300 seconds without execution proof', () => {
   it('waits before 300 seconds and downgrades at the boundary', () => {
     assert.equal(premiumExecutionState(dispatch, '2026-09-17T01:04:59Z').state, 'WAITING');
