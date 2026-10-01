@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
+import { classifyWorkstream } from '../../scripts/agents/astra-review-policy.mjs';
 import {
   evaluateProductIssueClose,
   findCloseReadyHandoff,
@@ -136,8 +137,31 @@ describe('#720 executable Product Issue close gate', () => {
   it('keeps the workflow trusted and capable of reopening a rejected Product close', () => {
     const workflow = fs.readFileSync('.github/workflows/product-issue-close-guard.yml', 'utf8');
     expect(workflow).toContain('types: [closed]');
-    expect(workflow).toContain("scripts/agents/product-issue-close-policy.mjs');
+    expect(workflow).toContain('scripts/agents/product-issue-close-policy.mjs');
     expect(workflow).toContain("state: 'open'");
     expect(workflow).toContain('ISSUE_CLOSED_OBSERVED');
   });
+  it('allows only the exact close-guard workflow in MODEL_GOVERNANCE scope', () => {
+    const governanceBody = [
+      'WORKSTREAM: MODEL_GOVERNANCE',
+      'AGENT_LANE: GOVERNANCE',
+      'ASTRA_RISK: NONE',
+      'FINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY',
+    ].join('\n');
+
+    const allowed = classifyWorkstream({
+      body: governanceBody,
+      changedFiles: ['.github/workflows/product-issue-close-guard.yml'],
+      createdAt: '2026-10-01T00:00:00Z',
+    });
+    expect(allowed.errors).toEqual([]);
+
+    const sibling = classifyWorkstream({
+      body: governanceBody,
+      changedFiles: ['.github/workflows/product-runtime-close-bypass.yml'],
+      createdAt: '2026-10-01T00:00:00Z',
+    });
+    expect(sibling.errors.join('\n')).toContain('Product/non-governance path');
+  });
+
 });
