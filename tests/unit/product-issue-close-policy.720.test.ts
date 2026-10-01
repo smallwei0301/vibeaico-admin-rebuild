@@ -211,7 +211,7 @@ describe('#720 executable Product Issue close gate', () => {
 
   it('keeps trusted reopen wiring and governance workflow scope bounded', () => {
     const workflow = fs.readFileSync('.github/workflows/agent-product-issue-close-guard.yml', 'utf8');
-    for (const needle of ['types: [closed]', "state: 'open'", 'ISSUE_CLOSED_OBSERVED', 'getCollaboratorPermissionLevel']) {
+    for (const needle of ['types: [closed]', "state: 'open'", 'ISSUE_CLOSED_OBSERVED', 'getCollaboratorPermissionLevel', 'const approvalRunId =']) {
       expect(workflow).toContain(needle);
     }
 
