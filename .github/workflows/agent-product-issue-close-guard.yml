@@ -132,11 +132,15 @@ jobs:
                   commentId: approval.id,
                   role,
                   verdict,
+                  runId: approvalRunId,
                   exactHead,
                   reachableFromCurrentMain,
                   trusted: trustedComments.some((comment) => comment.id === approval.id),
                   beforeClose: Number.isFinite(createdAt) && Number.isFinite(updatedAt) && Number.isFinite(closedAt) &&
                     createdAt <= closedAt && updatedAt <= closedAt,
+                  afterLastClose: !lastClosedCaptureAt || (
+                    Number.isFinite(createdAt) && createdAt > Date.parse(lastClosedCaptureAt)
+                  ),
                 };
               } catch (error) {
                 core.warning(`Unable to verify CLOSE_APPROVED comment #${approvalCommentId}: ${error.status ?? error.message}`);
@@ -196,10 +200,14 @@ jobs:
               await github.rest.issues.getLabel({ owner, repo, name: failureLabel });
             } catch (error) {
               if (error.status !== 404) throw error;
-              await github.rest.issues.createLabel({
-                owner, repo, name: failureLabel, color: 'D93F0B',
-                description: 'Product Issue close was rejected by the executable close admission gate.',
-              });
+              try {
+                await github.rest.issues.createLabel({
+                  owner, repo, name: failureLabel, color: 'D93F0B',
+                  description: 'Product Issue close was rejected by the executable close admission gate.',
+                });
+              } catch (createError) {
+                if (createError.status !== 422) throw createError;
+              }
             }
 
             if (!result.allowed) {
