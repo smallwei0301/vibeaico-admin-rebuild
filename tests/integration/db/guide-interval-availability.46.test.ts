@@ -189,6 +189,36 @@ describe('0135 staff policy and service-only tenant interval predicate', () => {
     expect(await available('2030-03-10T14:00:00Z', '2030-03-10T15:00:00Z')).toBe(false);
     expect(await available('2030-03-10T15:00:00Z', '2030-03-10T16:00:00Z')).toBe(true);
   });
+  it.each([
+    ['2030-11-03T04:00:00Z', '2030-11-04T05:00:00Z', '2030-11-04T04:30:00Z'],
+    ['2030-03-10T05:00:00Z', '2030-03-11T04:00:00Z', '2030-03-11T03:30:00Z'],
+  ])('full-day weekly block ends at next local midnight %s', async (from, boundary, lastHalfHour) => {
+    await timezone('America/New_York');
+    await insert('block_times', { tenant_id: tenant, staff_id: staff, recurrence: 'WEEKLY', day_of_week: 0,
+      full_day: true, start_at: '2030-01-06T05:00:00Z', end_at: '2030-01-07T05:00:00Z' });
+    expect(await available(from, new Date(Date.parse(from)+30*60_000).toISOString())).toBe(false);
+    expect(await available(lastHalfHour, boundary)).toBe(false);
+    expect(await available(boundary, new Date(Date.parse(boundary)+30*60_000).toISOString())).toBe(true);
+  });
+  it('unrelated historical/future ambiguous shifts and departures do not poison a covered interval', async () => {
+    await timezone('America/New_York'); await policy('EXPLICIT_ONLY');
+    await shift('2030-01-15', '10:00', '11:00');
+    await shift('2029-11-04', '01:30', '03:00');
+    await shift('2030-11-03', '01:30', '03:00');
+    const trip = await insert('trips', { tenant_id: tenant, slug: `g46-${randomUUID()}`, title: 'unrelated ambiguous departures' });
+    const plan = await insert('trip_plans', { tenant_id: tenant, trip_id: trip, name: 'plan', price_per_person: 100, duration_minutes: 120 });
+    for (const departs_on of ['2029-11-04', '2030-11-03']) {
+      const departure = await insert('trip_departures', { tenant_id: tenant, trip_id: trip, plan_id: plan,
+        departs_on, start_time: '01:30', capacity: 8, status: 'CLOSED' });
+      await insert('trip_departure_staff', { tenant_id: tenant, departure_id: departure, staff_id: staff, role: 'PRIMARY' });
+    }
+    expect(await available('2030-01-15T15:00:00Z', '2030-01-15T16:00:00Z')).toBe(true);
+    await policy('DEFAULT_AVAILABLE');
+    expect(await available('2030-11-03T05:45:00Z', '2030-11-03T06:00:00Z')).toBe(false);
+    // Duration extending past local midnight must remain occupied.
+    expect((await admin.from('trip_plans').update({ duration_minutes: 2880 }).eq('id', plan)).error).toBeNull();
+    expect(await available('2030-11-04T17:00:00Z', '2030-11-04T18:00:00Z')).toBe(false);
+  });
   it('ambiguous recurring block wall time cannot report available', async () => {
     await timezone('America/New_York');
     await insert('block_times', { tenant_id: tenant, staff_id: staff, recurrence: 'WEEKLY', day_of_week: 0,

@@ -42,6 +42,10 @@ declare
   v_local timestamp;
   v_utc timestamptz;
   v_i integer;
+  v_possible_start timestamptz;
+  v_possible_end timestamptz;
+  v_min timestamptz;
+  v_max timestamptz;
   r record;
 begin
   if p_tenant is null or p_staff is null or p_start is null or p_end is null
@@ -94,8 +98,10 @@ begin
       from public.shifts sh where sh.tenant_id=p_tenant and sh.staff_id=p_staff
         and v_policy='EXPLICIT_ONLY'
     union all
-    select 'BLOCK', g.day::date+(b.start_at at time zone v_zone)::time,
-      null::timestamp, b.end_at-b.start_at, false, true
+    select 'BLOCK', case when b.full_day then g.day::date::timestamp
+        else g.day::date+(b.start_at at time zone v_zone)::time end,
+      case when b.full_day then (g.day::date+1)::timestamp else null::timestamp end,
+      case when b.full_day then null::interval else b.end_at-b.start_at end, b.full_day, true
       from public.block_times b
       cross join lateral generate_series(
         ((p_start at time zone v_zone)::date-ceil(extract(epoch from (b.end_at-b.start_at))/86400)::integer-2)::timestamp,
@@ -121,6 +127,26 @@ begin
     -- Unknown duration is conservatively the tenant calendar day, not 24h UTC.
     if r.whole_day then r.local_start := r.local_start::date::timestamp; end if;
     if r.kind='SHIFT' and r.local_end<=r.local_start then return false; end if;
+    -- A wall-time anomaly matters only if this row can affect the requested
+    -- interval. Bound all offset candidates before rejecting gaps/folds: old
+    -- or future ambiguous shifts/departures must not poison unrelated dates.
+    -- Elapsed durations are retained, so multi-day occupancy is not truncated.
+    for v_i in 1..(case when r.local_end is null then 1 else 2 end) loop
+      v_local := case when v_i=1 then r.local_start else r.local_end end;
+      select min(candidate.instant), max(candidate.instant) into v_min,v_max
+        from unnest(array[v_local::date-1,v_local::date,v_local::date+1]) sample(day)
+        cross join lateral (select sample.day::timestamp at time zone v_zone instant) observed
+        cross join lateral (select (observed.instant at time zone v_zone)
+          -(observed.instant at time zone 'UTC') utc_offset) offsets
+        cross join lateral (select (v_local-offsets.utc_offset) at time zone 'UTC' instant) candidate;
+      v_min := least(v_min,v_local at time zone v_zone);
+      v_max := greatest(v_max,v_local at time zone v_zone);
+      if v_i=1 then
+        v_possible_start:=v_min;
+        v_possible_end:=v_max+r.elapsed;
+      else v_possible_end:=v_max; end if;
+    end loop;
+    if v_possible_end<=p_start or v_possible_start>=p_end then continue; end if;
     for v_i in 1..(case when r.local_end is null then 1 else 2 end) loop
       v_local := case when v_i=1 then r.local_start else r.local_end end;
       v_utc := v_local at time zone v_zone;
