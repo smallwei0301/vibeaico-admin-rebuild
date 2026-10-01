@@ -106,9 +106,9 @@ describe('#720 executable Product Issue close gate', () => {
   });
 
   it('rejects stale handoff and non-success/non-reachable CI evidence', () => {
-    const stale = findCloseReadyHandoff([
-      readyComment({ observedAt: '2026-09-30T12:00:00Z' }),
-    ], closeAt);
+    const staleComment = readyComment({ observedAt: '2026-09-30T12:00:00Z' }) as any;
+    staleComment.created_at = '2026-09-30T12:01:00Z';
+    const stale = findCloseReadyHandoff([staleComment], closeAt);
     expect(stale.errors.join('\n')).toContain('stale');
 
     const result = evaluateProductIssueClose({
