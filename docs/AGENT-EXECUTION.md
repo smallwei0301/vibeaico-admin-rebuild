@@ -652,7 +652,7 @@ WRITER_BLOCKER: <為何目前不能直接把 close event 寫回 protected ledger
 NEXT_SAFE_WRITE_PATH: <關閉後如何 reconcile ISSUE_CLOSED / delivery.issuesClosed>
 ```
 
-close guard 會重新讀 live Issue、current main、上述 CI run 與所有 open PR；只有 handoff 在 close 前 6 小時內、CI 是 canonical `ci` 的 `push` success 且其 head 仍可達 current main、並且沒有同 `pr-lifecycle issue` 的 open PR，Product Issue 才能維持 closed。任一條不成立會自動 reopen 並標 `governance:premature-close`，不能立即再關或改寫歷史避檢。
+close guard 會重新讀 live Issue、current main、上述 CI run、owning Run 與所有 open PR；close-ready 留言者必須由 GitHub live permission 驗成 `write`／`maintain`／`admin`，不能只信正文。只有 handoff 的實際留言時間在 close 前 6 小時內、`RUN_ID` 對到 current-main 上仍 OPEN 的 v4 Product-owned Run 且 sources 含本 Issue、CI 是 canonical `ci` 的 `push` success 且其 head 仍可達 current main、並且沒有同 `pr-lifecycle issue` 的 open PR，Product Issue 才能維持 closed。已成功 close 過的 close-ready 不可在 reopen 後重複消費；任一條不成立會自動 reopen 並標 `governance:premature-close`，不能立即再關或改寫歷史避檢。
 
 合法 close 後，trusted workflow 會自動留下 `EVENT: ISSUE_CLOSED_OBSERVED` 的 `RUN_CAPTURE_HANDOFF`。它不是已寫入 ledger 的假證明；owning Product session 仍須依 §10.3 把 `ISSUE_CLOSED` Completion Truth 與 `delivery.issuesClosed` reconcile 回 Run、重跑 readiness，再完成 `POST_MERGE_CLOSEOUT`。MODEL_GOVERNANCE Issue 不套此 Product gate。
 
