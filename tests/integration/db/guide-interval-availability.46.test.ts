@@ -16,10 +16,16 @@ function admission() {
   const env = process.env;
   const url = new URL(env.TEST_SUPABASE_URL ?? 'http://not-admitted.invalid');
   if (env.TEST_PROFILE === 'LOCAL_ISOLATED') {
+    const prProject = /^local-pr-[0-9]+-[a-z]+$/.test(env.TEST_ENV_ID ?? '')
+      && /^vibeaico-[0-9]+-[a-z]+$/.test(env.LOCAL_PROJECT_ID ?? '')
+      && env.TEST_ENV_ID?.slice(9) === env.LOCAL_PROJECT_ID?.slice(9);
+    const schemaBootstrap = env.GITHUB_WORKFLOW === 'agent-schema-bootstrap'
+      && /^[1-9][0-9]*$/.test(env.GITHUB_RUN_ID ?? '')
+      && /^[1-9][0-9]*$/.test(env.GITHUB_RUN_ATTEMPT ?? '')
+      && env.TEST_ENV_ID === `local-schema-${env.GITHUB_RUN_ID}`
+      && env.LOCAL_PROJECT_ID === `schema-proof-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}`;
     if (!['127.0.0.1', 'localhost'].includes(url.hostname) || url.protocol !== 'http:' || url.port !== '54321'
-      || !/^local-pr-[0-9]+-[a-z]+$/.test(env.TEST_ENV_ID ?? '')
-      || !/^vibeaico-[0-9]+-[a-z]+$/.test(env.LOCAL_PROJECT_ID ?? '')
-      || env.TEST_ENV_ID?.slice(9) !== env.LOCAL_PROJECT_ID?.slice(9)) {
+      || (!prProject && !schemaBootstrap)) {
       throw new Error('#46 LOCAL admission requires matching fixed local project identity and loopback API');
     }
     return { admitted: true, local: true };
