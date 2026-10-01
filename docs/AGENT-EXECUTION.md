@@ -646,15 +646,16 @@ Product Issue 的 GitHub `closed` 事件現在由 trusted `product-issue-close-g
 RUN_CAPTURE_HANDOFF
 RUN_ID: <owning Product Run>
 EVENT: ISSUE_CLOSE_READY
-EVIDENCE_REF: github:workflow#<canonical main ci push run id>
+EVIDENCE_REF: github:workflow#<canonical current-main ci push run id>
+CLOSE_APPROVED_REF: github:issuecomment#<trusted final Sol CLOSE_APPROVED comment id>
 OBSERVED_AT: <UTC timestamp>
 WRITER_BLOCKER: <為何目前不能直接把 close event 寫回 protected ledger>
 NEXT_SAFE_WRITE_PATH: <關閉後如何 reconcile ISSUE_CLOSED / delivery.issuesClosed>
 ```
 
-close guard 會重新讀 live Issue、current main、上述 CI run、owning Run 與所有 open PR；close-ready 留言者必須由 GitHub live permission 驗成 `write`／`maintain`／`admin`，不能只信正文。只有 handoff 的實際留言時間在 close 前 6 小時內、`RUN_ID` 對到 current-main 上仍 OPEN 的 v4 Product-owned Run 且 sources 含本 Issue、CI 是 canonical `ci` 的 `push` success 且其 head 仍可達 current main、並且沒有同 `pr-lifecycle issue` 的 open PR，Product Issue 才能維持 closed。已成功 close 過的 close-ready 不可在 reopen 後重複消費；任一條不成立會自動 reopen 並標 `governance:premature-close`，不能立即再關或改寫歷史避檢。
+close guard 會重新讀 live Issue、current main、上述 CI run、owning Run 與所有 open PR；close-ready 留言者必須由 GitHub live permission 驗成 `write`／`maintain`／`admin`，不能只信正文。只有 handoff 的建立與最後編輯時間都在 close 前、實際留言時間在 close 前 6 小時內、`RUN_ID` 對到 current-main 上仍 OPEN 的 v4 Product-owned Run 且 sources 含本 Issue、`CLOSE_APPROVED_REF` 指向可信提交者在 close 前留下的 final Sol `CLOSE_APPROVED`（含 `REVIEW_ROLE: SOL` 與可達 current main 的 `EXACT_HEAD`）、CI 是 `.github/workflows/ci.yml` 的 current-main exact SHA `push` success，並且沒有同 `pr-lifecycle issue` 的 open PR，Product Issue 才能維持 closed。已成功 close 過的 close-ready 不可在 reopen 後重複消費；任一條不成立會自動 reopen 並標 `governance:premature-close`，不能立即再關或改寫歷史避檢。
 
-合法 close 後，trusted workflow 會自動留下 `EVENT: ISSUE_CLOSED_OBSERVED` 的 `RUN_CAPTURE_HANDOFF`。它不是已寫入 ledger 的假證明；owning Product session 仍須依 §10.3 把 `ISSUE_CLOSED` Completion Truth 與 `delivery.issuesClosed` reconcile 回 Run、重跑 readiness，再完成 `POST_MERGE_CLOSEOUT`。MODEL_GOVERNANCE Issue 不套此 Product gate。
+合法 close 後，trusted workflow 會自動留下 `EVENT: ISSUE_CLOSED_OBSERVED` 的 `RUN_CAPTURE_HANDOFF`。它不是已寫入 ledger 的假證明；owning Product session 仍須依 §10.3 把 `ISSUE_CLOSED` Completion Truth 與 `delivery.issuesClosed` reconcile 回 Run、重跑 readiness，再完成 `POST_MERGE_CLOSEOUT`。只有正文與 managed label 都明確一致為 `MODEL_GOVERNANCE`、且沒有 Product label 的 Issue 才不套此 Product gate；缺失、歧義或互相衝突的 workstream 一律 fail closed。
 
 ### 9.0.2 STAGE_TRUTH_SYNC：環境階段一變，就更新，不等 closeout／複盤
 
