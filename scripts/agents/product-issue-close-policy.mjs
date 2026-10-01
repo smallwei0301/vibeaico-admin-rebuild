@@ -99,6 +99,17 @@ function productApplicability(issue) {
   return { applicable: false, workstream: declared || 'UNCLASSIFIED', errors: [] };
 }
 
+/**
+ * @param {{
+ *   issue?: any,
+ *   currentMainSha?: string,
+ *   openPullRequests?: any[],
+ *   comments?: any[],
+ *   verifiedCi?: any | null,
+ *   verifiedRun?: any | null,
+ *   lastClosedCaptureAt?: string | null,
+ * }} [input]
+ */
 export function evaluateProductIssueClose({
   issue,
   currentMainSha,
