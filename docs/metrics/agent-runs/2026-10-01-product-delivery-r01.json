@@ -659,7 +659,8 @@
     "2026-10-01T12:27:47Z Task31 d3d96dd current-main merge candidate (base d781) validation: Node22 typecheck PASS, 286 unit files/3701 pass, npm build PASS, repo-integrity exact d781..d3 PASS. Browser harness blocked by absent local Playwright Chromium. Fresh local Supabase attempt: unique project vibeaico-715-a could not pull images; public ECR/GHCR/Docker Hub all 403. `supabase stop --no-backup` success, config restored and19 generated migration overlays removed, no local DB container/changes left. Branch currently ready for independent source review; push/current-head CI/LOCAL acceptance pending; no canonical #43 TEST acquired.",
     "2026-10-01T12:27:17Z Root fetched terminal job110353487553 afterrun completion: precise failing Playwright line28 welcome-card-upload, 30.1s initial/30.4s retry1/30.0s retry2; Error Context attached separately but workflow-run artifacts list is empty, so no context artifact was downloadable. No exact UI action/API/assertion or causal root established. Therefore mark diagnosis UNKNOWN, no source edit/time increase/rerun authorized yet.",
     "2026-10-01T12:34:27Z Product head f56cadf pushed to existing PR715 after preflight, fresh d781 main/reachability and independent source review. GitHub automatically moved PR base to d781/mergeabletrue. Actual ci workflow36862662300 and local-isolated-test36862662312 both entered running; fullCI incremented once on actual ci run. PR715 moved BUILD→VERIFY on exact f56; private/local workflow does not take shared canonical TEST. Await terminal proof/cleanup.",
-    "2026-10-01T12:48:10Z Root reactivated existing PR714 #47 after a live inventory: PR715 exact f56 SourceCI36862662300 SUCCESS and LOCAL36862662312 still IN_PROGRESS; PR727 canonical36857198490 terminal FAILURE and parked, shared TEST released. #714 merge-tree proves only root Run JSON/MD add/add conflicts; all five owned UI/helper/i18n/test/harness paths are unchanged from base58b to current main d781. Ordinary main merge is justified by actual conflict; no reset/rebase/cherry-pick/force push, no source rewrite, no canonical TEST request."
+    "2026-10-01T12:48:10Z Root reactivated existing PR714 #47 after a live inventory: PR715 exact f56 SourceCI36862662300 SUCCESS and LOCAL36862662312 still IN_PROGRESS; PR727 canonical36857198490 terminal FAILURE and parked, shared TEST released. #714 merge-tree proves only root Run JSON/MD add/add conflicts; all five owned UI/helper/i18n/test/harness paths are unchanged from base58b to current main d781. Ordinary main merge is justified by actual conflict; no reset/rebase/cherry-pick/force push, no source rewrite, no canonical TEST request.",
+    "2026-10-01T12:56:57Z #47 current-main local verification on d371347: Node v24.19.0 `npm run typecheck` PASS; full `npm test` PASS, 285 files/3706 tests; `npm run build` PASS, including /tenant/line-settings/onboarding; `git diff --check` PASS; repo-integrity exact d781ed0..d371347 PASS, 1412 tracked/0 deleted. Prior 390px actual-page stub and independent exact source review remain tied to unchanged code blobs; they do not prove LINE provider/in-app/authenticated Production acceptance. Exact current-head hosted checks pending; no shared TEST/DB mutation."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -1062,6 +1063,26 @@
         "head": "adf0608da0f729f07f6443567240d0bb49d958a8",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "Fresh live triage restored the existing parked #47 verify/retry slice: prior #713 TEST blocker is terminal; #727 failed and is parked with root cause UNKNOWN; #43 PR715 is in VERIFY. Current main d781 leaves all five owned wizard source files unchanged; Git reports only add/add conflicts in the shared root Run JSON/Markdown. Reconcile authoritative Root Run files and rerun exact-head source checks; do not rebuild the seven-step wizard or claim provider/Production acceptance."
+      },
+      {
+        "id": "714-current-main-integration-build-exit",
+        "at": "2026-10-01T12:56:57Z",
+        "kind": "BUILD_EXIT",
+        "pr": 714,
+        "issue": 47,
+        "head": "adf0608da0f729f07f6443567240d0bb49d958a8",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "The ordinary merge from current main d781 is complete at d371; the only two-file conflict was resolved from Root-maintained Run JSON/MD. Five owned LINE wizard runtime/test files are unchanged. Local current-main typecheck, all unit tests, production build, diff check and exact d781..d371 repo-integrity have passed; proceed to exact-head hosted verification."
+      },
+      {
+        "id": "714-current-main-exact-source-verify-enter",
+        "at": "2026-10-01T12:56:57Z",
+        "kind": "VERIFY_ENTER",
+        "pr": 714,
+        "issue": 47,
+        "head": "d371347bcf434aa78d17f00b8655544aef991d68",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "VERIFY starts after current-main integration and local source checks passed. Exact-head hosted SourceCI/scorecard are pending publication; this source-only slice requires no shared canonical TEST or database mutation."
       }
     ]
   }
