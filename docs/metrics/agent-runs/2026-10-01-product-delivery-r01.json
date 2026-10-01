@@ -325,6 +325,58 @@
         "cachedTokens": null,
         "count": 1,
         "note": "Distinctreview42 bounded DB/ambiguousreview DIAGNOSE permitted once percanonical7: automatedP1comment4152711632 claims nonexistentancestry onsynthetic3e89fcc. Checkactuald7/7a ancestry+SQLbytes/sourcepin+freshbaseline, currentP2sourceclosure; noFinalapproval whileNativepending. ModelSol6.1Owneroverride unknown; builder42differentactor."
+      },
+      {
+        "id": "20261001-sol-reserve46-bounded-g3-wiring",
+        "role": "build",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Admittedexistingbuild42 assoleprivateRESERVE46 after719sourcecloseoutcomplete722main263b; MAIN723sourcefrozenwaitingnative. NecessaryEnvironmentDelivery0135scope/authzcoverage/plan-awarepending/cleanup/ciinput wiring, noSQL/manifest/699G2/Productionwrites. Maxoneatomiccommit/nodeunit/sourceonly/READY_FOR_PROMOTION noPR/push/fullCI/DB/audit. OwnerSESSIONSol6.1builderauthorization distinctfuture reviewer actualunknown."
+      },
+      {
+        "id": "20261001-sol-review42-seasonal-acceptance",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Distinctreview47 versusbuilder47 acceptsEARLY42 seasonaltestonly197diff exact6aac afterLOCAL10freshnative814/E2E23/cleanup. Standard+Spec/existingcontract/tenant/fixturecleanup sourceaudit; canonicalTESTrequiredstillpendingsoEARLYcannotCLOSE_APPROVE. Futurefinalsamechainafterfreshcanonicalgates, nootherordinaryFinalinflight. Requestedgpt6.1solactualunknownOwnerSESSION."
+      },
+      {
+        "id": "20261001-sol-diagnose42-canonical-welcome-e2e",
+        "role": "diagnose",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Bounded ambiguouscanonical DB/E2E blocking42acceptance diagnosis product_scope differentactor. Two terminal main718/719 welcomeuploadtimeouts, global23514 mayintentionalintegrationnegative/dialoglocator mayadjacentcase. Requires precisepercase reporterstack/source, no rootcauseinference/noDBmutation/source/audit/rerun. CurrentReadonlyTEST Aimageempty/retirement0 during263integration nothistoricalteststate. Source723localgreenactualcurrent10+E2E23+cleanup."
+      },
+      {
+        "id": "20261001-sol-review46-closure-g3-wiring",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Distinctreview42 vsbuilder42 EARLY exact11d194e source9releaseCIunit+refundnativepreconditionfiles on263b. Two-axis currentselectors/exactclosure/prereqs/0099literalalias/35+1pending/requiredexactcases/fixturecleanup; sourceplan92units notnative. GOV_GATE independentFinalRisk separatepending. NoCLOSE_APPROVE beforefreshnative/CI/canonical/requiredRisk. Main723 branchonlyseasonalrequiredfile mapping barrier; manifest+lastwriterG2technicalgapexplicit notOwnerpermission. Requestedgpt6.1sol OwnerSESSION actualunknown."
       }
     ],
     "fullContextReplays": 0,
@@ -341,7 +393,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 14,
+    "fullCiRuns": 17,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -363,7 +415,7 @@
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 12,
+    "solTouches": 15,
     "solIssues": 4
   },
   "auditability": {
@@ -447,7 +499,31 @@
     "Postmerge719 WIP event timestamp actual07:39:39.472UTC initiallyserialized+00:00 rejectedISO_Zformat, correctedsameinstanttoZ beforefurthermutation/PRpublication; pairedMDregenerated. Nohistory/backdate/CIrerun/sourcechange.",
     "Observed719 main canonical push ci36831447495 exact701845e started2026-10-01T07:38:00Z in_progress; fullCiRuns13→14. SoleScout live110269717050 integration holder. No remote0135 G3/admission or Production acceptance; ordinary46suite POLICY_SKIP is notDBgreen.",
     "Main718 docs-only merge4b canonical ci36825550665 terminalFAILURE07:39:35Z: integration749PASS22skip; E2E welcome-card upload timeout3attempts/1failed2flaky20pass3skip; G3stepsSKIPPED. This is observed mainCI failure, not inferredProductregression; exact713main9b succeeded historically and remains distinct. Rootupdated719terminalPR/Issue46currentBody MERGED_TO_MAIN/PLAYBOOK_PENDING; mandatoryPB015/PB034patchready. TESTpolicycolumnhistoricalpartial/RPC+0135ledgerabsent/Productionall3absent readonly observed, noDDL. Sharedmutex currently719 run, noblindrerun.",
-    "2026-10-01T07:52:30.401Z RootMAIN42promotion authorized sameTask19 reserve e692 acceptance tail after713/718closeoutcomplete and719MAINexit;46sameIssue successor heldnecessaryPlaybook closeout. Onlynewownedtestfile trueHTTP/RPC seasonalorder snapshot, noSQL/runtime/provider orsharedTEST mutation. SingletonBUILDfallback1, noqualifieddualclaim. ExistingTask19 persists; actualPR/head/WIPevents notyetcreated untilRootpreflight/push. ExistingIssue42alreadycounted, noissuesStartedincrement."
+    "2026-10-01T07:52:30.401Z RootMAIN42promotion authorized sameTask19 reserve e692 acceptance tail after713/718closeoutcomplete and719MAINexit;46sameIssue successor heldnecessaryPlaybook closeout. Onlynewownedtestfile trueHTTP/RPC seasonalorder snapshot, noSQL/runtime/provider orsharedTEST mutation. SingletonBUILDfallback1, noqualifieddualclaim. ExistingTask19 persists; actualPR/head/WIPevents notyetcreated untilRootpreflight/push. ExistingIssue42alreadycounted, noissuesStartedincrement.",
+    "2026-10-01T07:56:18.548Z ActualPR723created exact6aac2777/currentbase701 andlocal-pr-723-a metadata synced; sameTask19MAIN acceptance tail, noextraissuesStarted/task/fullCI untilactualrunobserved. Sourcepreflight/collection10/type/integrityPASS notnativeDB. BGETorderreadside noTOUR_MODULE gate confirmedsource, noBseedmutationneeded. Necessarydocscloseout722head3246640 independentpureGov exactdiffPASS/currentrequiredCIpending. TESTstaffpolicy text/NOTNULL/defaultDEFAULT_AVAILABLE andvalidatedexactcheck matches0135precondition readonly; RPC/ledgerstillabsent noapply/readinessclaim.",
+    "Observedactual723 exact6aac source fullCI36833201119 started2026-10-01T07:55:42Z in_progress; fullCiRuns14→15. LOCAL36833201121 startedsameUTC/nativeNOT_RUNyet. Main719canonical active; docs722requiredsourcechecksall latestsuccess andnormalprotectedmergeREQUESTED263b0d8; freshCompletionTruth reread stillpending, noPBcloseoutcompleteyet.",
+    "2026-10-01T07:59:15.579Z Necessarydocs722 merged263b0d8verifiedlivePRmetadata/merged_at07:56:59/fetch/reachability/all3docbytes/PB015+034readback;719PRterminal+Issuebody/checklist/authoritativecomment synced POST_MERGE_CLOSEOUTCOMPLETE PLAYBOOK_DELTAverifiedmain. Onlysourceprepcomplete/noG3/Prod/auth/shipped. Main719active/new263b docs-main unknown, notProductfullCIcounter. Sameexistingproduct_scope actor readonly0135G3wiring plan followupallowednow; actualBUILD723sole/no secondbuild untilqualified. 711modelrouting remains owned/unmerged/sessionoverrideonly.",
+    "723sourceci36833201119 terminalSUCCESS07:59:12Z exact6aac type/unit/build; remoteintegration/E2E SOURCE_ONLYPOLICY_SKIP isnotTEST. NativeLOCAL36833201121 nowactualintegrationrunning notacceptance; soleScoutwatch main719pending no rerun. No newtask/counter fromterminalread.",
+    "2026-10-01T08:03:17.827Z TRIAGE46 scopedENV successor privateReserve admitted; purecurrent0135classifierAUTHZ. Eight canonical prereqidentities willfailclosedifnotexactapplied. Ownershipfourrelease/ci modules+fourexistingunits nooverlap723soleownedtest; live699changed5docs/scopedG2module/test zerooverlap. Main723waitingnative/no source action, safetyfallbacksingleBUILD+privateReserve1; nofakeopenPR WIPevent/counter. FutureMAIN gatewiring riskGOVERNANCE_GATE planawareacceptance mustindependent freshFinalRisk/CI beforemerge; reserve noAudit. RootsoleRunwriter/predeclaredauditfacts exception unchanged.",
+    "2026-10-01T08:09:28.752Z Actual723LOCAL36833201121 exact6aac terminalSUCCESS confirmedsoleScoutterminaljoblogs: seasonal10/10 realHTTP/RPC/rawsnapshotsPASS, departureformation3/3PASS; integration814PASS3skip82files/E2E23PASS3skip/welcomeuploadPASS18.9s; cleanupLOCAL_CLEANUP_VERIFIED stackstop08:06:59Z/post08:07:00. CanonicalremoteTESTnotrun/sourceCIgreen separate. Newlyobservablefreshlocalproofcaptured beforeEARLYaudit; scorecardworkflowunknownnotinvented.",
+    "Task22 soleprivateReserve46 READY_FOR_PROMOTION exact0b759c3f419e897b3806299b996b725253b15f8c/base263b clean8files178+/9-/oneatomiccommit/noPR/push/DB/CI/Audit. Node22type87focusedunits/noDBdiscovery35remote-semantic+1exactLOCALcatalogmapping/integrityPASS. ActualaliasplanpreflightBLOCKED0110EXACT_APPLIED missing expectedfailclosed notguardweakening/noexpandedSQLset. FutureG3scope13cannotdispatchuntilprereqidentity/shape/ACL genuinelyready. Root mustboundedlivecheck8prereq TEST/Prod/alias evidence, namedtechnicalprereqblockednotgenericOwnerpermission. IndependentEARLY723sourceclearFinalHOLD0findings/RiskNONE exact6aac, freshnative10PASS/evidencecompleted; canonicalqueuepending.",
+    "2026-10-01T08:25:51.119Z Canonicalmain719 push36831447495 exact701 terminalFAILURE08:22:12 E2Ewelcomeupload23514 \"welcome card image has been retired\" repeatedafter718samecasefailure; integration749PASS58skip77files/4skip, #46whole36POLICY_SKIPNOT_RUN, #42formation3PASS. E2E1failed2flaky20PASS3skip (addons/touradmin retryPASS). RunnerNextteardown/orphanscleanupverified; G3stepsSKIPPED. NoSource46predicateDBacceptance/Prod/shipped. Nextdocs-main722ci36833333706 exact263b alreadyactivejob110275760248 atintegration, no gap/TESTtakeover. No blindrerun; repeatedsamecase nowpreciseDB23514 enablesboundedTEST-fixture/storage-lifecycle DIAGNOSE beforecanonicaladmission.",
+    "2026-10-01T08:30:45.240Z Rootbounded46prereqmetadataobservedTEST0110/0115canonicalledgerpresent/expectedaffectedcolumns;Production0110/0115ledgerabsent/0110threecolumnshistoricalpresent/0115externalcacheabsent, sixolderprereqcanonicalnamespresent. RepoaliasmapisProductionONLY, notTEST; exact8ProdAPPLIEDrequirement prevents0135G3plan eventhoughTEST0110/0115ready. No automaticaliasrepair/groupapply/assumedownerpermission. Reserve22 remainsprivateREADYnoPR/push; Rootmustresolvelegitimatephase/dependencies ratherthanweakenexactsource orclaimTESTready. Per-case welcomeCIproof requested becauseglobal23514/detaillocator notcausallyattributed; noSourcefixyet.",
+    "2026-10-01T08:38:18.819144Z Task24 completed /workspace/canonical-welcome-e2e-diagnose.md: confirmed conditional shared-original-image retirement/restore lifecycle bug and late uploadedPath capture/log-only cleanup. Canonical719 per-case root cause remains unknown; 23514/dialog neighboring output not attributed. Approve same Task19 MAIN723 bounded acceptance-blocking test lifecycle repair, ownership additionally tests/e2e/welcome-card-upload.spec.ts; no runtime/retirement guard/schema changes/no remote mutation. Keep IN_PROGRESS; fresh source/local/canonical evidence and distinct Task23 final required.",
+    "2026-10-01T08:45:02.058278Z SameTask19 builder47 bounded welcome E2E repair frozen0d178dc8f40748e0d29a4213c564dc6a03f4042c from6aac; twoPRfiles +380/-85, seasonal unchanged; Node22 type/collection1/integrity/diffPASS; Root preflight currentmain263b with revised body PASS. Actual new native/fullCI NOT_RUN; historical6aacgreen not acceptance fornewhead. Default30s unchanged; new disposabletenant/membership/true switch/storage/readback/cleanupzero needs runtime proof. Source construction start unknown; firstmodified observed thiscontinuation, no invented timestamps. Updated Issue/PR719/722 main719failure verified live readback; main263b lastobserved08:43:46Z holder active integration bysoleScout.",
+    "2026-10-01T08:46:12.965830Z Observed bysoleScout NEW fullCI16 source36838286092/nativeLOCAL36838286306 start2026-10-01T08:45:10Z exact0d178dc8f40748e0d29a4213c564dc6a03f4042c; current native/source in_progress notPASS, sameTask19 meaningful test lifecycle change/noinvalidrerun. Native starts sameevent notdoublecount. Currentmain263b sharedTEST lastobservedactive; no remote branch dispatch.",
+    "2026-10-01T08:50:06.401232Z SoleScout observed repaired723 sourceCI36838286092 terminalSUCCESS08:48:42Z exact0d178dc8; sourcepolicyremoteintegration/E2E skipped notcanonicalproof. NativeLOCAL36838286306 remains integration; sharedmain263b remainsactive. No SOURCE_VERIFIED/Final/merge/authclaim.",
+    "2026-10-01T08:56:51.688888Z SameTask23 EARLY source review chain resumed for exact0d178dc8 newwelcomeE2E scope after boundedTask24diagnosis; distinctreview47 versusbuilder47, no newtask/touch orFINALadmission. SourceCIgreen; LOCALintegration/E2Esteps finished butdestroycleanup/terminal outcome stillunknown. ReviewmustkeepHOLD/FIX_REQUIRED untilfreshcanonicalcleanup; cannotreuse6aacsourceclear verdict fornewfile.",
+    "2026-10-01T09:01:37.600931Z Fresh repaired723 LOCAL36838286306 terminalSUCCESS exact0d178dc8: seasonal10/formation3/integration814PASS3skip/E2E23PASS3skip/welcome23.3s PASS within30s; owned DB/Storage cleanupzero assertions passed noAggregateError, explicitzerocountlogUNKNOWN; stackstop08:56:15Z/postcleanup verified. Task23samechain supplemental EARLY sourceclear0/RiskNONE/HOLD; canonicalpending. Solemain263b advancedE2E lastobserved09:00:03Z. Issue42/livePRsynced noSourceVerified/merge/auth/shipped.",
+    "2026-10-01T09:07:44.508Z Main263b ci36833333706 terminalSUCCESS09:02:47Z verifiedsoleScout: 749PASS58SKIP/77PASS4SKIP/#46whole36NOT_RUN; E2E20PASS3SKIP3flaky retriesPASS; originalmainwelcome29.1s not repaired0dproof. Nextteardown08:58:16.686/runnercleanup09:02:45; G3cleanup/evidenceNOT_RUN. PR723 currentexact0d bodytransition verifiedlive TEST_VALIDATION/ACTIVE/candidatefalse/SHARED_CANONICAL/TESTrequiredtrue, unique legalholder aftermainterminal, preflightPASS. Existingeditedlane auto-dispatchREQUESTED notactualCI yet. Frees BUILD byactualroletransition, nofakeDUALqualification. NewMAIN mayrefill necessary P1 releaseprecondition only.",
+    "2026-10-01T09:11:24.548538Z NEW fullCI17 actualcanonical723 ci workflow_dispatch36840741621 started2026-10-01T09:08:04Z exact0d178dc8/branchreserve42 via trusted edited lane_transition; classify+Authenticate sharedTESTownerPASS/checkbuildactive, no actualintegrationphase yet. This is requestedplan/sourceacceptance ordinarycanonical notG3schemaapply. No duplicateTEST orblindrerun. Guardadmission verifiedsoleScout09:09:51Z.",
+    "2026-10-01T09:16:06.759917Z Sol owningRoot TRIAGE: sole723 now TEST_VALIDATION releases MAIN; source0d nativegreen/early0 canonical36840741621 actualremotetests firstobserved09:11:26Z. SameTask22 Reserve46 formally promoted to MAIN pre-PR specification/verification phase onexisting0b/263b; noopenPRBUILD event yet/nosecondBUILD/Reserve. Necessary sameP1release dependency closure, notnewfeature/schema debt. Rootsource and readonlyProduction show7targetsAUTHZ/pending, foundationnames+legacy0099 present, requiredtablesmissingtargetexternal/seasons notfoundation shifts/tenantsettings. Mustverify exactobject/last-writer closure before Source changes/newscope, preserve strictsingle0135 scope and allolder selectors; no aliasSQL/G2duplication/DB/CI/push untilRootformalpublication. NewSourceGate riskGOVERNANCE_GATE requiresindependent freshFinalRisk later; no acceptance/approval/production permission claim.",
+    "2026-10-01T09:30:02.273781+00:00 Same Task22 MAIN Source phase authorized: named ISSUE_46_0110_0135_CLOSURE exact7 dependency closure only in existing8 owned release/CI/unit files; preserve frozen0b ancestry, oldstrictsingle0135 and17/37/FULL. ReadonlyProduction confirms additional0001/0002/0067/0068/0107 exactnames present; this is ledger-only notshapeACL/G2. Required finalwriter0132 and literal0099alias failclosed; actualrefund/REQUEST/immutable case discovery beforemapping, absentcoverage explicitlyblocks. PR723 branchonly seasonaltest cannotbeclaimedcurrentmain untilmerged. Impactmanifest0128/0130/0132+0110routine gaps remain separate necessaryG2 followon; noSQL/alias/manifest/699 edit/DB/push/fullCI inthisphase. GOV_GATE independentFinalRisk later, norelease authorization orshipped claim.",
+    "2026-10-01T09:32:33.858932+00:00 SameTask22 necessarySourceownership expanded BEFORE construction to one new tests/integration/db/tour-refund-snapshot.46.test.ts beyond original8 (Product notpureGov). Freshsource exploration proves no refundimmutable realcase currentmain/tests; this blocks7closureG3. Root authorizes ownedunique trip/plan/departure/order fixture realHTTPpolicy save/reload/manualorder/RPC/rawsnapshot→Trip+Plan changes→oldfullrowunchanged/neworderupdated/tenantnegative+verifiedcleanup; no schema/runtime/sharedseed/provider/financial side effects. Closurecontract must require exact nativecase outcomes andmissing/pending reject. Noextra task/doublecount, native/CI/DB/push NOT_RUN. CandidateSource may include ownnewtest, prospective723mapping waitsparentmerge; new9files not8Governanceexception becausePRODUCT_MAINLINE releaseprecondition.",
+    "2026-10-01T09:37:18.187426+00:00 Source-contract probes (synthetic only/no DB): current7 plan+actualmanifest rejects MISSING_IMPACT_MANIFEST_ENTRY0128; in-memory prospective0130/0132 same canonicalroutine impacts rejects AMBIGUOUS_IMPACT_OWNERSHIP create_tour_order. Therefore adding entries alone cannotcompleteG2; existing consistency evidence needs explicit exact reviewed finalwriter closure handling, notgenericduplicate allowance or removalofSQLimpact truth. This is a separate necessaryboundedsource gap, no699 takeover/remote permission.",
+    "2026-10-01T09:40:22.986802+00:00 Task22 frozen11d194e clean9sourcefiles cumulative263b461+/9-;92units/type/integrity/sourceplanexact7AUTHZ+mappingdiscoveryPASS nativeNOT_RUN. Task25 distinctreview42 EARLY review admitted before dispatch oncurrentfreeze; nootherordinaryFINAL inprogress. Run25tasks/full17/soltouch15; no newBUILDPR/CIcount. Root formalpublication follows head/base/materialparent723 proof and metadata preflight; missingmanifest/finalwriterG2 followon unresolved, no release readiness.",
+    "2026-10-01T09:43:20.765129+00:00 Task25 EARLY current11d P2 FIX_REQUIRED: REQUEST required7 nativecases afterEach ignores resolvedDELETE error/nozero readback; selectedclosurecleanup lacks REQUEST ownedorderscope, thus residue can green. SameTask22 Source claim loweredIN_PROGRESS BEFORE repair, explicit10thownedfile tests/integration/api/tour-request-accept.46.test.ts added beforedispatch. Minimalorders tag prefix request-accept-46- pertest lifecycle,discover lostresponse children byownedtag,delete error+zero readback+retainprimarycleanupfailures; closure read-only tagScopezero withnegativeunit. Do notredo REQUEST business or alterSQL/runtime/G2. NativefullCI NOT_RUN; source11d no acceptance; sameEARLYchain supplement afterfreshfix notsecondEARLY/Final.",
+    "2026-10-01T09:48:21.380820+00:00 SameTask22 P2 Sourcefix frozenea75f885f382f69d5ab52dd07bc4ad4940b91766 clean/0b11d ancestry10files532+/18-; exactREQUEST markersdiscovery/resolvedDELETEerror/noteIDzero/dualPlanrestore/readback/AggregateError withprimary retention; G3REQUESTprefixreadonlyzero/residueHTTPerrorunits. Node22type93focused/noDB17REQUESTcollection/integrityPASS, initialmockscopefailurefixednotguard. Newnative/CI NOT_RUN. SameTask25 EARLY supplement admittedcurrentea75 afterP2fix, nosecondEARLY/newtask/counter; formalpublication next afterexactmetadata/currentownership proof, noSourceVerified/FinalRisk/TESTrelease/Prodclaim."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -548,7 +624,7 @@
         "claimedState": "MERGED_TO_MAIN",
         "observedState": "MERGED_TO_MAIN",
         "verification": "VERIFIED",
-        "evidenceRef": "pr719 mergedtrue/merged_at2026-10-01T07:37:57Z merge701845e4783f9eb87a19e3b3da52f49018134ea9; freshoriginmain701845e/reachable; d009SQLpinancestorretained; sixsourceblobsidentical7a/actualmainSQLreread. Source/local/bootstrap+distinctCLOSE_APPROVED verified; mainpushCI/remoteG3/Production/auth/atomicjourneypending."
+        "evidenceRef": "pr719 mergedtrue/merged_at2026-10-01T07:37:57Z merge701845e4783f9eb87a19e3b3da52f49018134ea9; freshoriginmain701845e/reachable; d009SQLpinancestorretained; sixsourceblobsidentical7a/actualmainSQLreread. Source/local/bootstrap+distinctCLOSE_APPROVED verified; mainpushCI/remoteG3/Production/auth/atomicjourneypending. MAIN_CI_AFTER_MERGE=failure exact701845e/push ci36831447495 terminal2026-10-01T08:22:12Z; integration749PASS58SKIP/46whole36NOT_RUN/E2E1failed2flaky20PASS3SKIP welcome-card-upload30s; latest main263b ci36833333706 pending, no authenticated acceptance."
       }
     ]
   },
@@ -694,6 +770,36 @@
         "head": "473050c564b4dc5b1e39bac1eeb06ad91ac1e057",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "Exit originalcapturedBUILDhead473; actualfinal7a boundedSOURCE_PREPARE mergednormal701845e verifiedfreshmetadata/fetch/reachability/sixblobs/mainSQL; no remoteG3/Prod/activation. Noother719holder/candidate aftermerged. RequiredPlaybookcloseoutpending before sameIssueG3 successor; independent42Reserve remainsfrozen."
+      },
+      {
+        "id": "723-seasonal-acceptance-main-build-enter",
+        "at": "2026-10-01T07:56:18.548Z",
+        "kind": "BUILD_ENTER",
+        "pr": 723,
+        "issue": 42,
+        "head": "6aac2777bcbf07155226cc3cb3311ad8bdaf91eb",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "ObservedactualPR723 created sameTask19 privateReservepromotion after719MAINexit and42priorcloseoutcomplete. Soleownedseasonal snapshot197linetest/currentmain701normalmerge noSQL/runtime/provider/RootRunownership. NativeLOCALnotyetverified; sharedmain719active; candidateBUILDfallback1."
+      },
+      {
+        "id": "723-build-to-canonical-test-exit",
+        "at": "2026-10-01T09:07:44.508Z",
+        "kind": "BUILD_EXIT",
+        "pr": 723,
+        "issue": 42,
+        "head": "6aac2777bcbf07155226cc3cb3311ad8bdaf91eb",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Exit original captured BUILDhead6aac after actual verified transition soleTEST_VALIDATION; finalsource0d/freshnativegreen/early0, nohistorical rewrite."
+      },
+      {
+        "id": "723-observed-canonical-test-enter",
+        "at": "2026-10-01T09:07:44.508Z",
+        "kind": "TEST_ENTER",
+        "pr": 723,
+        "issue": 42,
+        "head": "0d178dc8f40748e0d29a4213c564dc6a03f4042c",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Actual PRbodysoleTEST_VALIDATION after263mainterminalSUCCESS; standingTESTrefnmwhwngojosmagjuvxol. Guardauto-dispatchpending; no runtime/schema/G3/provider mutation claim."
       }
     ]
   }
