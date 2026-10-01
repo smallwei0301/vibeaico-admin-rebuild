@@ -273,6 +273,45 @@
         "cachedTokens": null,
         "note": "Actual builder42 followup admitted soleRESERVE46 read/spec first, precisecontractrootcheckbeforeedits; sourceprepareGUIDEavailabilitypolicy+serviceonlyreadonlyintervalprimitive/nativeDBtest, atmostoneatomiccommit noCI/TEST/Audit/PR/push. Requestedgpt6.1-sol Owneroverride actualunknown.",
         "count": 1
+      },
+      {
+        "id": "20261001-sol-review46-early",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Distinct review42 EARLY46 on frozen61f9435 schemaSOURCE_PREPARE afterformalMAINpromotion; builder42differentactor. NativeNOT_RUN, nofinalapproval. IndependentStandards/Spec+risk/admission/ACL/tenant/DST scope only, noRun/sourcewrites orCIpoll. Requestedgpt6.1-sol OwnerSESSIONoverride actualunknown."
+      },
+      {
+        "id": "20261001-sol-reserve42-seasonal-acceptance",
+        "role": "build",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Actual existingbuild47 followup admitted singleprivateRESERVE42 test-only seasonal Plan save/reload→trueTourOrder price snapshot source; oneownednewintegrationfile/oneatomiccommit. MAIN46sourcefrozenawaitsnativeCI; noPR/push/DB/CI/audit/Runmutation. OwnerSol6.1builder override, noProductcompletionclaim."
+      },
+      {
+        "id": "20261001-luna-playbook719-failure-evidence",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Existingtriage scopedDOCS accepted minimal PB015/034/027 evidencepatch outsideworktree for actual719 mergeconflict/alias+pinCI failures/DSTreview findings. No Product source/test/Run mutation, noPR/DB/CIpoll. Requestedgpt6-luna actualunknown, Rootsoleledgerwriter; actualnativeverificationpendingmustremainpending."
       }
     ],
     "fullContextReplays": 0,
@@ -289,7 +328,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 10,
+    "fullCiRuns": 12,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -305,13 +344,13 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 4,
-    "lunaAccepted": 4,
+    "lunaTasks": 5,
+    "lunaAccepted": 5,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 9,
+    "solTouches": 11,
     "solIssues": 4
   },
   "auditability": {
@@ -369,7 +408,21 @@
     "Observed main push ci36822913910 actualstarted2026-10-01T06:04:56Z exactmerge9b291eb => fullCiRuns9; pending notgreen. AutoVercelProductiondpl_F6yMBTCPNFFjL9EuqCD64zDGhT3D READY06:07:00.171Z exactmain9b291eb aliases verified readonly byscout; no manualdeploy or authacceptance.",
     "Actual repaired715headf1c0438 sourceCI36823196438 started2026-10-01T06:08:18Z; LOCAL36823196788 running/scorecard36823196551success => fullCiRuns10. Source08c preserved across normalmain merge; sameindependentearly SOURCE_CLEAR_FINAL_HOLD RiskNONE. Run-only merge conflicts resolvedRootsolelatestwriter, freshtype/focused30/preflight/integrityPASS. Noacceptanceinheritancefromfaileddec.",
     "Postmerge historicalguard110223227479 logs reread: 2026-10-01T04:47:12Z PR changed during policy evaluation; currentevent laterguardpassed. Not source/routing failure, no blindrerun; preserveRED race as historicalPB034family. Closure718 preflight missingASTRA_RATIONALE caughtlocally beforepush; concrete docs-only assessmentadded thenPASS/noextraCI.",
-    "Independent necessary docs-closeout718 review found two LOCAL_TEST_GREEN claim states used ISOLATED_GREEN_WITH_CLEANUP unsupported bycurrent scorer. Normalizeclaimed/observed tosuccess based actual terminal successful ac8/f1LOCAL workflows; cleanup remains explicit evidenceRef. Preserveoriginalstate wording in thisnote, no historicalCI/result rewrite/newProducttest. Pairedreport regenerates, samegov reviewchain rechecks.718merge helduntil713mainpushterminal toavoid sharedmutexpending replacement."
+    "Independent necessary docs-closeout718 review found two LOCAL_TEST_GREEN claim states used ISOLATED_GREEN_WITH_CLEANUP unsupported bycurrent scorer. Normalizeclaimed/observed tosuccess based actual terminal successful ac8/f1LOCAL workflows; cleanup remains explicit evidenceRef. Preserveoriginalstate wording in thisnote, no historicalCI/result rewrite/newProducttest. Pairedreport regenerates, samegov reviewchain rechecks.718merge helduntil713mainpushterminal toavoid sharedmutexpending replacement.",
+    "715exactf1 source/LOCALgreen withcleanup, CanonicalNOT_RUN andFinalHOLD. FrozenPARKEDonlylane afterlocalacceptancewaiting sharedmain716then713; do not replacequeued713acceptancebynewdispatch/merge. Root selects soleMAIN promotionofprivateReserve46nativeSourcePrepare+knownIANAfoldrepair; no sourceOutcome/shipped claim.",
+    "Govclosure718 merged06:35:03Z at4b8b86d freshfetch/reachable/PB027 status reread; 3docs only/independent0f3PASS/requiredchecksallgreen. Mergehold condition was toprotect queued713; after716terminal713startedactive06:26 cancel-in-progressfalse prevents replacement, soRootlegallymergedsuccessor. Source42Issuebody/checklist/PRterminal/labels/authoritativecloseout synced, PLAYBOOK_DELTA nowVERIFIED_IN_MAIN andboundedsourcecloseoutCOMPLETE; whole42OPEN/mainCI schemaauthpending. Govmerge/CI is separatelynotProductOutcome ornewProducttask. SoleMAIN46continuedsamebuilderTasklineage knownfold+nativeadmission repair noPR/pushyet;715PARKEDnoIndividualPoll.",
+    "MAIN46source61f9435 freeze threeownedpaths, nativecompile/DBNOT_RUN. WholeLOCAL/G3fixedartifactadmission addednotfunctionexistskip; ordinary33POLICY_SKIP/NOT_RUN. Source-static26/type/integrityPASS only. Necessary followoncanonical0135selector+pendingcoveragewiring missing, noProduction ready/activation/atomicreservation. EARLY distinctreview46dispatchobserved beforepublication=>task18/SolTouches10; previousReserve46logicalbuilder reusedformalpromotion/nosecondactor.",
+    "Actual719created06:46:44Z exact473050c source61f+RootlatestRun. EARLY review46 sourceclearfinalHOLD onthreepaths andindependentriskNONE onlyreadonlyPREPARE. Rootpreflightmissingpr-lifecycle caughtbeforepush/PR thenfixedheaderPASS, noinvalidCIrerun. SourceBody TEST_ENV_ID descriptiveissue46-local-a, runneractualexpectedlocal-pr-719-a; adjustbody truthfulspecificvalue onceactualpipelineobserved, notinventhealth.",
+    "2026-10-01T06:55:21.626+00:00 PR719 native/source workflows NOT_REPORTED because live mergeable=false/dirty. merge-tree confirms conflicts only owning Run JSON/MD after governance718; Root normal merge currentmain4b and resolves using owning current raw ledger, regenerates MD. No source conflict, no no-op rerun, no CI success/counter inferred. Initial publication failed to detect this merge conflict; corrected before native acceptance. Exact new head needs fresh CI.",
+    "Actual719 freshhead955b109 source ci36827423772 started2026-10-01T06:55:50Z; source terminalFAILURE pending exactcause scout, LOCAL36827423779 inprogress samehead. FullCiRuns10→11 oneactualsource workflow; original473conflict had NOT_RUN and is not counted. No sourcegreen/nativePASS claimed.",
+    "719source CI36827423772 terminal missing0135 ledger classification; schema-bootstrap36827423735 terminal FRESH_INSTALL_BASELINE_BLOCKED canonical migration bytes changed before Docker. Samebuilder necessarytwofilealias/pinrepair admitted ownership inPRbody no guard weakening; early proposedmainHead4b rejected/corrected beforecommit because lacks0135. PB015 requires pin existingancestor61f/955 containing identicalSQL and nextmetadata-onlycommit. NativeLOCAL36827423779 remains running; no replayacceptance orinvalidrerun. SameScope46 followup currentmainallwriteratomicclosure enumeration accepted with no new actor/taskchain.",
+    "Rootfreshread main713 ci36822913910 exactmerge9b push attempt1 completedSUCCESS updated06:58:04Z. Scoutterminallogs integration77filesPASS3skip/749testsPASS22skip; E2E23PASS3skip; service_rolefixturerestore+Nextglobalteardownverified. G3schema/apply/cleanuprawstepsSKIPPED intentionalno release. MainCIaftermerge blocker42 cleared; Production schema/auth remainpending. Govmain7184b queue successor mustlivecheck before715canonicalholderrestore; terminal713 doesnotaloneproveemptysharedmutex.",
+    "MAIN46source repair frozen36f41fc includes necessaryalias/pin/exactcount test threefiles; typecheck64tests/ledger82+58/fresh89files7compatgeneration/integrityPASS. Original3source blobsunchanged; nativeDB notyetacceptance. Govmain718 ci36825550665 activecanonicalintegration so715 remainsPARKED. Publishing actualsourceclassification/pinrepair triggers freshhead CI; old955LOCAL ifcancelled isUNKNOWN notPASS and notblindrerun. Rootcapturespresent facts beforepush; finalreview mustincludeadded3necessarypaths.",
+    "Actual719 d7de123 sourceCI36828034389 and bootstrap36828034375 started2026-10-01T07:02:14Z; source fullCiRuns11→12. NewLOCAL36828034475 QUEUED notstarted; old955LOCAL36827423779 CANCELLED afternecessaryrealalias/pin/countsourcefix→UNKNOWN no nativePASS. Scorecard36828034423 success notnativeDB. Main718 stillsharedTESTholder.",
+    "2026-10-01T07:04:32.299+00:00 Rootremaining42 TRIAGEafter713+718sourcecloseoutcomplete: existingseasonalRLSsuite doesnotexerciseactualorderprice. MAIN46 d7frozenwaitnative, soleprivateRESERVE42 accepted builder47 onnewtestfile only, no MAINhotfiles/ledger/paymentprovider/sourceactivation. No newIssue/PR/buildcandidate orremoteDB. FreezeREADY_FOR_PROMOTION oneatomiccommit. Existing42alreadyissuesStarted4 distinctissues, Solissues4unchanged.",
+    "719d7 sourceCI36828034389 completedSUCCESS07:05:36Z; NativeLOCAL/bootstrapstillrunning/notacceptance. Rootfreshreviews found actualP2 comments4152599457 (unrelatedhistorical/futureDSTambiguous shifts/departures poison allrequests) and4152657882 (WEEKLY full_day dropped→25hdaylast-hourfalseavailable/23hdayoverflow). SameMAINbuilder activeIN_PROGRESS narrowSQL/nativecase repair authorized beforefinalaudit; pinmustfollowSQLcommitP. CurrentCIgreen notSOURCE_VERIFIED/activation. Reserve42 oneprivateacceptancetestdoesnotshareSQL/Run/hotfiles; nogreenclaim.",
+    "2026-10-01T07:08:53.470+00:00 necessaryPlaybook factualpatch dispatch toexistingtriage scopedLunaDOCS; notProductOutcome/Govexpansion, merging willfollow Sourcecloseout normalchecks. Pendingnative/findings cannotbeclaimedfixed.",
+    "MAIN46 twoactualP2 sourcefindings repaired frozen3074bbf: SQL/nativecasesP=d009399 followedmetadata-onlypinP3074 ensuresidenticalcanonicalbytes/ancestry. RelevantUTC envelope skips onlydefinitelyunrelatedambiguousshift/departure rows, relatedunknownfailsclosed/multidayretained; WEEKLYfull_day useslocalnextmidnight23/25h. Typecheck/source-policy26+ledgerfresh64PASS/baseline89/7/ledger82+58/integrityPASS. NativeNOT_RUN onnewrepair, oldd7green notsubstitute. Rootpublishactualsourcefix causesfreshCI/oldcancelUNKNOWN; noinvalidblindrerun. Task20Playbookpatchcompletedfacts-onlyPB015/034 awaitsnormalmainclosure; noProductOutcome."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -382,7 +435,7 @@
   },
   "completionTruth": {
     "status": "VERIFIED",
-    "checkedAt": "2026-10-01T06:08:32.317Z",
+    "checkedAt": "2026-10-01T07:00:27.779+00:00",
     "claims": [
       {
         "type": "LOCAL_TEST_GREEN",
@@ -422,7 +475,7 @@
         "claimedState": "MERGED_TO_MAIN",
         "observedState": "MERGED_TO_MAIN",
         "verification": "VERIFIED",
-        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/713; exactf1c4984c0a2dfda85207c08086ba80d3ada797cf source36816705017 LOCAL36816705044 canonical36817947312; independentreview42 CLOSE_APPROVED/base-compatible b17; merged_at2026-10-01T06:04:53Z merge9b291ebbc878ac68e3378aee1f44991401d5b211 reachable currentmain9b291ebbc878ac68e3378aee1f44991401d5b211; runtime blobs equal fresh main readback; deploy/schema/auth pending"
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/713; exactf1c4984c0a2dfda85207c08086ba80d3ada797cf source36816705017 LOCAL36816705044 canonical36817947312; independentreview42 CLOSE_APPROVED/base-compatible b17; merged_at2026-10-01T06:04:53Z merge9b291ebbc878ac68e3378aee1f44991401d5b211 reachable currentmain9b291ebbc878ac68e3378aee1f44991401d5b211; runtime blobs equal fresh main readback; deploy/schema/auth pending; aftermerge MAIN_CI_AFTER_MERGE=success exact9b/push ci36822913910 attempt1 completed2026-10-01T06:58:04Z integration749/E2E23 actualpass, G3NOT_RUN"
       },
       {
         "type": "AUTO_VERCEL_DEPLOYED",
@@ -431,6 +484,14 @@
         "observedState": "AUTO_VERCEL_DEPLOYED",
         "verification": "VERIFIED",
         "evidenceRef": "vercel deployment dpl_F6yMBTCPNFFjL9EuqCD64zDGhT3D targetproduction githubCommitRefmain SHA9b291ebbc878ac68e3378aee1f44991401d5b211 READY2026-10-01T06:07:00.171Z; scout readonlyprovider capture; mainpushCI/schema/auth pending"
+      },
+      {
+        "type": "LOCAL_TEST_GREEN",
+        "subject": "pr#715 headf1c0438ac67b9d2a3633da065a441cff92256cd3",
+        "claimedState": "success",
+        "observedState": "success",
+        "verification": "VERIFIED",
+        "evidenceRef": "actions/runs/36823196788; integration769pass3skip/43truecasePASS/E2E22pass3skip1flaky(first30sdownloadtimeout)/LOCAL_CLEANUP_VERIFIED stackstopped06:20:22Z"
       }
     ]
   },
@@ -546,6 +607,26 @@
         "head": "f1c4984c0a2dfda85207c08086ba80d3ada797cf",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "Verified merged PR713 no longer holder; exact canonical36817947312 terminalsuccess + ordinaryfixture/servercleanup, G3 intentionallyskip. No remote mutation in closeout."
+      },
+      {
+        "id": "715-localgreen-queue-park",
+        "at": "2026-10-01T06:25:50.516Z",
+        "kind": "BUILD_EXIT",
+        "pr": 715,
+        "issue": 43,
+        "head": "dec730fdced46d369d7be7e2f3c4e97973cb8521",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Exit originallycapturedBUILDheaddec; actualPRnewheadf1c0438PARKED afterLOCAL terminalsuccesscleanup; solecanonical mutex716then713queues prevent fresh canonical admissionwithoutreplacingqueued713. Frozen noagent/push/poll untilreactriage."
+      },
+      {
+        "id": "719-promoted46-observed-build",
+        "at": "2026-10-01T06:47:34.328Z",
+        "kind": "BUILD_ENTER",
+        "pr": 719,
+        "issue": 46,
+        "head": "473050c564b4dc5b1e39bac1eeb06ad91ac1e057",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "ActualPR719created06:46:44Z ACTIVE soleBUILD LOCAL_ISOLATED SOURCE_PREPARE, frozen61f nativeNOT_RUN +RootRunmetadata473. 715/714PARKED, main713sharedTEST active, no remoteDDL; futurecanonical13selector/coverage missingfollowon."
       }
     ]
   }
