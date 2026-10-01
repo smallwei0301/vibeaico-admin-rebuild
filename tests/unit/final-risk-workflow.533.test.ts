@@ -271,8 +271,11 @@ describe('Final Risk circuit breaker fallback (#533)', () => {
   const allowed = ['claude-fable-5-1', 'gpt-6-astra'];
 
   it('downgrades on the first fault without retrying either premium model', () => {
-    const first = decideFinalRiskRecovery({ failureClass: 'TIMEOUT', sameClassAttempts: 1, currentModel: 'claude-fable-5-1', allowedModels: allowed });
-    const second = decideFinalRiskRecovery({ failureClass: 'TIMEOUT', sameClassAttempts: 2, currentModel: 'claude-fable-5-1', attemptedModels: ['claude-fable-5-1'], allowedModels: allowed });
+    const runtime = { provider: 'OPENAI', availableModels: ['gpt-6.1-sol'], runtimeCatalog: {
+      provider: 'OPENAI', models: ['gpt-6.1-sol'], captureStartedAt: '2026-09-17T01:00:00Z', observedAt: '2026-09-17T01:00:00Z',
+      evidenceRef: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/552', providerEvidenceRef: 'synthetic-provider-metadata' } };
+    const first = decideFinalRiskRecovery({ ...runtime, failureClass: 'TIMEOUT', sameClassAttempts: 1, currentModel: 'claude-fable-5-1', allowedModels: allowed });
+    const second = decideFinalRiskRecovery({ ...runtime, failureClass: 'TIMEOUT', sameClassAttempts: 2, currentModel: 'claude-fable-5-1', attemptedModels: ['claude-fable-5-1'], allowedModels: allowed });
     expect(first.action).toBe('DOWNGRADE_REVIEWER_MODEL');
     expect(second.action).toBe('DOWNGRADE_REVIEWER_MODEL');
     expect(first.nextModel).toBe('gpt-6.1-sol');
