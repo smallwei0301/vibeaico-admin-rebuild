@@ -1,0 +1,184 @@
+/** #46 SOURCE_PREPARE: native DB/ACL contract. Run only in an admitted isolated
+ * or canonical lane. This predicate is read-only and is NOT a reservation proof. */
+import { randomUUID } from 'node:crypto';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { SHOP_A, SHOP_B } from '../../fixtures';
+
+const RPC = 'guide_staff_interval_available';
+let admin: SupabaseClient;
+let anon: SupabaseClient;
+let owner: SupabaseClient;
+let tenant: string;
+let staff: string;
+const start = '2030-01-15T02:00:00Z';
+const end = '2030-01-15T03:00:00Z';
+function client(key: string) {
+  return createClient(process.env.TEST_SUPABASE_URL!, key, { auth: { persistSession: false, autoRefreshToken: false } });
+}
+async function insert(table: string, data: Record<string, unknown>) {
+  const result = await admin.from(table).insert(data).select('id').single();
+  expect(result.error, `${table} fixture`).toBeNull();
+  return result.data!.id as string;
+}
+async function available(from: string | null = start, to: string | null = end, tenantId = tenant, staffId = staff) {
+  const result = await admin.rpc(RPC, { p_tenant: tenantId, p_staff: staffId, p_start: from, p_end: to });
+  expect(result.error, 'real DB primitive must execute').toBeNull();
+  return result.data as boolean;
+}
+async function policy(value: string) {
+  expect((await admin.from('staff').update({ availability_policy: value }).eq('tenant_id', tenant).eq('id', staff)).error).toBeNull();
+}
+async function timezone(value: unknown) {
+  expect((await admin.from('tenant_settings').update({ basic: { timezone: value } }).eq('tenant_id', tenant)).error).toBeNull();
+}
+async function shift(date: string, from: string, to: string) {
+  return insert('shifts', { tenant_id: tenant, staff_id: staff, work_date: date, start_time: from, end_time: to });
+}
+beforeAll(async () => {
+  expect(process.env.TEST_SUPABASE_URL).toBeTruthy();
+  expect(process.env.TEST_SUPABASE_SERVICE_ROLE_KEY).toBeTruthy();
+  expect(process.env.TEST_SUPABASE_ANON_KEY).toBeTruthy();
+  admin = client(process.env.TEST_SUPABASE_SERVICE_ROLE_KEY!);
+  anon = client(process.env.TEST_SUPABASE_ANON_KEY!);
+  owner = client(process.env.TEST_SUPABASE_ANON_KEY!);
+  expect((await owner.auth.signInWithPassword(SHOP_A.owner)).error).toBeNull();
+});
+beforeEach(async () => {
+  tenant = await insert('tenants', { shop_code: `g46-${randomUUID()}`, name: '#46 disposable availability', business_type: 'GUIDE' });
+  staff = await insert('staff', { tenant_id: tenant, name: 'isolated guide' });
+  expect((await admin.from('tenant_settings').insert({ tenant_id: tenant, basic: { timezone: 'Asia/Taipei' } })).error).toBeNull();
+});
+afterEach(async () => {
+  if (!tenant) return;
+  // bookings have restrict customer/service FKs; remove them before the owned
+  // fixture tenant cascade. No shared seeded staff/settings are mutated.
+  expect((await admin.from('trip_departure_staff').delete().eq('tenant_id', tenant)).error).toBeNull();
+  expect((await admin.from('bookings').delete().eq('tenant_id', tenant)).error).toBeNull();
+  expect((await admin.from('tenants').delete().eq('id', tenant)).error).toBeNull();
+});
+
+describe('0135 staff policy and service-only tenant interval predicate', () => {
+  it('persists canonical default and two-value CHECK, refusing unknown/null policy', async () => {
+    const row = await admin.from('staff').select('availability_policy').eq('tenant_id', tenant).eq('id', staff).single();
+    expect(row.error).toBeNull(); expect(row.data!.availability_policy).toBe('DEFAULT_AVAILABLE');
+    for (const value of ['TENANT_DEFAULT', null]) {
+      const result = await admin.from('staff').update({ availability_policy: value }).eq('id', staff);
+      expect(result.error?.code).toBe(value === null ? '23502' : '23514');
+    }
+    await policy('EXPLICIT_ONLY');
+    expect((await admin.from('staff').select('availability_policy').eq('id', staff).single()).data!.availability_policy).toBe('EXPLICIT_ONLY');
+  });
+  it('allows default policy without shifts but excludes foreign/missing/inactive/unbookable staff', async () => {
+    expect(await available()).toBe(true);
+    expect(await available(start, end, SHOP_B.id)).toBe(false);
+    expect(await available(start, end, tenant, randomUUID())).toBe(false);
+    for (const patch of [{ active: false }, { active: true, bookable: false }]) {
+      expect((await admin.from('staff').update(patch).eq('id', staff)).error).toBeNull();
+      expect(await available()).toBe(false);
+    }
+  });
+  it.each([[null, end], [start, null], [end, start], [start, start], ['-infinity', end], [start, 'infinity']])('fails closed for invalid interval %s/%s', async (from, to) => {
+    expect(await available(from, to)).toBe(false);
+  });
+  it('revokes both authenticated and anonymous invocation while service role works', async () => {
+    expect(await available()).toBe(true);
+    for (const caller of [anon, owner]) {
+      const result = await caller.rpc(RPC, { p_tenant: tenant, p_staff: staff, p_start: start, p_end: end });
+      expect(result.error).not.toBeNull(); expect(result.data).toBeNull();
+      expect(['42501', 'PGRST202']).toContain(result.error!.code);
+    }
+  });
+  it('requires whole interval union coverage; adjacent shifts join, a gap rejects', async () => {
+    await policy('EXPLICIT_ONLY'); expect(await available()).toBe(false);
+    await shift('2030-01-15', '10:00', '10:30');
+    const second = await shift('2030-01-15', '10:30', '11:00');
+    expect(await available()).toBe(true);
+    expect((await admin.from('shifts').update({ start_time: '10:31' }).eq('id', second)).error).toBeNull();
+    expect(await available()).toBe(false);
+    // DEFAULT_AVAILABLE does not inherit another employee's shift requirement.
+    await policy('DEFAULT_AVAILABLE'); expect(await available()).toBe(true);
+  });
+  it('uses tenant Tokyo and New York DST calendar wall times for shifts', async () => {
+    await policy('EXPLICIT_ONLY'); await timezone('Asia/Tokyo');
+    await shift('2030-01-15', '00:00', '01:00');
+    expect(await available('2030-01-14T15:00:00Z', '2030-01-14T16:00:00Z')).toBe(true);
+    await timezone('America/New_York');
+    await shift('2030-03-10', '00:00', '04:00');
+    expect(await available('2030-03-10T05:00:00Z', '2030-03-10T08:00:00Z')).toBe(true);
+  });
+  it.each([['2030-03-10', '02:30', '04:00'], ['2030-11-03', '01:30', '03:00']])('fails closed for DST gap/fold shift %s', async (day, from, to) => {
+    await timezone('America/New_York'); await policy('EXPLICIT_ONLY'); await shift(day, from, to);
+    expect(await available(`${day}T07:00:00Z`, `${day}T07:30:00Z`)).toBe(false);
+  });
+  it.each([null, '', 'invalid/zone', 8])('fails closed for corrupt timezone %s', async zone => {
+    await timezone(zone); expect(await available()).toBe(false);
+  });
+  it('uses default only for missing legacy settings', async () => {
+    expect((await admin.from('tenant_settings').delete().eq('tenant_id', tenant)).error).toBeNull();
+    expect(await available()).toBe(true);
+  });
+  it.each(['PENDING', 'CONFIRMED', 'CANCELLED', 'COMPLETED'])('booking %s has the canonical occupancy behavior', async status => {
+    const customer = await insert('customers', { tenant_id: tenant, name: 'disposable traveler' });
+    const service = await insert('services', { tenant_id: tenant, name: 'disposable service' });
+    await insert('bookings', { tenant_id: tenant, booking_no: `G46-${randomUUID()}`, customer_id: customer,
+      service_id: service, staff_id: staff, start_at: start, end_at: end, duration_minutes: 60, status, source: 'MANUAL' });
+    expect(await available()).toBe(!['PENDING', 'CONFIRMED'].includes(status));
+    expect(await available(end, '2030-01-15T04:00:00Z')).toBe(true); // half-open endpoint
+  });
+  it.each([null, 'personal'])('single block includes whole-tenant/personal scope %s', async scope => {
+    await insert('block_times', { tenant_id: tenant, staff_id: scope ? staff : null, start_at: start, end_at: end });
+    expect(await available()).toBe(false);
+  });
+  it('weekly block follows tenant calendar and retained duration across DST, not fixed +08', async () => {
+    await timezone('America/New_York');
+    await insert('block_times', { tenant_id: tenant, staff_id: staff, recurrence: 'WEEKLY', day_of_week: 0,
+      start_at: '2030-03-03T15:00:00Z', end_at: '2030-03-03T16:00:00Z' });
+    expect(await available('2030-03-10T14:00:00Z', '2030-03-10T15:00:00Z')).toBe(false);
+    expect(await available('2030-03-10T15:00:00Z', '2030-03-10T16:00:00Z')).toBe(true);
+  });
+  it('ambiguous recurring block wall time cannot report available', async () => {
+    await timezone('America/New_York');
+    await insert('block_times', { tenant_id: tenant, staff_id: staff, recurrence: 'WEEKLY', day_of_week: 0,
+      start_at: '2030-10-27T05:30:00Z', end_at: '2030-10-27T06:30:00Z' });
+    expect(await available('2030-11-03T05:45:00Z', '2030-11-03T06:00:00Z')).toBe(false);
+  });
+  it.each(['PRIMARY', 'ASSISTANT'])('noncancelled departure blocks %s using Plan duration; cancellation releases', async role => {
+    const trip = await insert('trips', { tenant_id: tenant, slug: `g46-${randomUUID()}`, title: 'disposable trip', duration_hours: 1 });
+    const plan = await insert('trip_plans', { tenant_id: tenant, trip_id: trip, name: 'disposable plan', price_per_person: 100, duration_minutes: 120 });
+    const departure = await insert('trip_departures', { tenant_id: tenant, trip_id: trip, plan_id: plan,
+      departs_on: '2030-01-15', start_time: '10:00', capacity: 8, status: 'CLOSED' });
+    await insert('trip_departure_staff', { tenant_id: tenant, departure_id: departure, staff_id: staff, role });
+    expect(await available('2030-01-15T03:30:00Z', '2030-01-15T04:00:00Z')).toBe(false);
+    expect(await available('2030-01-15T04:00:00Z', '2030-01-15T05:00:00Z')).toBe(true);
+    expect((await admin.from('trip_departures').update({ status: 'CANCELLED' }).eq('id', departure)).error).toBeNull();
+    expect(await available()).toBe(true);
+  });
+  it('no-time departure occupies the tenant calendar day (23-hour DST day)', async () => {
+    await timezone('America/New_York');
+    const trip = await insert('trips', { tenant_id: tenant, slug: `g46-${randomUUID()}`, title: 'disposable trip' });
+    const plan = await insert('trip_plans', { tenant_id: tenant, trip_id: trip, name: 'plan', price_per_person: 100 });
+    const dep = await insert('trip_departures', { tenant_id: tenant, trip_id: trip, plan_id: plan, departs_on: '2030-03-10', capacity: 8 });
+    await insert('trip_departure_staff', { tenant_id: tenant, departure_id: dep, staff_id: staff, role: 'PRIMARY' });
+    expect(await available('2030-03-10T05:00:00Z', '2030-03-10T05:30:00Z')).toBe(false);
+    expect(await available('2030-03-11T04:00:00Z', '2030-03-11T05:00:00Z')).toBe(true);
+  });
+  it('active external ERROR keeps cached UTC busy truth, inactive does not block', async () => {
+    const calendar = await insert('external_calendars', { tenant_id: tenant, staff_id: staff, name: 'disposable calendar',
+      ics_url: 'https://example.test/46.ics', active: true, last_sync_status: 'ERROR' });
+    await insert('external_calendar_events', { tenant_id: tenant, external_calendar_id: calendar, uid: randomUUID(), title: 'cached busy', start_at: start, end_at: end });
+    expect(await available()).toBe(false);
+    expect((await admin.from('external_calendars').update({ active: false }).eq('id', calendar)).error).toBeNull();
+    expect(await available()).toBe(true);
+  });
+  it('fails closed for a mismatched cached-event tenant instead of silently ignoring it', async () => {
+    const calendar = await insert('external_calendars', { tenant_id: tenant, staff_id: staff,
+      name: 'disposable mismatched cache', ics_url: 'https://example.test/46.ics' });
+    // 0115 has separate tenant and subscription FKs; service-role corruption must
+    // not turn a required conflict source into an empty successful lookup.
+    await insert('external_calendar_events', { tenant_id: SHOP_B.id, external_calendar_id: calendar,
+      uid: randomUUID(), title: 'mismatched tenant fixture', start_at: start, end_at: end });
+    expect(await available()).toBe(false);
+  });
+
+});
