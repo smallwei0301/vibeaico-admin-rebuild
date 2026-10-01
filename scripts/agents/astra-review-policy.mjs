@@ -1,3 +1,4 @@
+import { evaluateOrdinaryReview } from './ordinary-review-admission.mjs';
 import { finalRiskReviewerErrors } from './final-risk-cost-policy.mjs';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -44,6 +45,17 @@ export function finalRiskGateStatus({ hasErrors = false, finalRiskRequired = fal
  * 證據不被一個無內容變更的 CI 編號更新自行作廢。
  */
 const fields = ['repository', 'policyVersion', 'testBaseline', 'schemaBaseline', 'changeDigest'];
+
+/** Canonical review binding, not a candidate-supplied carryover head. Ordinary Sol
+ * admission never calls this: its head remains exact current. Semantic reuse keeps
+ * original role receipts unchanged only when every reviewed baseline still matches.
+ */
+function semanticRoleHead(review, context) {
+  return review && review.verdict === 'PASS' && ['COMMENTED', 'APPROVED'].includes(review.reviewState)
+    && Number.isFinite(Date.parse(review.submittedAt))
+    && SHA.test(review.headSha ?? '') && review.commitId === review.headSha
+    && fields.every(key => review[key] === context[key]) ? review.headSha : context.headSha;
+}
 
 /**
  * 這次候選變更的內容指紋。
@@ -249,10 +261,10 @@ export function isAstraReviewRequired(risks = [], changedFiles = [], policy = ro
 // that actor may be a write-capable human or an explicitly allowlisted Agent bot.
 // This is still not provider-signed model telemetry.
 /** @param {Array<Record<string, any>>} [reviews] */
-export function parseAstraReviews(reviews = []) {
+export function parseAstraReviews(reviews = [], evidenceType = 'astra-review') {
   return reviews.filter(r => r.trusted === true).flatMap(r => {
     const body = String(r.body ?? '');
-    if (!body.includes('astra-review') && !['CHANGES_REQUESTED', 'DISMISSED'].includes(r.state)) return [];
+    if (!body.includes(evidenceType) && !['CHANGES_REQUESTED', 'DISMISSED'].includes(r.state)) return [];
     const record = {
       reviewState: r.state,
       commitId: r.commit_id,
@@ -263,7 +275,7 @@ export function parseAstraReviews(reviews = []) {
       reviewerId: r.user?.id ?? null,
       reviewerType: r.user?.type ?? '',
     };
-    const match = body.match(/```astra-review\s*\n([\s\S]*?)\n```/);
+    const match = body.match(evidenceType === 'sol-review' ? /```sol-review\s*\n([\s\S]*?)\n```/ : /```astra-review\s*\n([\s\S]*?)\n```/);
     try {
       if (!match) throw new Error('Malformed attestation');
       return [{ ...JSON.parse(match[1]), ...record }];
@@ -275,7 +287,9 @@ export function parseAstraReviews(reviews = []) {
 export function evaluateAstra({ body = '', changedFiles = null, context = {}, reviews = [] } = {}, policy = routing) {
   const classification = classifyAstra({ body, changedFiles, createdAt: context.createdAt }, policy);
   if (classification.errors.length) return { ...classification, status: 'ASTRA_PENDING' };
-  if (!classification.required) return { ...classification, status: 'NOT_REQUIRED' };
+  if (!classification.required) return context.ordinaryReviewRequired === true && !classification.isModelGovernance
+    ? { ...classification, ...evaluateOrdinaryReview(parseAstraReviews(reviews, 'sol-review'), context, policy) }
+    : { ...classification, status: 'NOT_REQUIRED' };
   const errors = [];
   if (!/^[\w.-]+\/[\w.-]+$/.test(context.repository ?? '')) errors.push('Missing repository identity');
   for (const key of ['baseSha', 'headSha']) if (!SHA.test(context[key] ?? '')) errors.push(`Missing exact ${key}`);
@@ -293,7 +307,9 @@ export function evaluateAstra({ body = '', changedFiles = null, context = {}, re
     }
     if (!['COMMENTED', 'APPROVED'].includes(latest.reviewState)) errors.push('Astra review is dismissed or requests changes');
     if (latest.verdict !== 'PASS') errors.push('Astra verdict is not PASS');
-    const reviewerErrors = finalRiskReviewerErrors(latest, policy, context);
+    if (latest.commitId !== latest.headSha) errors.push('Canonical review commit does not match its attested head');
+    const roleContext = { ...context, headSha: semanticRoleHead(latest, context) };
+    const reviewerErrors = finalRiskReviewerErrors(latest, policy, roleContext);
     if (reviewerErrors.length) errors.push('Astra model identity is unverified', ...reviewerErrors);
     if (latest.reviewerTier !== 'CURRENT_AGENT' && latest.identityEvidence !== 'OPERATOR_ATTESTED') {
       errors.push('Missing explicit operator model attestation');
@@ -311,11 +327,15 @@ export async function evaluateGithubAstra({ github, owner, repo, current }, poli
   const changedFiles = [...new Set(files.flatMap(f => [f.filename, f.previous_filename].filter(Boolean)))];
   const body = current.body ?? '';
   const classification = classifyAstra({ body, changedFiles, createdAt: current.created_at }, policy);
+  const ordinaryReviewRequired = !classification.required && !classification.isModelGovernance
+    && classification.workstream === 'PRODUCT_MAINLINE' && shouldEnforceFinalRisk({
+      pullRequestState: current.state, draft: current.draft === true, laneState: readField(body, 'LANE_STATE') });
+  const evidenceType = ordinaryReviewRequired ? 'sol-review' : 'astra-review';
   const reviews = [];
-  if (classification.required && !classification.errors.length) {
+  if ((classification.required || ordinaryReviewRequired) && !classification.errors.length) {
     const records = await github.paginate(github.rest.pulls.listReviews, { owner, repo, pull_number: current.number, per_page: 100 });
     const permissions = new Map();
-    for (const review of records.filter(r => r.body?.includes('astra-review') || ['CHANGES_REQUESTED', 'DISMISSED'].includes(r.state))) {
+    for (const review of records.filter(r => r.body?.includes(evidenceType) || ['CHANGES_REQUESTED', 'DISMISSED'].includes(r.state))) {
       const login = review.user?.login;
       if (!login) continue;
 
@@ -338,8 +358,12 @@ export async function evaluateGithubAstra({ github, owner, repo, current }, poli
   }
   const digest = changeDigestOf(files);
   let roleEvidence;
-  if (classification.required && policy.openaiBuilderDecision?.independentReviewerRequired === true) {
-    const latest = parseAstraReviews(reviews)[0];
+  if (ordinaryReviewRequired || (classification.required && policy.openaiBuilderDecision?.independentReviewerRequired === true)) {
+    const latest = parseAstraReviews(reviews, evidenceType)[0];
+    const roleHead = ordinaryReviewRequired ? current.head.sha : semanticRoleHead(latest, {
+      repository: `${owner}/${repo}`, headSha: current.head.sha, changeDigest: digest,
+      policyVersion: policy.version, testBaseline: readField(body, 'ASTRA_TEST_BASELINE'),
+      schemaBaseline: readField(body, 'ASTRA_SCHEMA_BASELINE') });
     const readRole = async (sourceRef, role) => {
       // Source references are locators, not candidate-provided proof; read authoritative bytes and actor permissions.
       const match = typeof sourceRef === 'string' && sourceRef.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/(?:issues|pull)\/\d+#issuecomment-(\d+)$/);
@@ -355,7 +379,7 @@ export async function evaluateGithubAstra({ github, owner, repo, current }, poli
       const blocks = [...String(data.body ?? '').matchAll(/```agent-role-execution\s*\n([\s\S]*?)\n```/g)];
       if (blocks.length !== 1) throw new Error('One concrete role execution receipt required');
       const receipt = JSON.parse(blocks[0][1]);
-      if (receipt.role !== role || receipt.repository !== `${owner}/${repo}` || receipt.headSha !== current.head.sha
+      if (receipt.role !== role || receipt.repository !== `${owner}/${repo}` || receipt.headSha !== roleHead
         || receipt.changeDigest !== digest || !Number.isFinite(Date.parse(data.updated_at))
         || !Number.isFinite(Date.parse(latest?.submittedAt))
         || Date.parse(data.updated_at) > Date.parse(latest?.submittedAt)
@@ -372,7 +396,7 @@ export async function evaluateGithubAstra({ github, owner, repo, current }, poli
     repository: `${owner}/${repo}`, baseSha: current.base.sha, headSha: current.head.sha,
     policyVersion: policy.version, testBaseline: readField(body, 'ASTRA_TEST_BASELINE'),
     schemaBaseline: readField(body, 'ASTRA_SCHEMA_BASELINE'),
-    changeDigest: digest, createdAt: current.created_at, roleEvidence,
+    changeDigest: digest, createdAt: current.created_at, roleEvidence, ordinaryReviewRequired,
   } }, policy);
   return { ...result, changeDigest: digest };
 }

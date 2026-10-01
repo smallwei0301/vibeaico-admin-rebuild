@@ -306,8 +306,11 @@ describe('Astra risk review contract', () => {
   it('純換底沿用：commit 換了但變更內容指紋相同 → 仍然有效', () => {
     // rebase 只換 parent，檔案內容一個字都沒改：blob sha 逐一相同 ⇒ 指紋不變。
     // 這正是 PR #292 連跑四輪、其中兩輪只是換底的那個情形。
-    const rebased = makeReview({}, { commit_id: 'c'.repeat(40) });
-    expect(evaluateAstra(candidate([rebased])).status).toBe('ASTRA_APPROVED');
+    const original = makeReview(); // canonical review/attested head remain original b
+    const rebased = candidate([original], { context: { ...context, headSha: 'c'.repeat(40) } });
+    expect(evaluateAstra(rebased).status).toBe('ASTRA_APPROVED');
+    const mismatched = makeReview({}, { commit_id: 'c'.repeat(40) });
+    expect(evaluateAstra(candidate([mismatched])).status).toBe('ASTRA_PENDING');
   });
 
   it('換底時若有任何檔案被夾帶修改 → 指紋改變 → 不得沿用', () => {
