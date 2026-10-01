@@ -78,7 +78,35 @@ jobs:
               owner, repo, state: 'open', per_page: 100,
             });
 
+            const systemCaptures = comments
+              .filter((comment) =>
+                comment.user?.login === 'github-actions[bot]' &&
+                comment.user?.type === 'Bot' &&
+                comment.body?.includes(policy.PRODUCT_ISSUE_CLOSE_CAPTURE_MARKER))
+              .map((comment) => ({ comment, handoff: policy.parseRunCaptureHandoff(comment.body ?? '') }))
+              .filter((entry) => entry.handoff?.event === 'ISSUE_CLOSED_OBSERVED')
+              .sort((a, b) => String(b.comment.created_at ?? '').localeCompare(String(a.comment.created_at ?? '')));
+            const lastClosedCaptureAt = systemCaptures[0]?.comment?.created_at ?? null;
+
             const ready = policy.findCloseReadyHandoff(trustedComments, issue.closed_at ?? '');
+            let verifiedRun = null;
+            if (ready.handoff?.runId) {
+              try {
+                const response = await github.rest.repos.getContent({
+                  owner,
+                  repo,
+                  path: `docs/metrics/agent-runs/${ready.handoff.runId}.json`,
+                  ref: repository.default_branch,
+                });
+                const data = response.data;
+                if (!Array.isArray(data) && data.type === 'file' && data.encoding === 'base64' && typeof data.content === 'string') {
+                  verifiedRun = JSON.parse(Buffer.from(data.content, 'base64').toString('utf8'));
+                }
+              } catch (error) {
+                core.warning(`Unable to verify Product Run ${ready.handoff.runId}: ${error.status ?? error.message}`);
+              }
+            }
+
             let verifiedCi = null;
             const workflowId = Number(
               ready.handoff?.evidenceRef?.match(/^github:workflow#(\d+)$/)?.[1] ?? 0,
@@ -114,6 +142,8 @@ jobs:
               openPullRequests,
               comments: trustedComments,
               verifiedCi,
+              verifiedRun,
+              lastClosedCaptureAt,
             });
 
             await core.summary
@@ -178,7 +208,12 @@ jobs:
             const freshComments = await github.paginate(github.rest.issues.listComments, {
               owner, repo, issue_number: issueNumber, per_page: 100,
             });
-            if (!freshComments.some((comment) => comment.body?.includes(policy.PRODUCT_ISSUE_CLOSE_CAPTURE_MARKER))) {
+            if (!freshComments.some((comment) => {
+              if (comment.user?.login !== 'github-actions[bot]' || comment.user?.type !== 'Bot') return false;
+              if (!comment.body?.includes(policy.PRODUCT_ISSUE_CLOSE_CAPTURE_MARKER)) return false;
+              const handoff = policy.parseRunCaptureHandoff(comment.body);
+              return handoff?.event === 'ISSUE_CLOSED_OBSERVED' && handoff.observedAt === issue.closed_at;
+            })) {
               await github.rest.issues.createComment({
                 owner, repo, issue_number: issueNumber,
                 body: policy.renderIssueClosedCaptureHandoff({
