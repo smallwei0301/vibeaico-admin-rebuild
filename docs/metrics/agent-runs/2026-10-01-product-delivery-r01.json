@@ -302,7 +302,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 10,
+    "fullCiRuns": 11,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -387,7 +387,11 @@
     "Govclosure718 merged06:35:03Z at4b8b86d freshfetch/reachable/PB027 status reread; 3docs only/independent0f3PASS/requiredchecksallgreen. Mergehold condition was toprotect queued713; after716terminal713startedactive06:26 cancel-in-progressfalse prevents replacement, soRootlegallymergedsuccessor. Source42Issuebody/checklist/PRterminal/labels/authoritativecloseout synced, PLAYBOOK_DELTA nowVERIFIED_IN_MAIN andboundedsourcecloseoutCOMPLETE; whole42OPEN/mainCI schemaauthpending. Govmerge/CI is separatelynotProductOutcome ornewProducttask. SoleMAIN46continuedsamebuilderTasklineage knownfold+nativeadmission repair noPR/pushyet;715PARKEDnoIndividualPoll.",
     "MAIN46source61f9435 freeze threeownedpaths, nativecompile/DBNOT_RUN. WholeLOCAL/G3fixedartifactadmission addednotfunctionexistskip; ordinary33POLICY_SKIP/NOT_RUN. Source-static26/type/integrityPASS only. Necessary followoncanonical0135selector+pendingcoveragewiring missing, noProduction ready/activation/atomicreservation. EARLY distinctreview46dispatchobserved beforepublication=>task18/SolTouches10; previousReserve46logicalbuilder reusedformalpromotion/nosecondactor.",
     "Actual719created06:46:44Z exact473050c source61f+RootlatestRun. EARLY review46 sourceclearfinalHOLD onthreepaths andindependentriskNONE onlyreadonlyPREPARE. Rootpreflightmissingpr-lifecycle caughtbeforepush/PR thenfixedheaderPASS, noinvalidCIrerun. SourceBody TEST_ENV_ID descriptiveissue46-local-a, runneractualexpectedlocal-pr-719-a; adjustbody truthfulspecificvalue onceactualpipelineobserved, notinventhealth.",
-    "2026-10-01T06:55:21.626+00:00 PR719 native/source workflows NOT_REPORTED because live mergeable=false/dirty. merge-tree confirms conflicts only owning Run JSON/MD after governance718; Root normal merge currentmain4b and resolves using owning current raw ledger, regenerates MD. No source conflict, no no-op rerun, no CI success/counter inferred. Initial publication failed to detect this merge conflict; corrected before native acceptance. Exact new head needs fresh CI."
+    "2026-10-01T06:55:21.626+00:00 PR719 native/source workflows NOT_REPORTED because live mergeable=false/dirty. merge-tree confirms conflicts only owning Run JSON/MD after governance718; Root normal merge currentmain4b and resolves using owning current raw ledger, regenerates MD. No source conflict, no no-op rerun, no CI success/counter inferred. Initial publication failed to detect this merge conflict; corrected before native acceptance. Exact new head needs fresh CI.",
+    "Actual719 freshhead955b109 source ci36827423772 started2026-10-01T06:55:50Z; source terminalFAILURE pending exactcause scout, LOCAL36827423779 inprogress samehead. FullCiRuns10→11 oneactualsource workflow; original473conflict had NOT_RUN and is not counted. No sourcegreen/nativePASS claimed.",
+    "719source CI36827423772 terminal missing0135 ledger classification; schema-bootstrap36827423735 terminal FRESH_INSTALL_BASELINE_BLOCKED canonical migration bytes changed before Docker. Samebuilder necessarytwofilealias/pinrepair admitted ownership inPRbody no guard weakening; early proposedmainHead4b rejected/corrected beforecommit because lacks0135. PB015 requires pin existingancestor61f/955 containing identicalSQL and nextmetadata-onlycommit. NativeLOCAL36827423779 remains running; no replayacceptance orinvalidrerun. SameScope46 followup currentmainallwriteratomicclosure enumeration accepted with no new actor/taskchain.",
+    "Rootfreshread main713 ci36822913910 exactmerge9b push attempt1 completedSUCCESS updated06:58:04Z. Scoutterminallogs integration77filesPASS3skip/749testsPASS22skip; E2E23PASS3skip; service_rolefixturerestore+Nextglobalteardownverified. G3schema/apply/cleanuprawstepsSKIPPED intentionalno release. MainCIaftermerge blocker42 cleared; Production schema/auth remainpending. Govmain7184b queue successor mustlivecheck before715canonicalholderrestore; terminal713 doesnotaloneproveemptysharedmutex.",
+    "MAIN46source repair frozen36f41fc includes necessaryalias/pin/exactcount test threefiles; typecheck64tests/ledger82+58/fresh89files7compatgeneration/integrityPASS. Original3source blobsunchanged; nativeDB notyetacceptance. Govmain718 ci36825550665 activecanonicalintegration so715 remainsPARKED. Publishing actualsourceclassification/pinrepair triggers freshhead CI; old955LOCAL ifcancelled isUNKNOWN notPASS and notblindrerun. Rootcapturespresent facts beforepush; finalreview mustincludeadded3necessarypaths."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -400,7 +404,7 @@
   },
   "completionTruth": {
     "status": "VERIFIED",
-    "checkedAt": "2026-10-01T06:25:50.516Z",
+    "checkedAt": "2026-10-01T07:00:27.779+00:00",
     "claims": [
       {
         "type": "LOCAL_TEST_GREEN",
@@ -440,7 +444,7 @@
         "claimedState": "MERGED_TO_MAIN",
         "observedState": "MERGED_TO_MAIN",
         "verification": "VERIFIED",
-        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/713; exactf1c4984c0a2dfda85207c08086ba80d3ada797cf source36816705017 LOCAL36816705044 canonical36817947312; independentreview42 CLOSE_APPROVED/base-compatible b17; merged_at2026-10-01T06:04:53Z merge9b291ebbc878ac68e3378aee1f44991401d5b211 reachable currentmain9b291ebbc878ac68e3378aee1f44991401d5b211; runtime blobs equal fresh main readback; deploy/schema/auth pending"
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/713; exactf1c4984c0a2dfda85207c08086ba80d3ada797cf source36816705017 LOCAL36816705044 canonical36817947312; independentreview42 CLOSE_APPROVED/base-compatible b17; merged_at2026-10-01T06:04:53Z merge9b291ebbc878ac68e3378aee1f44991401d5b211 reachable currentmain9b291ebbc878ac68e3378aee1f44991401d5b211; runtime blobs equal fresh main readback; deploy/schema/auth pending; aftermerge MAIN_CI_AFTER_MERGE=success exact9b/push ci36822913910 attempt1 completed2026-10-01T06:58:04Z integration749/E2E23 actualpass, G3NOT_RUN"
       },
       {
         "type": "AUTO_VERCEL_DEPLOYED",
