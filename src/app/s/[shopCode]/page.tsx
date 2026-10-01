@@ -182,7 +182,14 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
               <article key={trip.id} className="card">
                 <div className="card-body flex flex-col gap-3">
                   <div className="flex flex-col gap-1">
-                    <h3 className="text-base font-medium">{trip.title}</h3>
+                    <h3 className="text-base font-medium">
+                      <Link
+                        href={`/s/${shopCode}/trips/${encodeURIComponent(trip.slug)}`}
+                        className="underline-offset-4 hover:underline"
+                      >
+                        {trip.title}
+                      </Link>
+                    </h3>
                     <div className="flex flex-wrap gap-2 text-2xs text-secondary">
                       {trip.location ? <span>{trip.location}</span> : null}
                       {trip.durationHours ? (
@@ -195,6 +202,12 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
                     {trip.summary ? (
                       <p className="whitespace-pre-line text-sm text-secondary">{trip.summary}</p>
                     ) : null}
+                    <Link
+                      href={`/s/${shopCode}/trips/${encodeURIComponent(trip.slug)}`}
+                      className="text-sm underline underline-offset-4"
+                    >
+                      {t.trips.detailsLink}
+                    </Link>
                     {/* #46：下單前顯示現行取消／退款政策，不用等點進申請表單才看得到 */}
                     <p className="text-2xs text-secondary">
                       {t.trips.cancellationPolicyLabel}

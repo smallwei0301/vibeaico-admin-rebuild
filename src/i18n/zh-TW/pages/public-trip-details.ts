@@ -1,0 +1,59 @@
+/** 旅客公開行程詳情 `/s/{shopCode}/trips/{slug}`（issue #11）。 */
+export const publicTripDetailsPage = {
+  metadata: {
+    notFound: '找不到這個行程',
+    description: (title: string) => `${title}的行程內容、方案與近期出發資訊`,
+  },
+  navigation: {
+    backToShop: (shopName: string) => `返回 ${shopName}`,
+  },
+  trip: {
+    eyebrow: '行程詳情',
+    durationHours: (hours: number) => `約 ${hours} 小時`,
+    descriptionTitle: '行程介紹',
+    locationTitle: '地點與集合資訊',
+    meetingPointLabel: '集合地點',
+    mapLink: '開啟地圖',
+    inclusionsTitle: '費用包含',
+    exclusionsTitle: '費用不含',
+    noticesTitle: '行前須知',
+    safetyTitle: '安全提醒',
+    cancellationPolicyTitle: '取消／退款政策',
+    galleryTitle: '行程照片',
+    galleryAlt: (title: string, index: number) => `${title}行程照片 ${index}`,
+  },
+  plans: {
+    title: '選擇方案',
+    empty: '目前沒有開放的方案，請聯絡店家確認。',
+    price: (amount: string, unit: string) => `${amount}${unit}`,
+    priceUnit: {
+      PER_PERSON: '／人',
+      PER_GROUP: '／團',
+    },
+    priceNote: '這是方案基本金額；若有季節價格，實際費用可能依出發日期不同，請先向店家確認。',
+    partyRange: (min: number, max: number) => `${min}–${max} 人`,
+    mode: {
+      REQUEST: '先申請再確認',
+      FIXED_DEPARTURE: '固定出發日期',
+      INSTANT: '自選出發時間',
+    },
+    requestCta: '提出預約申請',
+    fixedCta: '選擇日期並預約',
+    instantNote: '此方案尚未開放線上自選時間與建立訂單，請先聯絡店家確認可預約時段。',
+  },
+  departures: {
+    title: '此方案近期開放日期',
+    empty: '目前尚未顯示此方案的出發日期，請從方案入口查看或聯絡店家確認。',
+    seatsLeft: (count: number) => `剩 ${count} 位`,
+    noStartTime: '時間未定',
+    availabilityNote: '名額會隨預約變動，送出前仍會再次確認。',
+    weekdays: ['日', '一', '二', '三', '四', '五', '六'],
+  },
+  contact: {
+    title: '聯絡店家',
+    viaLine: '用 LINE 聯絡店家',
+    viaPhone: (phone: string) => `撥打 ${phone}`,
+    viaEmail: (email: string) => `寄信到 ${email}`,
+    noContact: '店家尚未提供聯絡方式。',
+  },
+} as const;

@@ -11,10 +11,10 @@
  * 這一片讓那個網址真的打得開。依治理原則「復原而非取消」：不是把那 7 個連結拿掉，
  * 是讓它們指向的東西真的存在。
  *
- * ## ⚠️ 這是整個專案第一個「不需要登入就能打到」的資料路徑
+ * ## ⚠️ 這是公開店家與行程資料的匿名讀取核心
  *
- * 其餘 163 支 API route 全部經過 `requireTenant()`。這裡沒有那道閘門，所以**外洩的
- * 判準完全落在這個檔自己身上**。三條規則，每一條都不是形式：
+ * 這些查詢沒有 `requireTenant()` 閘門，所以**外洩的判準落在這個檔自己身上**。
+ * 三條規則，每一條都不是形式：
  *
  * 1. **白名單欄位，不是黑名單。** 每一個 select 都逐欄列出要哪些欄位，永遠不用
  *    `select('*')`。加欄位時必須有人主動決定它可不可以公開；用 `*` 的話，日後
@@ -61,6 +61,7 @@ export type PublicPlan = {
   name: string;
   description: string;
   pricePerPerson: number;
+  priceType: 'PER_PERSON' | 'PER_GROUP';
   minParty: number;
   maxParty: number;
   /**
@@ -73,6 +74,8 @@ export type PublicPlan = {
 
 export type PublicTrip = {
   id: string;
+  /** 公開行程 URL 使用的租戶內 slug。 */
+  slug: string;
   title: string;
   summary: string;
   location: string;
@@ -87,6 +90,43 @@ export type PublicTrip = {
   plans: PublicPlan[];
   /** 只含今天以後、未取消、未售罄的團次，最多 6 筆 */
   departures: PublicDeparture[];
+};
+
+export type PublicTripDetailDeparture = {
+  id: string;
+  departsOn: string;
+  startTime: string;
+  seatsLeft: number;
+};
+
+export type PublicTripDetailPlan = PublicPlan & {
+  departures: PublicTripDetailDeparture[];
+};
+
+export type PublicTripDetails = {
+  shop: PublicShop;
+  trip: {
+    id: string;
+    slug: string;
+    title: string;
+    tagline: string;
+    summary: string;
+    description: string;
+    region: string;
+    category: string;
+    location: string;
+    coverImageUrl: string;
+    galleryUrls: string[];
+    durationHours: number | null;
+    meetingPoint: string;
+    meetingPointMapUrl: string;
+    inclusions: string[];
+    exclusions: string[];
+    notices: string[];
+    safetyNotice: string;
+    refundPolicyType: 'STANDARD' | 'FLEXIBLE' | 'STRICT';
+    plans: PublicTripDetailPlan[];
+  };
 };
 
 export type PublicService = {
@@ -105,13 +145,17 @@ export type PublicShopData = {
    * 內部用租戶 id（issue #23 推廣成效埋點需要）——刻意放在頂層而不是 `shop`
    * 裡面：`shop` 是「這個檔頭三條規則要守住的、真的會被序列化進公開 HTML 的
    * 白名單欄位」，`tenantId` 不在那份白名單上，只給呼叫端（頁面自己的
-   * server-side 埋點呼叫）用，不代表它可以被當成公開資料隨意渲染出去。
+   * server-side 埋點與同一請求內的公開詳情查詢使用，不代表它可以被當成公開資料
+   * 隨意渲染出去。
    */
   tenantId: string;
 };
 
 /** 一個行程最多顯示幾個近期團次——公開頁不是後台，不需要全部列出來。 */
 const MAX_DEPARTURES_PER_TRIP = 6;
+/** 詳情頁各方案的近期團次上限與單次查詢總上限。 */
+const MAX_DETAIL_DEPARTURES_PER_PLAN = 6;
+const MAX_DETAIL_DEPARTURES_PER_TRIP = 120;
 
 /**
  * ⚠️ 店家代碼的形狀與長度上限由 `@/lib/shop-code` 統一提供，**每一個會寫入
@@ -119,8 +163,8 @@ const MAX_DEPARTURES_PER_TRIP = 6;
  * 常數 —— 存得進資料庫的代碼，這一頁就一定打得開。那個檔的檔頭寫了為什麼要收斂成
  * 一份（規則曾經散在四處且不一致，會造出「後台顯示的網址永遠 404」的店家）。
  *
- * 在這裡先擋掉不合形狀的字串，不是輸入驗證的潔癖：這是全站第一個**匿名就打得到
- * 資料庫**的路徑，而專案目前沒有任何 rate limit。少了這一道，一個 2000 字元的亂碼
+ * 在這裡先擋掉不合形狀的字串，不是輸入驗證的潔癖：這條路徑以 service role 存取
+ * 資料庫。少了這一道，一個 2000 字元的亂碼
  * 網址也會換到一次 service-role 查詢。
  */
 
@@ -206,7 +250,7 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
       admin.from('trips')
         // #46：多取 refund_policy_type，讓公開頁在下單前就顯示現行取消／退款政策
         // （原本只有送出 REQUEST 申請的表單頁才看得到）。仍是白名單 select。
-        .select('id, title, summary, location, cover_image_url, duration_hours, refund_policy_type')
+        .select('id, slug, title, summary, location, cover_image_url, duration_hours, refund_policy_type')
         .eq('tenant_id', tenantId).eq('status', 'PUBLISHED')
         .order('created_at', { ascending: false }),
       admin.from('services')
@@ -227,7 +271,7 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
           // #46：多取 sales_mode，判斷要不要顯示「申請預約」連結。仍是白名單
           // select，不用 `*`——這是全站唯一不需要登入就能打到的資料路徑，
           // 加欄位必須有人主動決定它可不可以公開（見檔頭三條規則）。
-          .select('id, trip_id, name, description, price_per_person, min_party, max_party, sales_mode')
+          .select('id, trip_id, name, description, price_per_person, price_type, min_party, max_party, sales_mode')
           .eq('tenant_id', tenantId).in('trip_id', tripIds).eq('active', true)
           .order('sort_order', { ascending: true }),
         admin.from('trip_departures')
@@ -251,6 +295,7 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
       name: (row.name as string) ?? '',
       description: (row.description as string) ?? '',
       pricePerPerson: Number(row.price_per_person ?? 0),
+      priceType: row.price_type === 'PER_GROUP' ? 'PER_GROUP' : 'PER_PERSON',
       minParty: Number(row.min_party ?? 1),
       maxParty: Number(row.max_party ?? 1),
       salesMode: row.sales_mode === 'INSTANT' || row.sales_mode === 'REQUEST'
@@ -281,6 +326,7 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
 
   const trips: PublicTrip[] = (tripRows ?? []).map((row) => ({
     id: row.id as string,
+    slug: (row.slug as string) ?? '',
     title: (row.title as string) ?? '',
     summary: (row.summary as string) ?? '',
     location: (row.location as string) ?? '',
@@ -316,3 +362,130 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
  * 立刻反映在下一個訪客身上。
  */
 export const loadPublicShop = cache(loadPublicShopUncached);
+
+function queryTripDetailsFailed(stage: string, cause: unknown): Error {
+  return new Error(`PUBLIC_TRIP_DETAILS_QUERY_FAILED:${stage}`, { cause });
+}
+
+function safePublicHttpsUrl(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== 'https:' || url.username || url.password) return '';
+    return url.toString();
+  } catch {
+    return '';
+  }
+}
+
+function publicStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim()).filter(Boolean);
+}
+
+function publicLines(value: unknown): string[] {
+  if (typeof value !== 'string') return [];
+  return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
+
+const PUBLIC_TRIP_DETAILS_COLUMNS = [
+  'id', 'slug', 'title', 'tagline', 'summary', 'description', 'region', 'category',
+  'location', 'cover_image_url', 'gallery', 'duration_hours', 'meeting_point',
+  'meeting_point_map_url', 'includes', 'exclusions', 'notices', 'notes',
+  'refund_policy_type',
+] as const;
+
+async function loadPublicTripDetailsUncached(
+  shopCode: string,
+  slug: string,
+): Promise<PublicTripDetails | null> {
+  // Reuse the existing published-only tenant resolver and public shop whitelist.
+  // `tenantId` never leaves this server-only loader.
+  const shopData = await loadPublicShop(shopCode);
+  if (!shopData || !slug || slug.length > 160 || slug.trim() !== slug) return null;
+
+  const knownTrip = shopData.trips.find((trip) => trip.slug === slug);
+  if (!knownTrip) return null;
+
+  const admin = createAdminSupabase();
+  const { data: rawRow, error } = await admin.from('trips')
+    .select(PUBLIC_TRIP_DETAILS_COLUMNS.join(', '))
+    .eq('tenant_id', shopData.tenantId)
+    .eq('id', knownTrip.id)
+    .eq('slug', slug)
+    .eq('status', 'PUBLISHED')
+    .maybeSingle();
+  if (error) throw queryTripDetailsFailed('trips', error);
+  const row = rawRow as Record<string, unknown> | null;
+  if (!row) return null;
+
+  const planIds = knownTrip.plans.map((plan) => plan.id);
+  const { data: departureRows, error: departuresError } = planIds.length === 0
+    ? { data: [], error: null }
+    : await admin.from('trip_departures')
+      .select('id, plan_id, departs_on, start_time, capacity, seats_booked')
+      .eq('tenant_id', shopData.tenantId)
+      .eq('trip_id', knownTrip.id)
+      .in('plan_id', planIds)
+      .eq('status', 'OPEN')
+      .gte('departs_on', taipeiToday())
+      .order('departs_on', { ascending: true })
+      .order('start_time', { ascending: true, nullsFirst: true })
+      .limit(MAX_DETAIL_DEPARTURES_PER_TRIP);
+  if (departuresError) throw queryTripDetailsFailed('trip_departures', departuresError);
+
+  const departuresByPlan = new Map<string, PublicTripDetailDeparture[]>();
+  for (const departure of departureRows ?? []) {
+    const planId = departure.plan_id as string;
+    const list = departuresByPlan.get(planId) ?? [];
+    const capacity = Number(departure.capacity ?? 0);
+    const seatsBooked = Number(departure.seats_booked ?? 0);
+    if (seatsBooked >= capacity || list.length >= MAX_DETAIL_DEPARTURES_PER_PLAN) continue;
+    list.push({
+      id: departure.id as string,
+      departsOn: departure.departs_on as string,
+      startTime: departure.start_time == null ? '' : String(departure.start_time).slice(0, 5),
+      seatsLeft: capacity - seatsBooked,
+    });
+    departuresByPlan.set(planId, list);
+  }
+
+  const gallery = publicStringList(row.gallery)
+    .map(safePublicHttpsUrl).filter(Boolean);
+  return {
+    shop: shopData.shop,
+    trip: {
+      id: row.id as string,
+      slug: row.slug as string,
+      title: (row.title as string) ?? '',
+      tagline: (row.tagline as string) ?? '',
+      summary: (row.summary as string) ?? '',
+      description: (row.description as string) ?? '',
+      region: (row.region as string) ?? '',
+      category: (row.category as string) ?? '',
+      location: (row.location as string) ?? '',
+      coverImageUrl: safePublicHttpsUrl(row.cover_image_url),
+      galleryUrls: gallery,
+      durationHours: row.duration_hours == null ? null : Number(row.duration_hours),
+      meetingPoint: (row.meeting_point as string) ?? '',
+      meetingPointMapUrl: safePublicHttpsUrl(row.meeting_point_map_url),
+      inclusions: publicLines(row.includes),
+      exclusions: publicStringList(row.exclusions),
+      notices: publicStringList(row.notices),
+      safetyNotice: (row.notes as string) ?? '',
+      refundPolicyType: row.refund_policy_type === 'FLEXIBLE' || row.refund_policy_type === 'STRICT'
+        ? row.refund_policy_type : 'STANDARD',
+      plans: knownTrip.plans.map((plan) => ({
+        ...plan,
+        departures: departuresByPlan.get(plan.id) ?? [],
+      })),
+    },
+  };
+}
+
+/**
+ * 讀取已發布行程的旅客詳情。每個請求都重新讀取公開來源；`loadPublicShop()` 的
+ * React cache 只在同一個請求內合併 metadata/page 查詢，不會跨訪客保留即時團次資料。
+ */
+export const loadPublicTripDetails = cache(loadPublicTripDetailsUncached);

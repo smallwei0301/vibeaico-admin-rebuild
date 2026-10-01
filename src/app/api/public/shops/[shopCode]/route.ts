@@ -16,12 +16,8 @@ import { publicCorsHeaders, publicCorsPreflightResponse } from '@/server/public-
  * 三條安全規則同樣適用於這裡）。`tenantId` 是內部埋點用欄位，不在公開白名單上，
  * 這裡刻意不回傳。
  *
- * ⚠️ 這是 `docs/integration/11-PARTNER-API.md` §2 那張端點表格的第一支，範圍刻意
- * 只做「店家公開資料 + 行程 + 服務」這個組合（等同 `/s/{shopCode}` Server Component
- * 目前讀到的內容），不是把表格六支端點一次全做——`/catalog`、單一行程詳情
- * `/trips/{slug}`、即時餘額 `/departures/{id}/availability`、評論等留給後續切片，
- * 各自有自己的形狀與快取考量，不應該為了「一次做完」而在這裡臆造尚未設計好的
- * 回應格式。
+ * ⚠️ 這支端點刻意只提供「店家公開資料 + 行程 + 服務」；單一行程詳情有獨立的
+ * `/trips/{slug}` 端點，其餘 `/catalog`、單團次餘額與評論仍留給各自的切片處理。
  */
 const RATE_LIMIT_MAX = 60;
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
