@@ -89,6 +89,24 @@ describe('unprivileged review wake-up and trusted current-policy refresh', () =>
     const { github } = wakeupFixture(patch);
     await expect(resolveReviewWakeup({ github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', runId: 42 })).rejects.toThrow();
   });
+  it('decoded review fallback ignores closed same-branch history and accepts advanced current head', async () => {
+    const { github, live } = wakeupFixture({ head_sha: 'a'.repeat(40) }, false);
+    const advanced = { ...live, head: { ...live.head, sha: 'd'.repeat(40) } };
+    github.rest.pulls.get.mockResolvedValue({ data: advanced });
+    github.paginate.mockResolvedValue([{ ...live, number: 899, state: 'closed' }, advanced]);
+    const parsed = parse(readFileSync('.github/workflows/agent-wip-guard.yml', 'utf8'));
+    const decoded = parsed.jobs.review_wakeup.steps.find((step: any) => step.with?.script).with.script;
+    const astra = await import('../../scripts/agents/astra-review-policy.mjs'); const setOutput = vi.fn();
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+    await new AsyncFunction('require', 'process', 'github', 'context', 'core', 'loadPolicy', decoded.replace(/\bimport\s*\(/g, 'loadPolicy('))(createRequire(import.meta.url), { env: { GITHUB_WORKSPACE: process.cwd() } }, github, { eventName: 'workflow_run', repo: { owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild' }, payload: { workflow_run: { id: 42 } } }, { setOutput }, async () => astra);
+    expect(setOutput).toHaveBeenCalledWith('pr_numbers', '[900]');
+    expect(github.paginate).toHaveBeenCalledWith(github.rest.pulls.list, expect.objectContaining({ state: 'open', head: 'smallwei0301:feature' }));
+  });
+  it('fallback rejects a candidate closed during live read and preserves true two-open ambiguity', async () => {
+    const { github, live } = wakeupFixture({}, false);
+    github.rest.pulls.get.mockResolvedValue({ data: { ...live, state: 'closed' } });
+    await expect(resolveReviewWakeup({ github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', runId: 42 })).rejects.toThrow();
+  });
   it('uses canonical fork head/branch association when workflow_run PR inventory is empty', async () => {
     const { github } = wakeupFixture({}, false);
     expect(await resolveReviewWakeup({ github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', runId: 42 })).toBe(900);
@@ -233,6 +251,35 @@ describe('role receipt edit/delete authoritative fan-out (synthetic)', () => {
     const original = github.paginate;
     github.paginate = vi.fn(async (method: any, args: any) => method === list ? original(method, args) : Promise.reject(new Error('Synthetic association API unavailable')));
     expect(await resolveRoleReceiptWakeup({ github, ...wake, nativePr: true })).toEqual({ numbers: [900, 901], associationIncomplete: true });
+  });
+  it.each(['reviews', 'permission', 'native-read'])('decoded resolver keeps known potential heads on %s fault, then decoded guard invalidates them pending', async mode => {
+    const { github, base, pr2 } = inventoryFixture('reviewer');
+    for (const pr of [base, pr2]) pr.body = pr.body.replace(source(101), 'none');
+    const original = github.paginate;
+    if (mode === 'reviews') github.paginate = vi.fn(async (method: any, args: any) => method === github.rest.pulls.listReviews ? Promise.reject(new Error('Synthetic review listing fault')) : original(method, args));
+    if (mode === 'permission') {
+      github.paginate = vi.fn(async (method: any, args: any) => { const records = await original(method, args); return method === github.rest.pulls.listReviews ? records.map((record: any) => ({ ...record, user: { login: 'synthetic-write-actor', id: 999, type: 'User' } })) : records; });
+      github.rest.repos.getCollaboratorPermissionLevel.mockRejectedValue(Object.assign(new Error('Synthetic permission fault'), { status: 503 }));
+    }
+    if (mode === 'native-read') github.rest.pulls.get.mockRejectedValueOnce(new Error('Synthetic native PR read fault'));
+    const parsed = parse(readFileSync('.github/workflows/agent-wip-guard.yml', 'utf8'));
+    const resolver = parsed.jobs.review_wakeup.steps.find((step: any) => step.with?.script).with.script;
+    const guard = parsed.jobs.guard.steps.find((step: any) => step.with?.script).with.script;
+    const astra = await import('../../scripts/agents/astra-review-policy.mjs'); const policy = await import('../../scripts/agents/dual-terra-wip-policy.mjs');
+    const outputs: Record<string, string> = {};
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+    const execute = (script: string) => new AsyncFunction('require', 'process', 'github', 'context', 'core', 'loadPolicy', script.replace(/\bimport\s*\(/g, 'loadPolicy('));
+    await execute(resolver)(createRequire(import.meta.url), { env: { GITHUB_WORKSPACE: process.cwd() } }, github, { eventName: 'issue_comment', repo: { owner: wake.owner, repo: wake.repo }, payload: { repository: { full_name: repo }, issue: { number: 900, ...(mode === 'native-read' ? { pull_request: {} } : {}) }, comment: { id: 102 } } }, { setOutput: (key: string, value: string) => { outputs[key] = value; }, warning: vi.fn() }, async () => astra);
+    expect(outputs).toEqual({ pr_numbers: '[900,901]', association_incomplete: 'true' });
+    const statuses: any[] = []; github.rest.repos.createCommitStatus = vi.fn(async (record: any) => statuses.push(record)); github.rest.actions = { createWorkflowDispatch: vi.fn() }; github.rest.issues.createComment = vi.fn();
+    const loadPolicy = async (url: string) => url.includes('astra-review-policy') ? astra : url.includes('dual-terra-wip-policy') ? policy : {};
+    for (const number of JSON.parse(outputs.pr_numbers)) await expect(execute(guard)(createRequire(import.meta.url), { env: { GITHUB_WORKSPACE: process.cwd(), REVIEW_WAKEUP_PR: String(number), RECEIPT_ASSOCIATION_INCOMPLETE: outputs.association_incomplete } }, github, { eventName: 'issue_comment', repo: { owner: wake.owner, repo: wake.repo }, payload: { action: 'deleted' } }, {}, loadPolicy)).rejects.toThrow('Receipt association inventory is incomplete');
+    expect(statuses.map(record => [record.sha, record.state])).toEqual([[head, 'pending'], ['d'.repeat(40), 'pending']]);
+    expect(github.rest.actions.createWorkflowDispatch).not.toHaveBeenCalled(); expect(github.rest.issues.createComment).not.toHaveBeenCalled();
+  });
+  it.each([null, { number: 900, state: 'open', head: { sha: head }, base: { repo: { full_name: 'foreign/repo' } } }])('malformed/foreign native GET data still rejects rather than becoming partial authority', async data => {
+    const { github } = inventoryFixture(); github.rest.pulls.get.mockResolvedValue({ data });
+    await expect(resolveRoleReceiptWakeup({ github, ...wake, nativePr: true })).rejects.toThrow('Foreign or invalid native receipt PR');
   });
   it('foreign repository/source cannot become a trusted receipt wake-up', async () => {
     const { github } = inventoryFixture();

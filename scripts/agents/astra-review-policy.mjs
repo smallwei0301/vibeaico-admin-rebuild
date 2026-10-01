@@ -447,15 +447,15 @@ export async function resolveReviewWakeup({ github, owner, repo, runId }) {
     const headOwner = run.head_repository?.owner?.login;
     if (!/^[\w.-]+$/.test(headOwner ?? '') || typeof run.head_branch !== 'string'
       || !run.head_branch || !run.head_repository?.full_name) throw new Error('Missing canonical review PR association');
-    const pulls = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'all', head: `${headOwner}:${run.head_branch}`, per_page: 100 });
-    numbers = [...new Set(pulls.filter(pr => pr.base?.repo?.full_name === repository
+    const pulls = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', head: `${headOwner}:${run.head_branch}`, per_page: 100 });
+    numbers = [...new Set(pulls.filter(pr => pr.state === 'open' && pr.base?.repo?.full_name === repository
       && pr.head?.repo?.full_name === run.head_repository.full_name && pr.head?.ref === run.head_branch).map(pr => pr.number))];
   }
   if (numbers.length !== 1 || !Number.isSafeInteger(numbers[0]) || numbers[0] < 1) throw new Error('Review wake-up needs one canonical PR association');
   const { data: current } = await github.rest.pulls.get({ owner, repo, pull_number: numbers[0] });
-  if (current.number !== numbers[0] || current.base?.repo?.full_name !== repository
+  if (current.number !== numbers[0] || current.state !== 'open' || current.base?.repo?.full_name !== repository
     || current.head?.repo?.full_name !== run.head_repository?.full_name
-    || current.head?.ref !== run.head_branch) throw new Error('Review wake-up PR source differs from canonical run');
+    || current.head?.ref !== run.head_branch || !SHA.test(current.head?.sha ?? '')) throw new Error('Review wake-up PR source differs from canonical run');
   return current.number;
 }
 
@@ -468,20 +468,24 @@ export async function resolveRoleReceiptWakeup({ github, owner, repo, repository
   const affected = new Set();
   let associationIncomplete = false;
   if (nativePr) {
-    const { data: current } = await github.rest.pulls.get({ owner, repo, pull_number: issueNumber });
-    if (current.number !== issueNumber || current.base?.repo?.full_name !== expected || !SHA.test(current.head?.sha ?? '')) throw new Error('Foreign or invalid native receipt PR');
-    if (current.state === 'open') affected.add(issueNumber);
+    let current, nativeReadFailed = false;
+    try { current = (await github.rest.pulls.get({ owner, repo, pull_number: issueNumber })).data; }
+    catch { nativeReadFailed = true; associationIncomplete = true; }
+    if (!nativeReadFailed) {
+      if (!current || current.number !== issueNumber || current.base?.repo?.full_name !== expected || !SHA.test(current.head?.sha ?? '')) throw new Error('Foreign or invalid native receipt PR');
+      if (current.state === 'open') affected.add(issueNumber);
+    }
   }
   let inventory;
   try { inventory = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', per_page: 100 }); }
   catch { return { numbers: [...affected], associationIncomplete: true }; }
   const open = inventory.filter(pr => pr.base?.repo?.full_name === expected && pr.state === 'open' && SHA.test(pr.head?.sha ?? ''));
   // Capture every body-linked head before optional review association reads can fail.
-  for (const pr of open) if (sources.has(readField(pr.body ?? '', 'BUILDER_EXECUTION_RECEIPT'))) affected.add(pr.number);
+  for (const pr of open) if ((nativePr && pr.number === issueNumber) || sources.has(readField(pr.body ?? '', 'BUILDER_EXECUTION_RECEIPT'))) affected.add(pr.number);
   for (const pr of open) {
     let records;
     try { records = await github.paginate(github.rest.pulls.listReviews, { owner, repo, pull_number: pr.number, per_page: 100 }); }
-    catch { associationIncomplete = true; continue; }
+    catch { associationIncomplete = true; affected.add(pr.number); continue; }
     const trusted = [];
     for (const record of records) {
       const login = record.user?.login;
@@ -491,7 +495,7 @@ export async function resolveRoleReceiptWakeup({ github, owner, repo, repository
         try {
           const response = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: login });
           allowed = ['admin', 'maintain', 'write'].includes(response.data.permission);
-        } catch (error) { if (error?.status !== 404) associationIncomplete = true; }
+        } catch (error) { if (error?.status !== 404) { associationIncomplete = true; affected.add(pr.number); } }
       }
       if (allowed) trusted.push({ ...record, trusted: true });
     }
