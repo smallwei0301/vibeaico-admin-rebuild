@@ -28,6 +28,7 @@ function readyComment(overrides: Record<string, string> = {}) {
     evidenceRef: 'github:workflow#12345',
     observedAt: '2026-10-01T00:45:00Z',
     closeApprovedRef: 'github:issuecomment#9001',
+    reviewedHead: 'b'.repeat(40),
     ...overrides,
   };
   return {
@@ -40,6 +41,7 @@ function readyComment(overrides: Record<string, string> = {}) {
       'EVENT: ISSUE_CLOSE_READY',
       `EVIDENCE_REF: ${v.evidenceRef}`,
       `CLOSE_APPROVED_REF: ${v.closeApprovedRef}`,
+      `REVIEWED_HEAD: ${v.reviewedHead}`,
       `OBSERVED_AT: ${v.observedAt}`,
       'WRITER_BLOCKER: ledger on protected main',
       'NEXT_SAFE_WRITE_PATH: capture ISSUE_CLOSED after trusted close',
@@ -69,10 +71,12 @@ const verifiedCloseApproval = {
   commentId: 9001,
   role: 'SOL',
   verdict: 'CLOSE_APPROVED',
+  runId: '2026-10-01-product-r01',
   exactHead: 'b'.repeat(40),
   reachableFromCurrentMain: true,
   trusted: true,
   beforeClose: true,
+  afterLastClose: true,
 };
 
 function evaluate(overrides: Record<string, unknown> = {}) {
@@ -167,6 +171,9 @@ describe('#720 executable Product Issue close gate', () => {
       { verdict: 'FIX_REQUIRED' },
       { trusted: false },
       { beforeClose: false },
+      { afterLastClose: false },
+      { runId: 'previous-run' },
+      { exactHead: 'c'.repeat(40) },
       { reachableFromCurrentMain: false },
     ]) {
       expect(evaluate({ verifiedCloseApproval: { ...verifiedCloseApproval, ...patch } }).allowed).toBe(false);
