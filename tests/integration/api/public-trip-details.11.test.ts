@@ -13,6 +13,7 @@ const FIXED_PLAN = randomUUID();
 const REQUEST_DEPARTURE = randomUUID();
 const FIXED_DEPARTURE = randomUUID();
 const SOLD_OUT_DEPARTURES = Array.from({ length: 125 }, () => randomUUID());
+const EXTRA_AVAILABLE_DEPARTURES = Array.from({ length: 6 }, () => randomUUID());
 const SLUG = `issue-11-${randomUUID().slice(0, 8)}`;
 const TITLE = `${TAG} 已發布公開行程`;
 const SECRET_REVIEW_NOTE = `${TAG}-internal-review-note-must-not-leak`;
@@ -119,6 +120,11 @@ beforeAll(async () => {
       plan_id: REQUEST_PLAN, departs_on: dateAfter(index + 1), start_time: '08:00',
       capacity: 1, seats_booked: 1, status: 'OPEN',
     })),
+    ...EXTRA_AVAILABLE_DEPARTURES.map((id, index) => ({
+      id, tenant_id: SHOP_A.id, trip_id: PUBLISHED_TRIP,
+      plan_id: REQUEST_PLAN, departs_on: dateAfter(301 + index), start_time: '09:00',
+      capacity: 8, seats_booked: 0, status: 'OPEN',
+    })),
   ]));
 
   const readback = await admin.from('trips').select('id').in('id', [
@@ -131,18 +137,47 @@ beforeAll(async () => {
   mustWrite('方案讀回核實', seededPlans);
   expect((seededPlans.data ?? []).length, '兩筆方案前置資料未完整寫入').toBe(2);
   const seededDepartures = await admin.from('trip_departures').select('id')
-    .in('id', [REQUEST_DEPARTURE, FIXED_DEPARTURE, ...SOLD_OUT_DEPARTURES]);
+    .in('id', [
+      REQUEST_DEPARTURE, FIXED_DEPARTURE, ...SOLD_OUT_DEPARTURES, ...EXTRA_AVAILABLE_DEPARTURES,
+    ]);
   mustWrite('團次讀回核實', seededDepartures);
   expect((seededDepartures.data ?? []).length, '團次前置資料未完整寫入')
-    .toBe(2 + SOLD_OUT_DEPARTURES.length);
+    .toBe(2 + SOLD_OUT_DEPARTURES.length + EXTRA_AVAILABLE_DEPARTURES.length);
 });
 
 afterAll(async () => {
   if (!admin) return;
-  await admin.from('trip_departures').delete()
-    .in('id', [REQUEST_DEPARTURE, FIXED_DEPARTURE, ...SOLD_OUT_DEPARTURES]);
-  await admin.from('trip_plans').delete().in('id', [REQUEST_PLAN, FIXED_PLAN]);
-  await admin.from('trips').delete().in('id', [PUBLISHED_TRIP, DRAFT_TRIP, OTHER_TENANT_TRIP]);
+  const cleanupFailures: string[] = [];
+  const allDepartureIds = [
+    REQUEST_DEPARTURE, FIXED_DEPARTURE, ...SOLD_OUT_DEPARTURES, ...EXTRA_AVAILABLE_DEPARTURES,
+  ];
+  const runCleanup = async (label: string, action: () => PromiseLike<{ error: unknown }>) => {
+    try {
+      const { error } = await action();
+      if (error) cleanupFailures.push(`${label} delete failed: ${JSON.stringify(error)}`);
+    } catch (error) {
+      cleanupFailures.push(`${label} delete threw: ${String(error)}`);
+    }
+  };
+
+  await runCleanup('trip_departures', () => admin.from('trip_departures').delete().in('id', allDepartureIds));
+  await runCleanup('trip_plans', () => admin.from('trip_plans').delete().in('id', [REQUEST_PLAN, FIXED_PLAN]));
+  await runCleanup('trips', () => admin.from('trips').delete().in('id', [PUBLISHED_TRIP, DRAFT_TRIP, OTHER_TENANT_TRIP]));
+
+  const [departureReadback, planReadback, tripReadback] = await Promise.all([
+    admin.from('trip_departures').select('id').in('id', allDepartureIds),
+    admin.from('trip_plans').select('id').in('id', [REQUEST_PLAN, FIXED_PLAN]),
+    admin.from('trips').select('id').in('id', [PUBLISHED_TRIP, DRAFT_TRIP, OTHER_TENANT_TRIP]),
+  ]);
+  for (const [label, result] of [
+    ['trip_departures', departureReadback], ['trip_plans', planReadback], ['trips', tripReadback],
+  ] as const) {
+    if (result.error) cleanupFailures.push(`${label} cleanup readback failed: ${JSON.stringify(result.error)}`);
+    else if ((result.data ?? []).length > 0) {
+      cleanupFailures.push(`${label} cleanup left ${(result.data ?? []).length} fixture rows`);
+    }
+  }
+  if (cleanupFailures.length) throw new Error(`Issue #11 fixture cleanup failed:\n${cleanupFailures.join('\n')}`);
 });
 
 describe('#11 公開行程詳情頁與 API', () => {
@@ -161,8 +196,37 @@ describe('#11 公開行程詳情頁與 API', () => {
     expect(body).toContain('選擇日期並預約');
     expect(body).toContain('剩 5 位');
     expect(body).toContain('剩 6 位');
+    expect(body).toContain('本頁每個方案最多列出 6 筆近期團次');
     expect(body).not.toContain(SECRET_REVIEW_NOTE);
     expect(body).not.toContain(UNSAFE_URL);
+  });
+
+  it('公開 API 回報六筆顯示上限，並保留最早的有名額團次', async () => {
+    const { status, body } = await request(
+      `/api/public/shops/${SHOP_A.shopCode}/trips/${encodeURIComponent(SLUG)}`,
+    );
+    expect(status).toBe(200);
+    const response = JSON.parse(body) as {
+      success: boolean;
+      data: {
+        trip: {
+          plans: Array<{
+            name: string;
+            departures: Array<{ id: string; seatsLeft: number }>;
+            departuresMayBeTruncated: boolean;
+          }>;
+        };
+      };
+    };
+    const requestPlan = response.data.trip.plans.find((plan) => plan.name === `${TAG} REQUEST 方案`);
+    expect(requestPlan?.departures).toHaveLength(6);
+    expect(requestPlan?.departures[0]).toEqual({
+      id: REQUEST_DEPARTURE,
+      departsOn: FUTURE,
+      startTime: '09:00',
+      seatsLeft: 5,
+    });
+    expect(requestPlan?.departuresMayBeTruncated).toBe(true);
   });
 
   it('公開 JSON 只回 safe details，不回內部 tenant id 或審核備註，圖片 URL 僅保留 HTTPS', async () => {

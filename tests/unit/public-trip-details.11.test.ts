@@ -44,6 +44,8 @@ describe('#11 公開行程詳情', () => {
     expect(route).toContain('publicCorsHeaders(');
     expect(route).toContain('export function OPTIONS');
     expect(route).toContain("fail(404, '找不到這個行程', ERR.NOT_FOUND)");
+    expect(route).toContain('fail(500, \'系統發生錯誤，請稍後再試\', ERR.INTERNAL)');
+    expect(route).toContain('withCors(');
     expect(route).toContain("export const dynamic = 'force-dynamic'");
     expect(detailPage).toContain("export const dynamic = 'force-dynamic'");
   });

@@ -101,7 +101,7 @@ export type PublicTripDetailDeparture = {
 
 export type PublicTripDetailPlan = PublicPlan & {
   departures: PublicTripDetailDeparture[];
-  /** True when more future rows remain beyond the bounded public read window. */
+  /** True when the six-item display cap is reached or the bounded scan finds more rows. */
   departuresMayBeTruncated: boolean;
 };
 
@@ -495,7 +495,10 @@ async function loadPublicTripDetailsUncached(
       mayBeTruncated = (data ?? []).length > 0;
     }
 
-    return [plan.id, { departures, mayBeTruncated }] as const;
+    return [plan.id, {
+      departures,
+      mayBeTruncated: mayBeTruncated || departures.length >= MAX_DETAIL_DEPARTURES_PER_PLAN,
+    }] as const;
   }));
   const departuresByPlan = new Map(planDepartureResults);
 

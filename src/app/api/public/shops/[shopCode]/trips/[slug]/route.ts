@@ -14,27 +14,37 @@ const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 
 type Params = { params: Promise<{ shopCode: string; slug: string }> };
 
+function withCors(response: Response, headers: Record<string, string>): Response {
+  for (const [key, value] of Object.entries(headers)) response.headers.set(key, value);
+  return response;
+}
+
 export const GET = handle(async (req, { params }: Params) => {
   const { shopCode, slug } = await params;
   const corsHeaders = publicCorsHeaders(req.headers.get('origin'));
   const ip = clientIpFromHeaders(req.headers);
   const rateLimitKey = `public-trip-detail:${ip}:${shopCode}`;
   if (!checkRateLimit(rateLimitKey, { max: RATE_LIMIT_MAX, windowMs: RATE_LIMIT_WINDOW_MS })) {
-    const res = fail(429, '請求過於頻繁，請稍後再試', ERR.RATE_LIMITED);
-    for (const [key, value] of Object.entries(corsHeaders)) res.headers.set(key, value);
-    return res;
+    return withCors(fail(429, '請求過於頻繁，請稍後再試', ERR.RATE_LIMITED), corsHeaders);
   }
 
-  const data = await loadPublicTripDetails(shopCode, slug);
+  let data: Awaited<ReturnType<typeof loadPublicTripDetails>>;
+  try {
+    data = await loadPublicTripDetails(shopCode, slug);
+  } catch (error) {
+    console.error('[public-trip-details-api] load failed', {
+      shopCode,
+      slug,
+      message: error instanceof Error ? error.message : String(error),
+      cause: error instanceof Error ? error.cause : undefined,
+    });
+    return withCors(fail(500, '系統發生錯誤，請稍後再試', ERR.INTERNAL), corsHeaders);
+  }
   if (!data) {
-    const res = fail(404, '找不到這個行程', ERR.NOT_FOUND);
-    for (const [key, value] of Object.entries(corsHeaders)) res.headers.set(key, value);
-    return res;
+    return withCors(fail(404, '找不到這個行程', ERR.NOT_FOUND), corsHeaders);
   }
 
-  const res = ok(data);
-  for (const [key, value] of Object.entries(corsHeaders)) res.headers.set(key, value);
-  return res;
+  return withCors(ok(data), corsHeaders);
 });
 
 export function OPTIONS(req: Request) {
