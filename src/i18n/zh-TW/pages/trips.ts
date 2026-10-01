@@ -229,7 +229,7 @@ export const tripsPage = {
       pendingHint: '此方案的異動正在等 Midao 管理者審核，審核期間 Midao 前台仍以原內容販售。',
       changesHint: '管理者要求修改，請調整後重新儲存送審。',
       noteLabel: '管理者說明',
-      submitNotice: '方案內容與定價的異動會送 Midao 管理者審核；未上架 Midao 的行程不受影響。',
+      unavailable: '此行程已上架 Midao，方案與季節價格異動需審核。目前尚未開放送審，本次未儲存任何變更。',
     },
     source: {
       label: '來源',
@@ -461,7 +461,6 @@ export const tripsPage = {
     unpublished: '行程已從商店頁下架',
     midaoRequested: '已送出 Midao 上架申請',
     planSaved: '方案已儲存',
-    planSubmitted: '方案已儲存並送出審核',
     planDeleted: '方案已刪除',
     seasonSaved: '季節已儲存',
     seasonDeleted: '季節已刪除',

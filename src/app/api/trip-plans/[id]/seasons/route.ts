@@ -4,6 +4,8 @@ import { requireFeature } from '@/server/features';
 import { mapTripPlanSeason } from '@/server/mappers';
 import { seasonCreateSchema } from '@/server/tour-domain';
 
+import { requirePlanForSeasonWrite } from '@/server/trip-plan-review';
+
 type Context = { params: Promise<{ id: string }> };
 
 async function ownsPlan(t: Awaited<ReturnType<typeof requireTenant>>, planId: string) {
@@ -28,7 +30,7 @@ export const POST = handle(async (req, { params }: Context) => {
   const t = await requireTenantManager();
   await requireFeature(t.tenantId, 'TOUR_MODULE');
   const body = seasonCreateSchema.parse(await req.json());
-  if (!await ownsPlan(t, id)) return fail(404, '找不到此方案', ERR.NOT_FOUND);
+  await requirePlanForSeasonWrite(t, id);
   let sortOrder = body.sortOrder;
   if (sortOrder === undefined) {
     const { count, error } = await t.supabase.from('trip_plan_seasons')
