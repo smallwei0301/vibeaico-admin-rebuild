@@ -10,13 +10,17 @@
 - 正式環境待驗 production_pending：0
 - 自主完成 autonomous_outcome_units：0（正式出貨 + 唯一完整 OWNER_BLOCKED × 0.75）
 - 在製品 WIP：Audit Ready 0、CI-only 0、commit-only 0、carryover 0
-- 內部加權 usage：48（不是官方 token）
+- 內部加權 usage：67（不是官方 token）
 - 每件真正出貨 usage：資料不足
 - 每單位自主完成 usage：資料不足
 
 ## 為什麼尚不評分
 
 - run is still in progress
+
+## 結案前必須修正的硬性問題
+
+- LOCAL_TEST_GREEN pr#713 headac8d56541bd95fa0b957011a1594ae5afaaa9b25 observed=isolated_green_with_cleanup; expected=success
 
 ---
 
