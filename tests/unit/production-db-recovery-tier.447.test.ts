@@ -1,6 +1,15 @@
 import { readFileSync } from 'node:fs';
+
+// Historical DB/model semantics replay only: this mocked caller has no trusted role-context
+// entrypoint. This is not current-policy Production approval. Current enabled missing-proof
+// rejection remains covered in final-risk-cost-policy.552 and the current-policy check below.
+vi.mock('../../scripts/agents/astra-review-policy.mjs', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../scripts/agents/astra-review-policy.mjs')>();
+  return { ...actual, routing: { ...actual.routing,
+    openaiBuilderDecision: { ...actual.routing.openaiBuilderDecision, independentReviewerRequired: false } } };
+});
 import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   PRODUCTION_DB_POLICY,
@@ -99,4 +108,13 @@ describe('Production DB recovery evidence tiers #447', () => {
     expect(workflow).toContain('databaseMutationAuthorized: false');
     expect(workflow).not.toContain('productionBackupRestored: true');
   });
+});
+
+
+it('current enabled role policy still rejects this historical DB fixture without trusted role proof', async () => {
+  const { routing: currentPolicy } = await vi.importActual<typeof import('../../scripts/agents/astra-review-policy.mjs')>('../../scripts/agents/astra-review-policy.mjs');
+  const { finalRiskReviewerErrors: checkRoles } = await import('../../scripts/agents/final-risk-cost-policy.mjs');
+  const enabledPolicy = { ...currentPolicy, openaiBuilderDecision: { ...currentPolicy.openaiBuilderDecision, independentReviewerRequired: true } };
+  expect(checkRoles({ requestedModel: 'claude-fable-5-1', actualModel: 'claude-fable-5-1' }, enabledPolicy))
+    .toContain('Missing independently read-back builder/reviewer role evidence');
 });
