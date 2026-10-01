@@ -117,6 +117,7 @@ jobs:
                 const approvalBody = approval.body ?? '';
                 const role = approvalBody.match(/^[ \t]*REVIEW_ROLE[ \t]*:[ \t]*(.+)$/mi)?.[1]?.trim()?.toUpperCase() ?? '';
                 const verdict = approvalBody.match(/^[ \t]*VERDICT[ \t]*:[ \t]*(.+)$/mi)?.[1]?.trim()?.toUpperCase() ?? '';
+                const approvalRunId = approvalBody.match(/^[ \\t]*RUN_ID[ \\t]*:[ \\t]*(.+)$/mi)?.[1]?.trim() ?? '';
                 const exactHead = approvalBody.match(/^[ \t]*EXACT_HEAD[ \t]*:[ \t]*([0-9a-f]{40})$/mi)?.[1] ?? '';
                 let reachableFromCurrentMain = false;
                 if (/^[0-9a-f]{40}$/.test(exactHead)) {
