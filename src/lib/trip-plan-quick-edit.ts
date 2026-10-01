@@ -2,8 +2,7 @@ import type { TripPlan } from '@/lib/types';
 
 /**
  * Quick Edit is a view over the canonical TripPlan, not a second data model.
- * Keep this projection deliberately small until the Advanced Settings slice
- * has a persisted contract for its additional fields.
+ * This projection excludes advanced rules so a quick edit cannot overwrite them.
  */
 export type QuickPlanValidationError = 'name' | 'basePrice' | 'childPrice';
 
@@ -11,7 +10,11 @@ export type AdvancedPlanValidationError =
   | 'minParticipants'
   | 'maxParticipants'
   | 'partyRange'
-  | 'deposit';
+  | 'deposit'
+  | 'salesMode'
+  | 'participationMode'
+  | 'minToDepart'
+  | 'formationDeadlineDaysBefore';
 
 export function toQuickPlanPayload(plan: TripPlan): Partial<TripPlan> {
   const payload: Partial<TripPlan> = {
@@ -41,7 +44,7 @@ export function validateQuickPlan(
 
 /**
  * Advanced Settings is another projection of the same canonical TripPlan.
- * Keep this first slice to the fields already supported by the #8-A API.
+ * Include only rules already persisted by the canonical Plan API.
  */
 export function toAdvancedPlanPayload(plan: TripPlan): Partial<TripPlan> {
   return {
@@ -56,6 +59,10 @@ export function toAdvancedPlanPayload(plan: TripPlan): Partial<TripPlan> {
     durationMinutes: plan.durationMinutes,
     priceType: plan.priceType,
     yearRound: plan.yearRound,
+    salesMode: plan.salesMode ?? 'FIXED_DEPARTURE',
+    participationMode: plan.participationMode ?? 'SHARED',
+    minToDepart: plan.minToDepart ?? 1,
+    formationDeadlineDaysBefore: plan.formationDeadlineDaysBefore ?? 7,
   };
 }
 
@@ -104,6 +111,15 @@ export function reorderPlans(
 }
 
 export function validateAdvancedPlan(plan: TripPlan): AdvancedPlanValidationError | null {
+  const salesMode = plan.salesMode ?? 'FIXED_DEPARTURE';
+  const participationMode = plan.participationMode ?? 'SHARED';
+  if (!['FIXED_DEPARTURE', 'INSTANT', 'REQUEST'].includes(salesMode)) return 'salesMode';
+  if (!['SHARED', 'PRIVATE'].includes(participationMode)
+    || (salesMode !== 'FIXED_DEPARTURE' && participationMode !== 'PRIVATE')) return 'participationMode';
+  const minToDepart = plan.minToDepart ?? 1;
+  if (!Number.isInteger(minToDepart) || minToDepart < 1) return 'minToDepart';
+  const deadline = plan.formationDeadlineDaysBefore ?? 7;
+  if (!Number.isInteger(deadline) || deadline < 0 || deadline > 90) return 'formationDeadlineDaysBefore';
   if (!Number.isInteger(plan.minParticipants) || plan.minParticipants < 1) {
     return 'minParticipants';
   }

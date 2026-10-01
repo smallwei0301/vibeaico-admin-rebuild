@@ -77,6 +77,10 @@ describe('#42 Advanced Settings contract', () => {
       durationMinutes: 180,
       priceType: 'PER_PERSON',
       yearRound: true,
+      salesMode: 'FIXED_DEPARTURE',
+      participationMode: 'SHARED',
+      minToDepart: 1,
+      formationDeadlineDaysBefore: 7,
     });
   });
 
