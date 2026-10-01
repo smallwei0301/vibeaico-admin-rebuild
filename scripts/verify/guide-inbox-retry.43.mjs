@@ -33,6 +33,25 @@ try {
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
     await page.goto(`http://127.0.0.1:${server.address().port}`);
     await page.getByText('暫時無法讀取待辦',{exact:true}).waitFor();
+    const errorBody = page.locator('p.text-md');
+    if (await errorBody.count() !== 1) throw Error('missing single 16px GUIDE error body');
+    const responsiveSizes = await page.evaluate(([bodySelector, buttonSelector]) => {
+      const body = document.querySelector(bodySelector);
+      const button = document.querySelector(buttonSelector);
+      if (!(body instanceof HTMLElement) || !(button instanceof HTMLButtonElement)) return null;
+      const bodyStyle = getComputedStyle(body);
+      const buttonStyle = getComputedStyle(button);
+      return {
+        bodyFontSize: Number.parseFloat(bodyStyle.fontSize),
+        buttonFontSize: Number.parseFloat(buttonStyle.fontSize),
+        buttonHeight: button.getBoundingClientRect().height,
+        buttonWidth: button.getBoundingClientRect().width,
+      };
+    }, ['p.text-md', 'button.min-h-11.text-md']);
+    if (!responsiveSizes || responsiveSizes.bodyFontSize < 16 || responsiveSizes.buttonFontSize < 16
+      || responsiveSizes.buttonHeight < 44 || responsiveSizes.buttonWidth < 44) {
+      throw Error(`guide error/retry touch targets below mobile standard: ${JSON.stringify(responsiveSizes)}`);
+    }
     if(await page.getByText('目前沒有待處理事項',{exact:true}).count())throw Error('error implied empty');
     await page.evaluate(()=>window.fixture.mode='empty');
     await page.getByRole('button',{name:'重新讀取待辦'}).click();

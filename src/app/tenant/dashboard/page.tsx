@@ -454,8 +454,8 @@ export default function DashboardPage() {
               <div className="py-4 text-center text-muted">{t.actionInbox.loading}</div>
             ) : visibleInbox.status === 'error' ? (
               <Alert tone="danger" title={t.actionInbox.loadErrorTitle}>
-                <p>{t.actionInbox.loadErrorBody}</p>
-                <Button variant="outline" className="mt-3" onClick={reloadActionInbox}>
+                <p className="text-md">{t.actionInbox.loadErrorBody}</p>
+                <Button variant="outline" className="mt-3 min-h-11 text-md" onClick={reloadActionInbox}>
                   {t.actionInbox.retry}
                 </Button>
               </Alert>
