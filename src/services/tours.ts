@@ -89,6 +89,8 @@ function departureApiPayload(payload: Partial<TripDeparture>) {
     capacity: payload.capacity,
     status: payload.status,
     note: payload.note,
+    // A new-departure override only; PUT schema deliberately omits this field.
+    formationDeadlineAt: payload.id ? undefined : payload.formationDeadlineAt,
     /**
      * issue #37：導遊指派。
      *
@@ -398,6 +400,7 @@ export const batchCreateDepartures = (
   payload: {
     planId: string; from: string; to: string; weekdays: number[]; startTime: string; capacity: number;
     primaryStaffId?: string | null; assistantStaffIds?: string[];
+    formationDeadlineAt?: string;
   },
 ) =>
   adapt<BatchDepartureResult>(

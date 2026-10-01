@@ -91,6 +91,27 @@ const emptyDeparture = (tripId: string, planId: string): TripDeparture => ({
   primaryStaffId: null, assistantStaffIds: [],
 });
 
+/** Explicit creation-only confirmation in the current effective GUIDE timezone. */
+function confirmedFormationDeadline(local: string): string | undefined {
+  if (!local) return undefined;
+  const date = new Date(`${local}+08:00`);
+  if (!Number.isFinite(date.getTime())) throw new Error(t.departures.formationDeadline.invalid);
+  return date.toISOString();
+}
+
+function FormationDeadlineField({ id, value, onChange, plan, batch = false }: {
+  id: string; value: string; onChange: (value: string) => void; plan?: TripPlan; batch?: boolean;
+}) {
+  return (
+    <FormGroup>
+      <Label htmlFor={id}>{t.departures.formationDeadline.overrideLabel}</Label>
+      <Input id={id} type="datetime-local" value={value} onChange={(e) => onChange(e.target.value)} />
+      <FormText>{t.departures.formationDeadline.rule(plan?.minToDepart ?? 1, plan?.formationDeadlineDaysBefore ?? 7)}</FormText>
+      <FormText>{batch ? t.departures.formationDeadline.batchHelp : t.departures.formationDeadline.overrideHelp}</FormText>
+    </FormGroup>
+  );
+}
+
 /**
  * issue #37：導遊指派欄位。0/1/2+ 自動適應（Owner 2026-08-27）。
  *
@@ -186,6 +207,8 @@ export default function TripDetailPage() {
   const [busy, setBusy] = React.useState(false);
   const [addonDraft, setAddonDraft] = React.useState<TripAddon | null>(null);
   const [departureDraft, setDepartureDraft] = React.useState<TripDeparture | null>(null);
+  const [departureDeadlineLocal, setDepartureDeadlineLocal] = React.useState('');
+  const [batchDeadlineLocal, setBatchDeadlineLocal] = React.useState('');
   const [batchOpen, setBatchOpen] = React.useState(false);
   const [batch, setBatch] = React.useState({
     planId: '', from: '', to: '', startTime: '09:00', capacity: 10,
@@ -483,7 +506,10 @@ export default function TripDetailPage() {
     }
     const isNew = !departureDraft.id;
     const ok = await runAction(
-      () => saveTripDeparture(tripId, departureDraft),
+      () => saveTripDeparture(tripId, {
+        ...departureDraft,
+        ...(isNew ? { formationDeadlineAt: confirmedFormationDeadline(departureDeadlineLocal) } : {}),
+      }),
       isNew ? t.messages.departureCreated : t.messages.departureUpdated,
     );
     if (ok) setDepartureDraft(null);
@@ -521,6 +547,7 @@ export default function TripDetailPage() {
           weekdays: batch.weekdays,
           startTime: batch.startTime,
           capacity: batch.capacity,
+          formationDeadlineAt: confirmedFormationDeadline(batchDeadlineLocal),
           primaryStaffId: batch.primaryStaffId,
           assistantStaffIds: batch.assistantStaffIds,
         });
@@ -1146,12 +1173,12 @@ export default function TripDetailPage() {
             title={t.departures.sectionTitle}
             actions={
               <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" onClick={() => setBatchOpen(true)}>
+                <Button size="sm" variant="outline" onClick={() => { setBatchDeadlineLocal(''); setBatchOpen(true); }}>
                   <CalendarPlus size={14} />{t.departures.batchCreate}
                 </Button>
                 <Button
                   size="sm"
-                  onClick={() => setDepartureDraft(emptyDeparture(tripId, plans[0]?.id ?? ''))}
+                  onClick={() => { setDepartureDeadlineLocal(''); setDepartureDraft(emptyDeparture(tripId, plans[0]?.id ?? '')); }}
                 >
                   <Plus size={14} />{t.departures.create}
                 </Button>
@@ -1169,7 +1196,7 @@ export default function TripDetailPage() {
                 title={t.departures.empty.title}
                 description={t.departures.empty.description}
                 action={
-                  <Button onClick={() => setDepartureDraft(emptyDeparture(tripId, plans[0]?.id ?? ''))}>
+                  <Button onClick={() => { setDepartureDeadlineLocal(''); setDepartureDraft(emptyDeparture(tripId, plans[0]?.id ?? '')); }}>
                     <Plus size={15} />{t.departures.create}
                   </Button>
                 }
@@ -1726,6 +1753,10 @@ export default function TripDetailPage() {
               />
               <FormText>{t.departures.fields.capacityHelp}</FormText>
             </FormGroup>
+            {!departureDraft.id ? (
+              <FormationDeadlineField id="departure-formation-deadline" value={departureDeadlineLocal}
+                onChange={setDepartureDeadlineLocal} plan={plans.find((plan) => plan.id === departureDraft.planId)} />
+            ) : null}
             <GuidePicker
               guides={guides}
               primaryStaffId={departureDraft.primaryStaffId}
@@ -1811,6 +1842,8 @@ export default function TripDetailPage() {
               />
             </FormGroup>
           </div>
+          <FormationDeadlineField id="batch-formation-deadline" value={batchDeadlineLocal}
+            onChange={setBatchDeadlineLocal} plan={plans.find((plan) => plan.id === batch.planId)} batch />
           <GuidePicker
             guides={guides}
             primaryStaffId={batch.primaryStaffId}

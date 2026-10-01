@@ -162,11 +162,14 @@ export const departureCreateSchema = z.object({
   planId: departureFields.planId.unwrap(),
   departsOn: departureFields.departsOn.unwrap(),
   capacity: departureFields.capacity.unwrap(),
+  // Create-only explicit confirmation; update cannot rewrite existing snapshots.
+  formationDeadlineAt: z.string().datetime({ offset: true, message: '成團截止時間須包含有效時區' }).optional(),
 });
 
 export const departureUpdateSchema = z.object(departureFields);
 
 export const departureBatchSchema = z.object({
+  formationDeadlineAt: z.string().datetime({ offset: true, message: '成團截止時間須包含有效時區' }).optional(),
   planId: z.string().uuid('請選擇方案'),
   from: dateField,
   to: dateField,

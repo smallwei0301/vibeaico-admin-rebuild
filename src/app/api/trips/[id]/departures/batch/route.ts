@@ -12,6 +12,8 @@ import {
 } from '@/server/staff-availability';
 import type { DepartureConflict } from '@/lib/types';
 
+import { departureFormationSnapshot } from '@/server/departure-formation-snapshot';
+
 type Context = { params: Promise<{ id: string }> };
 const MAX_DAYS = 366;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -24,7 +26,7 @@ export const POST = handle(async (req, { params }: Context) => {
   const rangeLength = dateRangeLength(body.from, body.to);
   if (rangeLength > MAX_DAYS) return fail(400, `批次開團最多一次 ${MAX_DAYS} 天`, ERR.VALIDATION);
   const dates = dateRange(body.from, body.to);
-  const { data: plan, error: planError } = await t.supabase.from('trip_plans').select('id, trip_id')
+  const { data: plan, error: planError } = await t.supabase.from('trip_plans').select('id, trip_id, min_to_depart, formation_deadline_days_before')
     .eq('tenant_id', t.tenantId).eq('id', body.planId).maybeSingle();
   if (planError) throw planError;
   if (!plan || plan.trip_id !== id) return fail(404, '找不到此方案', ERR.NOT_FOUND);
@@ -33,6 +35,13 @@ export const POST = handle(async (req, { params }: Context) => {
     const day = new Date(`${date}T00:00:00Z`).getUTCDay();
     return body.weekdays.includes(day);
   });
+
+  // Validate every new-date rule before the first insert: a bad deadline must
+  // not leave the earlier dates of this batch silently created.
+  const now = Date.now();
+  const formationByDate = new Map(selected.map((date) => [
+    date, departureFormationSnapshot(plan, { ...body, departsOn: date }, now),
+  ]));
 
   // batch 建立的團次一律 OPEN，所以 0 位導遊會在這裡就被擋下（不是逐日各擋一次）。
   const bookable = await bookableStaffIds(t.supabase, t.tenantId);
@@ -107,6 +116,7 @@ export const POST = handle(async (req, { params }: Context) => {
       continue;
     }
     const { data, error } = await t.supabase.from('trip_departures').insert({
+      ...formationByDate.get(date),
       tenant_id: t.tenantId, trip_id: id, plan_id: body.planId, departs_on: date,
       start_time: timeValue(body.startTime), capacity: body.capacity, status: 'OPEN', note: '',
     }).select('id').maybeSingle();
