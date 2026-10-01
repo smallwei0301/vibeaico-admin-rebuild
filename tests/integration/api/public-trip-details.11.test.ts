@@ -16,6 +16,7 @@ const SOLD_OUT_DEPARTURES = Array.from({ length: 125 }, () => randomUUID());
 const EXTRA_AVAILABLE_DEPARTURES = Array.from({ length: 6 }, () => randomUUID());
 const SLUG = `issue-11-${randomUUID().slice(0, 8)}`;
 const TITLE = `${TAG} 已發布公開行程`;
+const OTHER_TENANT_TITLE = `${TAG} 另一店的同 slug 行程`;
 const SECRET_REVIEW_NOTE = `${TAG}-internal-review-note-must-not-leak`;
 const UNSAFE_URL = `${TAG}-javascript-url-must-not-leak`;
 function dateAfter(days: number): string {
@@ -81,7 +82,7 @@ beforeAll(async () => {
       id: OTHER_TENANT_TRIP,
       tenant_id: SHOP_B.id,
       slug: SLUG,
-      title: `${TAG} 另一店的同 slug 行程`,
+      title: OTHER_TENANT_TITLE,
       tagline: '', summary: '', description: '', location: '', meeting_point: '',
       meeting_point_map_url: '', cover_image_url: '', gallery: [], includes: '',
       exclusions: [], notices: [], notes: '', refund_policy_type: 'STANDARD',
@@ -260,12 +261,20 @@ describe('#11 公開行程詳情頁與 API', () => {
     expect(fixedPlan?.departures.map((departure) => departure.seatsLeft)).toEqual([6]);
   });
 
-  it('隱藏草稿、不存在的行程與別家店的同 slug 行程', async () => {
+  it('每家店可有自己的同 slug 行程，且公開讀取依 shopCode 隔離', async () => {
     const draft = await request(`/s/${SHOP_A.shopCode}/trips/${encodeURIComponent(`${SLUG}-draft`)}`);
     const otherTenant = await request(`/s/${SHOP_B.shopCode}/trips/${encodeURIComponent(SLUG)}`);
+    const otherTenantApi = await request(
+      `/api/public/shops/${SHOP_B.shopCode}/trips/${encodeURIComponent(SLUG)}`,
+    );
     const missing = await request(`/api/public/shops/${SHOP_A.shopCode}/trips/no-such-trip`);
     expect(draft.status).toBe(404);
-    expect(otherTenant.status).toBe(404);
+    expect(otherTenant.status).toBe(200);
+    expect(otherTenant.body).toContain(OTHER_TENANT_TITLE);
+    expect(otherTenant.body).not.toContain(TITLE);
+    expect(otherTenantApi.status).toBe(200);
+    expect(JSON.parse(otherTenantApi.body).data.trip.title).toBe(OTHER_TENANT_TITLE);
+    expect(otherTenantApi.body).not.toContain(TITLE);
     expect(missing.status).toBe(404);
   });
 });

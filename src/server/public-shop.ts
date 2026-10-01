@@ -337,7 +337,9 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
     title: (row.title as string) ?? '',
     summary: (row.summary as string) ?? '',
     location: (row.location as string) ?? '',
-    coverImageUrl: (row.cover_image_url as string) ?? '',
+    // This loader is also used by Server Components. Return only validated HTTPS media
+    // URLs so Next's development RSC diagnostics cannot serialize a raw unsafe value.
+    coverImageUrl: safePublicHttpsUrl(row.cover_image_url),
     durationHours: row.duration_hours == null ? null : Number(row.duration_hours),
     refundPolicyType: row.refund_policy_type === 'FLEXIBLE' || row.refund_policy_type === 'STRICT'
       ? row.refund_policy_type : 'STANDARD',
