@@ -33,6 +33,8 @@ function readyComment(overrides: Record<string, string> = {}) {
     ...overrides,
   };
   return {
+    created_at: '2026-10-01T00:46:00Z',
+    trusted: true,
     body: `RUN_CAPTURE_HANDOFF
 RUN_ID: ${values.runId}
 EVENT: ${values.event}
@@ -110,6 +112,32 @@ describe('#720 executable Product Issue close gate', () => {
     expect(result.errors.join('\n')).toContain('not reachable');
   });
 
+  it('rejects untrusted or post-close handoff comments even when their body looks valid', () => {
+    const untrusted = readyComment() as any;
+    untrusted.trusted = false;
+    const missingTrusted = evaluateProductIssueClose({
+      issue: issue(),
+      currentMainSha: main,
+      openPullRequests: [],
+      comments: [untrusted],
+      verifiedCi,
+    });
+    expect(missingTrusted.allowed).toBe(false);
+    expect(missingTrusted.errors.join('\n')).toContain('missing trusted');
+
+    const afterClose = readyComment() as any;
+    afterClose.created_at = '2026-10-01T01:01:00Z';
+    const late = evaluateProductIssueClose({
+      issue: issue(),
+      currentMainSha: main,
+      openPullRequests: [],
+      comments: [afterClose],
+      verifiedCi,
+    });
+    expect(late.allowed).toBe(false);
+    expect(late.errors.join('\n')).toContain('created before');
+  });
+
   it('accepts a fresh handoff with successful reachable canonical main CI and no linked open PR', () => {
     const result = evaluateProductIssueClose({
       issue: issue(),
@@ -140,6 +168,7 @@ describe('#720 executable Product Issue close gate', () => {
     expect(workflow).toContain('scripts/agents/product-issue-close-policy.mjs');
     expect(workflow).toContain("state: 'open'");
     expect(workflow).toContain('ISSUE_CLOSED_OBSERVED');
+    expect(workflow).toContain('getCollaboratorPermissionLevel');
   });
   it('allows only the exact close-guard workflow in MODEL_GOVERNANCE scope', () => {
     const governanceBody = [
