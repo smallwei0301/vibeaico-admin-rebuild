@@ -91,6 +91,29 @@ MODEL_GOVERNANCE uses `ASTRA_RISK: NONE` and `FINAL_RISK_POLICY: NOT_REQUIRED_BY
 
 PRODUCT_MAINLINE uses current `docs/MODEL-ROUTING.md` and `scripts/agents/model-routing.json`. Required Product Final Risk is not waived by this template.
 
+## Ordinary Product final review contract
+
+Active, open, non-draft `PRODUCT_MAINLINE` with `ASTRA_RISK: NONE` still requires an independent provider-local Sol/Opus final review. Draft BUILD and TEST evidence collection can prepare source without pretending final review exists; pure MODEL_GOVERNANCE is exempt. High-risk Product continues the existing `astra-review` baseline/cost contract. The live PR/reviews and canonical comment GETs are authoritative; body fields or a local packet are locators/shape only, never trusted proof.
+
+- BUILDER_EXECUTION_RECEIPT: <!-- final stage: actual https://github.com/OWNER/REPO/pull/NUMBER#issuecomment-ID -->
+
+The latest trusted canonical PR review contains one `sol-review` JSON block, tied to its actual `commit_id`; its `reviewerExecutionReceipt` locates the REVIEW role comment. BUILD and REVIEW comments each contain exactly one `agent-role-execution` JSON block, recorded before that review. Use real independent actor/session/execution IDs and UTC times; never backfill historical identities or rewrite a receipt to a rebased head.
+
+**NON_EXECUTABLE_EXAMPLE — do not copy placeholder identity, URL, timestamp or PASS values as evidence.** These shapes describe required keys; actual evidence is published/read back separately:
+
+```text
+agent-role-execution (BUILD comment):
+{ "role": "BUILD", "repository": "<OWNER/REPO>", "headSha": "<exact40hex>", "changeDigest": "<changed-file64hex>", "actorId": "<actual-builder-actor>", "sessionId": "<actual-builder-session>", "executionRef": "<actual-builder-execution>", "startedAt": "<actual UTC start>", "completedAt": "<actual UTC end>", "executionEvidence": "OPERATOR_ATTESTED" }
+agent-role-execution (separate REVIEW comment):
+{ "role": "REVIEW", "repository": "<same repo>", "headSha": "<exact current head>", "changeDigest": "<same digest>", "actorId": "<different reviewer actor>", "sessionId": "<different reviewer session>", "executionRef": "<different reviewer execution>", "startedAt": "<after builder completed>", "completedAt": "<actual UTC end>", "freshContext": true, "executionEvidence": "OPERATOR_ATTESTED", "provider": "<OPENAI or ANTHROPIC>", "providerEvidenceRef": "<actual durable provider capture>", "requestedModel": "<current provider-local audit model>" }
+sol-review (canonical PR review):
+{ "repository": "<same repo>", "headSha": "<exact current head>", "changeDigest": "<same digest>", "policyVersion": "<current routing version>", "requestedModel": "<same audit model>", "actualModel": "unknown", "identityEvidence": "UNKNOWN", "servedVerified": false, "executionRef": "<reviewer execution>", "reviewerExecutionReceipt": "<actual REVIEW comment URL>", "verdict": "<actual verdict>", "report": "<durable report URL in this repo>", "findings": "<actual findings and counterexamples>" }
+```
+
+`actualModel=unknown` is truthful when no served identity exists; it cannot claim `servedVerified=true`. Provider-local audit requests come from current routing (`models.audit` for OPENAI; `anthropicEquivalents.audit` for ANTHROPIC); requested model is not actual identity.
+
+Local preflight accepts `--current-pr-json <actual-current-pr-snapshot.json>` or `--prospective-final true`, plus `--ordinary-evidence <local-packet.json>`. The packet contains concrete `repository`, `headSha`, `changeDigest`, raw `builder`/`reviewer` receipts with their actual `sourceRef` locators, raw `review` sol-review JSON, and its actual `reviewSourceRef` (`#pullrequestreview-ID`). No current stage yields `LOCAL_NOT_VERIFIABLE`; a sound local shape yields only `NEEDS_CANONICAL_READBACK` with `canonicalReadbackVerified=false`. Do not forge a packet for source/Draft preparation; canonical trust, latest negative reviews, comment author permissions and timestamp ordering still require remote readback.
+
 ## Free dual-Terra metadata
 
 <!-- PRODUCT_MAINLINE only. Required on both active TERRA_BUILD PRs when two full Terra lanes are used. MODEL_GOVERNANCE uses false/none. -->
