@@ -271,7 +271,7 @@ export function parseAstraReviews(reviews = []) {
   }).sort((a, b) => String(b.submittedAt).localeCompare(String(a.submittedAt)) || Number(b.reviewId) - Number(a.reviewId));
 }
 
-/** @param {{body?: string, changedFiles?: string[] | null, context?: Record<string, string>, reviews?: Array<Record<string, any>>}} [input] */
+/** @param {{body?: string, changedFiles?: string[] | null, context?: Record<string, any>, reviews?: Array<Record<string, any>>}} [input] */
 export function evaluateAstra({ body = '', changedFiles = null, context = {}, reviews = [] } = {}, policy = routing) {
   const classification = classifyAstra({ body, changedFiles, createdAt: context.createdAt }, policy);
   if (classification.errors.length) return { ...classification, status: 'ASTRA_PENDING' };
@@ -293,7 +293,7 @@ export function evaluateAstra({ body = '', changedFiles = null, context = {}, re
     }
     if (!['COMMENTED', 'APPROVED'].includes(latest.reviewState)) errors.push('Astra review is dismissed or requests changes');
     if (latest.verdict !== 'PASS') errors.push('Astra verdict is not PASS');
-    if (finalRiskReviewerErrors(latest, policy).length) errors.push('Astra model identity is unverified');
+    errors.push(...finalRiskReviewerErrors(latest, policy, context));
     if (latest.reviewerTier !== 'CURRENT_AGENT' && latest.identityEvidence !== 'OPERATOR_ATTESTED') {
       errors.push('Missing explicit operator model attestation');
     }
@@ -336,11 +336,42 @@ export async function evaluateGithubAstra({ github, owner, repo, current }, poli
     }
   }
   const digest = changeDigestOf(files);
+  let roleEvidence;
+  if (classification.required && policy.openaiBuilderDecision?.independentReviewerRequired === true) {
+    const latest = parseAstraReviews(reviews)[0];
+    const readRole = async (sourceRef, role) => {
+      // Source references are locators, not candidate-provided proof; read authoritative bytes and actor permissions.
+      const match = typeof sourceRef === 'string' && sourceRef.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/(?:issues|pull)\/\d+#issuecomment-(\d+)$/);
+      if (!match || match[1] !== owner || match[2] !== repo) throw new Error('Foreign or missing role receipt');
+      const { data } = await github.rest.issues.getComment({ owner, repo, comment_id: Number(match[3]) });
+      if (data.html_url !== sourceRef || !data.user?.login) throw new Error('Role source differs from canonical comment');
+      let trusted = isTrustedFinalRiskAgentUser(data.user, policy);
+      if (!trusted) {
+        const permission = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: data.user.login });
+        trusted = ['write', 'maintain', 'admin'].includes(permission.data.permission);
+      }
+      if (!trusted) throw new Error('Untrusted role evidence actor');
+      const blocks = [...String(data.body ?? '').matchAll(/```agent-role-execution\s*\n([\s\S]*?)\n```/g)];
+      if (blocks.length !== 1) throw new Error('One concrete role execution receipt required');
+      const receipt = JSON.parse(blocks[0][1]);
+      if (receipt.role !== role || receipt.repository !== `${owner}/${repo}` || receipt.headSha !== current.head.sha
+        || receipt.changeDigest !== digest || !Number.isFinite(Date.parse(data.updated_at))
+        || !Number.isFinite(Date.parse(latest?.submittedAt))
+        || Date.parse(data.updated_at) > Date.parse(latest?.submittedAt)
+        || Date.parse(receipt.completedAt) > Date.parse(data.updated_at)) throw new Error('Role receipt is stale or recorded after its review');
+      return { ...receipt, sourceRef }; // authoritative sourceRef wins over payload claims
+    };
+    try {
+      roleEvidence = { trusted: true,
+        builder: await readRole(readField(body, 'BUILDER_EXECUTION_RECEIPT'), 'BUILD'),
+        reviewer: await readRole(latest?.reviewerExecutionReceipt, 'REVIEW') };
+    } catch { roleEvidence = undefined; } // missing runtime capture stays pending, never manufacture historical actors
+  }
   const result = evaluateAstra({ body, changedFiles, reviews, context: {
     repository: `${owner}/${repo}`, baseSha: current.base.sha, headSha: current.head.sha,
     policyVersion: policy.version, testBaseline: readField(body, 'ASTRA_TEST_BASELINE'),
     schemaBaseline: readField(body, 'ASTRA_SCHEMA_BASELINE'),
-    changeDigest: digest, createdAt: current.created_at,
+    changeDigest: digest, createdAt: current.created_at, roleEvidence,
   } }, policy);
   return { ...result, changeDigest: digest };
 }

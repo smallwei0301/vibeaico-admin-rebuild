@@ -131,8 +131,62 @@ describe('agent WIP Guard live-state dispatch', () => {
 });
 
 import {
-  changeDigestOf, classifyAstra, evaluateAstra, evaluateGithubAstra, finalRiskGateStatus, routing, shouldEnforceFinalRisk,
+  changeDigestOf, classifyAstra, evaluateAstra as evaluateCurrentAstra, evaluateGithubAstra, finalRiskGateStatus, routing, shouldEnforceFinalRisk,
 } from '../../scripts/agents/astra-review-policy.mjs';
+// Original contract fixtures are explicit pre-role-policy replay, never the live caller's default.
+const legacyPolicy = { ...routing, openaiBuilderDecision: { independentReviewerRequired: false } };
+const evaluateAstra = (input: any, policy = legacyPolicy) => evaluateCurrentAstra(input, policy);
+
+describe('prospective GitHub role receipts from independent durable readback', () => {
+  const policy = { ...routing, openaiBuilderDecision: { independentReviewerRequired: true } };
+  const repository = 'smallwei0301/vibeaico-admin-rebuild', headSha = 'b'.repeat(40);
+  const changedFiles = [{ filename: 'src/server/payment/role-fixture.ts', status: 'modified', sha: 'c'.repeat(40) }];
+  const digest = changeDigestOf(changedFiles);
+  const source = (id: number) => `https://github.com/${repository}/pull/1#issuecomment-${id}`;
+  const role = (kind: string) => ({ role: kind, repository, headSha, changeDigest: digest,
+    actorId: `synthetic-${kind}-actor`, sessionId: `synthetic-${kind}-session`, executionRef: `synthetic-${kind}-execution`,
+    startedAt: kind === 'REVIEW' ? '2026-10-01T03:00:01Z' : '2026-10-01T03:00:00Z', completedAt: '2026-10-01T03:00:01Z',
+    freshContext: kind === 'REVIEW', executionEvidence: 'OPERATOR_ATTESTED' });
+  const harness = (patch: any = {}) => {
+    const payload = { repository, baseSha: 'a'.repeat(40), headSha, changeDigest: digest, policyVersion: policy.version,
+      testBaseline: 'synthetic-source-test', schemaBaseline: 'synthetic-schema-test', verdict: 'PASS',
+      requestedModel: 'gpt-6.1-sol', actualModel: 'gpt-6.1-sol', reviewerTier: 'AUDIT', identityEvidence: 'OPERATOR_ATTESTED',
+      costPolicyVersion: '2026-09-17.1', downgradeReason: 'PREMIUM_REVIEW_COMPLETED', downgradeEvidenceRef: source(100),
+      reviewLineage: 'synthetic-payment-lineage', executionRef: role('REVIEW').executionRef,
+      adversarialEvidence: 'Synthetic counterexamples covered', priorFindingsReviewed: true, unresolvedFindingCount: 0,
+      report: source(102), findings: 'Synthetic only', reviewerExecutionReceipt: source(102), ...patch.payload };
+    const current = { number: 1, changed_files: 1, base: { sha: 'a'.repeat(40) }, head: { sha: headSha },
+      body: `WORKSTREAM: PRODUCT_MAINLINE\nASTRA_RISK: PAYMENT_CONSISTENCY\nASTRA_RATIONALE: Synthetic payment boundary\nASTRA_TEST_BASELINE: synthetic-source-test\nASTRA_SCHEMA_BASELINE: synthetic-schema-test\nBUILDER_EXECUTION_RECEIPT: ${patch.builderRef ?? source(101)}` };
+    const review = { trusted: false, id: 1, state: patch.state ?? 'COMMENTED', commit_id: headSha,
+      submitted_at: '2026-10-01T03:00:03Z', user: { login: 'synthetic-operator', id: 123, type: 'User' },
+      body: '```astra-review\n' + JSON.stringify(payload) + '\n```' };
+    const github: any = { rest: { pulls: { listFiles: 'files', listReviews: 'reviews' },
+      repos: { getCollaboratorPermissionLevel: async () => ({ data: { permission: patch.permission ?? 'write' } }) },
+      issues: { getComment: async ({ comment_id }: any) => {
+        if (patch.unavailable) throw new Error('Unavailable');
+        const receipt = { ...role(comment_id === 101 ? 'BUILD' : 'REVIEW'), ...(comment_id === 101 ? patch.builder : patch.reviewer) };
+        return { data: { html_url: source(comment_id), user: review.user, updated_at: patch.updatedAt ?? '2026-10-01T03:00:02Z',
+          body: patch.malformed ? 'not a receipt' : '```agent-role-execution\n' + JSON.stringify(receipt) + '\n```' } };
+      } } }, paginate: async (endpoint: string) => endpoint === 'files' ? changedFiles : [review] };
+    return { github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', current };
+  };
+  it('admits independent same-Sol roles read from canonical comments', async () => {
+    expect((await evaluateGithubAstra(harness(), policy)).status).toBe('ASTRA_APPROVED');
+  });
+  it('admits truthful unknown CURRENT_AGENT identity only with independent read-back roles', async () => {
+    expect((await evaluateGithubAstra(harness({ payload: { reviewerTier: 'CURRENT_AGENT', modelSelectionAvailable: false,
+      requestedModel: 'not_requested', actualModel: 'unknown', identityEvidence: 'UNKNOWN',
+      executionEvidence: 'OPERATOR_ATTESTED', downgradeReason: 'MODEL_SELECTION_UNAVAILABLE' } }), policy)).status).toBe('ASTRA_APPROVED');
+  });
+  it.each([{ reviewer: { actorId: role('BUILD').actorId } }, { reviewer: { sessionId: role('BUILD').sessionId } },
+    { reviewer: { freshContext: false } }, { builder: { headSha: 'd'.repeat(40) } }, { builder: { repository: 'other/repo' } },
+    { builderRef: 'https://github.com/other/repo/pull/1#issuecomment-101' }, { unavailable: true },
+    { permission: 'read' }, { payload: { verdict: 'FIX_REQUIRED' } }, { state: 'CHANGES_REQUESTED' },
+    { builderRef: '' }, { malformed: true }, { updatedAt: '2026-10-01T03:00:04Z' },
+    { builderRef: '', payload: { roleEvidence: { trusted: true, builder: role('BUILD'), reviewer: role('REVIEW') } } }])('rejects missing/stale/self-reviewed or latest-veto receipt %j', async patch => {
+    expect((await evaluateGithubAstra(harness(patch), policy)).status).toBe('ASTRA_PENDING');
+  });
+});
 
 const body = 'ASTRA_RISK: NONE\nASTRA_RATIONALE: Change only an ordinary heading\n';
 /** 一份代表性的 changed-file 清單；blob sha 是指紋的唯一內容來源 */

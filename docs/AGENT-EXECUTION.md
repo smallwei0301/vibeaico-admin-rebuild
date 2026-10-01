@@ -527,6 +527,19 @@ Closeability：5 幾乎可關；4 差一步；3 最多兩步可 Audit；2 需明
 
 ### 7.2 Product Final Risk
 
+#### 獨立角色來源與 provider-local catalog 准入
+
+`openaiBuilderDecision.independentReviewerRequired=true` 時，live review approval 必須有 current builder 與 reviewer 的獨立執行來源；只設 flag、換模型 ID 或在 review 自填 `trusted=true` 不足以放行。
+PR body 增加 `BUILDER_EXECUTION_RECEIPT: https://github.com/<owner>/<repo>/pull/<n>#issuecomment-<id>`（同 repo 的 Issue comment 亦可）；canonical `astra-review` 增加 `reviewerExecutionReceipt` 指向另一筆同 repo comment。兩個 locator 不作證據本身：GitHub adapter 必須 GET 回讀、驗 canonical html_url、可信 write/maintain/admin 提交者或既有 trusted bot，不執行 comment 內容。
+每筆 comment 只有一個 `agent-role-execution` fenced JSON，schema：`role`=BUILD|REVIEW、`repository`、`headSha`、`changeDigest`、runtime `actorId`／`sessionId`／`executionRef`、UTC `startedAt`／`completedAt`、`executionEvidence`=OPERATOR_ATTESTED；REVIEW 另有 `freshContext: true`。這是可信操作者對角色執行的背書，不是 provider-signed telemetry；缺實際 actor/session capture 就 pending，不能由 PR author／lane／requested model 推定。
+回讀內容必須綁 current exact head/digest/repository；review actor/session/execution 與 builder 不同，review 開始不早於 builder 完成，review executionRef 等於 attestation executionRef。comment updatedAt 不能晚於 review submittedAt、completedAt 不能晚於 comment；編輯後須新 review。缺、foreign、stale、self-review 或 latest finding 未解均不 approval。歷史 source/model metadata 可只讀還原，不取代 live role gate。
+角色獨立不把 `actual=unknown` 升為 served verified。AUDIT／PREMIUM 保留原模型 identity 契約；無 selector 的 CURRENT_AGENT 如實 unknown，但仍需另一 actor/fresh context 的實際角色證據。沒有合規獨立 actor 就 park，不虛稱 PASS。
+
+新 premium reservation 和 audit fallback 先驗 `provider`=OPENAI|ANTHROPIC、明確 `availableModels`、當次 `runtimeCatalog`（provider／models／providerEvidenceRef／evidenceRef／captureStartedAt／observedAt），captureStartedAt ≤ observedAt ≤ current request `now`。來源須為當次 runtime metadata/catalog 觀測，不是 repo config 或模型發佈消息；函式只驗觀測 record，不認證 backend 可用性，不另創 TTL。
+OpenAI premium 只 Astra、Anthropic premium 只 Fable；audit 只同 provider 已觀測的 Sol／Opus。缺／未知 provider/catalog 不回退全 allowlist 或猜另一 provider 模型：有 selector 但證據缺就 park，只有明確無 selector 才走既有 CURRENT_AGENT。#552 同 lineage 合計一次、零昂貴同級 retry、300 秒無執行證據及首次 infra failure 降級數值全部保留。
+
+DB release preflight 尚未接入可信 role context；enabled policy 下缺此證據安全拒絕，不把本節 source review 當 Production 操作許可。
+
 Product 高後果範圍才需要 Final Risk，例如：
 
 - `PAYMENT_CONSISTENCY`

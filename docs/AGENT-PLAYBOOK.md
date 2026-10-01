@@ -1078,6 +1078,8 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 
 ### PB-036 — `TERRA_BUILD` 的施工跑在 audit 層模型上，因為「反正我已經在跑了」
 
+- 2026-10-01 根因補強：configuration 的 independentReviewerRequired flag 不等於 runtime 准入。live evaluator 必須由 GitHub canonical source 獨立回讀 current builder／reviewer actor-session-execution，精確綁 head/digest，再驗 fresh context／非自審；payload 自填 proof 或 GitHub 提交者不能冒充 runtime builder。未知 actor 不回填歷史，缺證據就 pending。相關反例：sameactor／samesession／foreign-stale proof／latest finding；歷史事件次數與 actual 保留。
+
 - 首次／最近：2026-09-12／2026-09-14
 - 發生次數：**5**（第 5 次見本條最末「2026-09-14 第五次」）
 - Issue／PR／CI：#370（migration＋RPC＋route＋測試，掛在 `TEST_VALIDATION` lane 上）；
@@ -1768,6 +1770,8 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 
 ### PB-051：昂貴審查反覆重派，且入口／WIP／release 各保留一份模型規則
+
+- 2026-10-01 防復發：省略 runtime catalog 不能默認成整個 premium／audit allowlist；global default 不得跨 provider。prepare 與 fallback 共用 provider-local catalog capture 判準，缺證據 park、明確無 selector 才 CURRENT_AGENT；OpenAI Astra、Anthropic Fable 的唯一昂貴預算與300秒／首次infra降級不變。catalog record 驗證不假稱 provider-signed 可用性，歷史 usage 不改。
 
 - 最近發生：2026-09-29；次數：3 個可重用事件（#552 成本政策收斂；#447 實戰驗證；#37／PR #688 派工前記帳失序），歷史昂貴諮詢總數未知，不補零。
 - 證據：Owner 成本超支回報、#552；#455/#551/#561/#581/#591；#447 readiness run `35335418384`。
