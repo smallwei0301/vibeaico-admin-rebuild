@@ -1835,9 +1835,9 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
   由 run `35335418384` 機械證明，且 `databaseMutationAuthorized=false`，沒有用流程簡化換取 Production 寫入豁免。
 ### PB-052 — 不可逆刪除 Storage 前，只看「目前這一列」會把共用物件誤判成孤兒
 
-- 首次／最近：2026-09-17／2026-09-18
-- 發生次數：1
-- Issue／PR／CI：Issue #50、#572；舊 PR #573；successor PR #583；exact-head CI `35210358280`
+- 首次／最近：2026-09-17／2026-10-01
+- 發生次數：2（#42 是相同 Storage 物件生命週期的測試 fixture 缺陷；未證實為 canonical timeout 根因）
+- Issue／PR／CI：Issue #50、#572；舊 PR #573；successor PR #583；exact-head CI `35210358280`；Issue #42／PR #723；canonical TEST run `36840741621`
 - 分類：Storage／不可逆資料／引用生命週期
 - 事件：舊 #573 在 keyword reply 換圖或移除圖片後，只比較「目前這一列」的新舊 canonical URL，就 best-effort 刪除舊 Storage 物件。若同租戶另一筆 keyword reply 仍引用同一張實體圖，刪除會成功，但另一筆立刻變成破圖。
 - 證據：Final Risk 對 #573 重讀後建立 successor #583；#583 的 regression tests 明確涵蓋「另一列直接共用相同 URL」「query string／fragment 別名仍是同一物件」「共用引用落在第 2 頁」「引用掃描失敗」四種反例。Final Risk change digest `bd270fc460f9fda16d76851687e33cba3bd39512729543870fd90539eb2d64c0`。
@@ -1854,6 +1854,10 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 驗證：#583 exact head `a638bcb90a578b97330fb3c4bb2ad8092771a297` 的 repository integrity、ledger map、typecheck、完整 unit 與 build 實際通過；integration 與 local-isolated 依 SOURCE_ONLY policy skip，沒有冒充真 DB／Storage E2E。Agent WIP Guard 與 GPT-5.6 Sol Final Risk PASS。merge 後 current main 已重讀 `src/server/storage-cleanup.ts`，確認 fail-closed shared-reference guard 存在。
 - 狀態：keyword-reply bucket 已防止；同族的其他 bucket 與整列 DELETE cleanup 仍由 #572 監看中。
 - 相關教訓：PB-023（查詢失敗不可冒充空結果）、PB-044（破壞性動作的查證有效期有限）。
+
+**2026-10-01 #42 測試 fixture 補充：** 舊 welcome-card E2E 共用既有 tenant；若原 `notify` 有圖片 A，換圖流程會退役並刪除 A，`finally` 再把資料列還原成原 URL 時會被 `0070 welcome_card_image_not_retired`（`23514`）拒絕，且單還原資料列無法復原已刪 blob。此條件式重現證明 fixture 有破壞性生命週期缺陷；原 canonical 30 秒失敗缺少原圖 URL／trace，不能據附近的 `23514` 認定失敗由此造成。PR #723 的 canonical run `36840741621`：welcome 首次 30.0 秒在 `tests/e2e/welcome-card-upload.spec.ts:142` 等待 upload DELETE response timeout，retry #1 於 29.6 秒通過；整個 E2E 為 21 passed、3 skipped、2 flaky（welcome 與 booking-addons 均 retry #1 通過），不能記成 first-pass green 或「所有 flakiness 已解決」。
+- #42 修正：改用新建 disposable tenant 與合法 membership/switch/me 驗證；立即記錄 upload response 的 owned path，以 tenant-owned prefix 發現遺失 response 的資產；驗證設定持久化、Storage／retirement 清理及 owned rows 歸零；等待中的 mutation 若狀態未知則 fail closed。保留一般 30 秒 case budget，沒有用加 timeout 猜綠。
+- 新增預防：不可用還原共享資料列 URL 來「復原」已退役／刪除的 Storage blob。E2E 應使用可丟棄且所有權可驗證的 fixture；在首次持久化前即保存 cleanup 身分，並驗證 late write／cleanup 狀態。canonical timeout 根因未知、retry 後僅有 0.4 秒 budget 餘裕；不可把成功 retry 當穩定性證明。Native LOCAL welcome 23.3 秒通過；其 cleanup stack shutdown 成功，但沒有獨立 zero-row journal，不補造零殘留證據。
 
 ### PB-053 — E2E 先以輸入控件文字判定保存完成，會與送出中的草稿撞名
 
