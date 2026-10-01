@@ -1062,9 +1062,9 @@ export default function LineSettingsPage() {
             <Grid3x3 size={16} />
             {t.richMenu.title}
             {settings.line.richMenuId ? (
-              <Badge tone="neutral">{t.richMenu.lastSetDefault}</Badge>
+              <Badge tone="neutral">{t.richMenu.savedId}</Badge>
             ) : (
-              <Badge tone="neutral">{t.richMenu.noPublicationRecord}</Badge>
+              <Badge tone="neutral">{t.richMenu.noSavedId}</Badge>
             )}
           </CardTitle>
           <Link className="btn btn-outline btn-sm" href={t.richMenu.advancedDesignHref}>
@@ -1073,10 +1073,10 @@ export default function LineSettingsPage() {
           </Link>
         </CardHeader>
         <CardBody>
-          <p className="mb-3 text-xs text-secondary">{t.richMenu.publicationStatusHelp}</p>
+          <p className="mb-3 text-xs text-secondary">{t.richMenu.savedIdHelp}</p>
           {settings.line.richMenuId && (
             <p className="mb-3 break-all text-xs text-secondary">
-              {t.richMenu.lastMenuId}: {settings.line.richMenuId}
+              {t.richMenu.savedMenuId}: {settings.line.richMenuId}
             </p>
           )}
           {/* 即時預覽 */}

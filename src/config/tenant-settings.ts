@@ -200,9 +200,9 @@ export const lineSettingsSchema = z.object({
   richMenuTextColor: z.string().default('#FFFFFF'),
 });
 
-/** Provider write result, exposed only on readback; settings inputs cannot forge it. */
+/** Persisted Rich Menu ID for reference; this value alone does not prove provider publication. */
 export const lineSettingsReadSchema = lineSettingsSchema.extend({
-  /** Last menu successfully created/set default through VibeAI; not current LINE state. */
+  /** Saved ID only; its source and current LINE state are not verified by settings readback. */
   richMenuId: z.string().trim().default('').catch(''),
 });
 

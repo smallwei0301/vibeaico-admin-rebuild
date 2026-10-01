@@ -326,10 +326,10 @@ export const lineSettingsPage = {
   richMenu: {
     title: 'Rich Menu 快捷選單',
     notConfigured: '未設定',
-    lastSetDefault: '上次由 VibeAI 設為預設',
-    noPublicationRecord: '尚無 VibeAI 發布紀錄',
-    lastMenuId: '上次選單 ID',
-    publicationStatusHelp: '這是 VibeAI 上次成功建立並設為預設的紀錄；目前 LINE 是否仍使用此選單尚未確認，請到 LINE 官方帳號管理後台查看。',
+    savedId: '已保存選單 ID',
+    noSavedId: '未保存選單 ID',
+    savedMenuId: '選單 ID',
+    savedIdHelp: '這裡顯示此店家設定中保存的選單 ID，不代表 VibeAI 曾發布成功，也未確認 LINE 目前仍使用此選單。請到 LINE 官方帳號管理後台核對目前狀態。',
     advancedDesign: '進階選單設計',
     advancedDesignHref: '/tenant/rich-menu-design',
 

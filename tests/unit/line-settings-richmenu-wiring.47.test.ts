@@ -54,13 +54,17 @@ describe('line-settings 頁：建立 Rich Menu 真的打 publishRichMenu（Issue
     expect(savedIdIndex).toBeGreaterThan(publishIndex);
   });
 
-  it('renders the saved record after loading and states that current provider state is unverified', () => {
+  it('renders the saved ID after loading without claiming provider publication', () => {
     expect(code).toContain('setSettings(s)');
     expect(code).toContain('settings.line.richMenuId');
-    expect(code).toContain('t.richMenu.lastSetDefault');
-    expect(code).toContain('t.richMenu.publicationStatusHelp');
+    expect(code).toContain('t.richMenu.savedId');
+    expect(code).toContain('t.richMenu.savedIdHelp');
     expect(code).not.toContain('richMenuPublished');
     expect(code).not.toContain('t.richMenu.isDefault');
+    const copy = src('src/i18n/zh-TW/pages/line-settings.ts');
+    expect(copy).toContain("savedId: '已保存選單 ID'");
+    expect(copy).toContain('不代表 VibeAI 曾發布成功');
+    expect(copy).not.toContain('上次由 VibeAI 設為預設');
   });
 
   it('publishRichMenu 真的呼叫 /api/settings/line/rich-menu/create', () => {

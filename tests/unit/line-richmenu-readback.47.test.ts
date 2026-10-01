@@ -69,7 +69,7 @@ beforeEach(() => {
   state.upsert.mockClear();
 });
 
-describe('Rich Menu publication record readback (#47)', () => {
+describe('saved Rich Menu ID readback (#47)', () => {
   it('returns the authenticated tenant record while redacting secrets and encrypted columns', async () => {
     const { response, body } = await getSettings();
     expect(response.status).toBe(200);
@@ -84,7 +84,7 @@ describe('Rich Menu publication record readback (#47)', () => {
     expect((await getSettings()).body.data.line.richMenuId).toBe('richmenu-b');
   });
 
-  it('defaults old/missing records to no publication record', async () => {
+  it('defaults old/missing records to no saved ID', async () => {
     state.rows['tenant-a'] = { line: { channelId: '123' } };
     expect((await getSettings()).body.data.line.richMenuId).toBe('');
     state.rows['tenant-a'] = { line: { richMenuId: null } };
@@ -93,14 +93,14 @@ describe('Rich Menu publication record readback (#47)', () => {
     expect((await getSettings()).body.data.line.richMenuId).toBe('');
   });
 
-  it('preserves the provider result through a normal settings save and a subsequent read', async () => {
+  it('preserves the saved ID through a normal settings save and a subsequent read', async () => {
     expect((await saveLine({ richMenuTheme: 'OCEAN_BLUE', channelAccessToken: '' })).status).toBe(200);
     expect((await getSettings()).body.data.line.richMenuId).toBe('richmenu-a');
     expect(state.upsert.mock.calls[0][0].line.channelSecret).toBeUndefined();
     expect(state.upsert.mock.calls[0][0].line_channel_access_token_enc).toBeUndefined();
   });
 
-  it('ignores a client-forged publication ID, including when no provider record exists', async () => {
+  it('ignores a client-forged ID passed through the settings API', async () => {
     expect(lineSettingsSchema.partial().parse({ richMenuId: 'forged' })).toEqual({});
     expect(lineSettingsReadSchema.parse({ richMenuId: 'saved' }).richMenuId).toBe('saved');
     await saveLine({ richMenuId: 'forged', autoReplyEnabled: false });
