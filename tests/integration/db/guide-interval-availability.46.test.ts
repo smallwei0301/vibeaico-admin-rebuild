@@ -1,6 +1,9 @@
 /** #46 SOURCE_PREPARE: native DB/ACL contract. Run only in an admitted isolated
  * or canonical lane. This predicate is read-only and is NOT a reservation proof. */
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { releasePlanDigestOf } from '../../../scripts/agents/production-db-release-plan.mjs';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import postgres from 'postgres';
@@ -8,7 +11,51 @@ import { SHOP_A, SHOP_B } from '../../fixtures';
 
 const RPC = 'guide_staff_interval_available';
 let sql: ReturnType<typeof postgres> | undefined;
-const isLocal = process.env.TEST_PROFILE === 'LOCAL_ISOLATED' && /^local-pr-|^vibeaico-/.test(String(process.env.TEST_ENV_ID ?? process.env.LOCAL_PROJECT_ID ?? ''));
+const migration = '0135_issue_46_guide_interval_availability';
+function admission() {
+  const env = process.env;
+  const url = new URL(env.TEST_SUPABASE_URL ?? 'http://not-admitted.invalid');
+  if (env.TEST_PROFILE === 'LOCAL_ISOLATED') {
+    if (!['127.0.0.1', 'localhost'].includes(url.hostname) || url.protocol !== 'http:' || url.port !== '54321'
+      || !/^local-pr-[0-9]+-[a-z]+$/.test(env.TEST_ENV_ID ?? '')
+      || !/^vibeaico-[0-9]+-[a-z]+$/.test(env.LOCAL_PROJECT_ID ?? '')
+      || env.TEST_ENV_ID?.slice(9) !== env.LOCAL_PROJECT_ID?.slice(9)) {
+      throw new Error('#46 LOCAL admission requires matching fixed local project identity and loopback API');
+    }
+    return { admitted: true, local: true };
+  }
+  if (!env.RELEASE_ID) return { admitted: false, local: false };
+  if (!env.RUNNER_TEMP) throw new Error('#46 G3 requires fixed runner artifact directory');
+  const plan = JSON.parse(readFileSync(join(env.RUNNER_TEMP, 'production-db-release-plan.json'), 'utf8'));
+  const evidence = JSON.parse(readFileSync(join(env.RUNNER_TEMP, 'production-db-test-release-evidence.json'), 'utf8'));
+  if (plan.repository !== 'smallwei0301/vibeaico-admin-rebuild' || evidence.repository !== plan.repository
+    || !/^[a-f0-9]{40}$/.test(env.GITHUB_SHA ?? '') || plan.mainSha !== env.GITHUB_SHA || evidence.mainSha !== plan.mainSha
+    || plan.productionProjectRef !== 'egehnijjpgijmccagxac' || evidence.testProjectRef !== 'nmwhwngojosmagjuvxol'
+    || url.origin !== 'https://nmwhwngojosmagjuvxol.supabase.co'
+    || plan.releaseId !== env.RELEASE_ID || evidence.releaseId !== plan.releaseId
+    || plan.planDigest !== releasePlanDigestOf(plan) || evidence.planDigest !== plan.planDigest
+    || evidence.status !== 'TEST_RELEASE_PLAN_VERIFIED' || evidence.sourceRunId !== env.GITHUB_RUN_ID
+    || evidence.sourceRunAttempt !== Number(env.GITHUB_RUN_ATTEMPT)
+    || evidence.testMutationPerformed !== true || evidence.productionMutationPerformed !== false
+    || evidence.databaseMutationAuthorized !== false || !Array.isArray(plan.migrations) || !Array.isArray(evidence.migrations)) {
+    throw new Error('#46 G3 release artifacts do not bind this exact main/run/TEST execution');
+  }
+  const selected = plan.migrations.filter((row: { repoFile: string }) => row.repoFile === migration);
+  const applied = evidence.migrations.filter((row: { repoFile: string }) => row.repoFile === migration);
+  if (!selected.length && !applied.length) return { admitted: false, local: false };
+  const path = `supabase/migrations/${migration}.sql`;
+  const digest = createHash('sha256').update(readFileSync(path)).digest('hex');
+  if (selected.length !== 1 || applied.length !== 1 || selected[0].path !== path
+    || selected[0].sha256 !== digest || applied[0].sha256 !== digest
+    || applied[0].riskTier !== selected[0].riskTier
+    || !['APPLIED_VERIFIED', 'REPLAY_VERIFIED'].includes(applied[0].execution)) {
+    throw new Error('#46 G3 requires unique exact 0135 bytes with verified TEST apply/replay');
+  }
+  return { admitted: true, local: false };
+}
+const lane = admission();
+const isLocal = lane.local;
+if (!lane.admitted) console.info('#46 POLICY_SKIP/NOT_RUN: 0135 SOURCE_PREPARE has no admitted LOCAL or exact canonical G3 release; no fixtures/auth run.');
 let admin: SupabaseClient;
 let anon: SupabaseClient;
 let owner: SupabaseClient;
@@ -38,6 +85,7 @@ async function timezone(value: unknown) {
 async function shift(date: string, from: string, to: string) {
   return insert('shifts', { tenant_id: tenant, staff_id: staff, work_date: date, start_time: from, end_time: to });
 }
+describe.runIf(lane.admitted)(lane.admitted ? 'Issue #46 admitted native availability contract' : '#46 POLICY_SKIP/NOT_RUN: SOURCE_PREPARE not admitted; no hooks/fixtures/auth', () => {
 beforeAll(async () => {
   expect(process.env.TEST_SUPABASE_URL).toBeTruthy();
   expect(process.env.TEST_SUPABASE_SERVICE_ROLE_KEY).toBeTruthy();
@@ -218,5 +266,7 @@ describe('0135 staff policy and service-only tenant interval predicate', () => {
     expect(catalog[0]).toMatchObject({ prosecdef: false, provolatile: 's', anon_exec: false, auth_exec: false, service_exec: true });
     expect(catalog[0].proconfig).toContain('search_path=pg_catalog, public');
   });
+
+});
 
 });
