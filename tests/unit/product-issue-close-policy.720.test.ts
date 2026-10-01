@@ -135,7 +135,7 @@ describe('#720 executable Product Issue close gate', () => {
   });
 
   it('keeps the workflow trusted and capable of reopening a rejected Product close', () => {
-    const workflow = fs.readFileSync('.github/workflows/product-issue-close-guard.yml', 'utf8');
+    const workflow = fs.readFileSync('.github/workflows/agent-product-issue-close-guard.yml', 'utf8');
     expect(workflow).toContain('types: [closed]');
     expect(workflow).toContain('scripts/agents/product-issue-close-policy.mjs');
     expect(workflow).toContain("state: 'open'");
@@ -151,7 +151,7 @@ describe('#720 executable Product Issue close gate', () => {
 
     const allowed = classifyWorkstream({
       body: governanceBody,
-      changedFiles: ['.github/workflows/product-issue-close-guard.yml'],
+      changedFiles: ['.github/workflows/agent-product-issue-close-guard.yml'],
       createdAt: '2026-10-01T00:00:00Z',
     });
     expect(allowed.errors).toEqual([]);
