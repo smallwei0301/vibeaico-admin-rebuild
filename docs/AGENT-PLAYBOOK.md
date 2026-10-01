@@ -783,6 +783,15 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 修正／預防：canonical workflow path + exact SHA + stage event class，類內取最新 run／attempt 後才判結果；trusted-main completion refresh 重讀 live run／PR，拒絕 fork、非 main push 與 manual dispatch，不執行 head 程式或 artifacts。
 - 驗證：completion-truth 回歸涵蓋事件競爭、同類較新 failure/cancelled、錯 SHA/path、rerun、刷新安全邊界與 Production gate；正式 source CI 與合併回讀另留 #692 PR。修正不宣稱 #691 schema 已套或正式登入驗收完成。
 
+#### 2026-10-01 — #716／#717／#711：PR 的 POLICY_SKIP 不等於 main push 不會碰 TEST
+
+- 本延伸新增可核對事件 1 次；PB-032 原事件與歷史結果保留，不把每次 CI 計成新失敗。
+- 證據：#716 exact-head source CI `36820658850` 的 integration 是 `source_only_pr_without_test_lane` POLICY_SKIP；合併 `b17e74f` 後的 main push CI `36821108210`／job `110237423278` 卻實際進入 integration。主施工在第一次 merge 前只核對 PR skip，漏看 `decideTestValidation()` 的 `main_push` 分支；發現後停止後續 merge，未手動 dispatch TEST 或把當時未知的寫入／結果填成零或 PASS。
+- 授權處置：Owner 隨後批准目前治理批次在完整 loop 通過後，執行既有合併自動 shared TEST CI；不含額外手動 DB／TEST、手動部署或新增權限。此證據不宣稱平台已保存永久規則，也不把不同安全關卡當豁免。
+- 預防：merge 前分別核對 current trusted workflow 的 PR 與 main-push 分類、會執行的 integration／E2E／副作用、該流程已有授權、live active TEST holder 與 queued/running shared TEST。若是已有同範圍授權，沿用授權自主推進；若遇實際拒絕則保留 action／理由並停該動作，不換路徑繞過。不要用 source-only metadata 改寫 main 的 gate，亦不取消其他 Goal 的 canonical TEST。
+- 驗證：本批 #717 merge 前 current main `3f94365` CI `36849235937` success、live TEST holder 與 pending workflow 都為零；既有 integration concurrency 為 `shared-test-supabase-integration`、`cancel-in-progress: false`。#717 source `36852228639`、merge `726126f` 的 main CI `36852792933` 分開追蹤；後续合併也等待這個 serialized main run，再重新回讀 ownership／head／必要 checks。尚在執行只記 PENDING，TEST success 仍不代表 Production schema／deploy／登入驗收。
+- 邊界：同名、同 SHA 的 source／main／manual TEST 事件仍依上一段規則分類，取各類最新 run／attempt；requested model 不當作 actual served identity，歷史 events 不回填。
+
 ### PB-033 — 對正式庫下了 revoke 之後，才回頭查有沒有呼叫端
 
 - 首次／最近：2026-09-11／2026-09-18
@@ -841,6 +850,16 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 
 ### PB-034 — 用 CI 當規則查詢器：靠一次次被退來湊出正確的 PR 中繼資料
 
+#### 2026-10-01 — #711／#717／#729：局部准入綠燈沒有覆蓋角色、原收據與 review lifecycle
+
+- 證據／根因：[#711 finding 4154750603](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/711#discussion_r4154750603) 指出普通 `ASTRA_RISK: NONE` 在角色檢查前早退，普通 Sol 自審仍可通過；[#717 finding 4154669781](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/717#discussion_r4154669781) 指出 pure-rebase 正向 fixture 把原 role receipt 改成新 head，未測到真正 carryover；[#729 finding 4155090298](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/729#discussion_r4155090298) 指出只監聽 source／comment 事件，較新 submitted／edited／dismissed review 不會刷新 stable status。這些是治理准入／測試覆蓋缺口，不增加 PB-036 歷史 Product 模型違規 5 次，也沒有證據宣稱 Production 事故。
+- 修正／預防：ordinary final admission 依可信 live PR 狀態與獨立角色證據判定，不靠 candidate 自填 stage；pure-rebase 保留原 receipt/head/time/source，只有 current digest／policy／test／schema 語義一致與最新可信 review 綁定原 commit 時才可重用，ordinary 仍須 exact current head。review lifecycle 用無權限 producer 喚醒 trusted default-branch consumer，回讀唯一 canonical PR 與最新 reviews，不執行 PR code/artifacts，不派 TEST。
+- 獨立 local P1：事件修正初稿先 evaluate review、後寫 pending；inventory 不完整或 review REST 拋錯仍留下舊 success。獨立報告 SHA256 `946520d7e5405f1d6187d4c9598c5a72fb4909c5e8b45ab2c356d12ded71e63d` 的 finding 保留；實際 YAML 解碼完整 guard 的兩案 RED 是 `2 failed / 30 passed`，修正為唯一 canonical open PR 確定後、任何 review read/evaluate 前先寫 current-head pending；closed 早退、negative failure 與 per-PR concurrency 保留。
+- 驗證／完成真相：修正候選 tree `376ad82d0818f7df4ed088d58d97cbcbd3f77e99` 的 local targeted `113 PASS`、完整 unit `3737 PASS` 與 typecheck PASS；這不是 source CI、remote TEST 或 merge 結果。最新獨立 review／source CI／merge 必須另據 exact-head PR closeout 刷新，不預填未來 PASS；早期 #711+B 組合結果不冒充 corrected source 已重跑。
+- 邊界：requested model 不當作 actual/provider-signed served identity；未知保持 unknown。缺唯一 canonical association、初次 PR read 或 status API unavailable 尚需恢復；這個 helper／workflow 不保證攔截所有外部派工。本延伸記錄本批實際 finding 與修正，不按 CI 次數或同一 finding 的再驗增加歷史事件計數。
+- 同根因後續：[#729 finding 4155547881](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/729#discussion_r4155547881) 揭露 template／local preflight 沒有 ordinary final review 的欄位與入口，canonical template／preflight 綠仍到遠端才發現缺證據；修正合法拆成獨立 template＋preflight＋既有測試 3 檔 dependency，不把第 9 檔塞進已冻结 #729。實際 targeted `48 PASS`／typecheck PASS，相同 3 檔在既有 main runtime baseline 完整 unit `3711 PASS`；local shape 只回 `NEEDS_CANONICAL_READBACK`／`canonicalReadbackVerified=false`，缺 stage 明記 `LOCAL_NOT_VERIFIABLE`，remote canonical GET 仍是權威。預防先核完整可執行本地契約，不以 CI 退件學填欄位；新 source CI／merge 結果另待 exact-head closeout 刷新，不增加 Product 違規計數。
+
+- 同根因續例：#729 receipt edited／deleted 需由 trusted-main 回讀並刷新所有 canonical 引用 heads；review／非404 permission 查證失敗仍是已知潛在引用，先 pending 再拒絕，native 讀取暫敗保留其他已知 heads；review wake fallback 只定位 live open PR，不讓同 branch 歷史 closed PR 遮掉目前 head。兩項 P1 4156785876／4156785896 以真實 RED→GREEN、192 targeted PASS／typecheck PASS 核對；新 CI／merge 結果待 exact-head closeout 更新，不宣稱 Production 成功或增加 Product 歷史違規計數。 全 inventory 暫時不可讀而漏掉跨 Issue 收據事件，另以 hourly trusted-main fresh inventory 恢復掃描；未知時明記 UNAVAILABLE，下一排程獨立重讀，已知 final-stage heads 先 pending 再完整 canonical 評估，不能只把未知範圍當免責。GitHub cron/API outage 可延遲恢復，不宣稱永遠保證；此候選 local199 targeted PASS／typecheck PASS，未預填新 CI／merge。 獨立窄審另發現 recovery member 缺 head／broken SHA／缺 base 被藏成空 success、null 是裸 TypeError；先驗既有 canonical 最小欄位再做合法排除，四個真實 RED→GREEN、local199 targeted PASS／typecheck PASS，獨立 Reviewer 本人 16＋12 probes PASS，source CI／merge 待 exact-head closeout。
 - 2026-10-01 #713 paired-scorecard report reproduction 續例：exact-head workflow `36810577964` rejected the generated Markdown because it recorded weighted usage 27 while the ledger/scorer computed 33 after the new audit task. Root initially treated `score-run-current.mjs` as a file writer; it prints to stdout. The repair at `4a7c8a0abc00d97c502abe5ebfa1dcc24df7664b` generated the paired report from stdout and reproduced it byte-for-byte; exact-head workflow `36810825595` passed. Preserve the original failure as a report-generation failure, not a Product feature failure. Prevention: generate with `node scripts/agents/score-run-current.mjs <ledger> > <RUN_ID>.md`, then rerun and `diff -u` the canonical output against the paired Markdown before publishing; a green ledger validator/readiness alone does not verify the paired report.
 - 新增可核對事件：+1 report-generation reproduction（截至 2026-10-01）；既有次數按本條最新已記 5 件加一，非 CI 執行總數。
 
