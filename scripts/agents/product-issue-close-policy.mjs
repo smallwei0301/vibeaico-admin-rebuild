@@ -25,6 +25,7 @@ export function parseRunCaptureHandoff(body = '') {
     observedAt: readField(text, 'OBSERVED_AT'),
     writerBlocker: readField(text, 'WRITER_BLOCKER'),
     nextSafeWritePath: readField(text, 'NEXT_SAFE_WRITE_PATH'),
+    closeApprovedRef: readField(text, 'CLOSE_APPROVED_REF'),
   };
 }
 
@@ -50,10 +51,12 @@ export function findCloseReadyHandoff(comments = [], closedAt = '') {
   const latest = selected.handoff;
   const errors = [];
   const commentMs = validIso(selected.comment?.created_at);
-  if (commentMs === null) {
-    errors.push('ISSUE_CLOSE_READY requires the trusted GitHub comment created_at timestamp');
+  const updatedMs = validIso(selected.comment?.updated_at ?? selected.comment?.created_at);
+  if (commentMs === null || updatedMs === null) {
+    errors.push('ISSUE_CLOSE_READY requires trusted GitHub comment created_at/updated_at timestamps');
   } else {
     if (commentMs > closedMs) errors.push('ISSUE_CLOSE_READY trusted comment must be created before the Issue close event');
+    if (updatedMs > closedMs) errors.push('ISSUE_CLOSE_READY trusted comment must not be edited after the Issue close event');
     if (closedMs - commentMs > SIX_HOURS_MS) errors.push('ISSUE_CLOSE_READY trusted comment is stale (>6h before Issue close)');
   }
   if (!RUN_ID.test(latest.runId) || /^(?:none|unknown|null|undefined)$/i.test(latest.runId)) {
@@ -73,6 +76,9 @@ export function findCloseReadyHandoff(comments = [], closedAt = '') {
   }
   if (!latest.writerBlocker) errors.push('ISSUE_CLOSE_READY handoff requires WRITER_BLOCKER');
   if (!latest.nextSafeWritePath) errors.push('ISSUE_CLOSE_READY handoff requires NEXT_SAFE_WRITE_PATH');
+  if (!/^github:issuecomment#\d+$/.test(latest.closeApprovedRef)) {
+    errors.push('ISSUE_CLOSE_READY handoff requires CLOSE_APPROVED_REF: github:issuecomment#<id>');
+  }
   return { handoff: latest, commentCreatedAt: selected.comment?.created_at ?? null, errors };
 }
 
@@ -90,13 +96,27 @@ function labelNames(issue) {
 function productApplicability(issue) {
   const declared = issueWorkstream(issue?.body ?? '');
   const labels = new Set(labelNames(issue));
-  if (declared === 'AMBIGUOUS_WORKSTREAM') {
-    return { applicable: true, workstream: declared, errors: ['Issue WORKSTREAM is ambiguous at close time'] };
+  const productLabel = labels.has('workstream:product-mainline');
+  const governanceLabel = labels.has('workstream:model-governance');
+
+  if (declared === 'MODEL_GOVERNANCE' && governanceLabel && !productLabel) {
+    return { applicable: false, workstream: 'MODEL_GOVERNANCE', errors: [] };
   }
-  if (declared === 'PRODUCT_MAINLINE' || labels.has('workstream:product-mainline')) {
-    return { applicable: true, workstream: 'PRODUCT_MAINLINE', errors: [] };
+  if (declared === 'PRODUCT_MAINLINE' || productLabel) {
+    const errors = [];
+    if (declared !== 'PRODUCT_MAINLINE') errors.push('Product Issue close requires a valid WORKSTREAM: PRODUCT_MAINLINE declaration');
+    if (!productLabel) errors.push('Product Issue close requires workstream:product-mainline label');
+    if (governanceLabel) errors.push('Product Issue close has conflicting workstream:model-governance label');
+    return { applicable: true, workstream: 'PRODUCT_MAINLINE', errors };
   }
-  return { applicable: false, workstream: declared || 'UNCLASSIFIED', errors: [] };
+  if (declared === 'MODEL_GOVERNANCE') {
+    return { applicable: true, workstream: declared, errors: ['MODEL_GOVERNANCE close bypass requires matching workstream:model-governance label and no Product label'] };
+  }
+  return {
+    applicable: true,
+    workstream: declared || 'UNCLASSIFIED',
+    errors: ['Issue WORKSTREAM classification is missing, ambiguous, or invalid at close time'],
+  };
 }
 
 /**
@@ -107,6 +127,7 @@ function productApplicability(issue) {
  *   comments?: any[],
  *   verifiedCi?: any | null,
  *   verifiedRun?: any | null,
+ *   verifiedCloseApproval?: any | null,
  *   lastClosedCaptureAt?: string | null,
  * }} [input]
  */
@@ -117,6 +138,7 @@ export function evaluateProductIssueClose({
   comments = [],
   verifiedCi = null,
   verifiedRun = null,
+  verifiedCloseApproval = null,
   lastClosedCaptureAt = null,
 } = {}) {
   const applicability = productApplicability(issue);
@@ -163,15 +185,28 @@ export function evaluateProductIssueClose({
       }
     }
 
+    const approvalCommentId = Number(ready.handoff.closeApprovedRef.match(/^github:issuecomment#(\d+)$/)?.[1] ?? 0);
+    if (!verifiedCloseApproval || verifiedCloseApproval.commentId !== approvalCommentId) {
+      errors.push('ISSUE_CLOSE_READY CLOSE_APPROVED_REF was not independently verified');
+    } else {
+      if (verifiedCloseApproval.verdict !== 'CLOSE_APPROVED') errors.push('Product Issue close requires final Sol CLOSE_APPROVED');
+      if (verifiedCloseApproval.role !== 'SOL') errors.push('Product Issue close approval must declare REVIEW_ROLE: SOL');
+      if (!SHA40.test(String(verifiedCloseApproval.exactHead ?? ''))) errors.push('final Sol CLOSE_APPROVED requires EXACT_HEAD');
+      if (verifiedCloseApproval.reachableFromCurrentMain !== true) errors.push('final Sol CLOSE_APPROVED exact head is not reachable from current main');
+      if (verifiedCloseApproval.trusted !== true) errors.push('final Sol CLOSE_APPROVED submitter is not trusted');
+      if (verifiedCloseApproval.beforeClose !== true) errors.push('final Sol CLOSE_APPROVED must exist before Issue close');
+    }
+
     const workflowId = Number(ready.handoff.evidenceRef.match(/^github:workflow#(\d+)$/)?.[1] ?? 0);
     if (!verifiedCi || verifiedCi.workflowId !== workflowId) {
       errors.push('ISSUE_CLOSE_READY workflow evidence was not independently verified');
     } else {
       if (verifiedCi.name !== 'ci') errors.push('ISSUE_CLOSE_READY evidence must reference canonical ci workflow');
+      if (verifiedCi.workflowPath !== '.github/workflows/ci.yml') errors.push('ISSUE_CLOSE_READY evidence must use .github/workflows/ci.yml');
       if (verifiedCi.event !== 'push') errors.push('ISSUE_CLOSE_READY ci evidence must be a push run');
       if (verifiedCi.conclusion !== 'success') errors.push('ISSUE_CLOSE_READY ci evidence must conclude success');
       if (!SHA40.test(String(verifiedCi.headSha ?? ''))) errors.push('ISSUE_CLOSE_READY ci evidence requires exact head SHA');
-      if (verifiedCi.reachableFromCurrentMain !== true) errors.push('ISSUE_CLOSE_READY ci head is not reachable from current main');
+      if (verifiedCi.headSha !== currentMainSha) errors.push('ISSUE_CLOSE_READY ci evidence must match current main exact head');
     }
   }
 
