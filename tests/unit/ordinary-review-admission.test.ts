@@ -324,3 +324,52 @@ describe('role receipt edit/delete authoritative fan-out (synthetic)', () => {
     expect(parsed.jobs.guard.concurrency.group).toContain('matrix.pr_number');
   });
 });
+
+describe('independent hourly trusted-main recovery (synthetic)', () => {
+  it.each(['missing-head', 'broken-head', 'missing-base', 'null-member'])('decoded recovery rejects %s as UNAVAILABLE before excluding otherwise legal rows', async mode => {
+    const f = fixture(); const github: any = f.github; github.rest.pulls.list = vi.fn();
+    const product = { ...current, base: { ...current.base, repo: { full_name: repo } } };
+    const bad: any = mode === 'null-member' ? null : { ...product, ...(mode === 'missing-head' ? { head: undefined } : mode === 'broken-head' ? { head: { sha: 'broken' } } : { base: undefined }) };
+    const legal = [product, { ...product, number: 901, state: 'closed' }, { ...product, number: 902, draft: true }, { ...product, number: 903, body: body.replace('LANE_STATE: ACTIVE', 'LANE_STATE: PARKED') }, { ...product, number: 904, base: { repo: { full_name: 'foreign/repo' } } }];
+    github.paginate = vi.fn().mockResolvedValueOnce([bad]).mockResolvedValueOnce(legal);
+    const script = parse(readFileSync('.github/workflows/agent-wip-guard.yml', 'utf8')).jobs.review_wakeup.steps.find((step: any) => step.with?.script).with.script;
+    const astra = await import('../../scripts/agents/astra-review-policy.mjs'); const outputs: Record<string, string> = {};
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+    const run = () => new AsyncFunction('require', 'process', 'github', 'context', 'core', 'loadPolicy', script.replace(/\bimport\s*\(/g, 'loadPolicy('))(createRequire(import.meta.url), { env: { GITHUB_WORKSPACE: process.cwd() } }, github, { eventName: 'schedule', repo: { owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild' }, payload: {} }, { setOutput: (key: string, value: string) => { outputs[key] = value; } }, async () => astra);
+    await expect(run()).rejects.toThrow('REVIEW_RECOVERY_UNAVAILABLE'); expect(outputs).toEqual({});
+    await run(); expect(outputs).toEqual({ pr_numbers: '[900]', association_incomplete: 'false' });
+  });
+
+  it('decoded schedule fails UNAVAILABLE, then fresh snapshot selects all canonical final-stage heads without marker exemption', async () => {
+    const f = fixture({ latestVeto: true }); const github: any = f.github; const list = vi.fn(); github.rest.pulls.list = list;
+    const product = { ...current, base: { ...current.base, repo: { full_name: repo } } };
+    const legacy = { ...product, number: 901, body: body.replace('WORKSTREAM: PRODUCT_MAINLINE\n', ''), created_at: '2026-09-01T00:00:00Z' };
+    const governance = { ...product, number: 902, body: 'WORKSTREAM: MODEL_GOVERNANCE\nAGENT_LANE: GOVERNANCE\nLANE_STATE: ACTIVE\nASTRA_RISK: NONE\nFINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY' };
+    const inventory = [product, legacy, governance, { ...product, number: 903, draft: true }, { ...product, number: 904, body: body.replace('LANE_STATE: ACTIVE', 'LANE_STATE: PARKED') }, { ...product, number: 905, state: 'closed' }, { ...governance, number: 906, body: governance.body + '\nBUILDER_EXECUTION_RECEIPT: ' + source(101) }, { ...product, number: 907, body: body.replace('ASTRA_RISK: NONE', 'ASTRA_RISK: PAYMENT_CONSISTENCY') }];
+    github.paginate = vi.fn().mockRejectedValueOnce(new Error('Synthetic full inventory unavailable')).mockResolvedValue(inventory);
+    const parsed = parse(readFileSync('.github/workflows/agent-wip-guard.yml', 'utf8'));
+    const decoded = parsed.jobs.review_wakeup.steps.find((step: any) => step.with?.script).with.script;
+    const astra = await import('../../scripts/agents/astra-review-policy.mjs');
+    const outputs: Record<string, string> = {}; const core = { setOutput: (key: string, value: string) => { outputs[key] = value; }, warning: vi.fn() };
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+    const run = () => new AsyncFunction('require', 'process', 'github', 'context', 'core', 'loadPolicy', decoded.replace(/\bimport\s*\(/g, 'loadPolicy('))(createRequire(import.meta.url), { env: { GITHUB_WORKSPACE: process.cwd() } }, github, { eventName: 'schedule', repo: { owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild' }, payload: {} }, core, async () => astra);
+    await expect(run()).rejects.toThrow('REVIEW_RECOVERY_UNAVAILABLE');
+    expect(outputs).toEqual({}); await run(); expect(outputs).toEqual({ pr_numbers: '[900,901,902,906,907]', association_incomplete: 'false' });
+    expect(parsed.on.schedule).toEqual([{ cron: '37 * * * *' }]);
+    expect(github.paginate).toHaveBeenCalledWith(list, expect.objectContaining({ state: 'open' }));
+  });
+  it.each(['latest-negative', 'conflicting-governance'])('decoded recovery consumer writes pending then %s failure without TEST/comment/labels', async mode => {
+    const f = fixture({ latestVeto: true }); const github: any = f.github; const statuses: string[] = ['success'];
+    const live = mode === 'conflicting-governance' ? { ...current, body: 'WORKSTREAM: MODEL_GOVERNANCE\nAGENT_LANE: GOVERNANCE\nLANE_STATE: ACTIVE\nASTRA_RISK: NONE\nFINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY' } : current;
+    github.rest.pulls.get = vi.fn(async () => ({ data: live })); github.rest.repos.createCommitStatus = vi.fn(async (record: any) => statuses.push(record.state));
+    github.rest.actions = { createWorkflowDispatch: vi.fn() }; github.rest.issues.createComment = vi.fn(); github.rest.issues.addLabels = vi.fn();
+    const decoded = parse(readFileSync('.github/workflows/agent-wip-guard.yml', 'utf8')).jobs.guard.steps.find((step: any) => step.with?.script).with.script;
+    const astra = await import('../../scripts/agents/astra-review-policy.mjs'); const policy = await import('../../scripts/agents/dual-terra-wip-policy.mjs');
+    const summary: any = { addHeading: () => summary, addRaw: () => summary, write: async () => undefined };
+    const loadPolicy = async (url: string) => url.includes('astra-review-policy') ? astra : url.includes('dual-terra-wip-policy') ? policy : {};
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+    await new AsyncFunction('require', 'process', 'github', 'context', 'core', 'loadPolicy', decoded.replace(/\bimport\s*\(/g, 'loadPolicy('))(createRequire(import.meta.url), { env: { GITHUB_WORKSPACE: process.cwd(), REVIEW_WAKEUP_PR: '900' } }, github, { eventName: 'schedule', repo: { owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild' }, payload: {} }, { summary }, loadPolicy);
+    expect(statuses).toEqual(['success', 'pending', 'failure']); expect(f.listReviews).toBeTruthy();
+    expect(github.rest.actions.createWorkflowDispatch).not.toHaveBeenCalled(); expect(github.rest.issues.createComment).not.toHaveBeenCalled(); expect(github.rest.issues.addLabels).not.toHaveBeenCalled();
+  });
+});

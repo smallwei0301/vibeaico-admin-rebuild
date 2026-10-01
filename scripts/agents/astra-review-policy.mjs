@@ -509,3 +509,25 @@ export async function resolveRoleReceiptWakeup({ github, owner, repo, repository
 
   return { numbers, associationIncomplete };
 }
+
+/** Independent recovery reads current inventory; missed event payloads never become evidence. */
+export async function resolveReviewRecovery({ github, owner, repo }) {
+  let inventory;
+  try { inventory = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', per_page: 100 }); }
+  catch { throw new Error('REVIEW_RECOVERY_UNAVAILABLE: canonical open PR inventory could not be read'); }
+  if (!Array.isArray(inventory)) throw new Error('REVIEW_RECOVERY_UNAVAILABLE: malformed canonical inventory');
+  for (const pr of inventory) {
+    if (!pr || typeof pr !== 'object' || !Number.isSafeInteger(pr.number) || pr.number < 1
+      || !['open', 'closed'].includes(pr.state) || typeof pr.draft !== 'boolean'
+      || (pr.body !== null && typeof pr.body !== 'string') || !SHA.test(pr.head?.sha ?? '')
+      || typeof pr.base?.repo?.full_name !== 'string' || !/^[\w.-]+\/[\w.-]+$/.test(pr.base.repo.full_name)) {
+      throw new Error('REVIEW_RECOVERY_UNAVAILABLE: malformed canonical PR member');
+    }
+  }
+  // Governance markers do not exempt heads here; the consumer classifies complete live scope.
+  const numbers = inventory.filter(pr => pr.state === 'open' && pr.base?.repo?.full_name === `${owner}/${repo}` && SHA.test(pr.head?.sha ?? '')
+    && shouldEnforceFinalRisk({ pullRequestState: pr.state, draft: pr.draft === true, laneState: readField(pr.body ?? '', 'LANE_STATE') }))
+    .map(pr => pr.number);
+  if (numbers.some(number => !Number.isSafeInteger(number) || number < 1)) throw new Error('REVIEW_RECOVERY_UNAVAILABLE: invalid canonical PR number');
+  return { numbers: [...new Set(numbers)].sort((a, b) => a - b), associationIncomplete: false };
+}

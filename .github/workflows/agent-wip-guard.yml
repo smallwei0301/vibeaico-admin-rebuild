@@ -1,6 +1,9 @@
 name: agent-wip-guard
 
 on:
+  schedule:
+    - cron: '37 * * * *'
+
   pull_request_target:
     types: [opened, edited, reopened, synchronize, ready_for_review, converted_to_draft, closed]
 
@@ -20,7 +23,7 @@ permissions:
 
 jobs:
   review_wakeup:
-    if: github.event_name == 'workflow_run' || (github.event_name == 'issue_comment' && (github.event.action == 'edited' || github.event.action == 'deleted'))
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_run' || (github.event_name == 'issue_comment' && (github.event.action == 'edited' || github.event.action == 'deleted'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -38,11 +41,11 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: >-
-            const { pathToFileURL } = require('node:url'); const path = require('node:path'); const astra = await import(pathToFileURL(path.join(process.env.GITHUB_WORKSPACE, 'scripts/agents/astra-review-policy.mjs')).href); const { owner, repo } = context.repo; const packet = context.eventName === 'workflow_run' ? { numbers: [await astra.resolveReviewWakeup({ github, owner, repo, runId: context.payload.workflow_run.id })], associationIncomplete: false } : await astra.resolveRoleReceiptWakeup({ github, owner, repo, repository: context.payload.repository.full_name, issueNumber: context.payload.issue.number, commentId: context.payload.comment.id, nativePr: Boolean(context.payload.issue.pull_request) }); core.setOutput('pr_numbers', JSON.stringify(packet.numbers)); core.setOutput('association_incomplete', String(packet.associationIncomplete)); if (packet.associationIncomplete) core.warning('Receipt association reads incomplete: known heads are invalidated pending; unknown associations require recovery');
+            const { pathToFileURL } = require('node:url'); const path = require('node:path'); const astra = await import(pathToFileURL(path.join(process.env.GITHUB_WORKSPACE, 'scripts/agents/astra-review-policy.mjs')).href); const { owner, repo } = context.repo; const packet = context.eventName === 'schedule' ? await astra.resolveReviewRecovery({ github, owner, repo }) : context.eventName === 'workflow_run' ? { numbers: [await astra.resolveReviewWakeup({ github, owner, repo, runId: context.payload.workflow_run.id })], associationIncomplete: false } : await astra.resolveRoleReceiptWakeup({ github, owner, repo, repository: context.payload.repository.full_name, issueNumber: context.payload.issue.number, commentId: context.payload.comment.id, nativePr: Boolean(context.payload.issue.pull_request) }); core.setOutput('pr_numbers', JSON.stringify(packet.numbers)); core.setOutput('association_incomplete', String(packet.associationIncomplete)); if (packet.associationIncomplete) core.warning('Receipt association reads incomplete: known heads are invalidated pending; unknown associations require recovery');
 
   guard:
     needs: [review_wakeup]
-    if: always() && (github.event_name == 'pull_request_target' || ((github.event_name == 'workflow_run' || (github.event_name == 'issue_comment' && (github.event.action == 'edited' || github.event.action == 'deleted'))) && needs.review_wakeup.result == 'success' && needs.review_wakeup.outputs.pr_numbers != '[]') || (github.event.issue.pull_request && (github.event.comment.body == '/astra-review-check' || startsWith(github.event.comment.body, '/astra-review-check'))))
+    if: always() && (github.event_name == 'pull_request_target' || ((github.event_name == 'schedule' || github.event_name == 'workflow_run' || (github.event_name == 'issue_comment' && (github.event.action == 'edited' || github.event.action == 'deleted'))) && needs.review_wakeup.result == 'success' && needs.review_wakeup.outputs.pr_numbers != '[]') || (github.event.issue.pull_request && (github.event.comment.body == '/astra-review-check' || startsWith(github.event.comment.body, '/astra-review-check'))))
     strategy:
       fail-fast: false
       matrix:
@@ -93,7 +96,7 @@ jobs:
             )).href);
 
             const { owner, repo } = context.repo;
-            const reviewWakeup = context.eventName === 'workflow_run' || (context.eventName === 'issue_comment' && ['edited', 'deleted'].includes(context.payload.action));
+            const reviewWakeup = context.eventName === 'schedule' || context.eventName === 'workflow_run' || (context.eventName === 'issue_comment' && ['edited', 'deleted'].includes(context.payload.action));
             const payloadCurrent = reviewWakeup ? { number: Number(process.env.REVIEW_WAKEUP_PR) }
               : context.payload.pull_request ?? { number: context.payload.issue.number };
             if (!Number.isSafeInteger(payloadCurrent.number) || payloadCurrent.number < 1) throw new Error('Invalid canonical PR number');
