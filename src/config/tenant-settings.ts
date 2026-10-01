@@ -200,6 +200,12 @@ export const lineSettingsSchema = z.object({
   richMenuTextColor: z.string().default('#FFFFFF'),
 });
 
+/** Provider write result, exposed only on readback; settings inputs cannot forge it. */
+export const lineSettingsReadSchema = lineSettingsSchema.extend({
+  /** Last menu successfully created/set default through VibeAI; not current LINE state. */
+  richMenuId: z.string().trim().default('').catch(''),
+});
+
 /* ------------------------------------------------------------- 基本 / 營業 */
 export const DEFAULT_TENANT_TIME_ZONE = 'Asia/Taipei';
 
@@ -412,7 +418,7 @@ export const tenantSettingsSchema = z.object({
   notify: notifySettingsSchema,
   privacy: privacySettingsSchema,
   points: pointsSettingsSchema,
-  line: lineSettingsSchema,
+  line: lineSettingsReadSchema,
   branding: brandingSettingsSchema,
 });
 

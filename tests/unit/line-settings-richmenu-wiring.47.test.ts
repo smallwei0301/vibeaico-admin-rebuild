@@ -48,15 +48,19 @@ describe('line-settings 頁：建立 Rich Menu 真的打 publishRichMenu（Issue
     const body = handlerBody(code, 'createRichMenu');
     expect(body, 'createRichMenu() 沒有呼叫 publishRichMenu()').toMatch(/await publishRichMenu\(\)/);
 
-    // setRichMenuPublished(true) 必須在 publishRichMenu() 之後才呼叫，
-    // 否則存欄位一成功就會假裝「已發布」，回到修正前的假成功。
+    // Only the provider endpoint's persisted result can update the visible record.
     const publishIndex = body.indexOf('await publishRichMenu()');
-    const publishedFlagIndex = body.indexOf('setRichMenuPublished(true)');
-    expect(publishedFlagIndex, 'createRichMenu() 沒有設定 richMenuPublished').toBeGreaterThan(-1);
-    expect(
-      publishedFlagIndex,
-      'setRichMenuPublished(true) 必須排在 await publishRichMenu() 之後，否則存欄位成功就會假裝已發布',
-    ).toBeGreaterThan(publishIndex);
+    const savedIdIndex = body.indexOf('patchLocalLine({ richMenuId: published.richMenuId })');
+    expect(savedIdIndex).toBeGreaterThan(publishIndex);
+  });
+
+  it('renders the saved record after loading and states that current provider state is unverified', () => {
+    expect(code).toContain('setSettings(s)');
+    expect(code).toContain('settings.line.richMenuId');
+    expect(code).toContain('t.richMenu.lastSetDefault');
+    expect(code).toContain('t.richMenu.publicationStatusHelp');
+    expect(code).not.toContain('richMenuPublished');
+    expect(code).not.toContain('t.richMenu.isDefault');
   });
 
   it('publishRichMenu 真的呼叫 /api/settings/line/rich-menu/create', () => {

@@ -326,7 +326,10 @@ export const lineSettingsPage = {
   richMenu: {
     title: 'Rich Menu 快捷選單',
     notConfigured: '未設定',
-    isDefault: '已設為預設顯示',
+    lastSetDefault: '上次由 VibeAI 設為預設',
+    noPublicationRecord: '尚無 VibeAI 發布紀錄',
+    lastMenuId: '上次選單 ID',
+    publicationStatusHelp: '這是 VibeAI 上次成功建立並設為預設的紀錄；目前 LINE 是否仍使用此選單尚未確認，請到 LINE 官方帳號管理後台查看。',
     advancedDesign: '進階選單設計',
     advancedDesignHref: '/tenant/rich-menu-design',
 
@@ -369,9 +372,9 @@ export const lineSettingsPage = {
 
     create: '建立主題選單',
     creating: '建立中...',
-    created: 'Rich Menu 建立成功！顧客現在可以看到快捷選單了',
-    createdCustomBg: 'Rich Menu 建立成功！已使用自訂背景搭配描邊文字',
-    createdNoOverlay: 'Rich Menu 建立成功！直接使用背景圖',
+    created: 'LINE 已接受建立並設為預設，紀錄已儲存',
+    createdCustomBg: 'LINE 已接受以自訂背景建立並設為預設，紀錄已儲存',
+    createdNoOverlay: 'LINE 已接受以背景圖建立並設為預設，紀錄已儲存',
     createFailedPrefix: '建立失敗：',
     imageFormat: '請上傳 PNG 或 JPG 格式的圖片',
 
