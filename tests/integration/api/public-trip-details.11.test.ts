@@ -93,12 +93,14 @@ beforeAll(async () => {
   mustWrite('trip_plans', await admin.from('trip_plans').insert([
     {
       id: REQUEST_PLAN, tenant_id: SHOP_A.id, trip_id: PUBLISHED_TRIP,
+      slug: `${SLUG}-request`,
       name: `${TAG} REQUEST 方案`, description: `${TAG} 方案內容`,
       price_per_person: 1800, min_party: 2, max_party: 8,
       sales_mode: 'REQUEST', active: true,
     },
     {
       id: FIXED_PLAN, tenant_id: SHOP_A.id, trip_id: PUBLISHED_TRIP,
+      slug: `${SLUG}-fixed`,
       name: `${TAG} FIXED 方案`, description: `${TAG} 固定團次方案內容`,
       price_per_person: 2200, min_party: 1, max_party: 6,
       sales_mode: 'FIXED_DEPARTURE', active: true,
