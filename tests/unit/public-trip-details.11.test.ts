@@ -23,21 +23,23 @@ describe('#11 公開行程詳情', () => {
   });
 
   it('詳情查詢只讀安全欄位，且同時限制 tenant、trip id、slug 與 PUBLISHED 狀態', () => {
-    const columns = loader.match(/\.select\('([^']+)'\)\s*\.eq\('tenant_id', shopData\.tenantId\)/);
+    const columns = loader.match(/const PUBLIC_TRIP_DETAILS_COLUMNS = \[([\s\S]*?)\]\s*as const/);
+    const detailQuery = loader.slice(loader.indexOf('async function loadPublicTripDetailsUncached'));
     expect(columns, '找不到公開詳情 select 白名單').toBeTruthy();
     expect(columns?.[1]).toContain('cover_image_url');
-    expect(loader).toContain(".eq('tenant_id', shopData.tenantId)");
-    expect(loader).toContain(".eq('id', knownTrip.id)");
-    expect(loader).toContain(".eq('slug', slug)");
-    expect(loader).toContain(".eq('status', 'PUBLISHED')");
+    expect(detailQuery).toContain(".select(PUBLIC_TRIP_DETAILS_COLUMNS.join(', '))");
+    expect(detailQuery).toContain(".eq('tenant_id', shopData.tenantId)");
+    expect(detailQuery).toContain(".eq('id', knownTrip.id)");
+    expect(detailQuery).toContain(".eq('slug', slug)");
+    expect(detailQuery).toContain(".eq('status', 'PUBLISHED')");
     expect(columns?.[1]).not.toMatch(/midao_listing_note|midao_listing|tenant_settings|customers|staff|tour_orders/);
-    expect(loader).toContain(".select('id, departs_on, start_time, capacity, seats_booked')");
-    expect(loader).toContain(".eq('trip_id', knownTrip.id)");
+    expect(detailQuery).toContain(".select('id, departs_on, start_time, capacity, seats_booked')");
+    expect(detailQuery).toContain(".eq('trip_id', knownTrip.id)");
+    expect(detailQuery).toContain(".eq('plan_id', plan.id)");
+    expect(detailQuery).toContain(".eq('status', 'OPEN')");
     expect(loader).toContain(".eq('plan_id', plan.id)");
-    expect(loader).toContain(".eq('status', 'OPEN')");
-    expect(loader).toContain(".eq('plan_id', plan.id)");
-    expect(loader).toContain('.range(offset, offset + pageSize - 1)');
-    expect(loader).toContain('departuresMayBeTruncated');
+    expect(detailQuery).toContain('.range(offset, offset + pageSize - 1)');
+    expect(detailQuery).toContain('departuresMayBeTruncated');
     expect(detailClient).toContain('t.departures.truncated');
   });
 
