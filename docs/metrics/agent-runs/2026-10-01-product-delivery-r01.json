@@ -286,6 +286,32 @@
         "cachedTokens": null,
         "count": 1,
         "note": "Distinct review42 EARLY46 on frozen61f9435 schemaSOURCE_PREPARE afterformalMAINpromotion; builder42differentactor. NativeNOT_RUN, nofinalapproval. IndependentStandards/Spec+risk/admission/ACL/tenant/DST scope only, noRun/sourcewrites orCIpoll. Requestedgpt6.1-sol OwnerSESSIONoverride actualunknown."
+      },
+      {
+        "id": "20261001-sol-reserve42-seasonal-acceptance",
+        "role": "build",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Actual existingbuild47 followup admitted singleprivateRESERVE42 test-only seasonal Plan save/reload→trueTourOrder price snapshot source; oneownednewintegrationfile/oneatomiccommit. MAIN46sourcefrozenawaitsnativeCI; noPR/push/DB/CI/audit/Runmutation. OwnerSol6.1builder override, noProductcompletionclaim."
+      },
+      {
+        "id": "20261001-luna-playbook719-failure-evidence",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Existingtriage scopedDOCS accepted minimal PB015/034/027 evidencepatch outsideworktree for actual719 mergeconflict/alias+pinCI failures/DSTreview findings. No Product source/test/Run mutation, noPR/DB/CIpoll. Requestedgpt6-luna actualunknown, Rootsoleledgerwriter; actualnativeverificationpendingmustremainpending."
       }
     ],
     "fullContextReplays": 0,
@@ -302,7 +328,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 11,
+    "fullCiRuns": 12,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -318,13 +344,13 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 4,
-    "lunaAccepted": 4,
+    "lunaTasks": 5,
+    "lunaAccepted": 5,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 10,
+    "solTouches": 11,
     "solIssues": 4
   },
   "auditability": {
@@ -391,7 +417,12 @@
     "Actual719 freshhead955b109 source ci36827423772 started2026-10-01T06:55:50Z; source terminalFAILURE pending exactcause scout, LOCAL36827423779 inprogress samehead. FullCiRuns10→11 oneactualsource workflow; original473conflict had NOT_RUN and is not counted. No sourcegreen/nativePASS claimed.",
     "719source CI36827423772 terminal missing0135 ledger classification; schema-bootstrap36827423735 terminal FRESH_INSTALL_BASELINE_BLOCKED canonical migration bytes changed before Docker. Samebuilder necessarytwofilealias/pinrepair admitted ownership inPRbody no guard weakening; early proposedmainHead4b rejected/corrected beforecommit because lacks0135. PB015 requires pin existingancestor61f/955 containing identicalSQL and nextmetadata-onlycommit. NativeLOCAL36827423779 remains running; no replayacceptance orinvalidrerun. SameScope46 followup currentmainallwriteratomicclosure enumeration accepted with no new actor/taskchain.",
     "Rootfreshread main713 ci36822913910 exactmerge9b push attempt1 completedSUCCESS updated06:58:04Z. Scoutterminallogs integration77filesPASS3skip/749testsPASS22skip; E2E23PASS3skip; service_rolefixturerestore+Nextglobalteardownverified. G3schema/apply/cleanuprawstepsSKIPPED intentionalno release. MainCIaftermerge blocker42 cleared; Production schema/auth remainpending. Govmain7184b queue successor mustlivecheck before715canonicalholderrestore; terminal713 doesnotaloneproveemptysharedmutex.",
-    "MAIN46source repair frozen36f41fc includes necessaryalias/pin/exactcount test threefiles; typecheck64tests/ledger82+58/fresh89files7compatgeneration/integrityPASS. Original3source blobsunchanged; nativeDB notyetacceptance. Govmain718 ci36825550665 activecanonicalintegration so715 remainsPARKED. Publishing actualsourceclassification/pinrepair triggers freshhead CI; old955LOCAL ifcancelled isUNKNOWN notPASS and notblindrerun. Rootcapturespresent facts beforepush; finalreview mustincludeadded3necessarypaths."
+    "MAIN46source repair frozen36f41fc includes necessaryalias/pin/exactcount test threefiles; typecheck64tests/ledger82+58/fresh89files7compatgeneration/integrityPASS. Original3source blobsunchanged; nativeDB notyetacceptance. Govmain718 ci36825550665 activecanonicalintegration so715 remainsPARKED. Publishing actualsourceclassification/pinrepair triggers freshhead CI; old955LOCAL ifcancelled isUNKNOWN notPASS and notblindrerun. Rootcapturespresent facts beforepush; finalreview mustincludeadded3necessarypaths.",
+    "Actual719 d7de123 sourceCI36828034389 and bootstrap36828034375 started2026-10-01T07:02:14Z; source fullCiRuns11→12. NewLOCAL36828034475 QUEUED notstarted; old955LOCAL36827423779 CANCELLED afternecessaryrealalias/pin/countsourcefix→UNKNOWN no nativePASS. Scorecard36828034423 success notnativeDB. Main718 stillsharedTESTholder.",
+    "2026-10-01T07:04:32.299+00:00 Rootremaining42 TRIAGEafter713+718sourcecloseoutcomplete: existingseasonalRLSsuite doesnotexerciseactualorderprice. MAIN46 d7frozenwaitnative, soleprivateRESERVE42 accepted builder47 onnewtestfile only, no MAINhotfiles/ledger/paymentprovider/sourceactivation. No newIssue/PR/buildcandidate orremoteDB. FreezeREADY_FOR_PROMOTION oneatomiccommit. Existing42alreadyissuesStarted4 distinctissues, Solissues4unchanged.",
+    "719d7 sourceCI36828034389 completedSUCCESS07:05:36Z; NativeLOCAL/bootstrapstillrunning/notacceptance. Rootfreshreviews found actualP2 comments4152599457 (unrelatedhistorical/futureDSTambiguous shifts/departures poison allrequests) and4152657882 (WEEKLY full_day dropped→25hdaylast-hourfalseavailable/23hdayoverflow). SameMAINbuilder activeIN_PROGRESS narrowSQL/nativecase repair authorized beforefinalaudit; pinmustfollowSQLcommitP. CurrentCIgreen notSOURCE_VERIFIED/activation. Reserve42 oneprivateacceptancetestdoesnotshareSQL/Run/hotfiles; nogreenclaim.",
+    "2026-10-01T07:08:53.470+00:00 necessaryPlaybook factualpatch dispatch toexistingtriage scopedLunaDOCS; notProductOutcome/Govexpansion, merging willfollow Sourcecloseout normalchecks. Pendingnative/findings cannotbeclaimedfixed.",
+    "MAIN46 twoactualP2 sourcefindings repaired frozen3074bbf: SQL/nativecasesP=d009399 followedmetadata-onlypinP3074 ensuresidenticalcanonicalbytes/ancestry. RelevantUTC envelope skips onlydefinitelyunrelatedambiguousshift/departure rows, relatedunknownfailsclosed/multidayretained; WEEKLYfull_day useslocalnextmidnight23/25h. Typecheck/source-policy26+ledgerfresh64PASS/baseline89/7/ledger82+58/integrityPASS. NativeNOT_RUN onnewrepair, oldd7green notsubstitute. Rootpublishactualsourcefix causesfreshCI/oldcancelUNKNOWN; noinvalidblindrerun. Task20Playbookpatchcompletedfacts-onlyPB015/034 awaitsnormalmainclosure; noProductOutcome."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
