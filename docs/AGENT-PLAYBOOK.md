@@ -282,6 +282,14 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 驗證：壓成單一 commit 後，不帶 `BASE_REVISION` 執行 → `{ ok: true, errors: [], baseRevision: "HEAD^" }`；CI `check` job 101606950146 success。第三次的替代交付 PR #244 於 exact head `36022c1f` 以 `BASE_REVISION=13fafcd3` 驗得 `{ ok: true, errors: [] }`，遠端 `guard` 亦 success。
 - 狀態：監看中（症狀已繞過，根因待 Issue #227 / PR #240 修）
 
+
+#### 2026-10-01 再發：#46／PR #719 的 canonical baseline pin 與來源祖先
+
+- 證據：bootstrap `36827423735` 在 Docker 前以 `FRESH_INSTALL_BASELINE_BLOCKED` 停止：canonical bytes 變更而 manifest 未同步；source CI `36827423772` alias guard 缺 `0135` 分類 FAIL。
+- 修正：`36f41fc` 補 alias／manifest pin 至正常 merge `955b109`（含同 SQL 祖先），exact counts 64 PASS；guards 未弱化。
+- 預防：派送前核對 pinned commit、SQL bytes／digest、來源 ancestry 與同 exact head 的 alias 分類，不能引用舊基線的本機結果。
+- 驗證：Source／bootstrap／LOCAL 全 SUCCESS；current native 36 cases、whole integration 804 PASS／3 skipped、E2E 23 PASS／3 skipped，cleanup 於 2026-10-01T07:28:50Z verified。獨立 final review 0 unresolved，僅批准 source prep；#719 的 final head `7a05bbcd` 已合併，merge/current main `701845e4783f9eb87a19e3b3da52f49018134ea9`。remote `0135` NOT_APPLIED／RPC absent，不宣稱 remote TEST／Production readiness 或驗收。 歷史 findings／counters 保留。
+
 ### PB-016 — 管線或後續命令的退出碼會蓋掉失敗，讓紅燈顯示成綠燈
 
 - 首次／最近：2026-09-07／2026-09-07
@@ -1018,6 +1026,17 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
   merge commit `cee68b7cebbe25cdccec9dfd4676d07283f55059`，main 回讀 PB-052 成功。
 - 狀態：已防止於 #586；後續開放 PR 沿用「merge 前 ACTIVE、merge 後 COMPLETE」。
 - 相關教訓：PB-021、PB-049。
+
+#### 2026-10-01 再發：#46／PR #719 的 preflight 漏驗 mergeability、alias 與 pin
+
+- 證據：`473050c` 因 Run JSON／Markdown merge conflict 未進 source CI，正常 merge `955b109` 解決；source CI `36827423772` alias guard 缺 `0135` 分類 FAIL；bootstrap `36827423735` 在 Docker 前因 canonical bytes 變更而 `FRESH_INSTALL_BASELINE_BLOCKED`。
+- 修正：正常 merge 保留 Run 歷史；`36f41fc` 補 alias／manifest pin `955b109`（含同 SQL 祖先），exact counts 64 PASS，guards 未弱化。
+- 預防：dispatch 前先確認 mergeability，再用同候選 head／pinned baseline 做 alias、manifest bytes／ancestry preflight；deterministic 失敗先修輸入，不 blind rerun。
+- 驗證：`d7de123` source CI `36828034389` SUCCESS，當時 native 尚未接受；後續 bootstrap `36828034375` FAILED（見下）。review `4152599457`：無關歷史／未來 ambiguous shift／departure 污染候選；`4152657882`：WEEKLY full_day 在 DST 25h 日漏封鎖最後一小時。Issue #46 同一 MAIN builder42 已將兩項 P2 修復 source freeze 至 `3074bbf`（SQL pin `d009399` 後同步 pin）；其後修正／驗證完成（見下）；不以 source freeze 或 CI 綠單獨當 semantic acceptance。既有 counters 不重寫。
+- 後續 caller coverage 缺口：bootstrap `36828034375` FAILED 僅 #46 suite admission（79 files PASS／1 skipped）；合法 LOCAL 環境為 `TEST_ENV_ID=local-schema-36828034375`、`LOCAL_PROJECT_ID=schema-proof-36828034375-1`、`TEST_PROFILE=LOCAL_ISOLATED`、loopback `54321`，但新 suite 只接受 PR pair，於 before hooks 拒絕，並非 DB bug。
+- Issue #46 同一 MAIN builder42 修正精確 workflow／run／attempt／project 匹配 admission；不接受 generic prefix 或 remote 豁免。預防：preflight 覆蓋真正 bootstrap caller 身分與 PR pair 的正反例，不只驗 PR pair。
+
+- 最終驗證：Source／bootstrap／LOCAL 全 SUCCESS；current native 36 cases、whole integration 804 PASS／3 skipped、E2E 23 PASS／3 skipped，cleanup 於 2026-10-01T07:28:50Z verified。獨立 final review 0 unresolved，僅批准 source prep；#719 的 final head `7a05bbcd` 已合併，merge/current main `701845e4783f9eb87a19e3b3da52f49018134ea9`。remote `0135` NOT_APPLIED／RPC absent，不宣稱 remote TEST／Production readiness 或驗收。
 
 ### PB-035 — 從欄位定義推斷「這筆 insert 會失敗」，卻沒查參與寫入的 trigger
 
