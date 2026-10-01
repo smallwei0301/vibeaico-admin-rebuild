@@ -19,9 +19,9 @@ describe('#11 公開行程詳情', () => {
   });
 
   it('詳情查詢只讀安全欄位，且同時限制 tenant、trip id、slug 與 PUBLISHED 狀態', () => {
-    const columns = loader.match(/const PUBLIC_TRIP_DETAILS_COLUMNS = \[([\s\S]*?)\] as const/);
+    const columns = loader.match(/\.select\('([^']+)'\)\s*\.eq\('tenant_id', shopData\.tenantId\)/);
     expect(columns, '找不到公開詳情 select 白名單').toBeTruthy();
-    expect(loader).toContain('.select(PUBLIC_TRIP_DETAILS_COLUMNS.join(\', \'))');
+    expect(columns?.[1]).toContain('cover_image_url');
     expect(loader).toContain(".eq('tenant_id', shopData.tenantId)");
     expect(loader).toContain(".eq('id', knownTrip.id)");
     expect(loader).toContain(".eq('slug', slug)");

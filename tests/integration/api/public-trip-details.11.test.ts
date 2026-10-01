@@ -202,6 +202,7 @@ describe('#11 公開行程詳情頁與 API', () => {
     expect(body).toContain('本頁每個方案最多列出 6 筆近期團次');
     expect(body).not.toContain(SECRET_REVIEW_NOTE);
     expect(body).not.toContain(UNSAFE_URL);
+    expect(body).not.toContain(SHOP_A.id);
   });
 
   it('公開 API 回報六筆顯示上限，並保留最早的有名額團次', async () => {

@@ -265,8 +265,8 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
           // Only the public LINE ID survives; encrypted channel credentials do not.
           lineBasicId: (settings?.line?.lineBasicId as string) ?? '',
           businessType: (tenantRow.business_type as string | null) ?? null,
-        } satisfies { tenantId: string; shop: PublicShop },
-      };
+        },
+      } satisfies { tenantId: string; shop: PublicShop };
     },
   );
   if (!tenantResult) return null;
@@ -441,12 +441,6 @@ function publicLines(value: unknown): string[] {
   return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
 }
 
-const PUBLIC_TRIP_DETAILS_COLUMNS = [
-  'id', 'slug', 'title', 'tagline', 'summary', 'description', 'region', 'category',
-  'location', 'cover_image_url', 'gallery', 'duration_hours', 'meeting_point',
-  'meeting_point_map_url', 'includes', 'exclusions', 'notices', 'notes',
-  'refund_policy_type',
-] as const;
 
 async function loadPublicTripDetailsUncached(
   shopCode: string,
@@ -463,7 +457,7 @@ async function loadPublicTripDetailsUncached(
   const admin = createAdminSupabase();
   const row = await mapPublicQueryResult(
     admin.from('trips')
-      .select(PUBLIC_TRIP_DETAILS_COLUMNS.join(', '))
+      .select('id, slug, title, tagline, summary, description, region, category, location, cover_image_url, gallery, duration_hours, meeting_point, meeting_point_map_url, includes, exclusions, notices, notes, refund_policy_type')
       .eq('tenant_id', shopData.tenantId)
       .eq('id', knownTrip.id)
       .eq('slug', slug)
