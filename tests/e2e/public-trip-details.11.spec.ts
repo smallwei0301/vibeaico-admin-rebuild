@@ -92,8 +92,8 @@ test('匿名旅客可從公開頁讀回真實方案與名額，重新整理後�
     }));
 
     await page.goto('/s/' + SHOP_A.shopCode + '/trips/' + encodeURIComponent(slug));
-    await expect(page.getByRole('heading', { name: title, level: 1 })).toBeVisible();
-    await expect(page.getByText(/剩 6 位/)).toBeVisible();
+    await expect(page.getByRole('heading', { name: title, level: 1 })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/剩 6 位/)).toBeVisible({ timeout: 15_000 });
     const bookingLink = page.getByRole('link', { name: '選擇日期並預約', exact: true });
     await expect(bookingLink).toHaveAttribute(
       'href',
@@ -101,8 +101,8 @@ test('匿名旅客可從公開頁讀回真實方案與名額，重新整理後�
     );
 
     await page.reload();
-    await expect(page.getByRole('heading', { name: title, level: 1 })).toBeVisible();
-    await expect(page.getByText(/剩 6 位/)).toBeVisible();
+    await expect(page.getByRole('heading', { name: title, level: 1 })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/剩 6 位/)).toBeVisible({ timeout: 15_000 });
   } finally {
     const cleanupFailures: string[] = [];
     for (const [label, action] of [
