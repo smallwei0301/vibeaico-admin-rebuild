@@ -40,7 +40,8 @@
       "scopeFiles": [
         "tests/integration/global-setup.ts",
         "scripts/test/_supabase-admin.mjs",
-        "scripts/ci/repo-integrity-guard.mjs", "scripts/ci/classify-changes.mjs"
+        "scripts/ci/repo-integrity-guard.mjs", "scripts/ci/classify-changes.mjs",
+        ".github/workflows/product-issue-close-guard.yml"
       ],
       "scopePrefixes": [
         ".agents/skills/",
