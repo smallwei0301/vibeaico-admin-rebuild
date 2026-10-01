@@ -664,12 +664,29 @@ it('#46 closure independently reads owned refund/seasonal parent prefixes and re
   for(const residue of [false,true]) {
     const seen:string[]=[];
     const fetchImpl=vi.fn(async(url:any,init:any)=>{
-      const parsed=new URL(url);expect(init.method).toBe('GET');expect(parsed.pathname).toBe('/rest/v1/trips');
-      const filter=parsed.searchParams.get('slug')!;seen.push(filter);
+      const parsed=new URL(url);expect(init.method).toBe('GET');expect(['/rest/v1/trips','/rest/v1/tour_orders']).toContain(parsed.pathname);
+      const filter=parsed.searchParams.get('slug') ?? parsed.searchParams.get('note')!;seen.push(filter);
       return new Response(JSON.stringify(residue&&filter==='like.refund-snapshot-46-%'?[{id:'leftover'}]:[]),{status:200});
     });
     const run=captureProductionDbTestCleanupEvidence({plan:{...plan([{repoFile:'0130_issue_46_refund_policy_snapshot',riskTier:'AUTHZ',sha256:'f'.repeat(64)}]),migrationScope:ISSUE_46_CLOSURE_COVERAGE.scope},testSupabaseUrl:TEST_URL,serviceRoleKey:'mock',sourceRunId:'123',sourceRunAttempt:1,fetchImpl});
     if(residue)await expect(run).rejects.toThrow(/TEST_CLEANUP_RESIDUE/);
-    else {expect((await run).residueCount).toBe(0);expect(seen).toEqual(['like.refund-snapshot-46-%','like.snapshot-42-%']);}
+    else {expect((await run).residueCount).toBe(0);expect(seen).toEqual(['like.request-accept-46-%','like.refund-snapshot-46-%','like.snapshot-42-%']);}
+  }
+});
+
+
+it('#46 closure REQUEST marker cleanup rejects residue and HTTP errors', async () => {
+  for(const outcome of ['residue','error']) {
+    const fetchImpl=vi.fn(async(url:any,init:any)=>{
+      const parsed=new URL(url);expect(init.method).toBe('GET');
+      if (parsed.pathname === '/rest/v1/tour_orders') {
+        expect(parsed.searchParams.get('note')).toBe('like.request-accept-46-%');
+        return new Response(JSON.stringify(outcome==='residue'?[{id:'leftover'}]:[]),{status:outcome==='error'?500:200});
+      }
+      expect(parsed.pathname).toBe('/rest/v1/trips');
+      expect(['like.refund-snapshot-46-%','like.snapshot-42-%']).toContain(parsed.searchParams.get('slug'));
+      return new Response('[]',{status:200});
+    });
+    await expect(captureProductionDbTestCleanupEvidence({plan:{...plan([{repoFile:'0111_issue_46_guide_request_accept',riskTier:'AUTHZ',sha256:'f'.repeat(64)}]),migrationScope:ISSUE_46_CLOSURE_COVERAGE.scope},testSupabaseUrl:TEST_URL,serviceRoleKey:'mock',sourceRunId:'123',sourceRunAttempt:1,fetchImpl})).rejects.toThrow(outcome==='residue'?'TEST_CLEANUP_RESIDUE':'TEST_CLEANUP_READ_FAILED');
   }
 });
