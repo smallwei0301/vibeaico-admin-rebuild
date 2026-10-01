@@ -20,13 +20,14 @@ function fail(code, message) {
   throw error;
 }
 
-/** @param {{plan?: any, report?: any, impactManifest?: any}} [input] */
-export function assembleProductionDbConsistencyEvidence({ plan, report, impactManifest } = {}) {
+/** @param {{plan?: any, report?: any, impactManifest?: any, observerBundle?: any}} [input] */
+export function assembleProductionDbConsistencyEvidence({ plan, report, impactManifest, observerBundle } = {}) {
   if (!plan || typeof plan !== 'object' || Array.isArray(plan)) fail('PLAN_REQUIRED', 'release plan is required');
   return buildProductionConsistencyEvidence({
     report,
     plan,
     impactManifest,
+    observerBundle,
     mainSha: plan.mainSha,
     planDigest: plan.planDigest,
   });
@@ -51,7 +52,7 @@ function main() {
   const [command, ...args] = process.argv.slice(2);
   try {
     if (command === 'consistency') {
-      const [planPath, reportPath, impactPath, outputPath] = args;
+      const [planPath, reportPath, impactPath, outputPath, bundleDirectory] = args;
       if (!planPath || !reportPath || !impactPath || !outputPath) {
         fail('USAGE', 'consistency <plan.json> <drift-report.json> <impact-manifest.json> <output.json>');
       }
@@ -59,6 +60,12 @@ function main() {
         plan: readJson(planPath),
         report: readJson(reportPath),
         impactManifest: readJson(impactPath),
+        observerBundle: bundleDirectory ? {
+          provenance: readJson(`${bundleDirectory}/provenance.json`),
+          expectedSnapshot: readJson(`${bundleDirectory}/expected.json`),
+          testSnapshot: readJson(`${bundleDirectory}/test.json`),
+          productionSnapshot: readJson(`${bundleDirectory}/production.json`),
+        } : undefined,
       }));
       return;
     }

@@ -160,6 +160,7 @@ jobs:
     with:
       expected_main_sha: ${{ inputs.expected_main_sha }}
       artifact_suffix: g2
+      collection_only: true
     secrets:
       SCHEMA_OBSERVER_TOKEN: ${{ secrets.SCHEMA_OBSERVER_TOKEN }}
 
@@ -293,7 +294,8 @@ jobs:
             "$RUNNER_TEMP/g3/production-db-release-plan.json" \
             "$RUNNER_TEMP/g2/report.json" \
             supabase/production-db-impact-manifest.json \
-            "$RUNNER_TEMP/production-db-consistency-evidence.json"
+            "$RUNNER_TEMP/production-db-consistency-evidence.json" \
+            "$RUNNER_TEMP/g2"
 
       - name: Assemble G4 RECOVERY_VERIFIED
         shell: bash

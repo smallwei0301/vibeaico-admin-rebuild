@@ -209,6 +209,10 @@
         {
           "surface": "acl",
           "objectKey": "function:public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)"
         }
       ]
     },
@@ -254,6 +258,10 @@
         {
           "surface": "acl",
           "objectKey": "function:public.reject_tour_request(p_tenant uuid, p_order uuid, p_reason text)"
+        },
+        {
+          "surface": "acl",
+          "objectKey": "function:public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)"
         }
       ]
     },
@@ -1127,6 +1135,145 @@
         {
           "surface": "acl",
           "objectKey": "function:public.guide_staff_interval_available(p_tenant uuid, p_staff uuid, p_start timestamp with time zone, p_end timestamp with time zone)"
+        }
+      ]
+    },
+    {
+      "repoFile": "0128_issue_42_plan_seasonal_pricing",
+      "impacts": [
+        {
+          "surface": "columns",
+          "objectKey": "public.trip_plan_seasons.id"
+        },
+        {
+          "surface": "columns",
+          "objectKey": "public.trip_plan_seasons.tenant_id"
+        },
+        {
+          "surface": "columns",
+          "objectKey": "public.trip_plan_seasons.plan_id"
+        },
+        {
+          "surface": "columns",
+          "objectKey": "public.trip_plan_seasons.name"
+        },
+        {
+          "surface": "columns",
+          "objectKey": "public.trip_plan_seasons.start_month"
+        },
+        {
+          "surface": "columns",
+          "objectKey": "public.trip_plan_seasons.start_day"
+        },
+        {
+          "surface": "columns",
+          "objectKey": "public.trip_plan_seasons.end_month"
+        },
+        {
+          "surface": "columns",
+          "objectKey": "public.trip_plan_seasons.end_day"
+        },
+        {
+          "surface": "columns",
+          "objectKey": "public.trip_plan_seasons.price_override"
+        },
+        {
+          "surface": "columns",
+          "objectKey": "public.trip_plan_seasons.active"
+        },
+        {
+          "surface": "columns",
+          "objectKey": "public.trip_plan_seasons.sort_order"
+        },
+        {
+          "surface": "columns",
+          "objectKey": "public.trip_plan_seasons.created_at"
+        },
+        {
+          "surface": "columns",
+          "objectKey": "public.trip_plan_seasons.updated_at"
+        },
+        {
+          "surface": "constraints",
+          "objectKey": "public.trip_plan_seasons.trip_plan_seasons_pkey"
+        },
+        {
+          "surface": "constraints",
+          "objectKey": "public.trip_plan_seasons.trip_plan_seasons_tenant_fkey"
+        },
+        {
+          "surface": "constraints",
+          "objectKey": "public.trip_plan_seasons.trip_plan_seasons_tenant_plan_fkey"
+        },
+        {
+          "surface": "constraints",
+          "objectKey": "public.trip_plan_seasons.trip_plan_seasons_name_nonblank_check"
+        },
+        {
+          "surface": "constraints",
+          "objectKey": "public.trip_plan_seasons.trip_plan_seasons_start_date_valid_check"
+        },
+        {
+          "surface": "constraints",
+          "objectKey": "public.trip_plan_seasons.trip_plan_seasons_end_date_valid_check"
+        },
+        {
+          "surface": "constraints",
+          "objectKey": "public.trip_plan_seasons.trip_plan_seasons_price_override_nonnegative_check"
+        },
+        {
+          "surface": "indexes",
+          "objectKey": "public.trip_plan_seasons.trip_plan_seasons_pkey"
+        },
+        {
+          "surface": "indexes",
+          "objectKey": "public.trip_plan_seasons.trip_plan_seasons_tenant_plan_sort_idx"
+        },
+        {
+          "surface": "triggers",
+          "objectKey": "public.trip_plan_seasons.t_trip_plan_seasons_u"
+        },
+        {
+          "surface": "policies",
+          "objectKey": "public.trip_plan_seasons.p_trip_plan_seasons_select"
+        },
+        {
+          "surface": "acl",
+          "objectKey": "table:public.trip_plan_seasons"
+        }
+      ]
+    },
+    {
+      "repoFile": "0130_issue_46_refund_policy_snapshot",
+      "impacts": [
+        {
+          "surface": "columns",
+          "objectKey": "public.tour_orders.refund_policy_snapshot"
+        },
+        {
+          "surface": "constraints",
+          "objectKey": "public.tour_orders.tour_orders_refund_policy_snapshot_check"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)"
+        },
+        {
+          "surface": "acl",
+          "objectKey": "function:public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)"
+        }
+      ]
+    },
+    {
+      "repoFile": "0132_issue_42_seasonal_price_resolution",
+      "impacts": [
+        {
+          "surface": "routines",
+          "objectKey": "public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)"
+        },
+        {
+          "surface": "acl",
+          "objectKey": "function:public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)"
         }
       ]
     }

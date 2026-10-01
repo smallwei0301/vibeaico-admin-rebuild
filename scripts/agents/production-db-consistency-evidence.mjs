@@ -1,3 +1,4 @@
+import { FINALWRITER_SCOPE, reconcileFinalwriterConsistency } from './production-db-finalwriter-consistency.46.mjs';
 import { createHash } from 'node:crypto';
 
 import { normalizeProductionDbImpactManifest } from './production-db-impact-manifest.mjs';
@@ -53,7 +54,12 @@ function plannedProductionDifferences({ report, plan, impactManifest }) {
   return pending;
 }
 
-export function buildProductionConsistencyEvidence({ report, plan, impactManifest, mainSha, planDigest }) {
+/** @param {{report:any, plan:any, impactManifest:any, mainSha:string, planDigest:string, observerBundle?:any}} input */
+export function buildProductionConsistencyEvidence({ report, plan, impactManifest, mainSha, planDigest, observerBundle }) {
+  if (plan?.migrationScope === FINALWRITER_SCOPE) {
+    if (plan.mainSha !== mainSha || plan.planDigest !== planDigest) fail('CONSISTENCY_PLAN_MISMATCH', 'selected main / plan digest differs');
+    return reconcileFinalwriterConsistency({ plan, report, impactManifest, observerBundle });
+  }
   if (!report || report.observedMainSha !== mainSha) fail('CONSISTENCY_MAIN_MISMATCH', 'drift report is not for the selected main SHA');
   if (!plan || plan.mainSha !== mainSha || plan.planDigest !== planDigest) fail('CONSISTENCY_PLAN_MISMATCH', 'release plan is not the selected main SHA / plan digest');
   if (report.safety?.authorizesDatabaseWrite !== false) fail('OBSERVER_SCOPE_ESCALATION', 'drift observer must stay read-only');

@@ -75,6 +75,12 @@ function restore(overrides: Record<string, unknown> = {}) {
 }
 
 describe('Production DB release evidence assembler #447', () => {
+  it('fails closed for seven scope without the full observer artifact instead of accepting report-only MATCH', () => {
+    expect(() => assembleProductionDbConsistencyEvidence({
+      plan: { ...plan(), migrationScope: 'ISSUE_46_0110_0135_CLOSURE' },
+      report: report(), impactManifest,
+    })).toThrow(/FINALWRITER_PACKETS_REQUIRED/);
+  });
   it('assembles G2 and G4 without inventing write authorization', () => {
     const lockedPlan = plan();
     expect(assembleProductionDbConsistencyEvidence({

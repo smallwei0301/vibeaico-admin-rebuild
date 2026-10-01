@@ -109,12 +109,12 @@ describe('#589 Stage 1 production impact manifest', () => {
     const normalized = normalizeProductionDbImpactManifest(manifest) as Manifest;
     const inventory = normalized.entries.filter((entry) => planFiles.includes(entry.repoFile));
     const inventoryDigest = createHash('sha256').update(JSON.stringify(inventory)).digest('hex');
-    expect(inventoryDigest).toBe('3b5b129ea1c4b2af321a6cc7ba82ceb4536e4744f7e3b0012957cfd4e219aa7a');
+    expect(inventoryDigest).toBe('615e48dc903fd26b19c59e6ec47e22f1af50d652dd4e43fe704771f24e55b50a');
 
     const functionAclKeys = inventory.flatMap((entry) => entry.impacts)
       .filter((impact) => impact.surface === 'acl' && impact.objectKey.startsWith('function:'))
       .map((impact) => impact.objectKey).sort();
-    expect(functionAclKeys).toEqual(functionAclIdentities.map((identity) => `function:${identity}`));
+    expect([...new Set(functionAclKeys)]).toEqual(functionAclIdentities.map((identity) => `function:${identity}`));
 
     const functions = functionAclIdentities.map((identity) => {
       const match = /^public\.([^()]+)\((.*)\)$/.exec(identity)!;
@@ -137,14 +137,18 @@ describe('#589 Stage 1 production impact manifest', () => {
       .not.toContain('table:public.owner_notify_recipients');
     expect(byFile.get('0127_issue_589_authz_constraint_reconciliation')!.impacts.map((impact) => impact.objectKey))
       .toContain('table:public.owner_notify_recipients');
-    expect(byFile.get('0110_issue_42_plan_duration_pricetype_yearround')!.impacts.map((impact) => impact.objectKey))
-      .not.toContain('public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)');
+    expect(byFile.get('0110_issue_42_plan_duration_pricetype_yearround')!.impacts.filter((impact) => impact.surface === 'routines').map((impact) => impact.objectKey))
+      .toContain('public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)');
 
     const duplicate: Manifest = structuredClone(manifest);
-    duplicate.entries.find((entry) => entry.repoFile === '0110_issue_42_plan_duration_pricetype_yearround')!.impacts.push({
+    duplicate.entries.find((entry) => entry.repoFile === '0115_issue_21_external_calendars')!.impacts.push({
       surface: 'routines', objectKey: 'public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)',
     });
     expect(() => buildProductionConsistencyEvidence({ report: report(), plan, impactManifest: duplicate, mainSha: plan.mainSha, planDigest: plan.planDigest }))
       .toThrow(/AMBIGUOUS_IMPACT_OWNERSHIP/);
+    const repeated: Manifest = structuredClone(manifest);
+    const writer = repeated.entries.find((entry) => entry.repoFile === '0110_issue_42_plan_duration_pricetype_yearround')!;
+    writer.impacts.push({ ...writer.impacts.find((impact) => impact.surface === 'routines')! });
+    expect(() => normalizeProductionDbImpactManifest(repeated)).toThrow(/DUPLICATE_IMPACT_OBJECT/);
   });
 });

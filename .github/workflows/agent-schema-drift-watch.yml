@@ -6,6 +6,11 @@ name: agent-schema-drift-watch
         description: Exact current main SHA to observe
         required: true
         type: string
+      collection_only:
+        description: Preserve blocked raw report for strict downstream reconciliation; never verifies G2
+        required: false
+        default: false
+        type: boolean
       artifact_suffix:
         description: Distinguish pre/post release evidence artifacts
         required: false
@@ -17,6 +22,11 @@ name: agent-schema-drift-watch
         description: Exact current main SHA to observe
         required: true
         type: string
+      collection_only:
+        description: Preserve blocked raw report for strict downstream reconciliation; never verifies G2
+        required: false
+        default: false
+        type: boolean
       artifact_suffix:
         description: Distinguish pre/post release evidence artifacts
         required: false
@@ -36,6 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
+      ARTIFACT_SUFFIX: ${{ inputs.artifact_suffix }}
       EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
       EXPECTED_HEAD: ${{ inputs.expected_main_sha }}
       TEST_PROFILE: SOURCE_ONLY
@@ -64,11 +75,13 @@ jobs:
           test -n "$SCHEMA_OBSERVER_TOKEN"
           test -z "${SUPABASE_ACCESS_TOKEN:-}"
       - name: Build and replay a disposable canonical local database
+        id: fresh_replay
         run: |
           node scripts/agents/fresh-install-baseline.mjs "$RUNNER_TEMP/schema-bootstrap"
           cd "$RUNNER_TEMP/schema-bootstrap"
           supabase start -x studio,postgres-meta,edge-runtime,logflare,vector,supavisor
       - name: Capture local expected metadata without saving raw SQL
+        id: local_capture
         run: |
           (cd "$RUNNER_TEMP/schema-bootstrap" && supabase status --output json) >"$RUNNER_TEMP/local-supabase-status.json"
           node --input-type=module >"$RUNNER_TEMP/local-raw.json" <<'NODE'
@@ -81,6 +94,7 @@ jobs:
           NODE
           node scripts/agents/schema-drift-watch.mjs --command normalize --environment LOCAL_EXPECTED --project-ref local-fresh --current-main-sha "$EXPECTED_MAIN_SHA" --raw-json "$RUNNER_TEMP/local-raw.json" --json-out "$RUNNER_TEMP/expected.json"
       - name: Capture TEST and Production through read-only API only
+        id: remote_capture
         env:
           SCHEMA_OBSERVER_TOKEN: ${{ secrets.SCHEMA_OBSERVER_TOKEN }}
           NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/config/supabase-production-root-bundle.crt
@@ -89,9 +103,42 @@ jobs:
           test -s "$NODE_EXTRA_CA_CERTS"
           node scripts/agents/schema-drift-watch.mjs --command capture --environment TEST --current-main-sha "$EXPECTED_MAIN_SHA" --json-out "$RUNNER_TEMP/test.json"
           node scripts/agents/schema-drift-watch.mjs --command capture --environment PRODUCTION --current-main-sha "$EXPECTED_MAIN_SHA" --json-out "$RUNNER_TEMP/production.json"
-      - name: Compare exact object fingerprints and fail closed
+      - name: Compare exact object fingerprints and preserve raw classification
+        env:
+          COLLECTION_ONLY: ${{ inputs.collection_only }}
         run: |
+          set +e
           node scripts/agents/schema-drift-watch.mjs --command compare --expected-snapshot "$RUNNER_TEMP/expected.json" --test-snapshot "$RUNNER_TEMP/test.json" --production-snapshot "$RUNNER_TEMP/production.json" --current-main-sha "$EXPECTED_MAIN_SHA" --exceptions docs/schema-truth/schema-drift-exceptions.json --json-out "$RUNNER_TEMP/report.json"
+          comparison_exit=$?
+          set -e
+          if test "$comparison_exit" -ne 0; then
+            test "$COLLECTION_ONLY" = true
+            test "$comparison_exit" -eq 2
+            node --input-type=module -e "import fs from 'node:fs'; const r=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/report.json')); if(r.status!=='DRIFT_BLOCKED') throw new Error('OBSERVER_COLLECTION_UNAVAILABLE');"
+          fi
+      - name: Bind full hashed packets to trusted-main fresh replay and this run
+        env:
+          FRESH_REPLAY_OUTCOME: ${{ steps.fresh_replay.outcome }}
+          LOCAL_CAPTURE_OUTCOME: ${{ steps.local_capture.outcome }}
+          REMOTE_CAPTURE_OUTCOME: ${{ steps.remote_capture.outcome }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          import { createHash } from 'node:crypto';
+          import { stableStringify } from './scripts/agents/schema-truth-evidence.mjs';
+          const digest = (value) => createHash('sha256').update(stableStringify(value)).digest('hex');
+          const sqlDigest = (value) => createHash('sha256').update(value).digest('hex');
+          const git = (...args) => execFileSync('git', args, {encoding:'utf8'});
+          const main = process.env.EXPECTED_MAIN_SHA;
+          if (git('rev-parse','HEAD').trim() !== main || git('ls-remote','origin','refs/heads/main').split(/\s+/)[0] !== main) throw new Error('CURRENT_MAIN_REQUIRED');
+          const canonical = git('ls-tree','--name-only',`${main}:supabase/migrations`).trim().split('\n').sort().map(name=>({name,digest:sqlDigest(git('show',`${main}:supabase/migrations/${name}`))}));
+          const outcomes = {freshReplay:process.env.FRESH_REPLAY_OUTCOME,localCapture:process.env.LOCAL_CAPTURE_OUTCOME,remoteCapture:process.env.REMOTE_CAPTURE_OUTCOME};
+          if(Object.values(outcomes).some(value=>value!=='success')) throw new Error('FRESH_REPLAY_CAPTURE_NOT_SUCCESSFUL');
+          const freshReplayEvidence = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/schema-bootstrap/candidate.json`,'utf8'));
+          const packetDigests = Object.fromEntries(Object.entries({expectedSnapshot:'expected',testSnapshot:'test',productionSnapshot:'production',report:'report'}).map(([key,file])=>[key,digest(JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/${file}.json`,'utf8')))]));
+          fs.writeFileSync(`${process.env.RUNNER_TEMP}/provenance.json`, JSON.stringify({schemaVersion:1,repository:process.env.GITHUB_REPOSITORY,mainSha:main,ref:process.env.GITHUB_REF,runId:process.env.GITHUB_RUN_ID,runAttempt:process.env.GITHUB_RUN_ATTEMPT,producer:'.github/workflows/agent-schema-drift-watch.yml',artifactSuffix:process.env.ARTIFACT_SUFFIX,replay:'TRUSTED_MAIN_FRESH_INSTALL_BASELINE',outcomes,freshReplayEvidence,localProjectId:process.env.LOCAL_PROJECT_ID,canonicalSourceDigest:digest(canonical),packetDigests,databaseMutationAuthorized:false}));
+          NODE
       - name: Emit sanitized drift report summary
         if: ${{ always() }}
         run: |
@@ -105,7 +152,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: schema-drift-report-${{ github.run_id }}-${{ inputs.artifact_suffix }}
-          path: ${{ runner.temp }}/report.json
+          path: |
+            ${{ runner.temp }}/report.json
+            ${{ runner.temp }}/expected.json
+            ${{ runner.temp }}/test.json
+            ${{ runner.temp }}/production.json
+            ${{ runner.temp }}/provenance.json
           if-no-files-found: warn
           retention-days: 14
       - name: Destroy disposable local database
