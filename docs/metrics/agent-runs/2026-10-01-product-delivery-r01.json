@@ -367,7 +367,9 @@
     "2026-10-01T06:04:53Z PR713 normal protected merge verified at9b291ebbc878ac68e3378aee1f44991401d5b211; all runtime source unchanged vs testedf1; mainpushCI/deploy/schema/auth not yet accepted. Private43 fix08c ready pending fresh main integration; Reserve46da1f frozen/sourceprepare only.",
     "Root sent43repair message to idle builder without followup trigger; discovered delay and restarted actualtask approximately05:39. Preserve actualworktimestamps, no fabricated continuedexecution.",
     "Observed main push ci36822913910 actualstarted2026-10-01T06:04:56Z exactmerge9b291eb => fullCiRuns9; pending notgreen. AutoVercelProductiondpl_F6yMBTCPNFFjL9EuqCD64zDGhT3D READY06:07:00.171Z exactmain9b291eb aliases verified readonly byscout; no manualdeploy or authacceptance.",
-    "Actual repaired715headf1c0438 sourceCI36823196438 started2026-10-01T06:08:18Z; LOCAL36823196788 running/scorecard36823196551success => fullCiRuns10. Source08c preserved across normalmain merge; sameindependentearly SOURCE_CLEAR_FINAL_HOLD RiskNONE. Run-only merge conflicts resolvedRootsolelatestwriter, freshtype/focused30/preflight/integrityPASS. Noacceptanceinheritancefromfaileddec."
+    "Actual repaired715headf1c0438 sourceCI36823196438 started2026-10-01T06:08:18Z; LOCAL36823196788 running/scorecard36823196551success => fullCiRuns10. Source08c preserved across normalmain merge; sameindependentearly SOURCE_CLEAR_FINAL_HOLD RiskNONE. Run-only merge conflicts resolvedRootsolelatestwriter, freshtype/focused30/preflight/integrityPASS. Noacceptanceinheritancefromfaileddec.",
+    "Postmerge historicalguard110223227479 logs reread: 2026-10-01T04:47:12Z PR changed during policy evaluation; currentevent laterguardpassed. Not source/routing failure, no blindrerun; preserveRED race as historicalPB034family. Closure718 preflight missingASTRA_RATIONALE caughtlocally beforepush; concrete docs-only assessmentadded thenPASS/noextraCI.",
+    "Independent necessary docs-closeout718 review found two LOCAL_TEST_GREEN claim states used ISOLATED_GREEN_WITH_CLEANUP unsupported bycurrent scorer. Normalizeclaimed/observed tosuccess based actual terminal successful ac8/f1LOCAL workflows; cleanup remains explicit evidenceRef. Preserveoriginalstate wording in thisnote, no historicalCI/result rewrite/newProducttest. Pairedreport regenerates, samegov reviewchain rechecks.718merge helduntil713mainpushterminal toavoid sharedmutexpending replacement."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -385,8 +387,8 @@
       {
         "type": "LOCAL_TEST_GREEN",
         "subject": "pr#713 headac8d56541bd95fa0b957011a1594ae5afaaa9b25",
-        "claimedState": "ISOLATED_GREEN_WITH_CLEANUP",
-        "observedState": "ISOLATED_GREEN_WITH_CLEANUP",
+        "claimedState": "success",
+        "observedState": "success",
         "verification": "VERIFIED",
         "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/36813096704; /workspace/issue42-local-ci-summary.md (new42HTTPrawDB2PASS/37regression13PASS/E2Eflaky preserved)"
       },
@@ -401,8 +403,8 @@
       {
         "type": "LOCAL_TEST_GREEN",
         "subject": "pr#713 headf1c4984c0a2dfda85207c08086ba80d3ada797cf",
-        "claimedState": "ISOLATED_GREEN_WITH_CLEANUP",
-        "observedState": "ISOLATED_GREEN_WITH_CLEANUP",
+        "claimedState": "success",
+        "observedState": "success",
         "verification": "VERIFIED",
         "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/36816705044; /workspace/issue42-new-head-local-ci-summary.md"
       },

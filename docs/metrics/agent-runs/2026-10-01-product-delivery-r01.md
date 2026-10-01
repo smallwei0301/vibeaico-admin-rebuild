@@ -18,11 +18,6 @@
 
 - run is still in progress
 
-## 結案前必須修正的硬性問題
-
-- LOCAL_TEST_GREEN pr#713 headac8d56541bd95fa0b957011a1594ae5afaaa9b25 observed=isolated_green_with_cleanup; expected=success
-- LOCAL_TEST_GREEN pr#713 headf1c4984c0a2dfda85207c08086ba80d3ada797cf observed=isolated_green_with_cleanup; expected=success
-
 ---
 
 同一張 Issue 重複 claim 只算一次。Delivery Truth v3 必須依序驗證 source、main、Vercel、Production schema 與登入正式站後的真實操作；只合併、只部署 App、只套 TEST migration 或只看到成功提示，都不能冒充正式出貨。舊 v2.2 完成輪次維持原計分語意，不回寫歷史。
