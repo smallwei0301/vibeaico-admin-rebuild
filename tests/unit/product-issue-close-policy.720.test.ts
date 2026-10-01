@@ -30,10 +30,12 @@ function readyComment(overrides: Record<string, string> = {}) {
     observedAt: '2026-10-01T00:45:00Z',
     writerBlocker: 'ledger on protected main',
     nextSafeWritePath: 'capture ISSUE_CLOSED after trusted close',
+    closeApprovedRef: 'github:issuecomment#9001',
     ...overrides,
   };
   return {
     created_at: '2026-10-01T00:46:00Z',
+    updated_at: '2026-10-01T00:46:00Z',
     trusted: true,
     body: `RUN_CAPTURE_HANDOFF
 RUN_ID: ${values.runId}
@@ -41,7 +43,7 @@ EVENT: ${values.event}
 EVIDENCE_REF: ${values.evidenceRef}
 OBSERVED_AT: ${values.observedAt}
 WRITER_BLOCKER: ${values.writerBlocker}
-NEXT_SAFE_WRITE_PATH: ${values.nextSafeWritePath}`,
+NEXT_SAFE_WRITE_PATH: ${values.nextSafeWritePath}\nCLOSE_APPROVED_REF: ${values.closeApprovedRef}`,
   };
 }
 
@@ -50,8 +52,18 @@ const verifiedCi = {
   name: 'ci',
   event: 'push',
   conclusion: 'success',
-  headSha: 'b'.repeat(40),
+  headSha: main,
+  workflowPath: '.github/workflows/ci.yml',
+};
+
+const verifiedCloseApproval = {
+  commentId: 9001,
+  role: 'SOL',
+  verdict: 'CLOSE_APPROVED',
+  exactHead: 'b'.repeat(40),
   reachableFromCurrentMain: true,
+  trusted: true,
+  beforeClose: true,
 };
 
 const verifiedRun = {
@@ -100,6 +112,7 @@ describe('#720 executable Product Issue close gate', () => {
       comments: [readyComment()],
       verifiedCi,
       verifiedRun,
+      verifiedCloseApproval,
     });
     expect(result.allowed).toBe(false);
     expect(result.errors.join('\n')).toContain('#706');
@@ -116,11 +129,12 @@ describe('#720 executable Product Issue close gate', () => {
       currentMainSha: main,
       openPullRequests: [],
       comments: [readyComment()],
-      verifiedCi: { ...verifiedCi, conclusion: 'failure', reachableFromCurrentMain: false },
+      verifiedCi: { ...verifiedCi, conclusion: 'failure', headSha: 'c'.repeat(40) },
       verifiedRun,
+      verifiedCloseApproval,
     });
     expect(result.errors.join('\n')).toContain('conclude success');
-    expect(result.errors.join('\n')).toContain('not reachable');
+    expect(result.errors.join('\n')).toContain('current main exact head');
   });
 
   it('rejects untrusted or post-close handoff comments even when their body looks valid', () => {
@@ -145,6 +159,7 @@ describe('#720 executable Product Issue close gate', () => {
       comments: [afterClose],
       verifiedCi,
       verifiedRun,
+      verifiedCloseApproval,
     });
     expect(late.allowed).toBe(false);
     expect(late.errors.join('\n')).toContain('created before');
@@ -158,6 +173,7 @@ describe('#720 executable Product Issue close gate', () => {
       comments: [readyComment()],
       verifiedCi,
       verifiedRun: null,
+      verifiedCloseApproval,
     });
     expect(missing.errors.join('\n')).toContain('not verified against current-main Product Run');
 
@@ -174,6 +190,7 @@ describe('#720 executable Product Issue close gate', () => {
         sources: [{ ref: 'issue/999' }],
         closeout: { state: 'CLOSED', ownerRole: 'PRODUCT_MAIN_SESSION' },
       },
+      verifiedCloseApproval,
     });
     expect(wrong.errors.join('\n')).toContain('differs from verified Product Run');
     expect(wrong.errors.join('\n')).toContain('active Product Run');
@@ -203,9 +220,78 @@ describe('#720 executable Product Issue close gate', () => {
       comments: [readyComment()],
       verifiedCi,
       verifiedRun,
+      verifiedCloseApproval,
     });
     expect(result.allowed).toBe(true);
     expect(result.runId).toBe('2026-10-01-product-r01');
+  });
+
+  it('fails closed for invalid/unclassified Issue workstream and only bypasses explicit governance', () => {
+    const invalid = evaluateProductIssueClose({
+      issue: issue({ body: 'no workstream here', labels: [] }),
+      currentMainSha: main,
+      openPullRequests: [],
+      comments: [],
+    });
+    expect(invalid.applicable).toBe(true);
+    expect(invalid.allowed).toBe(false);
+    expect(invalid.errors.join('\n')).toContain('classification');
+
+    const governance = evaluateProductIssueClose({
+      issue: issue({ body: 'WORKSTREAM: MODEL_GOVERNANCE', labels: [{ name: 'workstream:model-governance' }] }),
+      currentMainSha: main,
+    });
+    expect(governance.applicable).toBe(false);
+    expect(governance.allowed).toBe(true);
+  });
+
+  it('rejects close-ready comments edited after close', () => {
+    const edited = readyComment() as any;
+    edited.updated_at = '2026-10-01T01:01:00Z';
+    const result = evaluateProductIssueClose({
+      issue: issue(),
+      currentMainSha: main,
+      comments: [edited],
+      verifiedCi,
+      verifiedRun,
+      verifiedCloseApproval,
+    });
+    expect(result.allowed).toBe(false);
+    expect(result.errors.join('\n')).toContain('edited after');
+  });
+
+  it('requires trusted final Sol CLOSE_APPROVED and current-main exact canonical ci', () => {
+    const noSol = evaluateProductIssueClose({
+      issue: issue(),
+      currentMainSha: main,
+      comments: [readyComment()],
+      verifiedCi,
+      verifiedRun,
+      verifiedCloseApproval: null,
+    });
+    expect(noSol.allowed).toBe(false);
+    expect(noSol.errors.join('\n')).toContain('CLOSE_APPROVED_REF');
+
+    const staleCi = evaluateProductIssueClose({
+      issue: issue(),
+      currentMainSha: main,
+      comments: [readyComment()],
+      verifiedCi: { ...verifiedCi, headSha: 'c'.repeat(40) },
+      verifiedRun,
+      verifiedCloseApproval,
+    });
+    expect(staleCi.allowed).toBe(false);
+    expect(staleCi.errors.join('\n')).toContain('current main exact head');
+
+    const wrongPath = evaluateProductIssueClose({
+      issue: issue(),
+      currentMainSha: main,
+      comments: [readyComment()],
+      verifiedCi: { ...verifiedCi, workflowPath: '.github/workflows/not-ci.yml' },
+      verifiedRun,
+      verifiedCloseApproval,
+    });
+    expect(wrongPath.errors.join('\n')).toContain('.github/workflows/ci.yml');
   });
 
   it('emits a durable ISSUE_CLOSED_OBSERVED handoff for owning-run reconciliation', () => {
