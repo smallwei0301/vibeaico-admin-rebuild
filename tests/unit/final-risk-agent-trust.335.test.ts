@@ -38,24 +38,25 @@ const review = (user: Record<string, unknown> = BOT, patch = {}, record = {}) =>
 const current = { number: 330, changed_files: 2, body: BODY, base: { sha: 'c'.repeat(40) }, head: { sha: 'd'.repeat(40) } };
 const context = { repository: 'smallwei0301/vibeaico-admin-rebuild', baseSha: current.base.sha, headSha: current.head.sha, changeDigest: DIGEST, policyVersion: routing.version, testBaseline: TEST, schemaBaseline: SCHEMA };
 // Synthetic role execution and canonical read-back records, not real served identities.
-const role = (kind: 'BUILD' | 'REVIEW', headSha = current.head.sha) => ({ role: kind,
+const role = (kind: 'BUILD' | 'REVIEW', headSha = 'b'.repeat(40)) => ({ role: kind,
   repository: context.repository, headSha, changeDigest: DIGEST,
   sourceRef: `https://github.com/${context.repository}/pull/330#issuecomment-${kind === 'BUILD' ? 101 : 102}`,
   actorId: `fixture-${kind}-actor`, sessionId: `fixture-${kind}-session`, executionRef: `fixture-${kind}-execution`,
   startedAt: '2026-09-10T02:58:00Z', completedAt: '2026-09-10T02:59:00Z',
   freshContext: kind === 'REVIEW', executionEvidence: 'OPERATOR_ATTESTED' });
-const roleContext = (headSha = current.head.sha) => ({ ...context, headSha,
+const roleContext = (headSha = 'b'.repeat(40)) => ({ ...context, headSha,
   roleEvidence: { trusted: true, builder: { ...role('BUILD', headSha), completedAt: '2026-09-10T02:58:00Z' }, reviewer: role('REVIEW', headSha) } });
 const changedFiles = FILES.map(f => f.filename);
 
-const githubFor = (reviews: unknown[], permission = 'read') => {
+const githubFor = (reviews: unknown[], permission = 'read', rolePatch: Record<string, unknown> = {},
+  updatedAt = '2026-09-10T02:59:30Z', foreignSource = false) => {
   const listFiles = vi.fn(), listReviews = vi.fn();
   const getCollaboratorPermissionLevel = vi.fn(async () => ({ data: { permission } }));
   const paginate = vi.fn(async (fn: unknown) => fn === listFiles ? FILES : fn === listReviews ? reviews : Promise.reject(new Error('unexpected paginate target')));
   const getComment = vi.fn(async ({ comment_id }: { comment_id: number }) => {
     const receipt = comment_id === 101 ? roleContext().roleEvidence.builder : roleContext().roleEvidence.reviewer;
-    return { data: { html_url: receipt.sourceRef, user: BOT, updated_at: '2026-09-10T02:59:30Z',
-      body: '```agent-role-execution\n' + JSON.stringify(receipt) + '\n```' } };
+    return { data: { html_url: foreignSource ? 'https://github.com/foreign/repo/issues/1#issuecomment-101' : receipt.sourceRef, user: BOT, updated_at: updatedAt,
+      body: '```agent-role-execution\n' + JSON.stringify({ ...receipt, ...rolePatch }) + '\n```' } };
   });
   return { github: { paginate, rest: { pulls: { listFiles, listReviews }, issues: { getComment }, repos: { getCollaboratorPermissionLevel } } }, getCollaboratorPermissionLevel };
 };
@@ -106,8 +107,42 @@ describe('Final Risk trusted Agent identity (#335)', () => {
     expect(evaluateAstra({ body: BODY, changedFiles, context: self, reviews: [trusted()] }).status).toBe('ASTRA_PENDING');
   });
 
+  it('carries original trusted role comments across a real pure rebase without editing them', async () => {
+    const { github } = githubFor([review()]);
+    const result = await evaluateGithubAstra({ github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild',
+      current: { ...current, head: { sha: 'f'.repeat(40) }, base: { sha: 'e'.repeat(40) } } });
+    expect(result.status).toBe('ASTRA_APPROVED');
+  });
+
+  it('rejects carry when canonical commit and attested head disagree', async () => {
+    const { github } = githubFor([review(BOT, {}, { commit_id: 'f'.repeat(40) })]);
+    expect((await evaluateGithubAstra({ github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', current })).status).toBe('ASTRA_PENDING');
+  });
+
+  it.each([
+    [{ headSha: 'f'.repeat(40) }, '2026-09-10T02:59:30Z', false],
+    [{ actorId: 'same-actor' }, '2026-09-10T02:59:30Z', false],
+    [{ freshContext: false }, '2026-09-10T02:59:30Z', false],
+    [{}, '2026-09-10T03:00:01Z', false],
+    [{}, '2026-09-10T02:59:30Z', true],
+  ] as const)('rejects rewritten/self-reviewed/edited/foreign carry receipts %j', async (patch, updated, foreign) => {
+    const { github } = githubFor([review()], 'read', patch, updated, foreign);
+    expect((await evaluateGithubAstra({ github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', current })).status).toBe('ASTRA_PENDING');
+  });
+
+  it('rejects changed current digest/policy/test/schema and a newer canonical finding', () => {
+    const original = roleContext();
+    for (const key of ['changeDigest', 'policyVersion', 'testBaseline', 'schemaBaseline']) {
+      expect(evaluateAstra({ body: BODY, changedFiles, context: { ...original, headSha: 'f'.repeat(40), [key]: 'changed-baseline' }, reviews: [trusted()] }).status).toBe('ASTRA_PENDING');
+    }
+    expect(evaluateAstra({ body: BODY, changedFiles, context: { ...original, headSha: 'f'.repeat(40) },
+      reviews: [trusted(), trusted({ verdict: 'FAIL' }, { id: 11, state: 'CHANGES_REQUESTED', submitted_at: '2026-09-10T03:01:00Z' })] }).status).toBe('ASTRA_PENDING');
+  });
+
   it('reuses Final Risk after pure rebase when digest and reviewed baseline are unchanged', () => {
-    const rebased = { ...roleContext('f'.repeat(40)), baseSha: 'e'.repeat(40) };
+    const original = roleContext();
+    const rebased = { ...original, headSha: 'f'.repeat(40), baseSha: 'e'.repeat(40) };
+    expect(rebased.roleEvidence).toEqual(original.roleEvidence); // no fabricated receipt refresh
     expect(evaluateAstra({ body: BODY, changedFiles, context: rebased, reviews: [{ ...review(), trusted: true }] }).status).toBe('ASTRA_APPROVED');
   });
 });
