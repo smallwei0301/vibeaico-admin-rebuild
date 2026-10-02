@@ -43,10 +43,49 @@ jobs:
           script: >-
             const { pathToFileURL } = require('node:url'); const path = require('node:path'); const astra = await import(pathToFileURL(path.join(process.env.GITHUB_WORKSPACE, 'scripts/agents/astra-review-policy.mjs')).href); const { owner, repo } = context.repo; const packet = context.eventName === 'schedule' ? await astra.resolveReviewRecovery({ github, owner, repo }) : context.eventName === 'workflow_run' ? { numbers: [await astra.resolveReviewWakeup({ github, owner, repo, runId: context.payload.workflow_run.id })], associationIncomplete: false } : await astra.resolveRoleReceiptWakeup({ github, owner, repo, repository: context.payload.repository.full_name, issueNumber: context.payload.issue.number, commentId: context.payload.comment.id, nativePr: Boolean(context.payload.issue.pull_request) }); core.setOutput('pr_numbers', JSON.stringify(packet.numbers)); core.setOutput('association_incomplete', String(packet.associationIncomplete)); if (packet.associationIncomplete) core.warning('Receipt association reads incomplete: known heads are invalidated pending; unknown associations require recovery');
 
+  # Untrusted issue comments must be filtered before entering the terminal concurrency queue.
+  command_authorization:
+    if: github.event_name == 'issue_comment' && github.event.action == 'created' && github.event.issue.pull_request && github.event.issue.state == 'closed' && (github.event.comment.body == '/astra-review-check' || startsWith(github.event.comment.body, '/astra-review-check'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      authorized: ${{ steps.authorize.outputs.authorized }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - id: authorize
+        uses: actions/github-script@v9
+        with:
+          script: |-
+            const { pathToFileURL } = require('node:url');
+            const path = require('node:path');
+            const astra = await import(pathToFileURL(path.join(process.env.GITHUB_WORKSPACE,
+              'scripts/agents/astra-review-policy.mjs')).href);
+            const { owner, repo } = context.repo;
+            const issue = context.payload.issue;
+            const comment = context.payload.comment;
+            const number = issue?.number;
+            const firstLine = String(comment?.body ?? '').split(/\r?\n/, 1)[0].trim();
+            if (!Number.isSafeInteger(number) || number < 1 || !issue?.pull_request ||
+                issue?.state !== 'closed' || firstLine !== '/astra-review-check') return;
+            if (astra.isTrustedFinalRiskAgentUser(comment?.user ?? {})) {
+              core.setOutput('authorized', 'true');
+              return;
+            }
+            const username = comment?.user?.login;
+            if (!username || username !== context.actor) return;
+            const actor = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username });
+            if (['admin', 'maintain', 'write'].includes(actor.data.permission)) core.setOutput('authorized', 'true');
+
   # Sole terminal writer: shared guard cancellation must never interrupt a terminal mutation.
   # The guard retains its original group: late vetoes still cancel stale open evaluations.
   terminal_cleanup:
-    if: (github.event_name == 'pull_request_target' && (github.event.action == 'closed' || (github.event.action == 'edited' && github.event.pull_request.state == 'closed'))) || (github.event_name == 'issue_comment' && github.event.action == 'created' && github.event.issue.pull_request && github.event.issue.state == 'closed' && (github.event.comment.body == '/astra-review-check' || startsWith(github.event.comment.body, '/astra-review-check')))
+    needs: [command_authorization]
+    if: always() && ((github.event_name == 'pull_request_target' && (github.event.action == 'closed' || (github.event.action == 'edited' && github.event.pull_request.state == 'closed'))) || (github.event_name == 'issue_comment' && github.event.action == 'created' && needs.command_authorization.result == 'success' && needs.command_authorization.outputs.authorized == 'true'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -69,24 +108,17 @@ jobs:
               'scripts/agents/governance-workstream-boundary.mjs')).href);
             const { owner, repo } = context.repo;
             const isComment = context.eventName === 'issue_comment';
-            const eventPr = context.payload.pull_request;
-            const number = isComment ? context.payload.issue?.number : eventPr?.number;
+            const number = isComment ? context.payload.issue?.number : context.payload.pull_request?.number;
             if (!Number.isSafeInteger(number) || number < 1) throw new Error('Invalid canonical PR number');
             if (isComment) {
               const firstLine = String(context.payload.comment?.body ?? '').split(/\r?\n/, 1)[0].trim();
               if (firstLine !== '/astra-review-check' || !context.payload.issue?.pull_request ||
                   context.payload.issue?.state !== 'closed') throw new Error('Invalid closed PR refresh command');
-              const astra = await import(pathToFileURL(path.join(process.env.GITHUB_WORKSPACE,
-                'scripts/agents/astra-review-policy.mjs')).href);
-              if (!astra.isTrustedFinalRiskAgentUser(context.payload.comment?.user ?? {})) {
-                const actor = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: context.actor });
-                if (!['admin', 'maintain', 'write'].includes(actor.data.permission)) throw new Error('Review refresh requires write permission or a trusted Final Risk Agent identity');
-              }
             }
             const { data: current } = await github.rest.pulls.get({ owner, repo, pull_number: number });
-            // Close/edited events are generation-bound; a trusted command uses the current live generation.
-            if (current.state !== 'closed' || (!isComment && (current.head?.sha !== eventPr?.head?.sha ||
-                current.closed_at !== eventPr?.closed_at))) return;
+            // Actions may replace a pending new-close job with a late old edited event.
+            // Every allowed terminal wakeup reconciles only the current live closed generation.
+            if (current.state !== 'closed') return;
             await boundary.reconcileTerminalPr({ github, owner, repo, current, warning: message => core.warning(message) });
             await core.summary.addHeading('Independent closed-event lane reconciliation')
               .addRaw('Terminal labels/body only; review status, TEST and Product acceptance were not changed.').write();

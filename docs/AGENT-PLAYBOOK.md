@@ -1747,6 +1747,10 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 本地第一次完整來源樹 Node22 驗證 3907PASS／2FAIL（`governance-workstream-boundary.500.test.ts` 的兩個舊測試仍把 cancellable guard 當 terminal writer）。測試改為執行兩個實際 job：guard 零寫入、獨立 cleanup 更新 body／labels；並保留 classification workflow 的原 job 選擇。修後受影響兩檔 129PASS；第一次完整套件失敗收據保留於 `/workspace/scratch/745-sole-writer-source-node22-unit.json`，需另驗新完整樹，不可把失敗測試直接刪除當通過。
 
+#745 finding4164073884（2026-10-02T08:30:20Z）追加：`cancel-in-progress: false` 保護 running，GitHub 同組只保留一個 pending；舊 generation 的 edited 事件可取代新 close job，再因舊 head／closed_at 比對而 return，漏整理當前 closed generation。這是新的排隊反例，不用上一輪完整 PASS 豁免。執行實際 `terminal_cleanup` 腳本的 stale-event 測試先驗出 new-head／new-generation 兩個 RED；修正後每個允許的 terminal 事件只取 canonical PR number、重讀 live PR，若目前仍 closed 就以**當前** head／closed_at／merged 作 helper 的 generation 基準。helper 每次 mutation 前仍核對該 live generation，reopen 或再轉代即停止／按已觀測開啟態補償；不是將舊 event body 套到新 PR。open 與未授權命令無寫入、review veto 原共用取消群組不變。需重新驗完整來源／預期 main、獨立審查、遠端 exact-head CI 與最新 findings；原 sourceCI36984099904 只屬 head18860007，不能沿用至新修正。
+
+同一 finding 的獨立審查再找出未授權 comment 也會**先進 terminal concurrency group，再於腳本內被拒**，因此仍可取代最新 pending close。舊 job.if 排隊反例 RED1；加無 terminal 群組、唯讀權限的 `command_authorization` job，在進群組前以真實 comment user／actor、immutable trusted bot predicate 或 repository write／maintain／admin 驗證 exact first-line 命令，只輸出授權值。`terminal_cleanup` 對 created comment 必須看到該 job 的 success+authorized=true 才排隊；PR close／closed edited 透過 `always()` 仍可在授權 job skipped 時運行，且不依賴 resolver／guard。已授權命令在 terminal 腳本只重驗事件形狀和 live closed；不於入隊後重查可能改變的權限，避免又產生替換後空跑。來源可信 checkout，不信任 comment body 作程式碼。須驗 untrusted/spoofed bot/非法命令零入隊、合法 bot/writer 能整理、PR close 在授權 job skipped 時仍整理，並保留 reviewer 原 FIX_REQUIRED 收據。
+
 ### PB-050 — 埋了點，卻整輪沒跑過驗證器；欄位有值，但值在另一套詞彙裡
 
 - 首次／最近：2026-09-14 / 2026-09-14
