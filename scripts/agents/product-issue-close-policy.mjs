@@ -210,10 +210,12 @@ export function evaluateProductIssueClose({
       if (!SHA40.test(String(verifiedCloseApproval.exactHead ?? ''))) errors.push('final Sol CLOSE_APPROVED requires EXACT_HEAD');
       if (verifiedCloseApproval.exactHead !== ready.handoff.reviewedHead) errors.push('final Sol CLOSE_APPROVED EXACT_HEAD must match ISSUE_CLOSE_READY REVIEWED_HEAD');
       const latestMerged = latestMergedProductPull(issueNumber, mergedPullRequests);
-      if (latestMerged && verifiedCloseApproval.exactHead !== (latestMerged.head?.sha ?? latestMerged.head_sha)) {
-        errors.push(`final Sol CLOSE_APPROVED EXACT_HEAD must match latest merged Product PR #${latestMerged.number} head`);
+      if (latestMerged) {
+        if (verifiedCloseApproval.exactHead !== (latestMerged.head?.sha ?? latestMerged.head_sha)) errors.push(`final Sol CLOSE_APPROVED EXACT_HEAD must match latest merged Product PR #${latestMerged.number} head`);
+        if (verifiedCloseApproval.latestMergeSha !== latestMerged.merge_commit_sha || verifiedCloseApproval.latestMergeReachableFromCurrentMain !== true) errors.push(`latest merged Product PR #${latestMerged.number} merge commit is not verified on current main`);
+      } else if (verifiedCloseApproval.reachableFromCurrentMain !== true) {
+        errors.push('final Sol CLOSE_APPROVED exact head is not reachable from current main');
       }
-      if (verifiedCloseApproval.reachableFromCurrentMain !== true) errors.push('final Sol CLOSE_APPROVED exact head is not reachable from current main');
       if (verifiedCloseApproval.trusted !== true) errors.push('final Sol CLOSE_APPROVED submitter is not trusted');
       if (verifiedCloseApproval.sameIssue !== true) errors.push('final Sol CLOSE_APPROVED comment must belong to the closing Issue');
       if (verifiedCloseApproval.beforeClose !== true) errors.push('final Sol CLOSE_APPROVED must exist before Issue close');
