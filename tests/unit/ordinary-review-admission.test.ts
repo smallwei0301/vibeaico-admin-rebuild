@@ -260,7 +260,7 @@ describe('role receipt edit/delete authoritative fan-out (synthetic)', () => {
     await new AsyncFunction('require', 'process', 'github', 'context', 'core', 'loadPolicy', script.replace(/\bimport\s*\(/g, 'loadPolicy('))(createRequire(import.meta.url), { env: { GITHUB_WORKSPACE: process.cwd() } }, github, { eventName: 'issue_comment', repo: { owner: wake.owner, repo: wake.repo }, payload: { repository: { full_name: repo }, issue: { number: 900, pull_request: {} }, comment: { id: 101, body: 'payload body is not read as evidence' } } }, { setOutput }, async () => astra);
     expect(setOutput).toHaveBeenCalledWith('pr_numbers', '[900,901]');
     expect(parsed.jobs.review_wakeup.permissions).toEqual({ contents: 'read', actions: 'read', 'pull-requests': 'read' });
-    expect(parsed.jobs.guard.concurrency.group).toBe('agent-wip-guard-${{ github.repository }}-${{ matrix.pr_number }}');
+    expect(parsed.jobs.guard.concurrency.group).toMatch(/^agent-wip-guard-\$\{\{ github.repository \}\}-\$\{\{ matrix.pr_number \}\}/);
   });
   it('cross-issue receipt references fan out without guessing a native PR', async () => {
     const { github, base, pr2 } = inventoryFixture();
@@ -402,5 +402,89 @@ describe('independent hourly trusted-main recovery (synthetic)', () => {
     await new AsyncFunction('require', 'process', 'github', 'context', 'core', 'loadPolicy', decoded.replace(/\bimport\s*\(/g, 'loadPolicy('))(createRequire(import.meta.url), { env: { GITHUB_WORKSPACE: process.cwd(), REVIEW_WAKEUP_PR: '900' } }, github, { eventName: 'schedule', repo: { owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild' }, payload: {} }, { summary }, loadPolicy);
     expect(statuses).toEqual(['success', 'pending', 'failure']); expect(f.listReviews).toBeTruthy();
     expect(github.rest.actions.createWorkflowDispatch).not.toHaveBeenCalled(); expect(github.rest.issues.createComment).not.toHaveBeenCalled(); expect(github.rest.issues.addLabels).not.toHaveBeenCalled();
+  });
+});
+
+describe('review wake-up cannot cancel lifecycle housekeeping (synthetic Actions scheduler)', () => {
+  // Evaluate the actual YAML expression, then model Actions per-group cancellation.
+  // This is a local scheduling contract, not a claim of running GitHub Actions.
+  const workflow = () => parse(readFileSync('.github/workflows/agent-wip-guard.yml', 'utf8'));
+  function group(eventName: string, action: string, number = 900, job = 'guard') {
+    const github = { repository: repo, event_name: eventName, event: { action, pull_request: { number } } };
+    return workflow().jobs[job].concurrency.group.replace(/\$\{\{([\s\S]*?)\}\}/g,
+      (_: string, expression: string) => String(new Function('github', 'matrix', `return (${expression});`)(github, { pr_number: number }))).toLowerCase();
+  }
+  it.each([
+    ['workflow_run', 'completed'], ['schedule', ''], ['issue_comment', 'edited'], ['issue_comment', 'deleted'],
+  ])('late %s/%s preserves running and pending close-event cleanup', (event, action) => {
+    const terminal = group('pull_request_target', 'closed', 900, 'terminal_cleanup');
+    const incoming = group(event, action);
+    expect(incoming).not.toBe(terminal); // Both cancel-in-progress and pending replacement are per group.
+    expect(group(event, action, 901)).not.toBe(incoming);
+    expect(workflow().jobs.guard.concurrency['cancel-in-progress']).toBe(true);
+    expect(group(event, action)).toBe(group('pull_request_target', 'opened')); // Veto still cancels stale PASS evaluation.
+  });
+  it.each(['opened', 'edited', 'reopened', 'synchronize', 'ready_for_review', 'converted_to_draft', 'closed'])('keeps %s on the original lifecycle group so close still cancels stale open work', action => {
+    expect(group('pull_request_target', action)).toBe(`agent-wip-guard-${repo}-900`);
+    expect(group('issue_comment', 'created')).toBe(group('pull_request_target', action));
+  });
+  it.each([false, true])('resolved PR closes before consumer (alreadyClosed=%s); late wake-up has zero writes and terminal cleanup still executes', async alreadyClosed => {
+    const { github, live } = wakeupFixture({ head_sha: head }, true);
+    const closed = { ...live, state: 'closed', merged: true, labels: [{ name: 'state:active' }] };
+    github.rest.pulls.get.mockResolvedValue({ data: alreadyClosed ? closed : live });
+    expect(await resolveReviewWakeup({ github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', runId: 42 })).toBe(900);
+    github.rest.pulls.get.mockResolvedValue({ data: closed });
+    const writes: string[] = [];
+    github.rest.repos.createCommitStatus = vi.fn(async () => { writes.push('status'); });
+    github.rest.actions.createWorkflowDispatch = vi.fn(async () => { writes.push('TEST'); });
+    github.rest.issues.createComment = vi.fn(async () => { writes.push('comment'); });
+    github.rest.issues.removeLabel = vi.fn(async () => { writes.push('remove-label'); });
+    github.rest.issues.getLabel = vi.fn(async () => ({ data: {} }));
+    github.rest.issues.addLabels = vi.fn(async () => { writes.push('terminal-label'); });
+    github.rest.pulls.update = vi.fn(async () => { writes.push('terminal-body'); });
+    const script = workflow().jobs.guard.steps.find((step: any) => step.with?.script).with.script;
+    const astra = await import('../../scripts/agents/astra-review-policy.mjs');
+    const policy = await import('../../scripts/agents/dual-terra-wip-policy.mjs');
+    const boundary = await import('../../scripts/agents/governance-workstream-boundary.mjs');
+    const summary: any = { addHeading: () => summary, addRaw: () => summary, write: async () => undefined };
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+    const wakeBranch = script.split('// REVIEW_WAKEUP_INVALIDATION_BEGIN')[1].split('// REVIEW_WAKEUP_INVALIDATION_END')[0];
+    await new AsyncFunction('github', 'current', 'reviewWakeup', 'owner', 'repo', 'astra', 'policy', 'core', 'process', wakeBranch)(github, closed, true, 'smallwei0301', 'vibeaico-admin-rebuild', astra, policy, { summary }, { env: {} });
+    expect(writes).toEqual([]);
+    const closeCancelled = group('workflow_run', 'completed') === group('pull_request_target', 'closed', 900, 'terminal_cleanup');
+    if (!closeCancelled) {
+      const terminalScript = workflow().jobs.terminal_cleanup.steps.find((step: any) => step.with?.script).with.script;
+      await new AsyncFunction('require', 'process', 'github', 'context', 'core', 'loadPolicy', terminalScript.replace(/\bimport\s*\(/g, 'loadPolicy('))(createRequire(import.meta.url), { env: { GITHUB_WORKSPACE: process.cwd() } }, github, { repo: { owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild' }, payload: { pull_request: closed } }, { summary, warning: vi.fn() }, async () => boundary);
+    }
+    expect(writes).toContain('terminal-label');
+    expect(writes).toContain('remove-label');
+    expect(writes).toContain('terminal-body');
+    expect(writes).not.toContain('status'); expect(writes).not.toContain('TEST'); expect(writes).not.toContain('comment');
+    expect(github.rest.pulls.update).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining('LANE_STATE: COMPLETE') }));
+  });
+  it('close recovery has its own least-privilege job, independent of guard/resolver results', () => {
+    const job = workflow().jobs.terminal_cleanup;
+    expect(job.needs).toBeUndefined();
+    expect(job.if).toBe("github.event_name == 'pull_request_target' && github.event.action == 'closed'");
+    expect(job.permissions).toEqual({ contents: 'read', issues: 'write', 'pull-requests': 'write' });
+    expect(job.concurrency['cancel-in-progress']).toBe(false);
+    expect(job.steps[0].with).toEqual({ ref: '${{ github.event.repository.default_branch }}', 'persist-credentials': false });
+  });
+  it.each(['reopened', 'new-head', 'new-generation', 'fresh-body'])('decoded independent cleanup respects %s live truth', async mode => {
+    const { github, live } = wakeupFixture();
+    const closed = { ...live, state: 'closed', merged: true, closed_at: '2026-10-02T05:38:18Z', labels: [] };
+    const observed = mode === 'reopened' ? { ...closed, state: 'open' }
+      : mode === 'new-head' ? { ...closed, head: { ...closed.head, sha: 'f'.repeat(40) } }
+      : mode === 'new-generation' ? { ...closed, closed_at: '2026-10-02T05:50:00Z' } : closed;
+    github.rest.pulls.get.mockResolvedValueOnce({ data: observed }).mockResolvedValue({ data: { ...closed, body: closed.body + '\nFresh concurrent prose preserved' } });
+    github.rest.issues.getLabel = vi.fn(async () => ({ data: {} }));
+    github.rest.issues.addLabels = vi.fn(); github.rest.issues.removeLabel = vi.fn(); github.rest.pulls.update = vi.fn();
+    const boundary = await import('../../scripts/agents/governance-workstream-boundary.mjs');
+    const summary: any = { addHeading: () => summary, addRaw: () => summary, write: async () => undefined };
+    const script = workflow().jobs.terminal_cleanup.steps.find((step: any) => step.with?.script).with.script;
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+    await new AsyncFunction('require', 'process', 'github', 'context', 'core', 'loadPolicy', script.replace(/\bimport\s*\(/g, 'loadPolicy('))(createRequire(import.meta.url), { env: { GITHUB_WORKSPACE: process.cwd() } }, github, { repo: { owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild' }, payload: { pull_request: closed } }, { summary, warning: vi.fn() }, async () => boundary);
+    if (mode === 'fresh-body') expect(github.rest.pulls.update).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining('Fresh concurrent prose preserved') }));
+    else { expect(github.rest.issues.addLabels).not.toHaveBeenCalled(); expect(github.rest.pulls.update).not.toHaveBeenCalled(); }
   });
 });

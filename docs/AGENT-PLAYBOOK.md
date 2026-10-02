@@ -1734,6 +1734,10 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 修正僅 resolver：查 all、驗 canonical repo/ref，優先唯一 open；無 open 才接受唯一 closed exact producer SHA，且 live 回讀仍需同 SHA。既有 consumer 對 closed PR 在 status/comment/label/TEST dispatch 前 return，不製造 PASS 或重開 PR。外 repo、錯 head、歧義、未知 API 仍拒絕。預防以實際 github-script branch 驗零副作用；RED3FAIL61PASS→GREEN64PASS/typecheckPASS、獨立六個對抗 mock PASS。source/main CI 與 merge 回讀由 #741 的獨立 PR/closeout 留證，局部測試不當遠端驗收，不盲重試或改模型 gate。
 
+**2026-10-02 #742 同族追加 finding4163148264：** review5388624310 於05:38:04UTC送達，05:38:18UTC合併；最後審查快照未包含此14秒窗口的新 finding，不得把舊 PASS 改寫成合併當刻零 finding。初次64項測試只驗 consumer API 零寫入，漏掉 Actions 的同群組取消：晚到 review wake-up 即使對 closed PR return，仍可能取消正在執行／等待中的 lifecycle terminal cleanup。這是可重建風險，未證實真實取消事故。
+
+第一版將 review wake-up 的 concurrency group 分開，RED6FAIL71PASS→77PASS/typecheckPASS；但獨立審查發現 P1：舊 open lifecycle 與新 veto 並行，可在 failure 後依舊 PASS 寫回 success，因此拒絕發布，保留 FIX_REQUIRED。最終保留 guard 原共用群組與 cancel-in-progress=true；另加不依賴 guard／resolver 的 closed-event terminal_cleanup job，獨立 per-PR 群組、cancel-in-progress=false、trusted main checkout 與只寫既有 terminal label/body 的權限。舊 guard 保留原 housekeeping，獨立 job 是可重入的結案恢復，不派 TEST、不改 review status。新 job 回讀 live state/head/closed_at，重開／新 head／新 generation 無寫入；body plan 從最後 fresh body 重算，保留並行 prose。反例解析實際 YAML group expression、執行實際 consumer return 與獨立 cleanup github-script，涵蓋已 closed 及 resolve 時 open、consumer 前 closed，並驗 open review/lifecycle 仍共用取消保護。只在 mock 中執行 terminal label/body，不代表外部標籤授權或 Production 驗收。closeout 須保留新 finding、精確 source CI／獨立審查／main readback；最終讀取與 mutation／merge API 仍非原子，不能保證其間永無新 review 或 lifecycle 變化。
+
 ### PB-050 — 埋了點，卻整輪沒跑過驗證器；欄位有值，但值在另一套詞彙裡
 
 - 首次／最近：2026-09-14 / 2026-09-14

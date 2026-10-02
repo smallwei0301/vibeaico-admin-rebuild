@@ -43,6 +43,60 @@ jobs:
           script: >-
             const { pathToFileURL } = require('node:url'); const path = require('node:path'); const astra = await import(pathToFileURL(path.join(process.env.GITHUB_WORKSPACE, 'scripts/agents/astra-review-policy.mjs')).href); const { owner, repo } = context.repo; const packet = context.eventName === 'schedule' ? await astra.resolveReviewRecovery({ github, owner, repo }) : context.eventName === 'workflow_run' ? { numbers: [await astra.resolveReviewWakeup({ github, owner, repo, runId: context.payload.workflow_run.id })], associationIncomplete: false } : await astra.resolveRoleReceiptWakeup({ github, owner, repo, repository: context.payload.repository.full_name, issueNumber: context.payload.issue.number, commentId: context.payload.comment.id, nativePr: Boolean(context.payload.issue.pull_request) }); core.setOutput('pr_numbers', JSON.stringify(packet.numbers)); core.setOutput('association_incomplete', String(packet.associationIncomplete)); if (packet.associationIncomplete) core.warning('Receipt association reads incomplete: known heads are invalidated pending; unknown associations require recovery');
 
+  # Independent close-event recovery survives cancellation of the shared review/lifecycle guard.
+  # The guard retains its original group: late vetoes must still cancel stale open evaluations.
+  terminal_cleanup:
+    if: github.event_name == 'pull_request_target' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    concurrency:
+      group: agent-wip-terminal-${{ github.repository }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/github-script@v9
+        with:
+          script: |-
+            const { pathToFileURL } = require('node:url');
+            const path = require('node:path');
+            const boundary = await import(pathToFileURL(path.join(process.env.GITHUB_WORKSPACE,
+              'scripts/agents/governance-workstream-boundary.mjs')).href);
+            const { owner, repo } = context.repo;
+            const number = context.payload.pull_request.number;
+            if (!Number.isSafeInteger(number) || number < 1) throw new Error('Invalid canonical PR number');
+            const { data: current } = await github.rest.pulls.get({ owner, repo, pull_number: number });
+            // A delayed close must not reconcile a reopened PR or a later close generation.
+            if (current.state !== 'closed' || current.head?.sha !== context.payload.pull_request.head?.sha ||
+                current.closed_at !== context.payload.pull_request.closed_at) return;
+            const terminal = boundary.terminalLabelPlan(current);
+            if (!terminal) return;
+            const names = (current.labels ?? []).map(label => typeof label === 'string' ? label : label.name);
+            for (const name of terminal.remove.filter(name => names.includes(name))) {
+              try { await github.rest.issues.removeLabel({ owner, repo, issue_number: number, name }); }
+              catch (error) { if (error.status !== 404) throw error; }
+            }
+            try { await github.rest.issues.getLabel({ owner, repo, name: terminal.add }); }
+            catch (error) {
+              if (error.status !== 404) throw error;
+              await github.rest.issues.createLabel({ owner, repo, name: terminal.add, color: '006B75' });
+            }
+            await github.rest.issues.addLabels({ owner, repo, issue_number: number, labels: [terminal.add] });
+            const { data: fresh } = await github.rest.pulls.get({ owner, repo, pull_number: number });
+            if (fresh.state !== 'closed' || fresh.head?.sha !== current.head?.sha ||
+                fresh.closed_at !== current.closed_at) return;
+            // Recompute from the fresh body, preserving concurrent prose/metadata changes.
+            const bodyPlan = boundary.terminalBodyPlan(fresh);
+            if (bodyPlan?.errors?.length) core.warning(`Closed PR #${number} body not rewritten: ${bodyPlan.errors.join('; ')}`);
+            else if (bodyPlan?.changed) await github.rest.pulls.update({ owner, repo, pull_number: number, body: bodyPlan.body });
+            await core.summary.addHeading('Independent closed-event lane reconciliation')
+              .addRaw('Terminal labels/body only; review status, TEST and Product acceptance were not changed.').write();
+
   guard:
     needs: [review_wakeup]
     if: always() && (github.event_name == 'pull_request_target' || ((github.event_name == 'schedule' || github.event_name == 'workflow_run' || (github.event_name == 'issue_comment' && (github.event.action == 'edited' || github.event.action == 'deleted'))) && needs.review_wakeup.result == 'success' && needs.review_wakeup.outputs.pr_numbers != '[]') || (github.event.issue.pull_request && (github.event.comment.body == '/astra-review-check' || startsWith(github.event.comment.body, '/astra-review-check'))))
@@ -148,22 +202,17 @@ jobs:
               }
               await github.rest.issues.addLabels({ owner, repo, issue_number: current.number, labels: [terminal.add] });
 
-              const bodyPlan = boundary.terminalBodyPlan(current);
               let bodyReconciled = false;
-              if (bodyPlan?.errors?.length) {
-                core.warning(`Closed PR #${current.number} body not rewritten: ${bodyPlan.errors.join('; ')}`);
-              } else if (bodyPlan?.changed) {
-                // Re-read before mutation so a stale/delayed closed event cannot rewrite
-                // a PR that was reopened or whose head changed after this run started.
-                const { data: fresh } = await github.rest.pulls.get({
-                  owner, repo, pull_number: current.number,
-                });
-                if (fresh.state !== 'closed' || fresh.head?.sha !== current.head?.sha) {
-                  core.warning(`Closed PR #${current.number} changed before body reconciliation; leaving body untouched`);
-                } else {
-                  await github.rest.pulls.update({
-                    owner, repo, pull_number: current.number, body: bodyPlan.body,
-                  });
+              // Recompute from the final body so parallel idempotent cleanup preserves fresh prose.
+              const { data: fresh } = await github.rest.pulls.get({ owner, repo, pull_number: current.number });
+              if (fresh.state !== 'closed' || fresh.head?.sha !== current.head?.sha || fresh.closed_at !== current.closed_at) {
+                core.warning(`Closed PR #${current.number} changed before body reconciliation; leaving body untouched`);
+              } else {
+                const bodyPlan = boundary.terminalBodyPlan(fresh);
+                if (bodyPlan?.errors?.length) {
+                  core.warning(`Closed PR #${current.number} body not rewritten: ${bodyPlan.errors.join('; ')}`);
+                } else if (bodyPlan?.changed) {
+                  await github.rest.pulls.update({ owner, repo, pull_number: current.number, body: bodyPlan.body });
                   bodyReconciled = true;
                 }
               }
