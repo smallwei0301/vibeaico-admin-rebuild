@@ -119,6 +119,7 @@ afterAll(async () => {
 });
 
 describe('GUIDE REQUEST inbox real lifecycle (#43)', () => {
+  // ~25 sequential real HTTP/DB round-trips measured ~36s on shared canonical TEST (run 36951973057); default 30s is too tight.
   it('sorts deadlines, rejects foreign mutations, and reload removes only the rejected request', async () => {
     const now = Date.now();
     const formationDeadline = new Date(now + 7 * 86_400_000).toISOString();
@@ -247,5 +248,5 @@ describe('GUIDE REQUEST inbox real lifecycle (#43)', () => {
     expect(refreshed.map((item) => item.id)).toEqual(sorted.slice(1).map((fixture) => fixture.id));
     expect(refreshed.map((item) => Date.parse(item.dueAt))).toEqual(sorted.slice(1).map((fixture) => Date.parse(fixture.deadline)));
     expect(await inbox(ownerB)).toEqual([]);
-  });
+  }, 90_000);
 });
