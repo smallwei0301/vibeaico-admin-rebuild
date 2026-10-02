@@ -43,6 +43,13 @@ describe('#11 季節單價解析（與 0132 create_tour_order 同規則）', () 
     expect(resolveSeasonUnitPrice(departsOn, seasons, BASE)).toBe(expected);
   });
 
+  it('跨年跨度邊界（366）：跨年季節 12/31–1/2 跨度 2 小於非跨年 1/1–1/4 跨度 3，即使 sort_order 較大仍勝出', () => {
+    const wrap = s({ id: 'w', startMonth: 12, startDay: 31, endMonth: 1, endDay: 2, priceOverride: 111, sortOrder: 1 });
+    const plain = s({ id: 'p', startMonth: 1, startDay: 1, endMonth: 1, endDay: 4, priceOverride: 222, sortOrder: 0 });
+    expect(resolveSeasonUnitPrice('2098-01-01', [plain, wrap], BASE)).toBe(111);
+    expect(resolveSeasonUnitPrice('2098-01-01', [wrap, plain], BASE)).toBe(111);
+  });
+
   it('日期格式無法解析 → 基本價', () => {
     expect(resolveSeasonUnitPrice('bad', [s({ id: 'a' })], BASE)).toBe(BASE);
   });

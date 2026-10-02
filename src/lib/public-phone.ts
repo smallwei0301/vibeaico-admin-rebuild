@@ -2,16 +2,18 @@
  * 公開電話：顯示字串保留原樣（trim 後最多 40 字元，以 code point 計），撥號連結另用 phoneHref。
  * phoneHref 只在「可安全撥號」時輸出：過濾後只剩數字與 +、長度 1–20，且原字串沒有分機標記。
  * 分機標記 regex：`#`、`＃`、`*`、`ext`／`ext.`／`extension`（不分大小寫）、`x` 後接數字、`轉`、`分機`、`分机`。
- * 有分機時 tel: 連結會把分機黏成錯誤號碼，所以 phoneHref 為空字串，只顯示文字。
+ * 有分機或多支電話（分隔符號 / , 、 ; ； ，）時，tel: 連結會把號碼黏成錯誤號碼，所以 phoneHref 為空字串，只顯示文字。
  */
 export const MAX_PUBLIC_PHONE_DISPLAY_CHARS = 40;
 export const MAX_PUBLIC_PHONE_HREF_CHARS = 20;
 const EXTENSION_MARKER = /[#＃*]|ext\.?|extension|\bx\s*\d|轉|分機|分机/i;
+/** 多支電話的分隔符號：`/`、`,`、`、`、`;`、`；`、`，`。含這些符號就不給撥號連結（黏起來會變成錯誤號碼）。 */
+const MULTI_NUMBER_SEPARATOR = /[/,、;；，]/;
 
 export function buildPublicPhone(raw: string): { phone: string; phoneHref: string } {
   const trimmed = raw.trim();
   const phone = Array.from(trimmed).slice(0, MAX_PUBLIC_PHONE_DISPLAY_CHARS).join('');
-  if (!phone || EXTENSION_MARKER.test(trimmed)) return { phone, phoneHref: '' };
+  if (!phone || EXTENSION_MARKER.test(trimmed) || MULTI_NUMBER_SEPARATOR.test(trimmed)) return { phone, phoneHref: '' };
   const digits = trimmed.replace(/[^\d+]/g, '');
   const ok = digits.length > 0 && digits.length <= MAX_PUBLIC_PHONE_HREF_CHARS;
   return { phone, phoneHref: ok ? digits : '' };

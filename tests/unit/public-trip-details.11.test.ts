@@ -636,6 +636,11 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
       }
       expect((await shopWith({ tenantPhone: '+886 2 1234 5678' })).phoneHref).toBe('+88621234 5678'.replace(' ', ''));
       expect((await shopWith({ tenantPhone: '1'.repeat(21) })).phoneHref).toBe('');
+      for (const multi of ['02-1234-5678 / 0912-345-678', '02-1234-5678, 0912-345-678', '02-1234-5678、0912-345-678', '02-1234-5678;0912345678', '02-1234-5678；0912345678', '02-1234-5678，0912345678']) {
+        const m = await shopWith({ tenantPhone: multi });
+        expect(m.phone, multi).toBe(multi);
+        expect(m.phoneHref, multi).toBe('');
+      }
       const long = await shopWith({ tenantPhone: '9'.repeat(100) });
       expect(Array.from(long.phone)).toHaveLength(40);
       expect(long.phoneHref).toBe('');
@@ -692,6 +697,11 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
       const plan = await loadSeason([season({})], ['2098-07-15', '2098-09-15']);
       expect(plan.seasonalPricing).toBe(true);
       expect(plan.departures.map((d) => d.unitPrice)).toEqual([3000, 100]);
+    });
+
+    it('S14：命中季節但 price_override 為 null → unitPrice 等於基本價 100，不是 0', async () => {
+      const plan = await loadSeason([season({ price_override: null })], ['2098-07-15']);
+      expect(plan.departures[0].unitPrice).toBe(100);
     });
 
     it('沒有啟用季節的方案：不輸出 unitPrice、不標 seasonalPricing', async () => {

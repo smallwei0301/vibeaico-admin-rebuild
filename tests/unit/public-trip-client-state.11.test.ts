@@ -221,7 +221,7 @@ describe('#11 client 有 initialData 時不重取', () => {
   });
 
   it('季節價顯示：seasonalPricing 時標題改用 i18n 文案、團次顯示 unitPrice，並以誠實的 priceNote', () => {
-    expect(client).toContain('plan.seasonalPricing ? t.plans.seasonalHeadline');
+    expect(client).toContain("seasonalHeadlineKind(plan) === 'by-departure' ? t.plans.seasonalHeadline");
     expect(client).toContain('departure.unitPrice !== undefined');
     expect(t.plans.priceNote).not.toContain('請先向店家確認');
     expect(t.plans.seasonalHeadline).toContain('依出發日期');

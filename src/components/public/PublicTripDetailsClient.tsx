@@ -8,6 +8,7 @@ import type { PublicTripDetails } from '@/server/public-shop';
 import { publicShopPage } from '@/i18n/zh-TW/pages/public-shop';
 import { publicTripDetailsPage as t } from '@/i18n/zh-TW/pages/public-trip-details';
 import { formatCurrency } from '@/lib/utils';
+import { seasonalHeadlineKind } from '@/lib/public-booking-price';
 import { formationLines } from '@/lib/public-departure-formation';
 import {
   initialLoadState,
@@ -250,10 +251,10 @@ export function PublicTripDetailsClient({ shopCode, slug, initialData }: Props) 
                       <p className="whitespace-pre-line text-sm text-secondary">{plan.description}</p>
                     ) : null}
                     <div className="flex flex-wrap gap-2 text-sm">
-                      <span>{plan.seasonalPricing ? t.plans.seasonalHeadline : t.plans.price(formatCurrency(plan.pricePerPerson), t.plans.priceUnit[plan.priceType])}</span>
+                      <span>{seasonalHeadlineKind(plan) === 'by-departure' ? t.plans.seasonalHeadline : seasonalHeadlineKind(plan) === 'contact' ? t.plans.seasonalContactHeadline : t.plans.price(formatCurrency(plan.pricePerPerson), t.plans.priceUnit[plan.priceType])}</span>
                       <span className="text-secondary">{t.plans.partyRange(plan.minParty, plan.maxParty)}</span>
                     </div>
-                    {plan.seasonalPricing ? <p className="text-2xs text-secondary">{t.plans.priceNote}</p> : null}
+                    {seasonalHeadlineKind(plan) === 'by-departure' ? <p className="text-2xs text-secondary">{t.plans.priceNote}</p> : null}
                     {bookingCtaState(plan) === 'dates-not-loaded' ? (
                       <p className="text-sm text-secondary">{t.departures.notLoaded}</p>
                     ) : plan.departures.length ? (

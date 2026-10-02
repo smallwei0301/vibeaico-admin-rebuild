@@ -39,6 +39,7 @@ export const publicTripDetailsPage = {
       PER_PERSON: '／人',
       PER_GROUP: '／團',
     },
+    seasonalContactHeadline: '價格依出發日期而定，請洽店家',
     seasonalHeadline: '依出發日期而定，見各團次',
     priceNote: '各團次價格已依出發日期（季節定價）計算；實際金額以送出時為準。',
     partyRange: (min: number, max: number) => `${min}–${max} 人`,

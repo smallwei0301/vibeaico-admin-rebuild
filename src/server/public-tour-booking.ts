@@ -33,6 +33,7 @@
  * 「指定 sales_mode」換成 `FIXED_DEPARTURE`。
  */
 import { z } from 'zod';
+import { hasSeasonalPricing, loadPlanSeasons, seasonUnitPriceFor } from '@/server/public-plan-seasons';
 import { createAdminSupabase } from '@/server/supabase';
 import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
 import { nextTourOrderNo } from '@/server/tour-order-no';
@@ -57,6 +58,8 @@ export type PublicBookingDeparture = {
   departsOn: string;
   startTime: string;
   seatsLeft: number;
+  /** 依出發日套用季節定價後的單價（與 create_tour_order 同規則）；方案沒有（完整的）季節時不輸出。 */
+  unitPrice?: number;
 };
 
 export type PublicBookingPlan = {
@@ -69,6 +72,8 @@ export type PublicBookingPlan = {
   planDescription: string;
   pricePerPerson: number;
   priceType: 'PER_PERSON' | 'PER_GROUP';
+  /** 方案有啟用的季節定價：基本價只是參考，實際價格依各團次（unitPrice）。 */
+  seasonalPricing?: boolean;
   minParty: number;
   maxParty: number;
   /** #46：成交當下取消／退款政策 snapshot 的來源；本方案所屬行程當下的政策。 */
@@ -126,17 +131,21 @@ export async function loadPublicBookingPlan(
     .order('start_time', { ascending: true, nullsFirst: true });
   if (departureError) throw queryFailed('trip_departures', departureError);
 
+  const seasons = await loadPlanSeasons(admin, tenantId, planId);
+  const basePrice = Number(plan.price_per_person ?? 0);
   const departures: PublicBookingDeparture[] = [];
   for (const row of departureRows ?? []) {
     const capacity = Number(row.capacity ?? 0);
     const seatsBooked = Number(row.seats_booked ?? 0);
     if (seatsBooked >= capacity) continue;
     if (departures.length >= MAX_DEPARTURES) break;
+    const unitPrice = seasonUnitPriceFor(seasons, row.departs_on as string, basePrice);
     departures.push({
       id: row.id as string,
       departsOn: row.departs_on as string,
       startTime: row.start_time == null ? '' : String(row.start_time).slice(0, 5),
       seatsLeft: capacity - seatsBooked,
+      ...(unitPrice !== undefined ? { unitPrice } : {}),
     });
   }
 
@@ -150,6 +159,7 @@ export async function loadPublicBookingPlan(
     planDescription: (plan.description as string) ?? '',
     pricePerPerson: Number(plan.price_per_person ?? 0),
     priceType: plan.price_type === 'PER_GROUP' ? 'PER_GROUP' : 'PER_PERSON',
+    ...(hasSeasonalPricing(seasons) ? { seasonalPricing: true } : {}),
     minParty: Number(plan.min_party ?? 1),
     maxParty: Number(plan.max_party ?? 1),
     refundPolicyType: trip.refund_policy_type === 'FLEXIBLE' || trip.refund_policy_type === 'STRICT'
