@@ -175,7 +175,8 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
     // Conditional undo of only fields this invocation wrote, using the fresh body/prose.
     // A changed field belongs to its new writer and is preserved, not replaced by an old snapshot.
     let body = observed.body ?? '';
-    const ownContract = writtenBody !== undefined && observed.head?.sha === current.head?.sha &&
+    // A new commit does not take ownership of body metadata; a changed metadata contract does.
+    const ownContract = writtenBody !== undefined &&
       JSON.stringify(parseLaneMetadata({ body })) === JSON.stringify(parseLaneMetadata({ body: writtenBody }));
     if (ownContract) {
       for (const field of ['LANE_STATE', 'ACTIVE_CANDIDATE']) {

@@ -1751,6 +1751,8 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 同一 finding 的獨立審查再找出未授權 comment 也會**先進 terminal concurrency group，再於腳本內被拒**，因此仍可取代最新 pending close。舊 job.if 排隊反例 RED1；加無 terminal 群組、唯讀權限的 `command_authorization` job，在進群組前以真實 comment user／actor、immutable trusted bot predicate 或 repository write／maintain／admin 驗證 exact first-line 命令，只輸出授權值。`terminal_cleanup` 對 created comment 必須看到該 job 的 success+authorized=true 才排隊；PR close／closed edited 透過 `always()` 仍可在授權 job skipped 時運行，且不依賴 resolver／guard。已授權命令在 terminal 腳本只重驗事件形狀和 live closed；不於入隊後重查可能改變的權限，避免又產生替換後空跑。來源可信 checkout，不信任 comment body 作程式碼。須驗 untrusted/spoofed bot/非法命令零入隊、合法 bot/writer 能整理、PR close 在授權 job skipped 時仍整理，並保留 reviewer 原 FIX_REQUIRED 收據。
 
+#745 finding4164232013（2026-10-02T08:53:21Z）追加：先前補償只在 reopen 後 head 仍等於 closed 事件 head 時撤回自身終態 body。若 terminal body 寫完後 reopen、只 push 新 commit 而未改 machine metadata，這項無關 head 條件會留下 open PR 的 `HISTORICAL`／candidate=false。actual-script `after-body-new-head-only` 先驗出 RED1／99PASS；移除補償所有權的舊 head 條件，保留**整份 parsed metadata 等於自身寫入結果**才撤回自身變更欄位的判斷，再用 fresh open head/body 比對每次補償寫入。新 head 且使用者改為 PARKED 的既有反例仍須保持 PARKED/candidate=false，不能逐欄看到相同 false 就還原舊 true。局部兩檔 131PASS；完整樹、獨立審查、遠端新 head CI 與最新 finding 仍須另驗。最後 read/write 非原子，若 metadata ownership 不可判定就保留新意圖並待後續 reconcile，不猜測或偽造 PASS。
+
 ### PB-050 — 埋了點，卻整輪沒跑過驗證器；欄位有值，但值在另一套詞彙裡
 
 - 首次／最近：2026-09-14 / 2026-09-14
