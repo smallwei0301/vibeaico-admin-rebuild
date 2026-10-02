@@ -267,7 +267,9 @@ export const tripsPage = {
     },
     advanced: {
       title: '方案進階設定',
+      viewTitle: '檢視方案進階設定',
       intro: '設定販售方式、團型、單筆人數與成團規則，以及時長、計價方式、訂金政策與季節定價。',
+      listedIntro: '以下為此方案的販售方式、團型、單筆人數、成團規則、時長、計價方式、訂金政策與季節定價，目前僅供檢視。',
       open: '開啟進階設定',
       backToQuick: '回到快速編輯',
       requireQuickSave: '請先儲存方案基本資料，再設定進階欄位。',

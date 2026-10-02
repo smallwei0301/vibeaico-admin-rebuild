@@ -40,7 +40,6 @@ describe('issue #42 LISTED 方案編輯器唯讀', () => {
   });
 
   it('儲存方案與季節新增／編輯／刪除按鈕 disabled', () => {
-    expect(src).toMatch(/disabled=\{listedPlanWritesBlocked\}\s*\n\s*loading=\{savingPlan\}/);
     expect(src).toContain('disabled={listedPlanWritesBlocked || savingPlan || !!seasonDraft}');
     expect(src).toMatch(/<Button type="button" size="sm" disabled=\{listedPlanWritesBlocked\} loading=\{savingSeason\}/);
   });
@@ -82,7 +81,7 @@ describe('issue #42 LISTED 方案編輯器唯讀', () => {
     const L = String.raw`(?<![!\w])listedPlanWritesBlocked\s*\?\s*`;
     const tern = (a: string, b: string) => new RegExp(`${L}${a}\\s*:\\s*${b}(?![\\w.])`);
     expect(src).toMatch(tern('t\\.actions\\.view', 't\\.actions\\.edit'));
-    expect(src.match(new RegExp(`(?:title|aria-label)=\\{${L}t\\.actions\\.view\\s*:\\s*t\\.actions\\.edit\\}`, 'g'))?.length).toBe(2);
+    expect(src.match(new RegExp(`(?:title|aria-label)=\\{${L}t\\.actions\\.view\\s*:\\s*t\\.actions\\.edit\\}`, 'g'))?.length).toBe(4);
     expect(src).toMatch(tern('t\\.plans\\.review\\.changesHintListed', 't\\.plans\\.review\\.changesHint'));
     expect(src).toMatch(tern('t\\.plans\\.viewTitle\\(planDraft\\.name\\)', 't\\.plans\\.editTitle\\(planDraft\\.name\\)'));
     expect(src).toMatch(/\{!listedPlanWritesBlocked \? <Alert tone="info">\{t\.plans\.quick\.intro\}<\/Alert> : null\}/);
@@ -96,5 +95,23 @@ describe('issue #42 LISTED 方案編輯器唯讀', () => {
       expect(s).not.toContain('並送審');
       expect(s).not.toContain('重新儲存');
     }
+  });
+
+  it('進階模式 LISTED：標題、intro、季節檢視按鈕、footer 儲存按鈕都走唯讀分支', () => {
+    const L = String.raw`(?<![!\w])listedPlanWritesBlocked\s*\?\s*`;
+    expect(src).toMatch(new RegExp(`${L}t\\.plans\\.advanced\\.viewTitle\\s*:\\s*t\\.plans\\.advanced\\.title(?![\\w.])`));
+    expect(src).toMatch(new RegExp(`${L}t\\.plans\\.advanced\\.listedIntro\\s*:\\s*t\\.plans\\.advanced\\.intro(?![\\w.])`));
+    expect(src.match(new RegExp(`(?:title|aria-label)=\\{${L}t\\.actions\\.view\\s*:\\s*t\\.actions\\.edit\\}`, 'g'))?.length).toBe(4);
+    // footer 儲存按鈕：LISTED 時完全不渲染（不是 disabled 的「儲存」）
+    expect(src).toMatch(/\{!listedPlanWritesBlocked \? \(\s*<Button\s+loading=\{savingPlan\}/);
+    expect(src).not.toMatch(/<Button\s+disabled=\{listedPlanWritesBlocked\}\s+loading=\{savingPlan\}/);
+    expect(tripsPage.plans.advanced.viewTitle).toBe('檢視方案進階設定');
+    expect(tripsPage.plans.advanced.listedIntro).toBe('以下為此方案的販售方式、團型、單筆人數、成團規則、時長、計價方式、訂金政策與季節定價，目前僅供檢視。');
+    for (const s of [tripsPage.plans.advanced.viewTitle, tripsPage.plans.advanced.listedIntro]) {
+      for (const bad of ['請調整', '並送審', '儲存', '設定販售方式']) expect(s).not.toContain(bad);
+    }
+    // 未上架文案不變
+    expect(tripsPage.plans.advanced.title).toBe('方案進階設定');
+    expect(tripsPage.plans.advanced.save).toBe('儲存進階設定');
   });
 });
