@@ -59,6 +59,7 @@ export function stateAfterFetch(
 export type BookingCtaState =
   | 'fixed' | 'fixed-unavailable'
   | 'request' | 'request-unavailable'
+  | 'dates-not-loaded'
   | 'none';
 
 /**
@@ -71,8 +72,13 @@ export type BookingCtaState =
 export function bookingCtaState(plan: {
   salesMode: string;
   minParty?: number;
+  departuresNotLoaded?: boolean;
   departures: Array<{ seatsLeft: number; soldOut?: true }>;
 }): BookingCtaState {
+  // 未載入團次的方案（超過方案數上限）：不提供入口，請旅客聯絡店家。
+  if (plan.departuresNotLoaded && (plan.salesMode === 'FIXED_DEPARTURE' || plan.salesMode === 'REQUEST')) {
+    return 'dates-not-loaded';
+  }
   if (plan.salesMode === 'FIXED_DEPARTURE') {
     return hasBookableListedDeparture(plan) ? 'fixed' : 'fixed-unavailable';
   }

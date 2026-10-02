@@ -65,9 +65,9 @@ vi.mock('@/server/supabase', () => ({
           if (fakeState.flood && rangeArgs) {
             const [from, to] = rangeArgs;
             const rows = [];
-            const last = from >= 1200 ? from + 2 : to;
+            const last = from >= 600 ? from + 2 : to;
             for (let i = from; i <= last; i += 1) {
-              const sellable = from >= 1200 && fakeState.lookaheadAvailable && i === last;
+              const sellable = from >= 600 && fakeState.lookaheadAvailable && i === last;
               const started = sellable && fakeState.lookaheadStartedToday;
               rows.push({ id: `flood-${i}`, departs_on: '2098-01-01', start_time: started ? '09:00:00' : null, capacity: 1, seats_booked: sellable ? 0 : 1,
                 min_to_depart_snapshot: 1, formation_deadline_at: null, formation_status: 'COLLECTING' });
@@ -303,12 +303,12 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     const { loadPublicTripDetails } = await import('@/server/public-shop');
     await loadPublicTripDetails('demo', 'hike');
     const queries = fakeState.calls.filter((c) => c.table === 'trip_departures');
-    // 1200 列 / 每頁 120 = 10 頁，再加 1 次 lookahead。
-    expect(queries).toHaveLength(11);
+    // 600 列 / 每頁 120 = 5 頁，再加 1 次 lookahead。
+    expect(queries).toHaveLength(6);
     for (const q of queries) {
       expect(q.filters).toMatchObject({ tenant_id: 'tenant-1', trip_id: 'trip-1', plan_id: 'plan-0', status: 'OPEN' });
     }
-    expect(queries.filter((q) => (q as never as { range: number[] }).range[0] >= 1200)).toHaveLength(1);
+    expect(queries.filter((q) => (q as never as { range: number[] }).range[0] >= 600)).toHaveLength(1);
   });
 
   it('超過掃描上限且 lookahead 全客滿 → truncated=false、soldOutOmitted=true、CTA 隱藏', async () => {
@@ -446,6 +446,24 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('方案數上限：31 個方案只有前 30 個查團次，第 31 個帶 departuresNotLoaded 且 CTA 不開；總查詢數受限', async () => {
+    fakeState.planCount = 31;
+    const { loadPublicTripDetails } = await import('@/server/public-shop');
+    const { bookingCtaState } = await import('@/lib/public-trip-client-state');
+    const result = await loadPublicTripDetails('demo', 'hike');
+    const plans = result?.trip.plans ?? [];
+    expect(plans).toHaveLength(31);
+    expect(plans.slice(0, 30).every((p) => !p.departuresNotLoaded && p.departures.length === 1)).toBe(true);
+    expect(plans[30].departuresNotLoaded).toBe(true);
+    expect(plans[30].departures).toEqual([]);
+    expect(bookingCtaState(plans[30])).toBe('dates-not-loaded');
+    const depCalls = fakeState.calls.filter((c) => c.table === 'trip_departures' && c.filters.plan_id);
+    expect(depCalls.map((c) => c.filters.plan_id)).not.toContain('plan-30');
+    expect(depCalls.length).toBe(30);
+    // 最壞情況總查詢數：30 × (5 頁 + 1 lookahead) ＝ 180。
+    expect(depCalls.length).toBeLessThanOrEqual(30 * 6);
   });
 
   it('M1：成團欄位只在 FIXED_DEPARTURE 輸出；REQUEST／INSTANT 不帶', async () => {

@@ -118,6 +118,8 @@ export type PublicTripDetailPlan = PublicPlan & {
   departuresMayBeTruncated: boolean;
   /** 只代表有「客滿」列因顯示上限被略過；不代表還有可售團次未列出。 */
   soldOutOmitted?: boolean;
+  /** 超過可查團次的方案數上限：此方案未載入團次，前端不提供入口並請旅客聯絡店家。 */
+  departuresNotLoaded?: true;
 };
 
 export type PublicTripDetails = {
@@ -188,7 +190,13 @@ const MAX_DETAIL_SOLD_OUT_PER_PLAN = 6;
  * A bounded scan protects public request latency; the UI marks the list when rows remain.
  */
 const DETAIL_DEPARTURE_PAGE_SIZE = 120;
-const MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN = 1200;
+const MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN = 600;
+/**
+ * 只有排序後的前 N 個方案會查團次；其餘方案照樣列出，但標 departuresNotLoaded、不查團次。
+ * 單一匿名請求的團次查詢數上限：N × (掃描 600/120 = 5 頁 + 1 次 lookahead) = 30 × 6 = 180
+ * （另加方案分頁最多 10 次、行程 1 次、店家 1 次），不再隨方案數（最多 2000）放大。
+ */
+const MAX_DETAIL_PLANS_WITH_DEPARTURES = 30;
 /** 匿名請求一次最多同時對幾個方案查團次；方案數無上限，不得全數同時扇出。 */
 const DETAIL_PLAN_QUERY_CONCURRENCY = 3;
 
@@ -544,7 +552,8 @@ async function loadPublicTripDetailsUncached(
   }
   const plans: PublicPlan[] = planRows.map((r) => mapPublicPlan(r));
 
-  const planDepartureResults = await mapWithConcurrency(plans, DETAIL_PLAN_QUERY_CONCURRENCY, async (plan) => {
+  const plansWithDepartures = plans.slice(0, MAX_DETAIL_PLANS_WITH_DEPARTURES);
+  const planDepartureResults = await mapWithConcurrency(plansWithDepartures, DETAIL_PLAN_QUERY_CONCURRENCY, async (plan) => {
     const departures: PublicTripDetailDeparture[] = [];
     let offset = 0;
     let scanned = 0;
@@ -692,6 +701,7 @@ async function loadPublicTripDetailsUncached(
         departures: departuresByPlan.get(plan.id)?.departures ?? [],
         departuresMayBeTruncated: departuresByPlan.get(plan.id)?.mayBeTruncated ?? false,
         ...(departuresByPlan.get(plan.id)?.soldOutOmitted ? { soldOutOmitted: true } : {}),
+        ...(departuresByPlan.has(plan.id) ? {} : { departuresNotLoaded: true as const }),
       })),
       ...(plansMayBeTruncated ? { plansMayBeTruncated: true as const } : {}),
     },

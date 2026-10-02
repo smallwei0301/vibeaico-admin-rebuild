@@ -81,6 +81,21 @@ describe('#11 client 有 initialData 時不重取', () => {
       .toBe('request');
   });
 
+  it('bookingCtaState：未載入團次（departuresNotLoaded）→ dates-not-loaded，不提供入口；INSTANT 仍為 none', () => {
+    const plan = { minParty: 1, departures: [], departuresNotLoaded: true };
+    expect(bookingCtaState({ salesMode: 'FIXED_DEPARTURE', ...plan })).toBe('dates-not-loaded');
+    expect(bookingCtaState({ salesMode: 'REQUEST', ...plan })).toBe('dates-not-loaded');
+    expect(bookingCtaState({ salesMode: 'INSTANT', ...plan })).toBe('none');
+    expect(client).toContain("bookingCtaState(plan) === 'dates-not-loaded'");
+    expect(client).toContain('t.departures.notLoaded');
+    expect(t.departures.notLoaded).toContain('聯絡店家');
+  });
+
+  it('文案與 noBookable 對齊：noRequestable 說明列出的日期都無法申請', () => {
+    expect(t.departures.noRequestable).toMatch(/列出的日期都無法申請/);
+    expect(t.departures.noRequestable).toContain('請聯絡店家');
+  });
+
   it('bookingCtaState：INSTANT 與其他模式維持 none（只顯示說明、沒有入口）', () => {
     expect(bookingCtaState({ salesMode: 'INSTANT', minParty: 2, departures: [{ seatsLeft: 9 }] })).toBe('none');
     expect(bookingCtaState({ salesMode: 'INSTANT', minParty: 2, departures: [] })).toBe('none');

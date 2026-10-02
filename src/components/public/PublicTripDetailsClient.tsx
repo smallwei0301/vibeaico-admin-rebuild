@@ -245,7 +245,9 @@ export function PublicTripDetailsClient({ shopCode, slug, initialData }: Props) 
                       <span className="text-secondary">{t.plans.partyRange(plan.minParty, plan.maxParty)}</span>
                     </div>
                     <p className="text-2xs text-secondary">{t.plans.priceNote}</p>
-                    {plan.departures.length ? (
+                    {bookingCtaState(plan) === 'dates-not-loaded' ? (
+                      <p className="text-sm text-secondary">{t.departures.notLoaded}</p>
+                    ) : plan.departures.length ? (
                       <div className="flex flex-col gap-1">
                         <h4 className="text-sm font-medium">{t.departures.title}</h4>
                         <ul className="flex flex-wrap gap-2">
