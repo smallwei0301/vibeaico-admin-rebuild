@@ -1,13 +1,13 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fakeState = vi.hoisted(() => ({
   planCount: 10,
   failPlanId: null as string | null,
   soldOutRows: 0,
   flood: false,
-  customRows: null as null | Array<{ seats_booked: number; capacity: number }>,
+  customRows: null as null | Array<{ seats_booked: number; capacity: number; departs_on?: string; start_time?: string | null }>,
   lookaheadAvailable: false,
   onlySoldOut: false,
   salesMode: 'FIXED_DEPARTURE',
@@ -368,6 +368,64 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     expect((planCalls[0] as never as { range: number[] }).range).toEqual([0, 199]);
     expect((planCalls[1] as never as { range: number[] }).range).toEqual([200, 399]);
   });
+
+  describe('今天已開始的團次（台北時間，固定 now＝2098-01-01 10:00）', () => {
+    beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2098-01-01T02:00:00Z')); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    const row = (departs_on: string, start_time: string | null, seats_booked = 0) => ({
+      departs_on, start_time, seats_booked, capacity: 5,
+    });
+
+    it('已過／剛好到開始時間（<=）排除；未到、無開始時間、明天列出；排除列不計入客滿', async () => {
+      fakeState.planCount = 1;
+      fakeState.customRows = [
+        row('2098-01-01', '09:00:00'),
+        row('2098-01-01', '10:00:00'),
+        row('2098-01-01', '08:00:00', 5),
+        row('2098-01-01', '10:01:00'),
+        row('2098-01-01', null),
+        row('2098-01-02', '08:00:00'),
+      ];
+      const { loadPublicTripDetails } = await import('@/server/public-shop');
+      const plan = (await loadPublicTripDetails('demo', 'hike'))?.trip.plans[0];
+      expect(plan?.departures.map((d) => d.id)).toEqual(['c-3', 'c-4', 'c-5']);
+      expect(plan?.departures.some((d) => d.soldOut)).toBe(false);
+      expect(plan?.soldOutOmitted).toBeFalsy();
+      // 查詢仍以台北今天為下界，且游標以已讀列數前進（含被排除列）。
+      expect(fakeState.calls.filter((c) => c.table === 'trip_departures').length).toBe(1);
+    });
+
+    it('全部都是已開始的今天團次 → 無團次、CTA 不開', async () => {
+      fakeState.planCount = 1;
+      fakeState.customRows = [row('2098-01-01', '09:00:00'), row('2098-01-01', '10:00:00')];
+      const { loadPublicTripDetails } = await import('@/server/public-shop');
+      const { fixedBookingCtaState } = await import('@/lib/public-trip-client-state');
+      const plan = (await loadPublicTripDetails('demo', 'hike'))?.trip.plans[0];
+      expect(plan?.departures).toEqual([]);
+      expect(fixedBookingCtaState(plan!)).toBe('unavailable');
+    });
+  });
+
+  it('方案達 10 頁上限且最後一頁滿頁 → plansMayBeTruncated=true 並寫英文固定 warn；最後一頁不滿 → 不帶旗標', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { loadPublicTripDetails } = await import('@/server/public-shop');
+    fakeState.planCount = 2000;
+    const full = await loadPublicTripDetails('demo', 'hike');
+    expect(full?.trip.plans).toHaveLength(2000);
+    expect(full?.trip.plansMayBeTruncated).toBe(true);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('public trip details: plan page limit reached');
+    expect(fakeState.calls.filter((c) => c.table === 'trip_plans')).toHaveLength(10);
+
+    warn.mockClear();
+    fakeState.planCount = 1999;
+    const short = await loadPublicTripDetails('demo', 'hike');
+    expect(short?.trip.plans).toHaveLength(1999);
+    expect(short?.trip).not.toHaveProperty('plansMayBeTruncated');
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  }, 60_000);
 
   it('M1：成團欄位只在 FIXED_DEPARTURE 輸出；REQUEST／INSTANT 不帶', async () => {
     const { loadPublicTripDetails } = await import('@/server/public-shop');

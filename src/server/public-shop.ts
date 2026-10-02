@@ -143,6 +143,8 @@ export type PublicTripDetails = {
     safetyNotice: string;
     refundPolicyType: 'STANDARD' | 'FLEXIBLE' | 'STRICT';
     plans: PublicTripDetailPlan[];
+    /** 方案數達到讀取上限（10 頁 × 200 筆）且最後一頁仍是滿頁，方案清單可能被截斷。 */
+    plansMayBeTruncated?: true;
   };
 };
 
@@ -172,7 +174,11 @@ export type PublicShopData = {
 const MAX_DEPARTURES_PER_TRIP = 6;
 /** 詳情頁每個方案最多顯示的近期團次。 */
 const MAX_DETAIL_DEPARTURES_PER_PLAN = 6;
-/** 詳情頁讀取方案時每頁列數與最多頁數（防止超過 PostgREST 列數上限被靜默截斷，也避免無限迴圈）。 */
+/**
+ * 詳情頁讀取方案時每頁列數與最多頁數（防止超過 PostgREST 列數上限被靜默截斷，也避免無限迴圈）。
+ * 10 頁 × 200 筆＝單一行程 2000 個啟用方案，遠高於實際業務上限（一個行程不會有這麼多方案）；
+ * 真的到達上限時以 plansMayBeTruncated 誠實標示，而不是靜默截斷。
+ */
 const DETAIL_PLAN_PAGE_SIZE = 200;
 const MAX_DETAIL_PLAN_PAGES = 10;
 /** 詳情頁每個方案最多額外列出的客滿團次（不占上面的可售名額）。 */
@@ -252,6 +258,26 @@ function queryFailed(stage: string, cause: unknown): Error {
  */
 function taipeiToday(): string {
   return new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/** 台北「現在」：同一個時間來源切出日期與 HH:mm，避免兩者跨午夜不一致。 */
+function taipeiNowParts(): { today: string; hm: string } {
+  const iso = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
+  return { today: iso.slice(0, 10), hm: iso.slice(11, 16) };
+}
+
+/**
+ * 今天（台北）且開始時間已到或已過的團次不可列出。
+ * `start_time` 為 null 的今天團次維持列出：沒有開始時間，無法判定是否已開始。
+ * 明天以後的團次不受影響。（預約頁／reserve_seats 的權威檢查是既有行為，不在此處理。）
+ */
+function hasStartedToday(
+  row: { departs_on?: unknown; start_time?: unknown },
+  now: { today: string; hm: string },
+): boolean {
+  if (row.departs_on !== now.today) return false;
+  if (row.start_time == null) return false;
+  return String(row.start_time).slice(0, 5) <= now.hm;
 }
 
 async function loadPublicShopCore(
@@ -492,8 +518,11 @@ async function loadPublicTripDetailsUncached(
   if (!row) return null;
   const tripId = row.id as string;
 
+  const now = taipeiNowParts();
+
   // trip_plans 以穩定排序（sort_order、id）分頁讀到底；範圍限定 tenant、trip、active。
   const planRows: Array<Record<string, unknown>> = [];
+  let plansMayBeTruncated = false;
   for (let page = 0; page < MAX_DETAIL_PLAN_PAGES; page += 1) {
     const from = page * DETAIL_PLAN_PAGE_SIZE;
     const { data: pageRows, error: planError } = await admin.from('trip_plans')
@@ -508,6 +537,10 @@ async function loadPublicTripDetailsUncached(
     const got = (pageRows ?? []) as unknown as Array<Record<string, unknown>>;
     planRows.push(...got);
     if (got.length < DETAIL_PLAN_PAGE_SIZE) break;
+    if (page === MAX_DETAIL_PLAN_PAGES - 1) {
+      plansMayBeTruncated = true;
+      console.warn('public trip details: plan page limit reached');
+    }
   }
   const plans: PublicPlan[] = planRows.map((r) => mapPublicPlan(r));
 
@@ -535,7 +568,7 @@ async function loadPublicTripDetailsUncached(
         .eq('trip_id', tripId)
         .eq('plan_id', plan.id)
         .eq('status', 'OPEN')
-        .gte('departs_on', taipeiToday())
+        .gte('departs_on', now.today)
         .order('departs_on', { ascending: true })
         .order('start_time', { ascending: true, nullsFirst: true })
         .order('id', { ascending: true })
@@ -547,6 +580,8 @@ async function loadPublicTripDetailsUncached(
       offset += rows.length;
       for (let index = 0; index < rows.length; index += 1) {
         const departure = rows[index];
+        // 今天已到開始時間的團次不列出，也不計入可售或客滿（游標仍以已讀列數前進）。
+        if (hasStartedToday(departure, now)) continue;
         const capacity = Number(departure.capacity ?? 0);
         const seatsBooked = Number(departure.seats_booked ?? 0);
         const soldOut = seatsBooked >= capacity;
@@ -575,6 +610,7 @@ async function loadPublicTripDetailsUncached(
         if (availableCount() >= MAX_DETAIL_DEPARTURES_PER_PLAN) {
           // 檢查本頁剩下的列：有可售 → 確認還有未列出的可售團次；其餘為略過的客滿列。
           for (const rest of rows.slice(index + 1)) {
+            if (hasStartedToday(rest, now)) continue;
             if (Number(rest.seats_booked ?? 0) < Number(rest.capacity ?? 0)) unlistedSellable = true;
             else skippedSoldOut = true;
           }
@@ -599,18 +635,18 @@ async function loadPublicTripDetailsUncached(
     let mayBeTruncated = unlistedSellable;
     if (!exhausted && !unlistedSellable) {
       const { data, error: lookaheadError } = await admin.from('trip_departures')
-        .select('id, capacity, seats_booked')
+        .select('id, capacity, seats_booked, departs_on, start_time')
         .eq('tenant_id', shopData.tenantId)
         .eq('trip_id', tripId)
         .eq('plan_id', plan.id)
         .eq('status', 'OPEN')
-        .gte('departs_on', taipeiToday())
+        .gte('departs_on', now.today)
         .order('departs_on', { ascending: true })
         .order('start_time', { ascending: true, nullsFirst: true })
         .order('id', { ascending: true })
         .range(offset, offset + DETAIL_DEPARTURE_PAGE_SIZE - 1);
       if (lookaheadError) throw queryTripDetailsFailed('trip_departures', lookaheadError);
-      const ahead = data ?? [];
+      const ahead = (data ?? []).filter((row) => !hasStartedToday(row, now));
       mayBeTruncated = ahead.some(
         (row) => Number(row.seats_booked ?? 0) < Number(row.capacity ?? 0),
       );
@@ -657,6 +693,7 @@ async function loadPublicTripDetailsUncached(
         departuresMayBeTruncated: departuresByPlan.get(plan.id)?.mayBeTruncated ?? false,
         ...(departuresByPlan.get(plan.id)?.soldOutOmitted ? { soldOutOmitted: true } : {}),
       })),
+      ...(plansMayBeTruncated ? { plansMayBeTruncated: true as const } : {}),
     },
   };
 }

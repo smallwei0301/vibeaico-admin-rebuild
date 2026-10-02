@@ -223,6 +223,9 @@ export function PublicTripDetailsClient({ shopCode, slug, initialData }: Props) 
       <section className="card">
         <div className="card-body flex flex-col gap-3">
           <h2 className="text-lg font-medium">{t.plans.title}</h2>
+          {trip.plansMayBeTruncated ? (
+            <p className="text-sm text-secondary">{t.plans.truncated}</p>
+          ) : null}
           {trip.plans.length === 0 ? (
             <p className="text-sm text-secondary">{t.plans.empty}</p>
           ) : (

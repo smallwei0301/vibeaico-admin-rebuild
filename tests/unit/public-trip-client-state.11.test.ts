@@ -36,6 +36,7 @@ describe('#11 client 有 initialData 時不重取', () => {
     expect(client).toContain('outcomeFromHttp(response.status, response.ok, payload)');
     expect(client).not.toMatch(/salesMode === 'FIXED_DEPARTURE'/);
     expect(client).toContain('plan.soldOutOmitted');
+    expect(client).toContain('{trip.plansMayBeTruncated ? (');
   });
 
   it('hasBookableListedDeparture：至少一筆未客滿且 seatsLeft >= minParty 才為 true（>= 邊界）', () => {

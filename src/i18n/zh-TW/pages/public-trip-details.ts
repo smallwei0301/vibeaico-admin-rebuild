@@ -33,6 +33,7 @@ export const publicTripDetailsPage = {
   plans: {
     title: '選擇方案',
     empty: '目前沒有開放預約的方案，可先聯絡店家。',
+    truncated: '本頁僅列出部分方案，請聯絡店家。',
     price: (amount: string, unit: string) => `${amount}${unit}`,
     priceUnit: {
       PER_PERSON: '／人',
