@@ -488,3 +488,62 @@ describe('review wake-up cannot cancel lifecycle housekeeping (synthetic Actions
     else { expect(github.rest.issues.addLabels).not.toHaveBeenCalled(); expect(github.rest.pulls.update).not.toHaveBeenCalled(); }
   });
 });
+
+describe('terminal cleanup compensates observed reopen without restoring stale metadata', () => {
+  it.each(['terminal_cleanup', 'guard'].flatMap(job => ['before-label', 'after-remove', 'after-add', 'after-body', 'after-body-metadata', 'after-body-new-head', 'fresh-metadata', 'new-generation'].map(phase => [job, phase])))('%s/%s checks each write and repairs reopened live labels/body', async (job, phase) => {
+      const { github, live } = wakeupFixture();
+      const original = live.body + '\nWORK_ORIGIN: AGENT\nACTIVE_CANDIDATE: true';
+      let pr: any = { ...live, body: original, state: 'closed', merged: false, closed_at: '2026-10-02T07:00:00Z', labels: [{ name: 'state:active' }, { name: 'candidate:active' }, { name: 'unrelated:keep' }] };
+      const eventPr = structuredClone(pr);
+      let reads = 0;
+      const reopen = () => { pr = { ...pr, state: 'open', closed_at: null }; };
+      github.rest.pulls.get = vi.fn(async () => {
+        reads++;
+        if (reads === 2 && phase === 'before-label') reopen();
+        if (reads === 2 && phase === 'new-generation') pr.closed_at = '2026-10-02T07:02:00Z';
+        return { data: structuredClone(pr) };
+      });
+      const mutations: string[] = [];
+      github.rest.repos.createCommitStatus = vi.fn();
+      github.rest.actions.createWorkflowDispatch = vi.fn();
+      github.rest.issues.getLabel = vi.fn(async () => ({ data: {} }));
+      github.rest.issues.removeLabel = vi.fn(async ({ name }: any) => {
+        mutations.push('remove:' + name); pr.labels = pr.labels.filter((l: any) => l.name !== name);
+        if (phase === 'after-remove' && mutations.length === 1) reopen();
+      });
+      github.rest.issues.addLabels = vi.fn(async ({ labels }: any) => {
+        mutations.push('add:' + labels.join(','));
+        for (const name of labels) if (!pr.labels.some((l: any) => l.name === name)) pr.labels.push({ name });
+        if (labels.includes('state:historical') && ['after-add', 'fresh-metadata'].includes(phase)) {
+          reopen();
+          if (phase === 'fresh-metadata') pr.body = original.replace('AGENT_LANE: GOVERNANCE', 'AGENT_LANE: LUNA_CLOSURE').replace('LANE_STATE: ACTIVE', 'LANE_STATE: PARKED').replace('ACTIVE_CANDIDATE: true', 'ACTIVE_CANDIDATE: false');
+        }
+      });
+      github.rest.pulls.update = vi.fn(async ({ body }: any) => {
+        mutations.push('body'); pr.body = body;
+        if (['after-body', 'after-body-metadata', 'after-body-new-head'].includes(phase) && pr.state === 'closed') {
+          reopen(); pr.body += '\nConcurrent prose survives';
+          if (phase !== 'after-body') pr.body = pr.body.replace('LANE_STATE: HISTORICAL', 'LANE_STATE: PARKED');
+          if (phase === 'after-body-new-head') pr.head = { ...pr.head, sha: 'f'.repeat(40) };
+        }
+      });
+      const boundary = await import('../../scripts/agents/governance-workstream-boundary.mjs');
+      const script = parse(readFileSync('.github/workflows/agent-wip-guard.yml', 'utf8')).jobs[job].steps.find((step: any) => step.with?.script).with.script;
+      const decoded = job === 'guard' ? script.split('const marker =')[0] : script;
+      const summary: any = { addHeading: () => summary, addRaw: () => summary, write: async () => undefined };
+      const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+      await new AsyncFunction('require', 'process', 'github', 'context', 'core', 'loadPolicy', decoded.replace(/\bimport\s*\(/g, 'loadPolicy('))(createRequire(import.meta.url), { env: { GITHUB_WORKSPACE: process.cwd() } }, github, { eventName: 'pull_request_target', repo: { owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild' }, payload: { action: 'closed', pull_request: eventPr } }, { summary, warning: vi.fn() }, async () => boundary);
+      const names = pr.labels.map((l: any) => l.name);
+      expect(names, phase).toContain('unrelated:keep');
+      if (phase === 'new-generation') expect(mutations).toEqual([]);
+      else {
+        expect(names, phase).not.toContain('state:historical'); expect(names, phase).not.toContain('state:complete');
+        expect(names, phase).toContain(['fresh-metadata', 'after-body-metadata', 'after-body-new-head'].includes(phase) ? 'state:parked' : 'state:active');
+        expect(names.includes('candidate:active'), phase).toBe(!['fresh-metadata', 'after-body-metadata', 'after-body-new-head'].includes(phase));
+        if (phase === 'before-label') expect(mutations).toEqual([]);
+        if (phase === 'after-body') { expect(pr.body).toContain('LANE_STATE: ACTIVE'); expect(pr.body).toContain('ACTIVE_CANDIDATE: true'); expect(pr.body).toContain('Concurrent prose survives'); }
+      }
+      expect(github.rest.repos.createCommitStatus).not.toHaveBeenCalled();
+      expect(github.rest.actions.createWorkflowDispatch).not.toHaveBeenCalled();
+  });
+});

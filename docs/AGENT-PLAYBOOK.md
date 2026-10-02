@@ -1740,6 +1740,9 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 #745 首個 source CI36972355711／check110728835980：291files3892testsPASS、1個舊 live-state 文字定位斷言FAIL，因掃整份多job YAML 的首次 pulls.get 當成 guard 的讀取。保留失敗收據，不盲 rerun；該測試改解析實際 jobs.guard script，仍要求 payload number→live pulls.get→metadata 順序與拒絕直接用 payload 當 current，並納入必要 targeted suite。這是檢查器測試範圍錯誤，不能當 CI 已 PASS 或刪掉 live-read gate。
 
+
+#745 finding4163459282（2026-10-02T06:46:16Z）補充：上述「重開無寫入」證據只涵蓋第一次 read 前已重開；獨立 terminal job 若在 read 後重開，兩條 housekeeping 都可能先移除 active/candidate、加 historical，之後 return 留下錯誤標籤。不得用先前 PASS 或泛稱 REST 非原子豁免這個可修正的窗口。新增 actual-script 反例覆蓋兩 writer 的首 read→label、remove→add、add→body、body write 後重開、最新 PARKED/LUNA_CLOSURE/candidate=false 及新 closed generation；原版 RED12FAIL82PASS。兩 writer 改共用 bounded reconcile helper，每次 mutation 前重新核對 closed state/head/closed_at/merged；有副作用後 finally 回讀，已 open 則依 fresh metadata 差分補償 state/candidate，只在同原 head 且整份 parsed machine contract 仍等於自身寫入結果時條件撤回 machine body fields，保留並行 prose，不整包覆寫 labels/body。補償前也核對 open/head/body，未知 metadata、API 錯誤或再度轉態顯式失敗/pending，不猜 ACTIVE、不派 TEST、不寫 review PASS；新 closed generation 留給自身 cleanup。獨立 Sol 再重建 after-body 的 PARKED/candidate=false 與新 head 反例：逐欄比值會把相同 false 誤當自身所有權，還原 stale true；保留 FIX_REQUIRED，新增兩 writer 共四例 RED 後改為整份 parsed contract＋原 head 判斷，不回改並行 metadata。local targeted179PASS/typecheck0；必要 source CI、exact-head 獨立審查與 main/closeout 仍須新證據。REST 末次讀取之後的再次變化仍非原子，不能宣稱排除全部外部 race；此修正不執行 #742 被 HOLD 的外部 label/body 動作。
+
 ### PB-050 — 埋了點，卻整輪沒跑過驗證器；欄位有值，但值在另一套詞彙裡
 
 - 首次／最近：2026-09-14 / 2026-09-14

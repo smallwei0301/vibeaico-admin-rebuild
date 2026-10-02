@@ -74,26 +74,7 @@ jobs:
             // A delayed close must not reconcile a reopened PR or a later close generation.
             if (current.state !== 'closed' || current.head?.sha !== context.payload.pull_request.head?.sha ||
                 current.closed_at !== context.payload.pull_request.closed_at) return;
-            const terminal = boundary.terminalLabelPlan(current);
-            if (!terminal) return;
-            const names = (current.labels ?? []).map(label => typeof label === 'string' ? label : label.name);
-            for (const name of terminal.remove.filter(name => names.includes(name))) {
-              try { await github.rest.issues.removeLabel({ owner, repo, issue_number: number, name }); }
-              catch (error) { if (error.status !== 404) throw error; }
-            }
-            try { await github.rest.issues.getLabel({ owner, repo, name: terminal.add }); }
-            catch (error) {
-              if (error.status !== 404) throw error;
-              await github.rest.issues.createLabel({ owner, repo, name: terminal.add, color: '006B75' });
-            }
-            await github.rest.issues.addLabels({ owner, repo, issue_number: number, labels: [terminal.add] });
-            const { data: fresh } = await github.rest.pulls.get({ owner, repo, pull_number: number });
-            if (fresh.state !== 'closed' || fresh.head?.sha !== current.head?.sha ||
-                fresh.closed_at !== current.closed_at) return;
-            // Recompute from the fresh body, preserving concurrent prose/metadata changes.
-            const bodyPlan = boundary.terminalBodyPlan(fresh);
-            if (bodyPlan?.errors?.length) core.warning(`Closed PR #${number} body not rewritten: ${bodyPlan.errors.join('; ')}`);
-            else if (bodyPlan?.changed) await github.rest.pulls.update({ owner, repo, pull_number: number, body: bodyPlan.body });
+            await boundary.reconcileTerminalPr({ github, owner, repo, current, warning: message => core.warning(message) });
             await core.summary.addHeading('Independent closed-event lane reconciliation')
               .addRaw('Terminal labels/body only; review status, TEST and Product acceptance were not changed.').write();
 
@@ -190,32 +171,7 @@ jobs:
             // Closed-event housekeeping must not overwrite historical guard evidence or dispatch TEST.
             const terminal = boundary.terminalLabelPlan(current);
             if (terminal) {
-              const names = (current.labels ?? []).map(label => typeof label === 'string' ? label : label.name);
-              for (const name of terminal.remove.filter(name => names.includes(name))) {
-                try { await github.rest.issues.removeLabel({ owner, repo, issue_number: current.number, name }); }
-                catch (error) { if (error.status !== 404) throw error; }
-              }
-              try { await github.rest.issues.getLabel({ owner, repo, name: terminal.add }); }
-              catch (error) {
-                if (error.status !== 404) throw error;
-                await github.rest.issues.createLabel({ owner, repo, name: terminal.add, color: '006B75' });
-              }
-              await github.rest.issues.addLabels({ owner, repo, issue_number: current.number, labels: [terminal.add] });
-
-              let bodyReconciled = false;
-              // Recompute from the final body so parallel idempotent cleanup preserves fresh prose.
-              const { data: fresh } = await github.rest.pulls.get({ owner, repo, pull_number: current.number });
-              if (fresh.state !== 'closed' || fresh.head?.sha !== current.head?.sha || fresh.closed_at !== current.closed_at) {
-                core.warning(`Closed PR #${current.number} changed before body reconciliation; leaving body untouched`);
-              } else {
-                const bodyPlan = boundary.terminalBodyPlan(fresh);
-                if (bodyPlan?.errors?.length) {
-                  core.warning(`Closed PR #${current.number} body not rewritten: ${bodyPlan.errors.join('; ')}`);
-                } else if (bodyPlan?.changed) {
-                  await github.rest.pulls.update({ owner, repo, pull_number: current.number, body: bodyPlan.body });
-                  bodyReconciled = true;
-                }
-              }
+              const { bodyReconciled } = await boundary.reconcileTerminalPr({ github, owner, repo, current, warning: message => core.warning(message) });
               await core.summary.addHeading('Closed PR lane reconciled')
                 .addRaw(`Lane closed; terminal labels reconciled; current body metadata updated=${bodyReconciled}. Historical prose/review evidence and Product acceptance were not rewritten.`).write();
               return;

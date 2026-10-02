@@ -1,4 +1,4 @@
-import { isPlaceholder, readField, rewriteField } from './agent-wip-policy.mjs';
+import { ALLOWED, isPlaceholder, parseLaneMetadata, readField, rewriteField } from './agent-wip-policy.mjs';
 
 const DELIVERY_TYPES = new Set(['SLICE', 'STANDALONE', 'EPIC', 'GOVERNANCE']);
 const upper = (value) => String(value ?? '').trim().toUpperCase();
@@ -148,4 +148,114 @@ export function terminalBodyPlan(pr) {
     terminalState,
     errors: [...new Set(errors)],
   };
+}
+
+
+/** Both terminal writers use this bounded, compensating reconciliation; REST is not atomic.
+ * Never writes review status, dispatches TEST, replaces all labels, or follows a new close generation.
+ * @param {{github: any, owner: string, repo: string, current: any, warning?: Function}} input */
+export async function reconcileTerminalPr({ github, owner, repo, current, warning = () => {} }) {
+  const read = async () => (await github.rest.pulls.get({ owner, repo, pull_number: current.number })).data;
+  const sameClose = pr => pr.state === 'closed' && pr.head?.sha === current.head?.sha &&
+    pr.closed_at === current.closed_at && Boolean(pr.merged || pr.merged_at) === Boolean(current.merged || current.merged_at);
+  const names = pr => (pr.labels ?? []).map(label => typeof label === 'string' ? label : label.name);
+  const remove = async name => {
+    try { await github.rest.issues.removeLabel({ owner, repo, issue_number: current.number, name }); }
+    catch (error) { if (error.status !== 404) throw error; }
+  };
+  let touched = false, bodyReconciled = false, beforeBody, writtenBody;
+  const write = async operation => {
+    const fresh = await read();
+    if (!sameClose(fresh)) return false;
+    touched = true; // An API error may occur after the remote side effect; finally still checks truth.
+    await operation(fresh);
+    return true;
+  };
+  const restoreOpen = async observed => {
+    // Conditional undo of only fields this invocation wrote, using the fresh body/prose.
+    // A changed field belongs to its new writer and is preserved, not replaced by an old snapshot.
+    let body = observed.body ?? '';
+    const ownContract = writtenBody !== undefined && observed.head?.sha === current.head?.sha &&
+      JSON.stringify(parseLaneMetadata({ body })) === JSON.stringify(parseLaneMetadata({ body: writtenBody }));
+    if (ownContract) {
+      for (const field of ['LANE_STATE', 'ACTIVE_CANDIDATE']) {
+        const prior = readField(beforeBody, field), written = readField(writtenBody, field);
+        if (prior && prior !== written && readField(body, field) === written) {
+          const undo = rewriteField(body, field, prior);
+          if (undo.error) throw new Error(undo.error);
+          body = undo.body;
+        }
+      }
+      const state = source => {
+        const blocks = [...String(source).matchAll(/<!--\s*pr-lifecycle\b[\s\S]*?-->/gi)];
+        const rows = blocks.length === 1 ? [...blocks[0][0].matchAll(/(?:^|\n)\s*state\s*:\s*([A-Z_]+)(?=\s*(?:\n|$))/gim)] : [];
+        return rows.length === 1 ? rows[0][1] : null;
+      };
+      const prior = state(beforeBody), written = state(writtenBody);
+      if (prior && prior !== written && state(body) === written) {
+        const undo = rewriteLifecycleState(body, prior);
+        if (undo.error) throw new Error(undo.error);
+        body = undo.body;
+      }
+    }
+    const sameOpen = pr => pr.state === 'open' && pr.head?.sha === observed.head?.sha && pr.body === observed.body;
+    const openWrite = async operation => {
+      const fresh = await read();
+      if (!sameOpen(fresh)) throw new Error('Lifecycle or metadata changed during reopen compensation; reconciliation pending');
+      await operation(fresh);
+    };
+    if (body !== observed.body) {
+      await openWrite(() => github.rest.pulls.update({ owner, repo, pull_number: current.number, body }));
+      observed = { ...observed, body };
+    }
+    const metadata = parseLaneMetadata(observed);
+    const states = { ACTIVE: 'state:active', READY_FOR_PROMOTION: 'state:reserve-ready',
+      PARKED: 'state:parked', OWNER_BLOCKED: 'state:owner-blocked', COMPLETE: 'state:complete', HISTORICAL: 'state:historical' };
+    if (!['AGENT', 'OWNER'].includes(metadata.origin) || !ALLOWED.state.has(metadata.state) ||
+        !ALLOWED.lane.has(metadata.lane) || !ALLOWED.boolean.has(metadata.activeCandidate)) {
+      throw new Error('Reopened metadata is incomplete; no guessed lane/candidate restoration, reconciliation pending');
+    }
+    const desired = metadata.origin === 'AGENT' ? [states[metadata.state]] : [];
+    if (metadata.origin === 'AGENT' && metadata.activeCandidate === 'TRUE' && metadata.lane !== 'LUNA_CLOSURE') desired.push('candidate:active');
+    for (const name of [...Object.values(states), 'candidate:active']) {
+      if (!desired.includes(name)) await openWrite(async fresh => { if (names(fresh).includes(name)) await remove(name); });
+    }
+    await openWrite(async fresh => {
+      const additions = desired.filter(name => !names(fresh).includes(name));
+      if (additions.length) await github.rest.issues.addLabels({ owner, repo, issue_number: current.number, labels: additions });
+    });
+    if (!sameOpen(await read())) throw new Error('Lifecycle changed after reopen compensation; reconciliation pending');
+    warning('Observed reopen compensated from live metadata; independent policy/review validation still required');
+  };
+  const terminal = terminalLabelPlan(current);
+  if (!terminal) return { bodyReconciled: false };
+  try {
+    for (const name of terminal.remove) {
+      if (!await write(async fresh => { if (names(fresh).includes(name)) await remove(name); })) return { bodyReconciled: false };
+    }
+    if (!await write(async () => {
+      try { await github.rest.issues.getLabel({ owner, repo, name: terminal.add }); }
+      catch (error) {
+        if (error.status !== 404) throw error;
+        try { await github.rest.issues.createLabel({ owner, repo, name: terminal.add, color: '006B75' }); }
+        catch (createError) { if (createError.status !== 422) throw createError; await github.rest.issues.getLabel({ owner, repo, name: terminal.add }); }
+      }
+    })) return { bodyReconciled: false };
+    if (!await write(fresh => names(fresh).includes(terminal.add) ? undefined :
+      github.rest.issues.addLabels({ owner, repo, issue_number: current.number, labels: [terminal.add] }))) return { bodyReconciled: false };
+    await write(async fresh => {
+      const plan = terminalBodyPlan(fresh);
+      if (plan.errors.length) warning(`Closed PR #${current.number} body not rewritten: ${plan.errors.join('; ')}`);
+      else if (plan.changed) {
+        beforeBody = fresh.body; writtenBody = plan.body;
+        await github.rest.pulls.update({ owner, repo, pull_number: current.number, body: plan.body });
+        bodyReconciled = true;
+      }
+    });
+  } finally {
+    const fresh = await read();
+    if (touched && fresh.state === 'open') { await restoreOpen(fresh); bodyReconciled = false; }
+    else if (!sameClose(fresh)) warning('Close generation changed; old reconciliation stopped without overwriting its successor');
+  }
+  return { bodyReconciled };
 }
