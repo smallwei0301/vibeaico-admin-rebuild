@@ -1,7 +1,7 @@
 /**
  * 預約／申請頁共用：讀取單一方案的啟用季節並依出發日解析單價（規則見 src/lib/public-season-price.ts，
  * 與 canonical 0132 create_tour_order 一致）。查詢條件與詳情 loader 一致：tenant_id、plan_id、active，
- * 上限 1000 列；達上限視為資料可能不完整，fail-closed：不輸出 unitPrice（但仍標 seasonalPricing）。
+ * 上限 1000 列；達上限或查詢失敗視為資料可能不完整，fail-closed：不輸出 unitPrice（但仍標 seasonalPricing）。
  */
 import type { createAdminSupabase } from '@/server/supabase';
 import { resolveSeasonUnitPrice, type PublicSeasonRow } from '@/lib/public-season-price';
@@ -22,7 +22,12 @@ export async function loadPlanSeasons(
     .eq('active', true)
     .order('id', { ascending: true })
     .range(0, SEASON_QUERY_LIMIT - 1);
-  if (error) throw new Error('PUBLIC_BOOKING_QUERY_FAILED:trip_plan_seasons', { cause: error });
+  if (error) {
+    // 降級而不是 throw：實際金額由 create_tour_order RPC 自己計算，季節資料只用於顯示。季節查詢壞掉不能讓預約頁、
+    // 申請頁與送出流程跟著失敗。語意等同查詢達上限：不輸出 unitPrice、標 seasonalPricing，畫面說明實際金額依日期確認。
+    console.warn('public plan seasons query failed; degrading to no unit prices');
+    return { seasons: [], incomplete: true };
+  }
   const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
   return {
     incomplete: rows.length >= SEASON_QUERY_LIMIT,

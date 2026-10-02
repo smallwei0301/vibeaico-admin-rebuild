@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
   priceType: 'PER_PERSON' as string,
@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
   seasons: [] as Array<Record<string, unknown>>,
   departs: ['2098-07-15', '2098-09-15'] as string[],
   seasonCalls: [] as Array<Record<string, unknown>>,
+  seasonError: false,
 }));
 
 vi.mock('@/server/supabase', () => ({
@@ -15,7 +16,7 @@ vi.mock('@/server/supabase', () => ({
     from(table: string) {
       const filters: Record<string, unknown> = {};
       const run = async () => {
-        if (table === 'trip_plan_seasons') { state.seasonCalls.push({ ...filters }); return { data: state.seasons, error: null }; }
+        if (table === 'trip_plan_seasons') { state.seasonCalls.push({ ...filters }); return state.seasonError ? { data: null, error: { message: 'boom' } } : { data: state.seasons, error: null }; }
         if (table === 'tenants') return { data: { id: 't1', tenant_settings: { basic: { tenantName: 'Shop' } } }, error: null };
         if (table === 'trip_plans') {
           return {
@@ -44,7 +45,7 @@ vi.mock('@/server/supabase', () => ({
   }),
 }));
 
-import { resolveBookingTotal, seasonalHeadlineKind } from '@/lib/public-booking-price';
+import { canSubmitBooking, resolveBookingTotal, seasonalHeadlineKind } from '@/lib/public-booking-price';
 import { loadPublicBookingPlan } from '@/server/public-tour-booking';
 import { loadPublicRequestPlan } from '@/server/public-tour-request';
 
@@ -75,6 +76,35 @@ describe('#11 resolveBookingTotal（與 0132 同順序：季節單價 → PER_GR
   });
 });
 
+describe('#11 canSubmitBooking（季節價算不出金額時不可送出）', () => {
+  const ok = { departureId: 'd1', contactName: 'Amy', hasContact: true, partySize: 2, minParty: 1, maxParty: 4, submitting: false };
+  it('無季節：與舊行為相同（不依賴 bookingTotal）', () => {
+    expect(canSubmitBooking({ ...ok, bookingTotal: null })).toBe(true);
+    expect(canSubmitBooking({ ...ok, seasonalPricing: false, bookingTotal: null })).toBe(true);
+  });
+  it('有季節且有總額 → 可送出', () => {
+    expect(canSubmitBooking({ ...ok, seasonalPricing: true, bookingTotal: { total: 1 } })).toBe(true);
+  });
+  it('有季節但總額為 null → 不可送出', () => {
+    expect(canSubmitBooking({ ...ok, seasonalPricing: true, bookingTotal: null })).toBe(false);
+  });
+  it.each([
+    ['沒選團次', { departureId: '' }],
+    ['姓名空白', { contactName: '   ' }],
+    ['沒有聯絡方式', { hasContact: false }],
+    ['人數低於下限', { partySize: 0 }],
+    ['人數高於上限', { partySize: 5 }],
+    ['送出中', { submitting: true }],
+  ])('原必填條件：%s → 不可送出（有無季節皆同）', (_l, over) => {
+    expect(canSubmitBooking({ ...ok, ...over, bookingTotal: { total: 1 } })).toBe(false);
+    expect(canSubmitBooking({ ...ok, ...over, seasonalPricing: true, bookingTotal: { total: 1 } })).toBe(false);
+  });
+  it('金額無法確認時的畫面文案', () => {
+    expect(read('src/i18n/zh-TW/pages/public-tour-booking.ts')).toContain('目前無法確認此日期的金額，請聯絡店家或改選其他日期。');
+    expect(read('src/i18n/zh-TW/pages/public-tour-request.ts')).toContain('目前無法確認此日期的金額，請聯絡店家或改選其他日期。');
+  });
+});
+
 describe('#11 seasonalHeadlineKind', () => {
   it.each([
     ['沒有季節定價 → null（顯示基本價）', { departures: [{}] }, null],
@@ -87,7 +117,7 @@ describe('#11 seasonalHeadlineKind', () => {
 });
 
 describe('#11 預約頁 loader 的季節單價', () => {
-  beforeEach(() => { state.mode = 'FIXED_DEPARTURE'; state.priceType = 'PER_PERSON'; state.seasons = []; state.seasonCalls = []; state.departs = ['2098-07-15', '2098-09-15']; });
+  beforeEach(() => { state.mode = 'FIXED_DEPARTURE'; state.priceType = 'PER_PERSON'; state.seasons = []; state.seasonCalls = []; state.seasonError = false; state.departs = ['2098-07-15', '2098-09-15']; });
 
   it('命中季節的團次 unitPrice＝override，未命中＝基本價；方案標 seasonalPricing；查詢綁 tenant、plan、active', async () => {
     state.seasons = [season()];
@@ -114,6 +144,48 @@ describe('#11 預約頁 loader 的季節單價', () => {
   });
 });
 
+describe('#11 X2：季節查詢失敗時降級，不讓預約頁／申請頁／送出流程失敗', () => {
+  beforeEach(() => { state.mode = 'FIXED_DEPARTURE'; state.seasons = []; state.seasonCalls = []; state.seasonError = true; state.departs = ['2098-07-15']; });
+  afterEach(() => { state.seasonError = false; });
+
+  it('預約 loader：照常回傳團次（沒有 unitPrice）、seasonalPricing=true、英文固定 warn 且不含 tenant 識別', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const plan = await loadPublicBookingPlan('shop', PLAN_ID);
+    expect(plan?.departures).toHaveLength(1);
+    expect(plan?.departures[0]).not.toHaveProperty('unitPrice');
+    expect(plan?.seasonalPricing).toBe(true);
+    expect(warn).toHaveBeenCalledWith('public plan seasons query failed; degrading to no unit prices');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('t1');
+    warn.mockRestore();
+  });
+
+  it('申請 loader 同樣降級', async () => {
+    state.mode = 'REQUEST';
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const plan = await loadPublicRequestPlan('shop', PLAN_ID);
+    expect(plan?.departures).toHaveLength(1);
+    expect(plan?.seasonalPricing).toBe(true);
+    warn.mockRestore();
+  });
+
+  it('送出流程路徑（withSeasonPrices:false）完全不查季節，也不受季節錯誤影響', async () => {
+    const plan = await loadPublicBookingPlan('shop', PLAN_ID, { withSeasonPrices: false });
+    expect(plan?.departures).toHaveLength(1);
+    expect(state.seasonCalls).toHaveLength(0);
+    expect(plan).not.toHaveProperty('seasonalPricing');
+    state.mode = 'REQUEST';
+    expect((await loadPublicRequestPlan('shop', PLAN_ID, { withSeasonPrices: false }))?.departures).toHaveLength(1);
+    expect(state.seasonCalls).toHaveLength(0);
+  });
+
+  it('送出 API／submit 都以 withSeasonPrices:false 呼叫 loader（source pin）', () => {
+    for (const f of ['src/app/api/public/tour-bookings/route.ts', 'src/app/api/public/tour-requests/route.ts',
+      'src/server/public-tour-booking.ts', 'src/server/public-tour-request.ts']) {
+      expect(read(f)).toMatch(/\{ withSeasonPrices: false \}\);/);
+    }
+  });
+});
+
 describe('#11 申請頁 loader（REQUEST 同樣經 create_tour_order，依出發日套用季節價）', () => {
   it('REQUEST 方案的團次帶季節 unitPrice；override 為 null 用基本價', async () => {
     state.mode = 'REQUEST';
@@ -133,6 +205,12 @@ describe('#11 表單與 client 接線 pin', () => {
     'src/app/s/[shopCode]/plans/[planId]/book/BookingForm.tsx',
     'src/app/s/[shopCode]/plans/[planId]/request/RequestForm.tsx',
   ];
+
+  it.each(forms)('%s（X1）：canSubmit 經由 canSubmitBooking（含 seasonalPricing 與 bookingTotal）', (file) => {
+    const src = read(file);
+    expect(src).toMatch(/const canSubmit = canSubmitBooking\(\{[\s\S]*?seasonalPricing: plan\.seasonalPricing, bookingTotal,[\s\S]*?\}\);/);
+    expect(src).toMatch(/import \{[^}]*canSubmitBooking[^}]*\} from '@\/lib\/public-booking-price'/);
+  });
 
   it.each(forms)('%s：摘要只使用 resolveBookingTotal 的結果，不直接用 pricePerPerson 計算', (file) => {
     const src = read(file);

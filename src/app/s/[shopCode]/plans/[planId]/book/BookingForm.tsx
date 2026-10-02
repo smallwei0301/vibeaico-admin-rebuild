@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { ApiError, request } from '@/lib/api';
 import { publicTourBookingPage as t } from '@/i18n/zh-TW/pages/public-tour-booking';
 import { formatCurrency } from '@/lib/utils';
-import { resolveBookingTotal, seasonalHeadlineKind } from '@/lib/public-booking-price';
+import { canSubmitBooking, resolveBookingTotal, seasonalHeadlineKind } from '@/lib/public-booking-price';
 import type { PublicBookingPlan } from '@/server/public-tour-booking';
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
@@ -51,8 +51,10 @@ export function BookingForm({
   // 實際金額摘要只使用 resolveBookingTotal 的結果（與 create_tour_order 同順序：季節單價 → PER_GROUP 一口價／PER_PERSON × 人數）。
   const selectedDeparture = plan.departures.find((d) => d.id === departureId);
   const bookingTotal = resolveBookingTotal(selectedDeparture, plan, partySize);
-  const canSubmit = !!departureId && !!contactName.trim() && hasContact
-    && partySize >= plan.minParty && partySize <= plan.maxParty && !submitting;
+  const canSubmit = canSubmitBooking({
+    departureId, contactName, hasContact, partySize, minParty: plan.minParty, maxParty: plan.maxParty, submitting,
+    seasonalPricing: plan.seasonalPricing, bookingTotal,
+  });
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -209,7 +211,7 @@ export function BookingForm({
                   : t.form.totalPerPerson(formatCurrency(bookingTotal.unitPrice), partySize, formatCurrency(bookingTotal.total))}
               </span>
             </div>
-          ) : selectedDeparture ? (
+          ) : selectedDeparture && plan.seasonalPricing ? (
             <p className="text-sm text-secondary">{t.form.totalUnknown}</p>
           ) : null}
 

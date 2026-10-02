@@ -627,9 +627,10 @@ async function loadPublicTripDetailsUncached(
       .order('plan_id', { ascending: true })
       .order('id', { ascending: true })
       .range(0, SEASON_QUERY_LIMIT - 1);
-    if (seasonError) throw queryTripDetailsFailed('trip_plan_seasons', seasonError);
-    const rows = (seasonRows ?? []) as unknown as Array<Record<string, unknown>>;
-    seasonsIncomplete = rows.length >= SEASON_QUERY_LIMIT;
+    // 季節資料只用於顯示價格（實際金額由 RPC 計算）：查詢失敗降級為「資料不完整」，不讓整個詳情頁失敗。
+    if (seasonError) console.warn('public trip details: season query failed; degrading to no unit prices');
+    const rows = seasonError ? [] : (seasonRows ?? []) as unknown as Array<Record<string, unknown>>;
+    seasonsIncomplete = Boolean(seasonError) || rows.length >= SEASON_QUERY_LIMIT;
     for (const r of rows) {
       const list = seasonsByPlan.get(r.plan_id as string) ?? [];
       list.push({

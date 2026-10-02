@@ -109,6 +109,8 @@ const MAX_DEPARTURES = 12;
  */
 export async function loadPublicRequestPlan(
   shopCode: string, planId: string,
+  /** 送出流程不需要季節價（金額由 RPC 計算），傳 false 可略過季節查詢。 */
+  options: { withSeasonPrices?: boolean } = {},
 ): Promise<PublicRequestPlan | null> {
   if (!SHOP_CODE_PATTERN.test(shopCode)) return null;
   if (!UUID_RE.test(planId)) return null;
@@ -149,7 +151,9 @@ export async function loadPublicRequestPlan(
     .order('start_time', { ascending: true, nullsFirst: true });
   if (departureError) throw queryFailed('trip_departures', departureError);
 
-  const seasons = await loadPlanSeasons(admin, tenantId, planId);
+  const seasons = options.withSeasonPrices === false
+    ? { seasons: [], incomplete: false }
+    : await loadPlanSeasons(admin, tenantId, planId);
   const basePrice = Number(plan.price_per_person ?? 0);
   const departures: PublicRequestDeparture[] = [];
   for (const row of departureRows ?? []) {
@@ -231,7 +235,7 @@ export async function submitPublicTourRequest(
 ): Promise<{ orderId: string; orderNo: string }> {
   const admin = createAdminSupabase();
 
-  const plan = await loadPublicRequestPlan(input.shopCode, input.planId);
+  const plan = await loadPublicRequestPlan(input.shopCode, input.planId, { withSeasonPrices: false });
   if (!plan) throw new PublicTourRequestError('PLAN_NOT_FOUND', '找不到此方案，或此方案目前未開放線上申請');
 
   if (input.partySize < plan.minParty || input.partySize > plan.maxParty) {

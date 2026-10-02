@@ -37,3 +37,25 @@ export function seasonalHeadlineKind(plan: {
   if (!plan.seasonalPricing) return null;
   return plan.departures.some((departure) => departure.unitPrice !== undefined) ? 'by-departure' : 'contact';
 }
+
+/**
+ * 預約／申請表單能否送出。原本的必填條件不變；方案有季節定價（seasonalPricing）時，另外要求目前選的團次算得出
+ * 實際金額（bookingTotal 不為 null，例如季節資料不完整或查詢失敗就算不出）——避免旅客在看不到正確金額時送出。
+ * 沒有季節定價時，基本價一定算得出來，維持原條件。
+ */
+export function canSubmitBooking(input: {
+  departureId: string;
+  contactName: string;
+  hasContact: boolean;
+  partySize: number;
+  minParty: number;
+  maxParty: number;
+  submitting: boolean;
+  seasonalPricing?: boolean;
+  bookingTotal: unknown | null;
+}): boolean {
+  const base = !!input.departureId && !!input.contactName.trim() && input.hasContact
+    && input.partySize >= input.minParty && input.partySize <= input.maxParty && !input.submitting;
+  if (input.seasonalPricing) return base && input.bookingTotal !== null;
+  return base;
+}

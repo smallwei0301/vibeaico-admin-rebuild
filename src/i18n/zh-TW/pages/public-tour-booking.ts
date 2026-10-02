@@ -23,7 +23,7 @@ export const publicTourBookingPage = {
     totalLabel: '實際金額',
     totalPerPerson: (unit: string, party: number, total: string) => `${unit} × ${party} 人 ＝ ${total}`,
     totalPerGroup: (total: string) => `${total}（整團一口價）`,
-    totalUnknown: '實際金額將依出發日期確認，請以店家確認為準。',
+    totalUnknown: '目前無法確認此日期的金額，請聯絡店家或改選其他日期。',
     departurePlaceholder: '請選擇一個日期',
     departureOption: (dateText: string, startTime: string, seatsLeft: number) =>
       `${dateText}${startTime ? ` ${startTime}` : ''}（剩 ${seatsLeft} 位）`,

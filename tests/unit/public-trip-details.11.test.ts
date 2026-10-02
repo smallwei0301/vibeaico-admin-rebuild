@@ -18,6 +18,7 @@ const fakeState = vi.hoisted(() => ({
   tenantBasic: undefined as undefined | Record<string, unknown>,
   lineId: '@abc',
   seasons: [] as Array<Record<string, unknown>>,
+  seasonError: false,
   modeFor: null as null | ((i: number) => string),
   active: 0,
   maxActive: 0,
@@ -36,7 +37,7 @@ vi.mock('@/server/supabase', () => ({
           const id = filters.shop_code === 'demo' ? 'tenant-1' : 'tenant-2';
           return { data: { id, shop_code: filters.shop_code, name: 'Demo', business_type: null, tenant_settings: fakeState.tenantBasic ? { basic: fakeState.tenantBasic, line: { lineBasicId: fakeState.lineId } } : null }, error: null };
         }
-        if (table === 'trip_plan_seasons') return { data: fakeState.seasons, error: null };
+        if (table === 'trip_plan_seasons') return fakeState.seasonError ? { data: null, error: { message: 'boom' } } : { data: fakeState.seasons, error: null };
         if (table === 'trips') {
           const all = [
             { id: 'trip-1', tenant_id: 'tenant-1', slug: 'hike', status: 'PUBLISHED' },
@@ -222,6 +223,7 @@ describe('#11 公開行程詳情：方案團次查詢併發上限', () => {
     fakeState.tenantBasic = undefined;
     fakeState.lineId = '@abc';
     fakeState.seasons = [];
+    fakeState.seasonError = false;
     fakeState.active = 0;
     fakeState.maxActive = 0;
     fakeState.calls = [];
@@ -697,6 +699,18 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
       const plan = await loadSeason([season({})], ['2098-07-15', '2098-09-15']);
       expect(plan.seasonalPricing).toBe(true);
       expect(plan.departures.map((d) => d.unitPrice)).toEqual([3000, 100]);
+    });
+
+    it('X2：季節查詢失敗 → 詳情照常回傳（沒有 unitPrice、標 seasonalPricing），英文固定 warn', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      fakeState.seasonError = true;
+      let plan: Awaited<ReturnType<typeof loadSeason>>;
+      try { plan = await loadSeason([], ['2098-07-15']); } finally { fakeState.seasonError = false; }
+      expect(plan.departures).toHaveLength(1);
+      expect(plan.departures[0]).not.toHaveProperty('unitPrice');
+      expect(plan.seasonalPricing).toBe(true);
+      expect(warn).toHaveBeenCalledWith('public trip details: season query failed; degrading to no unit prices');
+      warn.mockRestore();
     });
 
     it('S14：命中季節但 price_override 為 null → unitPrice 等於基本價 100，不是 0', async () => {
