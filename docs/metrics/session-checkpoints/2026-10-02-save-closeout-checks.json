@@ -1,0 +1,57 @@
+{
+  "observedAt": "2026-10-02T01:31:00.535609+00:00",
+  "rulesMainSha": "b5e3b123af5587d4ab775e9860796b7662593b7b",
+  "purpose": "Archive validation only. Original checkpoints retained unchanged; no terminal Run or Production acceptance claim.",
+  "records": [
+    {
+      "snapshot": "goal",
+      "command": [
+        "node",
+        "/workspace/product-delivery-save-closeout/scripts/agents/run-ledger-v2.mjs",
+        "validate",
+        "/workspace/product-goal-metrics/docs/metrics/agent-runs/2026-10-01-product-delivery-r01.json"
+      ],
+      "exitCode": 0,
+      "stdout": "VALID_V2 2026-10-01-product-delivery-r01\n",
+      "stderr": ""
+    },
+    {
+      "snapshot": "goal",
+      "command": [
+        "node",
+        "/workspace/product-delivery-save-closeout/scripts/agents/scorecard-readiness.mjs",
+        "/workspace/product-goal-metrics/docs/metrics/agent-runs/2026-10-01-product-delivery-r01.json",
+        "--json",
+        "--strict-live"
+      ],
+      "exitCode": 0,
+      "stdout": "{\n  \"runId\": \"2026-10-01-product-delivery-r01\",\n  \"validLedger\": true,\n  \"validationErrors\": [],\n  \"scoreProfileTarget\": \"OBSERVED_V1\",\n  \"observedScoreEffectiveAt\": \"2026-09-15T00:00:00Z\",\n  \"liveCaptureStatus\": \"LIVE_CAPTURE_READY\",\n  \"rawCaptureGaps\": [],\n  \"consistencyWarnings\": [],\n  \"terminalOnlyPending\": [\n    \"endedAt\",\n    \"main.endSha\",\n    \"inventory.openIssuesEnd\",\n    \"inventory.openPrsEnd\",\n    \"closeout.state\",\n    \"closeout.closedAt\",\n    \"closeout.evidenceRef\"\n  ],\n  \"observed\": {\n    \"taskCount\": 32,\n    \"lunaTasks\": 6,\n    \"lunaAccepted\": 6,\n    \"solTaskCount\": 26,\n    \"recordedSolTouches\": 17,\n    \"fullCiRuns\": 23,\n    \"invalidReruns\": 0,\n    \"closureSweeps\": 1,\n    \"verifiedIssueClosedSubjects\": 0,\n    \"recordedIssuesClosed\": 0,\n    \"mainTerraPeak\": 1,\n    \"activeCandidatePeak\": 2,\n    \"sharedTestPeak\": 1,\n    \"counterEvidence\": \"WIP_EVENTS_RECONSTRUCTED\"\n  },\n  \"readyForContinuedCapture\": true\n}\n",
+      "stderr": ""
+    },
+    {
+      "snapshot": "pr731",
+      "command": [
+        "node",
+        "/workspace/product-delivery-save-closeout/scripts/agents/run-ledger-v2.mjs",
+        "validate",
+        "/workspace/product-11-trip-details/docs/metrics/agent-runs/2026-10-01-product-delivery-r01.json"
+      ],
+      "exitCode": 0,
+      "stdout": "VALID_V2 2026-10-01-product-delivery-r01\n",
+      "stderr": ""
+    },
+    {
+      "snapshot": "pr731",
+      "command": [
+        "node",
+        "/workspace/product-delivery-save-closeout/scripts/agents/scorecard-readiness.mjs",
+        "/workspace/product-11-trip-details/docs/metrics/agent-runs/2026-10-01-product-delivery-r01.json",
+        "--json",
+        "--strict-live"
+      ],
+      "exitCode": 0,
+      "stdout": "{\n  \"runId\": \"2026-10-01-product-delivery-r01\",\n  \"validLedger\": true,\n  \"validationErrors\": [],\n  \"scoreProfileTarget\": \"OBSERVED_V1\",\n  \"observedScoreEffectiveAt\": \"2026-09-15T00:00:00Z\",\n  \"liveCaptureStatus\": \"LIVE_CAPTURE_READY\",\n  \"rawCaptureGaps\": [],\n  \"consistencyWarnings\": [],\n  \"terminalOnlyPending\": [\n    \"endedAt\",\n    \"main.endSha\",\n    \"inventory.openIssuesEnd\",\n    \"inventory.openPrsEnd\",\n    \"closeout.state\",\n    \"closeout.closedAt\",\n    \"closeout.evidenceRef\"\n  ],\n  \"observed\": {\n    \"taskCount\": 40,\n    \"lunaTasks\": 7,\n    \"lunaAccepted\": 7,\n    \"solTaskCount\": 33,\n    \"recordedSolTouches\": 23,\n    \"fullCiRuns\": 26,\n    \"invalidReruns\": 0,\n    \"closureSweeps\": 1,\n    \"verifiedIssueClosedSubjects\": 0,\n    \"recordedIssuesClosed\": 0,\n    \"mainTerraPeak\": 1,\n    \"activeCandidatePeak\": 3,\n    \"sharedTestPeak\": 1,\n    \"counterEvidence\": \"WIP_EVENTS_RECONSTRUCTED\"\n  },\n  \"readyForContinuedCapture\": true\n}\n",
+      "stderr": ""
+    }
+  ]
+}
