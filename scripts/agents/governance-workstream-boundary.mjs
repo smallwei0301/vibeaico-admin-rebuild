@@ -169,9 +169,9 @@ export function terminalBodyPlan(pr) {
     ['OWNER_OR_EXTERNAL_BLOCKER', value => value !== 'NONE'],
     ['REMAINING_AUTONOMOUS_STEPS', value => value !== 'NONE'],
     ['MERGE_COMMIT_SHA', value => merged ? !/^[a-f0-9]{40}$/i.test(value) || Boolean(pr.merge_commit_sha && upper(value) !== upper(pr.merge_commit_sha)) : value !== 'NONE'],
-    ['MAIN_HEAD_VERIFIED', value => merged && value !== 'TRUE'],
-    ['MAIN_HEAD_SHA', value => merged && !/^[a-f0-9]{40}$/i.test(value)],
-    ['MAIN_FILE_RE_READ', value => merged && (value === 'NONE' || isPlaceholder(value))],
+    ['MAIN_HEAD_VERIFIED', value => value !== (merged ? 'TRUE' : 'FALSE')],
+    ['MAIN_HEAD_SHA', value => merged ? !/^[a-f0-9]{40}$/i.test(value) : value !== 'NONE'],
+    ['MAIN_FILE_RE_READ', value => merged ? value === 'NONE' || isPlaceholder(value) : value !== 'NONE'],
     ['VERIFIED_AT', value => !Number.isFinite(Date.parse(value)) || Date.parse(value) > Date.now() + 300_000 || Boolean(pr.closed_at && Date.parse(value) < Date.parse(pr.closed_at))],
     ['EXACT_HEAD_CI_STATUS', value => merged ? value !== 'VERIFIED_GREEN' : value === 'VERIFIED_GREEN'],
     ['EXACT_HEAD_CI_RUN', value => merged ? value === 'NONE' || isPlaceholder(value) : value !== 'NONE'],
@@ -219,8 +219,8 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
     let handoffError;
     try {
     if (observed.state !== 'closed') return;
-    const plan = terminalBodyPlan(observed);
-    let liveFailure = '';
+    const plan = terminalBodyPlan(observed), labelMismatch = pr => { const expected = terminalLabelPlan(pr), actual = names(pr); return expected && (!actual.includes(expected.add) || expected.remove.some(name => actual.includes(name))); };
+    let liveFailure = labelMismatch(observed) ? 'TERMINAL_LABELS_UNVERIFIED' : '';
     if ((observed.merged || observed.merged_at) && plan.hasContract && !plan.changed && !plan.errors.length && !plan.unsyncedFields.length && !reason) try {
       const branch = observed.base?.ref, merge = observed.merge_commit_sha;
       const declared = readField(observed.body, 'MAIN_HEAD_SHA');
@@ -258,7 +258,7 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
     const trusted = comments.filter(comment => comment.user?.login === 'github-actions[bot]' && comment.user?.id === 41898282 && String(comment.body ?? '').startsWith(`<!-- agent-terminal-state-sync:v1 pr=${current.number} `)), prior = trusted.filter(comment => String(comment.body ?? '').startsWith(prefix));
     const unresolvedPrior = String(trusted.at(-1)?.body ?? '').split('\n')[1] === 'STATE_SYNC_PENDING';
     const sameObserved = pr => pr.state === 'closed' && pr.head?.sha === observed.head?.sha && pr.closed_at === observed.closed_at && Boolean(pr.merged || pr.merged_at) === Boolean(observed.merged || observed.merged_at) && pr.body === observed.body;
-    const before = await read(); if (!sameObserved(before)) return;
+    const before = await read(); if (!sameObserved(before)) return; if (!pending && labelMismatch(before)) return recordPending(before, 'TERMINAL_LABELS_UNVERIFIED');
     if (!pending && !prior.length && !unresolvedPrior || (String(prior.at(-1)?.body ?? '').startsWith(marker) && String(prior.at(-1)?.body ?? '').split('\n')[1] === status)) return;
     const priorIds = new Set(comments.map(comment => comment.id));
     let created;
@@ -279,7 +279,7 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
     }
     const after = await read();
     if (!sameObserved(after)) await github.rest.issues.updateComment({ owner, repo, comment_id: created.data.id,
-      body: `${marker}\nSTATE_SYNC_SUPERSEDED\nREASON: close generation or body changed after comment creation; recheck live PR before closeout.\n` });
+      body: `${marker}\nSTATE_SYNC_SUPERSEDED\nREASON: close generation or body changed after comment creation; recheck live PR before closeout.\n` }); else if (!pending && labelMismatch(after)) await recordPending(after, 'TERMINAL_LABELS_UNVERIFIED');
     } catch (error) { handoffError = error; throw error; }
     finally { try { const fresh = await read(); if (touched && fresh.state === 'open') await restoreOpen(fresh); }
       catch (error) { if (handoffError) throw new AggregateError([handoffError, error], 'Terminal handoff and reopen compensation failed'); throw error; } }
