@@ -37,7 +37,11 @@ vi.mock('@/server/supabase', () => ({
           const id = filters.shop_code === 'demo' ? 'tenant-1' : 'tenant-2';
           return { data: { id, shop_code: filters.shop_code, name: 'Demo', business_type: null, tenant_settings: fakeState.tenantBasic ? { basic: fakeState.tenantBasic, line: { lineBasicId: fakeState.lineId } } : null }, error: null };
         }
-        if (table === 'trip_plan_seasons') return fakeState.seasonError ? { data: null, error: { message: 'boom' } } : { data: fakeState.seasons, error: null };
+        if (table === 'trip_plan_seasons') {
+          if (fakeState.seasonError) return { data: null, error: { message: 'boom' } };
+          const [sFrom, sTo] = rangeArgs ?? [0, Number.MAX_SAFE_INTEGER];
+          return { data: fakeState.seasons.slice(sFrom, sTo + 1), error: null };
+        }
         if (table === 'trips') {
           const all = [
             { id: 'trip-1', tenant_id: 'tenant-1', slug: 'hike', status: 'PUBLISHED' },
@@ -709,8 +713,42 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
       expect(plan.departures).toHaveLength(1);
       expect(plan.departures[0]).not.toHaveProperty('unitPrice');
       expect(plan.seasonalPricing).toBe(true);
-      expect(warn).toHaveBeenCalledWith('public trip details: season query failed; degrading to no unit prices');
+      expect(warn).toHaveBeenCalledWith('public plan seasons query failed; degrading to no unit prices');
       warn.mockRestore();
+    });
+
+    describe('季節查詢分頁與截斷（每頁 1000、最多 5 頁）', () => {
+      const rows = (planId: string, n: number, tag: string) => Array.from({ length: n }, (_, i) =>
+        season({ id: `${tag}-${String(i).padStart(5, '0')}`, plan_id: planId, price_override: 5 }));
+
+      it('全域截斷：截斷點之前的方案資料完整（沒有季節的不被標記），截斷點及之後的方案標為 incomplete', async () => {
+        fakeState.planCount = 4; // plan-0 無季節、plan-1 完整、plan-2 為截斷點、plan-3 在截斷點之後
+        fakeState.seasons = [...rows('plan-1', 2, 'a'), ...rows('plan-2', 4998, 'b'), ...rows('plan-3', 10, 'c')];
+        fakeState.customRows = [{ departs_on: '2098-07-15', start_time: '09:00:00', seats_booked: 0, capacity: 5 }];
+        const { loadPublicTripDetails } = await import('@/server/public-shop');
+        const plans = (await loadPublicTripDetails('demo', 'hike'))!.trip.plans;
+        const by = Object.fromEntries(plans.map((p) => [p.id, p]));
+        expect(by['plan-0']).not.toHaveProperty('seasonalPricing');
+        expect(by['plan-0'].departures[0]).not.toHaveProperty('unitPrice');
+        expect(by['plan-1'].seasonalPricing).toBe(true);
+        expect(by['plan-1'].departures[0].unitPrice).toBe(5);
+        for (const id of ['plan-2', 'plan-3']) {
+          expect(by[id].seasonalPricing, id).toBe(true);
+          expect(by[id].departures[0], id).not.toHaveProperty('unitPrice');
+        }
+        expect(fakeState.calls.filter((c) => c.table === 'trip_plan_seasons')).toHaveLength(5);
+      });
+
+      it('剛好讀完（最後一頁不滿）→ 沒有任何方案被標為 incomplete', async () => {
+        fakeState.planCount = 2;
+        fakeState.seasons = rows('plan-1', 1500, 'a');
+        fakeState.customRows = [{ departs_on: '2098-07-15', start_time: '09:00:00', seats_booked: 0, capacity: 5 }];
+        const { loadPublicTripDetails } = await import('@/server/public-shop');
+        const plans = (await loadPublicTripDetails('demo', 'hike'))!.trip.plans;
+        expect(plans[0]).not.toHaveProperty('seasonalPricing');
+        expect(plans[1].departures[0].unitPrice).toBe(5);
+        expect(fakeState.calls.filter((c) => c.table === 'trip_plan_seasons')).toHaveLength(2);
+      });
     });
 
     it('S14：命中季節但 price_override 為 null → unitPrice 等於基本價 100，不是 0', async () => {
@@ -725,7 +763,7 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     });
 
     it('季節查詢綁 tenant、plan in、active；達 1000 列視為不完整 → 不輸出 unitPrice 但標 seasonalPricing', async () => {
-      const rows = Array.from({ length: 1000 }, (_, i) => season({ id: `s-${i}`, price_override: 1 }));
+      const rows = Array.from({ length: 5000 }, (_, i) => season({ id: `s-${String(i).padStart(5, '0')}`, price_override: 1 }));
       const plan = await loadSeason(rows, ['2098-07-15']);
       expect(plan.seasonalPricing).toBe(true);
       expect(plan.departures[0]).not.toHaveProperty('unitPrice');

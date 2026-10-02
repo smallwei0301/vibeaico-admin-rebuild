@@ -28,3 +28,17 @@ export function tenantNowParts(timeZone: string, nowMs: number = Date.now()): { 
   const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
   return { today: `${get('year')}-${get('month')}-${get('day')}`, hm: `${get('hour')}:${get('minute')}` };
 }
+
+/**
+ * 今天（店家時區）且開始時間已到或已過的團次不可列出。
+ * `start_time` 為 null 的今天團次維持列出：沒有開始時間，無法判定是否已開始。
+ * 明天以後的團次不受影響。（reserve_seats／create_tour_order 的權威檢查是既有行為，不在此處理。）
+ */
+export function hasStartedToday(
+  row: { departs_on?: unknown; start_time?: unknown },
+  now: { today: string; hm: string },
+): boolean {
+  if (row.departs_on !== now.today) return false;
+  if (row.start_time == null) return false;
+  return String(row.start_time).slice(0, 5) <= now.hm;
+}

@@ -36,6 +36,7 @@
  *    但 API 端點本身不能只靠「畫面沒有連結」當作唯一防線（連結可以被猜到／分享）。
  */
 import { z } from 'zod';
+import { hasStartedToday, resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
 import { hasSeasonalPricing, loadPlanSeasons, seasonUnitPriceFor } from '@/server/public-plan-seasons';
 import { createAdminSupabase } from '@/server/supabase';
 import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
@@ -141,12 +142,13 @@ export async function loadPublicRequestPlan(
   if (tripError) throw queryFailed('trips', tripError);
   if (!trip || trip.status !== 'PUBLISHED') return null;
 
-  const today = taipeiToday();
+  // 店家時區（basic.timezone，缺值或無效回退台北）：「今天」與已開始判斷與詳情頁一致。
+  const now = tenantNowParts(resolvePublicTimeZone(settings?.basic?.timezone));
   const { data: departureRows, error: departureError } = await admin
     .from('trip_departures')
     .select('id, departs_on, start_time, capacity, seats_booked')
     .eq('tenant_id', tenantId).eq('plan_id', planId).eq('status', 'OPEN')
-    .gte('departs_on', today)
+    .gte('departs_on', now.today)
     .order('departs_on', { ascending: true })
     .order('start_time', { ascending: true, nullsFirst: true });
   if (departureError) throw queryFailed('trip_departures', departureError);
@@ -157,6 +159,7 @@ export async function loadPublicRequestPlan(
   const basePrice = Number(plan.price_per_person ?? 0);
   const departures: PublicRequestDeparture[] = [];
   for (const row of departureRows ?? []) {
+    if (hasStartedToday(row, now)) continue;
     const capacity = Number(row.capacity ?? 0);
     const seatsBooked = Number(row.seats_booked ?? 0);
     if (seatsBooked >= capacity) continue;

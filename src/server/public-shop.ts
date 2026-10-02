@@ -34,8 +34,9 @@ import { cache } from 'react';
 import { createAdminSupabase } from '@/server/supabase';
 import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
 import { buildPublicPhone } from '@/lib/public-phone';
-import { resolveSeasonUnitPrice, type PublicSeasonRow } from '@/lib/public-season-price';
-import { resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
+import { resolveSeasonUnitPrice } from '@/lib/public-season-price';
+import { readPlanSeasons } from '@/server/public-plan-seasons';
+import { hasStartedToday, resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
 import { MAX_PUBLIC_GALLERY_IMAGES } from '@/lib/trip-gallery';
 import {
   MAX_PUBLIC_LIST_ITEM_CHARS,
@@ -286,20 +287,6 @@ function queryFailed(stage: string, cause: unknown): Error {
  */
 function taipeiToday(): string {
   return new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
-}
-
-/**
- * 今天（店家時區）且開始時間已到或已過的團次不可列出。
- * `start_time` 為 null 的今天團次維持列出：沒有開始時間，無法判定是否已開始。
- * 明天以後的團次不受影響。（預約頁／reserve_seats 的權威檢查是既有行為，不在此處理。）
- */
-function hasStartedToday(
-  row: { departs_on?: unknown; start_time?: unknown },
-  now: { today: string; hm: string },
-): boolean {
-  if (row.departs_on !== now.today) return false;
-  if (row.start_time == null) return false;
-  return String(row.start_time).slice(0, 5) <= now.hm;
 }
 
 async function loadPublicShopCore(
@@ -612,39 +599,12 @@ async function loadPublicTripDetailsUncached(
     .slice(0, MAX_PUBLIC_PLANS_OUTPUT)
     .map((r) => limitPublicPlanText(mapPublicPlan(r)));
 
-  // 季節定價（canonical 0128 trip_plan_seasons、0132 create_tour_order 的解析規則）：一次查回輸出方案的啟用季節。
-  // 一次查詢上限 1000 列（PostgREST 預設）；達上限視為資料可能不完整，不輸出 unitPrice（避免顯示錯誤價格），
-  // 但仍標 seasonalPricing，讓畫面誠實說明價格依出發日期而定。
-  const SEASON_QUERY_LIMIT = 1000;
-  const seasonsByPlan = new Map<string, PublicSeasonRow[]>();
-  let seasonsIncomplete = false;
-  if (plans.length > 0) {
-    const { data: seasonRows, error: seasonError } = await admin.from('trip_plan_seasons')
-      .select('id, plan_id, start_month, start_day, end_month, end_day, price_override, sort_order')
-      .eq('tenant_id', shopData.tenantId)
-      .in('plan_id', plans.map((plan) => plan.id))
-      .eq('active', true)
-      .order('plan_id', { ascending: true })
-      .order('id', { ascending: true })
-      .range(0, SEASON_QUERY_LIMIT - 1);
-    // 季節資料只用於顯示價格（實際金額由 RPC 計算）：查詢失敗降級為「資料不完整」，不讓整個詳情頁失敗。
-    if (seasonError) console.warn('public trip details: season query failed; degrading to no unit prices');
-    const rows = seasonError ? [] : (seasonRows ?? []) as unknown as Array<Record<string, unknown>>;
-    seasonsIncomplete = Boolean(seasonError) || rows.length >= SEASON_QUERY_LIMIT;
-    for (const r of rows) {
-      const list = seasonsByPlan.get(r.plan_id as string) ?? [];
-      list.push({
-        id: r.id as string,
-        startMonth: Number(r.start_month),
-        startDay: Number(r.start_day),
-        endMonth: Number(r.end_month),
-        endDay: Number(r.end_day),
-        priceOverride: r.price_override === null || r.price_override === undefined ? null : Number(r.price_override),
-        sortOrder: Number(r.sort_order ?? 0),
-      });
-      seasonsByPlan.set(r.plan_id as string, list);
-    }
-  }
+  // 季節定價（canonical 0128 trip_plan_seasons、0132 create_tour_order 的解析規則）：分頁讀回輸出方案的啟用季節
+  // （每頁 1000 列、最多 5 頁）。被截斷時只有落在截斷點及之後的方案視為不完整（不輸出 unitPrice，但標
+  // seasonalPricing）；沒有季節且資料完整的方案維持基本價。查詢失敗降級為全部不完整。
+  const seasonReader = await readPlanSeasons(admin, shopData.tenantId, plans.map((plan) => plan.id));
+  const seasonsByPlan = seasonReader.byPlan;
+  const seasonsIncompleteFor = seasonReader.isIncomplete;
 
   // 只有 FIXED_DEPARTURE／REQUEST 方案進入團次查詢集合（30 個額度只算這兩類）。INSTANT（及未知模式）
   // 一律不查團次、departures 為 []、也不標 departuresNotLoaded：canonical 自選時間流程只顯示重新驗證過的
@@ -704,7 +664,7 @@ async function loadPublicTripDetailsUncached(
           departsOn: departure.departs_on as string,
           startTime: departure.start_time == null ? '' : String(departure.start_time).slice(0, 5),
           seatsLeft: soldOut ? 0 : capacity - seatsBooked,
-          ...(seasonsByPlan.has(plan.id) && !seasonsIncomplete
+          ...(seasonsByPlan.has(plan.id) && !seasonsIncompleteFor(plan.id)
             ? { unitPrice: resolveSeasonUnitPrice(departure.departs_on as string, seasonsByPlan.get(plan.id)!, plan.pricePerPerson) }
             : {}),
           ...(soldOut ? { soldOut: true } : {}),
@@ -803,7 +763,7 @@ async function loadPublicTripDetailsUncached(
         ? row.refund_policy_type : 'STANDARD',
       plans: plans.map((plan) => ({
         ...plan,
-        ...(seasonsByPlan.has(plan.id) || seasonsIncomplete ? { seasonalPricing: true as const } : {}),
+        ...(seasonsByPlan.has(plan.id) || seasonsIncompleteFor(plan.id) ? { seasonalPricing: true as const } : {}),
         departures: departuresByPlan.get(plan.id)?.departures ?? [],
         departuresMayBeTruncated: departuresByPlan.get(plan.id)?.mayBeTruncated ?? false,
         ...(departuresByPlan.get(plan.id)?.soldOutOmitted ? { soldOutOmitted: true } : {}),

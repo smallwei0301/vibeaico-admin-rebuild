@@ -9,6 +9,9 @@ const state = vi.hoisted(() => ({
   departs: ['2098-07-15', '2098-09-15'] as string[],
   seasonCalls: [] as Array<Record<string, unknown>>,
   seasonError: false,
+  tz: undefined as unknown,
+  depRows: undefined as undefined | Array<{ departs_on: string; start_time: string | null }>,
+  depFilters: {} as Record<string, unknown>,
 }));
 
 vi.mock('@/server/supabase', () => ({
@@ -17,7 +20,7 @@ vi.mock('@/server/supabase', () => ({
       const filters: Record<string, unknown> = {};
       const run = async () => {
         if (table === 'trip_plan_seasons') { state.seasonCalls.push({ ...filters }); return state.seasonError ? { data: null, error: { message: 'boom' } } : { data: state.seasons, error: null }; }
-        if (table === 'tenants') return { data: { id: 't1', tenant_settings: { basic: { tenantName: 'Shop' } } }, error: null };
+        if (table === 'tenants') return { data: { id: 't1', tenant_settings: { basic: { tenantName: 'Shop', ...(state.tz === undefined ? {} : { timezone: state.tz }) } } }, error: null };
         if (table === 'trip_plans') {
           return {
             data: {
@@ -30,12 +33,14 @@ vi.mock('@/server/supabase', () => ({
         }
         if (table === 'trips') return { data: { id: 'trip1', title: 'T', status: 'PUBLISHED', refund_policy_type: 'STANDARD' }, error: null };
         if (table === 'trip_departures') {
+          state.depFilters = { ...filters };
+          if (state.depRows) return { data: state.depRows.map((r, i) => ({ id: `r${i}`, ...r, capacity: 5, seats_booked: 0 })), error: null };
           return { data: state.departs.map((d, i) => ({ id: `d${i}`, departs_on: d, start_time: '09:00:00', capacity: 5, seats_booked: 0 })), error: null };
         }
         return { data: [], error: null };
       };
       const chain: Record<string, unknown> = {
-        select: () => chain, order: () => chain, range: () => chain, in: () => chain, gte: () => chain,
+        select: () => chain, order: () => chain, range: () => chain, in: (k: string, v: unknown) => { filters['in_' + k] = v; return chain; }, gte: (k: string, v: unknown) => { filters['gte_' + k] = v; return chain; },
         eq: (k: string, v: unknown) => { filters[k] = v; return chain; },
         maybeSingle: () => run(),
         then: (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) => run().then(res, rej),
@@ -52,7 +57,7 @@ import { loadPublicRequestPlan } from '@/server/public-tour-request';
 const ROOT = process.cwd();
 const read = (p: string) => readFileSync(resolve(ROOT, p), 'utf8');
 const season = (over: Record<string, unknown> = {}) => ({
-  id: 's1', plan_id: 'x', start_month: 7, start_day: 1, end_month: 8, end_day: 31, price_override: 3000, sort_order: 0, ...over,
+  id: 's1', plan_id: PLAN_ID, start_month: 7, start_day: 1, end_month: 8, end_day: 31, price_override: 3000, sort_order: 0, ...over,
 });
 const PLAN_ID = '11111111-1111-4111-8111-111111111111';
 
@@ -124,7 +129,7 @@ describe('#11 預約頁 loader 的季節單價', () => {
     const plan = await loadPublicBookingPlan('shop', PLAN_ID);
     expect(plan?.seasonalPricing).toBe(true);
     expect(plan?.departures.map((d) => d.unitPrice)).toEqual([3000, 1000]);
-    expect(state.seasonCalls[0]).toMatchObject({ tenant_id: 't1', plan_id: PLAN_ID, active: true });
+    expect(state.seasonCalls[0]).toMatchObject({ tenant_id: 't1', in_plan_id: [PLAN_ID], active: true });
   });
 
   it('S14：命中季節但 override 為 null → unitPrice 等於基本價，不是 0', async () => {
@@ -183,6 +188,54 @@ describe('#11 X2：季節查詢失敗時降級，不讓預約頁／申請頁／�
       'src/server/public-tour-booking.ts', 'src/server/public-tour-request.ts']) {
       expect(read(f)).toMatch(/\{ withSeasonPrices: false \}\);/);
     }
+  });
+});
+
+describe('#11 預約頁／申請頁使用店家時區判斷今天與已開始的團次', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2098-01-02T02:00:00Z')); // 台北 1/2 10:00；洛杉磯 1/1 18:00
+    state.seasons = []; state.seasonError = false; state.mode = 'FIXED_DEPARTURE'; state.priceType = 'PER_PERSON';
+    state.depRows = [
+      { departs_on: '2098-01-01', start_time: '17:00:00' },
+      { departs_on: '2098-01-01', start_time: '19:00:00' },
+      { departs_on: '2098-01-01', start_time: null },
+      { departs_on: '2098-01-02', start_time: '09:00:00' },
+      { departs_on: '2098-01-02', start_time: '11:00:00' },
+    ];
+  });
+  afterEach(() => { vi.useRealTimers(); state.tz = undefined; state.depRows = undefined; state.mode = 'FIXED_DEPARTURE'; });
+
+  const loaders = [
+    ['預約頁', (o?: { withSeasonPrices?: boolean }) => loadPublicBookingPlan('shop', PLAN_ID, o), 'FIXED_DEPARTURE'],
+    ['申請頁', (o?: { withSeasonPrices?: boolean }) => loadPublicRequestPlan('shop', PLAN_ID, o), 'REQUEST'],
+  ] as const;
+
+  it.each(loaders)('%s：洛杉磯晚間列出洛杉磯當天尚未開始的團次（今天＝1/1、17:00 已過排除），查詢下界為店家今天', async (_n, load, mode) => {
+    state.mode = mode;
+    state.tz = 'America/Los_Angeles';
+    const plan = await load();
+    expect(state.depFilters.gte_departs_on).toBe('2098-01-01');
+    expect(plan?.departures.map((d) => d.id)).toEqual(['r1', 'r2', 'r3', 'r4']);
+  });
+
+  it.each(loaders)('%s：時區缺值或無效回退台北（今天＝1/2，09:00 已過排除）', async (_n, load, mode) => {
+    state.mode = mode;
+    for (const tz of [undefined, 'Mars/Phobos']) {
+      state.tz = tz;
+      const plan = await load();
+      expect(state.depFilters.gte_departs_on).toBe('2098-01-02');
+      expect(plan?.departures.map((d) => d.id)).toContain('r4');
+      expect(plan?.departures.map((d) => d.id)).not.toContain('r3');
+    }
+  });
+
+  it.each(loaders)('%s：送出路徑（withSeasonPrices:false）套用同一份 today 與已開始規則', async (_n, load, mode) => {
+    state.mode = mode;
+    state.tz = 'America/Los_Angeles';
+    const plan = await load({ withSeasonPrices: false });
+    expect(state.depFilters.gte_departs_on).toBe('2098-01-01');
+    expect(plan?.departures.map((d) => d.id)).toEqual(['r1', 'r2', 'r3', 'r4']);
   });
 });
 
