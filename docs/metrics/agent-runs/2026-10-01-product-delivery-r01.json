@@ -652,8 +652,8 @@
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 21,
-    "solIssues": 4
+    "solTouches": 23,
+    "solIssues": 5
   },
   "auditability": {
     "evidenceFieldsCompletePercent": null,
