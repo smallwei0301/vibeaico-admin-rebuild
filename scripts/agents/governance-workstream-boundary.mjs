@@ -171,7 +171,7 @@ export function terminalBodyPlan(pr) {
   // Product acceptance, or whether an external blocker has actually cleared.
   for (const [field, stale] of [
     ['MERGE_STATUS', value => value !== (merged ? 'VERIFIED_MERGED' : 'VERIFIED_NOT_MERGED')],
-    ['COMPLETION_CLAIM', value => ['IN_PROGRESS', 'AUDIT_READY', 'MERGE_REQUESTED_UNVERIFIED'].includes(value)],
+    ['COMPLETION_CLAIM', value => value !== (merged ? 'VERIFIED_MERGED' : 'VERIFIED_CLOSED')],
     ['OWNER_OR_EXTERNAL_BLOCKER', value => value !== 'NONE'],
     ['REMAINING_AUTONOMOUS_STEPS', value => value !== 'NONE'],
   ]) {
