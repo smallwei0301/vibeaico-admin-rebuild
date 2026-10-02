@@ -1738,6 +1738,8 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 第一版將 review wake-up 的 concurrency group 分開，RED6FAIL71PASS→77PASS/typecheckPASS；但獨立審查發現 P1：舊 open lifecycle 與新 veto 並行，可在 failure 後依舊 PASS 寫回 success，因此拒絕發布，保留 FIX_REQUIRED。最終保留 guard 原共用群組與 cancel-in-progress=true；另加不依賴 guard／resolver 的 closed-event terminal_cleanup job，獨立 per-PR 群組、cancel-in-progress=false、trusted main checkout 與只寫既有 terminal label/body 的權限。舊 guard 保留原 housekeeping，獨立 job 是可重入的結案恢復，不派 TEST、不改 review status。新 job 回讀 live state/head/closed_at，重開／新 head／新 generation 無寫入；body plan 從最後 fresh body 重算，保留並行 prose。反例解析實際 YAML group expression、執行實際 consumer return 與獨立 cleanup github-script，涵蓋已 closed 及 resolve 時 open、consumer 前 closed，並驗 open review/lifecycle 仍共用取消保護。只在 mock 中執行 terminal label/body，不代表外部標籤授權或 Production 驗收。closeout 須保留新 finding、精確 source CI／獨立審查／main readback；最終讀取與 mutation／merge API 仍非原子，不能保證其間永無新 review 或 lifecycle 變化。
 
+#745 首個 source CI36972355711／check110728835980：291files3892testsPASS、1個舊 live-state 文字定位斷言FAIL，因掃整份多job YAML 的首次 pulls.get 當成 guard 的讀取。保留失敗收據，不盲 rerun；該測試改解析實際 jobs.guard script，仍要求 payload number→live pulls.get→metadata 順序與拒絕直接用 payload 當 current，並納入必要 targeted suite。這是檢查器測試範圍錯誤，不能當 CI 已 PASS 或刪掉 live-read gate。
+
 ### PB-050 — 埋了點，卻整輪沒跑過驗證器；欄位有值，但值在另一套詞彙裡
 
 - 首次／最近：2026-09-14 / 2026-09-14
