@@ -507,6 +507,71 @@
         "cachedTokens": null,
         "count": 1,
         "note": "Root product builder corrected the #43 retry error body to tokenized 16px text and set the retry button to tokenized 16px with 44px minimum height; extended the 390px/desktop browser harness with computed font/target checks. Local typecheck, build, focused 30 unit tests, and source-only Chromium harness passed; isolated DB acceptance remains a fresh exact-head remote workflow. Requested gpt-6.1-sol under Owner session authorization; actual model unverified."
+      },
+      {
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261002-claude-luna-truth-734",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "note": "ANTHROPIC session takeover. Requested claude-haiku-4-5 scout (Agent model=haiku, agentId a165e6b65f0af029d): PR734 exact145026b readback — PARKED by WIP AUTH collision with #731, source CI green, no migration, merge-tree clean. Actual served model not provider-verified."
+      },
+      {
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261002-claude-luna-truth-733",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "note": "Requested claude-haiku-4-5 scout (agentId ae48d8bd62c624e2e): PR733 exact7c1bd4a — guard fails on 7 missing lane metadata fields; source CI green; no migration; merge-tree clean. Actual unverified."
+      },
+      {
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261002-claude-luna-truth-731",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "note": "Requested claude-haiku-4-5 scout (agentId a8539cdd9bfc7797e): PR731 exactf945d79 — draft ACTIVE, canonical TEST NOT_RUN, Final Risk deferred, no INSTANT/payment claim, no migration. Actual unverified."
+      },
+      {
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261002-claude-luna-truth-715",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "note": "Requested claude-haiku-4-5 scout (agentId a7624670125fd0a66): PR715 exact6676255 — PARKED only for #730 BUILD/REVIEW receipt contract; exact-head SourceCI+LOCAL green; ASTRA NONE; no migration. Actual unverified."
+      },
+      {
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261002-claude-sol-triage-r01",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "note": "ANTHROPIC main session (configured claude-opus-5-5, served identity unverified) TRIAGE on main b5e3b123: serialize Product convergence. 715 -> TEST_VALIDATION (canonical TEST + ordinary #730 review, closeability 4); 731 -> PARKED (needs canonical TEST after 715 releases holder, frees BUILD slot); 734 -> next single TERRA_BUILD (SOURCE_ONLY, TENANT_AUTH_BOUNDARY Final Risk); 733 -> after 734 (metadata repair + Final Risk); then #46 INSTANT. No dual Terra: 731/734 share AUTH hot boundary."
       }
     ],
     "fullContextReplays": 0,
@@ -539,13 +604,13 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 6,
-    "lunaAccepted": 6,
+    "lunaTasks": 10,
+    "lunaAccepted": 10,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 20,
+    "solTouches": 21,
     "solIssues": 4
   },
   "auditability": {
@@ -701,7 +766,8 @@
     "2026-10-01T12:48:10Z Root reactivated existing PR714 #47 after a live inventory: PR715 exact f56 SourceCI36862662300 SUCCESS and LOCAL36862662312 still IN_PROGRESS; PR727 canonical36857198490 terminal FAILURE and parked, shared TEST released. #714 merge-tree proves only root Run JSON/MD add/add conflicts; all five owned UI/helper/i18n/test/harness paths are unchanged from base58b to current main d781. Ordinary main merge is justified by actual conflict; no reset/rebase/cherry-pick/force push, no source rewrite, no canonical TEST request.",
     "2026-10-01T12:56:57Z #47 current-main local verification on d371347: Node v24.19.0 `npm run typecheck` PASS; full `npm test` PASS, 285 files/3706 tests; `npm run build` PASS, including /tenant/line-settings/onboarding; `git diff --check` PASS; repo-integrity exact d781ed0..d371347 PASS, 1412 tracked/0 deleted. Prior 390px actual-page stub and independent exact source review remain tied to unchanged code blobs; they do not prove LINE provider/in-app/authenticated Production acceptance. Exact current-head hosted checks pending; no shared TEST/DB mutation.",
     "2026-10-01T13:21:27.971Z Exact f56 hosted SourceCI 36862662300 terminal SUCCESS (completed 12:37:52Z) and isolated LOCAL 36862662312 terminal SUCCESS (completed 12:44:58Z): local project local-pr-715-a, integration83 files/815 pass/3 skip, E2E23 pass/3 skip; cleanup passed and Supabase stack stopped 12:44:54Z. These are historical f56 results, not proof for the responsive-fix head and not shared TEST/Production evidence.",
-    "2026-10-01T13:21:27.971Z Review follow-up for exact f56: independent Standards found the new error body at 14px and retry control below GUIDE's 44px minimum; independent Spec review confirmed 360px/card variants/real browser action-reload/Preview acceptance remain pending. Root fixed the error body/button in dashboard/page.tsx and added computed-size assertions to the source-only browser harness. Node typecheck, Next production build, focused 30 unit tests and Chromium /usr/bin/chromium 390px+desktop harness pass. Fresh exact-head SourceCI/isolated LOCAL remain pending."
+    "2026-10-01T13:21:27.971Z Review follow-up for exact f56: independent Standards found the new error body at 14px and retry control below GUIDE's 44px minimum; independent Spec review confirmed 360px/card variants/real browser action-reload/Preview acceptance remain pending. Root fixed the error body/button in dashboard/page.tsx and added computed-size assertions to the source-only browser harness. Node typecheck, Next production build, focused 30 unit tests and Chromium /usr/bin/chromium 390px+desktop harness pass. Fresh exact-head SourceCI/isolated LOCAL remain pending.",
+    "2026-10-02T01:32:03.681Z Session takeover by ANTHROPIC Claude Code Product main session (claude.ai session_017zCGiPpVX9atSFECgEsVdC). Continues this IN_PROGRESS Run rather than declaring a concurrent Run. RULES_MAIN_SHA=b5e3b123e. Builder lane will request claude-sonnet-5-5 per Anthropic routing; reviewer claude-opus-5-5 in a fresh subagent context. Prior OpenAI identities are not rewritten."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
