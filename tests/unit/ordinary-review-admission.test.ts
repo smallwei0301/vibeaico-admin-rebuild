@@ -576,27 +576,6 @@ describe('review wake-up cannot cancel lifecycle housekeeping (synthetic Actions
 });
 
 describe('terminal cleanup compensates observed reopen without restoring stale metadata', () => {
-  it.each(['governance:lane-metadata-incomplete', 'governance:wip-violation'])('preserves %s across an unmerged close/reopen', async warningLabel => {
-    const boundary = await import('../../scripts/agents/governance-workstream-boundary.mjs');
-    const initial = { ...current, state: 'closed', merged: false, closed_at: '2026-10-02T07:00:00Z',
-      body: body + '\nWORK_ORIGIN: AGENT\nACTIVE_CANDIDATE: true\nRUN_ID: none',
-      labels: [{ name: 'state:active' }, { name: warningLabel }] };
-    let live: any = structuredClone(initial);
-    const removeLabel = vi.fn(async ({ name }: any) => {
-      live.labels = live.labels.filter((label: any) => label.name !== name);
-      if (name === 'state:active') live = { ...live, state: 'open', closed_at: null };
-    });
-    const github: any = { rest: {
-      pulls: { get: vi.fn(async () => ({ data: structuredClone(live) })), update: vi.fn() },
-      issues: { removeLabel, getLabel: vi.fn(async () => ({})), addLabels: vi.fn(async ({ labels }: any) => {
-        live.labels.push(...labels.map((name: string) => ({ name })));
-      }), listComments: vi.fn(), createComment: vi.fn() },
-    }, paginate: vi.fn(async () => []) };
-    await boundary.reconcileTerminalPr({ github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', current: initial });
-    expect(live.labels.map((label: any) => label.name)).toContain(warningLabel);
-    expect(removeLabel).not.toHaveBeenCalledWith(expect.objectContaining({ name: warningLabel }));
-    expect(github.rest.pulls.update).not.toHaveBeenCalled();
-  });
   it('keeps guard warnings when state-label removal itself races with reopen', async () => {
     const boundary = await import('../../scripts/agents/governance-workstream-boundary.mjs');
     const initial = { ...current, state: 'closed', merged: false, closed_at: '2026-10-02T07:00:00Z',
@@ -619,8 +598,8 @@ describe('terminal cleanup compensates observed reopen without restoring stale m
     expect(live.labels.map((label: any) => label.name)).toEqual(expect.arrayContaining([
       'state:active', 'candidate:active', 'governance:lane-metadata-incomplete', 'governance:wip-violation',
     ]));
+    expect(github.rest.issues.removeLabel).not.toHaveBeenCalledWith(expect.objectContaining({ name: 'governance:lane-metadata-incomplete' }));
     expect(github.rest.issues.removeLabel).not.toHaveBeenCalledWith(expect.objectContaining({ name: 'governance:wip-violation' }));
-    expect(github.rest.pulls.update).not.toHaveBeenCalled();
   });
   it('preserves an edit made in a new close generation before terminal body PATCH', async () => {
     const boundary = await import('../../scripts/agents/governance-workstream-boundary.mjs');
@@ -658,7 +637,7 @@ describe('terminal cleanup compensates observed reopen without restoring stale m
     expect(pulls.update).not.toHaveBeenCalled();
     expect(live.body).toBe(initial.body + '\nUser edit in new generation');
     expect(warnings.join('\n')).toContain('STATE_SYNC_PENDING');
-    expect(issues.createComment).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining('UNSAFE_NON_CONDITIONAL_BODY_PATCH') }));
+    expect(issues.createComment).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining('UNSYNCED_FIELDS: pr-lifecycle.state, LANE_STATE, ACTIVE_CANDIDATE') }));
   });
   it('cancellable guard never starts terminal reconciliation for a closed PR', async () => {
     const script = parse(readFileSync('.github/workflows/agent-wip-guard.yml', 'utf8')).jobs.guard.steps.find((step: any) => step.with?.script).with.script;

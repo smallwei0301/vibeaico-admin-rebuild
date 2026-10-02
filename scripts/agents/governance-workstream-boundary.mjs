@@ -1,4 +1,4 @@
-import { ALLOWED, isPlaceholder, parseLaneMetadata, readField, rewriteField } from './agent-wip-policy.mjs';
+import { ALLOWED, isPlaceholder, metadataLines, parseLaneMetadata, readField, rewriteField } from './agent-wip-policy.mjs';
 
 const DELIVERY_TYPES = new Set(['SLICE', 'STANDALONE', 'EPIC', 'GOVERNANCE']);
 const upper = (value) => String(value ?? '').trim().toUpperCase();
@@ -88,26 +88,42 @@ export function terminalLabelPlan(pr) {
 
 
 /** Reconcile the single current pr-lifecycle marker without touching prose/examples. */
+function lifecycleStarts(source) {
+  const starts = []; let offset = 0, fence = null, inComment = false;
+  const chunks = source.split(/(\r\n|\n|\r)/);
+  for (let i = 0; i < chunks.length; i += 2) {
+    const raw = chunks[i], line = raw + (chunks[i + 1] ?? '');
+    if (fence) { const close = raw.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/);
+      if (close && close[1][0] === fence[0] && close[1].length >= fence.length) fence = null;
+    } else if (inComment) { if (raw.includes('-->')) inComment = false;
+    } else if (!/^(?: {4}| {0,3}\t)/.test(raw)) {
+      const open = raw.match(/^ {0,3}(?:(?:[-+*]|\d+[.)])[ \t]+)?(`{3,}|~{3,})/);
+      if (open) fence = open[1];
+      else { const marker = /^ {0,3}<!--[ \t]*pr-lifecycle\b/i.exec(raw);
+        if (marker) starts.push(offset + marker[0].indexOf('<!--'));
+        const comment = raw.indexOf('<!--'); if (comment >= 0 && raw.indexOf('-->', comment) < 0) inComment = true;
+      }
+    }
+    offset += line.length;
+  }
+  return starts;
+}
 function rewriteLifecycleState(body, value) {
   const source = String(body ?? '');
-  const blocks = [...source.matchAll(/<!--\s*pr-lifecycle\b[\s\S]*?-->/gi)];
-  if (!blocks.length) return { body: source, changed: false, error: null };
-  if (blocks.length !== 1) {
-    return { body: source, changed: false, error: 'Ambiguous pr-lifecycle blocks; terminal body not rewritten' };
-  }
-
-  const blockMatch = blocks[0];
-  const block = blockMatch[0];
+  const starts = lifecycleStarts(source);
+  if (!starts.length) return { body: source, changed: false, error: null, present: false };
+  if (starts.length !== 1) return { body: source, changed: false, error: 'Ambiguous pr-lifecycle blocks; terminal body not rewritten', present: true };
+  const endMarker = source.indexOf('-->', starts[0]);
+  if (endMarker < 0) return { body: source, changed: false, error: 'Unclosed pr-lifecycle block; terminal body not rewritten', present: true };
+  const block = source.slice(starts[0], endMarker + 3);
   const states = [...block.matchAll(/(^|\n)(\s*state\s*:\s*)([A-Z_]+)(?=\s*(?:\n|$))/gim)];
-  if (states.length !== 1) {
-    return { body: source, changed: false, error: 'Missing or ambiguous pr-lifecycle state; terminal body not rewritten' };
-  }
+  if (states.length !== 1) return { body: source, changed: false, error: 'Missing or ambiguous pr-lifecycle state; terminal body not rewritten', present: true };
 
   const stateMatch = states[0];
-  if (upper(stateMatch[3]) === value) return { body: source, changed: false, error: null };
-  const start = (blockMatch.index ?? 0) + (stateMatch.index ?? 0) + stateMatch[1].length + stateMatch[2].length;
+  if (upper(stateMatch[3]) === value) return { body: source, changed: false, error: null, present: true };
+  const start = starts[0] + (stateMatch.index ?? 0) + stateMatch[1].length + stateMatch[2].length;
   const end = start + stateMatch[3].length;
-  return { body: source.slice(0, start) + value + source.slice(end), changed: true, error: null };
+  return { body: source.slice(0, start) + value + source.slice(end), changed: true, error: null, present: true };
 }
 
 /**
@@ -124,21 +140,28 @@ export function terminalBodyPlan(pr) {
   let body = String(pr.body ?? '');
   const errors = [];
   const changedFields = [];
-
+  const unsyncedFields = new Set();
   const lifecycle = rewriteLifecycleState(body, lifecycleState);
-  if (lifecycle.error) errors.push(lifecycle.error);
-  else if (lifecycle.changed) changedFields.push('pr-lifecycle.state');
+  const hasContract = lifecycle.present || metadataLines(body, { allowPartial: true }).some(line =>
+    /^[ \t]*[-*]?[ \t]*(?:WORK_ORIGIN|LANE_STATE|ACTIVE_CANDIDATE)[ \t]*:/i.test(line));
+  if (lifecycle.error) { errors.push(lifecycle.error); unsyncedFields.add('pr-lifecycle.state'); }
+  else if (lifecycle.changed) { changedFields.push('pr-lifecycle.state'); unsyncedFields.add('pr-lifecycle.state'); }
+  else if (hasContract && !lifecycle.present) {
+    errors.push('Missing pr-lifecycle block'); unsyncedFields.add('pr-lifecycle.state');
+  }
   body = lifecycle.body;
 
   for (const [field, value] of [['LANE_STATE', terminalState], ['ACTIVE_CANDIDATE', 'false']]) {
+    if (!hasContract) continue;
     const current = readField(body, field);
-    if (!current) continue;
+    if (!current) { if (hasContract) { errors.push(`Missing ${field} declaration`); unsyncedFields.add(field); } continue; }
     const rewritten = rewriteField(body, field, value);
     if (rewritten.error) {
       errors.push(rewritten.error);
+      unsyncedFields.add(field);
       continue;
     }
-    if (rewritten.changed) changedFields.push(field);
+    if (rewritten.changed) { changedFields.push(field); unsyncedFields.add(field); }
     body = rewritten.body;
   }
 
@@ -146,6 +169,7 @@ export function terminalBodyPlan(pr) {
     body,
     changed: body !== String(pr.body ?? ''),
     changedFields,
+    unsyncedFields: [...unsyncedFields],
     terminalState,
     errors: [...new Set(errors)],
   };
@@ -181,7 +205,7 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
     if (!plan.changed && !plan.errors.length && !reason) return;
     const marker = `<!-- agent-terminal-state-sync:v1 pr=${current.number} head=${observed.head?.sha} closed_at=${observed.closed_at} -->`;
     warning(`STATE_SYNC_PENDING PR #${current.number}; closed_at=${observed.closed_at}; ` +
-      `unsynced fields: ${plan.changedFields.join(', ') || 'terminal labels'}; reason=${reason || plan.errors.join('; ') || 'UNSAFE_NON_CONDITIONAL_BODY_PATCH'}`);
+      `unsynced fields: ${plan.unsyncedFields.join(', ') || 'none (label reconciliation only)'}; reason=${reason || plan.errors.join('; ') || 'UNSAFE_NON_CONDITIONAL_BODY_PATCH'}`);
     const comments = await github.paginate(github.rest.issues.listComments,
       { owner, repo, issue_number: current.number, per_page: 100 });
     if (!Array.isArray(comments)) throw new Error('STATE_SYNC_PENDING comment inventory unavailable');
@@ -190,7 +214,7 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
     await github.rest.issues.createComment({ owner, repo, issue_number: current.number, body: `${marker}\nSTATE_SYNC_PENDING\n` +
       `PR: #${current.number}\nVERIFIED_TERMINAL_STATE: ${observed.merged || observed.merged_at ? 'MERGED' : 'CLOSED_UNMERGED'}\n` +
       `HEAD: ${observed.head?.sha}\nCLOSED_AT: ${observed.closed_at}\n` +
-      `UNSYNCED_FIELDS: ${plan.changedFields.join(', ') || 'terminal labels'}\n` +
+      `UNSYNCED_FIELDS: ${plan.unsyncedFields.join(', ') || 'none (label reconciliation only)'}\n` +
       `FAILED_ACTION_OR_ERROR: ${reason || plan.errors.join('; ') || 'UNSAFE_NON_CONDITIONAL_BODY_PATCH'}\n` +
       `OWNING_SESSION: PR #${current.number} closeout owner\n` +
       'NEXT_SAFE_WRITE_PATH: Owning session must coordinate an exclusive body edit, re-read live PR, sync terminal fields, and verify the live result before POST_MERGE_CLOSEOUT=COMPLETE. This comment does not grant Product or Production acceptance.\n' });

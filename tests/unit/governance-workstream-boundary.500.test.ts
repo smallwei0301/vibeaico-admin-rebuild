@@ -79,7 +79,7 @@ function truth(body: string, changedFiles: any[] = ['supabase/migrations/0113_te
 // not policy behavior: each exact trusted file URL resolves to its real static import.
 async function runWorkflow(file: string, current = subject(), files: any[] = paths, peers: any[] = [], job = 'guard') {
   vi.stubEnv('GITHUB_WORKSPACE', process.cwd());
-  const failures: string[] = []; const statuses: any[] = []; const calls: string[] = [];
+  const failures: string[] = []; const statuses: any[] = []; const calls: string[] = []; const comments: string[] = [];
   const labels = new Set<string>(current.labels.map((label: any) => label.name));
   const listFiles = vi.fn(); const list = vi.fn(); const listComments = vi.fn();
   const summary: any = {};
@@ -102,7 +102,7 @@ async function runWorkflow(file: string, current = subject(), files: any[] = pat
       issues: { listComments, getLabel: async () => ({}),
         addLabels: async ({ labels: added }: any) => { calls.push('labels'); added.forEach((name: string) => labels.add(name)); },
         removeLabel: async ({ name }: any) => { calls.push('labels'); labels.delete(name); },
-        createComment: async () => { calls.push('comment'); },
+        createComment: async ({ body }: any) => { calls.push('comment'); comments.push(body); },
         updateComment: async () => { calls.push('comment'); },
         setLabels: async () => { throw new Error('Whole-label replacement is forbidden'); } },
       actions: { createWorkflowDispatch: async () => { calls.push('dispatch'); } },
@@ -140,7 +140,7 @@ async function runWorkflow(file: string, current = subject(), files: any[] = pat
   await new AsyncFunction('require', 'process', 'github', 'context', 'core', 'loadPolicy', executable)(
     createRequire(import.meta.url), process, github, context,
     { summary, setFailed: (message: string) => failures.push(message), warning: () => {} }, loadPolicy);
-  return { failures, statuses, calls, labels };
+  return { failures, statuses, calls, labels, comments };
 }
 afterEach(() => vi.unstubAllEnvs());
 
@@ -356,6 +356,39 @@ describe('governance boundary regression #500', () => {
     const extra = '<!-- pr-lifecycle\nissue: 501\nstate: ACTIVE\nsupersedes: none\n-->';
     const plan = terminalBodyPlan({ state: 'closed', merged: true, body: gov + '\n' + extra });
     expect(plan?.errors.join(' ')).toContain('Ambiguous pr-lifecycle blocks');
+  });
+
+  it.each([
+    ['pr-lifecycle.state', gov.replace(/<!-- pr-lifecycle[\s\S]*?-->\n/, '')],
+    ['pr-lifecycle.state', '<!-- pr-lifecycle\nstate: ACTIVE\n'],
+    ['LANE_STATE', gov.replace('LANE_STATE: ACTIVE\n', '')],
+    ['LANE_STATE', 'WORK_ORIGIN: AGENT\nLANE_STATE: ACTIVE\n```text\nexample'],
+    ['ACTIVE_CANDIDATE', gov + '\nACTIVE_CANDIDATE: false\n'],
+  ])('names %s as an unsynced body field when its declaration is missing or ambiguous', (field, body) => {
+    const plan = terminalBodyPlan({ state: 'closed', merged: true, body });
+    expect(plan?.unsyncedFields).toContain(field);
+    expect(plan?.errors.length).toBeGreaterThan(0);
+  });
+
+  it('puts failed and changed fields together in the actual STATE_SYNC_PENDING handoff', async () => {
+    const closed = { ...subject(gov + '\nACTIVE_CANDIDATE: true\n'), state: 'closed', merged: true,
+      closed_at: created_at, labels: [] as { name: string }[] };
+    const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', closed, paths, [], 'terminal_cleanup');
+    expect(result.comments).toEqual([expect.stringContaining('UNSYNCED_FIELDS: pr-lifecycle.state, LANE_STATE, ACTIVE_CANDIDATE')]);
+  });
+
+  it.each(['Historical prose only', 'Historical notes\n```text\nexample only',
+    '```text\n<!-- pr-lifecycle\nstate: ACTIVE\n-->\n```'])('ignores prose and example-only lifecycle markers', body => {
+    const plan = terminalBodyPlan({ state: 'closed', merged: true, body });
+    expect(plan?.body).toBe(body);
+    expect(plan?.errors).toEqual([]);
+    expect(plan?.unsyncedFields).toEqual([]);
+  });
+
+  it.each(['\n', '\r'])('recognizes current-state fields after a same-line HTML comment close', newline => {
+    const body = ['<!-- explanatory note', '-->LANE_STATE: ACTIVE', '<!-- explanatory note', '-->ACTIVE_CANDIDATE: true'].join(newline);
+    const plan = terminalBodyPlan({ state: 'closed', merged: true, body });
+    expect(plan?.unsyncedFields).toEqual(expect.arrayContaining(['pr-lifecycle.state', 'LANE_STATE', 'ACTIVE_CANDIDATE']));
   });
 
   it('fails safe on ambiguous terminal metadata instead of partially rewriting the PR body', async () => {
