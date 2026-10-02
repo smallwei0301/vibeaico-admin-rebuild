@@ -151,7 +151,9 @@ export function terminalBodyPlan(pr) {
 }
 
 
-/** The independent terminal writer uses this bounded, compensating reconciliation; REST is not atomic.
+/** The independent terminal writer uses bounded label reconciliation; REST is not atomic.
+ * GitHub has no conditional PR-body PATCH, so lifecycle body fields require a separate
+ * human-controlled closeout write. This writer never risks replacing concurrent prose.
  * Never writes review status, dispatches TEST, replaces all labels, or follows a new close generation.
  * @param {{github: any, owner: string, repo: string, current: any, warning?: Function}} input */
 export async function reconcileTerminalPr({ github, owner, repo, current, warning = () => {} }) {
@@ -163,7 +165,7 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
     try { await github.rest.issues.removeLabel({ owner, repo, issue_number: current.number, name }); return true; }
     catch (error) { if (error.status !== 404) throw error; return false; }
   };
-  let touched = false, bodyReconciled = false, beforeBody, writtenBody;
+  let touched = false;
   const removedByUs = new Set(), addedByUs = new Set();
   const write = async operation => {
     const fresh = await read();
@@ -172,50 +174,33 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
     await operation(fresh);
     return true;
   };
+  const recordPending = async (observed, reason) => {
+    if (observed.state !== 'closed') return;
+    const plan = terminalBodyPlan(observed);
+    if (!plan.changed && !plan.errors.length && !reason) return;
+    const marker = `<!-- agent-terminal-state-sync:v1 pr=${current.number} head=${observed.head?.sha} closed_at=${observed.closed_at} -->`;
+    warning(`STATE_SYNC_PENDING PR #${current.number}; closed_at=${observed.closed_at}; ` +
+      `unsynced fields: ${plan.changedFields.join(', ') || 'terminal labels'}; reason=${reason || plan.errors.join('; ') || 'UNSAFE_NON_CONDITIONAL_BODY_PATCH'}`);
+    const comments = await github.paginate(github.rest.issues.listComments,
+      { owner, repo, issue_number: current.number, per_page: 100 });
+    if (!Array.isArray(comments)) throw new Error('STATE_SYNC_PENDING comment inventory unavailable');
+    if (comments.some(comment => comment.user?.login === 'github-actions[bot]' && comment.user?.id === 41898282 &&
+      String(comment.body ?? '').startsWith(marker))) return;
+    await github.rest.issues.createComment({ owner, repo, issue_number: current.number, body: `${marker}\nSTATE_SYNC_PENDING\n` +
+      `PR: #${current.number}\nVERIFIED_TERMINAL_STATE: ${observed.merged || observed.merged_at ? 'MERGED' : 'CLOSED_UNMERGED'}\n` +
+      `HEAD: ${observed.head?.sha}\nCLOSED_AT: ${observed.closed_at}\n` +
+      `UNSYNCED_FIELDS: ${plan.changedFields.join(', ') || 'terminal labels'}\n` +
+      `FAILED_ACTION_OR_ERROR: ${reason || plan.errors.join('; ') || 'UNSAFE_NON_CONDITIONAL_BODY_PATCH'}\n` +
+      `OWNING_SESSION: PR #${current.number} closeout owner\n` +
+      'NEXT_SAFE_WRITE_PATH: Owning session must coordinate an exclusive body edit, re-read live PR, sync terminal fields, and verify the live result before POST_MERGE_CLOSEOUT=COMPLETE. This comment does not grant Product or Production acceptance.\n' });
+  };
   const restoreOpen = async observed => {
-    // Conditional undo of only fields this invocation wrote, using the fresh body/prose.
-    // A changed field belongs to its new writer and is preserved, not replaced by an old snapshot.
-    let body = observed.body ?? '';
-    const state = source => {
-      const blocks = [...String(source).matchAll(/<!--\s*pr-lifecycle\b[\s\S]*?-->/gi)];
-      const rows = blocks.length === 1 ? [...blocks[0][0].matchAll(/(?:^|\n)\s*state\s*:\s*([A-Z_]+)(?=\s*(?:\n|$))/gim)] : [];
-      return rows.length === 1 ? rows[0][1] : null;
-    };
-    // State, candidate and lane form one ownership decision: PARKED/false is new intent,
-    // while a new head or unrelated planning field does not take ownership of terminal fields.
-    const lifecycleContract = source => {
-      const { issueNumber, origin, lane, state: laneState, activeCandidate } = parseLaneMetadata({ body: source });
-      return { issueNumber, origin, lane, laneState, activeCandidate,
-        workstream: upper(readField(source, 'WORKSTREAM')), lifecycleState: state(source) };
-    };
-    const ownContract = writtenBody !== undefined &&
-      JSON.stringify(lifecycleContract(body)) === JSON.stringify(lifecycleContract(writtenBody));
-    if (ownContract) {
-      for (const field of ['LANE_STATE', 'ACTIVE_CANDIDATE']) {
-        const prior = readField(beforeBody, field), written = readField(writtenBody, field);
-        if (prior && prior !== written && readField(body, field) === written) {
-          const undo = rewriteField(body, field, prior);
-          if (undo.error) throw new Error(undo.error);
-          body = undo.body;
-        }
-      }
-      const prior = state(beforeBody), written = state(writtenBody);
-      if (prior && prior !== written && state(body) === written) {
-        const undo = rewriteLifecycleState(body, prior);
-        if (undo.error) throw new Error(undo.error);
-        body = undo.body;
-      }
-    }
     const sameOpen = pr => pr.state === 'open' && pr.head?.sha === observed.head?.sha && pr.body === observed.body;
     const openWrite = async operation => {
       const fresh = await read();
       if (!sameOpen(fresh)) throw new Error('Lifecycle or metadata changed during reopen compensation; reconciliation pending');
       await operation(fresh);
     };
-    if (body !== observed.body) {
-      await openWrite(() => github.rest.pulls.update({ owner, repo, pull_number: current.number, body }));
-      observed = { ...observed, body };
-    }
     const metadata = parseLaneMetadata(observed);
     const states = { ACTIVE: 'state:active', READY_FOR_PROMOTION: 'state:reserve-ready',
       PARKED: 'state:parked', OWNER_BLOCKED: 'state:owner-blocked', COMPLETE: 'state:complete', HISTORICAL: 'state:historical' };
@@ -274,27 +259,22 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
         await github.rest.issues.addLabels({ owner, repo, issue_number: current.number, labels: [terminal.add] });
       }
     })) return { bodyReconciled: false };
-    await write(async fresh => {
-      const plan = terminalBodyPlan(fresh);
-      if (plan.errors.length) warning(`Closed PR #${current.number} body not rewritten: ${plan.errors.join('; ')}`);
-      else if (plan.changed) {
-        beforeBody = fresh.body; writtenBody = plan.body;
-        await github.rest.pulls.update({ owner, repo, pull_number: current.number, body: plan.body });
-        bodyReconciled = true;
-      }
-    });
   } catch (error) {
     operationError = error;
     throw error;
   } finally {
     try {
       const fresh = await read();
-      if (touched && fresh.state === 'open') { await restoreOpen(fresh); bodyReconciled = false; }
-      else if (!sameClose(fresh)) warning('Close generation changed; old reconciliation stopped without overwriting its successor');
+      if (touched && fresh.state === 'open') await restoreOpen(fresh);
+      else {
+        if (!sameClose(fresh)) warning('Close generation changed; old reconciliation stopped without overwriting its successor');
+        await recordPending(fresh, !sameClose(fresh) ? 'CLOSE_GENERATION_CHANGED_BEFORE_COMPLETION' :
+          operationError ? `TERMINAL_LABEL_RECONCILIATION_ERROR:${operationError.status ?? operationError.name}` : '');
+      }
     } catch (reconcileError) {
       if (operationError) throw new AggregateError([operationError, reconcileError], 'Terminal mutation failed; reopen compensation remains pending');
       throw reconcileError;
     }
   }
-  return { bodyReconciled };
+  return { bodyReconciled: false };
 }

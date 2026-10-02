@@ -121,7 +121,7 @@ jobs:
             if (current.state !== 'closed') return;
             await boundary.reconcileTerminalPr({ github, owner, repo, current, warning: message => core.warning(message) });
             await core.summary.addHeading('Independent closed-event lane reconciliation')
-              .addRaw('Terminal labels/body only; review status, TEST and Product acceptance were not changed.').write();
+              .addRaw('Terminal labels and generation-bound STATE_SYNC_PENDING comment only; PR body sync remains pending. Review status, TEST and Product acceptance were not changed.').write();
 
   guard:
     needs: [review_wakeup]

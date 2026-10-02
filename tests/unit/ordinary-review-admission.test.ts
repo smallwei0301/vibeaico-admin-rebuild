@@ -471,9 +471,9 @@ describe('review wake-up cannot cancel lifecycle housekeeping (synthetic Actions
     }
     expect(writes).toContain('terminal-label');
     expect(writes).toContain('remove-label');
-    expect(writes).toContain('terminal-body');
-    expect(writes).not.toContain('status'); expect(writes).not.toContain('TEST'); expect(writes).not.toContain('comment');
-    expect(github.rest.pulls.update).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining('LANE_STATE: COMPLETE') }));
+    expect(writes).not.toContain('terminal-body');
+    expect(writes).not.toContain('status'); expect(writes).not.toContain('TEST'); expect(writes).toContain('comment');
+    expect(github.rest.pulls.update).not.toHaveBeenCalled();
   });
   it('close recovery has its own least-privilege job, independent of guard/resolver results', () => {
     const job = workflow().jobs.terminal_cleanup;
@@ -563,20 +563,56 @@ describe('review wake-up cannot cancel lifecycle housekeeping (synthetic Actions
     github.rest.pulls.get.mockResolvedValueOnce({ data: observed }).mockResolvedValue({ data: { ...observed, body: observed.body + '\nFresh concurrent prose preserved' } });
     github.rest.issues.getLabel = vi.fn(async () => ({ data: {} }));
     github.rest.issues.addLabels = vi.fn(); github.rest.issues.removeLabel = vi.fn(); github.rest.pulls.update = vi.fn();
+    github.rest.issues.createComment = vi.fn();
     const boundary = await import('../../scripts/agents/governance-workstream-boundary.mjs');
     const summary: any = { addHeading: () => summary, addRaw: () => summary, write: async () => undefined };
     const script = workflow().jobs.terminal_cleanup.steps.find((step: any) => step.with?.script).with.script;
     const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
     await new AsyncFunction('require', 'process', 'github', 'context', 'core', 'loadPolicy', script.replace(/\bimport\s*\(/g, 'loadPolicy('))(createRequire(import.meta.url), { env: { GITHUB_WORKSPACE: process.cwd() } }, github, { repo: { owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild' }, payload: { pull_request: closed } }, { summary, warning: vi.fn() }, async () => boundary);
-    if (mode === 'reopened') { expect(github.rest.issues.addLabels).not.toHaveBeenCalled(); expect(github.rest.pulls.update).not.toHaveBeenCalled(); }
-    else {
-      expect(github.rest.issues.addLabels).toHaveBeenCalled();
-      expect(github.rest.pulls.update).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining('Fresh concurrent prose preserved') }));
-    }
+    if (mode === 'reopened') expect(github.rest.issues.addLabels).not.toHaveBeenCalled();
+    else expect(github.rest.issues.addLabels).toHaveBeenCalled();
+    expect(github.rest.pulls.update).not.toHaveBeenCalled();
   });
 });
 
 describe('terminal cleanup compensates observed reopen without restoring stale metadata', () => {
+  it('preserves an edit made in a new close generation before terminal body PATCH', async () => {
+    const boundary = await import('../../scripts/agents/governance-workstream-boundary.mjs');
+    const initial = { ...current, state: 'closed', merged: false, closed_at: '2026-10-02T07:00:00Z',
+      labels: [{ name: 'state:active' }], body: body + '\nWORK_ORIGIN: AGENT\nACTIVE_CANDIDATE: true' };
+    let live: any = structuredClone(initial);
+    let reads = 0;
+    const pulls = {
+      get: vi.fn(async () => {
+        reads++;
+        const observed = structuredClone(live);
+        if (reads === 11) {
+          live = { ...live, state: 'open', closed_at: null };
+          live.body += '\nUser edit in new generation';
+          live = { ...live, state: 'closed', closed_at: '2026-10-02T07:02:00Z' };
+        }
+        return { data: observed };
+      }),
+      update: vi.fn(async ({ body: replacement }: any) => {
+        live.body = replacement;
+      }),
+    };
+    const issues = {
+      removeLabel: vi.fn(async ({ name }: any) => { live.labels = live.labels.filter((label: any) => label.name !== name); }),
+      getLabel: vi.fn(async () => ({ data: {} })),
+      addLabels: vi.fn(async ({ labels }: any) => { live.labels.push(...labels.map((name: string) => ({ name }))); }),
+      listComments: vi.fn(),
+      createComment: vi.fn(),
+    };
+    const warnings: string[] = [];
+    await boundary.reconcileTerminalPr({ github: { rest: { pulls, issues }, paginate: vi.fn(async () => []) }, owner: 'smallwei0301',
+      repo: 'vibeaico-admin-rebuild', current: initial, warning: (message: string) => warnings.push(message) });
+    expect(reads).toBeGreaterThanOrEqual(11);
+    expect(pulls.update).not.toHaveBeenCalled();
+    expect(live.body).toBe(initial.body + '\nUser edit in new generation');
+    expect(warnings.join('\n')).toContain('STATE_SYNC_PENDING');
+    expect(issues.createComment).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining('UNSAFE_NON_CONDITIONAL_BODY_PATCH') }));
+  });
   it('cancellable guard never starts terminal reconciliation for a closed PR', async () => {
     const script = parse(readFileSync('.github/workflows/agent-wip-guard.yml', 'utf8')).jobs.guard.steps.find((step: any) => step.with?.script).with.script;
     const closedBranch = script.slice(script.indexOf('// Cancellable guard is read-only'), script.indexOf('const marker ='));
@@ -587,9 +623,9 @@ describe('terminal cleanup compensates observed reopen without restoring stale m
       { state: 'closed', number: 900 }, {}, 'smallwei0301', 'vibeaico-admin-rebuild', { summary });
     expect(boundary.reconcileTerminalPr).not.toHaveBeenCalled();
   });
-  it.each(['before-label', 'after-remove', 'after-remove-invalid', 'after-remove-error', 'after-incomplete-invalid', 'after-add', 'after-add-invalid', 'after-add-error', 'after-body', 'after-body-metadata', 'after-body-new-head', 'after-body-new-head-only', 'after-body-steps', 'after-body-new-head-steps', 'fresh-metadata', 'new-generation'])('independent terminal writer/%s checks each write and repairs reopened live labels/body', async phase => {
+  it.each(['before-label', 'after-remove', 'after-remove-invalid', 'after-remove-error', 'after-incomplete-invalid', 'after-add', 'after-add-invalid', 'after-add-error', 'fresh-metadata', 'new-generation'])('independent terminal writer/%s checks each label write and repairs reopened live labels', async phase => {
       const { github, live } = wakeupFixture();
-      const original = live.body + '\nWORK_ORIGIN: AGENT\nACTIVE_CANDIDATE: true' + (phase.endsWith('-steps') ? '\nREMAINING_AUTONOMOUS_STEPS: pending' : '');
+      const original = live.body + '\nWORK_ORIGIN: AGENT\nACTIVE_CANDIDATE: true';
       let pr: any = { ...live, body: original, state: 'closed', merged: false, closed_at: '2026-10-02T07:00:00Z', labels: phase === 'after-incomplete-invalid' ? [{ name: 'governance:lane-metadata-incomplete' }, { name: 'unrelated:keep' }] : [{ name: 'state:active' }, { name: 'candidate:active' }, { name: 'unrelated:keep' }] };
       const eventPr = structuredClone(pr);
       let reads = 0;
@@ -621,15 +657,8 @@ describe('terminal cleanup compensates observed reopen without restoring stale m
           if (phase === 'after-add-error') throw Object.assign(new Error('mock add after effect'), { status: 502 });
         }
       });
-      github.rest.pulls.update = vi.fn(async ({ body }: any) => {
-        mutations.push('body'); pr.body = body;
-        if (['after-body', 'after-body-metadata', 'after-body-new-head', 'after-body-new-head-only', 'after-body-steps', 'after-body-new-head-steps'].includes(phase) && pr.state === 'closed') {
-          reopen(); pr.body += '\nConcurrent prose survives';
-          if (['after-body-metadata', 'after-body-new-head'].includes(phase)) pr.body = pr.body.replace('LANE_STATE: HISTORICAL', 'LANE_STATE: PARKED');
-          if (phase.endsWith('-steps')) pr.body = pr.body.replace('REMAINING_AUTONOMOUS_STEPS: pending', 'REMAINING_AUTONOMOUS_STEPS: next');
-          if (['after-body-new-head', 'after-body-new-head-only', 'after-body-new-head-steps'].includes(phase)) pr.head = { ...pr.head, sha: 'f'.repeat(40) };
-        }
-      });
+      github.rest.pulls.update = vi.fn(() => { throw new Error('Terminal body replacement is forbidden'); });
+      github.rest.issues.createComment = vi.fn();
       const boundary = await import('../../scripts/agents/governance-workstream-boundary.mjs');
       const decoded = parse(readFileSync('.github/workflows/agent-wip-guard.yml', 'utf8')).jobs.terminal_cleanup.steps.find((step: any) => step.with?.script).with.script;
       const summary: any = { addHeading: () => summary, addRaw: () => summary, write: async () => undefined };
@@ -653,14 +682,13 @@ describe('terminal cleanup compensates observed reopen without restoring stale m
       if (phase === 'new-generation') expect(mutations).toEqual([]);
       else {
         expect(names, phase).not.toContain('state:historical'); expect(names, phase).not.toContain('state:complete');
-        expect(names, phase).toContain(['fresh-metadata', 'after-body-metadata', 'after-body-new-head'].includes(phase) ? 'state:parked' : 'state:active');
-        expect(names.includes('candidate:active'), phase).toBe(!['fresh-metadata', 'after-body-metadata', 'after-body-new-head'].includes(phase));
+        expect(names, phase).toContain(phase === 'fresh-metadata' ? 'state:parked' : 'state:active');
+        expect(names.includes('candidate:active'), phase).toBe(phase !== 'fresh-metadata');
         if (phase === 'before-label') expect(mutations).toEqual([]);
-        if (['after-body', 'after-body-new-head-only', 'after-body-steps', 'after-body-new-head-steps'].includes(phase)) { expect(pr.body).toContain('LANE_STATE: ACTIVE'); expect(pr.body).toContain('ACTIVE_CANDIDATE: true'); expect(pr.body).toContain('Concurrent prose survives'); }
-        if (phase.endsWith('-steps')) expect(pr.body).toContain('REMAINING_AUTONOMOUS_STEPS: next');
       }
       }
       expect(github.rest.repos.createCommitStatus).not.toHaveBeenCalled();
       expect(github.rest.actions.createWorkflowDispatch).not.toHaveBeenCalled();
+      expect(github.rest.pulls.update).not.toHaveBeenCalled();
   });
 });

@@ -1757,6 +1757,8 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 #745 finding4164804550（2026-10-02T10:12:03Z）再補：即使 closed generation 在每次 label API 前回讀，reopen 仍可發生於回讀與 API 副作用之間。若 open PR 的 lane metadata 同時變無效，先前補償直接 throw，留下本次 terminal label 移除／新增，甚至把 `governance:lane-metadata-incomplete` 移走。實際腳本在 remove、incomplete label remove、historical add 後重開的三例先有 3FAIL／102PASS；第一次修後 136PASS，但獨立審查又重現 remove/add API **副作用後才 throw** 的兩例，仍留下錯誤標籤（FIX_REQUIRED 保留）。最終在 API await 前記可能已寫入的本次操作，明確 404 無副作用才撤銷記錄；invalid body 時以 fresh open head/body 逐次核對，移除本次加的終態標籤、恢復本次移除且未被新 state 取代的舊標籤，終態標籤不回填。原 API 錯誤與補償 pending 同時存在則保留兩者，不讓 finally 掩蓋原錯；兩個 after-effect throw RED2／105PASS 修後局部兩檔 138PASS。仍報 invalid metadata／pending，不猜 lane、review PASS 或 TEST；同值 ABA、未知並行 label 意圖及最後 read/write 非原子仍需後續 reconciliation，不能宣稱全域原子 rollback。完整樹、獨立審查、新 source CI 與最新 finding 待驗。
 
+#745 finding4164927912（2026-10-02T10:31:31Z）再補：即使 writer 於 body PATCH 前重讀 close generation，PR 可在回讀後重開、編輯、再關閉；GitHub PR body 更新仍是整段替換，舊計畫會永久蓋掉新 prose。模擬最後回讀與 PATCH 之間的 reopen/edit/reclose，先驗出 RED1；移除 terminal writer 和 reopen compensation 的所有 `pulls.update({body})`，label reconciliation 保持原有逐步核對。`terminalBodyPlan` 只診斷待同步欄位，Actions warning 與 PR 上綁定 head／closed_at 的 bot comment 留 `STATE_SYNC_PENDING`、未同步欄位與下一寫入路徑；同世代只留一筆可信 bot handoff，不以可偽造的 comment 免除 gate。不得把 label cleanup 或 source CI 當成 `POST_MERGE_CLOSEOUT=COMPLETE`；由 owning session 在協調無並行編輯的時段回讀、更新、再核對 live body，無法保證獨占時維持 pending。GitHub REST 文件只描述 ETag 的條件 GET，PR 更新端點沒有可依賴的條件 body PATCH；加一次 GET／短暫延遲／workflow concurrency 都不能消除這個資料遺失窗口。這是保護既有文字的保守降級，並不豁免 closeout 必須同步本文的規則。
+
 ### PB-050 — 埋了點，卻整輪沒跑過驗證器；欄位有值，但值在另一套詞彙裡
 
 - 首次／最近：2026-09-14 / 2026-09-14

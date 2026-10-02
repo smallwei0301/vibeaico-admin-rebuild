@@ -186,7 +186,7 @@ describe('governance boundary regression #500', () => {
       const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', subject(body));
       expect(result.failures.join('\n')).toContain('AGENT_LANE=GOVERNANCE must use DELIVERY_UNIT_TYPE=GOVERNANCE');
     });
-    it('keeps closed OWNER housekeeping ahead of validation and only rewrites current terminal fields', async () => {
+    it('keeps closed OWNER housekeeping ahead of validation without replacing the PR body', async () => {
       const body = gov.replace('WORK_ORIGIN: AGENT', 'WORK_ORIGIN: OWNER')
         .replace('DELIVERY_UNIT_TYPE: GOVERNANCE', 'DELIVERY_UNIT_TYPE: STANDALONE');
       const current = { ...subject(body), state: 'closed', merged: true };
@@ -196,11 +196,11 @@ describe('governance boundary regression #500', () => {
       const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current, paths, [], 'terminal_cleanup');
       expect(result.statuses).toEqual([]);
       expect(result.failures).toEqual([]);
-      expect(result.calls).toContain('body');
-      expect(current.body).toContain('LANE_STATE: COMPLETE');
+      expect(result.calls).not.toContain('body');
+      expect(current.body).toContain('LANE_STATE: ACTIVE');
       expect(current.body).toContain('ACTIVE_CANDIDATE: false');
       expect(result.calls).not.toContain('dispatch');
-      expect(result.calls).not.toContain('comment');
+      expect(result.calls).toContain('comment'); // Durable STATE_SYNC_PENDING handoff.
     });
   });
 
@@ -268,7 +268,7 @@ describe('governance boundary regression #500', () => {
       [{ filename: paths[0], previous_filename: 'src/server/payment.ts' }]);
     expect(result.failures.length).toBeGreaterThan(0);
   });
-  it('executes closed-event cleanup without a pending status, TEST or rewritten comments', async () => {
+  it('executes closed-event cleanup without a pending status or TEST and leaves a sync handoff', async () => {
     const current = { ...subject(), state: 'closed', merged: true,
       labels: [{ name: 'state:active' }, { name: 'candidate:active' }, { name: 'unrelated:keep' }] };
     const guard = await runWorkflow('.github/workflows/agent-wip-guard.yml', current);
@@ -276,13 +276,38 @@ describe('governance boundary regression #500', () => {
     expect(guard.calls).toEqual([]);
     const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current, paths, [], 'terminal_cleanup');
     expect(result.statuses).toEqual([]);
-    expect(result.calls).toContain('body');
+    expect(result.calls).not.toContain('body');
     expect(result.calls.filter(call => call === 'labels').length).toBeGreaterThan(0);
     expect(result.calls).not.toContain('dispatch');
-    expect(result.calls).not.toContain('comment');
-    expect(current.body).toContain('state: MERGED');
-    expect(current.body).toContain('LANE_STATE: COMPLETE');
+    expect(result.calls).toContain('comment');
+    expect(current.body).toContain('state: ACTIVE');
+    expect(current.body).toContain('LANE_STATE: ACTIVE');
     expect([...result.labels].sort()).toEqual(['state:complete', 'unrelated:keep']);
+  });
+
+  it('deduplicates only the trusted bot handoff for the same close generation', async () => {
+    const closed = { ...subject(), state: 'closed', merged: true,
+      closed_at: '2026-10-02T07:00:00Z', labels: [{ name: 'state:active' }] };
+    const marker = `<!-- agent-terminal-state-sync:v1 pr=900 head=${closed.head.sha} closed_at=${closed.closed_at} -->`;
+    const comments: any[] = [{ user: { login: 'untrusted', id: 10 }, body: `${marker}\nSTATE_SYNC_PENDING` }];
+    const listComments = vi.fn();
+    const github: any = { rest: {
+      pulls: { get: vi.fn(async () => ({ data: structuredClone(closed) })),
+        update: vi.fn(() => { throw new Error('Body replacement forbidden'); }) },
+      issues: { listComments, removeLabel: vi.fn(async ({ name }: any) => {
+        closed.labels = closed.labels.filter((label: { name: string }) => label.name !== name);
+      }), getLabel: vi.fn(async () => ({})), addLabels: vi.fn(async ({ labels }: any) => {
+        closed.labels.push(...labels.map((name: string) => ({ name })));
+      }), createComment: vi.fn(async ({ body }: any) => {
+        comments.push({ user: { login: 'github-actions[bot]', id: 41898282 }, body });
+      }) },
+    }, paginate: vi.fn(async (method: any) => method === listComments ? comments : []) };
+    const call = () => boundaryPolicy.reconcileTerminalPr({ github, owner: 'owner', repo: 'repo', current: closed });
+    await call();
+    expect(github.rest.issues.createComment).toHaveBeenCalledTimes(1); // A forged marker cannot suppress handoff.
+    await call();
+    expect(github.rest.issues.createComment).toHaveBeenCalledTimes(1);
+    expect(github.rest.pulls.update).not.toHaveBeenCalled();
   });
 
   it('rewrites only live terminal declarations and preserves fenced examples', () => {
