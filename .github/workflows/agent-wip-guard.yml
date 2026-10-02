@@ -94,6 +94,12 @@ jobs:
             const schemaStage = await import(pathToFileURL(path.join(
               process.env.GITHUB_WORKSPACE, 'scripts/agents/schema-staged-release-policy.mjs',
             )).href);
+            const preflight = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE, 'scripts/agents/agent-wip-preflight.mjs',
+            )).href);
+            const publication = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE, 'scripts/agents/pr-publication-receipt.mjs',
+            )).href);
 
             const { owner, repo } = context.repo;
             const reviewWakeup = context.eventName === 'schedule' || context.eventName === 'workflow_run' || (context.eventName === 'issue_comment' && ['edited', 'deleted'].includes(context.payload.action));
@@ -106,9 +112,12 @@ jobs:
               pull_number: payloadCurrent.number,
             });
             if (context.eventName === 'issue_comment' && !reviewWakeup) {
-              const firstLine = String(context.payload.comment?.body ?? '').split(/\r?\n/, 1)[0].trim();
-              if (firstLine !== '/astra-review-check') throw new Error('Invalid Final Risk refresh command');
+              const commentBody = String(context.payload.comment?.body ?? '');
               const commentUser = context.payload.comment?.user ?? {};
+              if (commentUser.login === 'github-actions[bot]' && commentUser.type === 'Bot' &&
+                  commentBody.includes(publication.PUBLICATION_PREFLIGHT_RECEIPT_MARKER)) return;
+              const firstLine = commentBody.split(/\r?\n/, 1)[0].trim();
+              if (firstLine !== '/astra-review-check') throw new Error('Invalid Final Risk refresh command');
               const trustedAgent = astra.isTrustedFinalRiskAgentUser(commentUser);
               if (!trustedAgent) {
                 const actor = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: context.actor });
@@ -243,6 +252,52 @@ jobs:
               }
               if (!scorecardFound) {
                 metadataErrors.push(`SCORECARD_PATH does not exist on the PR head or main: ${metadata.scorecardPath}`);
+              }
+            }
+
+            const publicationValidation = preflight.validatePublicationMetadata({
+              body: current.body ?? '',
+              changedFiles: ownPaths,
+              prNumber: current.number,
+              action: context.payload.action ?? 'opened',
+              requireAstraClassification: true,
+            });
+            metadataErrors.push(...publicationValidation.errors);
+
+            let publicationPolicyOnBase = false;
+            if (isAgent) {
+              try {
+                const response = await github.rest.repos.getContent({
+                  owner, repo, path: 'scripts/agents/pr-publication-receipt.mjs', ref: current.base.sha,
+                });
+                publicationPolicyOnBase = !Array.isArray(response.data) && response.data.type === 'file';
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
+            }
+            const publicationComments = isAgent
+              ? await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: current.number, per_page: 100 })
+              : [];
+            let publicationExpected = null;
+            let publicationReceipt = null;
+            if (isAgent && completeInventory) {
+              publicationExpected = publication.publicationContract({
+                body: current.body ?? '', files: ownFiles, baseSha: current.base.sha, headSha: current.head.sha,
+              });
+              publicationReceipt = publication.findMatchingPublicationReceipt(publicationComments, {
+                prNumber: current.number, contract: publicationExpected,
+              });
+            }
+            if (isAgent && current.state === 'open' && publicationPolicyOnBase) {
+              if (current.draft === true) {
+                if (completeInventory && publicationValidation.valid && !publicationReceipt) {
+                  await github.rest.issues.createComment({
+                    owner, repo, issue_number: current.number,
+                    body: publication.renderPublicationReceipt({ prNumber: current.number, contract: publicationExpected }),
+                  });
+                }
+              } else if (!publicationReceipt) {
+                metadataErrors.push('PUBLICATION_PREFLIGHT_RECEIPT_REQUIRED: open as Draft, obtain trusted exact body/files/base/head receipt, then publish ready/ACTIVE');
               }
             }
 
@@ -396,14 +451,7 @@ jobs:
                   errors,
                 })
               : null;
-            const comments = isAgent
-              ? await github.paginate(github.rest.issues.listComments, {
-                  owner,
-                  repo,
-                  issue_number: current.number,
-                  per_page: 100,
-                })
-              : [];
+            const comments = publicationComments;
             const previous = comments.find((comment) => comment.body?.includes(marker));
             const duplicateFailure = Boolean(
               errors.length &&
