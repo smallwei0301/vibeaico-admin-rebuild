@@ -33,6 +33,7 @@
 import { cache } from 'react';
 import { createAdminSupabase } from '@/server/supabase';
 import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
+import { resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
 import { MAX_PUBLIC_GALLERY_IMAGES } from '@/lib/trip-gallery';
 import {
   MAX_PUBLIC_LIST_ITEM_CHARS,
@@ -132,6 +133,8 @@ export type PublicTripDetailPlan = PublicPlan & {
 
 export type PublicTripDetails = {
   shop: PublicShop;
+  /** 店家 IANA 時區（≤64 字元，已驗證），供前端以店家時區顯示成團截止時間。 */
+  timeZone?: string;
   trip: {
     id: string;
     slug: string;
@@ -189,7 +192,7 @@ const MAX_DETAIL_DEPARTURES_PER_PLAN = 6;
  * 截斷，超過的方案不輸出並設 plansMayBeTruncated。
  * 最壞情況 payload 估算（CJK 每字元以 3 bytes 計）：方案 60 × (name 300 + description 2000) 字 ≈ 0.41MB；
  * 團次 30 個方案 × (6 可售 + 6 客滿) × 約 200B ≈ 0.07MB；行程文字（description 5000 + 短文字 3×2000 +
- * 陣列 3×20×300 + 單行 3×300）字 ≈ 0.1MB；店家層級欄位 < 0.01MB；合計約 0.6MB。
+ * 陣列 3×20×300 + 單行 3×300）字 ≈ 0.1MB；店家層級欄位 < 0.01MB；合計約 0.6MB。URL（cover、gallery 最多 8 張、地圖）每個 ≤2048 字元，合計 ≤ 10 × 2KB ≈ 20KB，仍在此估算內。
  */
 const MAX_PUBLIC_PLANS_OUTPUT = 60;
 /** 詳情頁每個方案最多額外列出的客滿團次（不占上面的可售名額）。 */
@@ -277,14 +280,8 @@ function taipeiToday(): string {
   return new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
-/** 台北「現在」：同一個時間來源切出日期與 HH:mm，避免兩者跨午夜不一致。 */
-function taipeiNowParts(): { today: string; hm: string } {
-  const iso = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
-  return { today: iso.slice(0, 10), hm: iso.slice(11, 16) };
-}
-
 /**
- * 今天（台北）且開始時間已到或已過的團次不可列出。
+ * 今天（店家時區）且開始時間已到或已過的團次不可列出。
  * `start_time` 為 null 的今天團次維持列出：沒有開始時間，無法判定是否已開始。
  * 明天以後的團次不受影響。（預約頁／reserve_seats 的權威檢查是既有行為，不在此處理。）
  */
@@ -300,7 +297,7 @@ function hasStartedToday(
 async function loadPublicShopCore(
   admin: ReturnType<typeof createAdminSupabase>,
   shopCode: string,
-): Promise<{ shop: PublicShop; tenantId: string } | null> {
+): Promise<{ shop: PublicShop; tenantId: string; timeZone: string } | null> {
   if (!SHOP_CODE_PATTERN.test(shopCode)) return null;
 
   // ① 店家 ＋ 公開的基本設定。白名單欄位；tenant_settings 只取 basic 與 line 兩塊，
@@ -334,7 +331,12 @@ async function loadPublicShopCore(
     businessType: (tenantRow.business_type as string | null) ?? null,
   };
 
-  return { shop, tenantId: tenantRow.id as string };
+  return {
+    shop,
+    tenantId: tenantRow.id as string,
+    // 店家時區（basic.timezone，缺值或無效回退 Asia/Taipei）；只用於詳情的「今天」與時間顯示。
+    timeZone: resolvePublicTimeZone(basic.timezone),
+  };
 }
 
 /** 這種販售方式的方案才會在詳情頁公開列出團次。 */
@@ -351,15 +353,42 @@ function limitPublicPlanText(plan: PublicPlan): PublicPlan {
   };
 }
 
-/** 詳情輸出邊界：店家層級文字欄位上限；shopCode、lineBasicId（識別碼）、businessType（類別代碼）不截。 */
+const MAX_PUBLIC_URL_CHARS = 2048;
+const MAX_PUBLIC_EMAIL_CHARS = 254;
+const MAX_PUBLIC_PHONE_CHARS = 20;
+const MAX_PUBLIC_LINE_ID_CHARS = 64;
+
+/** email：過長或格式不合就不輸出（空字串），不截斷成錯誤的地址。 */
+function publicEmail(value: string): string {
+  const email = value.trim();
+  if (email.length > MAX_PUBLIC_EMAIL_CHARS || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return '';
+  return email;
+}
+
+/** phone：只留數字與 +；為空或超過 20 碼就不輸出。 */
+function publicPhone(value: string): string {
+  const phone = value.replace(/[^\d+]/g, '');
+  return phone.length === 0 || phone.length > MAX_PUBLIC_PHONE_CHARS ? '' : phone;
+}
+
+/** LINE 基本 ID：超過 64 字元或含 [A-Za-z0-9@._-] 以外字元就不輸出。 */
+function publicLineBasicId(value: string): string {
+  return value.length > MAX_PUBLIC_LINE_ID_CHARS || /[^A-Za-z0-9@._-]/.test(value) ? '' : value;
+}
+
+/**
+ * 詳情輸出邊界：店家層級欄位。name／description／address 截斷；phone／email／lineBasicId 超長或格式不合
+ * 時不輸出（空字串，client 對空字串不顯示對應按鈕）；shopCode（識別碼）、businessType（類別代碼）不處理。
+ */
 function limitPublicShopText(shop: PublicShop): PublicShop {
   return {
     ...shop,
     name: truncateChars(shop.name, MAX_PUBLIC_LIST_ITEM_CHARS),
     description: truncateChars(shop.description, MAX_PUBLIC_SHORT_TEXT_CHARS),
-    phone: truncateChars(shop.phone, MAX_PUBLIC_LIST_ITEM_CHARS),
-    email: truncateChars(shop.email, MAX_PUBLIC_LIST_ITEM_CHARS),
+    phone: publicPhone(shop.phone),
+    email: publicEmail(shop.email),
     address: truncateChars(shop.address, MAX_PUBLIC_LIST_ITEM_CHARS),
+    lineBasicId: publicLineBasicId(shop.lineBasicId),
   };
 }
 
@@ -511,6 +540,8 @@ function queryTripDetailsFailed(stage: string, cause: unknown): Error {
 
 function safePublicHttpsUrl(value: unknown): string {
   if (typeof value !== 'string' || !value.trim()) return '';
+  // 超過 2048 字元的 URL 一律丟棄（不輸出）。
+  if (value.trim().length > MAX_PUBLIC_URL_CHARS) return '';
   try {
     const url = new URL(value.trim());
     if (url.protocol !== 'https:' || url.username || url.password) return '';
@@ -561,7 +592,7 @@ async function loadPublicTripDetailsUncached(
   if (!row) return null;
   const tripId = row.id as string;
 
-  const now = taipeiNowParts();
+  const now = tenantNowParts(shopData.timeZone);
 
   // trip_plans 以穩定排序（sort_order、id）讀 MAX+1 筆；範圍限定 tenant、trip、active。
   const { data: planPageRows, error: planError } = await admin.from('trip_plans')
@@ -709,6 +740,7 @@ async function loadPublicTripDetailsUncached(
     .slice(0, MAX_PUBLIC_GALLERY_IMAGES);
   return {
     shop: limitPublicShopText(shopData.shop),
+    timeZone: shopData.timeZone,
     trip: {
       id: row.id as string,
       slug: row.slug as string,

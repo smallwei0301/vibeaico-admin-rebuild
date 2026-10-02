@@ -106,7 +106,7 @@ export function PublicTripDetailsClient({ shopCode, slug, initialData }: Props) 
     );
   }
 
-  const { shop, trip } = state.data;
+  const { shop, trip, timeZone } = state.data;
   const refundPolicy = publicShopPage.trips.cancellationPolicy[trip.refundPolicyType];
 
   return (
@@ -265,7 +265,7 @@ export function PublicTripDetailsClient({ shopCode, slug, initialData }: Props) 
                               {formatDepartureDate(departure.departsOn)}{' '}
                               {departure.startTime || t.departures.noStartTime}{' · '}
                               {departure.soldOut ? t.departures.soldOut : t.departures.seatsLeft(departure.seatsLeft)}
-                              {formationLines(plan.salesMode, departure).map((line) => (
+                              {formationLines(plan.salesMode, departure, timeZone).map((line) => (
                                 <span key={line} className="block text-2xs text-secondary">{line}</span>
                               ))}
                             </li>

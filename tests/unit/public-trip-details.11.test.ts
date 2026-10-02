@@ -16,6 +16,7 @@ const fakeState = vi.hoisted(() => ({
   tripExtra: undefined as undefined | Record<string, unknown>,
   planText: undefined as undefined | { name?: string; description?: string },
   tenantBasic: undefined as undefined | Record<string, unknown>,
+  lineId: '@abc',
   modeFor: null as null | ((i: number) => string),
   active: 0,
   maxActive: 0,
@@ -32,7 +33,7 @@ vi.mock('@/server/supabase', () => ({
         fakeState.calls.push({ table, filters: { ...filters }, single, ...(rangeArgs ? { range: rangeArgs } : {}) } as never);
         if (table === 'tenants') {
           const id = filters.shop_code === 'demo' ? 'tenant-1' : 'tenant-2';
-          return { data: { id, shop_code: filters.shop_code, name: 'Demo', business_type: null, tenant_settings: fakeState.tenantBasic ? { basic: fakeState.tenantBasic, line: { lineBasicId: '@abc' } } : null }, error: null };
+          return { data: { id, shop_code: filters.shop_code, name: 'Demo', business_type: null, tenant_settings: fakeState.tenantBasic ? { basic: fakeState.tenantBasic, line: { lineBasicId: fakeState.lineId } } : null }, error: null };
         }
         if (table === 'trips') {
           const all = [
@@ -217,6 +218,7 @@ describe('#11 公開行程詳情：方案團次查詢併發上限', () => {
     fakeState.tripExtra = undefined;
     fakeState.planText = undefined;
     fakeState.tenantBasic = undefined;
+    fakeState.lineId = '@abc';
     fakeState.active = 0;
     fakeState.maxActive = 0;
     fakeState.calls = [];
@@ -415,8 +417,6 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
   it.each([
     ['tenantName', 'name', 300],
     ['tenantDescription', 'description', 2000],
-    ['tenantPhone', 'phone', 300],
-    ['tenantEmail', 'email', 300],
     ['tenantAddress', 'address', 300],
   ])('店家層級欄位 %s → shop.%s 在詳情輸出截到 %i 字', async (basicKey, field, max) => {
     fakeState.planCount = 1;
@@ -543,6 +543,89 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
       expect(trip.description).toBe('正常說明');
       expect(trip.exclusions).toEqual(['a', 'b']);
     });
+  });
+
+  describe('店家時區（basic.timezone）', () => {
+    beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2098-01-02T02:00:00Z')); });
+    afterEach(() => { vi.useRealTimers(); });
+    const row = (departs_on: string, start_time: string | null) => ({ departs_on, start_time, seats_booked: 0, capacity: 5 });
+    const run = async (timezone: unknown) => {
+      fakeState.planCount = 1;
+      fakeState.tenantBasic = timezone === undefined ? {} : { timezone };
+      fakeState.customRows = [
+        row('2098-01-01', '17:00:00'),
+        row('2098-01-01', '19:00:00'),
+        row('2098-01-02', '09:00:00'),
+        row('2098-01-02', '11:00:00'),
+      ];
+      const { loadPublicTripDetails } = await import('@/server/public-shop');
+      const result = await loadPublicTripDetails('demo', 'hike');
+      return { ids: result!.trip.plans[0].departures.map((d) => d.id), timeZone: result!.timeZone };
+    };
+
+    it('America/Los_Angeles（LA 為 1/1 18:00，台北已是 1/2 10:00）：LA 今天已過的排除，LA 明天的（台北今天 09:00）保留', async () => {
+      const r = await run('America/Los_Angeles');
+      expect(r.timeZone).toBe('America/Los_Angeles');
+      expect(r.ids).toEqual(['c-1', 'c-2', 'c-3']);
+    });
+
+    it.each([undefined, 'Mars/Phobos', 42, 'x'.repeat(80)])('時區 %j 缺值或無效 → 回退台北（台北 1/2 10:00）', async (tz) => {
+      const r = await run(tz);
+      expect(r.timeZone).toBe('Asia/Taipei');
+      // 台北今天 1/2：09:00 已過排除；11:00 保留；1/1 的日期是過去，但查詢以 gte 過濾（fake 不過濾），所以只確認台北規則。
+      expect(r.ids).toContain('c-3');
+      expect(r.ids).not.toContain('c-2');
+    });
+  });
+
+  describe('店家欄位格式（C1）', () => {
+    const shopWith = async (basic: Record<string, unknown>) => {
+      fakeState.planCount = 1;
+      fakeState.tenantBasic = basic;
+      const { loadPublicTripDetails } = await import('@/server/public-shop');
+      return (await loadPublicTripDetails('demo', 'hike'))!.shop;
+    };
+
+    it('email：超過 254 或格式不合 → 空字串；合法則保留', async () => {
+      expect((await shopWith({ tenantEmail: 'a'.repeat(250) + '@b.co' })).email).toBe('');
+      expect((await shopWith({ tenantEmail: 'not-an-email' })).email).toBe('');
+      expect((await shopWith({ tenantEmail: 'shop@example.com' })).email).toBe('shop@example.com');
+    });
+
+    it('phone：只留數字與 +；超過 20 碼或為空 → 空字串', async () => {
+      expect((await shopWith({ tenantPhone: '+886 (2) 1234-5678' })).phone).toBe('+886212345678');
+      expect((await shopWith({ tenantPhone: '1'.repeat(21) })).phone).toBe('');
+      expect((await shopWith({ tenantPhone: 'call me' })).phone).toBe('');
+    });
+
+    it('lineBasicId（C2）：超過 64 或含非 [A-Za-z0-9@._-] 字元 → 空字串', async () => {
+      expect((await shopWith({})).lineBasicId).toBe('@abc');
+      for (const bad of ['@' + 'a'.repeat(64), 'bad id', 'ab/cd', '龜山島']) {
+        fakeState.lineId = bad;
+        expect((await shopWith({})).lineBasicId, bad).toBe('');
+      }
+      fakeState.lineId = '@shop.id_1-2';
+      expect((await shopWith({})).lineBasicId).toBe('@shop.id_1-2');
+    });
+
+    it('client 對空字串不顯示對應按鈕', () => {
+      const actions = readFileSync(resolve(ROOT, 'src/components/public/PublicContactActions.tsx'), 'utf8');
+      expect(actions).toContain('if (shop.phone) {');
+      expect(actions).toContain('if (shop.email) {');
+      expect(actions).toContain('if (shop.lineBasicId) {');
+    });
+  });
+
+  it('URL（C2）：超過 2048 字元的 cover／gallery／地圖連結被丟棄，合法者保留', async () => {
+    const long = 'https://example.com/' + 'a'.repeat(2100);
+    const ok = 'https://example.com/ok.jpg';
+    fakeState.planCount = 1;
+    fakeState.tripExtra = { cover_image_url: long, gallery: [long, ok], meeting_point_map_url: long };
+    const { loadPublicTripDetails } = await import('@/server/public-shop');
+    const trip = (await loadPublicTripDetails('demo', 'hike'))!.trip;
+    expect(trip.coverImageUrl).toBe('');
+    expect(trip.galleryUrls).toEqual([ok]);
+    expect(trip.meetingPointMapUrl).toBe('');
   });
 
   it('M1：成團欄位只在 FIXED_DEPARTURE 輸出；REQUEST／INSTANT 不帶', async () => {

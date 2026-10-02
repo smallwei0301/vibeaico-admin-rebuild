@@ -34,6 +34,15 @@ describe('#11 固定團次成團資訊顯示（19 分冊 §2.1）', () => {
     expect(formatFormationDeadline(null)).toBeNull();
   });
 
+  it('成團截止以店家時區顯示：America/Los_Angeles → 11/30 20:30；缺值或無效回退台北 12/1 12:30', () => {
+    const iso = '2026-12-01T04:30:00+00:00';
+    expect(formatFormationDeadline(iso, 'America/Los_Angeles')).toBe('11/30 20:30');
+    expect(formatFormationDeadline(iso, 'Asia/Taipei')).toBe('12/1 12:30');
+    expect(formatFormationDeadline(iso, undefined)).toBe('12/1 12:30');
+    expect(formatFormationDeadline(iso, 'Mars/Phobos')).toBe('12/1 12:30');
+    expect(formationLines('FIXED_DEPARTURE', full, 'America/Los_Angeles')).toContain('成團截止 11/30 20:30');
+  });
+
   it('客滿時狀態文案不得暗示還能加入：FORMED＋soldOut → 已成團；COLLECTING＋soldOut → 名額已滿，尚未成團', () => {
     const forming = formationLines('FIXED_DEPARTURE', { ...full, formationStatus: 'FORMED', soldOut: true });
     expect(forming).toContain('已成團');
@@ -63,7 +72,7 @@ describe('#11 固定團次成團資訊顯示（19 分冊 §2.1）', () => {
 
   it('Client 以 formationLines 呈現，文案只在 i18n', () => {
     const client = readFileSync(resolve(process.cwd(), 'src/components/public/PublicTripDetailsClient.tsx'), 'utf8');
-    expect(client).toContain('formationLines(plan.salesMode, departure)');
+    expect(client).toContain('formationLines(plan.salesMode, departure, timeZone)');
   });
 });
 
