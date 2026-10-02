@@ -591,7 +591,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 24,
+    "fullCiRuns": 26,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -777,7 +777,9 @@
     "2026-10-01T15:14:06Z #11 exact source candidate 12addd9 on current main 7752361: per-plan departure pagination now bypasses sold-out rows; six-item limit is disclosed; detail API error envelopes preserve CORS; integration fixture cleanup checks errors and zero-residue readback. Independent Standards and Spec reviews both report no remaining blockers on exact 12addd9 after fixes. Node typecheck and focused 4 tests passed; full unit 286 files/3715 tests and Next production build passed on the final source; exact 7752361..12addd9 repository integrity PASS/1417 tracked/0 deleted. HTTP+Supabase integration remains NOT_RUN because local TEST credentials and INTEGRATION_BASE_URL are absent; hosted CI has not started; no schema, merge, deployment, or authenticated Production acceptance claim.",
     "LIVE_RECHECK 2026-10-01T16:22:00Z: current origin/main is 7976af038d778aa96ebb69301f65cd5381020ceb after PR #729; its seven changed files are review-admission governance only, while Owner Decision and public-trip integration docs are byte-identical to prior main 775236159ab55cbbaca22fdc44608e5bf4383fc6. PR #731 remains open draft at exact head 228a8c1051f27e3d740620c97d3291ebda254204. Main push ci run36888895810 integration job110460571388 is in_progress and is the shared canonical TEST holder. Preserve the existing branch under the base-freshness decision; no Product source/API/schema dependency changed.",
     "LOCAL_FAILURE_CAPTURE 2026-10-01T16:22:00Z: exact PR731 old-head disposable local Supabase bootstrap run36885381267/job110447503574 ended failure at15:44:10Z (83 integration files; 811 passed, 8 skipped, 2 failed; cleanup succeeded). Failure 1 raw javascript cover URL appeared in Next development RSC diagnostic through shared loadPublicShop; failure 2 SHOP_B correctly returned its own PUBLISHED row for a slug unique only within tenant. The source/test repairs are uncommitted at this capture; typecheck, 286 unit files/3715 tests, build and diff check passed on the repaired worktree. The same-head local-isolated-test 36885380748 was a policy skip due SOURCE_ONLY, not database acceptance. Next: commit bounded repair + Playbook + truthful metadata/ledger, then exact-head CI and LOCAL_ISOLATED.",
-    "WIP_RECONCILIATION 2026-10-01T16:22:00Z: after capturing #731 repair BUILD_ENTER, event-derived candidate peak is 3. inventory.activeCandidatePeak is updated from the stale 2 to the conservative recorded-event high-water 3 so preflight agrees; it does not assert three currently active candidates. The current live PR #714 is PARKED at remote head adf0608 while the Run has a prior local VERIFY event for d371347; PR #715 is PARKED at 6676255. Both current VERIFY states are closed at the 16:22 observation; prior exact exit times for #714 are unknown, so no earlier event is backfilled. Current active #731 is one candidate. Do not infer product qualification or active concurrency from historical upper bound 3."
+    "WIP_RECONCILIATION 2026-10-01T16:22:00Z: after capturing #731 repair BUILD_ENTER, event-derived candidate peak is 3. inventory.activeCandidatePeak is updated from the stale 2 to the conservative recorded-event high-water 3 so preflight agrees; it does not assert three currently active candidates. The current live PR #714 is PARKED at remote head adf0608 while the Run has a prior local VERIFY event for d371347; PR #715 is PARKED at 6676255. Both current VERIFY states are closed at the 16:22 observation; prior exact exit times for #714 are unknown, so no earlier event is backfilled. Current active #731 is one candidate. Do not infer product qualification or active concurrency from historical upper bound 3.",
+    "EXACT_HEAD_VERIFY_ENTER 2026-10-01T16:32:59Z: PR731 b11968df9d3fa519e15048a9e989617880b23f0d pushed normally. Exact source CI run36892824792 and disposable schema-bootstrap run36892824745 entered in_progress; local-isolated-test run36892825002 correctly classified LOCAL_ISOLATED with slot-a queued (not the prior SOURCE_ONLY policy skip). fullCiRuns incremented once for the new ci workflow. Current main shared TEST holder remains push ci36888895810 until its integration job exits.",
+    "2026-10-01T16:53:09Z #731 exact b119 LOCAL_ISOLATED 36892825002 failed during beforeAll because two plan fixtures had empty slug under the existing unique (tenant_id,trip_id,slug) key; 814 tests passed / 7 skipped, 82/83 files passed, E2E skipped, disposable cleanup succeeded. Distinct b119 agent-schema-bootstrap 36892824745 passed all 4 public-trip-detail integration assertions (82 files / 813 tests / 8 skipped) and 23 E2E tests; disposable Supabase cleanup succeeded. Added distinct REQUEST/FIXED fixture slugs in commit 1434936749d645cc05b6b3c824ef838b093730bd; local typecheck and full unit suite (286 files / 3715 tests) passed, diff check passed. Exact-head Source CI 36895313359, bootstrap 36895313397, LOCAL_ISOLATED 36895313275 started 16:53:09Z. Shared canonical TEST remains held by main push CI 36888895810; no remote TEST, merge, deployment, schema readiness, or authenticated Production acceptance claimed."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -790,7 +792,7 @@
   },
   "completionTruth": {
     "status": "VERIFIED",
-    "checkedAt": "2026-10-01T16:22:00.000Z",
+    "checkedAt": "2026-10-01T16:56:15.000Z",
     "claims": [
       {
         "type": "LOCAL_TEST_GREEN",
@@ -903,6 +905,22 @@
         "observedState": "failed",
         "verification": "VERIFIED",
         "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/36885381267 (job 110447503574; 83 integration files, 811 passed, 8 skipped, 2 failed; disposable local stack cleanup completed)"
+      },
+      {
+        "type": "OTHER",
+        "subject": "pr#731 exacthead b11968df9d3fa519e15048a9e989617880b23f0d LOCAL_ISOLATED integration fixture failure",
+        "claimedState": "failed",
+        "observedState": "failed",
+        "verification": "VERIFIED",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/36892825002 (job 110472457689; 82/83 integration files passed, 814 tests passed / 7 skipped; new public-trip-detail suite failed in beforeAll because two trip_plans fixtures had the same empty slug under unique (tenant_id,trip_id,slug); route assertions were not reached; E2E skipped; disposable local Supabase cleanup succeeded)"
+      },
+      {
+        "type": "OTHER",
+        "subject": "pr#731 exacthead b11968df9d3fa519e15048a9e989617880b23f0d agent-schema-bootstrap local Product validation",
+        "claimedState": "success",
+        "observedState": "success",
+        "verification": "VERIFIED",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/36892824745 (job 110472392108; exact head verified; Product integration 82 files passed / 1 skipped, 813 tests passed / 8 skipped including all 4 public-trip-detail tests; disposable-stack E2E 23 passed; local Supabase stack stopped successfully; bootstrap evidence only, not canonical shared TEST or Production acceptance)"
       }
     ]
   },
@@ -1278,6 +1296,66 @@
         "head": "6676255ca2645ec435cf4b5b6c5c35b7266d263f",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "At live recheck 2026-10-01T16:22:00Z GitHub PR #715 is PARKED at exact head 6676255ca2645ec435cf4b5b6c5c35b7266d263f; its state:parked label event was observed at 2026-10-01T13:56:59Z. This exit is captured at first revalidation, not backdated to infer exact lane-end time."
+      },
+      {
+        "id": "731-repair-build-exit",
+        "at": "2026-10-01T16:32:59.000Z",
+        "kind": "BUILD_EXIT",
+        "pr": 731,
+        "issue": 11,
+        "head": "228a8c1051f27e3d740620c97d3291ebda254204",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Bounded source/test repair committed as b11968df9d3fa519e15048a9e989617880b23f0d and pushed to PR #731. The old captured build head exits when exact-head CI/local isolated workflows are observed to start; no shared canonical TEST use."
+      },
+      {
+        "id": "731-repair-verify-enter",
+        "at": "2026-10-01T16:32:59.000Z",
+        "kind": "VERIFY_ENTER",
+        "pr": 731,
+        "issue": 11,
+        "head": "b11968df9d3fa519e15048a9e989617880b23f0d",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Exact remote PR head b11968df9d3fa519e15048a9e989617880b23f0d: Source CI run36892824792 is in_progress, disposable agent-schema-bootstrap run36892824745 is in_progress, and LOCAL_ISOLATED run36892825002 was admitted with slot-a queued. Metadata declares TEST_PROFILE=LOCAL_ISOLATED / TEST_ENV_ID=local-pr-731-a. This is private local Supabase only; shared TEST run36888895810 remains the sole remote holder."
+      },
+      {
+        "id": "731-b119-local-isolated-failure-verify-exit",
+        "at": "2026-10-01T16:42:17Z",
+        "kind": "VERIFY_EXIT",
+        "pr": 731,
+        "issue": 11,
+        "head": "b11968df9d3fa519e15048a9e989617880b23f0d",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Exact LOCAL_ISOLATED run 36892825002 completed failure at 16:42:17Z before public-trip route assertions: the two plan fixtures omitted unique slugs. Required bounded fixture repair; E2E skipped and disposable local stack cleanup succeeded. An independent exact-head schema-bootstrap run continued and later passed its Product integration/UI checks, but did not replace this lane."
+      },
+      {
+        "id": "731-plan-slug-fixture-build-enter",
+        "at": "2026-10-01T16:46:49.327Z",
+        "kind": "BUILD_ENTER",
+        "pr": 731,
+        "issue": 11,
+        "head": "b11968df9d3fa519e15048a9e989617880b23f0d",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "First fixture-source edit mtime after the exact-head LOCAL_ISOLATED beforeAll failure. Add distinct REQUEST and FIXED plan slugs to comply with existing tenant/trip/slug uniqueness; product source/API/schema unchanged."
+      },
+      {
+        "id": "731-plan-slug-fixture-build-exit",
+        "at": "2026-10-01T16:53:09Z",
+        "kind": "BUILD_EXIT",
+        "pr": 731,
+        "issue": 11,
+        "head": "b11968df9d3fa519e15048a9e989617880b23f0d",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Bounded fixture correction committed as 1434936749d645cc05b6b3c824ef838b093730bd and pushed by normal fast-forward. Exact current-head Source CI, disposable bootstrap, and LOCAL_ISOLATED workflows were observed starting at 16:53:09Z; no shared TEST use."
+      },
+      {
+        "id": "731-plan-slug-fixture-verify-enter",
+        "at": "2026-10-01T16:53:09Z",
+        "kind": "VERIFY_ENTER",
+        "pr": 731,
+        "issue": 11,
+        "head": "1434936749d645cc05b6b3c824ef838b093730bd",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Exact pushed head 1434936749d645cc05b6b3c824ef838b093730bd has Source CI 36895313359, disposable schema-bootstrap 36895313397, and LOCAL_ISOLATED 36895313275 all in_progress. Current main shared TEST holder remains push CI 36888895810 / integration job 110460571388."
       }
     ]
   }
