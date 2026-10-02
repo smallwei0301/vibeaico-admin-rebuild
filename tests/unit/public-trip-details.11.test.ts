@@ -46,7 +46,8 @@ vi.mock('@/server/supabase', () => ({
           if (planId === fakeState.failPlanId) return { data: null, error: { message: 'boom' } };
           const n = Number(planId.replace('plan-', ''));
           return {
-            data: [{ id: `dep-${n}`, departs_on: '2099-01-01', start_time: '09:00:00', capacity: 5, seats_booked: n % 5 }],
+            data: [{ id: `dep-${n}`, departs_on: '2099-01-01', start_time: '09:00:00', capacity: 5, seats_booked: n % 5,
+              min_to_depart_snapshot: 2, formation_deadline_at: '2098-12-30T00:00:00+00:00', formation_status: 'COLLECTING' }],
             error: null,
           };
         }
@@ -97,7 +98,7 @@ describe('#11 公開行程詳情', () => {
     expect(detailQuery).toContain(".eq('slug', slug)");
     expect(detailQuery).toContain(".eq('status', 'PUBLISHED')");
     expect(columns?.[1]).not.toMatch(/midao_listing_note|midao_listing|tenant_settings|customers|staff|tour_orders/);
-    expect(detailQuery).toContain(".select('id, departs_on, start_time, capacity, seats_booked')");
+    expect(detailQuery).toContain(".select('id, departs_on, start_time, capacity, seats_booked, min_to_depart_snapshot, formation_deadline_at, formation_status')");
     expect(detailQuery).toContain(".eq('trip_id', tripId)");
     expect(detailQuery).toContain(".eq('plan_id', plan.id)");
     expect(detailQuery).toContain(".eq('status', 'OPEN')");
@@ -178,6 +179,12 @@ describe('#11 公開行程詳情：方案團次查詢併發上限', () => {
     plans.forEach((plan, i) => {
       expect(plan.departures.map((d) => d.id)).toEqual([`dep-${i}`]);
       expect(plan.departures[0].seatsLeft).toBe(5 - (i % 5));
+      expect(plan.departures[0]).toMatchObject({
+        minToDepart: 2,
+        currentParticipants: i % 5,
+        formationDeadlineAt: '2098-12-30T00:00:00+00:00',
+        formationStatus: 'COLLECTING',
+      });
     });
   });
 

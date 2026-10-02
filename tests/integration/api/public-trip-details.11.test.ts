@@ -117,6 +117,8 @@ beforeAll(async () => {
       id: FIXED_DEPARTURE, tenant_id: SHOP_A.id, trip_id: PUBLISHED_TRIP,
       plan_id: FIXED_PLAN, departs_on: FUTURE_SECOND, start_time: '10:00',
       capacity: 8, seats_booked: 2, status: 'OPEN',
+      min_to_depart_snapshot: 4, formation_status: 'COLLECTING',
+      formation_deadline_at: `${FUTURE}T00:00:00.000Z`,
     },
     ...SOLD_OUT_DEPARTURES.map((id, index) => ({
       id, tenant_id: SHOP_A.id, trip_id: PUBLISHED_TRIP,
@@ -214,7 +216,7 @@ describe('#11 公開行程詳情頁與 API', () => {
     };
     const requestPlan = response.data.trip.plans.find((plan) => plan.name === `${TAG} REQUEST 方案`);
     expect(requestPlan?.departures).toHaveLength(6);
-    expect(requestPlan?.departures[0]).toEqual({
+    expect(requestPlan?.departures[0]).toMatchObject({
       id: REQUEST_DEPARTURE,
       departsOn: FUTURE,
       startTime: '09:00',
@@ -252,6 +254,12 @@ describe('#11 公開行程詳情頁與 API', () => {
     const fixedPlan = response.data.trip.plans.find((plan) => plan.name === `${TAG} FIXED 方案`);
     expect(requestPlan?.departures.map((departure) => departure.seatsLeft)).toEqual([5, 8, 8, 8, 8, 8]);
     expect(fixedPlan?.departures.map((departure) => departure.seatsLeft)).toEqual([6]);
+    // 19 分冊 §2.1：固定團次公開成團資訊（最低人數、目前人數、截止、狀態）。
+    const formation = (fixedPlan?.departures[0] ?? {}) as Record<string, unknown>;
+    expect(formation.minToDepart).toBe(4);
+    expect(formation.currentParticipants).toBe(2);
+    expect(formation.formationStatus).toBe('COLLECTING');
+    expect(Date.parse(String(formation.formationDeadlineAt))).toBe(Date.parse(`${FUTURE}T00:00:00.000Z`));
   });
 
   it('每家店可有自己的同 slug 行程，且公開讀取依 shopCode 隔離', async () => {

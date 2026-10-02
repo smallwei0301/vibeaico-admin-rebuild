@@ -8,6 +8,7 @@ import type { PublicTripDetails } from '@/server/public-shop';
 import { publicShopPage } from '@/i18n/zh-TW/pages/public-shop';
 import { publicTripDetailsPage as t } from '@/i18n/zh-TW/pages/public-trip-details';
 import { formatCurrency } from '@/lib/utils';
+import { formationLines } from '@/lib/public-departure-formation';
 
 type Props = { shopCode: string; slug: string };
 type LoadState =
@@ -248,6 +249,9 @@ export function PublicTripDetailsClient({ shopCode, slug }: Props) {
                               {formatDepartureDate(departure.departsOn)}{' '}
                               {departure.startTime || t.departures.noStartTime}{' · '}
                               {t.departures.seatsLeft(departure.seatsLeft)}
+                              {formationLines(plan.salesMode, departure).map((line) => (
+                                <span key={line} className="block text-2xs text-secondary">{line}</span>
+                              ))}
                             </li>
                           ))}
                         </ul>

@@ -97,6 +97,15 @@ export type PublicTripDetailDeparture = {
   departsOn: string;
   startTime: string;
   seatsLeft: number;
+  /* #11／19 分冊 §2.1：固定團次成團資訊。canonical 值為 null／缺少時前端不顯示該項。 */
+  /** 建立團次時 snapshot 的最低成團人數（`min_to_depart_snapshot`）。 */
+  minToDepart?: number | null;
+  /** 目前有效成團人數：canonical 唯一可靠來源是 `seats_booked`。 */
+  currentParticipants?: number | null;
+  /** 成團截止時間（ISO，`formation_deadline_at`）。 */
+  formationDeadlineAt?: string | null;
+  /** `formation_status`：COLLECTING／FORMED／REVIEW_REQUIRED／AT_RISK／FAILED。 */
+  formationStatus?: string | null;
 };
 
 export type PublicTripDetailPlan = PublicPlan & {
@@ -497,7 +506,7 @@ async function loadPublicTripDetailsUncached(
         MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN - scanned,
       );
       const { data, error: departureError } = await admin.from('trip_departures')
-        .select('id, departs_on, start_time, capacity, seats_booked')
+        .select('id, departs_on, start_time, capacity, seats_booked, min_to_depart_snapshot, formation_deadline_at, formation_status')
         .eq('tenant_id', shopData.tenantId)
         .eq('trip_id', tripId)
         .eq('plan_id', plan.id)
@@ -521,6 +530,12 @@ async function loadPublicTripDetailsUncached(
           departsOn: departure.departs_on as string,
           startTime: departure.start_time == null ? '' : String(departure.start_time).slice(0, 5),
           seatsLeft: capacity - seatsBooked,
+          minToDepart: Number.isInteger(departure.min_to_depart_snapshot) && Number(departure.min_to_depart_snapshot) >= 1
+            ? Number(departure.min_to_depart_snapshot) : null,
+          currentParticipants: seatsBooked,
+          formationDeadlineAt: typeof departure.formation_deadline_at === 'string'
+            && departure.formation_deadline_at ? departure.formation_deadline_at : null,
+          formationStatus: typeof departure.formation_status === 'string' ? departure.formation_status : null,
         });
         if (departures.length >= MAX_DETAIL_DEPARTURES_PER_PLAN) break;
       }

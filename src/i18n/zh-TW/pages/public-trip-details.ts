@@ -54,6 +54,20 @@ export const publicTripDetailsPage = {
     seatsLeft: (count: number) => `剩 ${count} 位`,
     noStartTime: '時間未定',
     availabilityNote: '名額會隨預約變動，送出前仍會再次確認。',
+    formation: {
+      minToDepart: (count: number) => `最低成團 ${count} 人`,
+      currentParticipants: (count: number) => `目前 ${count} 人`,
+      shortfall: (count: number) => `尚差 ${count} 人`,
+      reached: '已達成團人數',
+      deadline: (when: string) => `成團截止 ${when}`,
+      status: {
+        COLLECTING: '招募中，尚未成團',
+        FORMED: '已成團，尚可加入',
+        REVIEW_REQUIRED: '已過截止，待店家決定是否出團',
+        AT_RISK: '已成團但人數下降，店家確認中',
+        FAILED: '未能成團',
+      } as Record<string, string>,
+    },
     weekdays: ['日', '一', '二', '三', '四', '五', '六'],
   },
   contact: {
