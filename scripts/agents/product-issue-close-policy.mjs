@@ -89,6 +89,17 @@ export function linkedOpenProductPulls(issueNumber, pulls = []) {
   return pulls.filter((pull) => pull?.state === 'open' && readLifecycleIssue(pull?.body ?? '') === issue);
 }
 
+export function latestMergedProductPull(issueNumber, pulls = []) {
+  const issue = Number(issueNumber);
+  return pulls
+    .filter((pull) =>
+      pull?.merged_at &&
+      readLifecycleIssue(pull?.body ?? '') === issue &&
+      readField(pull?.body ?? '', 'WORKSTREAM').toUpperCase() === 'PRODUCT_MAINLINE' &&
+      /^[0-9a-f]{40}$/.test(String(pull?.head?.sha ?? pull?.head_sha ?? '')))
+    .sort((a, b) => String(b.merged_at).localeCompare(String(a.merged_at)))[0] ?? null;
+}
+
 function labelNames(issue) {
   return (issue?.labels ?? [])
     .map((label) => typeof label === 'string' ? label : label?.name)
@@ -126,6 +137,7 @@ function productApplicability(issue) {
  *   issue?: any,
  *   currentMainSha?: string,
  *   openPullRequests?: any[],
+ *   mergedPullRequests?: any[],
  *   comments?: any[],
  *   verifiedCi?: any | null,
  *   verifiedRun?: any | null,
@@ -137,6 +149,7 @@ export function evaluateProductIssueClose({
   issue,
   currentMainSha,
   openPullRequests = [],
+  mergedPullRequests = [],
   comments = [],
   verifiedCi = null,
   verifiedRun = null,
@@ -196,6 +209,10 @@ export function evaluateProductIssueClose({
       if (verifiedCloseApproval.runId !== ready.handoff.runId) errors.push('final Sol CLOSE_APPROVED RUN_ID must match ISSUE_CLOSE_READY RUN_ID');
       if (!SHA40.test(String(verifiedCloseApproval.exactHead ?? ''))) errors.push('final Sol CLOSE_APPROVED requires EXACT_HEAD');
       if (verifiedCloseApproval.exactHead !== ready.handoff.reviewedHead) errors.push('final Sol CLOSE_APPROVED EXACT_HEAD must match ISSUE_CLOSE_READY REVIEWED_HEAD');
+      const latestMerged = latestMergedProductPull(issueNumber, mergedPullRequests);
+      if (latestMerged && verifiedCloseApproval.exactHead !== (latestMerged.head?.sha ?? latestMerged.head_sha)) {
+        errors.push(`final Sol CLOSE_APPROVED EXACT_HEAD must match latest merged Product PR #${latestMerged.number} head`);
+      }
       if (verifiedCloseApproval.reachableFromCurrentMain !== true) errors.push('final Sol CLOSE_APPROVED exact head is not reachable from current main');
       if (verifiedCloseApproval.trusted !== true) errors.push('final Sol CLOSE_APPROVED submitter is not trusted');
       if (verifiedCloseApproval.beforeClose !== true) errors.push('final Sol CLOSE_APPROVED must exist before Issue close');
