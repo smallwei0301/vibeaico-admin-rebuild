@@ -130,10 +130,14 @@ jobs:
                 const exactHead = approvalBody.match(/^[ \t]*EXACT_HEAD[ \t]*:[ \t]*([0-9a-f]{40})$/mi)?.[1] ?? '';
                 let reachableFromCurrentMain = false;
                 if (/^[0-9a-f]{40}$/.test(exactHead)) {
-                  const { data: compare } = await github.rest.repos.compareCommits({
-                    owner, repo, base: exactHead, head: currentMainSha,
-                  });
+                  const { data: compare } = await github.rest.repos.compareCommits({ owner, repo, base: exactHead, head: currentMainSha });
                   reachableFromCurrentMain = ['ahead', 'identical'].includes(compare.status);
+                }
+                const latestMerged = policy.latestMergedProductPull(issueNumber, closedPullRequests);
+                let latestMergeReachableFromCurrentMain = false;
+                if (/^[0-9a-f]{40}$/.test(latestMerged?.merge_commit_sha ?? '')) {
+                  const { data: compare } = await github.rest.repos.compareCommits({ owner, repo, base: latestMerged.merge_commit_sha, head: currentMainSha });
+                  latestMergeReachableFromCurrentMain = ['ahead', 'identical'].includes(compare.status);
                 }
                 const createdAt = Date.parse(approval.created_at ?? '');
                 const updatedAt = Date.parse(approval.updated_at ?? approval.created_at ?? '');
@@ -145,6 +149,8 @@ jobs:
                   runId: approvalRunId,
                   exactHead,
                   reachableFromCurrentMain,
+                  latestMergeSha: latestMerged?.merge_commit_sha ?? '',
+                  latestMergeReachableFromCurrentMain,
                   trusted: trustedComments.some((comment) => comment.id === approval.id),
                   sameIssue: String(approval.issue_url ?? '').endsWith(`/issues/${issueNumber}`),
                   beforeClose: Number.isFinite(createdAt) && Number.isFinite(updatedAt) && Number.isFinite(closedAt) &&
