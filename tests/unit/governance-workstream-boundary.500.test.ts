@@ -9,6 +9,8 @@ import * as astraPolicy from '../../scripts/agents/astra-review-policy.mjs';
 import * as boundaryPolicy from '../../scripts/agents/governance-workstream-boundary.mjs';
 import * as capturePolicy from '../../scripts/agents/scorecard-required-gate.mjs';
 import * as schemaStagePolicy from '../../scripts/agents/schema-staged-release-policy.mjs';
+import * as preflightPolicy from '../../scripts/agents/agent-wip-preflight.mjs';
+import * as publicationPolicy from '../../scripts/agents/pr-publication-receipt.mjs';
 import { createRunLedgerV2 } from '../../scripts/agents/run-ledger-v2.mjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { classifyWorkstream } from '../../scripts/agents/astra-review-policy.mjs';
@@ -128,6 +130,8 @@ async function runWorkflow(file: string, current = subject(), files: any[] = pat
     ['governance-workstream-boundary.mjs', boundaryPolicy],
     ['scorecard-required-gate.mjs', capturePolicy],
     ['schema-staged-release-policy.mjs', schemaStagePolicy],
+    ['agent-wip-preflight.mjs', preflightPolicy],
+    ['pr-publication-receipt.mjs', publicationPolicy],
   ].map(([name, module]) => [pathToFileURL(resolve(process.cwd(), 'scripts/agents', String(name))).href, module]));
   const loadPolicy = async (specifier: string) => {
     if (!modules.has(specifier)) throw new Error(`Unexpected policy module: ${specifier}`);
