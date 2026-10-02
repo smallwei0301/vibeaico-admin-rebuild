@@ -294,7 +294,7 @@ describe('governance boundary regression #500', () => {
       expect(result.calls).not.toContain('body');
     });
   it('deduplicates only the trusted bot handoff for the same close generation', async () => {
-    const initialBody = gov.replace('state: ACTIVE', 'state: HISTORICAL').replace('LANE_STATE: ACTIVE', 'LANE_STATE: HISTORICAL').replace('REMAINING_AUTONOMOUS_STEPS: source CI and exact-diff verification', 'REMAINING_AUTONOMOUS_STEPS: none') + '\nMERGE_STATUS: NOT_REQUESTED';
+    const initialBody = gov.replace('state: ACTIVE', 'state: HISTORICAL').replace('LANE_STATE: ACTIVE', 'LANE_STATE: HISTORICAL').replace('REMAINING_AUTONOMOUS_STEPS: source CI and exact-diff verification', 'REMAINING_AUTONOMOUS_STEPS: none') + '\nMERGE_STATUS: NOT_REQUESTED\nCOMPLETION_CLAIM: VERIFIED_CLOSED';
     const closed = { ...subject(initialBody), state: 'closed', merged: false, closed_at: '2026-10-02T07:00:00Z', labels: [{ name: 'state:active' }] };
     const marker = `<!-- agent-terminal-state-sync:v1 pr=900 head=${closed.head.sha} closed_at=${closed.closed_at} -->`;
     const comments: any[] = [{ user: { login: 'untrusted', id: 10 }, body: `${marker}\nSTATE_SYNC_PENDING` }];
@@ -358,7 +358,7 @@ describe('governance boundary regression #500', () => {
 
   it('marks closed-unmerged lifecycle metadata HISTORICAL', () => {
     const plan = terminalBodyPlan({ state: 'closed', merged: false, body: gov });
-    expect(plan?.errors).toEqual([]);
+    expect(plan?.errors).toEqual([]); expect(plan?.unsyncedFields).toEqual(expect.arrayContaining(['MERGE_STATUS', 'COMPLETION_CLAIM']));
     expect(plan?.body).toContain('state: HISTORICAL');
     expect(plan?.body).toContain('LANE_STATE: HISTORICAL');
     expect(plan?.body).toContain('ACTIVE_CANDIDATE: false');

@@ -183,7 +183,7 @@ export function terminalBodyPlan(pr) {
     ['REMOTE_JOB_RESULT', value => merged && !['VERIFIED_GREEN', 'SKIPPED'].includes(value)],
   ]) {
     if (!hasContract) continue;
-    if (!visible.some(line => new RegExp(`^[ \\t]*[-*]?[ \\t]*${field}[ \\t]*:`, 'i').test(line))) { if (hasReceipt) unsyncedFields.add(field); continue; }
+    if (!visible.some(line => new RegExp(`^[ \\t]*[-*]?[ \\t]*${field}[ \\t]*:`, 'i').test(line))) { if (hasReceipt || (hasContract && ['MERGE_STATUS', 'COMPLETION_CLAIM'].includes(field))) unsyncedFields.add(field); continue; }
     const value = readField(visible.join('\n'), field);
     if (!value || value.includes('|') || stale(upper(value))) unsyncedFields.add(field);
   }
@@ -302,9 +302,7 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
       PARKED: 'state:parked', OWNER_BLOCKED: 'state:owner-blocked', COMPLETE: 'state:complete', HISTORICAL: 'state:historical' };
     if (!['AGENT', 'OWNER'].includes(metadata.origin) || !ALLOWED.state.has(metadata.state) ||
         !ALLOWED.lane.has(metadata.lane) || !ALLOWED.boolean.has(metadata.activeCandidate)) {
-      // Invalid body cannot determine desired labels. Reconcile this invocation's
-      // attempted writes, including an API that wrote before throwing; do not restore
-      // a terminal label or overwrite a new state label.
+      // Invalid metadata: undo only our attempted writes, including uncertain API effects; preserve newer state labels.
       for (const name of addedByUs) await openWrite(async fresh => {
         if (names(fresh).includes(name)) await remove(name);
       });
