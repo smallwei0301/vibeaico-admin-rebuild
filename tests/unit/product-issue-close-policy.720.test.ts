@@ -186,8 +186,12 @@ describe('#720 executable Product Issue close gate', () => {
       head: { sha: 'd'.repeat(40) }, merge_commit_sha: 'f'.repeat(40),
       body: '<!-- pr-lifecycle\nissue: 704\nstate: MERGED\n-->\nWORKSTREAM: PRODUCT_MAINLINE' };
     expect(evaluate({ mergedPullRequests: [newer] }).errors.join('\n')).toContain('latest merged Product PR #706 head');
-    expect(evaluate({ mergedPullRequests: [{ ...newer, number: 707,
-      body: '<!-- pr-lifecycle\nissue: 704\nstate: MERGED\n-->\nWORKSTREAM: MODEL_GOVERNANCE' }] }).allowed).toBe(true);
+    expect(evaluate({ mergedPullRequests: [
+      { number: 705, state: 'closed', merged_at: '2026-10-01T00:40:00Z',
+        head: { sha: 'b'.repeat(40) }, merge_commit_sha: 'e'.repeat(40),
+        body: '<!-- pr-lifecycle\nissue: 704\nstate: MERGED\n-->\nWORKSTREAM: PRODUCT_MAINLINE' },
+      { ...newer, number: 707, body: '<!-- pr-lifecycle\nissue: 704\nstate: MERGED\n-->\nWORKSTREAM: MODEL_GOVERNANCE' },
+    ] }).allowed).toBe(true);
   });
 
   it('requires current-main exact canonical ci push success', () => {
