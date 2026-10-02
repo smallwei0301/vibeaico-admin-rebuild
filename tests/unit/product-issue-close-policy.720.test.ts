@@ -174,43 +174,17 @@ describe('#720 executable Product Issue close gate', () => {
   it('requires trusted final Sol CLOSE_APPROVED bound to a reachable exact head', () => {
     expect(evaluate({ verifiedCloseApproval: null }).errors.join('\n')).toContain('CLOSE_APPROVED_REF');
     for (const patch of [
-      { role: 'LUNA' },
-      { verdict: 'FIX_REQUIRED' },
-      { trusted: false },
-      { beforeClose: false },
-      { afterLastClose: false },
-      { runId: 'previous-run' },
-      { exactHead: 'c'.repeat(40) },
-      { reachableFromCurrentMain: false },
-    ]) {
-      expect(evaluate({ verifiedCloseApproval: { ...verifiedCloseApproval, ...patch } }).allowed).toBe(false);
-    }
-  });
+      { role: 'LUNA' }, { verdict: 'FIX_REQUIRED' }, { trusted: false },
+      { beforeClose: false }, { afterLastClose: false }, { runId: 'previous-run' },
+      { exactHead: 'c'.repeat(40) }, { reachableFromCurrentMain: false },
+    ]) expect(evaluate({ verifiedCloseApproval: { ...verifiedCloseApproval, ...patch } }).allowed).toBe(false);
 
-  it('requires final Sol approval to cover the latest merged Product PR for this Issue', () => {
-    const newerHead = 'd'.repeat(40);
-    const result = evaluate({
-      mergedPullRequests: [{
-        number: 706,
-        state: 'closed',
-        merged_at: '2026-10-01T00:50:00Z',
-        head: { sha: newerHead },
-        body: '<!-- pr-lifecycle\nissue: 704\nstate: MERGED\n-->\nWORKSTREAM: PRODUCT_MAINLINE',
-      }],
-    });
-    expect(result.allowed).toBe(false);
-    expect(result.errors.join('\n')).toContain('latest merged Product PR #706 head');
-
-    const governanceOnly = evaluate({
-      mergedPullRequests: [{
-        number: 707,
-        state: 'closed',
-        merged_at: '2026-10-01T00:55:00Z',
-        head: { sha: newerHead },
-        body: '<!-- pr-lifecycle\nissue: 704\nstate: MERGED\n-->\nWORKSTREAM: MODEL_GOVERNANCE',
-      }],
-    });
-    expect(governanceOnly.allowed).toBe(true);
+    const newer = { number: 706, state: 'closed', merged_at: '2026-10-01T00:50:00Z',
+      head: { sha: 'd'.repeat(40) },
+      body: '<!-- pr-lifecycle\nissue: 704\nstate: MERGED\n-->\nWORKSTREAM: PRODUCT_MAINLINE' };
+    expect(evaluate({ mergedPullRequests: [newer] }).errors.join('\n')).toContain('latest merged Product PR #706 head');
+    expect(evaluate({ mergedPullRequests: [{ ...newer, number: 707,
+      body: '<!-- pr-lifecycle\nissue: 704\nstate: MERGED\n-->\nWORKSTREAM: MODEL_GOVERNANCE' }] }).allowed).toBe(true);
   });
 
   it('requires current-main exact canonical ci push success', () => {
