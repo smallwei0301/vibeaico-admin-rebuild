@@ -56,7 +56,7 @@ export const publicTripDetailsPage = {
     seatsLeft: (count: number) => `剩 ${count} 位`,
     soldOut: '客滿',
     soldOutOmitted: '另有更多客滿日期未列出。',
-    allSoldOut: '目前列出的日期皆已客滿，請聯絡店家或稍後再查看。',
+    noBookable: '目前沒有可預約日期，可先聯絡店家。',
     noStartTime: '時間未定',
     availabilityNote: '名額會隨預約變動，送出前仍會再次確認。',
     formation: {

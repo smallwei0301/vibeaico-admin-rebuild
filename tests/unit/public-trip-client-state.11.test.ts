@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-  allListedSoldOut, fixedBookingCtaState, initialLoadState, outcomeFromHttp, shouldFetchOnMount, stateAfterFetch,
+  fixedBookingCtaState, hasBookableListedDeparture, initialLoadState, outcomeFromHttp, shouldFetchOnMount, stateAfterFetch,
 } from '@/lib/public-trip-client-state';
 
 const data = { shop: {}, trip: {} } as never;
@@ -32,46 +32,39 @@ describe('#11 client 有 initialData 時不重取', () => {
   it('客滿團次顯示客滿文案且全客滿時不提供報名連結', () => {
     expect(client).toContain('t.departures.soldOut');
     expect(client).toMatch(/\{fixedBookingCtaState\(plan\) === 'show' \? \(/);
-    expect(client).toMatch(/\{fixedBookingCtaState\(plan\) === 'sold-out' \? \(/);
+    expect(client).toMatch(/\{fixedBookingCtaState\(plan\) === 'unavailable' \? \(/);
     expect(client).toContain('outcomeFromHttp(response.status, response.ok, payload)');
     expect(client).not.toMatch(/salesMode === 'FIXED_DEPARTURE'/);
     expect(client).toContain('plan.soldOutOmitted');
   });
 
-  it('CTA 判斷只看可售列是否可能被截斷，不看 soldOutOmitted', () => {
-    const soldOut = Array.from({ length: 6 }, () => ({ soldOut: true as const }));
-    // 7 筆以上客滿、0 筆可售（其中一筆被略過）：CTA 隱藏。
-    expect(allListedSoldOut({ departures: soldOut, departuresMayBeTruncated: false, ...{ soldOutOmitted: true } })).toBe(true);
-    // 可售列可能被截斷：CTA 顯示。
-    expect(allListedSoldOut({ departures: soldOut, departuresMayBeTruncated: true })).toBe(false);
-    // 有可售列：CTA 顯示；沒有團次：不屬於全客滿。
-    expect(allListedSoldOut({ departures: [...soldOut, {} as never], departuresMayBeTruncated: false })).toBe(false);
-    expect(allListedSoldOut({ departures: [], departuresMayBeTruncated: false })).toBe(false);
+  it('hasBookableListedDeparture：至少一筆未客滿且 seatsLeft >= minParty 才為 true（>= 邊界）', () => {
+    const d = (seatsLeft: number, soldOut?: true) => ({ seatsLeft, ...(soldOut ? { soldOut } : {}) });
+    expect(hasBookableListedDeparture({ minParty: 2, departures: [] })).toBe(false);
+    expect(hasBookableListedDeparture({ minParty: 2, departures: [d(0, true), d(0, true)] })).toBe(false);
+    expect(hasBookableListedDeparture({ minParty: 3, departures: [d(1), d(2)] })).toBe(false);
+    expect(hasBookableListedDeparture({ minParty: 3, departures: [d(1), d(3)] })).toBe(true);
+    expect(hasBookableListedDeparture({ minParty: 3, departures: [d(3)] })).toBe(true);
+    // soldOut 旗標優先（即使 seatsLeft 異常大也不可訂）。
+    expect(hasBookableListedDeparture({ minParty: 1, departures: [d(5, true)] })).toBe(false);
+    // minParty 缺值或不合法 → 比照預約頁預設 1。
+    expect(hasBookableListedDeparture({ departures: [d(1)] })).toBe(true);
+    expect(hasBookableListedDeparture({ minParty: 0, departures: [d(1)] })).toBe(true);
+    expect(hasBookableListedDeparture({ minParty: Number.NaN, departures: [d(0, true)] })).toBe(false);
   });
 
-  it('allListedSoldOut：0 可售＋7 筆以上客滿（顯示 6 筆）隱藏；有可售／可售被截斷顯示；空陣列視為未全客滿', () => {
-    const so = (n: number) => Array.from({ length: n }, () => ({ soldOut: true as const }));
-    expect(allListedSoldOut({ departures: so(6), departuresMayBeTruncated: false })).toBe(true);
-    expect(allListedSoldOut({ departures: [...so(5), {}], departuresMayBeTruncated: false })).toBe(false);
-    expect(allListedSoldOut({ departures: [{}, ...so(5)], departuresMayBeTruncated: false })).toBe(false);
-    expect(allListedSoldOut({ departures: so(6), departuresMayBeTruncated: true })).toBe(false);
-    // 空陣列：沒有可判斷的客滿資訊，維持顯示報名入口（預約頁自己會顯示無可選日期）。
-    expect(allListedSoldOut({ departures: [], departuresMayBeTruncated: false })).toBe(false);
-  });
-
-  it('fixedBookingCtaState：FIXED 非全客滿 → show；FIXED 全客滿 → sold-out；其他販售方式 → none', () => {
-    const base = { departures: [{}], departuresMayBeTruncated: false };
-    expect(fixedBookingCtaState({ salesMode: 'FIXED_DEPARTURE', ...base })).toBe('show');
+  it('fixedBookingCtaState：FIXED＋有可訂 → show；空陣列／全客滿／全不足 minParty → unavailable；其他販售方式 → none', () => {
+    const ok = [{ seatsLeft: 4 }];
+    expect(fixedBookingCtaState({ salesMode: 'FIXED_DEPARTURE', minParty: 2, departures: ok })).toBe('show');
+    expect(fixedBookingCtaState({ salesMode: 'FIXED_DEPARTURE', minParty: 2, departures: [] })).toBe('unavailable');
     expect(fixedBookingCtaState({
-      salesMode: 'FIXED_DEPARTURE', departures: [{ soldOut: true }], departuresMayBeTruncated: false,
-    })).toBe('sold-out');
+      salesMode: 'FIXED_DEPARTURE', minParty: 2, departures: [{ seatsLeft: 0, soldOut: true }],
+    })).toBe('unavailable');
     expect(fixedBookingCtaState({
-      salesMode: 'FIXED_DEPARTURE', departures: [{ soldOut: true }], departuresMayBeTruncated: true,
-    })).toBe('show');
-    expect(fixedBookingCtaState({ salesMode: 'REQUEST', ...base })).toBe('none');
-    expect(fixedBookingCtaState({
-      salesMode: 'INSTANT', departures: [{ soldOut: true }], departuresMayBeTruncated: false,
-    })).toBe('none');
+      salesMode: 'FIXED_DEPARTURE', minParty: 5, departures: [{ seatsLeft: 4 }, { seatsLeft: 1 }],
+    })).toBe('unavailable');
+    expect(fixedBookingCtaState({ salesMode: 'REQUEST', minParty: 2, departures: ok })).toBe('none');
+    expect(fixedBookingCtaState({ salesMode: 'INSTANT', minParty: 2, departures: [] })).toBe('none');
   });
 
   it('outcomeFromHttp：404 → not-found；其他非 2xx、無效 payload → error；有效 → ready', () => {

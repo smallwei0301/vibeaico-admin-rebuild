@@ -20,16 +20,19 @@ export function shouldFetchOnMount(initialData: PublicTripInitialData | undefine
 }
 
 /**
- * 列出的團次全為客滿，且沒有「可能還有可售列未列出」時，不提供報名入口。
- * 只看 departuresMayBeTruncated；soldOutOmitted（略過客滿列）不影響判斷。
+ * 已列出的團次中，是否至少有一筆「可訂」：未客滿，且剩餘名額 >= 方案最低人數。
+ * 最低人數缺值或不合法時比照預約頁預設（`Number(min_party ?? 1)`）視為 1。
+ *
+ * 刻意最保守且單一：`departuresMayBeTruncated`（lookahead／截斷）一律不會開啟入口，只用來決定提示文案。
+ * 理由：預約頁的 loadPublicBookingPlan 只查一次、上限 1000 列，看不到詳情頁 lookahead 讀到的那一列；
+ * 詳情頁不應替預約頁讀不到的團次開啟入口，否則會導向空的預約清單。
  */
-export function allListedSoldOut(plan: {
-  departures: Array<{ soldOut?: true }>;
-  departuresMayBeTruncated: boolean;
+export function hasBookableListedDeparture(plan: {
+  minParty?: number;
+  departures: Array<{ seatsLeft: number; soldOut?: true }>;
 }): boolean {
-  return plan.departures.length > 0
-    && plan.departures.every((departure) => departure.soldOut === true)
-    && !plan.departuresMayBeTruncated;
+  const min = Number.isInteger(plan.minParty) && (plan.minParty as number) >= 1 ? (plan.minParty as number) : 1;
+  return plan.departures.some((departure) => departure.soldOut !== true && departure.seatsLeft >= min);
 }
 
 export type PublicTripFetchOutcome =
@@ -53,21 +56,21 @@ export function stateAfterFetch(
   return background ? current : { status: 'error' };
 }
 
-export type FixedBookingCtaState = 'show' | 'sold-out' | 'none';
+export type FixedBookingCtaState = 'show' | 'unavailable' | 'none';
 
 /**
  * JSX 只依賴這個單一回傳值：
- * - show：FIXED_DEPARTURE 且不是全客滿 → 顯示報名入口。
- * - sold-out：FIXED_DEPARTURE 且全客滿 → 不顯示入口，顯示全客滿說明。
+ * - show：FIXED_DEPARTURE 且已列出的團次至少一筆可訂 → 顯示報名入口。
+ * - unavailable：FIXED_DEPARTURE 但沒有可訂的已列出團次（含空陣列）→ 不顯示入口，顯示說明。
  * - none：其他販售方式 → 不顯示固定團次入口。
  */
 export function fixedBookingCtaState(plan: {
   salesMode: string;
-  departures: Array<{ soldOut?: true }>;
-  departuresMayBeTruncated: boolean;
+  minParty?: number;
+  departures: Array<{ seatsLeft: number; soldOut?: true }>;
 }): FixedBookingCtaState {
   if (plan.salesMode !== 'FIXED_DEPARTURE') return 'none';
-  return allListedSoldOut(plan) ? 'sold-out' : 'show';
+  return hasBookableListedDeparture(plan) ? 'show' : 'unavailable';
 }
 
 /** HTTP 回應 → 畫面結果：404 是找不到，其他非 2xx 或 payload 無效是錯誤。 */

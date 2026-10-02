@@ -301,10 +301,10 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     expect(plan?.departures.every((d) => d.soldOut === true)).toBe(true);
     expect(plan?.departuresMayBeTruncated).toBe(false);
     expect(plan?.soldOutOmitted).toBe(true);
-    expect(fixedBookingCtaState(plan!)).toBe('sold-out');
+    expect(fixedBookingCtaState(plan!)).toBe('unavailable');
   });
 
-  it('超過掃描上限且 lookahead 有可售 → truncated=true、CTA 顯示', async () => {
+  it('超過掃描上限且 lookahead 有可售 → truncated=true（只影響提示文案）、CTA 仍隱藏', async () => {
     fakeState.planCount = 1;
     fakeState.flood = true;
     fakeState.lookaheadAvailable = true;
@@ -312,7 +312,8 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     const { fixedBookingCtaState } = await import('@/lib/public-trip-client-state');
     const plan = (await loadPublicTripDetails('demo', 'hike'))?.trip.plans[0];
     expect(plan?.departuresMayBeTruncated).toBe(true);
-    expect(fixedBookingCtaState(plan!)).toBe('show');
+    // truncated 不開啟 CTA：列出的團次都客滿 → 仍為 unavailable（預約頁看不到 lookahead 那一列）。
+    expect(fixedBookingCtaState(plan!)).toBe('unavailable');
   });
 
   it('M1：成團欄位只在 FIXED_DEPARTURE 輸出；REQUEST／INSTANT 不帶', async () => {

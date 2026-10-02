@@ -275,8 +275,8 @@ export function PublicTripDetailsClient({ shopCode, slug, initialData }: Props) 
                         {t.plans.requestCta}
                       </Link>
                     ) : null}
-                    {fixedBookingCtaState(plan) === 'sold-out' ? (
-                      <p className="text-sm text-secondary">{t.departures.allSoldOut}</p>
+                    {fixedBookingCtaState(plan) === 'unavailable' ? (
+                      <p className="text-sm text-secondary">{t.departures.noBookable}</p>
                     ) : null}
                     {fixedBookingCtaState(plan) === 'show' ? (
                       <Link className="btn btn-primary w-fit" href={`/s/${shopCode}/plans/${plan.id}/book`}>
