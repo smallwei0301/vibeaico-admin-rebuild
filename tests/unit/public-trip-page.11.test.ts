@@ -39,20 +39,39 @@ describe('#11 詳情頁 server：404 與 props allowlist', () => {
     expect(loader).toHaveBeenCalledWith('demo', '龜山島');
   });
 
+  it('已發布但無有效方案 → 不 404，仍回 props 讓頁面顯示無方案文案', async () => {
+    loader.mockResolvedValue(details({ plans: [] }));
+    const props = await loadPublicTripPage(p('demo', 'x'));
+    expect(props.shopCode).toBe('demo');
+    expect(notFound).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['店家／行程不存在或未發布', null],
-    ['無有效方案', details({ plans: [] })],
   ])('%s → notFound()', async (_label, value) => {
     loader.mockResolvedValue(value);
     await expect(loadPublicTripPage(p('demo', 'x'))).rejects.toThrow('NEXT_NOT_FOUND');
     expect(notFound).toHaveBeenCalledTimes(1);
   });
 
-  it('頁面節流：超限時丟錯（非 200 空殼）、不查 DB；key 使用獨立前綴與 IP', async () => {
+  it('頁面節流超限：不查 DB、不丟錯、不 notFound，props 不帶 initialData（client 改打 API）', async () => {
     rate.mockReturnValue(false);
-    await expect(loadPublicTripPage(p('demo', 'x'))).rejects.toThrow('PUBLIC_TRIP_PAGE_RATE_LIMITED');
+    const props = await loadPublicTripPage(p('demo', 'x'));
+    expect(props).toEqual({ shopCode: 'demo', slug: 'x' });
+    expect(Object.keys(props)).not.toContain('initialData');
     expect(loader).not.toHaveBeenCalled();
+    expect(notFound).not.toHaveBeenCalled();
     expect(rate.mock.calls[0][0]).toBe('public-trip-page:1.2.3.4:demo');
+  });
+
+  it('shopCode 格式不合 → notFound，且不建立節流 bucket、不查 DB', async () => {
+    for (const bad of ['BAD CODE', 'a%2Fb', 'X'.repeat(80), 'UPPER']) {
+      await expect(loadPublicTripPage(p(bad, 'x'))).rejects.toThrow('NEXT_NOT_FOUND');
+    }
+    expect(rate).not.toHaveBeenCalled();
+    expect(loader).not.toHaveBeenCalled();
+    expect(await buildPublicTripMetadata(p('BAD CODE', 'x'))).toMatchObject({ title: '行程詳情' });
+    expect(rate).not.toHaveBeenCalled();
   });
 
   it('壞編碼 slug → notFound，且不查詢', async () => {
@@ -73,6 +92,12 @@ describe('#11 詳情頁 generateMetadata', () => {
     expect(m.openGraph?.images).toEqual(['https://cdn.example.com/c.jpg']);
   });
 
+  it('無有效方案時 metadata 仍使用行程標題', async () => {
+    loader.mockResolvedValue(details({ plans: [] }));
+    const m = await buildPublicTripMetadata(p('demo', 'x'));
+    expect(m.title).toBe('龜山島賞鯨｜海島小舖');
+  });
+
   it('沒有封面時不輸出 og:image；摘要超過 160 字截斷', async () => {
     loader.mockResolvedValue(details({ coverImageUrl: '', summary: '長'.repeat(300) }));
     const m = await buildPublicTripMetadata(p('demo', 'x'));
@@ -81,7 +106,7 @@ describe('#11 詳情頁 generateMetadata', () => {
     expect(String(m.description).endsWith('…')).toBe(true);
   });
 
-  it.each([null, details({ plans: [] })])('不可公開 → 一般預設值，不洩漏行程資訊', async (value) => {
+  it.each([null])('不可公開 → 一般預設值，不洩漏行程資訊', async (value) => {
     loader.mockResolvedValue(value);
     const m = await buildPublicTripMetadata(p('demo', 'x'));
     expect(m).toEqual({ title: '行程詳情', description: '查看行程介紹、可選方案與近期出發資訊。' });

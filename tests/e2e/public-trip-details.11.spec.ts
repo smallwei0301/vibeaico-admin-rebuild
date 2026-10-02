@@ -69,7 +69,6 @@ test('匿名旅客可從公開頁讀回真實方案與名額，重新整理後�
       id: planId,
       tenant_id: SHOP_A.id,
       trip_id: tripId,
-      slug: slug + '-fixed',
       name: planName,
       description: '固定日期方案',
       price_per_person: 2400,

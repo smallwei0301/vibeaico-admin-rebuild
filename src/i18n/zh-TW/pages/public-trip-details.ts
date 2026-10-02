@@ -32,7 +32,7 @@ export const publicTripDetailsPage = {
   },
   plans: {
     title: '選擇方案',
-    empty: '目前沒有開放的方案，請聯絡店家確認。',
+    empty: '目前沒有開放預約的方案，可先聯絡店家。',
     price: (amount: string, unit: string) => `${amount}${unit}`,
     priceUnit: {
       PER_PERSON: '／人',
@@ -52,9 +52,10 @@ export const publicTripDetailsPage = {
   departures: {
     title: '此方案近期開放日期',
     empty: '目前尚未顯示此方案的出發日期，請從方案入口查看或聯絡店家確認。',
-    truncated: '本頁每個方案最多列出 6 筆近期團次；如需確認其他日期，請聯絡店家。',
+    truncated: '本頁僅列出部分日期；如需確認其他日期，請聯絡店家。',
     seatsLeft: (count: number) => `剩 ${count} 位`,
     soldOut: '客滿',
+    soldOutOmitted: '另有更多客滿日期未列出。',
     allSoldOut: '目前列出的日期皆已客滿，請聯絡店家或稍後再查看。',
     noStartTime: '時間未定',
     availabilityNote: '名額會隨預約變動，送出前仍會再次確認。',

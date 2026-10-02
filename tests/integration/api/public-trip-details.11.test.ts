@@ -93,14 +93,12 @@ beforeAll(async () => {
   mustWrite('trip_plans', await admin.from('trip_plans').insert([
     {
       id: REQUEST_PLAN, tenant_id: SHOP_A.id, trip_id: PUBLISHED_TRIP,
-      slug: `${SLUG}-request`,
       name: `${TAG} REQUEST 方案`, description: `${TAG} 方案內容`,
       price_per_person: 1800, min_party: 2, max_party: 8,
       sales_mode: 'REQUEST', active: true,
     },
     {
       id: FIXED_PLAN, tenant_id: SHOP_A.id, trip_id: PUBLISHED_TRIP,
-      slug: `${SLUG}-fixed`,
       name: `${TAG} FIXED 方案`, description: `${TAG} 固定團次方案內容`,
       price_per_person: 2200, min_party: 1, max_party: 6,
       sales_mode: 'FIXED_DEPARTURE', active: true,
@@ -195,12 +193,15 @@ afterAll(async () => {
 });
 
 describe('#11 公開行程詳情頁與 API', () => {
-  it('匿名行程頁 200，head 帶行程專屬 title／og:title；不外洩內部欄位，即時資料由白名單 API 載入', async () => {
+  it('匿名行程頁 200，SSR HTML 直接含行程標題與方案名、head 帶專屬 title／og:title；不含載入殼層與內部欄位', async () => {
     const { status, body } = await request('/s/' + SHOP_A.shopCode + '/trips/' + encodeURIComponent(SLUG));
     expect(status).toBe(200);
     expect(body).toContain('<title>' + TITLE);
     expect(body).toMatch(/property="og:title" content="[^"]*/);
-    expect(body).toContain('正在載入行程詳情…');
+    expect(body).not.toContain('正在載入行程詳情…');
+    expect(body).toContain(`${TAG} 行程標語`);
+    expect(body).toContain(`${TAG} REQUEST 方案`);
+    expect(body).toContain(`${TAG} FIXED 方案`);
     expect(body).not.toContain(SECRET_REVIEW_NOTE);
     expect(body).not.toContain(UNSAFE_URL);
     expect(body).not.toContain(SHOP_A.id);
@@ -291,6 +292,9 @@ describe('#11 公開行程詳情頁與 API', () => {
     expect(draftApi.status).toBe(404);
     expect(otherTenant.status).toBe(200);
     expect(otherTenant.body).toContain('<title>' + OTHER_TENANT_TITLE);
+    // 已發布但沒有有效方案：200 並顯示無方案文案（與店家首頁、公開 API 一致），不是 404、也不是載入殼層。
+    expect(otherTenant.body).toContain('目前沒有開放預約的方案');
+    expect(otherTenant.body).not.toContain('正在載入行程詳情…');
     expect(otherTenant.body).not.toContain(TITLE);
     expect(otherTenantApi.status).toBe(200);
     expect(JSON.parse(otherTenantApi.body).data.trip.title).toBe(OTHER_TENANT_TITLE);

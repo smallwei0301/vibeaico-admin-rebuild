@@ -11,19 +11,15 @@ import { formatCurrency } from '@/lib/utils';
 import { formationLines } from '@/lib/public-departure-formation';
 import {
   initialLoadState,
+  showFixedBookingCta,
+  stateAfterFetch,
+  type PublicTripFetchOutcome,
   shouldFetchOnMount,
   type PublicTripInitialData,
   type PublicTripLoadState as LoadState,
 } from '@/lib/public-trip-client-state';
 
 type Props = { shopCode: string; slug: string; initialData?: PublicTripInitialData };
-/** 列出的團次全為客滿且沒有更多未列出的團次時，不提供報名入口。 */
-function allListedSoldOut(plan: { departures: Array<{ soldOut?: true }>; departuresMayBeTruncated: boolean }): boolean {
-  return plan.departures.length > 0
-    && plan.departures.every((departure) => departure.soldOut === true)
-    && !plan.departuresMayBeTruncated;
-}
-
 function formatDepartureDate(departsOn: string): string {
   const [year, month, day] = departsOn.split('-').map(Number);
   const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
@@ -39,39 +35,29 @@ export function PublicTripDetailsClient({ shopCode, slug, initialData }: Props) 
     let active = true;
     const path = '/api/public/shops/' + encodeURIComponent(shopCode)
       + '/trips/' + encodeURIComponent(slug);
-    // background=true：已有畫面資料時的靜默更新，失敗不覆蓋現有內容。
+    // background=true：已有畫面資料時的靜默更新（失敗不覆蓋現有內容，404 則切到找不到）。
     const load = (background: boolean) => {
       if (!background) setState({ status: 'loading' });
+      const apply = (outcome: PublicTripFetchOutcome) => {
+        if (active) setState((current) => stateAfterFetch(outcome, background, current));
+      };
       void fetch(path, { cache: 'no-store' })
         .then(async (response) => {
-          if (response.status === 404) {
-            if (active && !background) setState({ status: 'not-found' });
-            return;
-          }
-          if (!response.ok) {
-            if (active && !background) setState({ status: 'error' });
-            return;
-          }
+          if (response.status === 404) return apply({ kind: 'not-found' });
+          if (!response.ok) return apply({ kind: 'error' });
           const payload = await response.json() as {
             success?: boolean;
             data?: PublicTripDetails;
           };
-          if (!payload.success || !payload.data) {
-            if (active && !background) setState({ status: 'error' });
-            return;
-          }
-          if (active) setState({ status: 'ready', data: payload.data });
+          if (!payload.success || !payload.data) return apply({ kind: 'error' });
+          return apply({ kind: 'ready', data: payload.data });
         })
-        .catch(() => {
-          if (active && !background) setState({ status: 'error' });
-        });
+        .catch(() => apply({ kind: 'error' }));
     };
 
-    if (shouldFetchOnMount(initialData, attempt)) {
-      load(false);
-      return () => { active = false; };
-    }
-    // 頁面已由 Server 載入資料：掛載時不重取；使用者切回此分頁時才以 no-store 更新即時名額。
+    // 沒有 initialData（例如頁面節流超限）或按過重試：立即 fetch。
+    if (shouldFetchOnMount(initialData, attempt)) load(false);
+    // 不論是否曾重試，都保留切回分頁時以 no-store 靜默更新即時名額的監聽。
     const onVisible = () => { if (document.visibilityState === 'visible') load(true); };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
@@ -283,6 +269,9 @@ export function PublicTripDetailsClient({ shopCode, slug, initialData }: Props) 
                         {plan.departuresMayBeTruncated ? t.departures.truncated : t.departures.empty}
                       </p>
                     )}
+                    {plan.soldOutOmitted ? (
+                      <p className="text-2xs text-secondary">{t.departures.soldOutOmitted}</p>
+                    ) : null}
                     {plan.departuresMayBeTruncated && plan.departures.length > 0 ? (
                       <p className="text-sm text-secondary">{t.departures.truncated}</p>
                     ) : null}
@@ -291,10 +280,10 @@ export function PublicTripDetailsClient({ shopCode, slug, initialData }: Props) 
                         {t.plans.requestCta}
                       </Link>
                     ) : null}
-                    {plan.salesMode === 'FIXED_DEPARTURE' && allListedSoldOut(plan) ? (
+                    {plan.salesMode === 'FIXED_DEPARTURE' && !showFixedBookingCta(plan) ? (
                       <p className="text-sm text-secondary">{t.departures.allSoldOut}</p>
                     ) : null}
-                    {plan.salesMode === 'FIXED_DEPARTURE' && !allListedSoldOut(plan) ? (
+                    {showFixedBookingCta(plan) ? (
                       <Link className="btn btn-primary w-fit" href={`/s/${shopCode}/plans/${plan.id}/book`}>
                         {t.plans.fixedCta}
                       </Link>

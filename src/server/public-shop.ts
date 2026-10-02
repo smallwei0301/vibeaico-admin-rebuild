@@ -114,8 +114,10 @@ export type PublicTripDetailDeparture = {
 
 export type PublicTripDetailPlan = PublicPlan & {
   departures: PublicTripDetailDeparture[];
-  /** True when the six-item display cap is reached or the bounded scan finds more rows. */
+  /** True only when more AVAILABLE (sellable) rows may exist beyond what is listed. */
   departuresMayBeTruncated: boolean;
+  /** 只代表有「客滿」列因顯示上限被略過；不代表還有可售團次未列出。 */
+  soldOutOmitted?: boolean;
 };
 
 export type PublicTripDetails = {
@@ -587,8 +589,8 @@ async function loadPublicTripDetailsUncached(
 
     return [plan.id, {
       departures,
-      mayBeTruncated: mayBeTruncated || skippedSoldOut
-        || availableCount() >= MAX_DETAIL_DEPARTURES_PER_PLAN,
+      mayBeTruncated: mayBeTruncated || availableCount() >= MAX_DETAIL_DEPARTURES_PER_PLAN,
+      soldOutOmitted: skippedSoldOut,
     }] as const;
   });
   const departuresByPlan = new Map(planDepartureResults);
@@ -623,6 +625,7 @@ async function loadPublicTripDetailsUncached(
         ...plan,
         departures: departuresByPlan.get(plan.id)?.departures ?? [],
         departuresMayBeTruncated: departuresByPlan.get(plan.id)?.mayBeTruncated ?? false,
+        ...(departuresByPlan.get(plan.id)?.soldOutOmitted ? { soldOutOmitted: true } : {}),
       })),
     },
   };

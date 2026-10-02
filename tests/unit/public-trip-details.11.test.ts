@@ -7,6 +7,7 @@ const fakeState = vi.hoisted(() => ({
   failPlanId: null as string | null,
   soldOutRows: 0,
   flood: false,
+  onlySoldOut: false,
   salesMode: 'FIXED_DEPARTURE',
   active: 0,
   maxActive: 0,
@@ -63,7 +64,7 @@ vi.mock('@/server/supabase', () => ({
             min_to_depart_snapshot: 1, formation_deadline_at: null, formation_status: 'COLLECTING',
           }));
           return {
-            data: [...soldOut, { id: `dep-${n}`, departs_on: '2099-01-01', start_time: '09:00:00', capacity: 5, seats_booked: n % 5,
+            data: fakeState.onlySoldOut ? soldOut : [...soldOut, { id: `dep-${n}`, departs_on: '2099-01-01', start_time: '09:00:00', capacity: 5, seats_booked: n % 5,
               min_to_depart_snapshot: 2, formation_deadline_at: '2098-12-30T00:00:00+00:00', formation_status: 'COLLECTING' }],
             error: null,
           };
@@ -183,6 +184,7 @@ describe('#11 公開行程詳情：方案團次查詢併發上限', () => {
     fakeState.failPlanId = null;
     fakeState.soldOutRows = 0;
     fakeState.flood = false;
+    fakeState.onlySoldOut = false;
     fakeState.salesMode = 'FIXED_DEPARTURE';
     fakeState.active = 0;
     fakeState.maxActive = 0;
@@ -220,6 +222,7 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     fakeState.failPlanId = null;
     fakeState.soldOutRows = 0;
     fakeState.flood = false;
+    fakeState.onlySoldOut = false;
     fakeState.salesMode = 'FIXED_DEPARTURE';
     fakeState.active = 0;
     fakeState.maxActive = 0;
@@ -252,9 +255,22 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     expect(soldOut).toHaveLength(6);
     expect(soldOut.every((d) => d.seatsLeft === 0 && d.soldOut === true)).toBe(true);
     expect(deps.filter((d) => !d.soldOut)).toHaveLength(1);
-    expect(result?.trip.plans[0].departuresMayBeTruncated).toBe(true);
+    expect(result?.trip.plans[0].soldOutOmitted).toBe(true);
+    expect(result?.trip.plans[0].departuresMayBeTruncated).toBe(false);
     for (const d of deps) expect(d).not.toHaveProperty('currentParticipants');
     expect(JSON.stringify(result)).not.toMatch(/currentParticipants|seatsBooked|seats_booked/);
+  });
+
+  it('7 筆以上客滿且 0 筆可售：列 6 筆客滿、soldOutOmitted、不標記可售截斷；有略過客滿不會讓 mayBeTruncated 變 true', async () => {
+    fakeState.planCount = 1;
+    fakeState.soldOutRows = 9;
+    fakeState.onlySoldOut = true;
+    const { loadPublicTripDetails } = await import('@/server/public-shop');
+    const plan = (await loadPublicTripDetails('demo', 'hike'))?.trip.plans[0];
+    expect(plan?.departures).toHaveLength(6);
+    expect(plan?.departures.every((d) => d.soldOut === true)).toBe(true);
+    expect(plan?.soldOutOmitted).toBe(true);
+    expect(plan?.departuresMayBeTruncated).toBe(false);
   });
 
   it('M4：每一次 trip_departures 查詢（分頁與 lookahead）都必須帶 status=OPEN、tenant、trip、plan 條件', async () => {
