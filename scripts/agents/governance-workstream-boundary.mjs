@@ -144,8 +144,7 @@ export function terminalBodyPlan(pr) {
   const unsyncedFields = new Set();
   const lifecycle = rewriteLifecycleState(body, lifecycleState);
   const visible = metadataLines(body, { allowPartial: true });
-  const hasContract = lifecycle.present || visible.some(line =>
-    /^[ \t]*[-*]?[ \t]*(?:WORK_ORIGIN|LANE_STATE|ACTIVE_CANDIDATE)[ \t]*:/i.test(line));
+  const hasContract = lifecycle.present || visible.some(line => /^[ \t]*[-*]?[ \t]*(?:WORK_ORIGIN|LANE_STATE|ACTIVE_CANDIDATE)[ \t]*:/i.test(line));
   const hasReceipt = merged && hasContract;
   if (lifecycle.error) { errors.push(lifecycle.error); unsyncedFields.add('pr-lifecycle.state'); }
   else if (lifecycle.changed) { changedFields.push('pr-lifecycle.state'); unsyncedFields.add('pr-lifecycle.state'); }
@@ -167,8 +166,7 @@ export function terminalBodyPlan(pr) {
     if (rewritten.changed) { changedFields.push(field); unsyncedFields.add(field); }
     body = rewritten.body;
   }
-  // These fields need a human closeout decision. Never infer a merge receipt,
-  // Product acceptance, or whether an external blocker has actually cleared.
+  // Human closeout only: do not infer merge receipts, Product acceptance, or cleared external blockers.
   for (const [field, stale] of [
     ['MERGE_STATUS', value => value !== (merged ? 'VERIFIED_MERGED' : 'VERIFIED_NOT_MERGED')],
     ['COMPLETION_CLAIM', value => value !== (merged ? 'VERIFIED_MERGED' : 'VERIFIED_CLOSED')],
@@ -240,11 +238,11 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
       if ((await github.rest.repos.getContent({ owner, repo, path, ref: main })).data?.type !== 'file') throw Error('main file re-read failed');
       const inventory = (await github.rest.actions.listWorkflowRuns({ owner, repo, workflow_id: 'ci.yml', head_sha: observed.head.sha, event: 'pull_request', per_page: 100 })).data;
       if (!Array.isArray(inventory.workflow_runs) || inventory.total_count > inventory.workflow_runs.length) throw Error('exact-head CI inventory incomplete');
-      const latest = inventory.workflow_runs.filter(item => item.head_sha === observed.head.sha && item.path === '.github/workflows/ci.yml' && item.event === 'pull_request' && !(item.pull_requests?.length === 1 && Number.isSafeInteger(item.pull_requests[0]?.number) && item.pull_requests[0].number !== observed.number))
-        .sort((a, b) => b.id - a.id)[0];
+      const latest = inventory.workflow_runs.filter(item => item.head_sha === observed.head.sha && item.path === '.github/workflows/ci.yml' && item.event === 'pull_request' && !(item.pull_requests?.length === 1 && Number.isSafeInteger(item.pull_requests[0]?.number) && item.pull_requests[0].number !== observed.number)).sort((a, b) => b.id - a.id)[0];
       if (!latest || latest.id !== Number(runId)) throw Error('receipt does not name latest exact-head CI run');
       const run = (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: Number(runId) })).data;
       if (run.head_sha !== observed.head?.sha || run.status !== 'completed' || run.conclusion !== 'success' || run.event !== 'pull_request' || run.path !== '.github/workflows/ci.yml' || run.pull_requests?.length !== 1 || run.pull_requests[0]?.number !== observed.number) throw Error('exact-head CI run is not verified for this PR');
+      if (upper(readField(observed.body, 'LOCAL_JOB_RESULT')) === 'VERIFIED_GREEN') throw Error('local isolated integration/E2E evidence not verified');
       if (upper(readField(observed.body, 'REMOTE_JOB_RESULT')) === 'VERIFIED_GREEN') {
         const jobs = (await github.rest.actions.listJobsForWorkflowRun({ owner, repo, run_id: Number(runId), filter: 'latest', per_page: 100 })).data;
         const remote = jobs.jobs?.filter(job => job.name === 'integration');
