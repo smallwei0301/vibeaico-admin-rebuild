@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as policy from '../../scripts/agents/product-issue-close-policy.mjs';
 import * as astra from '../../scripts/agents/astra-review-policy.mjs';
@@ -30,6 +31,8 @@ type Scenario = {
   branches?: string[]; issues?: typeof issue[]; invalid?: boolean; ci?: Record<string, unknown>;
   capture?: boolean; branchReadError?: boolean; issueReadError?: boolean;
   checkoutSha?: string; checkoutReadError?: boolean;
+  oldPolicyExempt?: boolean; policyReadError?: boolean;
+  policyBadHash?: boolean; freshPolicyExempt?: boolean;
 };
 async function execute(options: Scenario = {}) {
   vi.stubEnv('GITHUB_WORKSPACE', path.resolve('.'));
@@ -58,10 +61,18 @@ async function execute(options: Scenario = {}) {
       }),
       getCollaboratorPermissionLevel: vi.fn(async () => ({ data: { permission: 'write' } })),
       compareCommits: vi.fn(async () => ({ data: { status: 'ahead' } })),
-      getContent: vi.fn(async () => ({ data: { type: 'file', encoding: 'base64',
+      getContent: vi.fn(async (input: { path: string; ref: string }) => {
+        if (input.path.startsWith('scripts/agents/')) {
+          if (options.policyReadError) throw new Error('canonical policy unavailable');
+          const bytes = fs.readFileSync(input.path);
+          return { data: { type: 'file', encoding: 'base64', content: bytes.toString('base64'),
+            sha: options.policyBadHash ? '0'.repeat(40) : createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex') } };
+        }
+        return { data: { type: 'file', encoding: 'base64',
         content: Buffer.from(JSON.stringify({ schemaVersion: 2, deliveryTruthVersion: 4, runId,
           status: 'IN_PROGRESS', sources: [{ ref: 'issue/704' }],
-          closeout: { state: 'OPEN', ownerRole: 'PRODUCT_MAIN_SESSION' } })).toString('base64') } })),
+          closeout: { state: 'OPEN', ownerRole: 'PRODUCT_MAIN_SESSION' } })).toString('base64') } };
+      }),
     },
     pulls: { list: vi.fn() },
     actions: { getWorkflowRun: vi.fn(async () => ({ data: { id: 12345, name: 'ci',
@@ -81,7 +92,13 @@ async function execute(options: Scenario = {}) {
     // Vitest's VM cannot dynamically import inside a constructed function. Adapt
     // only the two imports to the same real modules; keep all API/control flow.
     const loadModule = async (url: string) => {
-      if (url.endsWith('/product-issue-close-policy.mjs')) return policy;
+      if (url.endsWith('/product-issue-close-policy.mjs')) {
+        if ((options.oldPolicyExempt && !url.includes('/product-close-policy-'))
+          || (options.freshPolicyExempt && url.includes('/product-close-policy-'))) return {
+          ...policy, evaluateProductIssueClose: () => ({ applicable: false, allowed: true, errors: [] }),
+        };
+        return policy;
+      }
       if (url.endsWith('/astra-review-policy.mjs')) return astra;
       throw new Error(`Unexpected import: ${url}`);
     };
@@ -104,13 +121,49 @@ describe('#720 close generation / canonical main races', () => {
     expect(r.api.issues.update).not.toHaveBeenCalled();
     expect(r.api.issues.createComment).not.toHaveBeenCalled();
   });
-  it('binds inputs to checked-out policy and safely reopens Product on initial main drift', async () => {
+  it('loads current policy and safely reopens Product when initial drift leaves old CI', async () => {
     const checkout = 'd'.repeat(40);
     const r = await execute({ checkoutSha: checkout, ci: { head_sha: checkout } });
     expect(r.error).toBeUndefined(); expect(r.core.setFailed).toHaveBeenCalled();
-    expect(r.api.repos.getContent).toHaveBeenCalledWith(expect.objectContaining({ ref: checkout }));
+    expect(r.api.repos.getContent).toHaveBeenCalledWith(expect.objectContaining({ path: `docs/metrics/agent-runs/${runId}.json`, ref: main }));
     expect(r.api.issues.update).toHaveBeenCalledWith(expect.objectContaining({ state: 'open' }));
     expect(r.api.issues.createComment.mock.calls.every(([x]) => !x.body.includes('EVENT: ISSUE_CLOSED_OBSERVED'))).toBe(true);
+  });
+  it('validates a close using the new canonical policy and CI after initial checkout drift', async () => {
+    const r = await execute({ checkoutSha: 'd'.repeat(40) });
+    expect(r.error).toBeUndefined(); expect(r.api.issues.update).not.toHaveBeenCalled();
+    expect(r.api.issues.createComment).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining('EVENT: ISSUE_CLOSED_OBSERVED') }));
+    const policyReads = r.api.repos.getContent.mock.calls.filter(([x]) => x.path.startsWith('scripts/agents/'));
+    expect(policyReads).toHaveLength(6); expect(policyReads.every(([x]) => x.ref === main)).toBe(true);
+  });
+  it.each(['initial', 'admission'])('does not retain an old Governance exemption after %s main drift', async phase => {
+    const r = await execute({ oldPolicyExempt: true, checkoutSha: phase === 'initial' ? 'd'.repeat(40) : main,
+      branches: phase === 'initial' ? [main] : [main, 'c'.repeat(40)], ci: { conclusion: null } });
+    expect(r.error).toBeUndefined(); expect(r.api.issues.update).toHaveBeenCalledWith(expect.objectContaining({ state: 'open' }));
+    expect(r.api.issues.createComment.mock.calls.every(([x]) => !x.body.includes('EVENT: ISSUE_CLOSED_OBSERVED'))).toBe(true);
+  });
+  it('fails closed when a changed canonical policy cannot be read', async () => {
+    const r = await execute({ checkoutSha: 'd'.repeat(40), policyReadError: true });
+    expect(r.error).toBeDefined(); expect(r.api.issues.update).not.toHaveBeenCalled();
+    expect(r.api.issues.createComment).not.toHaveBeenCalled();
+  });
+  it('rejects a canonical reload whose content differs from its Git blob identity', async () => {
+    const r = await execute({ checkoutSha: 'd'.repeat(40), policyBadHash: true });
+    expect(r.error).toBeDefined(); expect(r.api.issues.update).not.toHaveBeenCalled();
+    expect(r.api.issues.createComment).not.toHaveBeenCalled();
+  });
+  it.each(['initial', 'admission'])('preserves a genuine current-policy Governance exemption on %s main drift', async phase => {
+    const r = await execute({ branches: phase === 'initial' ? [main] : [main, 'c'.repeat(40)],
+      checkoutSha: phase === 'initial' ? 'd'.repeat(40) : main, freshPolicyExempt: true });
+    expect(r.error).toBeUndefined(); expect(r.api.issues.update).not.toHaveBeenCalled();
+    expect(r.api.issues.addLabels).not.toHaveBeenCalled(); expect(r.api.issues.createComment).not.toHaveBeenCalled();
+  });
+  it.each(['new-generation', 'fresh-governance'])('does not remove the rejection label for %s in the allowed tail', async mode => {
+    const r = await execute(mode === 'new-generation'
+      ? { issues: [issue, { ...issue, closed_at: '2026-10-01T01:05:00Z' }] }
+      : { branches: [main, main, 'c'.repeat(40)], freshPolicyExempt: true });
+    expect(r.error).toBeUndefined(); expect(r.api.issues.removeLabel).not.toHaveBeenCalled();
+    expect(r.api.issues.update).not.toHaveBeenCalled(); expect(r.api.issues.createComment).not.toHaveBeenCalled();
   });
   it('does not reopen a new close generation after initial policy/main drift', async () => {
     const r = await execute({ checkoutSha: 'd'.repeat(40), issues: [issue, { ...issue, closed_at: '2026-10-01T01:05:00Z' }] });
