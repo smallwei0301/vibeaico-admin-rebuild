@@ -233,7 +233,7 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
           ['MERGE_COMMIT_SHA', 'MAIN_HEAD_VERIFIED', 'VERIFIED_AT', 'EXACT_HEAD_CI_STATUS', 'LOCAL_JOB_RESULT', 'REMOTE_JOB_RESULT'].some(field => !readField(observed.body, field))) throw Error('incomplete merged receipt');
       const main = (await github.rest.repos.getBranch({ owner, repo, branch })).data.commit.sha;
       const reaches = async (base, head) => base === head || ['ahead', 'identical'].includes((await github.rest.repos.compareCommitsWithBasehead({ owner, repo, basehead: `${base}...${head}` })).data.status);
-      if (!await reaches(merge, declared) || !await reaches(declared, main)) throw Error('merge or declared main is not reachable from live main');
+      if (upper(declared) !== upper(main) || !await reaches(merge, main)) throw Error('declared main SHA does not match live main or merge is unreachable');
       const changed = await github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number: observed.number, per_page: 100 }); if (!Array.isArray(changed) || !Number.isSafeInteger(observed.changed_files) || changed.length !== observed.changed_files || !changed.some(file => file.filename === path && file.status !== 'removed')) throw Error('main re-read path is not a changed PR file');
       if ((await github.rest.repos.getContent({ owner, repo, path, ref: main })).data?.type !== 'file') throw Error('main file re-read failed');
       const inventory = (await github.rest.actions.listWorkflowRuns({ owner, repo, workflow_id: 'ci.yml', head_sha: observed.head.sha, event: 'pull_request', per_page: 100 })).data;
