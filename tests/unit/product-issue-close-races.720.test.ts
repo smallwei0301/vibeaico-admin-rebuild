@@ -97,12 +97,25 @@ async function execute(options: Scenario = {}) {
 
 afterEach(() => vi.unstubAllEnvs());
 describe('#720 close generation / canonical main races', () => {
-  it.each(['different', 'unavailable'])('fails closed before admission when checked-out policy is %s', async (mode) => {
-    const r = await execute(mode === 'different' ? { checkoutSha: 'd'.repeat(40) } : { checkoutReadError: true });
-    expect(r.error ?? r.core.setFailed.mock.calls[0]).toBeDefined();
+  it('fails closed when checked-out policy identity is unavailable', async () => {
+    const r = await execute({ checkoutReadError: true });
+    expect(r.error).toBeDefined();
     expect(r.api.repos.getContent).not.toHaveBeenCalled();
     expect(r.api.issues.update).not.toHaveBeenCalled();
     expect(r.api.issues.createComment).not.toHaveBeenCalled();
+  });
+  it('binds inputs to checked-out policy and safely reopens Product on initial main drift', async () => {
+    const checkout = 'd'.repeat(40);
+    const r = await execute({ checkoutSha: checkout, ci: { head_sha: checkout } });
+    expect(r.error).toBeUndefined(); expect(r.core.setFailed).toHaveBeenCalled();
+    expect(r.api.repos.getContent).toHaveBeenCalledWith(expect.objectContaining({ ref: checkout }));
+    expect(r.api.issues.update).toHaveBeenCalledWith(expect.objectContaining({ state: 'open' }));
+    expect(r.api.issues.createComment.mock.calls.every(([x]) => !x.body.includes('EVENT: ISSUE_CLOSED_OBSERVED'))).toBe(true);
+  });
+  it('does not reopen a new close generation after initial policy/main drift', async () => {
+    const r = await execute({ checkoutSha: 'd'.repeat(40), issues: [issue, { ...issue, closed_at: '2026-10-01T01:05:00Z' }] });
+    expect(r.api.issues.update).not.toHaveBeenCalled();
+    expect(r.api.issues.addLabels).not.toHaveBeenCalled(); expect(r.api.issues.createComment).not.toHaveBeenCalled();
   });
   it('captures a valid stable-main close with immutable Run read', async () => {
     const r = await execute(); expect(r.error).toBeUndefined();

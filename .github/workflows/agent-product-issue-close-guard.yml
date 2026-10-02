@@ -54,15 +54,16 @@ jobs:
             const { data: branch } = await github.rest.repos.getBranch({
               owner, repo, branch: repository.default_branch,
             });
-            const currentMainSha = branch.commit.sha;
             const checkoutSha = require('node:child_process').execFileSync(
               'git', ['rev-parse', 'HEAD'],
               { cwd: process.env.GITHUB_WORKSPACE, encoding: 'utf8' },
             ).trim();
-            if (!/^[0-9a-f]{40}$/.test(checkoutSha) || checkoutSha !== currentMainSha) {
-              core.setFailed('Checked-out close policy differs from current canonical main; no Issue effects');
-              return;
-            }
+            if (!/^[0-9a-f]{40}$/.test(checkoutSha)) throw new Error('Checked-out close policy identity unavailable');
+            // Policy, Run, ancestry and CI share the trusted checkout's immutable
+            // revision. An initial main drift must reject through the same safe
+            // Product reopen path, rather than leave the Issue silently closed.
+            const currentMainSha = checkoutSha;
+            const initialMainChanged = branch.commit.sha !== currentMainSha;
             const policy = await import(pathToFileURL(path.join(
               process.env.GITHUB_WORKSPACE,
               'scripts/agents/product-issue-close-policy.mjs',
@@ -212,9 +213,9 @@ jobs:
               verifiedCloseApproval,
               lastClosedCaptureAt,
             });
-            if (result.applicable && admissionBranch.commit.sha !== currentMainSha) {
+            if (result.applicable && (initialMainChanged || admissionBranch.commit.sha !== currentMainSha)) {
               result.allowed = false;
-              result.errors.push(`Current main changed during admission: ${currentMainSha} -> ${admissionBranch.commit.sha}; require fresh close-ready evidence`);
+              result.errors.push(`Current main changed during admission: policy ${currentMainSha}, initial ${branch.commit.sha}, latest ${admissionBranch.commit.sha}; require fresh close-ready evidence`);
             }
 
             await core.summary
