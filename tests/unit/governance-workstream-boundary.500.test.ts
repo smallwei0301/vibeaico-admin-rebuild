@@ -418,15 +418,15 @@ describe('governance boundary regression #500', () => {
     const verified = Object.entries(receipts).reduce((text, [field, value]) => text.replace(new RegExp(`${field}: [^\\n]*`), `${field}: ${value}`), body);
     expect(terminalBodyPlan({ ...closed, body: verified, merge_commit_sha: 'a'.repeat(40) })?.unsyncedFields).toEqual([]);
     expect(terminalBodyPlan({ ...closed, body: verified, merge_commit_sha: 'c'.repeat(40) })?.unsyncedFields).toContain('MERGE_COMMIT_SHA');
-    const live = { ...closed, body: verified, merge_commit_sha: 'a'.repeat(40), base: { ref: 'main' } };
-    const comments: any[] = [{ body: `<!-- agent-terminal-state-sync:v1 pr=900 head=${live.head.sha} closed_at=${live.closed_at} digest=old -->\nSTATE_SYNC_PENDING`, user: { login: 'github-actions[bot]', id: 41898282 } }];
-    const github: any = { rest: { pulls: { get: vi.fn(async () => ({ data: structuredClone(live) })) },
+    const live = { ...closed, body: verified, merge_commit_sha: 'a'.repeat(40), base: { ref: 'main' }, changed_files: 1 };
+    const comments: any[] = [{ body: `<!-- agent-terminal-state-sync:v1 pr=900 head=${live.head.sha} closed_at=${live.closed_at} digest=old -->\nSTATE_SYNC_PENDING`, user: { login: 'github-actions[bot]', id: 41898282 } }]; const listFiles = vi.fn(), files = [{ filename: 'docs/AGENT-EXECUTION.md', status: 'modified' }];
+    const github: any = { rest: { pulls: { get: vi.fn(async () => ({ data: structuredClone(live) })), listFiles },
       issues: { listComments: vi.fn(), removeLabel: vi.fn(), getLabel: vi.fn(async () => ({})), addLabels: vi.fn(), createComment: vi.fn(async ({ body }: any) => { comments.push({ body, user: { login: 'github-actions[bot]', id: 41898282 } }); return { data: { id: comments.length } }; }) },
       repos: { getBranch: vi.fn(async () => ({ data: { commit: { sha: 'c'.repeat(40) } } })), compareCommitsWithBasehead: vi.fn(async () => ({ data: { status: 'ahead' } })), getContent: vi.fn(async () => ({ data: { type: 'file' } })) },
       actions: { listWorkflowRuns: vi.fn(async () => ({ data: { total_count: 1, workflow_runs: [{ id: 1, head_sha: live.head.sha, event: 'pull_request', path: '.github/workflows/ci.yml', pull_requests: [{ number: 900 }], created_at }] } })), getWorkflowRun: vi.fn(async () => ({ data: { head_sha: live.head.sha, status: 'completed', conclusion: 'success', event: 'pull_request', path: '.github/workflows/ci.yml', pull_requests: [{ number: 900 }] } })) },
-    }, paginate: vi.fn(async () => comments) };
+    }, paginate: vi.fn(async method => method === listFiles ? files : comments) };
     const call = () => boundaryPolicy.reconcileTerminalPr({ github, owner: 'owner', repo: 'repo', current: live });
-    await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_RESOLVED');
+    await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_RESOLVED'); live.body = verified.replace('MAIN_FILE_RE_READ: docs/AGENT-EXECUTION.md', 'MAIN_FILE_RE_READ: README.md'); await call(); expect(comments.at(-1).body).toContain('main re-read path is not a changed PR file'); live.body = verified;
     live.body = verified.replace('LOCAL_JOB_RESULT: SKIPPED', 'LOCAL_JOB_RESULT: VERIFIED_GREEN'); await call(); expect(comments.at(-1).body).toContain('local isolated integration/E2E evidence not verified'); live.body = verified;
     live.body = verified.replace('REMOTE_JOB_RESULT: SKIPPED', 'REMOTE_JOB_RESULT: VERIFIED_GREEN'); github.rest.actions.listJobsForWorkflowRun = vi.fn(async () => ({ data: { total_count: 1, jobs: [{ name: 'integration', status: 'completed', conclusion: 'success', steps: [{ name: 'Run integration tests', conclusion: 'skipped' }, { name: 'Run E2E tests', conclusion: 'skipped' }] }] } }));
     await call(); expect(comments.at(-1).body).toContain('remote integration/E2E steps not verified');

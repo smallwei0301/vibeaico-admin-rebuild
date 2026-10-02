@@ -228,13 +228,13 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
     if ((observed.merged || observed.merged_at) && !plan.changed && !plan.errors.length && !plan.unsyncedFields.length && !reason) try {
       const branch = observed.base?.ref, merge = observed.merge_commit_sha;
       const declared = readField(observed.body, 'MAIN_HEAD_SHA');
-      const path = readField(observed.body, 'MAIN_FILE_RE_READ');
-      const runId = readField(observed.body, 'EXACT_HEAD_CI_RUN').match(/(?:^|\/runs\/)(\d+)$/)?.[1];
+      const path = readField(observed.body, 'MAIN_FILE_RE_READ'), runId = readField(observed.body, 'EXACT_HEAD_CI_RUN').match(/(?:^|\/runs\/)(\d+)$/)?.[1];
       if (branch !== 'main' || !merge || !/^[a-f0-9]{40}$/i.test(declared) || !path || isPlaceholder(path) || !runId ||
           ['MERGE_COMMIT_SHA', 'MAIN_HEAD_VERIFIED', 'VERIFIED_AT', 'EXACT_HEAD_CI_STATUS', 'LOCAL_JOB_RESULT', 'REMOTE_JOB_RESULT'].some(field => !readField(observed.body, field))) throw Error('incomplete merged receipt');
       const main = (await github.rest.repos.getBranch({ owner, repo, branch })).data.commit.sha;
       const reaches = async (base, head) => base === head || ['ahead', 'identical'].includes((await github.rest.repos.compareCommitsWithBasehead({ owner, repo, basehead: `${base}...${head}` })).data.status);
       if (!await reaches(merge, declared) || !await reaches(declared, main)) throw Error('merge or declared main is not reachable from live main');
+      const changed = await github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number: observed.number, per_page: 100 }); if (!Array.isArray(changed) || !Number.isSafeInteger(observed.changed_files) || changed.length !== observed.changed_files || !changed.some(file => file.filename === path && file.status !== 'removed')) throw Error('main re-read path is not a changed PR file');
       if ((await github.rest.repos.getContent({ owner, repo, path, ref: main })).data?.type !== 'file') throw Error('main file re-read failed');
       const inventory = (await github.rest.actions.listWorkflowRuns({ owner, repo, workflow_id: 'ci.yml', head_sha: observed.head.sha, event: 'pull_request', per_page: 100 })).data;
       if (!Array.isArray(inventory.workflow_runs) || inventory.total_count > inventory.workflow_runs.length) throw Error('exact-head CI inventory incomplete');
