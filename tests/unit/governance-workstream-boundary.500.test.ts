@@ -342,7 +342,7 @@ describe('governance boundary regression #500', () => {
     github.rest.issues.createComment.mockImplementationOnce(async ({ body }: any) => { comments.push({ id: 6, body, user: { login: 'github-actions[bot]', id: 41898282 } }); closed.body = pendingBody; throw Error('create after body edit'); });
     await expect(call()).rejects.toThrow('create after body edit'); expect(comments.at(-1).body).toContain('STATE_SYNC_SUPERSEDED');
     closed.body = pendingBody; await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_PENDING');
-    closed.closed_at = '2026-10-02T08:00:00Z'; closed.body = pendingBody.replace('MERGE_STATUS: NOT_REQUESTED', 'MERGE_STATUS: VERIFIED_NOT_MERGED'); await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_RESOLVED');
+    closed.closed_at = '2026-10-02T08:00:00Z'; closed.body = pendingBody.replace('MERGE_STATUS: NOT_REQUESTED', 'MERGE_STATUS: VERIFIED_NOT_MERGED'); await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_RESOLVED'); closed.body += '\nEXACT_HEAD_CI_STATUS: VERIFIED_GREEN\nEXACT_HEAD_CI_RUN: https://github.com/owner/repo/actions/runs/999\nLOCAL_JOB_RESULT: VERIFIED_GREEN\nREMOTE_JOB_RESULT: VERIFIED_GREEN'; await call(); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: EXACT_HEAD_CI_STATUS, EXACT_HEAD_CI_RUN, LOCAL_JOB_RESULT, REMOTE_JOB_RESULT');
   });
 
   it('rewrites only live terminal declarations and preserves fenced examples', () => {

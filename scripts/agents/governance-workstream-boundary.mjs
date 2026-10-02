@@ -173,10 +173,10 @@ export function terminalBodyPlan(pr) {
     ['MAIN_HEAD_SHA', value => merged && !/^[a-f0-9]{40}$/i.test(value)],
     ['MAIN_FILE_RE_READ', value => merged && (value === 'NONE' || isPlaceholder(value))],
     ['VERIFIED_AT', value => !Number.isFinite(Date.parse(value)) || Date.parse(value) > Date.now() + 300_000 || Boolean(pr.closed_at && Date.parse(value) < Date.parse(pr.closed_at))],
-    ['EXACT_HEAD_CI_STATUS', value => merged && value !== 'VERIFIED_GREEN'],
-    ['EXACT_HEAD_CI_RUN', value => merged && (value === 'NONE' || isPlaceholder(value))],
-    ['LOCAL_JOB_RESULT', value => merged && !['VERIFIED_GREEN', 'SKIPPED'].includes(value)],
-    ['REMOTE_JOB_RESULT', value => merged && !['VERIFIED_GREEN', 'SKIPPED'].includes(value)],
+    ['EXACT_HEAD_CI_STATUS', value => merged ? value !== 'VERIFIED_GREEN' : value === 'VERIFIED_GREEN'],
+    ['EXACT_HEAD_CI_RUN', value => merged ? value === 'NONE' || isPlaceholder(value) : value !== 'NONE'],
+    ['LOCAL_JOB_RESULT', value => merged ? !['VERIFIED_GREEN', 'SKIPPED'].includes(value) : value === 'VERIFIED_GREEN'],
+    ['REMOTE_JOB_RESULT', value => merged ? !['VERIFIED_GREEN', 'SKIPPED'].includes(value) : value === 'VERIFIED_GREEN'],
   ]) {
     if (!hasContract) continue;
     if (!visible.some(line => new RegExp(`^[ \\t]*[-*]?[ \\t]*${field}[ \\t]*:`, 'i').test(line))) { if (hasReceipt || (hasContract && ['MERGE_STATUS', 'COMPLETION_CLAIM'].includes(field))) unsyncedFields.add(field); continue; }
