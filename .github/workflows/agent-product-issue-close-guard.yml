@@ -75,6 +75,9 @@ jobs:
             const openPullRequests = await github.paginate(github.rest.pulls.list, {
               owner, repo, state: 'open', per_page: 100,
             });
+            const closedPullRequests = await github.paginate(github.rest.pulls.list, {
+              owner, repo, state: 'closed', sort: 'updated', direction: 'desc', per_page: 100,
+            });
 
             const systemCaptures = comments
               .filter((comment) =>
@@ -174,6 +177,7 @@ jobs:
               issue,
               currentMainSha,
               openPullRequests,
+              mergedPullRequests: closedPullRequests,
               comments: trustedComments,
               verifiedCi,
               verifiedRun,
