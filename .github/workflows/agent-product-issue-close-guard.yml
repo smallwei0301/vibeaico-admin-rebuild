@@ -93,7 +93,7 @@ jobs:
               .map((comment) => ({ comment, handoff: policy.parseRunCaptureHandoff(comment.body ?? '') }))
               .filter((entry) => entry.handoff?.event === 'ISSUE_CLOSED_OBSERVED')
               .sort((a, b) => String(b.comment.created_at ?? '').localeCompare(String(a.comment.created_at ?? '')));
-            const lastClosedCaptureAt = systemCaptures[0]?.comment?.created_at ?? null;
+            const lastClosedCaptureAt = systemCaptures.find((entry) => entry.handoff?.observedAt !== issue.closed_at)?.comment?.created_at ?? null;
 
             const ready = policy.findCloseReadyHandoff(trustedComments, issue.closed_at ?? '');
             let verifiedRun = null;
@@ -261,6 +261,11 @@ jobs:
               if (error.status !== 404) throw error;
             }
 
+            const { data: freshIssue } = await github.rest.issues.get({ owner, repo, issue_number: issueNumber });
+            if (freshIssue.state !== 'closed' || freshIssue.closed_at !== issue.closed_at) {
+              core.notice('Issue changed after close admission; skip ISSUE_CLOSED_OBSERVED capture');
+              return;
+            }
             const freshComments = await github.paginate(github.rest.issues.listComments, {
               owner, repo, issue_number: issueNumber, per_page: 100,
             });
