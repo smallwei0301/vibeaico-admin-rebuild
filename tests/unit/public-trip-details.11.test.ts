@@ -118,7 +118,7 @@ describe('#11 公開行程詳情', () => {
     expect(shopPage).toContain('`/s/${shopCode}/trips/${encodeURIComponent(trip.slug)}`');
     expect(detailPage).toContain('<PublicTripDetailsClient');
     expect(detailPage).not.toContain('loadPublicTripDetails');
-    expect(detailClient).toContain("fetch(path, { cache: 'no-store' })");
+    expect(detailClient).toContain("fetch(path, { cache: 'no-store', signal })");
     expect(detailClient).toContain('/api/public/shops/');
     expect(route).toContain('loadPublicTripDetails(shopCode, slug)');
     expect(route).not.toMatch(/createAdminSupabase|\.from\(['"]trips['"]\)/);

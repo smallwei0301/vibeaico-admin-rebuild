@@ -96,3 +96,33 @@ export function outcomeFromHttp(status: number, ok: boolean, payload: unknown): 
   if (!body || !body.success || !body.data) return { kind: 'error' };
   return { kind: 'ready', data: body.data };
 }
+
+/** 只有最新一次請求（id 相同）才可套用結果。 */
+export function shouldApplyResult(requestId: number, latestId: number): boolean {
+  return requestId === latestId;
+}
+
+/**
+ * 請求序號器：每次 begin() 遞增 id 並 abort 前一個請求；只有最新一次（且尚未 abortAll）可套用結果，
+ * 避免連續 visibilitychange 時較晚完成的舊請求覆蓋較新的結果（例如新請求已回 404／客滿）。
+ */
+export function createRequestSequencer() {
+  let latest = 0;
+  let closed = false;
+  let controller: AbortController | null = null;
+  return {
+    begin(): { id: number; signal: AbortSignal } {
+      controller?.abort();
+      controller = new AbortController();
+      latest += 1;
+      return { id: latest, signal: controller.signal };
+    },
+    isLatest(id: number): boolean {
+      return !closed && shouldApplyResult(id, latest);
+    },
+    abortAll(): void {
+      closed = true;
+      controller?.abort();
+    },
+  };
+}

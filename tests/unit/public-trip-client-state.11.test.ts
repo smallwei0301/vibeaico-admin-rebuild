@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { publicTripDetailsPage as t } from '@/i18n/zh-TW/pages/public-trip-details';
 import {
+  createRequestSequencer, shouldApplyResult,
   bookingCtaState, hasBookableListedDeparture, initialLoadState, outcomeFromHttp, shouldFetchOnMount, stateAfterFetch,
 } from '@/lib/public-trip-client-state';
 
@@ -133,5 +134,64 @@ describe('#11 client 有 initialData 時不重取', () => {
     expect(t.departures.noBookable).toMatch(/列出的日期都無法預約/);
     expect(t.departures.noBookable).not.toContain('目前沒有可預約日期');
     expect(t.departures.truncated).toContain('部分日期');
+  });
+
+  it('shouldApplyResult：只有 id 相同才套用', () => {
+    expect(shouldApplyResult(2, 2)).toBe(true);
+    expect(shouldApplyResult(1, 2)).toBe(false);
+  });
+
+  describe('請求序號器（連續 visibilitychange）', () => {
+    const ready = { status: 'ready', data } as const;
+    // 模擬 client 的套用邏輯。
+    const make = () => {
+      const seq = createRequestSequencer();
+      let state: ReturnType<typeof stateAfterFetch> = ready;
+      const apply = (id: number, outcome: Parameters<typeof stateAfterFetch>[0]) => {
+        if (seq.isLatest(id)) state = stateAfterFetch(outcome, true, state);
+      };
+      return { seq, apply, get: () => state };
+    };
+
+    it('舊請求較晚完成：舊結果不得套用', () => {
+      const { seq, apply, get } = make();
+      const a = seq.begin();
+      const b = seq.begin();
+      apply(b.id, { kind: 'not-found' });
+      apply(a.id, { kind: 'ready', data });
+      expect(get()).toEqual({ status: 'not-found' });
+    });
+
+    it('新的回 404 之後，舊的回 200 也不得覆蓋', () => {
+      const { seq, apply, get } = make();
+      const old = seq.begin();
+      const latest = seq.begin();
+      apply(latest.id, { kind: 'not-found' });
+      expect(get()).toEqual({ status: 'not-found' });
+      apply(old.id, { kind: 'ready', data });
+      expect(get()).toEqual({ status: 'not-found' });
+    });
+
+    it('發新請求會 abort 前一個；unmount（abortAll）後沒有結果可套用', () => {
+      const { seq, apply, get } = make();
+      const a = seq.begin();
+      expect(a.signal.aborted).toBe(false);
+      const b = seq.begin();
+      expect(a.signal.aborted).toBe(true);
+      expect(b.signal.aborted).toBe(false);
+      seq.abortAll();
+      expect(b.signal.aborted).toBe(true);
+      apply(b.id, { kind: 'not-found' });
+      expect(get()).toBe(ready);
+    });
+
+    it('client 以序號器接線：begin／isLatest／abortAll 與 abort signal', () => {
+      expect(client).toContain('const sequencer = createRequestSequencer();');
+      expect(client).toMatch(/const \{ id, signal \} = sequencer\.begin\(\);/);
+      expect(client).toMatch(/if \(sequencer\.isLatest\(id\)\) setState\(/);
+      expect(client).toMatch(/fetch\(path, \{ cache: 'no-store', signal \}\)/);
+      expect(client).toMatch(/sequencer\.abortAll\(\);/);
+      expect(client).not.toMatch(/let active = true/);
+    });
   });
 });

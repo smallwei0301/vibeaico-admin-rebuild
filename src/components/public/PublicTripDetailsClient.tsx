@@ -14,6 +14,7 @@ import {
   bookingCtaState,
   outcomeFromHttp,
   stateAfterFetch,
+  createRequestSequencer,
   type PublicTripFetchOutcome,
   shouldFetchOnMount,
   type PublicTripInitialData,
@@ -33,16 +34,18 @@ export function PublicTripDetailsClient({ shopCode, slug, initialData }: Props) 
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    let active = true;
+    // 只有最新一次請求可套用結果；新請求會 abort 前一個，unmount 時 abort 全部。
+    const sequencer = createRequestSequencer();
     const path = '/api/public/shops/' + encodeURIComponent(shopCode)
       + '/trips/' + encodeURIComponent(slug);
     // background=true：已有畫面資料時的靜默更新（失敗不覆蓋現有內容，404 則切到找不到）。
     const load = (background: boolean) => {
+      const { id, signal } = sequencer.begin();
       if (!background) setState({ status: 'loading' });
       const apply = (outcome: PublicTripFetchOutcome) => {
-        if (active) setState((current) => stateAfterFetch(outcome, background, current));
+        if (sequencer.isLatest(id)) setState((current) => stateAfterFetch(outcome, background, current));
       };
-      void fetch(path, { cache: 'no-store' })
+      void fetch(path, { cache: 'no-store', signal })
         .then(async (response) => {
           const payload: unknown = response.ok ? await response.json() : undefined;
           apply(outcomeFromHttp(response.status, response.ok, payload));
@@ -56,7 +59,7 @@ export function PublicTripDetailsClient({ shopCode, slug, initialData }: Props) 
     const onVisible = () => { if (document.visibilityState === 'visible') load(true); };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
-      active = false;
+      sequencer.abortAll();
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, [shopCode, slug, attempt, initialData]);
