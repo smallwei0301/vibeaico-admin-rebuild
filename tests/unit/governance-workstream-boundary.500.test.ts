@@ -377,6 +377,26 @@ describe('governance boundary regression #500', () => {
     expect(result.comments).toEqual([expect.stringContaining('UNSYNCED_FIELDS: pr-lifecycle.state, LANE_STATE, ACTIVE_CANDIDATE')]);
   });
 
+  it('lists other current-state fields for manual terminal closeout without rewriting them', async () => {
+    const body = gov.replace('OWNER_OR_EXTERNAL_BLOCKER: none', 'OWNER_OR_EXTERNAL_BLOCKER: waiting on old TEST queue') +
+      '\nMERGE_STATUS: NOT_REQUESTED\nCOMPLETION_CLAIM: IN_PROGRESS\n';
+    const closed = { ...subject(body), state: 'closed', merged: true, closed_at: created_at, labels: [] };
+    const plan = terminalBodyPlan(closed);
+    expect(plan?.unsyncedFields).toEqual(expect.arrayContaining(['MERGE_STATUS', 'COMPLETION_CLAIM', 'OWNER_OR_EXTERNAL_BLOCKER', 'REMAINING_AUTONOMOUS_STEPS']));
+    expect(plan?.body).toContain('MERGE_STATUS: NOT_REQUESTED');
+    const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', closed, paths, [], 'terminal_cleanup');
+    expect(result.comments[0]).toContain('MERGE_STATUS, COMPLETION_CLAIM');
+    expect(result.calls).not.toContain('body');
+  });
+
+  it.each([
+    [false, gov.replace('REMAINING_AUTONOMOUS_STEPS: source CI and exact-diff verification', 'REMAINING_AUTONOMOUS_STEPS: none') + '\nMERGE_STATUS: VERIFIED_NOT_MERGED\nCOMPLETION_CLAIM: VERIFIED_CLOSED'],
+    [true, gov.replace('REMAINING_AUTONOMOUS_STEPS: source CI and exact-diff verification', 'REMAINING_AUTONOMOUS_STEPS: none') + '\n```text\nMERGE_STATUS: NOT_REQUESTED\nCOMPLETION_CLAIM: IN_PROGRESS'],
+  ])('does not invent unsynced optional fields from valid values or an unclosed example fence', (merged, body) => {
+    const unsynced = terminalBodyPlan({ state: 'closed', merged, body })?.unsyncedFields;
+    for (const field of ['MERGE_STATUS', 'COMPLETION_CLAIM', 'OWNER_OR_EXTERNAL_BLOCKER', 'REMAINING_AUTONOMOUS_STEPS']) expect(unsynced).not.toContain(field);
+  });
+
   it.each(['Historical prose only', 'Historical notes\n```text\nexample only',
     '```text\n<!-- pr-lifecycle\nstate: ACTIVE\n-->\n```'])('ignores prose and example-only lifecycle markers', body => {
     const plan = terminalBodyPlan({ state: 'closed', merged: true, body });

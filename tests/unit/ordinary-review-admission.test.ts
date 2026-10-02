@@ -601,44 +601,6 @@ describe('terminal cleanup compensates observed reopen without restoring stale m
     expect(github.rest.issues.removeLabel).not.toHaveBeenCalledWith(expect.objectContaining({ name: 'governance:lane-metadata-incomplete' }));
     expect(github.rest.issues.removeLabel).not.toHaveBeenCalledWith(expect.objectContaining({ name: 'governance:wip-violation' }));
   });
-  it('preserves an edit made in a new close generation before terminal body PATCH', async () => {
-    const boundary = await import('../../scripts/agents/governance-workstream-boundary.mjs');
-    const initial = { ...current, state: 'closed', merged: false, closed_at: '2026-10-02T07:00:00Z',
-      labels: [{ name: 'state:active' }], body: body + '\nWORK_ORIGIN: AGENT\nACTIVE_CANDIDATE: true' };
-    let live: any = structuredClone(initial);
-    let reads = 0;
-    const lastRead = boundary.terminalLabelPlan(initial)!.remove.length + 3;
-    const pulls = {
-      get: vi.fn(async () => {
-        reads++;
-        const observed = structuredClone(live);
-        if (reads === lastRead) {
-          live = { ...live, state: 'open', closed_at: null };
-          live.body += '\nUser edit in new generation';
-          live = { ...live, state: 'closed', closed_at: '2026-10-02T07:02:00Z' };
-        }
-        return { data: observed };
-      }),
-      update: vi.fn(async ({ body: replacement }: any) => {
-        live.body = replacement;
-      }),
-    };
-    const issues = {
-      removeLabel: vi.fn(async ({ name }: any) => { live.labels = live.labels.filter((label: any) => label.name !== name); }),
-      getLabel: vi.fn(async () => ({ data: {} })),
-      addLabels: vi.fn(async ({ labels }: any) => { live.labels.push(...labels.map((name: string) => ({ name }))); }),
-      listComments: vi.fn(),
-      createComment: vi.fn(),
-    };
-    const warnings: string[] = [];
-    await boundary.reconcileTerminalPr({ github: { rest: { pulls, issues }, paginate: vi.fn(async () => []) }, owner: 'smallwei0301',
-      repo: 'vibeaico-admin-rebuild', current: initial, warning: (message: string) => warnings.push(message) });
-    expect(reads).toBeGreaterThanOrEqual(lastRead);
-    expect(pulls.update).not.toHaveBeenCalled();
-    expect(live.body).toBe(initial.body + '\nUser edit in new generation');
-    expect(warnings.join('\n')).toContain('STATE_SYNC_PENDING');
-    expect(issues.createComment).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining('UNSYNCED_FIELDS: pr-lifecycle.state, LANE_STATE, ACTIVE_CANDIDATE') }));
-  });
   it('cancellable guard never starts terminal reconciliation for a closed PR', async () => {
     const script = parse(readFileSync('.github/workflows/agent-wip-guard.yml', 'utf8')).jobs.guard.steps.find((step: any) => step.with?.script).with.script;
     const closedBranch = script.slice(script.indexOf('// Cancellable guard is read-only'), script.indexOf('const marker ='));

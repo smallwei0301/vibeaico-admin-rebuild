@@ -142,7 +142,8 @@ export function terminalBodyPlan(pr) {
   const changedFields = [];
   const unsyncedFields = new Set();
   const lifecycle = rewriteLifecycleState(body, lifecycleState);
-  const hasContract = lifecycle.present || metadataLines(body, { allowPartial: true }).some(line =>
+  const visible = metadataLines(body, { allowPartial: true });
+  const hasContract = lifecycle.present || visible.some(line =>
     /^[ \t]*[-*]?[ \t]*(?:WORK_ORIGIN|LANE_STATE|ACTIVE_CANDIDATE)[ \t]*:/i.test(line));
   if (lifecycle.error) { errors.push(lifecycle.error); unsyncedFields.add('pr-lifecycle.state'); }
   else if (lifecycle.changed) { changedFields.push('pr-lifecycle.state'); unsyncedFields.add('pr-lifecycle.state'); }
@@ -163,6 +164,19 @@ export function terminalBodyPlan(pr) {
     }
     if (rewritten.changed) { changedFields.push(field); unsyncedFields.add(field); }
     body = rewritten.body;
+  }
+
+  // These fields need a human closeout decision. Never infer a merge receipt,
+  // Product acceptance, or whether an external blocker has actually cleared.
+  for (const [field, stale] of [
+    ['MERGE_STATUS', value => value !== (merged ? 'VERIFIED_MERGED' : 'VERIFIED_NOT_MERGED')],
+    ['COMPLETION_CLAIM', value => ['IN_PROGRESS', 'AUDIT_READY', 'MERGE_REQUESTED_UNVERIFIED'].includes(value)],
+    ['OWNER_OR_EXTERNAL_BLOCKER', value => value !== 'NONE'],
+    ['REMAINING_AUTONOMOUS_STEPS', value => value !== 'NONE'],
+  ]) {
+    if (!hasContract) continue;
+    const value = readField(visible.join('\n'), field);
+    if (value && (value.includes('|') || stale(upper(value)))) unsyncedFields.add(field);
   }
 
   return {
