@@ -1,0 +1,107 @@
+import fs from 'node:fs';
+import { describe, expect, it } from 'vitest';
+
+import { validatePublicationMetadata } from '../../scripts/agents/agent-wip-preflight.mjs';
+import { materializeProfileBody } from '../../scripts/agents/pr-metadata-profile.mjs';
+import {
+  findMatchingPublicationReceipt,
+  parsePublicationReceipt,
+  publicationContract,
+  renderPublicationReceipt,
+} from '../../scripts/agents/pr-publication-receipt.mjs';
+
+const base = 'a'.repeat(40);
+const head = 'b'.repeat(40);
+const files = [
+  { filename: 'docs/a.md', status: 'modified', sha: '1'.repeat(40) },
+  { filename: 'scripts/agents/x.mjs', previous_filename: 'scripts/agents/y.mjs', status: 'renamed', sha: '2'.repeat(40) },
+];
+
+function governanceBody() {
+  const compact = [
+    '<!-- pr-lifecycle',
+    'issue: 724',
+    'state: ACTIVE',
+    'supersedes:',
+    '-->',
+    'PR_PROFILE: GOVERNANCE_SOURCE_ONLY',
+    'WORK_ORIGIN: AGENT',
+    'LANE_STATE: ACTIVE',
+    'CLOSEABILITY_SCORE: 4',
+    'SELECTION_REASON: GOVERNANCE',
+    'REMAINING_AUTONOMOUS_STEPS: source checks -> merge -> main reread',
+    'OWNER_OR_EXTERNAL_BLOCKER: none',
+    'CLOSURE_SWEEP_TARGET: #724',
+    'GOVERNANCE_SCOPE_EXCEPTION: none',
+    'ASTRA_RATIONALE: pure governance receipt tooling; no Product runtime or provider mutation',
+  ].join('\n');
+  const materialized = materializeProfileBody(compact);
+  if (!materialized.valid) throw new Error(materialized.errors.join('; '));
+  return materialized.body;
+}
+
+describe('#724 immutable Agent PR publication preflight receipt', () => {
+  it('binds the receipt to exact body, file inventory, base and head', () => {
+    const body = governanceBody();
+    const original = publicationContract({ body, files, baseSha: base, headSha: head });
+    expect(publicationContract({ body, files: [...files].reverse(), baseSha: base, headSha: head })).toEqual(original);
+    for (const changed of [
+      publicationContract({ body: body + '\n', files, baseSha: base, headSha: head }),
+      publicationContract({ body, files: [{ ...files[0], sha: '3'.repeat(40) }, files[1]], baseSha: base, headSha: head }),
+      publicationContract({ body, files, baseSha: 'c'.repeat(40), headSha: head }),
+      publicationContract({ body, files, baseSha: base, headSha: 'd'.repeat(40) }),
+    ]) expect(changed.contractSha256).not.toBe(original.contractSha256);
+  });
+
+  it('accepts only a matching immutable github-actions receipt, never self-asserted PASS', () => {
+    const contract = publicationContract({ body: governanceBody(), files, baseSha: base, headSha: head });
+    const body = renderPublicationReceipt({ prNumber: 99, contract });
+    expect(parsePublicationReceipt(body)).toMatchObject({ prNumber: 99, headSha: head, result: 'PASS' });
+    const bot = { user: { login: 'github-actions[bot]', type: 'Bot' }, body };
+    expect(findMatchingPublicationReceipt([bot], { prNumber: 99, contract })).toBe(bot);
+    expect(findMatchingPublicationReceipt([{ user: { login: 'owner', type: 'User' }, body }], { prNumber: 99, contract })).toBeNull();
+    expect(findMatchingPublicationReceipt([{ ...bot, body: body.replace(head, 'e'.repeat(40)) }], { prNumber: 99, contract })).toBeNull();
+  });
+
+  it('reuses the existing preflight validators for deterministic metadata', () => {
+    const body = governanceBody();
+    const valid = validatePublicationMetadata({ body, changedFiles: ['docs/a.md'], prNumber: 724, action: 'opened' });
+    expect(valid.valid).toBe(true);
+    const missingRetroactive = body.replace(/^- RETROACTIVE_TRACKING_MIGRATION: false\n/m, '');
+    const invalid = validatePublicationMetadata({ body: missingRetroactive, changedFiles: ['docs/a.md'], prNumber: 724, action: 'opened' });
+    expect(invalid.valid).toBe(false);
+    expect(invalid.errors.join('\n')).toContain('RETROACTIVE_TRACKING_MIGRATION');
+  });
+
+  it('fails Product publication metadata before active publication when binding fields are absent', () => {
+    const invalid = validatePublicationMetadata({
+      body: [
+        '<!-- pr-lifecycle', 'issue: none', 'state: ACTIVE', '-->',
+        'WORKSTREAM: PRODUCT_MAINLINE', 'WORK_ORIGIN: AGENT', 'BPLUS_MODE: true',
+        'AGENT_LANE: TERRA_BUILD', 'LANE_STATE: ACTIVE', 'ACTIVE_CANDIDATE: true',
+        'DELIVERY_UNIT_TYPE: SLICE', 'COUNT_IN_DELIVERY_OUTCOME: false',
+        'RETROACTIVE_TRACKING_MIGRATION: false', 'TEST_PROFILE: SOURCE_ONLY',
+        'FINAL_CANONICAL_REQUIRED: false', 'REQUESTED_MODEL / ACTUAL_MODEL: requested=terra; actual=unknown',
+      ].join('\n'),
+      changedFiles: ['src/app/x.ts'],
+      prNumber: 1,
+      action: 'opened',
+    });
+    expect(invalid.valid).toBe(false);
+    const errors = invalid.errors.join('\n');
+    expect(errors).toMatch(/RUN_ID|SCORECARD_PATH|issue|COUNT_IN_DELIVERY_OUTCOME/i);
+  });
+
+  it('wires Draft staging, trusted receipt verification and base-policy grandfathering into the remote guard', () => {
+    const workflow = fs.readFileSync('.github/workflows/agent-wip-guard.yml', 'utf8');
+    for (const needle of [
+      'validatePublicationMetadata',
+      'pr-publication-receipt.mjs',
+      'current.base.sha',
+      "current.draft === true",
+      'PUBLICATION_PREFLIGHT_RECEIPT_REQUIRED',
+      'findMatchingPublicationReceipt',
+      'github-actions[bot]',
+    ]) expect(workflow).toContain(needle);
+  });
+});
