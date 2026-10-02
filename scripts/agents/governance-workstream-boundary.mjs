@@ -79,10 +79,9 @@ export function terminalLabelPlan(pr) {
   const merged = pr.merged === true || Boolean(pr.merged_at);
   return {
     add: merged ? 'state:complete' : 'state:historical',
-    // Guard-owned warnings are semantic findings. Terminal cleanup cannot safely recompute
-    // them during a reopen race, so it never removes them from a closed PR.
     remove: ['state:active', 'state:reserve-ready', 'state:parked', 'state:owner-blocked',
       'candidate:active',
+      ...(merged ? ['governance:lane-metadata-incomplete', 'governance:wip-violation'] : []),
       merged ? 'state:historical' : 'state:complete'],
   };
 }

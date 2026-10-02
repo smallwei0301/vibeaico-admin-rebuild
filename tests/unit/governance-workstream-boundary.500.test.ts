@@ -252,6 +252,11 @@ describe('governance boundary regression #500', () => {
     expect(terminalLabelPlan(subject())).toBeNull();
     expect(terminalLabelPlan({ state: 'closed', merged: true })?.add).toBe('state:complete');
     expect(terminalLabelPlan({ state: 'closed', merged: false })?.add).toBe('state:historical');
+    expect(terminalLabelPlan({ state: 'closed', merged: true })?.remove).toEqual(expect.arrayContaining([
+      'governance:lane-metadata-incomplete', 'governance:wip-violation',
+    ]));
+    expect(terminalLabelPlan({ state: 'closed', merged: false })?.remove).not.toContain('governance:lane-metadata-incomplete');
+    expect(terminalLabelPlan({ state: 'closed', merged: false })?.remove).not.toContain('governance:wip-violation');
   });
   it('executes the real guard: malformed Product peers cannot block valid governance', async () => {
     const peers = Array.from({ length: 4 }, (_, index) => ({ ...subject(product), number: index + 1, draft: false }));
@@ -283,6 +288,24 @@ describe('governance boundary regression #500', () => {
     expect(current.body).toContain('state: ACTIVE');
     expect(current.body).toContain('LANE_STATE: ACTIVE');
     expect([...result.labels].sort()).toEqual(['state:complete', 'unrelated:keep']);
+  });
+  it('clears terminated guard warnings on a stable merged PR', async () => {
+    const current = { ...subject(), state: 'closed', merged: true, closed_at: created_at,
+      labels: [{ name: 'governance:lane-metadata-incomplete' }, { name: 'governance:wip-violation' }] };
+    const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current, paths, [], 'terminal_cleanup');
+    expect([...result.labels]).toContain('state:complete');
+    expect([...result.labels]).not.toContain('governance:lane-metadata-incomplete');
+    expect([...result.labels]).not.toContain('governance:wip-violation');
+    expect(result.calls).not.toContain('body');
+  });
+  it('retains guard warnings on a stable unmerged closed PR', async () => {
+    const current = { ...subject(), state: 'closed', merged: false, closed_at: created_at,
+      labels: [{ name: 'governance:lane-metadata-incomplete' }, { name: 'governance:wip-violation' }] };
+    const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current, paths, [], 'terminal_cleanup');
+    expect([...result.labels]).toEqual(expect.arrayContaining([
+      'state:historical', 'governance:lane-metadata-incomplete', 'governance:wip-violation',
+    ]));
+    expect(result.calls).not.toContain('body');
   });
 
   it('deduplicates only the trusted bot handoff for the same close generation', async () => {

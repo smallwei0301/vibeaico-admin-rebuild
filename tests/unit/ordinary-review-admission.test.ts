@@ -576,7 +576,7 @@ describe('review wake-up cannot cancel lifecycle housekeeping (synthetic Actions
 });
 
 describe('terminal cleanup compensates observed reopen without restoring stale metadata', () => {
-  it.each(['governance:lane-metadata-incomplete', 'governance:wip-violation'])('preserves %s across a reopened semantic guard error', async warningLabel => {
+  it.each(['governance:lane-metadata-incomplete', 'governance:wip-violation'])('preserves %s across an unmerged close/reopen', async warningLabel => {
     const boundary = await import('../../scripts/agents/governance-workstream-boundary.mjs');
     const initial = { ...current, state: 'closed', merged: false, closed_at: '2026-10-02T07:00:00Z',
       body: body + '\nWORK_ORIGIN: AGENT\nACTIVE_CANDIDATE: true\nRUN_ID: none',
@@ -584,7 +584,7 @@ describe('terminal cleanup compensates observed reopen without restoring stale m
     let live: any = structuredClone(initial);
     const removeLabel = vi.fn(async ({ name }: any) => {
       live.labels = live.labels.filter((label: any) => label.name !== name);
-      if (name === warningLabel) live = { ...live, state: 'open', closed_at: null };
+      if (name === 'state:active') live = { ...live, state: 'open', closed_at: null };
     });
     const github: any = { rest: {
       pulls: { get: vi.fn(async () => ({ data: structuredClone(live) })), update: vi.fn() },
