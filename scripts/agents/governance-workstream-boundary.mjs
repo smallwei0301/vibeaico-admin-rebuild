@@ -221,7 +221,7 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
     try {
     if (observed.state !== 'closed') return;
     const plan = terminalBodyPlan(observed), labelMismatch = pr => { const expected = terminalLabelPlan(pr), actual = names(pr); return expected && (!actual.includes(expected.add) || expected.remove.some(name => actual.includes(name))); };
-    let liveFailure = labelMismatch(observed) ? 'TERMINAL_LABELS_UNVERIFIED' : '';
+    let liveFailure = labelMismatch(observed) ? 'TERMINAL_LABELS_UNVERIFIED' : '', verifiedMain = '';
     if ((observed.merged || observed.merged_at) && plan.hasContract && !plan.changed && !plan.errors.length && !plan.unsyncedFields.length && !reason) try {
       const branch = observed.base?.ref, merge = observed.merge_commit_sha;
       const declared = readField(observed.body, 'MAIN_HEAD_SHA');
@@ -244,7 +244,7 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
         const jobs = (await github.rest.actions.listJobsForWorkflowRun({ owner, repo, run_id: Number(runId), filter: 'latest', per_page: 100 })).data;
         const remote = jobs.jobs?.filter(job => job.name === 'integration');
         if (!Array.isArray(jobs.jobs) || jobs.total_count !== jobs.jobs.length || remote?.length !== 1 || remote[0].status !== 'completed' || remote[0].conclusion !== 'success' || !['Run integration tests', 'Run E2E tests'].every(name => remote[0].steps?.filter(step => step.name === name && step.conclusion === 'success').length === 1)) throw Error('remote integration/E2E steps not verified');
-      }
+      } verifiedMain = main;
     } catch (error) { liveFailure = `LIVE_MAIN_RECEIPT_UNVERIFIED:${error.status ?? error.message ?? 'unknown'}`; }
     const pending = Boolean(plan.changed || plan.errors.length || plan.unsyncedFields.length || reason || liveFailure);
     const fields = plan.unsyncedFields.join(', ') || (liveFailure ? 'none (live receipt verification pending)' : 'none (label reconciliation only)');
@@ -258,8 +258,8 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
     if (!Array.isArray(comments)) throw new Error('STATE_SYNC_PENDING comment inventory unavailable');
     const trusted = comments.filter(comment => comment.user?.login === 'github-actions[bot]' && comment.user?.id === 41898282 && String(comment.body ?? '').startsWith(`<!-- agent-terminal-state-sync:v1 pr=${current.number} `)), prior = trusted.filter(comment => String(comment.body ?? '').startsWith(prefix));
     const unresolvedPrior = String(trusted.at(-1)?.body ?? '').split('\n')[1] === 'STATE_SYNC_PENDING';
-    const sameObserved = pr => pr.state === 'closed' && pr.head?.sha === observed.head?.sha && pr.closed_at === observed.closed_at && Boolean(pr.merged || pr.merged_at) === Boolean(observed.merged || observed.merged_at) && pr.body === observed.body;
-    const before = await read(); if (!sameObserved(before)) return; if (!pending && labelMismatch(before)) return recordPending(before, 'TERMINAL_LABELS_UNVERIFIED');
+    const sameObserved = pr => pr.state === 'closed' && pr.head?.sha === observed.head?.sha && pr.closed_at === observed.closed_at && Boolean(pr.merged || pr.merged_at) === Boolean(observed.merged || observed.merged_at) && pr.body === observed.body; const mainChanged = async () => { try { return (await github.rest.repos.getBranch({ owner, repo, branch: 'main' })).data.commit.sha !== verifiedMain; } catch { return true; } };
+    const before = await read(); if (!sameObserved(before)) return; if (!pending && labelMismatch(before)) return recordPending(before, 'TERMINAL_LABELS_UNVERIFIED'); if (!pending && verifiedMain && await mainChanged()) return recordPending(before, 'LIVE_MAIN_RECEIPT_UNVERIFIED:main moved');
     if (!pending && !prior.length && !unresolvedPrior || (String(prior.at(-1)?.body ?? '').startsWith(marker) && String(prior.at(-1)?.body ?? '').split('\n')[1] === status)) return;
     const priorIds = new Set(comments.map(comment => comment.id)); let created;
     try { created = await github.rest.issues.createComment({ owner, repo, issue_number: current.number, body: `${marker}\n${status}\n` +
@@ -279,7 +279,7 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
     }
     const after = await read();
     if (!sameObserved(after)) await github.rest.issues.updateComment({ owner, repo, comment_id: created.data.id,
-      body: `${marker}\nSTATE_SYNC_SUPERSEDED\nREASON: close generation or body changed after comment creation; recheck live PR before closeout.\n` }); else if (!pending && labelMismatch(after)) await recordPending(after, 'TERMINAL_LABELS_UNVERIFIED');
+      body: `${marker}\nSTATE_SYNC_SUPERSEDED\nREASON: close generation or body changed after comment creation; recheck live PR before closeout.\n` }); else if (!pending && labelMismatch(after)) { await github.rest.issues.updateComment({ owner, repo, comment_id: created.data.id, body: `${marker}\nSTATE_SYNC_SUPERSEDED\nREASON: terminal labels changed after comment creation; recheck live PR before closeout.\n` }); await recordPending(after, 'TERMINAL_LABELS_UNVERIFIED'); } else if (!pending && verifiedMain && await mainChanged()) { await github.rest.issues.updateComment({ owner, repo, comment_id: created.data.id, body: `${marker}\nSTATE_SYNC_SUPERSEDED\nREASON: live main moved after comment creation; recheck main receipt before closeout.\n` }); await recordPending(after, 'LIVE_MAIN_RECEIPT_UNVERIFIED:main moved'); }
     } catch (error) { handoffError = error; throw error; }
     finally { try { const fresh = await read(); if (touched && fresh.state === 'open') await restoreOpen(fresh); }
       catch (error) { if (handoffError) throw new AggregateError([handoffError, error], 'Terminal handoff and reopen compensation failed'); throw error; } }
