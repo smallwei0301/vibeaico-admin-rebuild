@@ -86,7 +86,14 @@ test('歡迎卡片圖片上傳後會保存，重整仍存在，移除也會保�
       await login(page);
       assertTestSupabaseTarget(projectRefFromCookieNames((await context.cookies()).map((c) => c.name)), 'welcome browser');
       const me = await apiData(await context.request.get('/api/auth/me', { timeout: 10_000 }));
-      expect(me).toMatchObject({ email: SHOP_A.owner.email, tenantId: SHOP_A.id, role: 'OWNER' });
+      expect(me).toMatchObject({ email: SHOP_A.owner.email });
+      // Without an active cookie, login may select any legitimate membership.
+      // Choose the intended seed tenant through the real membership-checked API.
+      expect(await apiData(await context.request.post('/api/auth/switch-tenant', {
+        data: { tenantId: SHOP_A.id }, timeout: 10_000,
+      }))).toEqual({ switched: true });
+      const selected = await apiData(await context.request.get('/api/auth/me', { timeout: 10_000 }));
+      expect(selected).toMatchObject({ email: SHOP_A.owner.email, tenantId: SHOP_A.id, role: 'OWNER' });
     });
     await test.step('建立 disposable tenant，以合法 membership switch 並讀回身份', async () => {
       const membership = await admin.from('tenant_users').select('user_id').eq('tenant_id', SHOP_A.id).eq('role', 'OWNER').single();
