@@ -175,9 +175,20 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
     // Conditional undo of only fields this invocation wrote, using the fresh body/prose.
     // A changed field belongs to its new writer and is preserved, not replaced by an old snapshot.
     let body = observed.body ?? '';
-    // A new commit does not take ownership of body metadata; a changed metadata contract does.
+    const state = source => {
+      const blocks = [...String(source).matchAll(/<!--\s*pr-lifecycle\b[\s\S]*?-->/gi)];
+      const rows = blocks.length === 1 ? [...blocks[0][0].matchAll(/(?:^|\n)\s*state\s*:\s*([A-Z_]+)(?=\s*(?:\n|$))/gim)] : [];
+      return rows.length === 1 ? rows[0][1] : null;
+    };
+    // State, candidate and lane form one ownership decision: PARKED/false is new intent,
+    // while a new head or unrelated planning field does not take ownership of terminal fields.
+    const lifecycleContract = source => {
+      const { issueNumber, origin, lane, state: laneState, activeCandidate } = parseLaneMetadata({ body: source });
+      return { issueNumber, origin, lane, laneState, activeCandidate,
+        workstream: upper(readField(source, 'WORKSTREAM')), lifecycleState: state(source) };
+    };
     const ownContract = writtenBody !== undefined &&
-      JSON.stringify(parseLaneMetadata({ body })) === JSON.stringify(parseLaneMetadata({ body: writtenBody }));
+      JSON.stringify(lifecycleContract(body)) === JSON.stringify(lifecycleContract(writtenBody));
     if (ownContract) {
       for (const field of ['LANE_STATE', 'ACTIVE_CANDIDATE']) {
         const prior = readField(beforeBody, field), written = readField(writtenBody, field);
@@ -187,11 +198,6 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
           body = undo.body;
         }
       }
-      const state = source => {
-        const blocks = [...String(source).matchAll(/<!--\s*pr-lifecycle\b[\s\S]*?-->/gi)];
-        const rows = blocks.length === 1 ? [...blocks[0][0].matchAll(/(?:^|\n)\s*state\s*:\s*([A-Z_]+)(?=\s*(?:\n|$))/gim)] : [];
-        return rows.length === 1 ? rows[0][1] : null;
-      };
       const prior = state(beforeBody), written = state(writtenBody);
       if (prior && prior !== written && state(body) === written) {
         const undo = rewriteLifecycleState(body, prior);

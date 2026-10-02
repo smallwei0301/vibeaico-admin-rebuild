@@ -1753,6 +1753,8 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 #745 finding4164232013（2026-10-02T08:53:21Z）追加：先前補償只在 reopen 後 head 仍等於 closed 事件 head 時撤回自身終態 body。若 terminal body 寫完後 reopen、只 push 新 commit 而未改 machine metadata，這項無關 head 條件會留下 open PR 的 `HISTORICAL`／candidate=false。actual-script `after-body-new-head-only` 先驗出 RED1／99PASS；移除補償所有權的舊 head 條件，保留**整份 parsed metadata 等於自身寫入結果**才撤回自身變更欄位的判斷，再用 fresh open head/body 比對每次補償寫入。新 head 且使用者改為 PARKED 的既有反例仍須保持 PARKED/candidate=false，不能逐欄看到相同 false 就還原舊 true。局部兩檔 131PASS；完整樹、獨立審查、遠端新 head CI 與最新 finding 仍須另驗。最後 read/write 非原子，若 metadata ownership 不可判定就保留新意圖並待後續 reconcile，不猜測或偽造 PASS。
 
+#745 finding4164713436（2026-10-02T09:59:35Z）再補：head-only 修正的整份 `parseLaneMetadata` 比對仍太寬；reopen 後只改 `REMAINING_AUTONOMOUS_STEPS` 等規劃欄位，也會阻止撤回自身 `HISTORICAL`／false，留下錯誤 WIP 標籤。無關欄位與無關欄位＋新 head 的實際腳本反例先有 2FAIL／100PASS；改用耦合的 lifecycle ownership contract（issue、workstream、origin、lane、state、candidate、lifecycle state）判定這次 writer 是否仍擁有終態欄位。無關規劃欄位及 head 變更可撤回自身改寫的欄位並保留新 prose；新的 PARKED／false、LUNA_CLOSURE 或 lifecycle 意圖仍不得因單欄位相同而還原 stale true。局部兩檔 133PASS/typecheck exit0；完整樹、獨立審查、新遠端 head CI 與最新 findings 待驗。相同值 ABA 與 REST 非原子窗口仍無法機械證明新 writer 意圖，不能宣稱絕對競態安全。
+
 ### PB-050 — 埋了點，卻整輪沒跑過驗證器；欄位有值，但值在另一套詞彙裡
 
 - 首次／最近：2026-09-14 / 2026-09-14

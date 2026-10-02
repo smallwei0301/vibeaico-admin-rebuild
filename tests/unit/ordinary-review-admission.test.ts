@@ -587,9 +587,9 @@ describe('terminal cleanup compensates observed reopen without restoring stale m
       { state: 'closed', number: 900 }, {}, 'smallwei0301', 'vibeaico-admin-rebuild', { summary });
     expect(boundary.reconcileTerminalPr).not.toHaveBeenCalled();
   });
-  it.each(['before-label', 'after-remove', 'after-add', 'after-body', 'after-body-metadata', 'after-body-new-head', 'after-body-new-head-only', 'fresh-metadata', 'new-generation'])('independent terminal writer/%s checks each write and repairs reopened live labels/body', async phase => {
+  it.each(['before-label', 'after-remove', 'after-add', 'after-body', 'after-body-metadata', 'after-body-new-head', 'after-body-new-head-only', 'after-body-steps', 'after-body-new-head-steps', 'fresh-metadata', 'new-generation'])('independent terminal writer/%s checks each write and repairs reopened live labels/body', async phase => {
       const { github, live } = wakeupFixture();
-      const original = live.body + '\nWORK_ORIGIN: AGENT\nACTIVE_CANDIDATE: true';
+      const original = live.body + '\nWORK_ORIGIN: AGENT\nACTIVE_CANDIDATE: true' + (phase.endsWith('-steps') ? '\nREMAINING_AUTONOMOUS_STEPS: pending' : '');
       let pr: any = { ...live, body: original, state: 'closed', merged: false, closed_at: '2026-10-02T07:00:00Z', labels: [{ name: 'state:active' }, { name: 'candidate:active' }, { name: 'unrelated:keep' }] };
       const eventPr = structuredClone(pr);
       let reads = 0;
@@ -618,10 +618,11 @@ describe('terminal cleanup compensates observed reopen without restoring stale m
       });
       github.rest.pulls.update = vi.fn(async ({ body }: any) => {
         mutations.push('body'); pr.body = body;
-        if (['after-body', 'after-body-metadata', 'after-body-new-head', 'after-body-new-head-only'].includes(phase) && pr.state === 'closed') {
+        if (['after-body', 'after-body-metadata', 'after-body-new-head', 'after-body-new-head-only', 'after-body-steps', 'after-body-new-head-steps'].includes(phase) && pr.state === 'closed') {
           reopen(); pr.body += '\nConcurrent prose survives';
           if (['after-body-metadata', 'after-body-new-head'].includes(phase)) pr.body = pr.body.replace('LANE_STATE: HISTORICAL', 'LANE_STATE: PARKED');
-          if (['after-body-new-head', 'after-body-new-head-only'].includes(phase)) pr.head = { ...pr.head, sha: 'f'.repeat(40) };
+          if (phase.endsWith('-steps')) pr.body = pr.body.replace('REMAINING_AUTONOMOUS_STEPS: pending', 'REMAINING_AUTONOMOUS_STEPS: next');
+          if (['after-body-new-head', 'after-body-new-head-only', 'after-body-new-head-steps'].includes(phase)) pr.head = { ...pr.head, sha: 'f'.repeat(40) };
         }
       });
       const boundary = await import('../../scripts/agents/governance-workstream-boundary.mjs');
@@ -637,7 +638,8 @@ describe('terminal cleanup compensates observed reopen without restoring stale m
         expect(names, phase).toContain(['fresh-metadata', 'after-body-metadata', 'after-body-new-head'].includes(phase) ? 'state:parked' : 'state:active');
         expect(names.includes('candidate:active'), phase).toBe(!['fresh-metadata', 'after-body-metadata', 'after-body-new-head'].includes(phase));
         if (phase === 'before-label') expect(mutations).toEqual([]);
-        if (['after-body', 'after-body-new-head-only'].includes(phase)) { expect(pr.body).toContain('LANE_STATE: ACTIVE'); expect(pr.body).toContain('ACTIVE_CANDIDATE: true'); expect(pr.body).toContain('Concurrent prose survives'); }
+        if (['after-body', 'after-body-new-head-only', 'after-body-steps', 'after-body-new-head-steps'].includes(phase)) { expect(pr.body).toContain('LANE_STATE: ACTIVE'); expect(pr.body).toContain('ACTIVE_CANDIDATE: true'); expect(pr.body).toContain('Concurrent prose survives'); }
+        if (phase.endsWith('-steps')) expect(pr.body).toContain('REMAINING_AUTONOMOUS_STEPS: next');
       }
       expect(github.rest.repos.createCommitStatus).not.toHaveBeenCalled();
       expect(github.rest.actions.createWorkflowDispatch).not.toHaveBeenCalled();
