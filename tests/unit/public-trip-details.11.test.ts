@@ -12,6 +12,7 @@ const fakeState = vi.hoisted(() => ({
   lookaheadStartedToday: false,
   onlySoldOut: false,
   salesMode: 'FIXED_DEPARTURE',
+  modeFor: null as null | ((i: number) => string),
   active: 0,
   maxActive: 0,
   calls: [] as Array<{ table: string; filters: Record<string, unknown>; single: boolean }>,
@@ -42,7 +43,7 @@ vi.mock('@/server/supabase', () => ({
           const [pFrom, pTo] = rangeArgs ?? [0, Number.MAX_SAFE_INTEGER];
           const all = Array.from({ length: fakeState.planCount }, (_, i) => ({
             id: `plan-${i}`, trip_id: 'trip-1', name: `P${i}`, description: '', price_per_person: 100,
-            price_type: 'PER_PERSON', min_party: 1, max_party: 4, sales_mode: fakeState.salesMode,
+            price_type: 'PER_PERSON', min_party: 1, max_party: 4, sales_mode: fakeState.modeFor ? fakeState.modeFor(i) : fakeState.salesMode,
           }));
           return { data: all.slice(pFrom, pTo + 1), error: null };
         }
@@ -207,6 +208,7 @@ describe('#11 公開行程詳情：方案團次查詢併發上限', () => {
     fakeState.lookaheadStartedToday = false;
     fakeState.onlySoldOut = false;
     fakeState.salesMode = 'FIXED_DEPARTURE';
+    fakeState.modeFor = null;
     fakeState.active = 0;
     fakeState.maxActive = 0;
     fakeState.calls = [];
@@ -248,6 +250,7 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     fakeState.lookaheadStartedToday = false;
     fakeState.onlySoldOut = false;
     fakeState.salesMode = 'FIXED_DEPARTURE';
+    fakeState.modeFor = null;
     fakeState.active = 0;
     fakeState.maxActive = 0;
     fakeState.calls = [];
@@ -464,6 +467,28 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     expect(depCalls.length).toBe(30);
     // 最壞情況總查詢數：30 × (5 頁 + 1 lookahead) ＝ 180。
     expect(depCalls.length).toBeLessThanOrEqual(30 * 6);
+  });
+
+  it('INSTANT 不進團次查詢集合：不查、departures 為 []、不標 departuresNotLoaded、不占 30 個額度；第 31 個 FIXED 才是 notLoaded', async () => {
+    fakeState.planCount = 36; // 前 5 個 INSTANT，其後 31 個 FIXED
+    fakeState.modeFor = (i) => (i < 5 ? 'INSTANT' : 'FIXED_DEPARTURE');
+    const { loadPublicTripDetails } = await import('@/server/public-shop');
+    const plans = (await loadPublicTripDetails('demo', 'hike'))?.trip.plans ?? [];
+    expect(plans).toHaveLength(36);
+    // fake 對任何 plan_id 都回傳 OPEN 團次，所以 INSTANT 的 departures 為空代表「沒有查」。
+    for (const p of plans.slice(0, 5)) {
+      expect(p.salesMode).toBe('INSTANT');
+      expect(p.departures).toEqual([]);
+      expect(p).not.toHaveProperty('departuresNotLoaded');
+    }
+    expect(plans.slice(5, 35).every((p) => p.departures.length === 1 && !p.departuresNotLoaded)).toBe(true);
+    expect(plans[35].departuresNotLoaded).toBe(true);
+    const queried = fakeState.calls
+      .filter((c) => c.table === 'trip_departures' && c.filters.plan_id)
+      .map((c) => c.filters.plan_id as string);
+    expect(queried).toHaveLength(30);
+    for (let i = 0; i < 5; i += 1) expect(queried).not.toContain(`plan-${i}`);
+    expect(queried).not.toContain('plan-35');
   });
 
   it('M1：成團欄位只在 FIXED_DEPARTURE 輸出；REQUEST／INSTANT 不帶', async () => {

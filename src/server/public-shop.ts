@@ -328,6 +328,11 @@ async function loadPublicShopCore(
   return { shop, tenantId: tenantRow.id as string };
 }
 
+/** 這種販售方式的方案才會在詳情頁公開列出團次。 */
+function hasPublicDepartureList(plan: { salesMode: string }): boolean {
+  return plan.salesMode === 'FIXED_DEPARTURE' || plan.salesMode === 'REQUEST';
+}
+
 function mapPublicPlan(row: Record<string, unknown>): PublicPlan {
   return {
     id: row.id as string,
@@ -552,7 +557,12 @@ async function loadPublicTripDetailsUncached(
   }
   const plans: PublicPlan[] = planRows.map((r) => mapPublicPlan(r));
 
-  const plansWithDepartures = plans.slice(0, MAX_DETAIL_PLANS_WITH_DEPARTURES);
+  // 只有 FIXED_DEPARTURE／REQUEST 方案進入團次查詢集合（30 個額度只算這兩類）。INSTANT（及未知模式）
+  // 一律不查團次、departures 為 []、也不標 departuresNotLoaded：canonical 自選時間流程只顯示重新驗證過的
+  // 導遊 availability，INSTANT 方案若有手動或私人用途的 OPEN 團次，不得公開成「近期開放日期」。
+  const plansWithDepartures = plans
+    .filter(hasPublicDepartureList)
+    .slice(0, MAX_DETAIL_PLANS_WITH_DEPARTURES);
   const planDepartureResults = await mapWithConcurrency(plansWithDepartures, DETAIL_PLAN_QUERY_CONCURRENCY, async (plan) => {
     const departures: PublicTripDetailDeparture[] = [];
     let offset = 0;
@@ -701,7 +711,8 @@ async function loadPublicTripDetailsUncached(
         departures: departuresByPlan.get(plan.id)?.departures ?? [],
         departuresMayBeTruncated: departuresByPlan.get(plan.id)?.mayBeTruncated ?? false,
         ...(departuresByPlan.get(plan.id)?.soldOutOmitted ? { soldOutOmitted: true } : {}),
-        ...(departuresByPlan.has(plan.id) ? {} : { departuresNotLoaded: true as const }),
+        ...(hasPublicDepartureList(plan) && !departuresByPlan.has(plan.id)
+          ? { departuresNotLoaded: true as const } : {}),
       })),
       ...(plansMayBeTruncated ? { plansMayBeTruncated: true as const } : {}),
     },
