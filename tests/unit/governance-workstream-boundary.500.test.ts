@@ -298,7 +298,6 @@ describe('governance boundary regression #500', () => {
       for (const label of ['governance:lane-metadata-incomplete', 'governance:wip-violation']) expect(result.labels.has(label)).toBe(keepWarnings);
       expect(result.calls).not.toContain('body');
     });
-
   it('deduplicates only the trusted bot handoff for the same close generation', async () => {
     const initialBody = gov.replace('state: ACTIVE', 'state: HISTORICAL').replace('LANE_STATE: ACTIVE', 'LANE_STATE: HISTORICAL').replace('REMAINING_AUTONOMOUS_STEPS: source CI and exact-diff verification', 'REMAINING_AUTONOMOUS_STEPS: none') + '\nMERGE_STATUS: NOT_REQUESTED';
     const closed = { ...subject(initialBody), state: 'closed', merged: false, closed_at: '2026-10-02T07:00:00Z', labels: [{ name: 'state:active' }] };
@@ -347,6 +346,8 @@ describe('governance boundary regression #500', () => {
     closed.state = 'closed'; closed.body = pendingBody.replace('OWNER_OR_EXTERNAL_BLOCKER: none', 'OWNER_OR_EXTERNAL_BLOCKER: third queue');
     github.rest.issues.createComment.mockImplementationOnce(async ({ body }: any) => { comments.push({ id: 6, body, user: { login: 'github-actions[bot]', id: 41898282 } }); closed.body = pendingBody; throw Error('create after body edit'); });
     await expect(call()).rejects.toThrow('create after body edit'); expect(comments.at(-1).body).toContain('STATE_SYNC_SUPERSEDED');
+    closed.body = pendingBody; await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_PENDING');
+    closed.closed_at = '2026-10-02T08:00:00Z'; closed.body = pendingBody.replace('MERGE_STATUS: NOT_REQUESTED', 'MERGE_STATUS: VERIFIED_NOT_MERGED'); await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_RESOLVED');
   });
 
   it('rewrites only live terminal declarations and preserves fenced examples', () => {
@@ -385,14 +386,12 @@ describe('governance boundary regression #500', () => {
     expect(plan?.unsyncedFields).toContain(field);
     expect(plan?.errors.length).toBeGreaterThan(0);
   });
-
   it('puts failed and changed fields together in the actual STATE_SYNC_PENDING handoff', async () => {
     const closed = { ...subject(gov + '\nACTIVE_CANDIDATE: true\n'), state: 'closed', merged: true,
       closed_at: created_at, labels: [] as { name: string }[] };
     const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', closed, paths, [], 'terminal_cleanup');
     expect(result.comments).toEqual([expect.stringContaining('UNSYNCED_FIELDS: pr-lifecycle.state, LANE_STATE, ACTIVE_CANDIDATE')]);
   });
-
   it('lists other current-state fields for manual terminal closeout without rewriting them', async () => {
     const body = gov.replace('OWNER_OR_EXTERNAL_BLOCKER: none', 'OWNER_OR_EXTERNAL_BLOCKER: waiting on old TEST queue') +
       '\nMERGE_STATUS: NOT_REQUESTED\nCOMPLETION_CLAIM: IN_PROGRESS\n';
@@ -403,15 +402,14 @@ describe('governance boundary regression #500', () => {
     expect(result.comments[0]).toContain('MERGE_STATUS, COMPLETION_CLAIM');
     expect(result.calls).not.toContain('body');
   });
-
-  it.each([[false, gov.replace('REMAINING_AUTONOMOUS_STEPS: source CI and exact-diff verification', 'REMAINING_AUTONOMOUS_STEPS: none') + '\nMERGE_STATUS: VERIFIED_NOT_MERGED\nCOMPLETION_CLAIM: VERIFIED_CLOSED'], [true, gov.replace('REMAINING_AUTONOMOUS_STEPS: source CI and exact-diff verification', 'REMAINING_AUTONOMOUS_STEPS: none') + '\n```text\nMERGE_STATUS: NOT_REQUESTED\nCOMPLETION_CLAIM: IN_PROGRESS']])('does not invent unsynced optional fields from valid values or an unclosed example fence', (merged, body) => {
+  it.each([[false, gov.replace('REMAINING_AUTONOMOUS_STEPS: source CI and exact-diff verification', 'REMAINING_AUTONOMOUS_STEPS: none') + '\nMERGE_STATUS: VERIFIED_NOT_MERGED\nCOMPLETION_CLAIM: VERIFIED_CLOSED'], [true, gov.replace('REMAINING_AUTONOMOUS_STEPS: source CI and exact-diff verification', 'REMAINING_AUTONOMOUS_STEPS: none') + '\n```text\nMERGE_STATUS: NOT_REQUESTED\nCOMPLETION_CLAIM: IN_PROGRESS']])('does not use fenced examples as merged receipts', (merged, body) => {
     const unsynced = terminalBodyPlan({ state: 'closed', merged, body })?.unsyncedFields;
-    for (const field of ['MERGE_STATUS', 'COMPLETION_CLAIM', 'OWNER_OR_EXTERNAL_BLOCKER', 'REMAINING_AUTONOMOUS_STEPS']) expect(unsynced).not.toContain(field);
+    for (const field of ['MERGE_STATUS', 'COMPLETION_CLAIM']) expect(unsynced?.includes(field)).toBe(merged);
+    for (const field of ['OWNER_OR_EXTERNAL_BLOCKER', 'REMAINING_AUTONOMOUS_STEPS']) expect(unsynced).not.toContain(field);
   });
-
   it.each([[false, 'VERIFIED_MERGED'], [true, 'VERIFIED_CLOSED'], [true, 'OWNER_BLOCKED']])('flags %s terminal PR with mismatched claim %s', (merged, claim) => {
     const body = gov.replace('state: ACTIVE', `state: ${merged ? 'MERGED' : 'HISTORICAL'}`).replace('LANE_STATE: ACTIVE', `LANE_STATE: ${merged ? 'COMPLETE' : 'HISTORICAL'}`).replace('REMAINING_AUTONOMOUS_STEPS: source CI and exact-diff verification', 'REMAINING_AUTONOMOUS_STEPS: none') + `\nMERGE_STATUS: ${merged ? 'VERIFIED_MERGED' : 'VERIFIED_NOT_MERGED'}\nCOMPLETION_CLAIM: ${claim}`;
-    expect(terminalBodyPlan({ state: 'closed', merged, body })?.unsyncedFields).toEqual(['COMPLETION_CLAIM']);
+    expect(terminalBodyPlan({ state: 'closed', merged, body })?.unsyncedFields).toContain('COMPLETION_CLAIM');
   });
   it('keeps merged Completion Truth receipt gaps in the pending handoff', async () => {
     const body = gov.replace('state: ACTIVE', 'state: MERGED').replace('LANE_STATE: ACTIVE', 'LANE_STATE: COMPLETE')
@@ -437,6 +435,9 @@ describe('governance boundary regression #500', () => {
     }, paginate: vi.fn(async () => comments) };
     const call = () => boundaryPolicy.reconcileTerminalPr({ github, owner: 'owner', repo: 'repo', current: live });
     await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_RESOLVED');
+    live.body = verified.replace(/^MERGE_COMMIT_SHA:.*\n/m, ''); await call(); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: MERGE_COMMIT_SHA');
+    live.body = verified.replace(/^(?:MERGE_STATUS|COMPLETION_CLAIM|MERGE_COMMIT_SHA|MAIN_HEAD_VERIFIED|MAIN_HEAD_SHA|MAIN_FILE_RE_READ|VERIFIED_AT|EXACT_HEAD_CI_STATUS|EXACT_HEAD_CI_RUN|LOCAL_JOB_RESULT|REMOTE_JOB_RESULT):.*\n?/gm, ''); await call(); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: MERGE_STATUS, COMPLETION_CLAIM, MERGE_COMMIT_SHA');
+    live.body = verified;
     expect(github.rest.repos.getContent).toHaveBeenCalledWith(expect.objectContaining({ ref: 'c'.repeat(40), path: 'docs/AGENT-EXECUTION.md' }));
     github.rest.repos.compareCommitsWithBasehead.mockResolvedValue({ data: { status: 'diverged' } });
     await call(); expect(comments.at(-1).body).toContain('LIVE_MAIN_RECEIPT_UNVERIFIED');
@@ -452,13 +453,11 @@ describe('governance boundary regression #500', () => {
     expect(plan?.errors).toEqual([]);
     expect(plan?.unsyncedFields).toEqual([]);
   });
-
   it.each(['\n', '\r'])('recognizes current-state fields after a same-line HTML comment close', newline => {
     const body = ['<!-- explanatory note', '-->LANE_STATE: ACTIVE', '<!-- explanatory note', '-->ACTIVE_CANDIDATE: true'].join(newline);
     const plan = terminalBodyPlan({ state: 'closed', merged: true, body });
     expect(plan?.unsyncedFields).toEqual(expect.arrayContaining(['pr-lifecycle.state', 'LANE_STATE', 'ACTIVE_CANDIDATE']));
   });
-
   it('fails safe on ambiguous terminal metadata instead of partially rewriting the PR body', async () => {
     const body = gov + '\nACTIVE_CANDIDATE: true\n';
     const plan = terminalBodyPlan({ state: 'closed', merged: true, body });

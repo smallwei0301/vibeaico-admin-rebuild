@@ -146,6 +146,7 @@ export function terminalBodyPlan(pr) {
   const visible = metadataLines(body, { allowPartial: true });
   const hasContract = lifecycle.present || visible.some(line =>
     /^[ \t]*[-*]?[ \t]*(?:WORK_ORIGIN|LANE_STATE|ACTIVE_CANDIDATE)[ \t]*:/i.test(line));
+  const hasReceipt = merged && hasContract;
   if (lifecycle.error) { errors.push(lifecycle.error); unsyncedFields.add('pr-lifecycle.state'); }
   else if (lifecycle.changed) { changedFields.push('pr-lifecycle.state'); unsyncedFields.add('pr-lifecycle.state'); }
   else if (hasContract && !lifecycle.present) {
@@ -166,7 +167,6 @@ export function terminalBodyPlan(pr) {
     if (rewritten.changed) { changedFields.push(field); unsyncedFields.add(field); }
     body = rewritten.body;
   }
-
   // These fields need a human closeout decision. Never infer a merge receipt,
   // Product acceptance, or whether an external blocker has actually cleared.
   for (const [field, stale] of [
@@ -185,11 +185,10 @@ export function terminalBodyPlan(pr) {
     ['REMOTE_JOB_RESULT', value => merged && !['VERIFIED_GREEN', 'SKIPPED'].includes(value)],
   ]) {
     if (!hasContract) continue;
-    if (!visible.some(line => new RegExp(`^[ \\t]*[-*]?[ \\t]*${field}[ \\t]*:`, 'i').test(line))) continue;
+    if (!visible.some(line => new RegExp(`^[ \\t]*[-*]?[ \\t]*${field}[ \\t]*:`, 'i').test(line))) { if (hasReceipt) unsyncedFields.add(field); continue; }
     const value = readField(visible.join('\n'), field);
     if (!value || value.includes('|') || stale(upper(value))) unsyncedFields.add(field);
   }
-
   return {
     body,
     changed: body !== String(pr.body ?? ''),
@@ -199,8 +198,6 @@ export function terminalBodyPlan(pr) {
     errors: [...new Set(errors)],
   };
 }
-
-
 /** The independent terminal writer uses bounded label reconciliation; REST is not atomic.
  * GitHub has no conditional PR-body PATCH, so lifecycle body fields require a separate
  * human-controlled closeout write. This writer never risks replacing concurrent prose.
@@ -250,7 +247,7 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
       if (run.head_sha !== observed.head?.sha || run.status !== 'completed' || run.conclusion !== 'success' || run.event !== 'pull_request' || run.path !== '.github/workflows/ci.yml') throw Error('exact-head CI run is not verified');
     } catch (error) { liveFailure = `LIVE_MAIN_RECEIPT_UNVERIFIED:${error.status ?? error.message ?? 'unknown'}`; }
     const pending = Boolean(plan.changed || plan.errors.length || plan.unsyncedFields.length || reason || liveFailure);
-    const fields = plan.unsyncedFields.join(', ') || (liveFailure ? 'MAIN_HEAD_SHA, MAIN_FILE_RE_READ, EXACT_HEAD_CI_RUN' : 'none (label reconciliation only)');
+    const fields = plan.unsyncedFields.join(', ') || (liveFailure ? 'none (live receipt verification pending)' : 'none (label reconciliation only)');
     const failure = reason || plan.errors.join('; ') || liveFailure || (pending ? 'UNSAFE_NON_CONDITIONAL_BODY_PATCH' : 'none');
     const status = pending ? 'STATE_SYNC_PENDING' : 'STATE_SYNC_RESOLVED';
     const prefix = `<!-- agent-terminal-state-sync:v1 pr=${current.number} head=${observed.head?.sha} closed_at=${observed.closed_at}`;
@@ -259,12 +256,13 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
     const comments = await github.paginate(github.rest.issues.listComments,
       { owner, repo, issue_number: current.number, per_page: 100 });
     if (!Array.isArray(comments)) throw new Error('STATE_SYNC_PENDING comment inventory unavailable');
-    const prior = comments.filter(comment => comment.user?.login === 'github-actions[bot]' && comment.user?.id === 41898282 &&
-      String(comment.body ?? '').startsWith(prefix));
+    const trusted = comments.filter(comment => comment.user?.login === 'github-actions[bot]' && comment.user?.id === 41898282 && String(comment.body ?? '').startsWith(`<!-- agent-terminal-state-sync:v1 pr=${current.number} `));
+    const prior = trusted.filter(comment => String(comment.body ?? '').startsWith(prefix));
+    const unresolvedPrior = String(trusted.at(-1)?.body ?? '').split('\n')[1] === 'STATE_SYNC_PENDING';
     const sameObserved = pr => pr.state === 'closed' && pr.head?.sha === observed.head?.sha && pr.closed_at === observed.closed_at && Boolean(pr.merged || pr.merged_at) === Boolean(observed.merged || observed.merged_at) && pr.body === observed.body;
     const before = await read();
     if (!sameObserved(before)) return;
-    if (!pending && !prior.length || (String(prior.at(-1)?.body ?? '').startsWith(marker) && String(prior.at(-1)?.body ?? '').split('\n')[1] === status)) return;
+    if (!pending && !prior.length && !unresolvedPrior || (String(prior.at(-1)?.body ?? '').startsWith(marker) && String(prior.at(-1)?.body ?? '').split('\n')[1] === status)) return;
     const priorIds = new Set(comments.map(comment => comment.id));
     let created;
     try { created = await github.rest.issues.createComment({ owner, repo, issue_number: current.number, body: `${marker}\n${status}\n` +
