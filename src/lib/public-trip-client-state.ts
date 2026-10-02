@@ -56,21 +56,30 @@ export function stateAfterFetch(
   return background ? current : { status: 'error' };
 }
 
-export type FixedBookingCtaState = 'show' | 'unavailable' | 'none';
+export type BookingCtaState =
+  | 'fixed' | 'fixed-unavailable'
+  | 'request' | 'request-unavailable'
+  | 'none';
 
 /**
- * JSX 只依賴這個單一回傳值：
- * - show：FIXED_DEPARTURE 且已列出的團次至少一筆可訂 → 顯示報名入口。
- * - unavailable：FIXED_DEPARTURE 但沒有可訂的已列出團次（含空陣列）→ 不顯示入口，顯示說明。
- * - none：其他販售方式 → 不顯示固定團次入口。
+ * JSX 只依賴這個單一回傳值（依 salesMode）：
+ * - FIXED_DEPARTURE、REQUEST：已列出的團次至少一筆可訂（見 hasBookableListedDeparture）才回 fixed／request，
+ *   否則回 *-unavailable（含空陣列）。REQUEST 的目的頁（RequestForm）沒有可選團次就永遠送不出去，
+ *   且其 canSubmit 需要 departureId，所以與 FIXED 同樣處理；條件（含 seatsLeft >= minParty）比目的頁更保守。
+ * - INSTANT 與其他模式：none（沿用原狀：INSTANT 只顯示說明，沒有入口）。
  */
-export function fixedBookingCtaState(plan: {
+export function bookingCtaState(plan: {
   salesMode: string;
   minParty?: number;
   departures: Array<{ seatsLeft: number; soldOut?: true }>;
-}): FixedBookingCtaState {
-  if (plan.salesMode !== 'FIXED_DEPARTURE') return 'none';
-  return hasBookableListedDeparture(plan) ? 'show' : 'unavailable';
+}): BookingCtaState {
+  if (plan.salesMode === 'FIXED_DEPARTURE') {
+    return hasBookableListedDeparture(plan) ? 'fixed' : 'fixed-unavailable';
+  }
+  if (plan.salesMode === 'REQUEST') {
+    return hasBookableListedDeparture(plan) ? 'request' : 'request-unavailable';
+  }
+  return 'none';
 }
 
 /** HTTP 回應 → 畫面結果：404 是找不到，其他非 2xx 或 payload 無效是錯誤。 */

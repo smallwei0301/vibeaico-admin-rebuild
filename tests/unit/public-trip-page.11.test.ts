@@ -61,7 +61,13 @@ describe('#11 詳情頁 server：404 與 props allowlist', () => {
     expect(Object.keys(props)).not.toContain('initialData');
     expect(loader).not.toHaveBeenCalled();
     expect(notFound).not.toHaveBeenCalled();
-    expect(rate.mock.calls.map((c) => c[0])).toEqual(['public-trip-ip:1.2.3.4']);
+    expect(rate.mock.calls.map((c) => c[0])).toEqual(['public-trip-page:1.2.3.4:demo']);
+  });
+
+  it('D7：頁面使用 page scope（與 API 的店家級 bucket 各自計數），之後才判來源級', async () => {
+    loader.mockResolvedValue(details());
+    await loadPublicTripPage(p('demo', 'x'));
+    expect(rate.mock.calls.map((c) => c[0])).toEqual(['public-trip-page:1.2.3.4:demo', 'public-trip-ip:1.2.3.4']);
   });
 
   it('shopCode 格式不合 → notFound，且不建立節流 bucket、不查 DB', async () => {

@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const loader = vi.fn();
+vi.mock('@/server/public-cors', () => ({
+  publicCorsHeaders: () => ({ 'X-Test-Cors': '1' }),
+  publicCorsPreflightResponse: () => new Response(null, { status: 204 }),
+}));
 vi.mock('@/server/public-shop', () => ({
   loadPublicTripDetails: (...args: unknown[]) => loader(...args),
 }));
@@ -26,6 +30,8 @@ describe('#11 公開行程詳情節流（API 與頁面共用規則）', () => {
       expect(res.status).toBe(404);
     }
     expect(loader).not.toHaveBeenCalled();
+    // D6：格式不合的 404 也要帶 CORS header。
+    expect((await call(ip, 'Bad Code')).headers.get('X-Test-Cors')).toBe('1');
     // 400 次隨機店碼後，同一 IP 的合法請求仍在額度內（來源級 bucket 沒被消耗）。
     const ok = await call(ip, 'demo');
     expect(ok.status).toBe(404); // loader 回 null → 找不到，但不是 429
@@ -49,6 +55,12 @@ describe('#11 公開行程詳情節流（API 與頁面共用規則）', () => {
     expect(consumePublicTripRateLimit('api', ip, 'one')).toBe(false);
     // 頁面前綴獨立計數，但仍共用來源級額度。
     expect(consumePublicTripRateLimit('page', ip, 'one')).toBe(true);
+  });
+
+  it('同一 IP 對同一家店刷新被店家級擋下時，不會扣光來源級額度：換其他合法店家仍可通過', async () => {
+    const ip = nextIp();
+    for (let i = 0; i < 400; i += 1) consumePublicTripRateLimit('api', ip, 'busy');
+    expect(consumePublicTripRateLimit('api', ip, 'other-shop')).toBe(true);
   });
 
   it('不同 IP 互不影響', async () => {

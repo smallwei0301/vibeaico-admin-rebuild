@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { publicTripDetailsPage as t } from '@/i18n/zh-TW/pages/public-trip-details';
 import {
-  fixedBookingCtaState, hasBookableListedDeparture, initialLoadState, outcomeFromHttp, shouldFetchOnMount, stateAfterFetch,
+  bookingCtaState, hasBookableListedDeparture, initialLoadState, outcomeFromHttp, shouldFetchOnMount, stateAfterFetch,
 } from '@/lib/public-trip-client-state';
 
 const data = { shop: {}, trip: {} } as never;
@@ -31,8 +32,10 @@ describe('#11 client 有 initialData 時不重取', () => {
 
   it('客滿團次顯示客滿文案且全客滿時不提供報名連結', () => {
     expect(client).toContain('t.departures.soldOut');
-    expect(client).toMatch(/\{fixedBookingCtaState\(plan\) === 'show' \? \(/);
-    expect(client).toMatch(/\{fixedBookingCtaState\(plan\) === 'unavailable' \? \(/);
+    for (const state of ['fixed', 'fixed-unavailable', 'request', 'request-unavailable']) {
+      expect(client).toMatch(new RegExp("\\{bookingCtaState\\(plan\\) === '" + state + "' \\? \\("));
+    }
+    expect(client).not.toMatch(/plan\.salesMode === 'REQUEST'/);
     expect(client).toContain('outcomeFromHttp(response.status, response.ok, payload)');
     expect(client).not.toMatch(/salesMode === 'FIXED_DEPARTURE'/);
     expect(client).toContain('plan.soldOutOmitted');
@@ -54,18 +57,33 @@ describe('#11 client 有 initialData 時不重取', () => {
     expect(hasBookableListedDeparture({ minParty: Number.NaN, departures: [d(0, true)] })).toBe(false);
   });
 
-  it('fixedBookingCtaState：FIXED＋有可訂 → show；空陣列／全客滿／全不足 minParty → unavailable；其他販售方式 → none', () => {
+  it('bookingCtaState：FIXED 既有案例不回歸', () => {
     const ok = [{ seatsLeft: 4 }];
-    expect(fixedBookingCtaState({ salesMode: 'FIXED_DEPARTURE', minParty: 2, departures: ok })).toBe('show');
-    expect(fixedBookingCtaState({ salesMode: 'FIXED_DEPARTURE', minParty: 2, departures: [] })).toBe('unavailable');
-    expect(fixedBookingCtaState({
+    expect(bookingCtaState({ salesMode: 'FIXED_DEPARTURE', minParty: 2, departures: ok })).toBe('fixed');
+    expect(bookingCtaState({ salesMode: 'FIXED_DEPARTURE', minParty: 2, departures: [] })).toBe('fixed-unavailable');
+    expect(bookingCtaState({
       salesMode: 'FIXED_DEPARTURE', minParty: 2, departures: [{ seatsLeft: 0, soldOut: true }],
-    })).toBe('unavailable');
-    expect(fixedBookingCtaState({
+    })).toBe('fixed-unavailable');
+    expect(bookingCtaState({
       salesMode: 'FIXED_DEPARTURE', minParty: 5, departures: [{ seatsLeft: 4 }, { seatsLeft: 1 }],
-    })).toBe('unavailable');
-    expect(fixedBookingCtaState({ salesMode: 'REQUEST', minParty: 2, departures: ok })).toBe('none');
-    expect(fixedBookingCtaState({ salesMode: 'INSTANT', minParty: 2, departures: [] })).toBe('none');
+    })).toBe('fixed-unavailable');
+  });
+
+  it('bookingCtaState：REQUEST 空陣列／全客滿／全不足 → request-unavailable；有可選團次 → request', () => {
+    expect(bookingCtaState({ salesMode: 'REQUEST', minParty: 2, departures: [] })).toBe('request-unavailable');
+    expect(bookingCtaState({
+      salesMode: 'REQUEST', minParty: 2, departures: [{ seatsLeft: 0, soldOut: true }, { seatsLeft: 0, soldOut: true }],
+    })).toBe('request-unavailable');
+    expect(bookingCtaState({
+      salesMode: 'REQUEST', minParty: 5, departures: [{ seatsLeft: 4 }],
+    })).toBe('request-unavailable');
+    expect(bookingCtaState({ salesMode: 'REQUEST', minParty: 2, departures: [{ seatsLeft: 0, soldOut: true }, { seatsLeft: 2 }] }))
+      .toBe('request');
+  });
+
+  it('bookingCtaState：INSTANT 與其他模式維持 none（只顯示說明、沒有入口）', () => {
+    expect(bookingCtaState({ salesMode: 'INSTANT', minParty: 2, departures: [{ seatsLeft: 9 }] })).toBe('none');
+    expect(bookingCtaState({ salesMode: 'INSTANT', minParty: 2, departures: [] })).toBe('none');
   });
 
   it('outcomeFromHttp：404 → not-found；其他非 2xx、無效 payload → error；有效 → ready', () => {
@@ -97,8 +115,8 @@ describe('#11 client 有 initialData 時不重取', () => {
   });
 
   it('MINOR4：noBookable 文案與「僅列出部分日期」並列時不矛盾，且說明列出的日期都無法預約', () => {
-    const i18n = readFileSync(resolve(process.cwd(), 'src/i18n/zh-TW/pages/public-trip-details.ts'), 'utf8');
-    expect(i18n).toContain("noBookable: '本頁列出的日期都無法預約，請聯絡店家確認其他日期。'");
-    expect(i18n).not.toContain('目前沒有可預約日期');
+    expect(t.departures.noBookable).toMatch(/列出的日期都無法預約/);
+    expect(t.departures.noBookable).not.toContain('目前沒有可預約日期');
+    expect(t.departures.truncated).toContain('部分日期');
   });
 });

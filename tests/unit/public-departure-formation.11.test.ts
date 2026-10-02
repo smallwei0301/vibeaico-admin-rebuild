@@ -43,11 +43,18 @@ describe('#11 固定團次成團資訊顯示（19 分冊 §2.1）', () => {
     expect(collecting).not.toContain('招募中，尚未成團');
   });
 
-  it.each(['REVIEW_REQUIRED', 'AT_RISK', 'FAILED'])('客滿＋%s：沿用原文案，且全部狀態文案都不含「尚可加入」「招募中」以外的矛盾字眼', (status) => {
+  it.each(['REVIEW_REQUIRED', 'FAILED'])('客滿＋%s：沿用原文案，且全部狀態文案都不含「尚可加入」「招募中」以外的矛盾字眼', (status) => {
     const normal = formationLines('FIXED_DEPARTURE', { ...full, formationStatus: status });
     const sold = formationLines('FIXED_DEPARTURE', { ...full, formationStatus: status, soldOut: true });
     expect(sold).toEqual(normal);
     expect(sold.join('')).not.toMatch(/尚可加入|招募中/);
+  });
+
+  it('客滿＋AT_RISK：顯示「名額已滿，店家確認出團中」；未客滿維持原文案', () => {
+    expect(formationLines('FIXED_DEPARTURE', { ...full, formationStatus: 'AT_RISK', soldOut: true }))
+      .toContain('名額已滿，店家確認出團中');
+    expect(formationLines('FIXED_DEPARTURE', { ...full, formationStatus: 'AT_RISK' }))
+      .toContain('已成團但人數下降，店家確認中');
   });
 
   it('未客滿時 FORMED 仍是「已成團，尚可加入」', () => {

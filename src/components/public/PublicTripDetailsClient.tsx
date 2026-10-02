@@ -11,7 +11,7 @@ import { formatCurrency } from '@/lib/utils';
 import { formationLines } from '@/lib/public-departure-formation';
 import {
   initialLoadState,
-  fixedBookingCtaState,
+  bookingCtaState,
   outcomeFromHttp,
   stateAfterFetch,
   type PublicTripFetchOutcome,
@@ -273,15 +273,18 @@ export function PublicTripDetailsClient({ shopCode, slug, initialData }: Props) 
                     {plan.departuresMayBeTruncated && plan.departures.length > 0 ? (
                       <p className="text-sm text-secondary">{t.departures.truncated}</p>
                     ) : null}
-                    {plan.salesMode === 'REQUEST' ? (
+                    {bookingCtaState(plan) === 'request' ? (
                       <Link className="btn btn-primary w-fit" href={`/s/${shopCode}/plans/${plan.id}/request`}>
                         {t.plans.requestCta}
                       </Link>
                     ) : null}
-                    {fixedBookingCtaState(plan) === 'unavailable' ? (
+                    {bookingCtaState(plan) === 'request-unavailable' ? (
+                      <p className="text-sm text-secondary">{t.departures.noRequestable}</p>
+                    ) : null}
+                    {bookingCtaState(plan) === 'fixed-unavailable' ? (
                       <p className="text-sm text-secondary">{t.departures.noBookable}</p>
                     ) : null}
-                    {fixedBookingCtaState(plan) === 'show' ? (
+                    {bookingCtaState(plan) === 'fixed' ? (
                       <Link className="btn btn-primary w-fit" href={`/s/${shopCode}/plans/${plan.id}/book`}>
                         {t.plans.fixedCta}
                       </Link>

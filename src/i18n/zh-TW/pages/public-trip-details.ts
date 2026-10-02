@@ -57,6 +57,7 @@ export const publicTripDetailsPage = {
     seatsLeft: (count: number) => `剩 ${count} 位`,
     soldOut: '客滿',
     soldOutOmitted: '另有更多客滿日期未列出。',
+    noRequestable: '目前沒有可申請的日期，可先聯絡店家。',
     noBookable: '本頁列出的日期都無法預約，請聯絡店家確認其他日期。',
     noStartTime: '時間未定',
     availabilityNote: '名額會隨預約變動，送出前仍會再次確認。',
@@ -74,6 +75,7 @@ export const publicTripDetailsPage = {
       statusSoldOut: {
         COLLECTING: '名額已滿，尚未成團',
         FORMED: '已成團',
+        AT_RISK: '名額已滿，店家確認出團中',
       } as Record<string, string>,
     },
     weekdays: ['日', '一', '二', '三', '四', '五', '六'],
