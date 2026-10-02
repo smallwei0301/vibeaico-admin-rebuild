@@ -188,7 +188,7 @@ export function terminalBodyPlan(pr) {
     changed: body !== String(pr.body ?? ''),
     changedFields,
     unsyncedFields: [...unsyncedFields],
-    terminalState,
+    terminalState, hasContract,
     errors: [...new Set(errors)],
   };
 }
@@ -221,7 +221,7 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
     if (observed.state !== 'closed') return;
     const plan = terminalBodyPlan(observed);
     let liveFailure = '';
-    if ((observed.merged || observed.merged_at) && !plan.changed && !plan.errors.length && !plan.unsyncedFields.length && !reason) try {
+    if ((observed.merged || observed.merged_at) && plan.hasContract && !plan.changed && !plan.errors.length && !plan.unsyncedFields.length && !reason) try {
       const branch = observed.base?.ref, merge = observed.merge_commit_sha;
       const declared = readField(observed.body, 'MAIN_HEAD_SHA');
       const path = readField(observed.body, 'MAIN_FILE_RE_READ'), runId = readField(observed.body, 'EXACT_HEAD_CI_RUN').match(/(?:^|\/runs\/)(\d+)$/)?.[1];
@@ -255,12 +255,10 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
     const comments = await github.paginate(github.rest.issues.listComments,
       { owner, repo, issue_number: current.number, per_page: 100 });
     if (!Array.isArray(comments)) throw new Error('STATE_SYNC_PENDING comment inventory unavailable');
-    const trusted = comments.filter(comment => comment.user?.login === 'github-actions[bot]' && comment.user?.id === 41898282 && String(comment.body ?? '').startsWith(`<!-- agent-terminal-state-sync:v1 pr=${current.number} `));
-    const prior = trusted.filter(comment => String(comment.body ?? '').startsWith(prefix));
+    const trusted = comments.filter(comment => comment.user?.login === 'github-actions[bot]' && comment.user?.id === 41898282 && String(comment.body ?? '').startsWith(`<!-- agent-terminal-state-sync:v1 pr=${current.number} `)), prior = trusted.filter(comment => String(comment.body ?? '').startsWith(prefix));
     const unresolvedPrior = String(trusted.at(-1)?.body ?? '').split('\n')[1] === 'STATE_SYNC_PENDING';
     const sameObserved = pr => pr.state === 'closed' && pr.head?.sha === observed.head?.sha && pr.closed_at === observed.closed_at && Boolean(pr.merged || pr.merged_at) === Boolean(observed.merged || observed.merged_at) && pr.body === observed.body;
-    const before = await read();
-    if (!sameObserved(before)) return;
+    const before = await read(); if (!sameObserved(before)) return;
     if (!pending && !prior.length && !unresolvedPrior || (String(prior.at(-1)?.body ?? '').startsWith(marker) && String(prior.at(-1)?.body ?? '').split('\n')[1] === status)) return;
     const priorIds = new Set(comments.map(comment => comment.id));
     let created;
