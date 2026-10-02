@@ -100,7 +100,7 @@ describe('unprivileged review wake-up and trusted current-policy refresh', () =>
     const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
     await new AsyncFunction('require', 'process', 'github', 'context', 'core', 'loadPolicy', decoded.replace(/\bimport\s*\(/g, 'loadPolicy('))(createRequire(import.meta.url), { env: { GITHUB_WORKSPACE: process.cwd() } }, github, { eventName: 'workflow_run', repo: { owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild' }, payload: { workflow_run: { id: 42 } } }, { setOutput }, async () => astra);
     expect(setOutput).toHaveBeenCalledWith('pr_numbers', '[900]');
-    expect(github.paginate).toHaveBeenCalledWith(github.rest.pulls.list, expect.objectContaining({ state: 'open', head: 'smallwei0301:feature' }));
+    expect(github.paginate).toHaveBeenCalledWith(github.rest.pulls.list, expect.objectContaining({ state: 'all', head: 'smallwei0301:feature' }));
   });
   it('fallback rejects a candidate closed during live read and preserves true two-open ambiguity', async () => {
     const { github, live } = wakeupFixture({}, false);
@@ -110,6 +110,37 @@ describe('unprivileged review wake-up and trusted current-policy refresh', () =>
   it('uses canonical fork head/branch association when workflow_run PR inventory is empty', async () => {
     const { github } = wakeupFixture({}, false);
     expect(await resolveReviewWakeup({ github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', runId: 42 })).toBe(900);
+  });
+  it.each([true, false])('resolves an exact closed producer PR for no-write housekeeping (inventory=%s)', async association => {
+    const { github, live } = wakeupFixture({ head_sha: head }, association);
+    const closed = { ...live, state: 'closed' };
+    github.paginate.mockResolvedValue([closed]);
+    github.rest.pulls.get.mockResolvedValue({ data: closed });
+    expect(await resolveReviewWakeup({ github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', runId: 42 })).toBe(900);
+    // Execute the actual trusted consumer's closed-event return, not a fake gate.
+    github.rest.repos.createCommitStatus = vi.fn();
+    github.rest.actions.createWorkflowDispatch = vi.fn();
+    github.rest.issues.createComment = vi.fn();
+    const workflow = readFileSync('.github/workflows/agent-wip-guard.yml', 'utf8');
+    const parsed = parse(workflow).jobs.guard.steps.find((step: any) => step.with?.script).with.script;
+    const branch = parsed.split('// REVIEW_WAKEUP_INVALIDATION_BEGIN')[1].split('// REVIEW_WAKEUP_INVALIDATION_END')[0];
+    const astra = await import('../../scripts/agents/astra-review-policy.mjs');
+    const policy = await import('../../scripts/agents/dual-terra-wip-policy.mjs');
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+    await new AsyncFunction('github', 'context', 'owner', 'repo', 'current', 'astra', 'policy', 'core', 'reviewWakeup', branch)(github, { eventName: 'workflow_run' }, 'smallwei0301', 'vibeaico-admin-rebuild', closed, astra, policy, {}, true);
+    expect(github.rest.repos.createCommitStatus).not.toHaveBeenCalled();
+    expect(github.rest.actions.createWorkflowDispatch).not.toHaveBeenCalled();
+    expect(github.rest.issues.createComment).not.toHaveBeenCalled();
+  });
+  it.each(['wrong-head', 'ambiguous-closed', 'foreign', 'unavailable'])('closed fallback still rejects %s', async mode => {
+    const { github, live } = wakeupFixture({ head_sha: head }, false);
+    const closed = { ...live, state: 'closed' };
+    github.rest.pulls.get.mockResolvedValue({ data: closed });
+    if (mode === 'unavailable') github.paginate.mockRejectedValue(new Error('API unavailable'));
+    else github.paginate.mockResolvedValue(mode === 'ambiguous-closed' ? [closed, { ...closed, number: 899 }]
+      : mode === 'foreign' ? [{ ...closed, head: { ...closed.head, repo: { full_name: 'foreign/repo' } } }]
+      : [{ ...closed, head: { ...closed.head, sha: 'e'.repeat(40) } }]);
+    await expect(resolveReviewWakeup({ github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', runId: 42 })).rejects.toThrow();
   });
   it('executes the actual trusted consumer invalidation branch: latest veto writes failure with no TEST/comment/label mutation', async () => {
     const { github, live } = wakeupFixture();
