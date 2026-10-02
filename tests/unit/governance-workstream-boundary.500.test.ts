@@ -365,9 +365,7 @@ describe('governance boundary regression #500', () => {
   });
 
   it('fails safe when multiple current pr-lifecycle blocks exist', () => {
-    const extra = '<!-- pr-lifecycle\nissue: 501\nstate: ACTIVE\nsupersedes: none\n-->';
-    const plan = terminalBodyPlan({ state: 'closed', merged: true, body: gov + '\n' + extra });
-    expect(plan?.errors.join(' ')).toContain('Ambiguous pr-lifecycle blocks');
+    const extra = '<!-- pr-lifecycle\nissue: 501\nstate: ACTIVE\nsupersedes: none\n-->'; for (const separator of ['\n', '']) { const plan = terminalBodyPlan({ state: 'closed', merged: true, body: gov.replace('-->', `-->${separator}${extra}`) }); expect(plan?.errors.join(' ')).toContain('Ambiguous pr-lifecycle blocks'); }
   });
 
   it.each([

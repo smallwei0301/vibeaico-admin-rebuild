@@ -90,19 +90,15 @@ export function terminalLabelPlan(pr) {
 
 /** Reconcile the single current pr-lifecycle marker without touching prose/examples. */
 function lifecycleStarts(source) {
-  const starts = []; let offset = 0, fence = null, inComment = false;
-  const chunks = source.split(/(\r\n|\n|\r)/);
+  const starts = []; let offset = 0, fence = null, inComment = false; const chunks = source.split(/(\r\n|\n|\r)/);
   for (let i = 0; i < chunks.length; i += 2) {
-    const raw = chunks[i], line = raw + (chunks[i + 1] ?? '');
-    if (fence) { const close = raw.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/);
-      if (close && close[1][0] === fence[0] && close[1].length >= fence.length) fence = null;
-    } else if (inComment) { if (raw.includes('-->')) inComment = false;
-    } else if (!/^(?: {4}| {0,3}\t)/.test(raw)) {
-      const open = raw.match(/^ {0,3}(?:(?:[-+*]|\d+[.)])[ \t]+)?(`{3,}|~{3,})/);
-      if (open) fence = open[1];
-      else { const marker = /^ {0,3}<!--[ \t]*pr-lifecycle\b/i.exec(raw);
-        if (marker) starts.push(offset + marker[0].indexOf('<!--'));
-        const comment = raw.indexOf('<!--'); if (comment >= 0 && raw.indexOf('-->', comment) < 0) inComment = true;
+    const raw = chunks[i], line = raw + (chunks[i + 1] ?? ''), indented = /^(?: {4}| {0,3}\t)/.test(raw);
+    if (fence) { const close = raw.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/); if (close && close[1][0] === fence[0] && close[1].length >= fence.length) fence = null;
+    } else { const open = !inComment && !indented && raw.match(/^ {0,3}(?:(?:[-+*]|\d+[.)])[ \t]+)?(`{3,}|~{3,})/);
+      if (open) fence = open[1]; else for (let cursor = 0; cursor < raw.length;) {
+        if (indented && !inComment) break; if (inComment) { const end = raw.indexOf('-->', cursor); if (end < 0) break; inComment = false; cursor = end + 3; continue; }
+        const comment = raw.indexOf('<!--', cursor); if (comment < 0) break; if (/^[ \t]*(?:(?:[-+*]|\d+[.)])[ \t]+)?$/.test(raw.slice(cursor, comment)) && /^<!--[ \t]*pr-lifecycle\b/i.test(raw.slice(comment))) starts.push(offset + comment);
+        inComment = true; cursor = comment + 4;
       }
     }
     offset += line.length;
