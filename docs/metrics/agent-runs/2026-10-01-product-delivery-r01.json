@@ -19,9 +19,6 @@
     },
     {
       "ref": "issue/43"
-    },
-    {
-      "ref": "issue/11"
     }
   ],
   "main": {
@@ -35,7 +32,7 @@
     "openPrsEnd": null,
     "mainTerraPeak": 1,
     "reserveTerraPeak": 0,
-    "activeCandidatePeak": 3,
+    "activeCandidatePeak": 2,
     "sharedTestPeak": 1,
     "closureSweeps": 1,
     "closureAdvancedOrClosed": 0
@@ -512,76 +509,76 @@
         "note": "Root product builder corrected the #43 retry error body to tokenized 16px text and set the retry button to tokenized 16px with 44px minimum height; extended the 390px/desktop browser harness with computed font/target checks. Local typecheck, build, focused 30 unit tests, and source-only Chromium harness passed; isolated DB acceptance remains a fresh exact-head remote workflow. Requested gpt-6.1-sol under Owner session authorization; actual model unverified."
       },
       {
-        "id": "20261001-sol-standards-review43-667",
-        "role": "audit",
-        "requestedModel": "sol",
-        "actualModel": "unknown",
         "contextClass": "compact",
         "accepted": true,
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "note": "Independent Standards follow-up reviewed exact f56..667 against current-main GUIDE §1.1/§11; confirmed 16px token text and min-h-11 44px target, no new standards finding. Source check only, no browser execution by reviewer. Requested gpt-6.1-sol under Owner session override; actual unverified."
-      },
-      {
-        "id": "20261001-sol-spec-review43-667",
-        "role": "audit",
-        "requestedModel": "sol",
-        "actualModel": "unknown",
-        "contextClass": "compact",
-        "accepted": true,
-        "inputTokens": null,
-        "outputTokens": null,
-        "cachedTokens": null,
-        "count": 1,
-        "note": "Independent Spec follow-up reviewed exact f56..667: new computed-size selector covers the one retry error paragraph/button, no false-positive selector. 360px, guide variants, long content, card CTAs and real browser action/reload on trusted Preview remain pending as declared. Requested gpt-6.1-sol; actual unverified."
-      },
-      {
-        "id": "20261001-luna-triage46-safe-successor-775",
-        "role": "luna",
+        "id": "20261002-claude-luna-truth-734",
+        "role": "scout",
         "requestedModel": "luna",
         "actualModel": "unknown",
+        "note": "ANTHROPIC session takeover. Requested claude-haiku-4-5 scout (Agent model=haiku, agentId a165e6b65f0af029d): PR734 exact145026b readback — PARKED by WIP AUTH collision with #731, source CI green, no migration, merge-tree clean. Actual served model not provider-verified."
+      },
+      {
         "contextClass": "compact",
         "accepted": true,
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "note": "2026-10-01T14:13:42Z Live read-only inventory on main 7752361: #46/#11/#12 remain open; #725/#727/#715/#714 parked; #727 canonical TEST run 36857198490 failed and released TEST; no active shared TEST holder; main push CI 36869400302 success. 0135 explicitly read-only; no safe persistent INSTANT writer without common atomic occupancy + departure duration snapshot. Suggested independent #11 public-trip details slice; actual model unknown."
+        "id": "20261002-claude-luna-truth-733",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "note": "Requested claude-haiku-4-5 scout (agentId ae48d8bd62c624e2e): PR733 exact7c1bd4a — guard fails on 7 missing lane metadata fields; source CI green; no migration; merge-tree clean. Actual unverified."
       },
       {
-        "id": "20261001-sol-retriage46-select11-775",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261002-claude-luna-truth-731",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "note": "Requested claude-haiku-4-5 scout (agentId a8539cdd9bfc7797e): PR731 exactf945d79 — draft ACTIVE, canonical TEST NOT_RUN, Final Risk deferred, no INSTANT/payment claim, no migration. Actual unverified."
+      },
+      {
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261002-claude-luna-truth-715",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "note": "Requested claude-haiku-4-5 scout (agentId a7624670125fd0a66): PR715 exact6676255 — PARKED only for #730 BUILD/REVIEW receipt contract; exact-head SourceCI+LOCAL green; ASTRA NONE; no migration. Actual unverified."
+      },
+      {
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261002-claude-sol-triage-r01",
         "role": "audit",
         "requestedModel": "sol",
         "actualModel": "unknown",
-        "contextClass": "compact",
-        "accepted": true,
-        "inputTokens": null,
-        "outputTokens": null,
-        "cachedTokens": null,
-        "count": 1,
-        "note": "2026-10-01T14:13:42Z Root re-triage against current main 775236159ab55cbbaca22fdc44608e5bf4383fc6 and live Issue/PR/CI/TEST/docs. #710/#709 remains parked for real Auth duplicate proof and live review contract; #46 keeps its INSTANT transaction as source-blocked (0135 is read-only; 0131 does not provide common interval exclusion). Select #11 public trip detail page, tenant-scoped from existing PUBLISHED data and linking only existing real FIXED_DEPARTURE/REQUEST journeys; no payment/INSTANT claim. Owner authorized OpenAI Product build and audit requested gpt-6.1-sol; actual unknown."
-      },
-      {
-        "id": "20261001-sol-builder11-public-trip-details",
-        "role": "build",
-        "requestedModel": "sol",
-        "actualModel": "unknown",
-        "contextClass": "compact",
-        "accepted": true,
-        "inputTokens": null,
-        "outputTokens": null,
-        "cachedTokens": null,
-        "count": 1,
-        "note": "2026-10-01T14:13:42Z Root starts bounded Product slice #11: public PUBLISHED trip detail from explicit safe fields, plan/date choices link to existing real booking/request endpoints, same tenant scope, no INSTANT writer/payment/synthetic data. New branch product/issue11-public-trip-details-20261001 starts exact current origin/main 7752361. Owner session permits requested Sol6.1 Product construction; actual provider/model unverified."
+        "note": "ANTHROPIC main session (configured claude-opus-5-5, served identity unverified) TRIAGE on main b5e3b123: serialize Product convergence. 715 -> TEST_VALIDATION (canonical TEST + ordinary #730 review, closeability 4); 731 -> PARKED (needs canonical TEST after 715 releases holder, frees BUILD slot); 734 -> next single TERRA_BUILD (SOURCE_ONLY, TENANT_AUTH_BOUNDARY Final Risk); 733 -> after 734 (metadata repair + Final Risk); then #46 INSTANT. No dual Terra: 731/734 share AUTH hot boundary."
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 5,
+    "issuesStarted": 4,
     "issuesClosed": 0,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -591,7 +588,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 24,
+    "fullCiRuns": 23,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -607,14 +604,14 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 7,
-    "lunaAccepted": 7,
+    "lunaTasks": 10,
+    "lunaAccepted": 10,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 23,
-    "solIssues": 5
+    "solTouches": 21,
+    "solIssues": 4
   },
   "auditability": {
     "evidenceFieldsCompletePercent": null,
@@ -770,14 +767,7 @@
     "2026-10-01T12:56:57Z #47 current-main local verification on d371347: Node v24.19.0 `npm run typecheck` PASS; full `npm test` PASS, 285 files/3706 tests; `npm run build` PASS, including /tenant/line-settings/onboarding; `git diff --check` PASS; repo-integrity exact d781ed0..d371347 PASS, 1412 tracked/0 deleted. Prior 390px actual-page stub and independent exact source review remain tied to unchanged code blobs; they do not prove LINE provider/in-app/authenticated Production acceptance. Exact current-head hosted checks pending; no shared TEST/DB mutation.",
     "2026-10-01T13:21:27.971Z Exact f56 hosted SourceCI 36862662300 terminal SUCCESS (completed 12:37:52Z) and isolated LOCAL 36862662312 terminal SUCCESS (completed 12:44:58Z): local project local-pr-715-a, integration83 files/815 pass/3 skip, E2E23 pass/3 skip; cleanup passed and Supabase stack stopped 12:44:54Z. These are historical f56 results, not proof for the responsive-fix head and not shared TEST/Production evidence.",
     "2026-10-01T13:21:27.971Z Review follow-up for exact f56: independent Standards found the new error body at 14px and retry control below GUIDE's 44px minimum; independent Spec review confirmed 360px/card variants/real browser action-reload/Preview acceptance remain pending. Root fixed the error body/button in dashboard/page.tsx and added computed-size assertions to the source-only browser harness. Node typecheck, Next production build, focused 30 unit tests and Chromium /usr/bin/chromium 390px+desktop harness pass. Fresh exact-head SourceCI/isolated LOCAL remain pending.",
-    "2026-10-01T13:29:06.162Z Exact current pushed PR715 head 6676255ca2645ec435cf4b5b6c5c35b7266d263f is verified live against origin/main d781ed0b509beedff6006b44eaa76281b7385f3a. New SourceCI run 36868657767 and private isolated LOCAL run 36868657776 actually started 13:26:10Z; scorecard run 36868657998 succeeded. Shared TEST holder inventory has zero active TEST_VALIDATION/ACTIVE/TEST_LANE_REQUIRED candidates; #727 remains PARKED after terminal failure. Await exact 667 SourceCI/local results; do not transfer prior f56 green status.",
-    "2026-10-01T13:33:16.643Z Fresh independent Standards and Spec reviews of exact f56..667 completed with no new blockers. Standards confirmed text-md=16px and min-h-11=44px; the responsive harness selectors and thresholds target the retry error and button. Reviewers did not run the browser; local Chromium harness did. Issue-required 360px/variant/long-content/real action-reload Preview acceptance remains pending.",
-    "2026-10-01T14:13:42Z Live main / Issue / PR / TEST re-triage: origin/main=775236159ab55cbbaca22fdc44608e5bf4383fc6; #727 exact 36857198490 terminal FAILURE/released shared TEST, #725/#715/#714/#709 PARKED; no active holder observed. #46 INSTANT persistence not admitted because current canonical 0135 is read-only and common atomic occupancy/duration snapshot writer invariant is absent. Started distinct #11 public-trip details Product slice on fresh 7752361 worktree; no booking/payment/deployment claim.",
-    "2026-10-01T14:47:01Z #11 local source checks: npm run typecheck PASS; npm test 286 files/3715 tests PASS; production build PASS, including dynamic /s/[shopCode]/trips/[slug] and /api/public/shops/[shopCode]/trips/[slug]; focused public exposure/API/detail tests 30 PASS; git diff --check PASS. Added live HTTP+Supabase integration coverage for PUBLISHED-only, cross-tenant, plan-scoped dates, safe URL mapping and hidden review-note exclusion. Local TEST Supabase credentials and INTEGRATION_BASE_URL are absent, so that integration test was not run; no authenticated DB/HTTP/browser/Preview/Production acceptance claim. No hosted CI had started at this timestamp.",
-    "2026-10-01T15:14:06Z #11 exact source candidate 12addd9 on current main 7752361: per-plan departure pagination now bypasses sold-out rows; six-item limit is disclosed; detail API error envelopes preserve CORS; integration fixture cleanup checks errors and zero-residue readback. Independent Standards and Spec reviews both report no remaining blockers on exact 12addd9 after fixes. Node typecheck and focused 4 tests passed; full unit 286 files/3715 tests and Next production build passed on the final source; exact 7752361..12addd9 repository integrity PASS/1417 tracked/0 deleted. HTTP+Supabase integration remains NOT_RUN because local TEST credentials and INTEGRATION_BASE_URL are absent; hosted CI has not started; no schema, merge, deployment, or authenticated Production acceptance claim.",
-    "LIVE_RECHECK 2026-10-01T16:22:00Z: current origin/main is 7976af038d778aa96ebb69301f65cd5381020ceb after PR #729; its seven changed files are review-admission governance only, while Owner Decision and public-trip integration docs are byte-identical to prior main 775236159ab55cbbaca22fdc44608e5bf4383fc6. PR #731 remains open draft at exact head 228a8c1051f27e3d740620c97d3291ebda254204. Main push ci run36888895810 integration job110460571388 is in_progress and is the shared canonical TEST holder. Preserve the existing branch under the base-freshness decision; no Product source/API/schema dependency changed.",
-    "LOCAL_FAILURE_CAPTURE 2026-10-01T16:22:00Z: exact PR731 old-head disposable local Supabase bootstrap run36885381267/job110447503574 ended failure at15:44:10Z (83 integration files; 811 passed, 8 skipped, 2 failed; cleanup succeeded). Failure 1 raw javascript cover URL appeared in Next development RSC diagnostic through shared loadPublicShop; failure 2 SHOP_B correctly returned its own PUBLISHED row for a slug unique only within tenant. The source/test repairs are uncommitted at this capture; typecheck, 286 unit files/3715 tests, build and diff check passed on the repaired worktree. The same-head local-isolated-test 36885380748 was a policy skip due SOURCE_ONLY, not database acceptance. Next: commit bounded repair + Playbook + truthful metadata/ledger, then exact-head CI and LOCAL_ISOLATED.",
-    "WIP_RECONCILIATION 2026-10-01T16:22:00Z: after capturing #731 repair BUILD_ENTER, event-derived candidate peak is 3. inventory.activeCandidatePeak is updated from the stale 2 to the conservative recorded-event high-water 3 so preflight agrees; it does not assert three currently active candidates. The current live PR #714 is PARKED at remote head adf0608 while the Run has a prior local VERIFY event for d371347; PR #715 is PARKED at 6676255. Both current VERIFY states are closed at the 16:22 observation; prior exact exit times for #714 are unknown, so no earlier event is backfilled. Current active #731 is one candidate. Do not infer product qualification or active concurrency from historical upper bound 3."
+    "2026-10-02T01:32:03.681Z Session takeover by ANTHROPIC Claude Code Product main session (claude.ai session_017zCGiPpVX9atSFECgEsVdC). Continues this IN_PROGRESS Run rather than declaring a concurrent Run. RULES_MAIN_SHA=b5e3b123e. Builder lane will request claude-sonnet-5-5 per Anthropic routing; reviewer claude-opus-5-5 in a fresh subagent context. Prior OpenAI identities are not rewritten."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -790,7 +780,7 @@
   },
   "completionTruth": {
     "status": "VERIFIED",
-    "checkedAt": "2026-10-01T16:22:00.000Z",
+    "checkedAt": "2026-10-01T07:39:39.472Z",
     "claims": [
       {
         "type": "LOCAL_TEST_GREEN",
@@ -895,14 +885,6 @@
         "observedState": "MERGED_TO_MAIN",
         "verification": "VERIFIED",
         "evidenceRef": "PR723live mergedtrue/merged_at2026-10-01T10:00:58Z mergea30acac04aad838d4b04da9c5464b5b6f33e06b6; freshfetchmaina30/reachable andboth sourcefiles rereadBYTE_IDENTICAL0d. Current sourceLOCALcanonical+distinctreview47FinalCLOSE_APPROVED StandardsSpec0 RiskNONE verified withflakyfirstattempt/welcome29.6retry+cleanupjournalUNKNOWNpreserved. MainpushCI/AUTOdeploy/ProductionSchema/authpending; #42wholeOPEN; necessaryPBdelta/Issuecloseoutpendinguntilactualmain. Sourceacceptance only no transactionshipped."
-      },
-      {
-        "type": "OTHER",
-        "subject": "pr#731 exacthead 228a8c1051f27e3d740620c97d3291ebda254204 disposable local Supabase integration",
-        "claimedState": "failed",
-        "observedState": "failed",
-        "verification": "VERIFIED",
-        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/36885381267 (job 110447503574; 83 integration files, 811 passed, 8 skipped, 2 failed; disposable local stack cleanup completed)"
       }
     ]
   },
@@ -1228,56 +1210,6 @@
         "head": "f56cadf03dc90c4af91e19553b82787335c7f6d9",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "After exact f56 SourceCI 36862662300 and LOCAL 36862662312 reached terminal success, independent Standards review identified the new retry error body/touch target below current-main GUIDE §1.1/§11. Re-enter bounded #43 responsive fix at first source edit 13:10:13.363Z; no category rebuild, backend/schema change, or product completion claim."
-      },
-      {
-        "id": "715-responsive-fix-build-exit",
-        "at": "2026-10-01T13:26:10Z",
-        "kind": "BUILD_EXIT",
-        "pr": 715,
-        "issue": 43,
-        "head": "f56cadf03dc90c4af91e19553b82787335c7f6d9",
-        "workstream": "PRODUCT_MAINLINE",
-        "reason": "After bounded #43 responsive correction at new source head 667, exact PR SourceCI and isolated LOCAL both actually started; exit the captured build head f56 without inheriting its earlier terminal checks as final proof. Shared TEST remains unclaimed."
-      },
-      {
-        "id": "715-responsive-fix-verify-enter",
-        "at": "2026-10-01T13:26:10Z",
-        "kind": "VERIFY_ENTER",
-        "pr": 715,
-        "issue": 43,
-        "head": "6676255ca2645ec435cf4b5b6c5c35b7266d263f",
-        "workstream": "PRODUCT_MAINLINE",
-        "reason": "Exact current head 667 SourceCI run 36868657767 and isolated local run 36868657776 entered in_progress at 13:26:10Z. Scorecard run 36868657998 succeeded. These are separate from the completed f56 checks; no shared canonical TEST admission or holder is claimed."
-      },
-      {
-        "id": "731-repair-build-enter",
-        "at": "2026-10-01T15:57:52.091Z",
-        "kind": "BUILD_ENTER",
-        "pr": 731,
-        "issue": 11,
-        "head": "228a8c1051f27e3d740620c97d3291ebda254204",
-        "workstream": "PRODUCT_MAINLINE",
-        "reason": "First captured event for the bounded repair after exact old-head disposable local Supabase run36885381267 failed two integration assertions. Repair start is the source-file edit mtime 15:57:52.091Z; earlier PR build/verify transitions were not reconstructed or backfilled. No shared canonical TEST used."
-      },
-      {
-        "id": "714-parked-at-live-recheck-verify-exit",
-        "at": "2026-10-01T16:22:00.000Z",
-        "kind": "VERIFY_EXIT",
-        "pr": 714,
-        "issue": 47,
-        "head": "d371347bcf434aa78d17f00b8655544aef991d68",
-        "workstream": "PRODUCT_MAINLINE",
-        "reason": "At live recheck 2026-10-01T16:22:00Z GitHub PR #714 is PARKED and its current remote head is adf0608da0f729f07f6443567240d0bb49d958a8, not this ledger VERIFY head d371347. Close the previously captured local verify state at first reliable current-state observation; exact prior exit/re-entry times are not reconstructed. Preserve the head mismatch as a capture limitation; do not treat #714 as an active current candidate."
-      },
-      {
-        "id": "715-parked-at-live-recheck-verify-exit",
-        "at": "2026-10-01T16:22:00.000Z",
-        "kind": "VERIFY_EXIT",
-        "pr": 715,
-        "issue": 43,
-        "head": "6676255ca2645ec435cf4b5b6c5c35b7266d263f",
-        "workstream": "PRODUCT_MAINLINE",
-        "reason": "At live recheck 2026-10-01T16:22:00Z GitHub PR #715 is PARKED at exact head 6676255ca2645ec435cf4b5b6c5c35b7266d263f; its state:parked label event was observed at 2026-10-01T13:56:59Z. This exit is captured at first revalidation, not backdated to infer exact lane-end time."
       }
     ]
   }

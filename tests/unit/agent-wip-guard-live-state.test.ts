@@ -11,7 +11,7 @@ const workflow = readFileSync(
 describe('agent WIP Guard live-state dispatch', () => {
   it('re-reads the current PR before parsing metadata or deciding a TEST transition', () => {
     const payloadIndex = workflow.indexOf(
-      'const payloadCurrent = context.payload.pull_request ?? { number: context.payload.issue.number };',
+      'const payloadCurrent = reviewWakeup',
     );
     const liveReadIndex = workflow.indexOf(
       'const { data: current } = await github.rest.pulls.get({',
@@ -34,7 +34,7 @@ describe('agent WIP Guard live-state dispatch', () => {
       'const liveExisting = (current.labels ?? [])',
     );
     const labelWriteIndex = workflow.indexOf(
-      'if (additions.length) await github.rest.issues.addLabels({',
+      'if (!reviewWakeup && additions.length) await github.rest.issues.addLabels({',
     );
     const dispatchDecisionIndex = workflow.indexOf(
       "!liveExisting.includes('lane:test-validation')",
@@ -62,6 +62,7 @@ describe('agent WIP Guard live-state dispatch', () => {
     );
     const evaluationIndex = workflow.indexOf(
       'await astra.evaluateGithubAstra({ github, owner, repo, current })',
+      gateIndex,
     );
 
     expect(metadataIndex).toBeGreaterThan(-1);
@@ -93,7 +94,7 @@ describe('agent WIP Guard live-state dispatch', () => {
 
   it('serializes only the same PR and cancels stale in-flight guard runs', () => {
     expect(workflow).toContain(
-      'group: agent-wip-guard-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}',
+      'group: agent-wip-guard-${{ github.repository }}-${{ matrix.pr_number }}',
     );
     expect(workflow).toContain('cancel-in-progress: true');
     expect(workflow).not.toMatch(/^concurrency:/m);
@@ -306,8 +307,11 @@ describe('Astra risk review contract', () => {
   it('純換底沿用：commit 換了但變更內容指紋相同 → 仍然有效', () => {
     // rebase 只換 parent，檔案內容一個字都沒改：blob sha 逐一相同 ⇒ 指紋不變。
     // 這正是 PR #292 連跑四輪、其中兩輪只是換底的那個情形。
-    const rebased = makeReview({}, { commit_id: 'c'.repeat(40) });
-    expect(evaluateAstra(candidate([rebased])).status).toBe('ASTRA_APPROVED');
+    const original = makeReview(); // canonical review/attested head remain original b
+    const rebased = candidate([original], { context: { ...context, headSha: 'c'.repeat(40) } });
+    expect(evaluateAstra(rebased).status).toBe('ASTRA_APPROVED');
+    const mismatched = makeReview({}, { commit_id: 'c'.repeat(40) });
+    expect(evaluateAstra(candidate([mismatched])).status).toBe('ASTRA_PENDING');
   });
 
   it('換底時若有任何檔案被夾帶修改 → 指紋改變 → 不得沿用', () => {

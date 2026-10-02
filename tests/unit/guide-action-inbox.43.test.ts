@@ -1367,7 +1367,9 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
     expect(pageSource).toContain('modePreset.showActionInbox');
     expect(pageSource).not.toContain("businessType === 'GUIDE'");
     expect(pageSource).not.toContain("if (businessType !== 'GUIDE') return;");
-    expect(pageSource).toContain('setActionInbox([])');
+    // Request lifecycle and tenant clearing are behavior-tested in guide-inbox-load.43.test.ts.
+    // This source check only pins the consumer's connection to that tenant-scoped view.
+    expect(pageSource).toContain('guideInboxForTenant(inboxState, currentTenant.id)');
     expect(pageSource).toContain('getGuideActionInbox');
     expect(pageSource).toContain('paymentAmount');
     expect(pageSource).toContain('openPayment');

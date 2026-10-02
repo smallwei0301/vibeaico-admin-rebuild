@@ -4,6 +4,8 @@ import { requireFeature } from '@/server/features';
 import { mapTripPlan } from '@/server/mappers';
 import { planCreateSchema, planRow } from '@/server/tour-domain';
 
+import { requireUnlistedTripForPlanWrite } from '@/server/trip-plan-review';
+
 type Context = { params: Promise<{ id: string }> };
 
 async function requireTrip(t: Awaited<ReturnType<typeof requireTenant>>, id: string) {
@@ -29,7 +31,7 @@ export const POST = handle(async (req, { params }: Context) => {
   const t = await requireTenantManager();
   await requireFeature(t.tenantId, 'TOUR_MODULE');
   const body = planCreateSchema.parse(await req.json());
-  if (!await requireTrip(t, id)) return fail(404, '找不到此行程', ERR.NOT_FOUND);
+  await requireUnlistedTripForPlanWrite(t, id);
   const { count, error: countError } = await t.supabase.from('trip_plans')
     .select('id', { count: 'exact', head: true }).eq('tenant_id', t.tenantId).eq('trip_id', id);
   if (countError) throw countError;

@@ -88,6 +88,32 @@ export function selectFinalRiskReviewer(input = {}, policy = {}) {
   return next ? result('PREMIUM', 'RESERVE_ONE_PREMIUM_CONSULTATION', next, 'FIRST_CONSULTATION') : downgrade('MODEL_UNAVAILABLE');
 }
 
+/** Shared current role proof; independent of premium pricing/model identity. */
+export function independentRoleErrors(review = {}, context = {}) {
+  const errors = [];
+  const proof = context.roleEvidence;
+  const builder = proof?.builder, reviewer = proof?.reviewer;
+  const source = value => typeof value === 'string' && value.startsWith(`https://github.com/${context.repository}/`)
+    && /^https:\/\/github\.com\/[^/]+\/[^/]+\/(issues|pull)\/\d+#issuecomment-\d+$/.test(value);
+  if (proof?.trusted !== true || !builder || !reviewer) errors.push('Missing independently read-back builder/reviewer role evidence');
+  else {
+    for (const [record, role] of [[builder, 'BUILD'], [reviewer, 'REVIEW']]) {
+      if (record.role !== role || record.repository !== context.repository || record.headSha !== context.headSha
+        || record.changeDigest !== context.changeDigest || !source(record.sourceRef)
+        || !['actorId', 'sessionId', 'executionRef'].every(key => meaningful(record[key]))
+        || record.executionEvidence !== 'OPERATOR_ATTESTED' || !Number.isFinite(millis(record.startedAt))
+        || !Number.isFinite(millis(record.completedAt)) || millis(record.completedAt) < millis(record.startedAt)) {
+        errors.push(`Invalid current ${role} role execution receipt`);
+      }
+    }
+    if (builder.actorId === reviewer.actorId || builder.sessionId === reviewer.sessionId
+      || builder.executionRef === reviewer.executionRef || builder.sourceRef === reviewer.sourceRef
+      || reviewer.freshContext !== true || reviewer.executionRef !== review.executionRef
+      || millis(reviewer.startedAt) < millis(builder.completedAt)) errors.push('Builder cannot approve its own actor/session; fresh independent review required');
+  }
+  return errors;
+}
+
 /** Shared identity contract for WIP/merge, semantic reuse and DB release evidence. */
 export function finalRiskReviewerErrors(review = {}, policy = {}, context = {}) {
   const tier = review.reviewerTier ?? 'PREMIUM';
@@ -99,26 +125,7 @@ export function finalRiskReviewerErrors(review = {}, policy = {}, context = {}) 
     allowed.every(model => catalog.includes(model)) && allowed.includes(policy.models?.finalRisk);
   const errors = [];
   if (policy.openaiBuilderDecision?.independentReviewerRequired === true) {
-    const proof = context.roleEvidence;
-    const builder = proof?.builder, reviewer = proof?.reviewer;
-    const source = value => typeof value === 'string' && value.startsWith(`https://github.com/${context.repository}/`)
-      && /^https:\/\/github\.com\/[^/]+\/[^/]+\/(issues|pull)\/\d+#issuecomment-\d+$/.test(value);
-    if (proof?.trusted !== true || !builder || !reviewer) errors.push('Missing independently read-back builder/reviewer role evidence');
-    else {
-      for (const [record, role] of [[builder, 'BUILD'], [reviewer, 'REVIEW']]) {
-        if (record.role !== role || record.repository !== context.repository || record.headSha !== context.headSha
-          || record.changeDigest !== context.changeDigest || !source(record.sourceRef)
-          || !['actorId', 'sessionId', 'executionRef'].every(key => meaningful(record[key]))
-          || record.executionEvidence !== 'OPERATOR_ATTESTED' || !Number.isFinite(millis(record.startedAt))
-          || !Number.isFinite(millis(record.completedAt)) || millis(record.completedAt) < millis(record.startedAt)) {
-          errors.push(`Invalid current ${role} role execution receipt`);
-        }
-      }
-      if (builder.actorId === reviewer.actorId || builder.sessionId === reviewer.sessionId
-        || builder.executionRef === reviewer.executionRef || builder.sourceRef === reviewer.sourceRef
-        || reviewer.freshContext !== true || reviewer.executionRef !== review.executionRef
-        || millis(reviewer.startedAt) < millis(builder.completedAt)) errors.push('Builder cannot approve its own actor/session; fresh independent review required');
-    }
+    errors.push(...independentRoleErrors(review, context));
   }
   if (tier === 'PREMIUM') {
     if (!(validPremium && requested === actual && allowed.includes(actual))) errors.push('Unverified premium reviewer identity');

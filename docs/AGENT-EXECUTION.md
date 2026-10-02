@@ -638,6 +638,12 @@ CI 失敗由 Luna 先壓縮：exact head、job／step、suite／case、錯誤碼
 `STATE_SYNC_PENDING`，精確列出 PR、已驗證 terminal state、尚未同步欄位、失敗 action／error 與下一個合法
 寫入路徑；在清掉這個 pending 前不得宣稱 `POST_MERGE_CLOSEOUT=COMPLETE`。
 
+### 9.0.1.1 Product Issue close admission：先證明可關，再送 close
+Product Issue 的 GitHub `closed` 事件由 trusted `product-issue-close-guard` 機械驗證。關閉前同回合留下 `RUN_CAPTURE_HANDOFF`，至少含 `RUN_ID`、`EVENT: ISSUE_CLOSE_READY`、current-main canonical CI `EVIDENCE_REF`、同 Issue trusted final Sol `CLOSE_APPROVED_REF`、`REVIEWED_HEAD`、`OBSERVED_AT`、`WRITER_BLOCKER`、`NEXT_SAFE_WRITE_PATH`。
+close guard 重新讀 live Issue、current main、owning v4 Product Run、open/merged PR、canonical CI 與 final Sol approval。handoff 必須在 close 前建立/最後編輯且不超過 6 小時；Run 必須 OPEN 且 sources 含本 Issue；final Sol approval 必須同 Issue／同 RUN_ID／本次 close generation，`EXACT_HEAD=REVIEWED_HEAD` 且等於本 Issue 最後一張已 merge Product PR 的 source head。Squash merge 的 ancestry 以該 PR `merge_commit_sha` 對 current main 驗證，不拿 source head 冒充 merge ancestry。
+CI 必須是 `.github/workflows/ci.yml` 的 current-main exact SHA `push` success，且不能有同 Issue open PR。trusted reviewer 沿用既有 immutable Agent-bot allowlist或 GitHub live write/maintain/admin permission；不得另造信任名單。任一條不成立即 reopen 並標 `governance:premature-close`，label 建立須併發冪等。
+合法 close 後 workflow 留下 `ISSUE_CLOSED_OBSERVED` handoff；owning Product session 仍須 reconcile `ISSUE_CLOSED` Completion Truth 與 `delivery.issuesClosed`、重跑 readiness，再完成 `POST_MERGE_CLOSEOUT`。只有正文與 managed label 一致為 `MODEL_GOVERNANCE` 且無 Product label 才豁免；缺失、歧義或衝突一律 fail closed。
+
 ### 9.0.2 STAGE_TRUTH_SYNC：環境階段一變，就更新，不等 closeout／複盤
 
 POST_MERGE_CLOSEOUT 不是唯一同步點。以下任何一項發生時，都視為 Product delivery stage change：
