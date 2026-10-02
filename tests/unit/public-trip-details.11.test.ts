@@ -1,6 +1,63 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const fakeState = vi.hoisted(() => ({
+  planCount: 10,
+  failPlanId: null as string | null,
+  active: 0,
+  maxActive: 0,
+}));
+
+vi.mock('@/server/supabase', () => ({
+  createAdminSupabase: () => ({
+    from(table: string) {
+      const filters: Record<string, unknown> = {};
+      let single = false;
+      const run = async () => {
+        if (table === 'tenants') {
+          return { data: { id: 'tenant-1', shop_code: 'demo', name: 'Demo', business_type: null, tenant_settings: null }, error: null };
+        }
+        if (table === 'trips') {
+          const row = { id: 'trip-1', slug: 'hike', title: 'Hike', summary: '', location: '', cover_image_url: null, duration_hours: 2, refund_policy_type: 'STANDARD' };
+          return { data: single ? row : [row], error: null };
+        }
+        if (table === 'trip_plans') {
+          const data = Array.from({ length: fakeState.planCount }, (_, i) => ({
+            id: `plan-${i}`, trip_id: 'trip-1', name: `P${i}`, description: '', price_per_person: 100,
+            price_type: 'PER_PERSON', min_party: 1, max_party: 4, sales_mode: 'FIXED_DEPARTURE',
+          }));
+          return { data, error: null };
+        }
+        if (table === 'trip_departures' && filters.plan_id) {
+          fakeState.active += 1;
+          fakeState.maxActive = Math.max(fakeState.maxActive, fakeState.active);
+          await new Promise((r) => setTimeout(r, 5));
+          fakeState.active -= 1;
+          const planId = filters.plan_id as string;
+          if (planId === fakeState.failPlanId) return { data: null, error: { message: 'boom' } };
+          const n = Number(planId.replace('plan-', ''));
+          return {
+            data: [{ id: `dep-${n}`, departs_on: '2099-01-01', start_time: '09:00:00', capacity: 5, seats_booked: n % 5 }],
+            error: null,
+          };
+        }
+        return { data: [], error: null };
+      };
+      const chain: Record<string, unknown> = {
+        select: () => chain,
+        in: () => chain,
+        gte: () => chain,
+        order: () => chain,
+        range: () => chain,
+        eq: (k: string, v: unknown) => { filters[k] = v; return chain; },
+        maybeSingle: () => { single = true; return run(); },
+        then: (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) => run().then(res, rej),
+      };
+      return chain;
+    },
+  }),
+}));
 
 const ROOT = process.cwd();
 const loader = readFileSync(resolve(ROOT, 'src/server/public-shop.ts'), 'utf8');
@@ -92,5 +149,33 @@ describe('#11 公開行程詳情', () => {
     }
     expect([...defined]).toContain('location');
     expect(cols.filter((c) => !defined.has(c)), '公開詳情不得 select 非 canonical 欄位').toEqual([]);
+  });
+});
+
+describe('#11 公開行程詳情：方案團次查詢併發上限', () => {
+  beforeEach(() => {
+    fakeState.planCount = 10;
+    fakeState.failPlanId = null;
+    fakeState.active = 0;
+    fakeState.maxActive = 0;
+  });
+
+  it('10 個方案時同時進行的 trip_departures 查詢不超過 3，且結果順序與方案一致', async () => {
+    const { loadPublicTripDetails } = await import('@/server/public-shop');
+    const result = await loadPublicTripDetails('demo', 'hike');
+    expect(fakeState.maxActive).toBeGreaterThan(1);
+    expect(fakeState.maxActive).toBeLessThanOrEqual(3);
+    const plans = result?.trip.plans ?? [];
+    expect(plans.map((p) => p.id)).toEqual(Array.from({ length: 10 }, (_, i) => `plan-${i}`));
+    plans.forEach((plan, i) => {
+      expect(plan.departures.map((d) => d.id)).toEqual([`dep-${i}`]);
+      expect(plan.departures[0].seatsLeft).toBe(5 - (i % 5));
+    });
+  });
+
+  it('任一方案團次查詢失敗時整個請求 reject（fail-closed）', async () => {
+    fakeState.failPlanId = 'plan-4';
+    const { loadPublicTripDetails } = await import('@/server/public-shop');
+    await expect(loadPublicTripDetails('demo', 'hike')).rejects.toThrow('PUBLIC_TRIP_DETAILS');
   });
 });

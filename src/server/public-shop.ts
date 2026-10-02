@@ -163,6 +163,36 @@ const MAX_DETAIL_DEPARTURES_PER_PLAN = 6;
  */
 const DETAIL_DEPARTURE_PAGE_SIZE = 120;
 const MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN = 1200;
+/** 匿名請求一次最多同時對幾個方案查團次；方案數無上限，不得全數同時扇出。 */
+const DETAIL_PLAN_QUERY_CONCURRENCY = 3;
+
+/**
+ * 有上限的併發 map：輸出順序與 items 相同；任一項 reject 則整體 reject（fail-closed，
+ * 並停止啟動尚未開始的項目）。
+ */
+export async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  let failed = false;
+  const workerCount = Math.max(1, Math.min(limit, items.length));
+  const worker = async () => {
+    while (!failed && next < items.length) {
+      const index = next++;
+      try {
+        results[index] = await fn(items[index], index);
+      } catch (err) {
+        failed = true;
+        throw err;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: workerCount }, worker));
+  return results;
+}
 
 /**
  * ⚠️ 店家代碼的形狀與長度上限由 `@/lib/shop-code` 統一提供，**每一個會寫入
@@ -429,7 +459,7 @@ async function loadPublicTripDetailsUncached(
   const row = rawRow as Record<string, unknown> | null;
   if (!row) return null;
 
-  const planDepartureResults = await Promise.all(knownTrip.plans.map(async (plan) => {
+  const planDepartureResults = await mapWithConcurrency(knownTrip.plans, DETAIL_PLAN_QUERY_CONCURRENCY, async (plan) => {
     const departures: PublicTripDetailDeparture[] = [];
     let offset = 0;
     let scanned = 0;
@@ -501,7 +531,7 @@ async function loadPublicTripDetailsUncached(
       departures,
       mayBeTruncated: mayBeTruncated || departures.length >= MAX_DETAIL_DEPARTURES_PER_PLAN,
     }] as const;
-  }));
+  });
   const departuresByPlan = new Map(planDepartureResults);
 
   const gallery = publicStringList(row.gallery)
