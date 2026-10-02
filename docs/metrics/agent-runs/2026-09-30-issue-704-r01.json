@@ -193,7 +193,10 @@
     "Early task/CI checkpoint publication was incomplete; existing handoffs5912470291/5913463423/5913520485 remain evidence of this gap, not timely capture. Missing token/provider telemetry stays null/unknown. Do not treat this late reconciliation as a comparable #104 efficiency sample.",
     "Repeated source pipelines followed ledger note/report/Playbook omissions and clock-boundary review findings. Next publication must bundle canonical report+byte check and complete month-stability counterexamples before one push; reuse independent delta review.",
     "PR705 and706 are source/main-health test repairs. No Production schema readiness or authenticated Production acceptance is claimed; #17/#37/#680 release tails remain open.",
-    "CLOSEOUT_ACCEPTED_NOT_GRADED: Early dispatch and CI checkpoints were not durably captured at event time; late same-task reconciliation preserves the handoffs and cannot certify a comparable complete raw Run. RUN_COMPLETE scoring attestation is intentionally withheld; tokens and provider identity remain unavailable.（gaps: verified RUN_COMPLETE claim is required）"
+    "CLOSEOUT_ACCEPTED_NOT_GRADED: Early dispatch and CI checkpoints were not durably captured at event time; late same-task reconciliation preserves the handoffs and cannot certify a comparable complete raw Run. RUN_COMPLETE scoring attestation is intentionally withheld; tokens and provider identity remain unavailable.（gaps: verified RUN_COMPLETE claim is required）",
+    "PR707 finding4146362048 disposition: SOURCE_VERIFIED states corrected to canonical success. Authorized GitHub readback confirmed source head f09edb164e2b5c61e5de2b5fdff073a0e84dfc14 ci36730062328 completed/success; evidenceRef now identifies that run. This is a semantic correction to the existing source claim, not a new CI run or Production acceptance.",
+    "PR707 finding4146362060 disposition: HISTORICAL_CAPTURE_GAP. PR705 has observed BUILD_ENTER but no durable BUILD_EXIT timestamp/event in this ledger. GitHub confirms merge53911ddb at2026-09-30T13:39:11Z, but merge time does not establish the actual earlier BUILD_EXIT. Preserve the original event and do not synthesize an exit, change counters, or claim a fully reconstructed lifecycle. Original terminal informed NOT_GRADED exception and withheld RUN_COMPLETE remain; recover an original transition receipt before any comparable replay.",
+    "PR707 finding4146362076 disposition: clock-window oracle/GET race moved from PB034 metadata-preflight root cause to dedicated PB055. Review P1 classification alone is not evidence of a Production incident."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -226,10 +229,10 @@
       {
         "type": "SOURCE_VERIFIED",
         "subject": "issue#704",
-        "claimedState": "verified",
-        "observedState": "verified",
+        "claimedState": "success",
+        "observedState": "success",
         "verification": "VERIFIED",
-        "evidenceRef": "github:issue#704"
+        "evidenceRef": "github:workflow#36730062328"
       },
       {
         "type": "MERGED_TO_MAIN",
