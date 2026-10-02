@@ -576,17 +576,64 @@ describe('review wake-up cannot cancel lifecycle housekeeping (synthetic Actions
 });
 
 describe('terminal cleanup compensates observed reopen without restoring stale metadata', () => {
+  it.each(['governance:lane-metadata-incomplete', 'governance:wip-violation'])('preserves %s across a reopened semantic guard error', async warningLabel => {
+    const boundary = await import('../../scripts/agents/governance-workstream-boundary.mjs');
+    const initial = { ...current, state: 'closed', merged: false, closed_at: '2026-10-02T07:00:00Z',
+      body: body + '\nWORK_ORIGIN: AGENT\nACTIVE_CANDIDATE: true\nRUN_ID: none',
+      labels: [{ name: 'state:active' }, { name: warningLabel }] };
+    let live: any = structuredClone(initial);
+    const removeLabel = vi.fn(async ({ name }: any) => {
+      live.labels = live.labels.filter((label: any) => label.name !== name);
+      if (name === warningLabel) live = { ...live, state: 'open', closed_at: null };
+    });
+    const github: any = { rest: {
+      pulls: { get: vi.fn(async () => ({ data: structuredClone(live) })), update: vi.fn() },
+      issues: { removeLabel, getLabel: vi.fn(async () => ({})), addLabels: vi.fn(async ({ labels }: any) => {
+        live.labels.push(...labels.map((name: string) => ({ name })));
+      }), listComments: vi.fn(), createComment: vi.fn() },
+    }, paginate: vi.fn(async () => []) };
+    await boundary.reconcileTerminalPr({ github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', current: initial });
+    expect(live.labels.map((label: any) => label.name)).toContain(warningLabel);
+    expect(removeLabel).not.toHaveBeenCalledWith(expect.objectContaining({ name: warningLabel }));
+    expect(github.rest.pulls.update).not.toHaveBeenCalled();
+  });
+  it('keeps guard warnings when state-label removal itself races with reopen', async () => {
+    const boundary = await import('../../scripts/agents/governance-workstream-boundary.mjs');
+    const initial = { ...current, state: 'closed', merged: false, closed_at: '2026-10-02T07:00:00Z',
+      body: body + '\nWORK_ORIGIN: AGENT\nACTIVE_CANDIDATE: true\nRUN_ID: none', labels: [
+        { name: 'state:active' }, { name: 'candidate:active' }, { name: 'governance:lane-metadata-incomplete' },
+        { name: 'governance:wip-violation' },
+      ] };
+    let live: any = structuredClone(initial);
+    const github: any = { rest: {
+      pulls: { get: vi.fn(async () => ({ data: structuredClone(live) })), update: vi.fn() },
+      issues: { removeLabel: vi.fn(async ({ name }: any) => {
+        live.labels = live.labels.filter((label: any) => label.name !== name);
+        if (name === 'state:active') live = { ...live, state: 'open', closed_at: null };
+      }), getLabel: vi.fn(async () => ({})), addLabels: vi.fn(async ({ labels }: any) => {
+        live.labels.push(...labels.map((name: string) => ({ name })));
+      }), listComments: vi.fn(), createComment: vi.fn() },
+    }, paginate: vi.fn(async () => []) };
+    await boundary.reconcileTerminalPr({ github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', current: initial });
+    expect(live.state).toBe('open');
+    expect(live.labels.map((label: any) => label.name)).toEqual(expect.arrayContaining([
+      'state:active', 'candidate:active', 'governance:lane-metadata-incomplete', 'governance:wip-violation',
+    ]));
+    expect(github.rest.issues.removeLabel).not.toHaveBeenCalledWith(expect.objectContaining({ name: 'governance:wip-violation' }));
+    expect(github.rest.pulls.update).not.toHaveBeenCalled();
+  });
   it('preserves an edit made in a new close generation before terminal body PATCH', async () => {
     const boundary = await import('../../scripts/agents/governance-workstream-boundary.mjs');
     const initial = { ...current, state: 'closed', merged: false, closed_at: '2026-10-02T07:00:00Z',
       labels: [{ name: 'state:active' }], body: body + '\nWORK_ORIGIN: AGENT\nACTIVE_CANDIDATE: true' };
     let live: any = structuredClone(initial);
     let reads = 0;
+    const lastRead = boundary.terminalLabelPlan(initial)!.remove.length + 3;
     const pulls = {
       get: vi.fn(async () => {
         reads++;
         const observed = structuredClone(live);
-        if (reads === 11) {
+        if (reads === lastRead) {
           live = { ...live, state: 'open', closed_at: null };
           live.body += '\nUser edit in new generation';
           live = { ...live, state: 'closed', closed_at: '2026-10-02T07:02:00Z' };
@@ -607,7 +654,7 @@ describe('terminal cleanup compensates observed reopen without restoring stale m
     const warnings: string[] = [];
     await boundary.reconcileTerminalPr({ github: { rest: { pulls, issues }, paginate: vi.fn(async () => []) }, owner: 'smallwei0301',
       repo: 'vibeaico-admin-rebuild', current: initial, warning: (message: string) => warnings.push(message) });
-    expect(reads).toBeGreaterThanOrEqual(11);
+    expect(reads).toBeGreaterThanOrEqual(lastRead);
     expect(pulls.update).not.toHaveBeenCalled();
     expect(live.body).toBe(initial.body + '\nUser edit in new generation');
     expect(warnings.join('\n')).toContain('STATE_SYNC_PENDING');
@@ -623,10 +670,10 @@ describe('terminal cleanup compensates observed reopen without restoring stale m
       { state: 'closed', number: 900 }, {}, 'smallwei0301', 'vibeaico-admin-rebuild', { summary });
     expect(boundary.reconcileTerminalPr).not.toHaveBeenCalled();
   });
-  it.each(['before-label', 'after-remove', 'after-remove-invalid', 'after-remove-error', 'after-incomplete-invalid', 'after-add', 'after-add-invalid', 'after-add-error', 'fresh-metadata', 'new-generation'])('independent terminal writer/%s checks each label write and repairs reopened live labels', async phase => {
+  it.each(['before-label', 'after-remove', 'after-remove-invalid', 'after-remove-error', 'after-add', 'after-add-invalid', 'after-add-error', 'fresh-metadata', 'new-generation'])('independent terminal writer/%s checks each label write and repairs reopened live labels', async phase => {
       const { github, live } = wakeupFixture();
       const original = live.body + '\nWORK_ORIGIN: AGENT\nACTIVE_CANDIDATE: true';
-      let pr: any = { ...live, body: original, state: 'closed', merged: false, closed_at: '2026-10-02T07:00:00Z', labels: phase === 'after-incomplete-invalid' ? [{ name: 'governance:lane-metadata-incomplete' }, { name: 'unrelated:keep' }] : [{ name: 'state:active' }, { name: 'candidate:active' }, { name: 'unrelated:keep' }] };
+      let pr: any = { ...live, body: original, state: 'closed', merged: false, closed_at: '2026-10-02T07:00:00Z', labels: [{ name: 'state:active' }, { name: 'candidate:active' }, { name: 'unrelated:keep' }] };
       const eventPr = structuredClone(pr);
       let reads = 0;
       const reopen = () => { pr = { ...pr, state: 'open', closed_at: null }; };
@@ -643,8 +690,7 @@ describe('terminal cleanup compensates observed reopen without restoring stale m
       github.rest.issues.removeLabel = vi.fn(async ({ name }: any) => {
         mutations.push('remove:' + name); pr.labels = pr.labels.filter((l: any) => l.name !== name);
         if (['after-remove', 'after-remove-invalid', 'after-remove-error'].includes(phase) && mutations.length === 1) reopen();
-        if (phase === 'after-incomplete-invalid' && name === 'governance:lane-metadata-incomplete') reopen();
-        if (['after-remove-invalid', 'after-remove-error', 'after-incomplete-invalid'].includes(phase) && pr.state === 'open') pr.body = pr.body.replace('AGENT_LANE: TERRA_BUILD', 'AGENT_LANE: ???');
+        if (['after-remove-invalid', 'after-remove-error'].includes(phase) && pr.state === 'open') pr.body = pr.body.replace('AGENT_LANE: TERRA_BUILD', 'AGENT_LANE: ???');
         if (phase === 'after-remove-error' && mutations.length === 1) throw Object.assign(new Error('mock remove after effect'), { status: 502 });
       });
       github.rest.issues.addLabels = vi.fn(async ({ labels }: any) => {
@@ -672,10 +718,7 @@ describe('terminal cleanup compensates observed reopen without restoring stale m
       else await invocation;
       const names = pr.labels.map((l: any) => l.name);
       expect(names, phase).toContain('unrelated:keep');
-      if (phase === 'after-incomplete-invalid') {
-        expect(names).toContain('governance:lane-metadata-incomplete');
-        expect(names).not.toContain('state:historical');
-      } else if (phase.endsWith('-invalid') || phase.endsWith('-error')) {
+      if (phase.endsWith('-invalid') || phase.endsWith('-error')) {
         expect(names).toContain('state:active'); expect(names).toContain('candidate:active');
         expect(names).not.toContain('state:historical');
       } else {

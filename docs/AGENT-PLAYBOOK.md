@@ -1759,6 +1759,8 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 #745 finding4164927912（2026-10-02T10:31:31Z）再補：即使 writer 於 body PATCH 前重讀 close generation，PR 可在回讀後重開、編輯、再關閉；GitHub PR body 更新仍是整段替換，舊計畫會永久蓋掉新 prose。模擬最後回讀與 PATCH 之間的 reopen/edit/reclose，先驗出 RED1；移除 terminal writer 和 reopen compensation 的所有 `pulls.update({body})`，label reconciliation 保持原有逐步核對。`terminalBodyPlan` 只診斷待同步欄位，Actions warning 與 PR 上綁定 head／closed_at 的 bot comment 留 `STATE_SYNC_PENDING`、未同步欄位與下一寫入路徑；同世代只留一筆可信 bot handoff，不以可偽造的 comment 免除 gate。不得把 label cleanup 或 source CI 當成 `POST_MERGE_CLOSEOUT=COMPLETE`；由 owning session 在協調無並行編輯的時段回讀、更新、再核對 live body，無法保證獨占時維持 pending。GitHub REST 文件只描述 ETag 的條件 GET，PR 更新端點沒有可依賴的條件 body PATCH；加一次 GET／短暫延遲／workflow concurrency 都不能消除這個資料遺失窗口。這是保護既有文字的保守降級，並不豁免 closeout 必須同步本文的規則。
 
+#745 finding4165126834（2026-10-02T11:04:17Z）再補：reopen 時 `WORK_ORIGIN`／lane／state／candidate 四項即使有效，`RUN_ID` 缺失或全域 WIP 超限等語意錯誤仍可能成立。terminal writer 原先移除 `governance:lane-metadata-incomplete`／`governance:wip-violation` 後，補償只恢復 state/candidate，會遺失 guard 已計算的警告。兩種 warning 各以實際 helper 反例先驗 RED；最小修正是不讓 terminal cleanup 擁有這兩個由完整 guard 管理的警告標籤，closed PR 可保留警告作歷史線索，reopen 時也不會被 cleanup 擦掉。closed active/candidate labels 仍照原邏輯清理；warning 是否仍有效交由下一次完整 live guard 判定，不用局部 metadata 猜 WIP 或製造 PASS。
+
 ### PB-050 — 埋了點，卻整輪沒跑過驗證器；欄位有值，但值在另一套詞彙裡
 
 - 首次／最近：2026-09-14 / 2026-09-14
