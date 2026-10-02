@@ -399,7 +399,7 @@ function publicLines(value: unknown): string[] {
 }
 
 const PUBLIC_TRIP_DETAILS_COLUMNS = [
-  'id', 'slug', 'title', 'tagline', 'summary', 'description', 'region', 'category',
+  'id', 'slug', 'title', 'tagline', 'summary', 'description',
   'location', 'cover_image_url', 'gallery', 'duration_hours', 'meeting_point',
   'meeting_point_map_url', 'includes', 'exclusions', 'notices', 'notes',
   'refund_policy_type',
@@ -515,8 +515,9 @@ async function loadPublicTripDetailsUncached(
       tagline: (row.tagline as string) ?? '',
       summary: (row.summary as string) ?? '',
       description: (row.description as string) ?? '',
-      region: (row.region as string) ?? '',
-      category: (row.category as string) ?? '',
+      // canonical trips 無 region／category 欄；與後台 mapTrip 同語意（region 由 location 推得、category 為空字串）。
+      region: (row.location as string) ?? '',
+      category: '',
       location: (row.location as string) ?? '',
       coverImageUrl: safePublicHttpsUrl(row.cover_image_url),
       galleryUrls: gallery,

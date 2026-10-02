@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -66,5 +66,31 @@ describe('#11 公開行程詳情', () => {
     expect(detailClient).toContain('trip.inclusions');
     expect(detailClient).toContain('trip.exclusions');
     expect(detailClient).toContain('trip.notices');
+  });
+
+  it('詳情 select 欄位只含 canonical migrations 的 trips 欄位，不含 region／category', () => {
+    const body = loader.match(/const PUBLIC_TRIP_DETAILS_COLUMNS = \[([\s\S]*?)\]\s*as const/)?.[1] ?? '';
+    const cols = [...body.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+    expect(cols.length).toBeGreaterThan(0);
+    expect(cols).not.toContain('region');
+    expect(cols).not.toContain('category');
+
+    const dir = resolve(ROOT, 'supabase/migrations');
+    const defined = new Set<string>();
+    for (const file of readdirSync(dir).filter((f) => f.endsWith('.sql'))) {
+      const sql = readFileSync(resolve(dir, file), 'utf8');
+      const create = sql.match(/create table if not exists public\.trips \(([\s\S]*?)\n\);/);
+      if (create) {
+        for (const line of create[1].split('\n')) {
+          const m = line.match(/^\s{2}([a-z_]+)\s+\S/);
+          if (m) defined.add(m[1]);
+        }
+      }
+      for (const alter of sql.matchAll(/alter table (?:if exists )?public\.trips\b([\s\S]*?);/gi)) {
+        for (const m of alter[1].matchAll(/add column if not exists ([a-z_]+)/gi)) defined.add(m[1]);
+      }
+    }
+    expect([...defined]).toContain('location');
+    expect(cols.filter((c) => !defined.has(c)), '公開詳情不得 select 非 canonical 欄位').toEqual([]);
   });
 });
