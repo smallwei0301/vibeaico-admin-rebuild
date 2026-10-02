@@ -84,6 +84,13 @@ function evaluate(overrides: Record<string, unknown> = {}) {
     issue: issue(),
     currentMainSha: main,
     openPullRequests: [],
+    mergedPullRequests: [{
+      number: 705,
+      state: 'closed',
+      merged_at: '2026-10-01T00:40:00Z',
+      head: { sha: 'b'.repeat(40) },
+      body: '<!-- pr-lifecycle\nissue: 704\nstate: MERGED\n-->\nWORKSTREAM: PRODUCT_MAINLINE',
+    }],
     comments: [readyComment()],
     verifiedCi,
     verifiedRun,
@@ -178,6 +185,32 @@ describe('#720 executable Product Issue close gate', () => {
     ]) {
       expect(evaluate({ verifiedCloseApproval: { ...verifiedCloseApproval, ...patch } }).allowed).toBe(false);
     }
+  });
+
+  it('requires final Sol approval to cover the latest merged Product PR for this Issue', () => {
+    const newerHead = 'd'.repeat(40);
+    const result = evaluate({
+      mergedPullRequests: [{
+        number: 706,
+        state: 'closed',
+        merged_at: '2026-10-01T00:50:00Z',
+        head: { sha: newerHead },
+        body: '<!-- pr-lifecycle\nissue: 704\nstate: MERGED\n-->\nWORKSTREAM: PRODUCT_MAINLINE',
+      }],
+    });
+    expect(result.allowed).toBe(false);
+    expect(result.errors.join('\n')).toContain('latest merged Product PR #706 head');
+
+    const governanceOnly = evaluate({
+      mergedPullRequests: [{
+        number: 707,
+        state: 'closed',
+        merged_at: '2026-10-01T00:55:00Z',
+        head: { sha: newerHead },
+        body: '<!-- pr-lifecycle\nissue: 704\nstate: MERGED\n-->\nWORKSTREAM: MODEL_GOVERNANCE',
+      }],
+    });
+    expect(governanceOnly.allowed).toBe(true);
   });
 
   it('requires current-main exact canonical ci push success', () => {
