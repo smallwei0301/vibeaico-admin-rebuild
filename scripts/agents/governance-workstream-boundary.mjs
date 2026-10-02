@@ -160,10 +160,11 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
     pr.closed_at === current.closed_at && Boolean(pr.merged || pr.merged_at) === Boolean(current.merged || current.merged_at);
   const names = pr => (pr.labels ?? []).map(label => typeof label === 'string' ? label : label.name);
   const remove = async name => {
-    try { await github.rest.issues.removeLabel({ owner, repo, issue_number: current.number, name }); }
-    catch (error) { if (error.status !== 404) throw error; }
+    try { await github.rest.issues.removeLabel({ owner, repo, issue_number: current.number, name }); return true; }
+    catch (error) { if (error.status !== 404) throw error; return false; }
   };
   let touched = false, bodyReconciled = false, beforeBody, writtenBody;
+  const removedByUs = new Set(), addedByUs = new Set();
   const write = async operation => {
     const fresh = await read();
     if (!sameClose(fresh)) return false;
@@ -220,7 +221,20 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
       PARKED: 'state:parked', OWNER_BLOCKED: 'state:owner-blocked', COMPLETE: 'state:complete', HISTORICAL: 'state:historical' };
     if (!['AGENT', 'OWNER'].includes(metadata.origin) || !ALLOWED.state.has(metadata.state) ||
         !ALLOWED.lane.has(metadata.lane) || !ALLOWED.boolean.has(metadata.activeCandidate)) {
-      throw new Error('Reopened metadata is incomplete; no guessed lane/candidate restoration, reconciliation pending');
+      // Invalid body cannot determine desired labels. Reconcile this invocation's
+      // attempted writes, including an API that wrote before throwing; do not restore
+      // a terminal label or overwrite a new state label.
+      for (const name of addedByUs) await openWrite(async fresh => {
+        if (names(fresh).includes(name)) await remove(name);
+      });
+      for (const name of removedByUs) await openWrite(async fresh => {
+        const present = names(fresh);
+        if (present.includes(name) || ['state:historical', 'state:complete'].includes(name)) return;
+        if (name.startsWith('state:') && present.some(label => label.startsWith('state:'))) return;
+        if (name === 'candidate:active' && present.some(label => label.startsWith('state:') && !removedByUs.has(label))) return;
+        await github.rest.issues.addLabels({ owner, repo, issue_number: current.number, labels: [name] });
+      });
+      throw new Error('Reopened metadata is incomplete; own attempted label mutations reconciled where observable, reconciliation pending');
     }
     const desired = metadata.origin === 'AGENT' ? [states[metadata.state]] : [];
     if (metadata.origin === 'AGENT' && metadata.activeCandidate === 'TRUE' && metadata.lane !== 'LUNA_CLOSURE') desired.push('candidate:active');
@@ -236,9 +250,15 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
   };
   const terminal = terminalLabelPlan(current);
   if (!terminal) return { bodyReconciled: false };
+  let operationError;
   try {
     for (const name of terminal.remove) {
-      if (!await write(async fresh => { if (names(fresh).includes(name)) await remove(name); })) return { bodyReconciled: false };
+      if (!await write(async fresh => {
+        if (names(fresh).includes(name)) {
+          removedByUs.add(name); // The API may write remotely and then throw.
+          if (!await remove(name)) removedByUs.delete(name);
+        }
+      })) return { bodyReconciled: false };
     }
     if (!await write(async () => {
       try { await github.rest.issues.getLabel({ owner, repo, name: terminal.add }); }
@@ -248,8 +268,12 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
         catch (createError) { if (createError.status !== 422) throw createError; await github.rest.issues.getLabel({ owner, repo, name: terminal.add }); }
       }
     })) return { bodyReconciled: false };
-    if (!await write(fresh => names(fresh).includes(terminal.add) ? undefined :
-      github.rest.issues.addLabels({ owner, repo, issue_number: current.number, labels: [terminal.add] }))) return { bodyReconciled: false };
+    if (!await write(async fresh => {
+      if (!names(fresh).includes(terminal.add)) {
+        addedByUs.add(terminal.add); // Record possible side effect before awaiting the API.
+        await github.rest.issues.addLabels({ owner, repo, issue_number: current.number, labels: [terminal.add] });
+      }
+    })) return { bodyReconciled: false };
     await write(async fresh => {
       const plan = terminalBodyPlan(fresh);
       if (plan.errors.length) warning(`Closed PR #${current.number} body not rewritten: ${plan.errors.join('; ')}`);
@@ -259,10 +283,18 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
         bodyReconciled = true;
       }
     });
+  } catch (error) {
+    operationError = error;
+    throw error;
   } finally {
-    const fresh = await read();
-    if (touched && fresh.state === 'open') { await restoreOpen(fresh); bodyReconciled = false; }
-    else if (!sameClose(fresh)) warning('Close generation changed; old reconciliation stopped without overwriting its successor');
+    try {
+      const fresh = await read();
+      if (touched && fresh.state === 'open') { await restoreOpen(fresh); bodyReconciled = false; }
+      else if (!sameClose(fresh)) warning('Close generation changed; old reconciliation stopped without overwriting its successor');
+    } catch (reconcileError) {
+      if (operationError) throw new AggregateError([operationError, reconcileError], 'Terminal mutation failed; reopen compensation remains pending');
+      throw reconcileError;
+    }
   }
   return { bodyReconciled };
 }

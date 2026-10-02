@@ -1755,6 +1755,8 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 #745 finding4164713436（2026-10-02T09:59:35Z）再補：head-only 修正的整份 `parseLaneMetadata` 比對仍太寬；reopen 後只改 `REMAINING_AUTONOMOUS_STEPS` 等規劃欄位，也會阻止撤回自身 `HISTORICAL`／false，留下錯誤 WIP 標籤。無關欄位與無關欄位＋新 head 的實際腳本反例先有 2FAIL／100PASS；改用耦合的 lifecycle ownership contract（issue、workstream、origin、lane、state、candidate、lifecycle state）判定這次 writer 是否仍擁有終態欄位。無關規劃欄位及 head 變更可撤回自身改寫的欄位並保留新 prose；新的 PARKED／false、LUNA_CLOSURE 或 lifecycle 意圖仍不得因單欄位相同而還原 stale true。局部兩檔 133PASS/typecheck exit0；完整樹、獨立審查、新遠端 head CI 與最新 findings 待驗。相同值 ABA 與 REST 非原子窗口仍無法機械證明新 writer 意圖，不能宣稱絕對競態安全。
 
+#745 finding4164804550（2026-10-02T10:12:03Z）再補：即使 closed generation 在每次 label API 前回讀，reopen 仍可發生於回讀與 API 副作用之間。若 open PR 的 lane metadata 同時變無效，先前補償直接 throw，留下本次 terminal label 移除／新增，甚至把 `governance:lane-metadata-incomplete` 移走。實際腳本在 remove、incomplete label remove、historical add 後重開的三例先有 3FAIL／102PASS；第一次修後 136PASS，但獨立審查又重現 remove/add API **副作用後才 throw** 的兩例，仍留下錯誤標籤（FIX_REQUIRED 保留）。最終在 API await 前記可能已寫入的本次操作，明確 404 無副作用才撤銷記錄；invalid body 時以 fresh open head/body 逐次核對，移除本次加的終態標籤、恢復本次移除且未被新 state 取代的舊標籤，終態標籤不回填。原 API 錯誤與補償 pending 同時存在則保留兩者，不讓 finally 掩蓋原錯；兩個 after-effect throw RED2／105PASS 修後局部兩檔 138PASS。仍報 invalid metadata／pending，不猜 lane、review PASS 或 TEST；同值 ABA、未知並行 label 意圖及最後 read/write 非原子仍需後續 reconciliation，不能宣稱全域原子 rollback。完整樹、獨立審查、新 source CI 與最新 finding 待驗。
+
 ### PB-050 — 埋了點，卻整輪沒跑過驗證器；欄位有值，但值在另一套詞彙裡
 
 - 首次／最近：2026-09-14 / 2026-09-14
