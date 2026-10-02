@@ -13,6 +13,7 @@ const fakeState = vi.hoisted(() => ({
   onlySoldOut: false,
   salesMode: 'FIXED_DEPARTURE',
   gallery: undefined as undefined | string[],
+  tripExtra: undefined as undefined | Record<string, unknown>,
   modeFor: null as null | ((i: number) => string),
   active: 0,
   maxActive: 0,
@@ -37,7 +38,7 @@ vi.mock('@/server/supabase', () => ({
             { id: 'trip-2', tenant_id: 'tenant-1', slug: 'draft', status: 'DRAFT' },
             { id: 'trip-3', tenant_id: 'tenant-2', slug: 'other-shop', status: 'PUBLISHED' },
           ].map((r) => ({ ...r, ...(fakeState.gallery ? { gallery: fakeState.gallery } : {}) })).filter((r) => Object.entries(filters).every(([k, v]) => !(k in r) || (r as Record<string, unknown>)[k] === v))
-            .map((r) => ({ ...r, title: 'Hike', summary: '', location: '花蓮', cover_image_url: null, duration_hours: 2, refund_policy_type: 'STANDARD' }));
+            .map((r) => ({ ...r, title: 'Hike', summary: '', location: '花蓮', cover_image_url: null, duration_hours: 2, refund_policy_type: 'STANDARD', ...(fakeState.tripExtra ?? {}) }));
           return { data: single ? (all[0] ?? null) : all, error: null };
         }
         if (table === 'trip_plans') {
@@ -211,6 +212,7 @@ describe('#11 公開行程詳情：方案團次查詢併發上限', () => {
     fakeState.salesMode = 'FIXED_DEPARTURE';
     fakeState.modeFor = null;
     fakeState.gallery = undefined;
+    fakeState.tripExtra = undefined;
     fakeState.active = 0;
     fakeState.maxActive = 0;
     fakeState.calls = [];
@@ -506,6 +508,54 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     const result = await loadPublicTripDetails('demo', 'hike');
     expect(MAX_PUBLIC_GALLERY_IMAGES).toBe(8);
     expect(result?.trip.galleryUrls).toEqual(legal.slice(0, 8));
+  });
+
+  describe('公開文字欄位與陣列上限', () => {
+    const load = async (extra: Record<string, unknown>) => {
+      fakeState.planCount = 1;
+      fakeState.tripExtra = extra;
+      const { loadPublicTripDetails } = await import('@/server/public-shop');
+      return (await loadPublicTripDetails('demo', 'hike'))!.trip;
+    };
+
+    it('超長文字截到各欄位上限（description 5000、tagline／summary／safetyNotice 2000、單行欄位 300）', async () => {
+      const trip = await load({
+        description: 'd'.repeat(9000), tagline: 't'.repeat(9000), summary: 's'.repeat(9000), notes: 'n'.repeat(9000),
+        title: 'x'.repeat(900), location: 'l'.repeat(900), meeting_point: 'm'.repeat(900),
+      });
+      expect(Array.from(trip.description)).toHaveLength(5000);
+      expect(Array.from(trip.tagline)).toHaveLength(2000);
+      expect(Array.from(trip.summary)).toHaveLength(2000);
+      expect(Array.from(trip.safetyNotice)).toHaveLength(2000);
+      expect(Array.from(trip.title)).toHaveLength(300);
+      expect(Array.from(trip.location)).toHaveLength(300);
+      expect(Array.from(trip.meetingPoint)).toHaveLength(300);
+    });
+
+    it('陣列最多 20 項、每項最多 300 字；inclusions（多行字串）同樣處理，順序不變', async () => {
+      const many = Array.from({ length: 25 }, (_, i) => `item-${i}-` + 'z'.repeat(500));
+      const trip = await load({ exclusions: many, notices: many, includes: many.join('\n') });
+      for (const list of [trip.exclusions, trip.notices, trip.inclusions]) {
+        expect(list).toHaveLength(20);
+        expect(list.every((x) => Array.from(x).length === 300)).toBe(true);
+        expect(list[0].startsWith('item-0-')).toBe(true);
+        expect(list[19].startsWith('item-19-')).toBe(true);
+      }
+    });
+
+    it('含 emoji 時以字元截斷，不產生破碎字元（無孤立 surrogate）', async () => {
+      const trip = await load({ description: '😀'.repeat(6000), exclusions: ['👍'.repeat(400)] });
+      expect(Array.from(trip.description)).toHaveLength(5000);
+      expect(trip.description).toBe('😀'.repeat(5000));
+      expect(trip.exclusions[0]).toBe('👍'.repeat(300));
+      expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(trip.description)).toBe(false);
+    });
+
+    it('未超限的內容原樣輸出', async () => {
+      const trip = await load({ description: '正常說明', exclusions: ['a', 'b'] });
+      expect(trip.description).toBe('正常說明');
+      expect(trip.exclusions).toEqual(['a', 'b']);
+    });
   });
 
   it('M1：成團欄位只在 FIXED_DEPARTURE 輸出；REQUEST／INSTANT 不帶', async () => {

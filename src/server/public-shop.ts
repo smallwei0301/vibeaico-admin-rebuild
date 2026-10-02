@@ -34,6 +34,13 @@ import { cache } from 'react';
 import { createAdminSupabase } from '@/server/supabase';
 import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
 import { MAX_PUBLIC_GALLERY_IMAGES } from '@/lib/trip-gallery';
+import {
+  MAX_PUBLIC_LIST_ITEM_CHARS,
+  MAX_PUBLIC_LONG_TEXT_CHARS,
+  MAX_PUBLIC_SHORT_TEXT_CHARS,
+  limitPublicList,
+  truncateChars,
+} from '@/lib/public-trip-limits';
 
 /** 對外公開的店家基本資料。刻意只有這幾欄。 */
 export type PublicShop = {
@@ -690,23 +697,23 @@ async function loadPublicTripDetailsUncached(
     trip: {
       id: row.id as string,
       slug: row.slug as string,
-      title: (row.title as string) ?? '',
-      tagline: (row.tagline as string) ?? '',
-      summary: (row.summary as string) ?? '',
-      description: (row.description as string) ?? '',
+      title: truncateChars((row.title as string) ?? '', MAX_PUBLIC_LIST_ITEM_CHARS),
+      tagline: truncateChars((row.tagline as string) ?? '', MAX_PUBLIC_SHORT_TEXT_CHARS),
+      summary: truncateChars((row.summary as string) ?? '', MAX_PUBLIC_SHORT_TEXT_CHARS),
+      description: truncateChars((row.description as string) ?? '', MAX_PUBLIC_LONG_TEXT_CHARS),
       // canonical trips 無 region／category 欄；型別契約保留 string，回空字串，避免前端重複顯示 location。
       region: '',
       category: '',
-      location: (row.location as string) ?? '',
+      location: truncateChars((row.location as string) ?? '', MAX_PUBLIC_LIST_ITEM_CHARS),
       coverImageUrl: safePublicHttpsUrl(row.cover_image_url),
       galleryUrls: gallery,
       durationHours: row.duration_hours == null ? null : Number(row.duration_hours),
-      meetingPoint: (row.meeting_point as string) ?? '',
+      meetingPoint: truncateChars((row.meeting_point as string) ?? '', MAX_PUBLIC_LIST_ITEM_CHARS),
       meetingPointMapUrl: safePublicHttpsUrl(row.meeting_point_map_url),
-      inclusions: publicLines(row.includes),
-      exclusions: publicStringList(row.exclusions),
-      notices: publicStringList(row.notices),
-      safetyNotice: (row.notes as string) ?? '',
+      inclusions: limitPublicList(publicLines(row.includes)),
+      exclusions: limitPublicList(publicStringList(row.exclusions)),
+      notices: limitPublicList(publicStringList(row.notices)),
+      safetyNotice: truncateChars((row.notes as string) ?? '', MAX_PUBLIC_SHORT_TEXT_CHARS),
       refundPolicyType: row.refund_policy_type === 'FLEXIBLE' || row.refund_policy_type === 'STRICT'
         ? row.refund_policy_type : 'STANDARD',
       plans: plans.map((plan) => ({
