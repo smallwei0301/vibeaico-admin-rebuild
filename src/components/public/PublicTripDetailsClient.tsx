@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { PublicContactActions } from '@/components/public/PublicContactActions';
@@ -17,6 +17,7 @@ import {
   createRequestSequencer,
   type PublicTripFetchOutcome,
   shouldFetchOnMount,
+  shouldRefreshOnVisible,
   type PublicTripInitialData,
   type PublicTripLoadState as LoadState,
 } from '@/lib/public-trip-client-state';
@@ -32,6 +33,9 @@ function formatDepartureDate(departsOn: string): string {
 export function PublicTripDetailsClient({ shopCode, slug, initialData }: Props) {
   const [state, setState] = useState<LoadState>(() => initialLoadState(initialData));
   const [attempt, setAttempt] = useState(0);
+  // 事件處理器讀最新 state（避免舊的 closure）。
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   useEffect(() => {
     // 只有最新一次請求可套用結果；新請求會 abort 前一個，unmount 時 abort 全部。
@@ -56,7 +60,9 @@ export function PublicTripDetailsClient({ shopCode, slug, initialData }: Props) 
     // 沒有 initialData（例如頁面節流超限）或按過重試：立即 fetch。
     if (shouldFetchOnMount(initialData, attempt)) load(false);
     // 不論是否曾重試，都保留切回分頁時以 no-store 靜默更新即時名額的監聽。
-    const onVisible = () => { if (document.visibilityState === 'visible') load(true); };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && shouldRefreshOnVisible(stateRef.current)) load(true);
+    };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       sequencer.abortAll();

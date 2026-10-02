@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { publicTripDetailsPage as t } from '@/i18n/zh-TW/pages/public-trip-details';
 import {
-  createRequestSequencer, shouldApplyResult,
+  createRequestSequencer, shouldApplyResult, shouldRefreshOnVisible,
   bookingCtaState, hasBookableListedDeparture, initialLoadState, outcomeFromHttp, shouldFetchOnMount, stateAfterFetch,
 } from '@/lib/public-trip-client-state';
 
@@ -139,6 +139,23 @@ describe('#11 client 有 initialData 時不重取', () => {
   it('shouldApplyResult：只有 id 相同才套用', () => {
     expect(shouldApplyResult(2, 2)).toBe(true);
     expect(shouldApplyResult(1, 2)).toBe(false);
+  });
+
+  it('shouldRefreshOnVisible：只有 ready 才發背景請求（loading／error／not-found 略過）', () => {
+    expect(shouldRefreshOnVisible({ status: 'ready', data })).toBe(true);
+    expect(shouldRefreshOnVisible({ status: 'loading' })).toBe(false);
+    expect(shouldRefreshOnVisible({ status: 'error' })).toBe(false);
+    expect(shouldRefreshOnVisible({ status: 'not-found' })).toBe(false);
+    expect(client).toContain("document.visibilityState === 'visible' && shouldRefreshOnVisible(stateRef.current)");
+    expect(client).toContain('stateRef.current = state;');
+  });
+
+  it('前景被背景 abort、背景失敗：最終狀態不得停在 loading（防禦）', () => {
+    const loading = { status: 'loading' } as const;
+    expect(stateAfterFetch({ kind: 'error' }, true, loading)).toEqual({ status: 'error' });
+    expect(stateAfterFetch({ kind: 'not-found' }, true, loading)).toEqual({ status: 'not-found' });
+    // 背景錯誤仍不覆蓋已顯示的資料。
+    expect(stateAfterFetch({ kind: 'error' }, true, { status: 'ready', data })).toEqual({ status: 'ready', data });
   });
 
   describe('請求序號器（連續 visibilitychange）', () => {

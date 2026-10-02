@@ -12,6 +12,7 @@ const fakeState = vi.hoisted(() => ({
   lookaheadStartedToday: false,
   onlySoldOut: false,
   salesMode: 'FIXED_DEPARTURE',
+  gallery: undefined as undefined | string[],
   modeFor: null as null | ((i: number) => string),
   active: 0,
   maxActive: 0,
@@ -35,7 +36,7 @@ vi.mock('@/server/supabase', () => ({
             { id: 'trip-1', tenant_id: 'tenant-1', slug: 'hike', status: 'PUBLISHED' },
             { id: 'trip-2', tenant_id: 'tenant-1', slug: 'draft', status: 'DRAFT' },
             { id: 'trip-3', tenant_id: 'tenant-2', slug: 'other-shop', status: 'PUBLISHED' },
-          ].filter((r) => Object.entries(filters).every(([k, v]) => !(k in r) || (r as Record<string, unknown>)[k] === v))
+          ].map((r) => ({ ...r, ...(fakeState.gallery ? { gallery: fakeState.gallery } : {}) })).filter((r) => Object.entries(filters).every(([k, v]) => !(k in r) || (r as Record<string, unknown>)[k] === v))
             .map((r) => ({ ...r, title: 'Hike', summary: '', location: '花蓮', cover_image_url: null, duration_hours: 2, refund_policy_type: 'STANDARD' }));
           return { data: single ? (all[0] ?? null) : all, error: null };
         }
@@ -209,6 +210,7 @@ describe('#11 公開行程詳情：方案團次查詢併發上限', () => {
     fakeState.onlySoldOut = false;
     fakeState.salesMode = 'FIXED_DEPARTURE';
     fakeState.modeFor = null;
+    fakeState.gallery = undefined;
     fakeState.active = 0;
     fakeState.maxActive = 0;
     fakeState.calls = [];
@@ -251,6 +253,7 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     fakeState.onlySoldOut = false;
     fakeState.salesMode = 'FIXED_DEPARTURE';
     fakeState.modeFor = null;
+    fakeState.gallery = undefined;
     fakeState.active = 0;
     fakeState.maxActive = 0;
     fakeState.calls = [];
@@ -489,6 +492,20 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     expect(queried).toHaveLength(30);
     for (let i = 0; i < 5; i += 1) expect(queried).not.toContain(`plan-${i}`);
     expect(queried).not.toContain('plan-35');
+  });
+
+  it('圖庫：20 張合法加 5 張非法 → 輸出恰為上限（8），順序不變、非法被濾掉', async () => {
+    const legal = Array.from({ length: 20 }, (_, i) => `https://img.example.com/g${i}.jpg`);
+    const mixed: string[] = [];
+    legal.forEach((u, i) => { mixed.push(u); if (i % 4 === 0) mixed.push(`javascript:bad${i}`); });
+    expect(mixed.filter((u) => u.startsWith('javascript')).length).toBe(5);
+    fakeState.planCount = 1;
+    fakeState.gallery = mixed;
+    const { loadPublicTripDetails } = await import('@/server/public-shop');
+    const { MAX_PUBLIC_GALLERY_IMAGES } = await import('@/lib/trip-gallery');
+    const result = await loadPublicTripDetails('demo', 'hike');
+    expect(MAX_PUBLIC_GALLERY_IMAGES).toBe(8);
+    expect(result?.trip.galleryUrls).toEqual(legal.slice(0, 8));
   });
 
   it('M1：成團欄位只在 FIXED_DEPARTURE 輸出；REQUEST／INSTANT 不帶', async () => {

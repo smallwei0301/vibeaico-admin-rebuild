@@ -53,7 +53,16 @@ export function stateAfterFetch(
 ): PublicTripLoadState {
   if (outcome.kind === 'ready') return { status: 'ready', data: outcome.data };
   if (outcome.kind === 'not-found') return { status: 'not-found' };
-  return background ? current : { status: 'error' };
+  // 背景錯誤不覆蓋現有畫面；但若目前還在 loading（前景請求被中止），不可停在 loading，必須落到 error。
+  return background && current.status !== 'loading' ? current : { status: 'error' };
+}
+
+/**
+ * 切回分頁時是否發背景更新：只有已顯示資料（ready）才更新。loading（前景請求進行中，背景請求會 abort 它）、
+ * error（有重試按鈕）、not-found（頁面已不存在，維持現狀、重新整理才會重查）都略過。
+ */
+export function shouldRefreshOnVisible(current: PublicTripLoadState): boolean {
+  return current.status === 'ready';
 }
 
 export type BookingCtaState =

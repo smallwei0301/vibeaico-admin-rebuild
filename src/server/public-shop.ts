@@ -33,6 +33,7 @@
 import { cache } from 'react';
 import { createAdminSupabase } from '@/server/supabase';
 import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
+import { MAX_PUBLIC_GALLERY_IMAGES } from '@/lib/trip-gallery';
 
 /** 對外公開的店家基本資料。刻意只有這幾欄。 */
 export type PublicShop = {
@@ -680,8 +681,10 @@ async function loadPublicTripDetailsUncached(
   });
   const departuresByPlan = new Map(planDepartureResults);
 
+  // 先過濾非法 URL 再截到上限（與後台上限共用常數）；client 只渲染這份輸出。
   const gallery = publicStringList(row.gallery)
-    .map(safePublicHttpsUrl).filter(Boolean);
+    .map(safePublicHttpsUrl).filter(Boolean)
+    .slice(0, MAX_PUBLIC_GALLERY_IMAGES);
   return {
     shop: shopData.shop,
     trip: {
