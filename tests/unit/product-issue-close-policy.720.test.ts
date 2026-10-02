@@ -210,20 +210,14 @@ describe('#720 executable Product Issue close gate', () => {
   });
 
   it('renders durable ISSUE_CLOSED_OBSERVED handoff', () => {
-    const body = renderIssueClosedCaptureHandoff({
-      issueNumber: 704,
-      runId: '2026-10-01-product-r01',
-      observedAt: closeAt,
-    });
-    const parsed = parseRunCaptureHandoff(body);
-    expect(parsed?.event).toBe('ISSUE_CLOSED_OBSERVED');
-    expect(parsed?.evidenceRef).toBe('github:issue#704');
+    const body = renderIssueClosedCaptureHandoff({ issueNumber: 704, runId: '2026-10-01-product-r01', observedAt: closeAt });
+    expect(parseRunCaptureHandoff(body)).toMatchObject({ event: 'ISSUE_CLOSED_OBSERVED', evidenceRef: 'github:issue#704' });
     expect(body).toContain('NEXT_SAFE_WRITE_PATH');
   });
 
   it('keeps trusted reopen wiring and governance workflow scope bounded', () => {
     const workflow = fs.readFileSync('.github/workflows/agent-product-issue-close-guard.yml', 'utf8');
-    for (const needle of ['types: [closed]', "state: 'open'", 'ISSUE_CLOSED_OBSERVED', 'isTrustedFinalRiskAgentUser', 'const approvalRunId =', 'approval.issue_url']) {
+    for (const needle of ['types: [closed]', "state: 'open'", 'ISSUE_CLOSED_OBSERVED', 'isTrustedFinalRiskAgentUser', 'const approvalRunId =', 'approval.issue_url', "observedAt !== issue.closed_at", "freshIssue.state !== 'closed'"]) {
       expect(workflow).toContain(needle);
     }
 
