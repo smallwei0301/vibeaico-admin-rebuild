@@ -296,12 +296,12 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     fakeState.planCount = 1;
     fakeState.flood = true;
     const { loadPublicTripDetails } = await import('@/server/public-shop');
-    const { showFixedBookingCta } = await import('@/lib/public-trip-client-state');
+    const { fixedBookingCtaState } = await import('@/lib/public-trip-client-state');
     const plan = (await loadPublicTripDetails('demo', 'hike'))?.trip.plans[0];
     expect(plan?.departures.every((d) => d.soldOut === true)).toBe(true);
     expect(plan?.departuresMayBeTruncated).toBe(false);
     expect(plan?.soldOutOmitted).toBe(true);
-    expect(showFixedBookingCta(plan!)).toBe(false);
+    expect(fixedBookingCtaState(plan!)).toBe('sold-out');
   });
 
   it('超過掃描上限且 lookahead 有可售 → truncated=true、CTA 顯示', async () => {
@@ -309,10 +309,10 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     fakeState.flood = true;
     fakeState.lookaheadAvailable = true;
     const { loadPublicTripDetails } = await import('@/server/public-shop');
-    const { showFixedBookingCta } = await import('@/lib/public-trip-client-state');
+    const { fixedBookingCtaState } = await import('@/lib/public-trip-client-state');
     const plan = (await loadPublicTripDetails('demo', 'hike'))?.trip.plans[0];
     expect(plan?.departuresMayBeTruncated).toBe(true);
-    expect(showFixedBookingCta(plan!)).toBe(true);
+    expect(fixedBookingCtaState(plan!)).toBe('show');
   });
 
   it('M1：成團欄位只在 FIXED_DEPARTURE 輸出；REQUEST／INSTANT 不帶', async () => {

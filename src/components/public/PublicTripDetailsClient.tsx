@@ -11,7 +11,8 @@ import { formatCurrency } from '@/lib/utils';
 import { formationLines } from '@/lib/public-departure-formation';
 import {
   initialLoadState,
-  showFixedBookingCta,
+  fixedBookingCtaState,
+  outcomeFromHttp,
   stateAfterFetch,
   type PublicTripFetchOutcome,
   shouldFetchOnMount,
@@ -43,14 +44,8 @@ export function PublicTripDetailsClient({ shopCode, slug, initialData }: Props) 
       };
       void fetch(path, { cache: 'no-store' })
         .then(async (response) => {
-          if (response.status === 404) return apply({ kind: 'not-found' });
-          if (!response.ok) return apply({ kind: 'error' });
-          const payload = await response.json() as {
-            success?: boolean;
-            data?: PublicTripDetails;
-          };
-          if (!payload.success || !payload.data) return apply({ kind: 'error' });
-          return apply({ kind: 'ready', data: payload.data });
+          const payload: unknown = response.ok ? await response.json() : undefined;
+          apply(outcomeFromHttp(response.status, response.ok, payload));
         })
         .catch(() => apply({ kind: 'error' }));
     };
@@ -280,10 +275,10 @@ export function PublicTripDetailsClient({ shopCode, slug, initialData }: Props) 
                         {t.plans.requestCta}
                       </Link>
                     ) : null}
-                    {plan.salesMode === 'FIXED_DEPARTURE' && !showFixedBookingCta(plan) ? (
+                    {fixedBookingCtaState(plan) === 'sold-out' ? (
                       <p className="text-sm text-secondary">{t.departures.allSoldOut}</p>
                     ) : null}
-                    {showFixedBookingCta(plan) ? (
+                    {fixedBookingCtaState(plan) === 'show' ? (
                       <Link className="btn btn-primary w-fit" href={`/s/${shopCode}/plans/${plan.id}/book`}>
                         {t.plans.fixedCta}
                       </Link>

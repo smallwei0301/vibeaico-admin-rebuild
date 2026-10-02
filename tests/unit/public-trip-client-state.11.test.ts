@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-  allListedSoldOut, initialLoadState, shouldFetchOnMount, showFixedBookingCta, stateAfterFetch,
+  allListedSoldOut, fixedBookingCtaState, initialLoadState, outcomeFromHttp, shouldFetchOnMount, stateAfterFetch,
 } from '@/lib/public-trip-client-state';
 
 const data = { shop: {}, trip: {} } as never;
@@ -31,7 +31,10 @@ describe('#11 client 有 initialData 時不重取', () => {
 
   it('客滿團次顯示客滿文案且全客滿時不提供報名連結', () => {
     expect(client).toContain('t.departures.soldOut');
-    expect(client).toContain('showFixedBookingCta(plan)');
+    expect(client).toMatch(/\{fixedBookingCtaState\(plan\) === 'show' \? \(/);
+    expect(client).toMatch(/\{fixedBookingCtaState\(plan\) === 'sold-out' \? \(/);
+    expect(client).toContain('outcomeFromHttp(response.status, response.ok, payload)');
+    expect(client).not.toMatch(/salesMode === 'FIXED_DEPARTURE'/);
     expect(client).toContain('plan.soldOutOmitted');
   });
 
@@ -56,14 +59,28 @@ describe('#11 client 有 initialData 時不重取', () => {
     expect(allListedSoldOut({ departures: [], departuresMayBeTruncated: false })).toBe(false);
   });
 
-  it('showFixedBookingCta：FIXED 且非全客滿才顯示；其他販售方式不顯示', () => {
+  it('fixedBookingCtaState：FIXED 非全客滿 → show；FIXED 全客滿 → sold-out；其他販售方式 → none', () => {
     const base = { departures: [{}], departuresMayBeTruncated: false };
-    expect(showFixedBookingCta({ salesMode: 'FIXED_DEPARTURE', ...base })).toBe(true);
-    expect(showFixedBookingCta({
+    expect(fixedBookingCtaState({ salesMode: 'FIXED_DEPARTURE', ...base })).toBe('show');
+    expect(fixedBookingCtaState({
       salesMode: 'FIXED_DEPARTURE', departures: [{ soldOut: true }], departuresMayBeTruncated: false,
-    })).toBe(false);
-    expect(showFixedBookingCta({ salesMode: 'REQUEST', ...base })).toBe(false);
-    expect(showFixedBookingCta({ salesMode: 'INSTANT', ...base })).toBe(false);
+    })).toBe('sold-out');
+    expect(fixedBookingCtaState({
+      salesMode: 'FIXED_DEPARTURE', departures: [{ soldOut: true }], departuresMayBeTruncated: true,
+    })).toBe('show');
+    expect(fixedBookingCtaState({ salesMode: 'REQUEST', ...base })).toBe('none');
+    expect(fixedBookingCtaState({
+      salesMode: 'INSTANT', departures: [{ soldOut: true }], departuresMayBeTruncated: false,
+    })).toBe('none');
+  });
+
+  it('outcomeFromHttp：404 → not-found；其他非 2xx、無效 payload → error；有效 → ready', () => {
+    expect(outcomeFromHttp(404, false, undefined)).toEqual({ kind: 'not-found' });
+    expect(outcomeFromHttp(500, false, undefined)).toEqual({ kind: 'error' });
+    expect(outcomeFromHttp(429, false, undefined)).toEqual({ kind: 'error' });
+    expect(outcomeFromHttp(200, true, { success: false })).toEqual({ kind: 'error' });
+    expect(outcomeFromHttp(200, true, null)).toEqual({ kind: 'error' });
+    expect(outcomeFromHttp(200, true, { success: true, data })).toEqual({ kind: 'ready', data });
   });
 
   it('stateAfterFetch：背景錯誤不覆蓋畫面；背景 404 切到找不到；前景錯誤顯示錯誤', () => {

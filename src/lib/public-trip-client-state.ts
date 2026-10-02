@@ -53,11 +53,28 @@ export function stateAfterFetch(
   return background ? current : { status: 'error' };
 }
 
-/** 固定團次方案是否顯示報名入口：只有 FIXED_DEPARTURE 且不是「全部客滿」。 */
-export function showFixedBookingCta(plan: {
+export type FixedBookingCtaState = 'show' | 'sold-out' | 'none';
+
+/**
+ * JSX 只依賴這個單一回傳值：
+ * - show：FIXED_DEPARTURE 且不是全客滿 → 顯示報名入口。
+ * - sold-out：FIXED_DEPARTURE 且全客滿 → 不顯示入口，顯示全客滿說明。
+ * - none：其他販售方式 → 不顯示固定團次入口。
+ */
+export function fixedBookingCtaState(plan: {
   salesMode: string;
   departures: Array<{ soldOut?: true }>;
   departuresMayBeTruncated: boolean;
-}): boolean {
-  return plan.salesMode === 'FIXED_DEPARTURE' && !allListedSoldOut(plan);
+}): FixedBookingCtaState {
+  if (plan.salesMode !== 'FIXED_DEPARTURE') return 'none';
+  return allListedSoldOut(plan) ? 'sold-out' : 'show';
+}
+
+/** HTTP 回應 → 畫面結果：404 是找不到，其他非 2xx 或 payload 無效是錯誤。 */
+export function outcomeFromHttp(status: number, ok: boolean, payload: unknown): PublicTripFetchOutcome {
+  if (status === 404) return { kind: 'not-found' };
+  if (!ok) return { kind: 'error' };
+  const body = payload as { success?: boolean; data?: PublicTripDetails } | null | undefined;
+  if (!body || !body.success || !body.data) return { kind: 'error' };
+  return { kind: 'ready', data: body.data };
 }

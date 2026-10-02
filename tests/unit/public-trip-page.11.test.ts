@@ -106,15 +106,17 @@ describe('#11 詳情頁 generateMetadata', () => {
     expect(String(m.description).endsWith('…')).toBe(true);
   });
 
-  it.each([null])('不可公開 → 一般預設值，不洩漏行程資訊', async (value) => {
+  it.each([null])('不可公開 → 一般預設值，不洩漏行程資訊，且不加 robots', async (value) => {
     loader.mockResolvedValue(value);
     const m = await buildPublicTripMetadata(p('demo', 'x'));
+    expect(m).not.toHaveProperty('robots');
     expect(m).toEqual({ title: '行程詳情', description: '查看行程介紹、可選方案與近期出發資訊。' });
   });
 
-  it('節流超限時 metadata 回預設值且不查 DB', async () => {
+  it('節流超限時 metadata 回預設值、noindex／nofollow 且不查 DB；一般不可公開不加 robots', async () => {
     rate.mockReturnValue(false);
     const m = await buildPublicTripMetadata(p('demo', 'x'));
+    expect(m.robots).toEqual({ index: false, follow: false });
     expect(m.title).toBe('行程詳情');
     expect(loader).not.toHaveBeenCalled();
   });

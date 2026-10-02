@@ -58,6 +58,8 @@ export async function loadPublicTripPage(params: RouteParams): Promise<PublicTri
   const { shopCode, slug } = await resolvePublicTripDetailsParams(params);
   // 格式不合的 shopCode 在建立節流 bucket 之前就 404，避免任意字串灌出 bucket。
   if (!SHOP_CODE_PATTERN.test(shopCode)) notFound();
+  // 超限分支：不丟錯、不 notFound、不查 DB。同一 IP 的實際上限＝頁面 60 次＋公開 API 60 次／10 分鐘
+  // （兩者各自計數），超過頁面額度後 client 改打 API，API 再超限才會回 429。
   if (!(await consumePageRateLimit(shopCode))) return { shopCode, slug };
   const data = await loadPublicTripDetails(shopCode, slug);
   // 只有店家／行程不存在或非 PUBLISHED 才 404；已發布但沒有有效方案仍顯示行程（client 顯示無方案文案）。
@@ -67,13 +69,15 @@ export async function loadPublicTripPage(params: RouteParams): Promise<PublicTri
 
 export async function buildPublicTripMetadata(params: RouteParams): Promise<Metadata> {
   const fallback: Metadata = { title: t.metadata.title, description: t.metadata.pageDescription };
+  // 節流超限：不查 DB、不讓搜尋引擎收錄這個預設頁殼。
+  const limited: Metadata = { ...fallback, robots: { index: false, follow: false } };
   const raw = await params;
   const shopCode = decodePublicRouteParam(raw.shopCode);
   const slug = decodePublicRouteParam(raw.slug);
   if (!shopCode || !slug) return fallback;
   try {
     if (!SHOP_CODE_PATTERN.test(shopCode)) return fallback;
-    if (!(await consumePageRateLimit(shopCode))) return fallback;
+    if (!(await consumePageRateLimit(shopCode))) return limited;
     const data = await loadPublicTripDetails(shopCode, slug);
     if (!data) return fallback;
     const { trip, shop } = data;
