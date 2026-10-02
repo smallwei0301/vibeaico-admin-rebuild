@@ -57,7 +57,7 @@ export const publicTripDetailsPage = {
     seatsLeft: (count: number) => `剩 ${count} 位`,
     soldOut: '客滿',
     soldOutOmitted: '另有更多客滿日期未列出。',
-    noBookable: '目前沒有可預約日期，可先聯絡店家。',
+    noBookable: '本頁列出的日期都無法預約，請聯絡店家確認其他日期。',
     noStartTime: '時間未定',
     availabilityNote: '名額會隨預約變動，送出前仍會再次確認。',
     formation: {
@@ -69,6 +69,11 @@ export const publicTripDetailsPage = {
         REVIEW_REQUIRED: '已過截止，待店家決定是否出團',
         AT_RISK: '已成團但人數下降，店家確認中',
         FAILED: '未能成團',
+      } as Record<string, string>,
+      // 客滿時的狀態文案：不得暗示還能加入或仍在招募。其餘狀態（待決、人數下降、未成團）本身不含此暗示。
+      statusSoldOut: {
+        COLLECTING: '名額已滿，尚未成團',
+        FORMED: '已成團',
       } as Record<string, string>,
     },
     weekdays: ['日', '一', '二', '三', '四', '五', '六'],

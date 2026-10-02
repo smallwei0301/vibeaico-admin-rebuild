@@ -4,6 +4,8 @@ type FormationInput = {
   minToDepart?: number | null;
   formationDeadlineAt?: string | null;
   formationStatus?: string | null;
+  /** 客滿：狀態文案不得暗示還能加入。 */
+  soldOut?: boolean;
 };
 
 const TAIPEI = 'Asia/Taipei';
@@ -33,10 +35,17 @@ export function formationLines(salesMode: string, departure: FormationInput): st
   }
   const deadline = formatFormationDeadline(departure.formationDeadlineAt);
   if (deadline) lines.push(t.departures.formation.deadline(deadline));
-  const status = departure.formationStatus
-    ? Object.prototype.hasOwnProperty.call(t.departures.formation.status, departure.formationStatus)
-      ? t.departures.formation.status[departure.formationStatus] : undefined
-    : undefined;
+  // 客滿時優先用不暗示「尚可加入／招募中」的文案；沒有專屬文案的狀態沿用一般文案。
+  const maps = departure.soldOut === true
+    ? [t.departures.formation.statusSoldOut, t.departures.formation.status]
+    : [t.departures.formation.status];
+  let status: string | undefined;
+  for (const map of maps) {
+    if (departure.formationStatus && Object.prototype.hasOwnProperty.call(map, departure.formationStatus)) {
+      status = map[departure.formationStatus];
+      break;
+    }
+  }
   if (status) lines.push(status);
   return lines;
 }

@@ -8,7 +8,8 @@ import type { Metadata } from 'next';
 import { cache } from 'react';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
-import { checkRateLimit, clientIpFromHeaders } from '@/server/rate-limit';
+import { clientIpFromHeaders } from '@/server/rate-limit';
+import { consumePublicTripRateLimit } from '@/server/public-trip-rate-limit';
 import type { PublicTripInitialData } from '@/lib/public-trip-client-state';
 import { loadPublicTripDetails } from '@/server/public-shop';
 import { decodePublicRouteParam, resolvePublicTripDetailsParams } from '@/lib/public-route-params';
@@ -28,9 +29,6 @@ export type PublicTripPageClientProps = {
   initialData?: PublicTripInitialData;
 };
 
-const PAGE_RATE_LIMIT_MAX = 60;
-const PAGE_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
-
 /**
  * 頁面路徑的節流：使用獨立前綴 `public-trip-page:`（client 有 initialData 後不再於載入時打 API，
  * 兩條路徑各自計數，互不吃對方額度）。以 React cache 讓同一請求的 page 與 generateMetadata
@@ -40,9 +38,7 @@ const PAGE_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
  */
 const consumePageRateLimit = cache(async (shopCode: string): Promise<boolean> => {
   const ip = clientIpFromHeaders(await headers());
-  return checkRateLimit(`public-trip-page:${ip}:${shopCode}`, {
-    max: PAGE_RATE_LIMIT_MAX, windowMs: PAGE_RATE_LIMIT_WINDOW_MS,
-  });
+  return consumePublicTripRateLimit('page', ip, shopCode);
 });
 
 function truncate(text: string, max: number): string {

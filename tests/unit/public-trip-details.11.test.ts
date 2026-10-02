@@ -9,6 +9,7 @@ const fakeState = vi.hoisted(() => ({
   flood: false,
   customRows: null as null | Array<{ seats_booked: number; capacity: number; departs_on?: string; start_time?: string | null }>,
   lookaheadAvailable: false,
+  lookaheadStartedToday: false,
   onlySoldOut: false,
   salesMode: 'FIXED_DEPARTURE',
   active: 0,
@@ -67,7 +68,8 @@ vi.mock('@/server/supabase', () => ({
             const last = from >= 1200 ? from + 2 : to;
             for (let i = from; i <= last; i += 1) {
               const sellable = from >= 1200 && fakeState.lookaheadAvailable && i === last;
-              rows.push({ id: `flood-${i}`, departs_on: '2098-01-01', start_time: null, capacity: 1, seats_booked: sellable ? 0 : 1,
+              const started = sellable && fakeState.lookaheadStartedToday;
+              rows.push({ id: `flood-${i}`, departs_on: '2098-01-01', start_time: started ? '09:00:00' : null, capacity: 1, seats_booked: sellable ? 0 : 1,
                 min_to_depart_snapshot: 1, formation_deadline_at: null, formation_status: 'COLLECTING' });
             }
             return { data: rows, error: null };
@@ -142,8 +144,9 @@ describe('#11 公開行程詳情', () => {
   });
 
   it('公開 API 有節流、CORS 與不快取設定，並以 404 隱藏未公開行程', () => {
-    expect(route).toContain("from '@/server/rate-limit'");
-    expect(route).toContain('checkRateLimit(');
+    expect(route).toContain("from '@/server/public-trip-rate-limit'");
+    expect(route).toContain("consumePublicTripRateLimit('api', ip, shopCode)");
+    expect(route).toContain('SHOP_CODE_PATTERN.test(shopCode)');
     expect(route).toContain("from '@/server/public-cors'");
     expect(route).toContain('publicCorsHeaders(');
     expect(route).toContain('export function OPTIONS');
@@ -201,6 +204,7 @@ describe('#11 公開行程詳情：方案團次查詢併發上限', () => {
     fakeState.flood = false;
     fakeState.customRows = null;
     fakeState.lookaheadAvailable = false;
+    fakeState.lookaheadStartedToday = false;
     fakeState.onlySoldOut = false;
     fakeState.salesMode = 'FIXED_DEPARTURE';
     fakeState.active = 0;
@@ -241,6 +245,7 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     fakeState.flood = false;
     fakeState.customRows = null;
     fakeState.lookaheadAvailable = false;
+    fakeState.lookaheadStartedToday = false;
     fakeState.onlySoldOut = false;
     fakeState.salesMode = 'FIXED_DEPARTURE';
     fakeState.active = 0;
@@ -426,6 +431,22 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
   }, 60_000);
+
+  it('C15：lookahead 讀到的可售列全是今天已開始的團次 → truncated=false（lookahead 也要過濾）', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2098-01-01T02:00:00Z')); // 台北 10:00
+    try {
+      fakeState.planCount = 1;
+      fakeState.flood = true;
+      fakeState.lookaheadAvailable = true;
+      fakeState.lookaheadStartedToday = true;
+      const { loadPublicTripDetails } = await import('@/server/public-shop');
+      const plan = (await loadPublicTripDetails('demo', 'hike'))?.trip.plans[0];
+      expect(plan?.departuresMayBeTruncated).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it('M1：成團欄位只在 FIXED_DEPARTURE 輸出；REQUEST／INSTANT 不帶', async () => {
     const { loadPublicTripDetails } = await import('@/server/public-shop');

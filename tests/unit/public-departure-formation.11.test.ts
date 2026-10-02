@@ -34,6 +34,26 @@ describe('#11 固定團次成團資訊顯示（19 分冊 §2.1）', () => {
     expect(formatFormationDeadline(null)).toBeNull();
   });
 
+  it('客滿時狀態文案不得暗示還能加入：FORMED＋soldOut → 已成團；COLLECTING＋soldOut → 名額已滿，尚未成團', () => {
+    const forming = formationLines('FIXED_DEPARTURE', { ...full, formationStatus: 'FORMED', soldOut: true });
+    expect(forming).toContain('已成團');
+    expect(forming).not.toContain('已成團，尚可加入');
+    const collecting = formationLines('FIXED_DEPARTURE', { ...full, formationStatus: 'COLLECTING', soldOut: true });
+    expect(collecting).toContain('名額已滿，尚未成團');
+    expect(collecting).not.toContain('招募中，尚未成團');
+  });
+
+  it.each(['REVIEW_REQUIRED', 'AT_RISK', 'FAILED'])('客滿＋%s：沿用原文案，且全部狀態文案都不含「尚可加入」「招募中」以外的矛盾字眼', (status) => {
+    const normal = formationLines('FIXED_DEPARTURE', { ...full, formationStatus: status });
+    const sold = formationLines('FIXED_DEPARTURE', { ...full, formationStatus: status, soldOut: true });
+    expect(sold).toEqual(normal);
+    expect(sold.join('')).not.toMatch(/尚可加入|招募中/);
+  });
+
+  it('未客滿時 FORMED 仍是「已成團，尚可加入」', () => {
+    expect(formationLines('FIXED_DEPARTURE', { ...full, formationStatus: 'FORMED' })).toContain('已成團，尚可加入');
+  });
+
   it('Client 以 formationLines 呈現，文案只在 i18n', () => {
     const client = readFileSync(resolve(process.cwd(), 'src/components/public/PublicTripDetailsClient.tsx'), 'utf8');
     expect(client).toContain('formationLines(plan.salesMode, departure)');

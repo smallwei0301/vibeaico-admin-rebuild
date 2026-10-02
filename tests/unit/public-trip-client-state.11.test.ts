@@ -72,7 +72,9 @@ describe('#11 client 有 initialData 時不重取', () => {
     expect(outcomeFromHttp(404, false, undefined)).toEqual({ kind: 'not-found' });
     expect(outcomeFromHttp(500, false, undefined)).toEqual({ kind: 'error' });
     expect(outcomeFromHttp(429, false, undefined)).toEqual({ kind: 'error' });
+    // C7：HTTP 200 但 success:false（即使帶 data）也要判為 error。
     expect(outcomeFromHttp(200, true, { success: false })).toEqual({ kind: 'error' });
+    expect(outcomeFromHttp(200, true, { success: false, data })).toEqual({ kind: 'error' });
     expect(outcomeFromHttp(200, true, null)).toEqual({ kind: 'error' });
     expect(outcomeFromHttp(200, true, { success: true, data })).toEqual({ kind: 'ready', data });
   });
@@ -92,5 +94,11 @@ describe('#11 client 有 initialData 時不重取', () => {
       .toBeGreaterThan(client.indexOf('shouldFetchOnMount(initialData, attempt)'));
     // fetch 之後不得 return（否則重試後 visibilitychange 監聽不會註冊）。
     expect(client).toContain('if (shouldFetchOnMount(initialData, attempt)) load(false);\n')
+  });
+
+  it('MINOR4：noBookable 文案與「僅列出部分日期」並列時不矛盾，且說明列出的日期都無法預約', () => {
+    const i18n = readFileSync(resolve(process.cwd(), 'src/i18n/zh-TW/pages/public-trip-details.ts'), 'utf8');
+    expect(i18n).toContain("noBookable: '本頁列出的日期都無法預約，請聯絡店家確認其他日期。'");
+    expect(i18n).not.toContain('目前沒有可預約日期');
   });
 });
