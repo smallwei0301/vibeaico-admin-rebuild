@@ -191,8 +191,7 @@ describe('governance boundary regression #500', () => {
         .replace('DELIVERY_UNIT_TYPE: GOVERNANCE', 'DELIVERY_UNIT_TYPE: STANDALONE');
       const current = { ...subject(body), state: 'closed', merged: true };
       const guard = await runWorkflow('.github/workflows/agent-wip-guard.yml', current);
-      expect(guard.statuses).toEqual([]);
-      expect(guard.calls).toEqual([]);
+      expect(guard.statuses).toEqual([]); expect(guard.calls).toEqual([]);
       const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current, paths, [], 'terminal_cleanup');
       expect(result.statuses).toEqual([]);
       expect(result.failures).toEqual([]);
@@ -252,9 +251,7 @@ describe('governance boundary regression #500', () => {
     expect(terminalLabelPlan(subject())).toBeNull();
     expect(terminalLabelPlan({ state: 'closed', merged: true })?.add).toBe('state:complete');
     expect(terminalLabelPlan({ state: 'closed', merged: false })?.add).toBe('state:historical');
-    expect(terminalLabelPlan({ state: 'closed', merged: true })?.remove).toEqual(expect.arrayContaining([
-      'governance:lane-metadata-incomplete', 'governance:wip-violation',
-    ]));
+    expect(terminalLabelPlan({ state: 'closed', merged: true })?.remove).toEqual(expect.arrayContaining(['governance:lane-metadata-incomplete', 'governance:wip-violation']));
     expect(terminalLabelPlan({ state: 'closed', merged: false })?.remove).not.toContain('governance:lane-metadata-incomplete');
     expect(terminalLabelPlan({ state: 'closed', merged: false })?.remove).not.toContain('governance:wip-violation');
   });
@@ -277,8 +274,7 @@ describe('governance boundary regression #500', () => {
     const current = { ...subject(), state: 'closed', merged: true,
       labels: [{ name: 'state:active' }, { name: 'candidate:active' }, { name: 'unrelated:keep' }] };
     const guard = await runWorkflow('.github/workflows/agent-wip-guard.yml', current);
-    expect(guard.statuses).toEqual([]);
-    expect(guard.calls).toEqual([]);
+    expect(guard.statuses).toEqual([]); expect(guard.calls).toEqual([]);
     const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current, paths, [], 'terminal_cleanup');
     expect(result.statuses).toEqual([]);
     expect(result.calls).not.toContain('body');
@@ -291,8 +287,7 @@ describe('governance boundary regression #500', () => {
   });
   it.each([[true, 'state:complete', false], [false, 'state:historical', true]])(
     'keeps warning labels only on unmerged closed PRs (merged=%s)', async (merged, stateLabel, keepWarnings) => {
-      const current = { ...subject(), state: 'closed', merged, closed_at: created_at,
-        labels: [{ name: 'governance:lane-metadata-incomplete' }, { name: 'governance:wip-violation' }] };
+      const current = { ...subject(), state: 'closed', merged, closed_at: created_at, labels: [{ name: 'governance:lane-metadata-incomplete' }, { name: 'governance:wip-violation' }] };
       const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current, paths, [], 'terminal_cleanup');
       expect(result.labels.has(stateLabel)).toBe(true);
       for (const label of ['governance:lane-metadata-incomplete', 'governance:wip-violation']) expect(result.labels.has(label)).toBe(keepWarnings);
@@ -376,10 +371,8 @@ describe('governance boundary regression #500', () => {
   });
 
   it.each([
-    ['pr-lifecycle.state', gov.replace(/<!-- pr-lifecycle[\s\S]*?-->\n/, '')],
-    ['pr-lifecycle.state', '<!-- pr-lifecycle\nstate: ACTIVE\n'],
-    ['LANE_STATE', gov.replace('LANE_STATE: ACTIVE\n', '')],
-    ['LANE_STATE', 'WORK_ORIGIN: AGENT\nLANE_STATE: ACTIVE\n```text\nexample'],
+    ['pr-lifecycle.state', gov.replace(/<!-- pr-lifecycle[\s\S]*?-->\n/, '')], ['pr-lifecycle.state', '<!-- pr-lifecycle\nstate: ACTIVE\n'],
+    ['LANE_STATE', gov.replace('LANE_STATE: ACTIVE\n', '')], ['LANE_STATE', 'WORK_ORIGIN: AGENT\nLANE_STATE: ACTIVE\n```text\nexample'],
     ['ACTIVE_CANDIDATE', gov + '\nACTIVE_CANDIDATE: false\n'],
   ])('names %s as an unsynced body field when its declaration is missing or ambiguous', (field, body) => {
     const plan = terminalBodyPlan({ state: 'closed', merged: true, body });
@@ -387,8 +380,7 @@ describe('governance boundary regression #500', () => {
     expect(plan?.errors.length).toBeGreaterThan(0);
   });
   it('puts failed and changed fields together in the actual STATE_SYNC_PENDING handoff', async () => {
-    const closed = { ...subject(gov + '\nACTIVE_CANDIDATE: true\n'), state: 'closed', merged: true,
-      closed_at: created_at, labels: [] as { name: string }[] };
+    const closed = { ...subject(gov + '\nACTIVE_CANDIDATE: true\n'), state: 'closed', merged: true, closed_at: created_at, labels: [] as { name: string }[] };
     const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', closed, paths, [], 'terminal_cleanup');
     expect(result.comments).toEqual([expect.stringContaining('UNSYNCED_FIELDS: pr-lifecycle.state, LANE_STATE, ACTIVE_CANDIDATE')]);
   });
@@ -435,6 +427,9 @@ describe('governance boundary regression #500', () => {
     }, paginate: vi.fn(async () => comments) };
     const call = () => boundaryPolicy.reconcileTerminalPr({ github, owner: 'owner', repo: 'repo', current: live });
     await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_RESOLVED');
+    live.body = verified.replace('REMOTE_JOB_RESULT: SKIPPED', 'REMOTE_JOB_RESULT: VERIFIED_GREEN'); github.rest.actions.listJobsForWorkflowRun = vi.fn(async () => ({ data: { total_count: 1, jobs: [{ name: 'integration', status: 'completed', conclusion: 'success', steps: [{ name: 'Run integration tests', conclusion: 'skipped' }, { name: 'Run E2E tests', conclusion: 'skipped' }] }] } }));
+    await call(); expect(comments.at(-1).body).toContain('remote integration/E2E steps not verified');
+    github.rest.actions.listJobsForWorkflowRun.mockResolvedValue({ data: { total_count: 1, jobs: [{ name: 'integration', status: 'completed', conclusion: 'success', steps: [{ name: 'Run integration tests', conclusion: 'success' }, { name: 'Run E2E tests', conclusion: 'success' }] }] } }); await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_RESOLVED'); live.body = verified;
     live.body = verified.replace(/^MERGE_COMMIT_SHA:.*\n/m, ''); await call(); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: MERGE_COMMIT_SHA');
     live.body = verified.replace(/^(?:MERGE_STATUS|COMPLETION_CLAIM|MERGE_COMMIT_SHA|MAIN_HEAD_VERIFIED|MAIN_HEAD_SHA|MAIN_FILE_RE_READ|VERIFIED_AT|EXACT_HEAD_CI_STATUS|EXACT_HEAD_CI_RUN|LOCAL_JOB_RESULT|REMOTE_JOB_RESULT):.*\n?/gm, ''); await call(); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: MERGE_STATUS, COMPLETION_CLAIM, MERGE_COMMIT_SHA');
     live.body = verified; expect(github.rest.repos.getContent).toHaveBeenCalledWith(expect.objectContaining({ ref: 'c'.repeat(40), path: 'docs/AGENT-EXECUTION.md' }));

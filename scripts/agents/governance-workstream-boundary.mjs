@@ -245,6 +245,11 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
       if (!latest || latest.id !== Number(runId)) throw Error('receipt does not name latest exact-head CI run');
       const run = (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: Number(runId) })).data;
       if (run.head_sha !== observed.head?.sha || run.status !== 'completed' || run.conclusion !== 'success' || run.event !== 'pull_request' || run.path !== '.github/workflows/ci.yml' || run.pull_requests?.length !== 1 || run.pull_requests[0]?.number !== observed.number) throw Error('exact-head CI run is not verified for this PR');
+      if (upper(readField(observed.body, 'REMOTE_JOB_RESULT')) === 'VERIFIED_GREEN') {
+        const jobs = (await github.rest.actions.listJobsForWorkflowRun({ owner, repo, run_id: Number(runId), filter: 'latest', per_page: 100 })).data;
+        const remote = jobs.jobs?.filter(job => job.name === 'integration');
+        if (!Array.isArray(jobs.jobs) || jobs.total_count !== jobs.jobs.length || remote?.length !== 1 || remote[0].status !== 'completed' || remote[0].conclusion !== 'success' || !['Run integration tests', 'Run E2E tests'].every(name => remote[0].steps?.filter(step => step.name === name && step.conclusion === 'success').length === 1)) throw Error('remote integration/E2E steps not verified');
+      }
     } catch (error) { liveFailure = `LIVE_MAIN_RECEIPT_UNVERIFIED:${error.status ?? error.message ?? 'unknown'}`; }
     const pending = Boolean(plan.changed || plan.errors.length || plan.unsyncedFields.length || reason || liveFailure);
     const fields = plan.unsyncedFields.join(', ') || (liveFailure ? 'none (live receipt verification pending)' : 'none (label reconciliation only)');
