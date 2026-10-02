@@ -114,6 +114,18 @@ async function execute(options: Scenario = {}) {
 
 afterEach(() => vi.unstubAllEnvs());
 describe('#720 close generation / canonical main races', () => {
+  it.each(['initial', 'admission', 'capture'])('fails UNKNOWN if main advances again during %s canonical reload', async phase => {
+    const r = await execute({ checkoutSha: phase === 'initial' ? 'd'.repeat(40) : main,
+      branches: phase === 'initial' ? [main, 'c'.repeat(40)]
+        : phase === 'admission' ? [main, 'c'.repeat(40), 'f'.repeat(40)]
+          : [main, main, 'c'.repeat(40), 'f'.repeat(40)], freshPolicyExempt: true });
+    expect(String(r.error)).toContain('Current main changed while loading canonical policy');
+    expect(r.api.issues.update).not.toHaveBeenCalled();
+    expect(r.api.issues.addLabels).not.toHaveBeenCalled();
+    expect(r.api.issues.removeLabel).not.toHaveBeenCalled();
+    expect(r.api.issues.createComment).not.toHaveBeenCalled();
+    expect(r.api.repos.getContent.mock.calls.filter(([x]) => x.path.startsWith('scripts/agents/'))).toHaveLength(6);
+  });
   it('fails closed when checked-out policy identity is unavailable', async () => {
     const r = await execute({ checkoutReadError: true });
     expect(r.error).toBeDefined();

@@ -83,6 +83,12 @@ jobs:
                 policy: await import(pathToFileURL(path.join(root, 'product-issue-close-policy.mjs')).href),
                 astra: await import(pathToFileURL(path.join(root, 'astra-review-policy.mjs')).href),
               };
+              if (sha !== checkoutSha) {
+                const { data: loadedBranch } = await github.rest.repos.getBranch({
+                  owner, repo, branch: repository.default_branch,
+                });
+                if (loadedBranch.commit.sha !== sha) throw new Error('Current main changed while loading canonical policy; admission UNKNOWN');
+              }
               loadedPolicies.set(sha, loaded);
               return loaded;
             };
