@@ -6,6 +6,7 @@ import { SHOP_A, SHOP_B } from '../../fixtures';
 const BASE = process.env.INTEGRATION_BASE_URL ?? 'http://localhost:3100';
 const TAG = `I11-${randomUUID().slice(0, 8)}`;
 const PUBLISHED_TRIP = randomUUID();
+const FIXED_TRIP = randomUUID();
 const DRAFT_TRIP = randomUUID();
 const OTHER_TENANT_TRIP = randomUUID();
 const REQUEST_PLAN = randomUUID();
@@ -15,7 +16,9 @@ const FIXED_DEPARTURE = randomUUID();
 const SOLD_OUT_DEPARTURES = Array.from({ length: 125 }, () => randomUUID());
 const EXTRA_AVAILABLE_DEPARTURES = Array.from({ length: 6 }, () => randomUUID());
 const SLUG = `issue-11-${randomUUID().slice(0, 8)}`;
+const FIXED_SLUG = `issue-11-fixed-${randomUUID().slice(0, 8)}`;
 const TITLE = `${TAG} 已發布公開行程`;
+const FIXED_TITLE = `${TAG} 固定團次公開行程`;
 const OTHER_TENANT_TITLE = `${TAG} 另一店的同 slug 行程`;
 const SECRET_REVIEW_NOTE = `${TAG}-internal-review-note-must-not-leak`;
 const UNSAFE_URL = `${TAG}-javascript-url-must-not-leak`;
@@ -69,6 +72,19 @@ beforeAll(async () => {
       status: 'PUBLISHED',
     },
     {
+      id: FIXED_TRIP,
+      tenant_id: SHOP_A.id,
+      slug: FIXED_SLUG,
+      title: FIXED_TITLE,
+      tagline: `${TAG} 固定行程標語`,
+      summary: `${TAG} 固定行程摘要`,
+      description: `${TAG} 固定行程詳細介紹`,
+      location: '台東',
+      meeting_point: '', meeting_point_map_url: '', cover_image_url: '', gallery: [], includes: '',
+      exclusions: [], notices: [], notes: '', refund_policy_type: 'STANDARD',
+      midao_listing_note: '', status: 'PUBLISHED',
+    },
+    {
       id: DRAFT_TRIP,
       tenant_id: SHOP_A.id,
       slug: `${SLUG}-draft`,
@@ -90,6 +106,12 @@ beforeAll(async () => {
     },
   ]));
 
+  // 每個 trip 只放一個方案（REQUEST 在 PUBLISHED_TRIP、FIXED 在 FIXED_TRIP）：同一 trip 底下寫兩個未指定
+  // slug 的方案，在 shared TEST／local-isolated 歷史相容 overlay
+  // （supabase/local-migrations/historical-integration-baseline/0028_trip_import_atomic.sql:50）會撞上
+  // `trip_plans_tenant_trip_slug_key (tenant_id, trip_id, slug)`（slug default ''）。這個欄位與約束不存在於
+  // canonical `0066`，所以 fixture 不寫 slug，改以拆 trip 避開這個與驗收無關的 overlay 差異
+  // （比照 tests/integration/api/plan-advanced-settings.10.test.ts 的「各自一個 trip」寫法）。
   mustWrite('trip_plans', await admin.from('trip_plans').insert([
     {
       id: REQUEST_PLAN, tenant_id: SHOP_A.id, trip_id: PUBLISHED_TRIP,
@@ -98,7 +120,7 @@ beforeAll(async () => {
       sales_mode: 'REQUEST', active: true,
     },
     {
-      id: FIXED_PLAN, tenant_id: SHOP_A.id, trip_id: PUBLISHED_TRIP,
+      id: FIXED_PLAN, tenant_id: SHOP_A.id, trip_id: FIXED_TRIP,
       name: `${TAG} FIXED 方案`, description: `${TAG} 固定團次方案內容`,
       price_per_person: 2200, min_party: 1, max_party: 6,
       sales_mode: 'FIXED_DEPARTURE', active: true,
@@ -120,7 +142,7 @@ beforeAll(async () => {
       ...FORMATION_COLUMNS,
     },
     {
-      id: FIXED_DEPARTURE, tenant_id: SHOP_A.id, trip_id: PUBLISHED_TRIP,
+      id: FIXED_DEPARTURE, tenant_id: SHOP_A.id, trip_id: FIXED_TRIP,
       plan_id: FIXED_PLAN, departs_on: FUTURE_SECOND, start_time: '10:00',
       capacity: 8, seats_booked: 2, status: 'OPEN',
       ...FORMATION_COLUMNS, min_to_depart_snapshot: 4,
@@ -140,10 +162,10 @@ beforeAll(async () => {
   ]));
 
   const readback = await admin.from('trips').select('id').in('id', [
-    PUBLISHED_TRIP, DRAFT_TRIP, OTHER_TENANT_TRIP,
+    PUBLISHED_TRIP, FIXED_TRIP, DRAFT_TRIP, OTHER_TENANT_TRIP,
   ]);
   mustWrite('trips 讀回核實', readback);
-  expect((readback.data ?? []).length, '三筆行程前置資料未完整寫入').toBe(3);
+  expect((readback.data ?? []).length, '四筆行程前置資料未完整寫入').toBe(4);
 
   const seededPlans = await admin.from('trip_plans').select('id').in('id', [REQUEST_PLAN, FIXED_PLAN]);
   mustWrite('方案讀回核實', seededPlans);
@@ -174,12 +196,12 @@ afterAll(async () => {
 
   await runCleanup('trip_departures', () => admin.from('trip_departures').delete().in('id', allDepartureIds));
   await runCleanup('trip_plans', () => admin.from('trip_plans').delete().in('id', [REQUEST_PLAN, FIXED_PLAN]));
-  await runCleanup('trips', () => admin.from('trips').delete().in('id', [PUBLISHED_TRIP, DRAFT_TRIP, OTHER_TENANT_TRIP]));
+  await runCleanup('trips', () => admin.from('trips').delete().in('id', [PUBLISHED_TRIP, FIXED_TRIP, DRAFT_TRIP, OTHER_TENANT_TRIP]));
 
   const [departureReadback, planReadback, tripReadback] = await Promise.all([
     admin.from('trip_departures').select('id').in('id', allDepartureIds),
     admin.from('trip_plans').select('id').in('id', [REQUEST_PLAN, FIXED_PLAN]),
-    admin.from('trips').select('id').in('id', [PUBLISHED_TRIP, DRAFT_TRIP, OTHER_TENANT_TRIP]),
+    admin.from('trips').select('id').in('id', [PUBLISHED_TRIP, FIXED_TRIP, DRAFT_TRIP, OTHER_TENANT_TRIP]),
   ]);
   for (const [label, result] of [
     ['trip_departures', departureReadback], ['trip_plans', planReadback], ['trips', tripReadback],
@@ -201,11 +223,21 @@ describe('#11 公開行程詳情頁與 API', () => {
     expect(body).not.toContain('正在載入行程詳情…');
     expect(body).toContain(`${TAG} 行程標語`);
     expect(body).toContain(`${TAG} REQUEST 方案`);
-    expect(body).toContain(`${TAG} FIXED 方案`);
+    expect(body).not.toContain(`${TAG} FIXED 方案`);
     expect(body).not.toContain(SECRET_REVIEW_NOTE);
     expect(body).not.toContain(UNSAFE_URL);
     expect(body).not.toContain(SHOP_A.id);
     expect(body).not.toContain('channelId');
+  });
+
+  it('固定團次行程頁 200：title 與 SSR 內容含 FIXED 方案名，不含載入殼層', async () => {
+    const { status, body } = await request('/s/' + SHOP_A.shopCode + '/trips/' + encodeURIComponent(FIXED_SLUG));
+    expect(status).toBe(200);
+    expect(body).toContain('<title>' + FIXED_TITLE);
+    expect(body).not.toContain('正在載入行程詳情…');
+    expect(body).toContain(`${TAG} FIXED 方案`);
+    expect(body).not.toContain(`${TAG} REQUEST 方案`);
+    expect(body).not.toContain(SHOP_A.id);
   });
 
   it('公開 API 回報六筆顯示上限，並保留最早的有名額團次', async () => {
@@ -266,14 +298,27 @@ describe('#11 公開行程詳情頁與 API', () => {
     expect(response.data.trip.coverImageUrl).toBe('');
     expect(response.data.trip.galleryUrls).toEqual(['https://example.com/public-trip-image.webp']);
     const requestPlan = response.data.trip.plans.find((plan) => plan.name === `${TAG} REQUEST 方案`);
-    const fixedPlan = response.data.trip.plans.find((plan) => plan.name === `${TAG} FIXED 方案`);
     expect(requestPlan?.departures.map((departure) => departure.seatsLeft)).toEqual([0, 0, 0, 0, 0, 0, 5, 8, 8, 8, 8, 8]);
     // M1：REQUEST 方案不輸出成團欄位；也不輸出任何由 seats_booked 推導的人數。
     expect(requestPlan?.departures.every((d) => !('minToDepart' in d) && !('formationStatus' in d))).toBe(true);
     expect(body).not.toContain('currentParticipants');
-    expect(fixedPlan?.departures.map((departure) => departure.seatsLeft)).toEqual([6]);
-    // 19 分冊 §2.1：固定團次公開成團資訊（最低人數、目前人數、截止、狀態）。
-    const formation = (fixedPlan?.departures[0] ?? {}) as Record<string, unknown>;
+  });
+
+  it('固定團次行程 API：只有 FIXED 方案，剩餘名額與成團欄位正確', async () => {
+    const { status, body } = await request(
+      `/api/public/shops/${SHOP_A.shopCode}/trips/${encodeURIComponent(FIXED_SLUG)}`,
+    );
+    expect(status).toBe(200);
+    const response = JSON.parse(body) as {
+      data: { trip: { title: string; plans: Array<{ name: string; departures: Array<Record<string, unknown>> }> } };
+    };
+    expect(response.data.trip.title).toBe(FIXED_TITLE);
+    expect(response.data.trip.plans).toHaveLength(1);
+    const fixedPlan = response.data.trip.plans[0];
+    expect(fixedPlan.name).toBe(`${TAG} FIXED 方案`);
+    expect(fixedPlan.departures.map((departure) => departure.seatsLeft)).toEqual([6]);
+    // 19 分冊 §2.1：固定團次公開成團資訊（最低人數、截止、狀態）。
+    const formation = fixedPlan.departures[0] ?? {};
     expect(formation.minToDepart).toBe(4);
     expect(formation.formationStatus).toBe('COLLECTING');
     expect(Date.parse(String(formation.formationDeadlineAt))).toBe(Date.parse(`${FUTURE}T00:00:00.000Z`));
