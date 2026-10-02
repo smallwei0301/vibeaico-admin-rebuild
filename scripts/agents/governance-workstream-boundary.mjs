@@ -151,7 +151,7 @@ export function terminalBodyPlan(pr) {
 }
 
 
-/** Both terminal writers use this bounded, compensating reconciliation; REST is not atomic.
+/** The independent terminal writer uses this bounded, compensating reconciliation; REST is not atomic.
  * Never writes review status, dispatches TEST, replaces all labels, or follows a new close generation.
  * @param {{github: any, owner: string, repo: string, current: any, warning?: Function}} input */
 export async function reconcileTerminalPr({ github, owner, repo, current, warning = () => {} }) {

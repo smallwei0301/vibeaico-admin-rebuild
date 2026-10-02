@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { parse } from 'yaml';
 import * as dualPolicy from '../../scripts/agents/dual-terra-wip-policy.mjs';
 import * as alertPolicy from '../../scripts/agents/wip-alert-fingerprint.mjs';
 import * as astraPolicy from '../../scripts/agents/astra-review-policy.mjs';
@@ -76,7 +77,7 @@ function truth(body: string, changedFiles: any[] = ['supabase/migrations/0113_te
 // Execute the actual trusted workflow script with real policy modules and fake GitHub I/O.
 // Vitest's VM cannot dynamically import from AsyncFunction. Replace module loading only,
 // not policy behavior: each exact trusted file URL resolves to its real static import.
-async function runWorkflow(file: string, current = subject(), files: any[] = paths, peers: any[] = []) {
+async function runWorkflow(file: string, current = subject(), files: any[] = paths, peers: any[] = [], job = 'guard') {
   vi.stubEnv('GITHUB_WORKSPACE', process.cwd());
   const failures: string[] = []; const statuses: any[] = []; const calls: string[] = [];
   const labels = new Set<string>(current.labels.map((label: any) => label.name));
@@ -116,11 +117,11 @@ async function runWorkflow(file: string, current = subject(), files: any[] = pat
     },
   };
   const context: any = { repo: { owner: 'owner', repo: 'repo' }, eventName: 'pull_request_target',
-    payload: { action: 'opened', pull_request: current, repository: { default_branch: 'main' } },
+    payload: { action: job === 'terminal_cleanup' ? 'closed' : 'opened', pull_request: current, repository: { default_branch: 'main' } },
     serverUrl: 'https://github.com', runId: 1 };
-  const source = readFileSync(file, 'utf8').split('          script: |\n')[1];
-  expect(source).toBeTruthy();
-  const script = source.split('\n').map(line => line.replace(/^ {12}/, '')).join('\n');
+  const jobName = file.endsWith('agent-workstream-classification.yml') ? 'classify' : job;
+  const script = parse(readFileSync(file, 'utf8')).jobs[jobName].steps.find((step: any) => step.with?.script)?.with.script;
+  expect(script).toBeTruthy();
   const modules = new Map<string, unknown>([
     ['dual-terra-wip-policy.mjs', dualPolicy],
     ['wip-alert-fingerprint.mjs', alertPolicy],
@@ -189,7 +190,10 @@ describe('governance boundary regression #500', () => {
       const body = gov.replace('WORK_ORIGIN: AGENT', 'WORK_ORIGIN: OWNER')
         .replace('DELIVERY_UNIT_TYPE: GOVERNANCE', 'DELIVERY_UNIT_TYPE: STANDALONE');
       const current = { ...subject(body), state: 'closed', merged: true };
-      const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current);
+      const guard = await runWorkflow('.github/workflows/agent-wip-guard.yml', current);
+      expect(guard.statuses).toEqual([]);
+      expect(guard.calls).toEqual([]);
+      const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current, paths, [], 'terminal_cleanup');
       expect(result.statuses).toEqual([]);
       expect(result.failures).toEqual([]);
       expect(result.calls).toContain('body');
@@ -267,7 +271,10 @@ describe('governance boundary regression #500', () => {
   it('executes closed-event cleanup without a pending status, TEST or rewritten comments', async () => {
     const current = { ...subject(), state: 'closed', merged: true,
       labels: [{ name: 'state:active' }, { name: 'candidate:active' }, { name: 'unrelated:keep' }] };
-    const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current);
+    const guard = await runWorkflow('.github/workflows/agent-wip-guard.yml', current);
+    expect(guard.statuses).toEqual([]);
+    expect(guard.calls).toEqual([]);
+    const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current, paths, [], 'terminal_cleanup');
     expect(result.statuses).toEqual([]);
     expect(result.calls).toContain('body');
     expect(result.calls.filter(call => call === 'labels').length).toBeGreaterThan(0);

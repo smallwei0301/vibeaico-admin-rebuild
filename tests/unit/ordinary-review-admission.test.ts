@@ -410,7 +410,10 @@ describe('review wake-up cannot cancel lifecycle housekeeping (synthetic Actions
   // This is a local scheduling contract, not a claim of running GitHub Actions.
   const workflow = () => parse(readFileSync('.github/workflows/agent-wip-guard.yml', 'utf8'));
   function group(eventName: string, action: string, number = 900, job = 'guard') {
-    const github = { repository: repo, event_name: eventName, event: { action, pull_request: { number } } };
+    const event = eventName === 'issue_comment'
+      ? { action, pull_request: {}, issue: { number, state: 'closed', pull_request: {} }, comment: { body: '/astra-review-check' } }
+      : { action, pull_request: { number, state: 'closed' } };
+    const github = { repository: repo, event_name: eventName, event };
     return workflow().jobs[job].concurrency.group.replace(/\$\{\{([\s\S]*?)\}\}/g,
       (_: string, expression: string) => String(new Function('github', 'matrix', `return (${expression});`)(github, { pr_number: number }))).toLowerCase();
   }
@@ -465,10 +468,58 @@ describe('review wake-up cannot cancel lifecycle housekeeping (synthetic Actions
   it('close recovery has its own least-privilege job, independent of guard/resolver results', () => {
     const job = workflow().jobs.terminal_cleanup;
     expect(job.needs).toBeUndefined();
-    expect(job.if).toBe("github.event_name == 'pull_request_target' && github.event.action == 'closed'");
+    expect(job.if).toContain("github.event.action == 'closed'");
+    expect(job.if).toContain("github.event.action == 'edited' && github.event.pull_request.state == 'closed'");
+    expect(job.if).toContain("github.event.action == 'created' && github.event.issue.pull_request");
+    expect(group('issue_comment', 'created', 900, 'terminal_cleanup')).toBe(group('pull_request_target', 'closed', 900, 'terminal_cleanup'));
     expect(job.permissions).toEqual({ contents: 'read', issues: 'write', 'pull-requests': 'write' });
     expect(job.concurrency['cancel-in-progress']).toBe(false);
     expect(job.steps[0].with).toEqual({ ref: '${{ github.event.repository.default_branch }}', 'persist-credentials': false });
+  });
+  it.each(['closed-edit', 'trusted-command', 'writer-command'])('%s reaches only the independent terminal writer', async mode => {
+    const closed = { ...current, state: 'closed', closed_at: '2026-10-02T07:00:00Z' };
+    const github: any = { rest: { pulls: { get: vi.fn(async () => ({ data: closed })) }, repos: {
+      getCollaboratorPermissionLevel: vi.fn(async () => ({ data: { permission: 'write' } })),
+    } } };
+    const boundary = { reconcileTerminalPr: vi.fn(async () => ({ bodyReconciled: true })) };
+    const astra = { isTrustedFinalRiskAgentUser: vi.fn(() => mode === 'trusted-command') };
+    const summary: any = { addHeading: () => summary, addRaw: () => summary, write: async () => undefined };
+    const script = workflow().jobs.terminal_cleanup.steps.find((step: any) => step.with?.script).with.script;
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+    const eventName = mode === 'closed-edit' ? 'pull_request_target' : 'issue_comment';
+    const payload = mode === 'closed-edit' ? { action: 'edited', pull_request: closed }
+      : { action: 'created', issue: { number: 900, state: 'closed', pull_request: {} }, comment: { body: '/astra-review-check', user: bot } };
+    await new AsyncFunction('require', 'process', 'github', 'context', 'core', 'loadPolicy', script.replace(/\bimport\s*\(/g, 'loadPolicy('))(
+      createRequire(import.meta.url), { env: { GITHUB_WORKSPACE: process.cwd() } }, github,
+      { eventName, actor: mode === 'writer-command' ? 'trusted-writer' : 'agent', repo: { owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild' }, payload },
+      { summary, warning: vi.fn() }, async (url: string) => url.includes('astra-review-policy') ? astra : boundary);
+    expect(boundary.reconcileTerminalPr).toHaveBeenCalledTimes(1);
+    expect(github.rest.pulls.get).toHaveBeenCalledWith({ owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', pull_number: 900 });
+    expect(github.rest.repos.getCollaboratorPermissionLevel).toHaveBeenCalledTimes(mode === 'writer-command' ? 1 : 0);
+  });
+  it.each(['untrusted', 'invalid-command', 'reopened', 'new-generation'])('%s does not start terminal writes', async mode => {
+    const closed = { ...current, state: 'closed', closed_at: '2026-10-02T07:00:00Z' };
+    const observed = mode === 'reopened' ? { ...closed, state: 'open' }
+      : mode === 'new-generation' ? { ...closed, closed_at: '2026-10-02T07:01:00Z' } : closed;
+    const github: any = { rest: { pulls: { get: vi.fn(async () => ({ data: observed })) }, repos: {
+      getCollaboratorPermissionLevel: vi.fn(async () => ({ data: { permission: 'read' } })),
+    } } };
+    const boundary = { reconcileTerminalPr: vi.fn() };
+    const astra = { isTrustedFinalRiskAgentUser: vi.fn(() => false) };
+    const summary: any = { addHeading: () => summary, addRaw: () => summary, write: async () => undefined };
+    const script = workflow().jobs.terminal_cleanup.steps.find((step: any) => step.with?.script).with.script;
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+    const isComment = mode === 'untrusted' || mode === 'invalid-command';
+    const payload = isComment ? { action: 'created', issue: { number: 900, state: 'closed', pull_request: {} },
+      comment: { body: mode === 'invalid-command' ? '/astra-review-check-extra' : '/astra-review-check', user: { login: 'untrusted' } } }
+      : { action: 'closed', pull_request: closed };
+    const invoke = new AsyncFunction('require', 'process', 'github', 'context', 'core', 'loadPolicy', script.replace(/\bimport\s*\(/g, 'loadPolicy('))(
+      createRequire(import.meta.url), { env: { GITHUB_WORKSPACE: process.cwd() } }, github,
+      { eventName: isComment ? 'issue_comment' : 'pull_request_target', actor: 'untrusted', repo: { owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild' }, payload },
+      { summary, warning: vi.fn() }, async (url: string) => url.includes('astra-review-policy') ? astra : boundary);
+    if (isComment) await expect(invoke).rejects.toThrow(mode === 'invalid-command' ? 'Invalid closed PR refresh command' : 'Review refresh requires write permission');
+    else await invoke;
+    expect(boundary.reconcileTerminalPr).not.toHaveBeenCalled();
   });
   it.each(['reopened', 'new-head', 'new-generation', 'fresh-body'])('decoded independent cleanup respects %s live truth', async mode => {
     const { github, live } = wakeupFixture();
@@ -490,7 +541,17 @@ describe('review wake-up cannot cancel lifecycle housekeeping (synthetic Actions
 });
 
 describe('terminal cleanup compensates observed reopen without restoring stale metadata', () => {
-  it.each(['terminal_cleanup', 'guard'].flatMap(job => ['before-label', 'after-remove', 'after-add', 'after-body', 'after-body-metadata', 'after-body-new-head', 'fresh-metadata', 'new-generation'].map(phase => [job, phase])))('%s/%s checks each write and repairs reopened live labels/body', async (job, phase) => {
+  it('cancellable guard never starts terminal reconciliation for a closed PR', async () => {
+    const script = parse(readFileSync('.github/workflows/agent-wip-guard.yml', 'utf8')).jobs.guard.steps.find((step: any) => step.with?.script).with.script;
+    const closedBranch = script.slice(script.indexOf('// Cancellable guard is read-only'), script.indexOf('const marker ='));
+    const boundary = { terminalLabelPlan: vi.fn(() => ({ state: 'historical' })), reconcileTerminalPr: vi.fn(async () => ({ bodyReconciled: true })) };
+    const summary: any = { addHeading: () => summary, addRaw: () => summary, write: async () => undefined };
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+    await new AsyncFunction('boundary', 'current', 'github', 'owner', 'repo', 'core', closedBranch)(boundary,
+      { state: 'closed', number: 900 }, {}, 'smallwei0301', 'vibeaico-admin-rebuild', { summary });
+    expect(boundary.reconcileTerminalPr).not.toHaveBeenCalled();
+  });
+  it.each(['before-label', 'after-remove', 'after-add', 'after-body', 'after-body-metadata', 'after-body-new-head', 'fresh-metadata', 'new-generation'])('independent terminal writer/%s checks each write and repairs reopened live labels/body', async phase => {
       const { github, live } = wakeupFixture();
       const original = live.body + '\nWORK_ORIGIN: AGENT\nACTIVE_CANDIDATE: true';
       let pr: any = { ...live, body: original, state: 'closed', merged: false, closed_at: '2026-10-02T07:00:00Z', labels: [{ name: 'state:active' }, { name: 'candidate:active' }, { name: 'unrelated:keep' }] };
@@ -528,8 +589,7 @@ describe('terminal cleanup compensates observed reopen without restoring stale m
         }
       });
       const boundary = await import('../../scripts/agents/governance-workstream-boundary.mjs');
-      const script = parse(readFileSync('.github/workflows/agent-wip-guard.yml', 'utf8')).jobs[job].steps.find((step: any) => step.with?.script).with.script;
-      const decoded = job === 'guard' ? script.split('const marker =')[0] : script;
+      const decoded = parse(readFileSync('.github/workflows/agent-wip-guard.yml', 'utf8')).jobs.terminal_cleanup.steps.find((step: any) => step.with?.script).with.script;
       const summary: any = { addHeading: () => summary, addRaw: () => summary, write: async () => undefined };
       const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
       await new AsyncFunction('require', 'process', 'github', 'context', 'core', 'loadPolicy', decoded.replace(/\bimport\s*\(/g, 'loadPolicy('))(createRequire(import.meta.url), { env: { GITHUB_WORKSPACE: process.cwd() } }, github, { eventName: 'pull_request_target', repo: { owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild' }, payload: { action: 'closed', pull_request: eventPr } }, { summary, warning: vi.fn() }, async () => boundary);
