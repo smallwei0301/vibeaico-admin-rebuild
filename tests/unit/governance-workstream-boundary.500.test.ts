@@ -394,6 +394,25 @@ describe('governance boundary regression #500', () => {
     const body = gov.replace('state: ACTIVE', `state: ${merged ? 'MERGED' : 'HISTORICAL'}`).replace('LANE_STATE: ACTIVE', `LANE_STATE: ${merged ? 'COMPLETE' : 'HISTORICAL'}`).replace('REMAINING_AUTONOMOUS_STEPS: source CI and exact-diff verification', 'REMAINING_AUTONOMOUS_STEPS: none') + `\nMERGE_STATUS: ${merged ? 'VERIFIED_MERGED' : 'VERIFIED_NOT_MERGED'}\nCOMPLETION_CLAIM: ${claim}`;
     expect(terminalBodyPlan({ state: 'closed', merged, body })?.unsyncedFields).toEqual(['COMPLETION_CLAIM']);
   });
+  it('keeps merged Completion Truth receipt gaps in the pending handoff', async () => {
+    const body = gov.replace('state: ACTIVE', 'state: MERGED').replace('LANE_STATE: ACTIVE', 'LANE_STATE: COMPLETE')
+      .replace('REMAINING_AUTONOMOUS_STEPS: source CI and exact-diff verification', 'REMAINING_AUTONOMOUS_STEPS: none') +
+      '\nMERGE_STATUS: VERIFIED_MERGED\nCOMPLETION_CLAIM: VERIFIED_MERGED\nMERGE_COMMIT_SHA: none\nMAIN_HEAD_VERIFIED: false\nMAIN_HEAD_SHA: none\nMAIN_FILE_RE_READ: none\nVERIFIED_AT: none\nEXACT_HEAD_CI_STATUS: NOT_RUN\nEXACT_HEAD_CI_RUN: none\nLOCAL_JOB_RESULT: NOT_RUN\nREMOTE_JOB_RESULT: NOT_RUN';
+    const closed = { ...subject(body), state: 'closed', merged: true, closed_at: created_at, labels: [] };
+    const fields = ['MERGE_COMMIT_SHA', 'MAIN_HEAD_VERIFIED', 'MAIN_HEAD_SHA', 'MAIN_FILE_RE_READ', 'VERIFIED_AT', 'EXACT_HEAD_CI_STATUS', 'EXACT_HEAD_CI_RUN', 'LOCAL_JOB_RESULT', 'REMOTE_JOB_RESULT'];
+    expect(terminalBodyPlan(closed)?.unsyncedFields).toEqual(fields);
+    const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', closed, paths, [], 'terminal_cleanup');
+    expect(result.comments[0]).toContain(`UNSYNCED_FIELDS: ${fields.join(', ')}`);
+    expect(result.calls).not.toContain('body');
+    const receipts = { MERGE_COMMIT_SHA: 'a'.repeat(40), MAIN_HEAD_VERIFIED: 'true', MAIN_HEAD_SHA: 'b'.repeat(40),
+      MAIN_FILE_RE_READ: 'docs/AGENT-EXECUTION.md', VERIFIED_AT: created_at, EXACT_HEAD_CI_STATUS: 'VERIFIED_GREEN', EXACT_HEAD_CI_RUN: 'https://github.com/owner/repo/actions/runs/1', LOCAL_JOB_RESULT: 'SKIPPED', REMOTE_JOB_RESULT: 'SKIPPED' };
+    const verified = Object.entries(receipts).reduce((text, [field, value]) => text.replace(new RegExp(`${field}: [^\\n]*`), `${field}: ${value}`), body);
+    expect(terminalBodyPlan({ ...closed, body: verified, merge_commit_sha: 'a'.repeat(40) })?.unsyncedFields).toEqual([]);
+    expect(terminalBodyPlan({ ...closed, body: verified, merge_commit_sha: 'c'.repeat(40) })?.unsyncedFields).toContain('MERGE_COMMIT_SHA');
+    for (const field of ['MAIN_FILE_RE_READ', 'EXACT_HEAD_CI_RUN']) for (const placeholder of ['TBD', 'UNKNOWN', 'N/A', '-']) {
+      expect(terminalBodyPlan({ ...closed, body: verified.replace(new RegExp(`${field}: [^\\n]*`), `${field}: ${placeholder}`), merge_commit_sha: 'a'.repeat(40) })?.unsyncedFields).toContain(field);
+    }
+  });
   it.each(['Historical prose only', 'Historical notes\n```text\nexample only',
     '```text\n<!-- pr-lifecycle\nstate: ACTIVE\n-->\n```'])('ignores prose and example-only lifecycle markers', body => {
     const plan = terminalBodyPlan({ state: 'closed', merged: true, body });

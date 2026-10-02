@@ -174,10 +174,20 @@ export function terminalBodyPlan(pr) {
     ['COMPLETION_CLAIM', value => value !== (merged ? 'VERIFIED_MERGED' : 'VERIFIED_CLOSED')],
     ['OWNER_OR_EXTERNAL_BLOCKER', value => value !== 'NONE'],
     ['REMAINING_AUTONOMOUS_STEPS', value => value !== 'NONE'],
+    ['MERGE_COMMIT_SHA', value => merged ? !/^[a-f0-9]{40}$/i.test(value) || Boolean(pr.merge_commit_sha && upper(value) !== upper(pr.merge_commit_sha)) : value !== 'NONE'],
+    ['MAIN_HEAD_VERIFIED', value => merged && value !== 'TRUE'],
+    ['MAIN_HEAD_SHA', value => merged && !/^[a-f0-9]{40}$/i.test(value)],
+    ['MAIN_FILE_RE_READ', value => merged && (value === 'NONE' || isPlaceholder(value))],
+    ['VERIFIED_AT', value => !Number.isFinite(Date.parse(value)) || Boolean(pr.closed_at && Date.parse(value) < Date.parse(pr.closed_at))],
+    ['EXACT_HEAD_CI_STATUS', value => merged && value !== 'VERIFIED_GREEN'],
+    ['EXACT_HEAD_CI_RUN', value => merged && (value === 'NONE' || isPlaceholder(value))],
+    ['LOCAL_JOB_RESULT', value => merged && !['VERIFIED_GREEN', 'SKIPPED'].includes(value)],
+    ['REMOTE_JOB_RESULT', value => merged && !['VERIFIED_GREEN', 'SKIPPED'].includes(value)],
   ]) {
     if (!hasContract) continue;
+    if (!visible.some(line => new RegExp(`^[ \\t]*[-*]?[ \\t]*${field}[ \\t]*:`, 'i').test(line))) continue;
     const value = readField(visible.join('\n'), field);
-    if (value && (value.includes('|') || stale(upper(value)))) unsyncedFields.add(field);
+    if (!value || value.includes('|') || stale(upper(value))) unsyncedFields.add(field);
   }
 
   return {
