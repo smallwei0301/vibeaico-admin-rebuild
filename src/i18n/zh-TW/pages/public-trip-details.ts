@@ -54,13 +54,12 @@ export const publicTripDetailsPage = {
     empty: '目前尚未顯示此方案的出發日期，請從方案入口查看或聯絡店家確認。',
     truncated: '本頁每個方案最多列出 6 筆近期團次；如需確認其他日期，請聯絡店家。',
     seatsLeft: (count: number) => `剩 ${count} 位`,
+    soldOut: '客滿',
+    allSoldOut: '目前列出的日期皆已客滿，請聯絡店家或稍後再查看。',
     noStartTime: '時間未定',
     availabilityNote: '名額會隨預約變動，送出前仍會再次確認。',
     formation: {
       minToDepart: (count: number) => `最低成團 ${count} 人`,
-      currentParticipants: (count: number) => `目前 ${count} 人`,
-      shortfall: (count: number) => `尚差 ${count} 人`,
-      reached: '已達成團人數',
       deadline: (when: string) => `成團截止 ${when}`,
       status: {
         COLLECTING: '招募中，尚未成團',

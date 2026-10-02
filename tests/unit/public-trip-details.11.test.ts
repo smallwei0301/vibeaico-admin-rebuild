@@ -5,6 +5,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const fakeState = vi.hoisted(() => ({
   planCount: 10,
   failPlanId: null as string | null,
+  soldOutRows: 0,
+  flood: false,
+  salesMode: 'FIXED_DEPARTURE',
   active: 0,
   maxActive: 0,
   calls: [] as Array<{ table: string; filters: Record<string, unknown>; single: boolean }>,
@@ -15,8 +18,9 @@ vi.mock('@/server/supabase', () => ({
     from(table: string) {
       const filters: Record<string, unknown> = {};
       let single = false;
+      let rangeArgs: [number, number] | null = null;
       const run = async () => {
-        fakeState.calls.push({ table, filters: { ...filters }, single });
+        fakeState.calls.push({ table, filters: { ...filters }, single, ...(rangeArgs ? { range: rangeArgs } : {}) } as never);
         if (table === 'tenants') {
           const id = filters.shop_code === 'demo' ? 'tenant-1' : 'tenant-2';
           return { data: { id, shop_code: filters.shop_code, name: 'Demo', business_type: null, tenant_settings: null }, error: null };
@@ -33,7 +37,7 @@ vi.mock('@/server/supabase', () => ({
         if (table === 'trip_plans') {
           const data = Array.from({ length: fakeState.planCount }, (_, i) => ({
             id: `plan-${i}`, trip_id: 'trip-1', name: `P${i}`, description: '', price_per_person: 100,
-            price_type: 'PER_PERSON', min_party: 1, max_party: 4, sales_mode: 'FIXED_DEPARTURE',
+            price_type: 'PER_PERSON', min_party: 1, max_party: 4, sales_mode: fakeState.salesMode,
           }));
           return { data, error: null };
         }
@@ -43,10 +47,23 @@ vi.mock('@/server/supabase', () => ({
           await new Promise((r) => setTimeout(r, 5));
           fakeState.active -= 1;
           const planId = filters.plan_id as string;
+          if (fakeState.flood && rangeArgs) {
+            const [from, to] = rangeArgs;
+            const rows = [];
+            for (let i = from; i <= (from >= 1200 ? from : to); i += 1) {
+              rows.push({ id: `flood-${i}`, departs_on: '2098-01-01', start_time: null, capacity: 1, seats_booked: 1,
+                min_to_depart_snapshot: 1, formation_deadline_at: null, formation_status: 'COLLECTING' });
+            }
+            return { data: rows, error: null };
+          }
           if (planId === fakeState.failPlanId) return { data: null, error: { message: 'boom' } };
           const n = Number(planId.replace('plan-', ''));
+          const soldOut = Array.from({ length: fakeState.soldOutRows }, (_, k) => ({
+            id: `so-${n}-${k}`, departs_on: '2098-01-0' + (k % 9 + 1), start_time: null, capacity: 2, seats_booked: 2,
+            min_to_depart_snapshot: 1, formation_deadline_at: null, formation_status: 'COLLECTING',
+          }));
           return {
-            data: [{ id: `dep-${n}`, departs_on: '2099-01-01', start_time: '09:00:00', capacity: 5, seats_booked: n % 5,
+            data: [...soldOut, { id: `dep-${n}`, departs_on: '2099-01-01', start_time: '09:00:00', capacity: 5, seats_booked: n % 5,
               min_to_depart_snapshot: 2, formation_deadline_at: '2098-12-30T00:00:00+00:00', formation_status: 'COLLECTING' }],
             error: null,
           };
@@ -58,7 +75,7 @@ vi.mock('@/server/supabase', () => ({
         in: () => chain,
         gte: () => chain,
         order: () => chain,
-        range: () => chain,
+        range: (a: number, b: number) => { rangeArgs = [a, b]; return chain; },
         eq: (k: string, v: unknown) => { filters[k] = v; return chain; },
         maybeSingle: () => { single = true; return run(); },
         then: (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) => run().then(res, rej),
@@ -164,6 +181,9 @@ describe('#11 公開行程詳情：方案團次查詢併發上限', () => {
   beforeEach(() => {
     fakeState.planCount = 10;
     fakeState.failPlanId = null;
+    fakeState.soldOutRows = 0;
+    fakeState.flood = false;
+    fakeState.salesMode = 'FIXED_DEPARTURE';
     fakeState.active = 0;
     fakeState.maxActive = 0;
     fakeState.calls = [];
@@ -181,7 +201,6 @@ describe('#11 公開行程詳情：方案團次查詢併發上限', () => {
       expect(plan.departures[0].seatsLeft).toBe(5 - (i % 5));
       expect(plan.departures[0]).toMatchObject({
         minToDepart: 2,
-        currentParticipants: i % 5,
         formationDeadlineAt: '2098-12-30T00:00:00+00:00',
         formationStatus: 'COLLECTING',
       });
@@ -199,6 +218,9 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
   beforeEach(() => {
     fakeState.planCount = 3;
     fakeState.failPlanId = null;
+    fakeState.soldOutRows = 0;
+    fakeState.flood = false;
+    fakeState.salesMode = 'FIXED_DEPARTURE';
     fakeState.active = 0;
     fakeState.maxActive = 0;
     fakeState.calls = [];
@@ -218,6 +240,48 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     expect(planCalls[0].filters).toMatchObject({ tenant_id: 'tenant-1', trip_id: 'trip-1', active: true });
     expect(fakeState.calls.some((c) => c.table === 'services')).toBe(false);
     expect(result?.trip.plans).toHaveLength(3);
+  });
+
+  it('客滿團次保留並標示 soldOut、seatsLeft 0；有上限且不占可售名額；輸出不含 seats_booked 推導人數', async () => {
+    fakeState.planCount = 1;
+    fakeState.soldOutRows = 9;
+    const { loadPublicTripDetails } = await import('@/server/public-shop');
+    const result = await loadPublicTripDetails('demo', 'hike');
+    const deps = result?.trip.plans[0].departures ?? [];
+    const soldOut = deps.filter((d) => d.soldOut);
+    expect(soldOut).toHaveLength(6);
+    expect(soldOut.every((d) => d.seatsLeft === 0 && d.soldOut === true)).toBe(true);
+    expect(deps.filter((d) => !d.soldOut)).toHaveLength(1);
+    expect(result?.trip.plans[0].departuresMayBeTruncated).toBe(true);
+    for (const d of deps) expect(d).not.toHaveProperty('currentParticipants');
+    expect(JSON.stringify(result)).not.toMatch(/currentParticipants|seatsBooked|seats_booked/);
+  });
+
+  it('M4：每一次 trip_departures 查詢（分頁與 lookahead）都必須帶 status=OPEN、tenant、trip、plan 條件', async () => {
+    fakeState.planCount = 1;
+    fakeState.flood = true;
+    const { loadPublicTripDetails } = await import('@/server/public-shop');
+    await loadPublicTripDetails('demo', 'hike');
+    const queries = fakeState.calls.filter((c) => c.table === 'trip_departures');
+    // 1200 列 / 每頁 120 = 10 頁，再加 1 次 lookahead。
+    expect(queries).toHaveLength(11);
+    for (const q of queries) {
+      expect(q.filters).toMatchObject({ tenant_id: 'tenant-1', trip_id: 'trip-1', plan_id: 'plan-0', status: 'OPEN' });
+    }
+    expect(queries.filter((q) => (q as never as { range: number[] }).range[0] >= 1200)).toHaveLength(1);
+  });
+
+  it('M1：成團欄位只在 FIXED_DEPARTURE 輸出；REQUEST／INSTANT 不帶', async () => {
+    const { loadPublicTripDetails } = await import('@/server/public-shop');
+    for (const mode of ['REQUEST', 'INSTANT', 'FIXED_DEPARTURE']) {
+      fakeState.planCount = 1;
+      fakeState.salesMode = mode;
+      const result = await loadPublicTripDetails('demo', 'hike');
+      const dep = result?.trip.plans[0].departures[0] ?? {};
+      for (const key of ['minToDepart', 'formationDeadlineAt', 'formationStatus']) {
+        expect(key in dep, `${mode} ${key}`).toBe(mode === 'FIXED_DEPARTURE');
+      }
+    }
   });
 
   it('region 為空字串，location 照常回傳', async () => {

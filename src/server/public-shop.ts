@@ -100,8 +100,12 @@ export type PublicTripDetailDeparture = {
   /* #11／19 分冊 §2.1：固定團次成團資訊。canonical 值為 null／缺少時前端不顯示該項。 */
   /** 建立團次時 snapshot 的最低成團人數（`min_to_depart_snapshot`）。 */
   minToDepart?: number | null;
-  /** 目前有效成團人數：canonical 唯一可靠來源是 `seats_booked`。 */
-  currentParticipants?: number | null;
+  /**
+   * 剩餘名額為 0（客滿）。刻意**不**輸出「目前成團人數」：18 §5 規定容量占用與成團計數是
+   * 兩本帳，成團計數須由 qualifying TourOrders 現算；canonical migrations 沒有權威的
+   * 計數欄位／view／function，`seats_booked` 含未付款占位，不得拿來當成團人數或推算尚差。
+   */
+  soldOut?: true;
   /** 成團截止時間（ISO，`formation_deadline_at`）。 */
   formationDeadlineAt?: string | null;
   /** `formation_status`：COLLECTING／FORMED／REVIEW_REQUIRED／AT_RISK／FAILED。 */
@@ -166,6 +170,8 @@ export type PublicShopData = {
 const MAX_DEPARTURES_PER_TRIP = 6;
 /** 詳情頁每個方案最多顯示的近期團次。 */
 const MAX_DETAIL_DEPARTURES_PER_PLAN = 6;
+/** 詳情頁每個方案最多額外列出的客滿團次（不占上面的可售名額）。 */
+const MAX_DETAIL_SOLD_OUT_PER_PLAN = 6;
 /**
  * Scan future OPEN rows per plan so sold-out dates cannot hide a later available date.
  * A bounded scan protects public request latency; the UI marks the list when rows remain.
@@ -497,9 +503,12 @@ async function loadPublicTripDetailsUncached(
     let offset = 0;
     let scanned = 0;
     let exhausted = false;
+    let soldOutCount = 0;
+    let skippedSoldOut = false;
+    const availableCount = () => departures.length - soldOutCount;
 
     // Query each plan independently. A busy plan must not consume another plan's window.
-    while (departures.length < MAX_DETAIL_DEPARTURES_PER_PLAN
+    while (availableCount() < MAX_DETAIL_DEPARTURES_PER_PLAN
       && scanned < MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN) {
       const pageSize = Math.min(
         DETAIL_DEPARTURE_PAGE_SIZE,
@@ -524,20 +533,30 @@ async function loadPublicTripDetailsUncached(
       for (const departure of rows) {
         const capacity = Number(departure.capacity ?? 0);
         const seatsBooked = Number(departure.seats_booked ?? 0);
-        if (seatsBooked >= capacity) continue;
+        const soldOut = seatsBooked >= capacity;
+        // canonical 19 §2.1：旅客要能分辨「客滿」，所以客滿團次保留並標示 soldOut（不提供動作）。
+        // 客滿團次不占可售名額上限；另設上限避免整頁被客滿團次佔滿。
+        if (soldOut) {
+          if (soldOutCount >= MAX_DETAIL_SOLD_OUT_PER_PLAN) { skippedSoldOut = true; continue; }
+          soldOutCount += 1;
+        }
         departures.push({
           id: departure.id as string,
           departsOn: departure.departs_on as string,
           startTime: departure.start_time == null ? '' : String(departure.start_time).slice(0, 5),
-          seatsLeft: capacity - seatsBooked,
-          minToDepart: Number.isInteger(departure.min_to_depart_snapshot) && Number(departure.min_to_depart_snapshot) >= 1
-            ? Number(departure.min_to_depart_snapshot) : null,
-          currentParticipants: seatsBooked,
-          formationDeadlineAt: typeof departure.formation_deadline_at === 'string'
-            && departure.formation_deadline_at ? departure.formation_deadline_at : null,
-          formationStatus: typeof departure.formation_status === 'string' ? departure.formation_status : null,
+          seatsLeft: soldOut ? 0 : capacity - seatsBooked,
+          ...(soldOut ? { soldOut: true } : {}),
+          // M1：成團欄位只對 FIXED_DEPARTURE 輸出，REQUEST／INSTANT 的輸出不帶，
+          // 以免與 seatsLeft 合併後被反推出 capacity／占位資訊。
+          ...(plan.salesMode === 'FIXED_DEPARTURE' ? {
+            minToDepart: Number.isInteger(departure.min_to_depart_snapshot) && Number(departure.min_to_depart_snapshot) >= 1
+              ? Number(departure.min_to_depart_snapshot) : null,
+            formationDeadlineAt: typeof departure.formation_deadline_at === 'string'
+              && departure.formation_deadline_at ? departure.formation_deadline_at : null,
+            formationStatus: typeof departure.formation_status === 'string' ? departure.formation_status : null,
+          } : {}),
         });
-        if (departures.length >= MAX_DETAIL_DEPARTURES_PER_PLAN) break;
+        if (availableCount() >= MAX_DETAIL_DEPARTURES_PER_PLAN) break;
       }
 
       if (rows.length < pageSize) {
@@ -549,7 +568,7 @@ async function loadPublicTripDetailsUncached(
     // If the bounded window ended before six available dates were found, check whether
     // another future row exists so the page can say that this list is incomplete.
     let mayBeTruncated = false;
-    if (!exhausted && departures.length < MAX_DETAIL_DEPARTURES_PER_PLAN
+    if (!exhausted && availableCount() < MAX_DETAIL_DEPARTURES_PER_PLAN
       && scanned >= MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN) {
       const { data, error: lookaheadError } = await admin.from('trip_departures')
         .select('id')
@@ -568,7 +587,8 @@ async function loadPublicTripDetailsUncached(
 
     return [plan.id, {
       departures,
-      mayBeTruncated: mayBeTruncated || departures.length >= MAX_DETAIL_DEPARTURES_PER_PLAN,
+      mayBeTruncated: mayBeTruncated || skippedSoldOut
+        || availableCount() >= MAX_DETAIL_DEPARTURES_PER_PLAN,
     }] as const;
   });
   const departuresByPlan = new Map(planDepartureResults);

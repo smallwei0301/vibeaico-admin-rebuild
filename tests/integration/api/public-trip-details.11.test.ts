@@ -107,28 +107,37 @@ beforeAll(async () => {
     },
   ]));
 
+  // PostgREST 批次 insert 會把「缺少的欄位」寫成 null（不是套用 default）；formation_status／
+  // min_to_depart_snapshot 在 canonical 0107 是 NOT NULL，所以每一列都必須明確帶合法值。
+  const FORMATION_COLUMNS = {
+    min_to_depart_snapshot: 1,
+    formation_status: 'COLLECTING',
+    formation_deadline_at: `${FUTURE}T00:00:00.000Z`,
+  };
   mustWrite('trip_departures', await admin.from('trip_departures').insert([
     {
       id: REQUEST_DEPARTURE, tenant_id: SHOP_A.id, trip_id: PUBLISHED_TRIP,
       plan_id: REQUEST_PLAN, departs_on: FUTURE, start_time: '09:00',
       capacity: 8, seats_booked: 3, status: 'OPEN',
+      ...FORMATION_COLUMNS,
     },
     {
       id: FIXED_DEPARTURE, tenant_id: SHOP_A.id, trip_id: PUBLISHED_TRIP,
       plan_id: FIXED_PLAN, departs_on: FUTURE_SECOND, start_time: '10:00',
       capacity: 8, seats_booked: 2, status: 'OPEN',
-      min_to_depart_snapshot: 4, formation_status: 'COLLECTING',
-      formation_deadline_at: `${FUTURE}T00:00:00.000Z`,
+      ...FORMATION_COLUMNS, min_to_depart_snapshot: 4,
     },
     ...SOLD_OUT_DEPARTURES.map((id, index) => ({
       id, tenant_id: SHOP_A.id, trip_id: PUBLISHED_TRIP,
       plan_id: REQUEST_PLAN, departs_on: dateAfter(index + 1), start_time: '08:00',
       capacity: 1, seats_booked: 1, status: 'OPEN',
+      ...FORMATION_COLUMNS,
     })),
     ...EXTRA_AVAILABLE_DEPARTURES.map((id, index) => ({
       id, tenant_id: SHOP_A.id, trip_id: PUBLISHED_TRIP,
       plan_id: REQUEST_PLAN, departs_on: dateAfter(301 + index), start_time: '09:00',
       capacity: 8, seats_booked: 0, status: 'OPEN',
+      ...FORMATION_COLUMNS,
     })),
   ]));
 
@@ -216,8 +225,12 @@ describe('#11 公開行程詳情頁與 API', () => {
       };
     };
     const requestPlan = response.data.trip.plans.find((plan) => plan.name === `${TAG} REQUEST 方案`);
-    expect(requestPlan?.departures).toHaveLength(6);
-    expect(requestPlan?.departures[0]).toMatchObject({
+    // 客滿團次保留並標示 soldOut（最多 6 筆，不占可售名額）；可售團次最多 6 筆，保留最早的有名額團次。
+    const listed = requestPlan?.departures ?? [];
+    expect(listed.filter((departure) => (departure as { soldOut?: boolean }).soldOut)).toHaveLength(6);
+    const available = listed.filter((departure) => !(departure as { soldOut?: boolean }).soldOut);
+    expect(available).toHaveLength(6);
+    expect(available[0]).toMatchObject({
       id: REQUEST_DEPARTURE,
       departsOn: FUTURE,
       startTime: '09:00',
@@ -253,12 +266,14 @@ describe('#11 公開行程詳情頁與 API', () => {
     expect(response.data.trip.galleryUrls).toEqual(['https://example.com/public-trip-image.webp']);
     const requestPlan = response.data.trip.plans.find((plan) => plan.name === `${TAG} REQUEST 方案`);
     const fixedPlan = response.data.trip.plans.find((plan) => plan.name === `${TAG} FIXED 方案`);
-    expect(requestPlan?.departures.map((departure) => departure.seatsLeft)).toEqual([5, 8, 8, 8, 8, 8]);
+    expect(requestPlan?.departures.map((departure) => departure.seatsLeft)).toEqual([0, 0, 0, 0, 0, 0, 5, 8, 8, 8, 8, 8]);
+    // M1：REQUEST 方案不輸出成團欄位；也不輸出任何由 seats_booked 推導的人數。
+    expect(requestPlan?.departures.every((d) => !('minToDepart' in d) && !('formationStatus' in d))).toBe(true);
+    expect(body).not.toContain('currentParticipants');
     expect(fixedPlan?.departures.map((departure) => departure.seatsLeft)).toEqual([6]);
     // 19 分冊 §2.1：固定團次公開成團資訊（最低人數、目前人數、截止、狀態）。
     const formation = (fixedPlan?.departures[0] ?? {}) as Record<string, unknown>;
     expect(formation.minToDepart).toBe(4);
-    expect(formation.currentParticipants).toBe(2);
     expect(formation.formationStatus).toBe('COLLECTING');
     expect(Date.parse(String(formation.formationDeadlineAt))).toBe(Date.parse(`${FUTURE}T00:00:00.000Z`));
   });

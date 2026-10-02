@@ -9,13 +9,20 @@ import { publicShopPage } from '@/i18n/zh-TW/pages/public-shop';
 import { publicTripDetailsPage as t } from '@/i18n/zh-TW/pages/public-trip-details';
 import { formatCurrency } from '@/lib/utils';
 import { formationLines } from '@/lib/public-departure-formation';
+import {
+  initialLoadState,
+  shouldFetchOnMount,
+  type PublicTripInitialData,
+  type PublicTripLoadState as LoadState,
+} from '@/lib/public-trip-client-state';
 
-type Props = { shopCode: string; slug: string };
-type LoadState =
-  | { status: 'loading' }
-  | { status: 'not-found' }
-  | { status: 'error' }
-  | { status: 'ready'; data: PublicTripDetails };
+type Props = { shopCode: string; slug: string; initialData?: PublicTripInitialData };
+/** 列出的團次全為客滿且沒有更多未列出的團次時，不提供報名入口。 */
+function allListedSoldOut(plan: { departures: Array<{ soldOut?: true }>; departuresMayBeTruncated: boolean }): boolean {
+  return plan.departures.length > 0
+    && plan.departures.every((departure) => departure.soldOut === true)
+    && !plan.departuresMayBeTruncated;
+}
 
 function formatDepartureDate(departsOn: string): string {
   const [year, month, day] = departsOn.split('-').map(Number);
@@ -24,40 +31,54 @@ function formatDepartureDate(departsOn: string): string {
 }
 
 
-export function PublicTripDetailsClient({ shopCode, slug }: Props) {
-  const [state, setState] = useState<LoadState>({ status: 'loading' });
+export function PublicTripDetailsClient({ shopCode, slug, initialData }: Props) {
+  const [state, setState] = useState<LoadState>(() => initialLoadState(initialData));
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let active = true;
-    setState({ status: 'loading' });
     const path = '/api/public/shops/' + encodeURIComponent(shopCode)
       + '/trips/' + encodeURIComponent(slug);
-    void fetch(path, { cache: 'no-store' })
-      .then(async (response) => {
-        if (response.status === 404) {
-          if (active) setState({ status: 'not-found' });
-          return;
-        }
-        if (!response.ok) {
-          if (active) setState({ status: 'error' });
-          return;
-        }
-        const payload = await response.json() as {
-          success?: boolean;
-          data?: PublicTripDetails;
-        };
-        if (!payload.success || !payload.data) {
-          if (active) setState({ status: 'error' });
-          return;
-        }
-        if (active) setState({ status: 'ready', data: payload.data });
-      })
-      .catch(() => {
-        if (active) setState({ status: 'error' });
-      });
-    return () => { active = false; };
-  }, [shopCode, slug, attempt]);
+    // background=true：已有畫面資料時的靜默更新，失敗不覆蓋現有內容。
+    const load = (background: boolean) => {
+      if (!background) setState({ status: 'loading' });
+      void fetch(path, { cache: 'no-store' })
+        .then(async (response) => {
+          if (response.status === 404) {
+            if (active && !background) setState({ status: 'not-found' });
+            return;
+          }
+          if (!response.ok) {
+            if (active && !background) setState({ status: 'error' });
+            return;
+          }
+          const payload = await response.json() as {
+            success?: boolean;
+            data?: PublicTripDetails;
+          };
+          if (!payload.success || !payload.data) {
+            if (active && !background) setState({ status: 'error' });
+            return;
+          }
+          if (active) setState({ status: 'ready', data: payload.data });
+        })
+        .catch(() => {
+          if (active && !background) setState({ status: 'error' });
+        });
+    };
+
+    if (shouldFetchOnMount(initialData, attempt)) {
+      load(false);
+      return () => { active = false; };
+    }
+    // 頁面已由 Server 載入資料：掛載時不重取；使用者切回此分頁時才以 no-store 更新即時名額。
+    const onVisible = () => { if (document.visibilityState === 'visible') load(true); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      active = false;
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [shopCode, slug, attempt, initialData]);
 
   if (state.status === 'loading') {
     return (
@@ -245,10 +266,10 @@ export function PublicTripDetailsClient({ shopCode, slug }: Props) {
                         <h4 className="text-sm font-medium">{t.departures.title}</h4>
                         <ul className="flex flex-wrap gap-2">
                           {plan.departures.map((departure) => (
-                            <li key={departure.id} className="badge badge-primary">
+                            <li key={departure.id} className={departure.soldOut ? 'badge text-secondary' : 'badge badge-primary'}>
                               {formatDepartureDate(departure.departsOn)}{' '}
                               {departure.startTime || t.departures.noStartTime}{' · '}
-                              {t.departures.seatsLeft(departure.seatsLeft)}
+                              {departure.soldOut ? t.departures.soldOut : t.departures.seatsLeft(departure.seatsLeft)}
                               {formationLines(plan.salesMode, departure).map((line) => (
                                 <span key={line} className="block text-2xs text-secondary">{line}</span>
                               ))}
@@ -270,7 +291,10 @@ export function PublicTripDetailsClient({ shopCode, slug }: Props) {
                         {t.plans.requestCta}
                       </Link>
                     ) : null}
-                    {plan.salesMode === 'FIXED_DEPARTURE' ? (
+                    {plan.salesMode === 'FIXED_DEPARTURE' && allListedSoldOut(plan) ? (
+                      <p className="text-sm text-secondary">{t.departures.allSoldOut}</p>
+                    ) : null}
+                    {plan.salesMode === 'FIXED_DEPARTURE' && !allListedSoldOut(plan) ? (
                       <Link className="btn btn-primary w-fit" href={`/s/${shopCode}/plans/${plan.id}/book`}>
                         {t.plans.fixedCta}
                       </Link>

@@ -18,7 +18,7 @@ describe('#11 詳情頁 params 解碼（Next page params 不會自動解碼）',
     const server = readFileSync(resolve(process.cwd(), 'src/server/public-trip-page.ts'), 'utf8');
     expect(server).toContain('await resolvePublicTripDetailsParams(params)');
     expect(page).toContain('await loadPublicTripPage(params)');
-    expect(page).toContain('<PublicTripDetailsClient shopCode={props.shopCode} slug={props.slug} />');
+    expect(page).toContain('<PublicTripDetailsClient shopCode={props.shopCode} slug={props.slug} initialData={props.initialData} />');
   });
 
   it('編碼的中文 slug 解碼後才傳給 client', async () => {

@@ -2,7 +2,6 @@ import { publicTripDetailsPage as t } from '@/i18n/zh-TW/pages/public-trip-detai
 
 type FormationInput = {
   minToDepart?: number | null;
-  currentParticipants?: number | null;
   formationDeadlineAt?: string | null;
   formationStatus?: string | null;
 };
@@ -29,15 +28,8 @@ export function formationLines(salesMode: string, departure: FormationInput): st
   if (salesMode !== 'FIXED_DEPARTURE') return [];
   const lines: string[] = [];
   const min = departure.minToDepart;
-  const current = departure.currentParticipants;
   if (typeof min === 'number') {
     lines.push(t.departures.formation.minToDepart(min));
-    if (typeof current === 'number') {
-      lines.push(t.departures.formation.currentParticipants(current));
-      lines.push(current >= min
-        ? t.departures.formation.reached
-        : t.departures.formation.shortfall(min - current));
-    }
   }
   const deadline = formatFormationDeadline(departure.formationDeadlineAt);
   if (deadline) lines.push(t.departures.formation.deadline(deadline));

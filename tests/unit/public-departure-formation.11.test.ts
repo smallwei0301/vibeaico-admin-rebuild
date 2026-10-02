@@ -5,22 +5,21 @@ import { formationLines, formatFormationDeadline } from '@/lib/public-departure-
 import { decodePublicRouteParam } from '@/lib/public-route-params';
 
 const full = {
-  minToDepart: 4, currentParticipants: 2,
+  minToDepart: 4,
   formationDeadlineAt: '2026-12-01T04:30:00+00:00', formationStatus: 'COLLECTING',
 };
 
 describe('#11 固定團次成團資訊顯示（19 分冊 §2.1）', () => {
-  it('FIXED_DEPARTURE 顯示最低人數、目前人數、尚差、截止（台北時間）、狀態', () => {
+  it('FIXED_DEPARTURE 顯示最低人數、截止（台北時間）、狀態；不顯示目前人數／尚差（無權威成團計數）', () => {
     expect(formationLines('FIXED_DEPARTURE', full)).toEqual([
-      '最低成團 4 人', '目前 2 人', '尚差 2 人', '成團截止 12/1 12:30', '招募中，尚未成團',
+      '最低成團 4 人', '成團截止 12/1 12:30', '招募中，尚未成團',
     ]);
   });
 
-  it('已達門檻不顯示尚差；FORMED 顯示可加入', () => {
-    const lines = formationLines('FIXED_DEPARTURE', { ...full, currentParticipants: 5, formationStatus: 'FORMED' });
-    expect(lines).toContain('已達成團人數');
-    expect(lines.some((l) => l.startsWith('尚差'))).toBe(false);
+  it('FORMED 顯示可加入；即使傳入人數欄位也不顯示目前人數或尚差', () => {
+    const lines = formationLines('FIXED_DEPARTURE', { ...full, formationStatus: 'FORMED', currentParticipants: 5 } as never);
     expect(lines).toContain('已成團，尚可加入');
+    expect(lines.some((l) => /目前|尚差|已達/.test(l))).toBe(false);
   });
 
   it.each(['REQUEST', 'INSTANT'])('%s 方案不顯示任何成團資訊', (mode) => {
@@ -29,7 +28,7 @@ describe('#11 固定團次成團資訊顯示（19 分冊 §2.1）', () => {
 
   it('欄位為 null／缺少時略過該項，不顯示假值；未知狀態不顯示', () => {
     expect(formationLines('FIXED_DEPARTURE', {})).toEqual([]);
-    expect(formationLines('FIXED_DEPARTURE', { minToDepart: null, currentParticipants: 3 })).toEqual([]);
+    expect(formationLines('FIXED_DEPARTURE', { minToDepart: null })).toEqual([]);
     expect(formationLines('FIXED_DEPARTURE', { formationDeadlineAt: 'bad', formationStatus: 'WHATEVER' })).toEqual([]);
     expect(formationLines('FIXED_DEPARTURE', { formationStatus: 'toString' })).toEqual([]);
     expect(formatFormationDeadline(null)).toBeNull();
