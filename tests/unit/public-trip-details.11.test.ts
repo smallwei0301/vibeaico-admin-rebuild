@@ -7,6 +7,7 @@ const fakeState = vi.hoisted(() => ({
   failPlanId: null as string | null,
   soldOutRows: 0,
   flood: false,
+  customRows: null as null | Array<{ seats_booked: number; capacity: number }>,
   lookaheadAvailable: false,
   onlySoldOut: false,
   salesMode: 'FIXED_DEPARTURE',
@@ -37,11 +38,12 @@ vi.mock('@/server/supabase', () => ({
           return { data: single ? (all[0] ?? null) : all, error: null };
         }
         if (table === 'trip_plans') {
-          const data = Array.from({ length: fakeState.planCount }, (_, i) => ({
+          const [pFrom, pTo] = rangeArgs ?? [0, Number.MAX_SAFE_INTEGER];
+          const all = Array.from({ length: fakeState.planCount }, (_, i) => ({
             id: `plan-${i}`, trip_id: 'trip-1', name: `P${i}`, description: '', price_per_person: 100,
             price_type: 'PER_PERSON', min_party: 1, max_party: 4, sales_mode: fakeState.salesMode,
           }));
-          return { data, error: null };
+          return { data: all.slice(pFrom, pTo + 1), error: null };
         }
         if (table === 'trip_departures' && filters.plan_id) {
           fakeState.active += 1;
@@ -49,6 +51,16 @@ vi.mock('@/server/supabase', () => ({
           await new Promise((r) => setTimeout(r, 5));
           fakeState.active -= 1;
           const planId = filters.plan_id as string;
+          if (fakeState.customRows && rangeArgs) {
+            const [from, to] = rangeArgs;
+            return {
+              data: fakeState.customRows.slice(from, to + 1).map((r, k) => ({
+                id: `c-${from + k}`, departs_on: '2098-01-01', start_time: null, ...r,
+                min_to_depart_snapshot: 1, formation_deadline_at: null, formation_status: 'COLLECTING',
+              })),
+              error: null,
+            };
+          }
           if (fakeState.flood && rangeArgs) {
             const [from, to] = rangeArgs;
             const rows = [];
@@ -187,6 +199,7 @@ describe('#11 公開行程詳情：方案團次查詢併發上限', () => {
     fakeState.failPlanId = null;
     fakeState.soldOutRows = 0;
     fakeState.flood = false;
+    fakeState.customRows = null;
     fakeState.lookaheadAvailable = false;
     fakeState.onlySoldOut = false;
     fakeState.salesMode = 'FIXED_DEPARTURE';
@@ -226,6 +239,7 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     fakeState.failPlanId = null;
     fakeState.soldOutRows = 0;
     fakeState.flood = false;
+    fakeState.customRows = null;
     fakeState.lookaheadAvailable = false;
     fakeState.onlySoldOut = false;
     fakeState.salesMode = 'FIXED_DEPARTURE';
@@ -314,6 +328,45 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     expect(plan?.departuresMayBeTruncated).toBe(true);
     // truncated 不開啟 CTA：列出的團次都客滿 → 仍為 unavailable（預約頁看不到 lookahead 那一列）。
     expect(fixedBookingCtaState(plan!)).toBe('unavailable');
+  });
+
+  describe.each([
+    ['剛好 6 筆可售（頁面讀完）', Array.from({ length: 6 }, () => ({ seats_booked: 0, capacity: 5 })), false, false],
+    ['7 筆可售 → 還有未列出', Array.from({ length: 7 }, () => ({ seats_booked: 0, capacity: 5 })), true, false],
+    ['6 筆可售＋後面全客滿 → 沒有更多可售，只標 soldOutOmitted', [
+      ...Array.from({ length: 6 }, () => ({ seats_booked: 0, capacity: 5 })),
+      ...Array.from({ length: 3 }, () => ({ seats_booked: 5, capacity: 5 })),
+    ], false, true],
+    ['第一頁（120 列）滿，6 筆可售後全客滿，lookahead 頁有可售 → truncated（客滿列也被略過故 soldOutOmitted）', [
+      ...Array.from({ length: 6 }, () => ({ seats_booked: 0, capacity: 5 })),
+      ...Array.from({ length: 114 }, () => ({ seats_booked: 5, capacity: 5 })),
+      ...Array.from({ length: 10 }, () => ({ seats_booked: 5, capacity: 5 })),
+      { seats_booked: 0, capacity: 5 },
+    ], true, true],
+  ])('截斷旗標：%s', (_label, rows, truncated, soldOutOmitted) => {
+    it('departuresMayBeTruncated／soldOutOmitted', async () => {
+      fakeState.planCount = 1;
+      fakeState.customRows = rows;
+      const { loadPublicTripDetails } = await import('@/server/public-shop');
+      const plan = (await loadPublicTripDetails('demo', 'hike'))?.trip.plans[0];
+      expect(plan?.departures.filter((d) => !d.soldOut)).toHaveLength(6);
+      expect(plan?.departuresMayBeTruncated).toBe(truncated);
+      expect(Boolean(plan?.soldOutOmitted)).toBe(soldOutOmitted);
+    });
+  });
+
+  it('trip_plans 分頁：超過一頁會讀第二頁，逐頁帶 tenant／trip／active 與穩定排序範圍', async () => {
+    fakeState.planCount = 250;
+    const { loadPublicTripDetails } = await import('@/server/public-shop');
+    const result = await loadPublicTripDetails('demo', 'hike');
+    expect(result?.trip.plans).toHaveLength(250);
+    const planCalls = fakeState.calls.filter((c) => c.table === 'trip_plans');
+    expect(planCalls).toHaveLength(2);
+    for (const call of planCalls) {
+      expect(call.filters).toMatchObject({ tenant_id: 'tenant-1', trip_id: 'trip-1', active: true });
+    }
+    expect((planCalls[0] as never as { range: number[] }).range).toEqual([0, 199]);
+    expect((planCalls[1] as never as { range: number[] }).range).toEqual([200, 399]);
   });
 
   it('M1：成團欄位只在 FIXED_DEPARTURE 輸出；REQUEST／INSTANT 不帶', async () => {

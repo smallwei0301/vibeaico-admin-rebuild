@@ -172,6 +172,9 @@ export type PublicShopData = {
 const MAX_DEPARTURES_PER_TRIP = 6;
 /** 詳情頁每個方案最多顯示的近期團次。 */
 const MAX_DETAIL_DEPARTURES_PER_PLAN = 6;
+/** 詳情頁讀取方案時每頁列數與最多頁數（防止超過 PostgREST 列數上限被靜默截斷，也避免無限迴圈）。 */
+const DETAIL_PLAN_PAGE_SIZE = 200;
+const MAX_DETAIL_PLAN_PAGES = 10;
 /** 詳情頁每個方案最多額外列出的客滿團次（不占上面的可售名額）。 */
 const MAX_DETAIL_SOLD_OUT_PER_PLAN = 6;
 /**
@@ -489,16 +492,24 @@ async function loadPublicTripDetailsUncached(
   if (!row) return null;
   const tripId = row.id as string;
 
-  const { data: planRows, error: planError } = await admin.from('trip_plans')
-    .select('id, trip_id, name, description, price_per_person, price_type, min_party, max_party, sales_mode')
-    .eq('tenant_id', shopData.tenantId)
-    .eq('trip_id', tripId)
-    .eq('active', true)
-    .order('sort_order', { ascending: true });
-  if (planError) throw queryTripDetailsFailed('trip_plans', planError);
-  const plans: PublicPlan[] = (planRows ?? []).map(
-    (r) => mapPublicPlan(r as unknown as Record<string, unknown>),
-  );
+  // trip_plans 以穩定排序（sort_order、id）分頁讀到底；範圍限定 tenant、trip、active。
+  const planRows: Array<Record<string, unknown>> = [];
+  for (let page = 0; page < MAX_DETAIL_PLAN_PAGES; page += 1) {
+    const from = page * DETAIL_PLAN_PAGE_SIZE;
+    const { data: pageRows, error: planError } = await admin.from('trip_plans')
+      .select('id, trip_id, name, description, price_per_person, price_type, min_party, max_party, sales_mode')
+      .eq('tenant_id', shopData.tenantId)
+      .eq('trip_id', tripId)
+      .eq('active', true)
+      .order('sort_order', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + DETAIL_PLAN_PAGE_SIZE - 1);
+    if (planError) throw queryTripDetailsFailed('trip_plans', planError);
+    const got = (pageRows ?? []) as unknown as Array<Record<string, unknown>>;
+    planRows.push(...got);
+    if (got.length < DETAIL_PLAN_PAGE_SIZE) break;
+  }
+  const plans: PublicPlan[] = planRows.map((r) => mapPublicPlan(r));
 
   const planDepartureResults = await mapWithConcurrency(plans, DETAIL_PLAN_QUERY_CONCURRENCY, async (plan) => {
     const departures: PublicTripDetailDeparture[] = [];
@@ -507,6 +518,8 @@ async function loadPublicTripDetailsUncached(
     let exhausted = false;
     let soldOutCount = 0;
     let skippedSoldOut = false;
+    // 已確認「本頁剩下未列出的列」中有可售團次。
+    let unlistedSellable = false;
     const availableCount = () => departures.length - soldOutCount;
 
     // Query each plan independently. A busy plan must not consume another plan's window.
@@ -532,7 +545,8 @@ async function loadPublicTripDetailsUncached(
       const rows = data ?? [];
       scanned += rows.length;
       offset += rows.length;
-      for (const departure of rows) {
+      for (let index = 0; index < rows.length; index += 1) {
+        const departure = rows[index];
         const capacity = Number(departure.capacity ?? 0);
         const seatsBooked = Number(departure.seats_booked ?? 0);
         const soldOut = seatsBooked >= capacity;
@@ -558,7 +572,14 @@ async function loadPublicTripDetailsUncached(
             formationStatus: typeof departure.formation_status === 'string' ? departure.formation_status : null,
           } : {}),
         });
-        if (availableCount() >= MAX_DETAIL_DEPARTURES_PER_PLAN) break;
+        if (availableCount() >= MAX_DETAIL_DEPARTURES_PER_PLAN) {
+          // 檢查本頁剩下的列：有可售 → 確認還有未列出的可售團次；其餘為略過的客滿列。
+          for (const rest of rows.slice(index + 1)) {
+            if (Number(rest.seats_booked ?? 0) < Number(rest.capacity ?? 0)) unlistedSellable = true;
+            else skippedSoldOut = true;
+          }
+          break;
+        }
       }
 
       if (rows.length < pageSize) {
@@ -567,16 +588,16 @@ async function loadPublicTripDetailsUncached(
       }
     }
 
-    // If the bounded window ended before six available dates were found, look one page past the
-    // window. `departuresMayBeTruncated` is true ONLY when that page confirms an unlisted SELLABLE
-    // departure (seats_booked < capacity). If every lookahead row is sold out we cannot confirm more
-    // sellable dates, so it stays false and the sold-out rows are reported via `soldOutOmitted`
-    // (booking CTA stays hidden). Trade-off: a sellable departure beyond the lookahead page is not
-    // detected, so in that extreme case the CTA is hidden. That is the deliberate conservative choice:
-    // it avoids reopening a CTA that leads to an empty booking page.
-    let mayBeTruncated = false;
-    if (!exhausted && availableCount() < MAX_DETAIL_DEPARTURES_PER_PLAN
-      && scanned >= MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN) {
+    // The loop stopped before exhausting the rows (six sellable listed, or the scan limit hit).
+    // `departuresMayBeTruncated` is true ONLY when a row we can see confirms an unlisted SELLABLE
+    // departure (seats_booked < capacity): either in the remainder of the last page (above) or in one
+    // lookahead page past everything examined. If everything seen is sold out we cannot confirm more
+    // sellable dates, so it stays false and the sold-out rows are reported via `soldOutOmitted`.
+    // Trade-off: a sellable departure beyond the lookahead page is not detected. The flag now only
+    // drives the "partial dates" hint copy; it never opens the booking CTA (see
+    // hasBookableListedDeparture), so the conservative choice cannot lead to an empty booking page.
+    let mayBeTruncated = unlistedSellable;
+    if (!exhausted && !unlistedSellable) {
       const { data, error: lookaheadError } = await admin.from('trip_departures')
         .select('id, capacity, seats_booked')
         .eq('tenant_id', shopData.tenantId)
@@ -587,7 +608,7 @@ async function loadPublicTripDetailsUncached(
         .order('departs_on', { ascending: true })
         .order('start_time', { ascending: true, nullsFirst: true })
         .order('id', { ascending: true })
-        .range(scanned, scanned + DETAIL_DEPARTURE_PAGE_SIZE - 1);
+        .range(offset, offset + DETAIL_DEPARTURE_PAGE_SIZE - 1);
       if (lookaheadError) throw queryTripDetailsFailed('trip_departures', lookaheadError);
       const ahead = data ?? [];
       mayBeTruncated = ahead.some(
@@ -598,7 +619,7 @@ async function loadPublicTripDetailsUncached(
 
     return [plan.id, {
       departures,
-      mayBeTruncated: mayBeTruncated || availableCount() >= MAX_DETAIL_DEPARTURES_PER_PLAN,
+      mayBeTruncated,
       soldOutOmitted: skippedSoldOut,
     }] as const;
   });
