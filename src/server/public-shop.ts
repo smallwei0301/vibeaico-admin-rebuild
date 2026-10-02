@@ -567,13 +567,18 @@ async function loadPublicTripDetailsUncached(
       }
     }
 
-    // If the bounded window ended before six available dates were found, check whether
-    // another future row exists so the page can say that this list is incomplete.
+    // If the bounded window ended before six available dates were found, look one page past the
+    // window. `departuresMayBeTruncated` is true ONLY when that page confirms an unlisted SELLABLE
+    // departure (seats_booked < capacity). If every lookahead row is sold out we cannot confirm more
+    // sellable dates, so it stays false and the sold-out rows are reported via `soldOutOmitted`
+    // (booking CTA stays hidden). Trade-off: a sellable departure beyond the lookahead page is not
+    // detected, so in that extreme case the CTA is hidden. That is the deliberate conservative choice:
+    // it avoids reopening a CTA that leads to an empty booking page.
     let mayBeTruncated = false;
     if (!exhausted && availableCount() < MAX_DETAIL_DEPARTURES_PER_PLAN
       && scanned >= MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN) {
       const { data, error: lookaheadError } = await admin.from('trip_departures')
-        .select('id')
+        .select('id, capacity, seats_booked')
         .eq('tenant_id', shopData.tenantId)
         .eq('trip_id', tripId)
         .eq('plan_id', plan.id)
@@ -582,9 +587,13 @@ async function loadPublicTripDetailsUncached(
         .order('departs_on', { ascending: true })
         .order('start_time', { ascending: true, nullsFirst: true })
         .order('id', { ascending: true })
-        .range(scanned, scanned);
+        .range(scanned, scanned + DETAIL_DEPARTURE_PAGE_SIZE - 1);
       if (lookaheadError) throw queryTripDetailsFailed('trip_departures', lookaheadError);
-      mayBeTruncated = (data ?? []).length > 0;
+      const ahead = data ?? [];
+      mayBeTruncated = ahead.some(
+        (row) => Number(row.seats_booked ?? 0) < Number(row.capacity ?? 0),
+      );
+      if (ahead.length > 0 && !mayBeTruncated) skippedSoldOut = true;
     }
 
     return [plan.id, {

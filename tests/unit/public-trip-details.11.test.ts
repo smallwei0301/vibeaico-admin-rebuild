@@ -7,6 +7,7 @@ const fakeState = vi.hoisted(() => ({
   failPlanId: null as string | null,
   soldOutRows: 0,
   flood: false,
+  lookaheadAvailable: false,
   onlySoldOut: false,
   salesMode: 'FIXED_DEPARTURE',
   active: 0,
@@ -51,8 +52,10 @@ vi.mock('@/server/supabase', () => ({
           if (fakeState.flood && rangeArgs) {
             const [from, to] = rangeArgs;
             const rows = [];
-            for (let i = from; i <= (from >= 1200 ? from : to); i += 1) {
-              rows.push({ id: `flood-${i}`, departs_on: '2098-01-01', start_time: null, capacity: 1, seats_booked: 1,
+            const last = from >= 1200 ? from + 2 : to;
+            for (let i = from; i <= last; i += 1) {
+              const sellable = from >= 1200 && fakeState.lookaheadAvailable && i === last;
+              rows.push({ id: `flood-${i}`, departs_on: '2098-01-01', start_time: null, capacity: 1, seats_booked: sellable ? 0 : 1,
                 min_to_depart_snapshot: 1, formation_deadline_at: null, formation_status: 'COLLECTING' });
             }
             return { data: rows, error: null };
@@ -184,6 +187,7 @@ describe('#11 公開行程詳情：方案團次查詢併發上限', () => {
     fakeState.failPlanId = null;
     fakeState.soldOutRows = 0;
     fakeState.flood = false;
+    fakeState.lookaheadAvailable = false;
     fakeState.onlySoldOut = false;
     fakeState.salesMode = 'FIXED_DEPARTURE';
     fakeState.active = 0;
@@ -222,6 +226,7 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     fakeState.failPlanId = null;
     fakeState.soldOutRows = 0;
     fakeState.flood = false;
+    fakeState.lookaheadAvailable = false;
     fakeState.onlySoldOut = false;
     fakeState.salesMode = 'FIXED_DEPARTURE';
     fakeState.active = 0;
@@ -285,6 +290,29 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
       expect(q.filters).toMatchObject({ tenant_id: 'tenant-1', trip_id: 'trip-1', plan_id: 'plan-0', status: 'OPEN' });
     }
     expect(queries.filter((q) => (q as never as { range: number[] }).range[0] >= 1200)).toHaveLength(1);
+  });
+
+  it('超過掃描上限且 lookahead 全客滿 → truncated=false、soldOutOmitted=true、CTA 隱藏', async () => {
+    fakeState.planCount = 1;
+    fakeState.flood = true;
+    const { loadPublicTripDetails } = await import('@/server/public-shop');
+    const { showFixedBookingCta } = await import('@/lib/public-trip-client-state');
+    const plan = (await loadPublicTripDetails('demo', 'hike'))?.trip.plans[0];
+    expect(plan?.departures.every((d) => d.soldOut === true)).toBe(true);
+    expect(plan?.departuresMayBeTruncated).toBe(false);
+    expect(plan?.soldOutOmitted).toBe(true);
+    expect(showFixedBookingCta(plan!)).toBe(false);
+  });
+
+  it('超過掃描上限且 lookahead 有可售 → truncated=true、CTA 顯示', async () => {
+    fakeState.planCount = 1;
+    fakeState.flood = true;
+    fakeState.lookaheadAvailable = true;
+    const { loadPublicTripDetails } = await import('@/server/public-shop');
+    const { showFixedBookingCta } = await import('@/lib/public-trip-client-state');
+    const plan = (await loadPublicTripDetails('demo', 'hike'))?.trip.plans[0];
+    expect(plan?.departuresMayBeTruncated).toBe(true);
+    expect(showFixedBookingCta(plan!)).toBe(true);
   });
 
   it('M1：成團欄位只在 FIXED_DEPARTURE 輸出；REQUEST／INSTANT 不帶', async () => {
