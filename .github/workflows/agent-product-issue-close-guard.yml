@@ -39,14 +39,6 @@ jobs:
           script: |
             const path = require('node:path');
             const { pathToFileURL } = require('node:url');
-            const policy = await import(pathToFileURL(path.join(
-              process.env.GITHUB_WORKSPACE,
-              'scripts/agents/product-issue-close-policy.mjs',
-            )).href);
-            const astra = await import(pathToFileURL(path.join(
-              process.env.GITHUB_WORKSPACE, 'scripts/agents/astra-review-policy.mjs',
-            )).href);
-
             const { owner, repo } = context.repo;
             const issueNumber = context.payload.issue.number;
             const { data: issue } = await github.rest.issues.get({
@@ -63,6 +55,21 @@ jobs:
               owner, repo, branch: repository.default_branch,
             });
             const currentMainSha = branch.commit.sha;
+            const checkoutSha = require('node:child_process').execFileSync(
+              'git', ['rev-parse', 'HEAD'],
+              { cwd: process.env.GITHUB_WORKSPACE, encoding: 'utf8' },
+            ).trim();
+            if (!/^[0-9a-f]{40}$/.test(checkoutSha) || checkoutSha !== currentMainSha) {
+              core.setFailed('Checked-out close policy differs from current canonical main; no Issue effects');
+              return;
+            }
+            const policy = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE,
+              'scripts/agents/product-issue-close-policy.mjs',
+            )).href);
+            const astra = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE, 'scripts/agents/astra-review-policy.mjs',
+            )).href);
 
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner, repo, issue_number: issueNumber, per_page: 100,

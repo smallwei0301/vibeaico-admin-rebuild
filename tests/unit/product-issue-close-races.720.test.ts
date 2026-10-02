@@ -29,6 +29,7 @@ const ready = { id: 9002, user, created_at: '2026-10-01T00:46:00Z', updated_at: 
 type Scenario = {
   branches?: string[]; issues?: typeof issue[]; invalid?: boolean; ci?: Record<string, unknown>;
   capture?: boolean; branchReadError?: boolean; issueReadError?: boolean;
+  checkoutSha?: string; checkoutReadError?: boolean;
 };
 async function execute(options: Scenario = {}) {
   vi.stubEnv('GITHUB_WORKSPACE', path.resolve('.'));
@@ -85,13 +86,24 @@ async function execute(options: Scenario = {}) {
       throw new Error(`Unexpected import: ${url}`);
     };
     await new AsyncFunction('require', 'github', 'context', 'core', 'loadModule', script.replace(/\bimport\(/g, 'loadModule('))(
-      createRequire(import.meta.url), github, { repo: { owner: 'o', repo: 'r' }, payload: { issue } }, core, loadModule);
+      (name: string) => name === 'node:child_process' ? { execFileSync: () => {
+        if (options.checkoutReadError) throw new Error('checkout identity unavailable');
+        return `${options.checkoutSha ?? main}\n`;
+      } } : createRequire(import.meta.url)(name),
+      github, { repo: { owner: 'o', repo: 'r' }, payload: { issue } }, core, loadModule);
   } catch (caught) { error = caught; }
   return { api, core, error, branchReads };
 }
 
 afterEach(() => vi.unstubAllEnvs());
 describe('#720 close generation / canonical main races', () => {
+  it.each(['different', 'unavailable'])('fails closed before admission when checked-out policy is %s', async (mode) => {
+    const r = await execute(mode === 'different' ? { checkoutSha: 'd'.repeat(40) } : { checkoutReadError: true });
+    expect(r.error ?? r.core.setFailed.mock.calls[0]).toBeDefined();
+    expect(r.api.repos.getContent).not.toHaveBeenCalled();
+    expect(r.api.issues.update).not.toHaveBeenCalled();
+    expect(r.api.issues.createComment).not.toHaveBeenCalled();
+  });
   it('captures a valid stable-main close with immutable Run read', async () => {
     const r = await execute(); expect(r.error).toBeUndefined();
     expect(r.api.issues.update).not.toHaveBeenCalled();

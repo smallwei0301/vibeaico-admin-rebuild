@@ -1497,7 +1497,7 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 驗證：後續 TEST 動作前先確認無 CI 運行，或改用原子查證+動作；重查成功執行且資料一致。
 - 狀態：已防止
 
-**2026-10-02 #720／#735 同根因補充：** Product close guard 在耗時 permission／pagination／ancestry 檢查前只讀一次 main，可能用舊 main 的成功 CI 批准已前進的 main；拒絕後也未核對 `closed_at`，可能 reopen 人工重新關閉的新 generation。這是 review 查出的可重現競態，沒有 remote 事故證據。Run 讀取改綁不可變 main SHA；admission／capture 前重讀 default branch，不一致即拒絕舊證據；reopen 與 capture 前回讀 Issue，event 與 live `closed_at` 不一致則停止舊事件的寫入。從 workflow 擷取真實 github-script，以 mock API 驗 main 前進、reopen／reclose、未知讀取、pending CI、正常 close 與 capture 冪等；原版 8 failed／3 passed，修正後該 11 cases 通過。GitHub REST 的 read→write 沒有原子 compare-and-swap，這是縮短競態窗口及拒絕已觀測漂移，不能宣稱消除外部併發；不編造歷史 capture 或 Product Run 事件。source／main CI 結果由本次 PR 與 #720 closeout 提供。
+**2026-10-02 #720／#735 同根因補充：** Product close guard 在耗時 permission／pagination／ancestry 檢查前只讀一次 main，可能用舊 main 的成功 CI 批准已前進的 main；拒絕後也未核對 `closed_at`，可能 reopen 人工重新關閉的新 generation。這是 review 查出的可重現競態，沒有 remote 事故證據。Run 讀取改綁不可變 main SHA；admission／capture 前重讀 default branch，不一致即拒絕舊證據；reopen 與 capture 前回讀 Issue，event 與 live `closed_at` 不一致則停止舊事件的寫入。#739 finding 4162743182 另指出 checkout 後、首次 main 查詢前的政策版本競態：import 前核對 checkout HEAD 與 current main，未知或不同即停止，不使用舊 policy 放行新 main；兩個新反例先 RED、修後 PASS。從 workflow 擷取真實 github-script，以 mock API 驗 main 前進、reopen／reclose、未知讀取、pending CI、正常 close 與 capture 冪等；原版 8 failed／3 passed，修正後原 11 cases 與新增 2 cases 通過。GitHub REST 的 read→write 沒有原子 compare-and-swap，這是縮短競態窗口及拒絕已觀測漂移，不能宣稱消除外部併發；不編造歷史 capture 或 Product Run 事件。source／main CI 結果由本次 PR 與 #720 closeout 提供。
 
 ### PB-045 — 並行工作的判準是檔案所有權與 Issue 邊界，不是功能描述
 
