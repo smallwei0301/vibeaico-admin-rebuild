@@ -65,7 +65,10 @@ export function parsePublicationReceipt(body = '') {
   };
 }
 
-/** @param {any[]} comments @param {{prNumber?: number, contract?: any}} [expectedInput] */
+/**
+ * @param {any[]} comments
+ * @param {{prNumber?: number, contract?: any}} [expectedInput]
+ */
 export function findMatchingPublicationReceipt(comments = [], { prNumber, contract } = {}) {
   const expected = contract ?? {};
   return comments.find(comment => {
