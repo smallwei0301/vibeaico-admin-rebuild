@@ -11,10 +11,10 @@
  * 這一片讓那個網址真的打得開。依治理原則「復原而非取消」：不是把那 7 個連結拿掉，
  * 是讓它們指向的東西真的存在。
  *
- * ## ⚠️ 這是整個專案第一個「不需要登入就能打到」的資料路徑
+ * ## ⚠️ 這是公開店家與行程資料的匿名讀取核心
  *
- * 其餘 163 支 API route 全部經過 `requireTenant()`。這裡沒有那道閘門，所以**外洩的
- * 判準完全落在這個檔自己身上**。三條規則，每一條都不是形式：
+ * 這些查詢沒有 `requireTenant()` 閘門，所以**外洩的判準落在這個檔自己身上**。
+ * 三條規則，每一條都不是形式：
  *
  * 1. **白名單欄位，不是黑名單。** 每一個 select 都逐欄列出要哪些欄位，永遠不用
  *    `select('*')`。加欄位時必須有人主動決定它可不可以公開；用 `*` 的話，日後
@@ -33,6 +33,18 @@
 import { cache } from 'react';
 import { createAdminSupabase } from '@/server/supabase';
 import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
+import { buildPublicPhone } from '@/lib/public-phone';
+import { resolveSeasonUnitPrice } from '@/lib/public-season-price';
+import { readPlanSeasons } from '@/server/public-plan-seasons';
+import { hasStartedToday, resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
+import { MAX_PUBLIC_GALLERY_IMAGES } from '@/lib/trip-gallery';
+import {
+  MAX_PUBLIC_LIST_ITEM_CHARS,
+  MAX_PUBLIC_LONG_TEXT_CHARS,
+  MAX_PUBLIC_SHORT_TEXT_CHARS,
+  limitPublicList,
+  truncateChars,
+} from '@/lib/public-trip-limits';
 
 /** 對外公開的店家基本資料。刻意只有這幾欄。 */
 export type PublicShop = {
@@ -40,6 +52,8 @@ export type PublicShop = {
   name: string;
   description: string;
   phone: string;
+  /** 詳情輸出才有：可安全撥號的值（僅數字與 +，≤20 碼）；空字串＝不可撥號（例如含分機），只顯示文字。 */
+  phoneHref?: string;
   email: string;
   address: string;
   /** LINE 官方帳號基本 ID（例如 @abc1234x）；空字串＝店家沒填 */
@@ -61,6 +75,7 @@ export type PublicPlan = {
   name: string;
   description: string;
   pricePerPerson: number;
+  priceType: 'PER_PERSON' | 'PER_GROUP';
   minParty: number;
   maxParty: number;
   /**
@@ -69,10 +84,14 @@ export type PublicPlan = {
    * 透過上方的聯絡方式（LINE／電話）詢問，該按鈕本輪不做（見檔頭）。
    */
   salesMode: 'FIXED_DEPARTURE' | 'INSTANT' | 'REQUEST';
+  /** 方案有啟用的季節定價：基本價只是參考，實際價格依各團次出發日（見團次 unitPrice）。 */
+  seasonalPricing?: true;
 };
 
 export type PublicTrip = {
   id: string;
+  /** 公開行程 URL 使用的租戶內 slug。 */
+  slug: string;
   title: string;
   summary: string;
   location: string;
@@ -87,6 +106,68 @@ export type PublicTrip = {
   plans: PublicPlan[];
   /** 只含今天以後、未取消、未售罄的團次，最多 6 筆 */
   departures: PublicDeparture[];
+};
+
+export type PublicTripDetailDeparture = {
+  id: string;
+  departsOn: string;
+  startTime: string;
+  seatsLeft: number;
+  /** 依出發日套用季節定價後的實際單價（與 create_tour_order 同規則）；方案沒有啟用季節時不輸出。 */
+  unitPrice?: number;
+  /* #11／19 分冊 §2.1：固定團次成團資訊。canonical 值為 null／缺少時前端不顯示該項。 */
+  /** 建立團次時 snapshot 的最低成團人數（`min_to_depart_snapshot`）。 */
+  minToDepart?: number | null;
+  /**
+   * 剩餘名額為 0（客滿）。刻意**不**輸出「目前成團人數」：18 §5 規定容量占用與成團計數是
+   * 兩本帳，成團計數須由 qualifying TourOrders 現算；canonical migrations 沒有權威的
+   * 計數欄位／view／function，`seats_booked` 含未付款占位，不得拿來當成團人數或推算尚差。
+   */
+  soldOut?: true;
+  /** 成團截止時間（ISO，`formation_deadline_at`）。 */
+  formationDeadlineAt?: string | null;
+  /** `formation_status`：COLLECTING／FORMED／REVIEW_REQUIRED／AT_RISK／FAILED。 */
+  formationStatus?: string | null;
+};
+
+export type PublicTripDetailPlan = PublicPlan & {
+  departures: PublicTripDetailDeparture[];
+  /** True only when more AVAILABLE (sellable) rows may exist beyond what is listed. */
+  departuresMayBeTruncated: boolean;
+  /** 只代表有「客滿」列因顯示上限被略過；不代表還有可售團次未列出。 */
+  soldOutOmitted?: boolean;
+  /** 超過可查團次的方案數上限：此方案未載入團次，前端不提供入口並請旅客聯絡店家。 */
+  departuresNotLoaded?: true;
+};
+
+export type PublicTripDetails = {
+  shop: PublicShop;
+  /** 店家 IANA 時區（≤64 字元，已驗證），供前端以店家時區顯示成團截止時間。 */
+  timeZone?: string;
+  trip: {
+    id: string;
+    slug: string;
+    title: string;
+    tagline: string;
+    summary: string;
+    description: string;
+    region: string;
+    category: string;
+    location: string;
+    coverImageUrl: string;
+    galleryUrls: string[];
+    durationHours: number | null;
+    meetingPoint: string;
+    meetingPointMapUrl: string;
+    inclusions: string[];
+    exclusions: string[];
+    notices: string[];
+    safetyNotice: string;
+    refundPolicyType: 'STANDARD' | 'FLEXIBLE' | 'STRICT';
+    plans: PublicTripDetailPlan[];
+    /** 方案數達到讀取上限（10 頁 × 200 筆）且最後一頁仍是滿頁，方案清單可能被截斷。 */
+    plansMayBeTruncated?: true;
+  };
 };
 
 export type PublicService = {
@@ -105,13 +186,68 @@ export type PublicShopData = {
    * 內部用租戶 id（issue #23 推廣成效埋點需要）——刻意放在頂層而不是 `shop`
    * 裡面：`shop` 是「這個檔頭三條規則要守住的、真的會被序列化進公開 HTML 的
    * 白名單欄位」，`tenantId` 不在那份白名單上，只給呼叫端（頁面自己的
-   * server-side 埋點呼叫）用，不代表它可以被當成公開資料隨意渲染出去。
+   * server-side 埋點與同一請求內的公開詳情查詢使用，不代表它可以被當成公開資料
+   * 隨意渲染出去。
    */
   tenantId: string;
 };
 
 /** 一個行程最多顯示幾個近期團次——公開頁不是後台，不需要全部列出來。 */
 const MAX_DEPARTURES_PER_TRIP = 6;
+/** 詳情頁每個方案最多顯示的近期團次。 */
+const MAX_DETAIL_DEPARTURES_PER_PLAN = 6;
+/**
+ * 詳情頁公開輸出的方案總數上限（必須 >= MAX_DETAIL_PLANS_WITH_DEPARTURES）。多讀 1 筆（MAX+1）只用來判斷是否
+ * 截斷，超過的方案不輸出並設 plansMayBeTruncated。
+ * 最壞情況 payload 估算（CJK 每字元以 3 bytes 計）：方案 60 × (name 300 + description 2000) 字 ≈ 0.41MB；
+ * 團次 30 個方案 × (6 可售 + 6 客滿) × 約 200B ≈ 0.07MB；行程文字（description 5000 + 短文字 3×2000 +
+ * 陣列 3×20×300 + 單行 3×300）字 ≈ 0.1MB；店家層級欄位 < 0.01MB；合計約 0.6MB。URL（cover、gallery 最多 8 張、地圖）每個 ≤2048 字元，合計 ≤ 10 × 2KB ≈ 20KB，仍在此估算內。
+ */
+const MAX_PUBLIC_PLANS_OUTPUT = 60;
+/** 詳情頁每個方案最多額外列出的客滿團次（不占上面的可售名額）。 */
+const MAX_DETAIL_SOLD_OUT_PER_PLAN = 6;
+/**
+ * Scan future OPEN rows per plan so sold-out dates cannot hide a later available date.
+ * A bounded scan protects public request latency; the UI marks the list when rows remain.
+ */
+const DETAIL_DEPARTURE_PAGE_SIZE = 120;
+const MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN = 600;
+/**
+ * 只有排序後的前 N 個方案會查團次；其餘方案照樣列出，但標 departuresNotLoaded、不查團次。
+ * 單一匿名請求的團次查詢數上限：N × (掃描 600/120 = 5 頁 + 1 次 lookahead) = 30 × 6 = 180
+ * （另加方案分頁最多 10 次、行程 1 次、店家 1 次），不再隨方案數（最多 2000）放大。
+ */
+const MAX_DETAIL_PLANS_WITH_DEPARTURES = 30;
+/** 匿名請求一次最多同時對幾個方案查團次；方案數無上限，不得全數同時扇出。 */
+const DETAIL_PLAN_QUERY_CONCURRENCY = 3;
+
+/**
+ * 有上限的併發 map：輸出順序與 items 相同；任一項 reject 則整體 reject（fail-closed，
+ * 並停止啟動尚未開始的項目）。
+ */
+export async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  let failed = false;
+  const workerCount = Math.max(1, Math.min(limit, items.length));
+  const worker = async () => {
+    while (!failed && next < items.length) {
+      const index = next++;
+      try {
+        results[index] = await fn(items[index], index);
+      } catch (err) {
+        failed = true;
+        throw err;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: workerCount }, worker));
+  return results;
+}
 
 /**
  * ⚠️ 店家代碼的形狀與長度上限由 `@/lib/shop-code` 統一提供，**每一個會寫入
@@ -119,8 +255,8 @@ const MAX_DEPARTURES_PER_TRIP = 6;
  * 常數 —— 存得進資料庫的代碼，這一頁就一定打得開。那個檔的檔頭寫了為什麼要收斂成
  * 一份（規則曾經散在四處且不一致，會造出「後台顯示的網址永遠 404」的店家）。
  *
- * 在這裡先擋掉不合形狀的字串，不是輸入驗證的潔癖：這是全站第一個**匿名就打得到
- * 資料庫**的路徑，而專案目前沒有任何 rate limit。少了這一道，一個 2000 字元的亂碼
+ * 在這裡先擋掉不合形狀的字串，不是輸入驗證的潔癖：這條路徑以 service role 存取
+ * 資料庫。少了這一道，一個 2000 字元的亂碼
  * 網址也會換到一次 service-role 查詢。
  */
 
@@ -153,17 +289,11 @@ function taipeiToday(): string {
   return new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
-/**
- * 讀一家店的公開資料。找不到、或該店沒有任何可公開內容時回 null（呼叫端轉 404）。
- *
- * ⚠️ 這裡刻意**不**因為「店家存在但沒有上架任何行程」而回 null —— 那會讓剛註冊
- * 還沒建行程的店家，把自己的公開網址傳出去時拿到 404，而他完全不知道為什麼。
- * 空的店家頁會誠實顯示「這家店還沒有上架的行程」。
- */
-async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData | null> {
+async function loadPublicShopCore(
+  admin: ReturnType<typeof createAdminSupabase>,
+  shopCode: string,
+): Promise<{ shop: PublicShop; tenantId: string; timeZone: string } | null> {
   if (!SHOP_CODE_PATTERN.test(shopCode)) return null;
-
-  const admin = createAdminSupabase();
 
   // ① 店家 ＋ 公開的基本設定。白名單欄位；tenant_settings 只取 basic 與 line 兩塊，
   //    而 line 那塊底下只會用到 lineBasicId（見下方），加密欄位一概不取。
@@ -196,7 +326,88 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
     businessType: (tenantRow.business_type as string | null) ?? null,
   };
 
-  const tenantId = tenantRow.id as string;
+  return {
+    shop,
+    tenantId: tenantRow.id as string,
+    // 店家時區（basic.timezone，缺值或無效回退 Asia/Taipei）；只用於詳情的「今天」與時間顯示。
+    timeZone: resolvePublicTimeZone(basic.timezone),
+  };
+}
+
+/** 這種販售方式的方案才會在詳情頁公開列出團次。 */
+function hasPublicDepartureList(plan: { salesMode: string }): boolean {
+  return plan.salesMode === 'FIXED_DEPARTURE' || plan.salesMode === 'REQUEST';
+}
+
+/** 詳情輸出邊界：方案文字欄位上限（name 300、description 2000）；id、數字、enum 不截。 */
+function limitPublicPlanText(plan: PublicPlan): PublicPlan {
+  return {
+    ...plan,
+    name: truncateChars(plan.name, MAX_PUBLIC_LIST_ITEM_CHARS),
+    description: truncateChars(plan.description, MAX_PUBLIC_SHORT_TEXT_CHARS),
+  };
+}
+
+const MAX_PUBLIC_URL_CHARS = 2048;
+const MAX_PUBLIC_EMAIL_CHARS = 254;
+const MAX_PUBLIC_LINE_ID_CHARS = 64;
+
+/** email：過長或格式不合就不輸出（空字串），不截斷成錯誤的地址。 */
+function publicEmail(value: string): string {
+  const email = value.trim();
+  if (email.length > MAX_PUBLIC_EMAIL_CHARS || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return '';
+  return email;
+}
+
+/** LINE 基本 ID：超過 64 字元或含 [A-Za-z0-9@._-] 以外字元就不輸出。 */
+function publicLineBasicId(value: string): string {
+  return value.length > MAX_PUBLIC_LINE_ID_CHARS || /[^A-Za-z0-9@._-]/.test(value) ? '' : value;
+}
+
+/**
+ * 詳情輸出邊界：店家層級欄位。name／description／address 截斷；phone／email／lineBasicId 超長或格式不合
+ * 時不輸出（空字串，client 對空字串不顯示對應按鈕）；shopCode（識別碼）、businessType（類別代碼）不處理。
+ */
+function limitPublicShopText(shop: PublicShop): PublicShop {
+  return {
+    ...shop,
+    name: truncateChars(shop.name, MAX_PUBLIC_LIST_ITEM_CHARS),
+    description: truncateChars(shop.description, MAX_PUBLIC_SHORT_TEXT_CHARS),
+    ...buildPublicPhone(shop.phone),
+    email: publicEmail(shop.email),
+    address: truncateChars(shop.address, MAX_PUBLIC_LIST_ITEM_CHARS),
+    lineBasicId: publicLineBasicId(shop.lineBasicId),
+  };
+}
+
+function mapPublicPlan(row: Record<string, unknown>): PublicPlan {
+  return {
+    id: row.id as string,
+    name: (row.name as string) ?? '',
+    description: (row.description as string) ?? '',
+    pricePerPerson: Number(row.price_per_person ?? 0),
+    priceType: row.price_type === 'PER_GROUP' ? 'PER_GROUP' : 'PER_PERSON',
+    minParty: Number(row.min_party ?? 1),
+    maxParty: Number(row.max_party ?? 1),
+    salesMode: row.sales_mode === 'INSTANT' || row.sales_mode === 'REQUEST'
+      ? row.sales_mode : 'FIXED_DEPARTURE',
+  };
+}
+
+/**
+ * 讀一家店的公開資料。找不到、或該店沒有任何可公開內容時回 null（呼叫端轉 404）。
+ *
+ * ⚠️ 這裡刻意**不**因為「店家存在但沒有上架任何行程」而回 null —— 那會讓剛註冊
+ * 還沒建行程的店家，把自己的公開網址傳出去時拿到 404，而他完全不知道為什麼。
+ * 空的店家頁會誠實顯示「這家店還沒有上架的行程」。
+ */
+async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData | null> {
+  if (!SHOP_CODE_PATTERN.test(shopCode)) return null;
+
+  const admin = createAdminSupabase();
+  const core = await loadPublicShopCore(admin, shopCode);
+  if (!core) return null;
+  const { shop, tenantId } = core;
   const today = taipeiToday();
 
   // ② 已發布的行程 ＋ 其方案。`status = 'PUBLISHED'` 是這裡的閘門：草稿與封存
@@ -206,7 +417,7 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
       admin.from('trips')
         // #46：多取 refund_policy_type，讓公開頁在下單前就顯示現行取消／退款政策
         // （原本只有送出 REQUEST 申請的表單頁才看得到）。仍是白名單 select。
-        .select('id, title, summary, location, cover_image_url, duration_hours, refund_policy_type')
+        .select('id, slug, title, summary, location, cover_image_url, duration_hours, refund_policy_type')
         .eq('tenant_id', tenantId).eq('status', 'PUBLISHED')
         .order('created_at', { ascending: false }),
       admin.from('services')
@@ -227,7 +438,7 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
           // #46：多取 sales_mode，判斷要不要顯示「申請預約」連結。仍是白名單
           // select，不用 `*`——這是全站唯一不需要登入就能打到的資料路徑，
           // 加欄位必須有人主動決定它可不可以公開（見檔頭三條規則）。
-          .select('id, trip_id, name, description, price_per_person, min_party, max_party, sales_mode')
+          .select('id, trip_id, name, description, price_per_person, price_type, min_party, max_party, sales_mode')
           .eq('tenant_id', tenantId).in('trip_id', tripIds).eq('active', true)
           .order('sort_order', { ascending: true }),
         admin.from('trip_departures')
@@ -246,16 +457,7 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
   const plansByTrip = new Map<string, PublicPlan[]>();
   for (const row of planRows ?? []) {
     const list = plansByTrip.get(row.trip_id as string) ?? [];
-    list.push({
-      id: row.id as string,
-      name: (row.name as string) ?? '',
-      description: (row.description as string) ?? '',
-      pricePerPerson: Number(row.price_per_person ?? 0),
-      minParty: Number(row.min_party ?? 1),
-      maxParty: Number(row.max_party ?? 1),
-      salesMode: row.sales_mode === 'INSTANT' || row.sales_mode === 'REQUEST'
-        ? row.sales_mode : 'FIXED_DEPARTURE',
-    });
+    list.push(mapPublicPlan(row));
     plansByTrip.set(row.trip_id as string, list);
   }
 
@@ -281,10 +483,13 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
 
   const trips: PublicTrip[] = (tripRows ?? []).map((row) => ({
     id: row.id as string,
+    slug: (row.slug as string) ?? '',
     title: (row.title as string) ?? '',
     summary: (row.summary as string) ?? '',
     location: (row.location as string) ?? '',
-    coverImageUrl: (row.cover_image_url as string) ?? '',
+    // This loader is also used by Server Components. Return only validated HTTPS media
+    // URLs so Next's development RSC diagnostics cannot serialize a raw unsafe value.
+    coverImageUrl: safePublicHttpsUrl(row.cover_image_url),
     durationHours: row.duration_hours == null ? null : Number(row.duration_hours),
     refundPolicyType: row.refund_policy_type === 'FLEXIBLE' || row.refund_policy_type === 'STRICT'
       ? row.refund_policy_type : 'STANDARD',
@@ -316,3 +521,262 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
  * 立刻反映在下一個訪客身上。
  */
 export const loadPublicShop = cache(loadPublicShopUncached);
+
+function queryTripDetailsFailed(stage: string, cause: unknown): Error {
+  return new Error(`PUBLIC_TRIP_DETAILS_QUERY_FAILED:${stage}`, { cause });
+}
+
+function safePublicHttpsUrl(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  // 超過 2048 字元的 URL 一律丟棄（不輸出）。
+  if (value.trim().length > MAX_PUBLIC_URL_CHARS) return '';
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== 'https:' || url.username || url.password) return '';
+    return url.toString();
+  } catch {
+    return '';
+  }
+}
+
+function publicStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim()).filter(Boolean);
+}
+
+function publicLines(value: unknown): string[] {
+  if (typeof value !== 'string') return [];
+  return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
+
+const PUBLIC_TRIP_DETAILS_COLUMNS = [
+  'id', 'slug', 'title', 'tagline', 'summary', 'description',
+  'location', 'cover_image_url', 'gallery', 'duration_hours', 'meeting_point',
+  'meeting_point_map_url', 'includes', 'exclusions', 'notices', 'notes',
+  'refund_policy_type',
+] as const;
+
+async function loadPublicTripDetailsUncached(
+  shopCode: string,
+  slug: string,
+): Promise<PublicTripDetails | null> {
+  // 只讀店家本身（tenant＋公開設定 allowlist），不讀全店行程清單：全店查詢會被
+  // PostgREST 1000 列上限靜默截斷，較舊的已發布行程會誤回 404。
+  if (!slug || slug.length > 160 || slug.trim() !== slug) return null;
+  const admin = createAdminSupabase();
+  const core = await loadPublicShopCore(admin, shopCode);
+  if (!core) return null;
+  const shopData = core;
+
+  const { data: rawRow, error } = await admin.from('trips')
+    .select(PUBLIC_TRIP_DETAILS_COLUMNS.join(', '))
+    .eq('tenant_id', shopData.tenantId)
+    .eq('slug', slug)
+    .eq('status', 'PUBLISHED')
+    .maybeSingle();
+  if (error) throw queryTripDetailsFailed('trips', error);
+  const row = rawRow as Record<string, unknown> | null;
+  if (!row) return null;
+  const tripId = row.id as string;
+
+  const now = tenantNowParts(shopData.timeZone);
+
+  // trip_plans 以穩定排序（sort_order、id）讀 MAX+1 筆；範圍限定 tenant、trip、active。
+  const { data: planPageRows, error: planError } = await admin.from('trip_plans')
+    .select('id, trip_id, name, description, price_per_person, price_type, min_party, max_party, sales_mode')
+    .eq('tenant_id', shopData.tenantId)
+    .eq('trip_id', tripId)
+    .eq('active', true)
+    .order('sort_order', { ascending: true })
+    .order('id', { ascending: true })
+    .range(0, MAX_PUBLIC_PLANS_OUTPUT);
+  if (planError) throw queryTripDetailsFailed('trip_plans', planError);
+  const fetchedPlanRows = (planPageRows ?? []) as unknown as Array<Record<string, unknown>>;
+  const plansMayBeTruncated = fetchedPlanRows.length > MAX_PUBLIC_PLANS_OUTPUT;
+  if (plansMayBeTruncated) console.warn('public trip details: plan output limit reached');
+  const plans: PublicPlan[] = fetchedPlanRows
+    .slice(0, MAX_PUBLIC_PLANS_OUTPUT)
+    .map((r) => limitPublicPlanText(mapPublicPlan(r)));
+
+  // 季節定價（canonical 0128 trip_plan_seasons、0132 create_tour_order 的解析規則）：分頁讀回輸出方案的啟用季節
+  // （每頁 1000 列、最多 5 頁）。被截斷時只有落在截斷點及之後的方案視為不完整（不輸出 unitPrice，但標
+  // seasonalPricing）；沒有季節且資料完整的方案維持基本價。查詢失敗降級為全部不完整。
+  const seasonReader = await readPlanSeasons(admin, shopData.tenantId, plans.map((plan) => plan.id));
+  const seasonsByPlan = seasonReader.byPlan;
+  const seasonsIncompleteFor = seasonReader.isIncomplete;
+
+  // 只有 FIXED_DEPARTURE／REQUEST 方案進入團次查詢集合（30 個額度只算這兩類）。INSTANT（及未知模式）
+  // 一律不查團次、departures 為 []、也不標 departuresNotLoaded：canonical 自選時間流程只顯示重新驗證過的
+  // 導遊 availability，INSTANT 方案若有手動或私人用途的 OPEN 團次，不得公開成「近期開放日期」。
+  const plansWithDepartures = plans
+    .filter(hasPublicDepartureList)
+    .slice(0, MAX_DETAIL_PLANS_WITH_DEPARTURES);
+  const planDepartureResults = await mapWithConcurrency(plansWithDepartures, DETAIL_PLAN_QUERY_CONCURRENCY, async (plan) => {
+    const departures: PublicTripDetailDeparture[] = [];
+    let offset = 0;
+    let scanned = 0;
+    let exhausted = false;
+    let soldOutCount = 0;
+    let skippedSoldOut = false;
+    // 已確認「本頁剩下未列出的列」中有可售團次。
+    let unlistedSellable = false;
+    const availableCount = () => departures.length - soldOutCount;
+
+    // Query each plan independently. A busy plan must not consume another plan's window.
+    while (availableCount() < MAX_DETAIL_DEPARTURES_PER_PLAN
+      && scanned < MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN) {
+      const pageSize = Math.min(
+        DETAIL_DEPARTURE_PAGE_SIZE,
+        MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN - scanned,
+      );
+      const { data, error: departureError } = await admin.from('trip_departures')
+        .select('id, departs_on, start_time, capacity, seats_booked, min_to_depart_snapshot, formation_deadline_at, formation_status')
+        .eq('tenant_id', shopData.tenantId)
+        .eq('trip_id', tripId)
+        .eq('plan_id', plan.id)
+        .eq('status', 'OPEN')
+        .gte('departs_on', now.today)
+        .order('departs_on', { ascending: true })
+        .order('start_time', { ascending: true, nullsFirst: true })
+        .order('id', { ascending: true })
+        .range(offset, offset + pageSize - 1);
+      if (departureError) throw queryTripDetailsFailed('trip_departures', departureError);
+
+      const rows = data ?? [];
+      scanned += rows.length;
+      offset += rows.length;
+      for (let index = 0; index < rows.length; index += 1) {
+        const departure = rows[index];
+        // 今天已到開始時間的團次不列出，也不計入可售或客滿（游標仍以已讀列數前進）。
+        if (hasStartedToday(departure, now)) continue;
+        const capacity = Number(departure.capacity ?? 0);
+        const seatsBooked = Number(departure.seats_booked ?? 0);
+        const soldOut = seatsBooked >= capacity;
+        // canonical 19 §2.1：旅客要能分辨「客滿」，所以客滿團次保留並標示 soldOut（不提供動作）。
+        // 客滿團次不占可售名額上限；另設上限避免整頁被客滿團次佔滿。
+        if (soldOut) {
+          if (soldOutCount >= MAX_DETAIL_SOLD_OUT_PER_PLAN) { skippedSoldOut = true; continue; }
+          soldOutCount += 1;
+        }
+        departures.push({
+          id: departure.id as string,
+          departsOn: departure.departs_on as string,
+          startTime: departure.start_time == null ? '' : String(departure.start_time).slice(0, 5),
+          seatsLeft: soldOut ? 0 : capacity - seatsBooked,
+          ...(seasonsByPlan.has(plan.id) && !seasonsIncompleteFor(plan.id)
+            ? { unitPrice: resolveSeasonUnitPrice(departure.departs_on as string, seasonsByPlan.get(plan.id)!, plan.pricePerPerson) }
+            : {}),
+          ...(soldOut ? { soldOut: true } : {}),
+          // M1：成團欄位只對 FIXED_DEPARTURE 輸出，REQUEST／INSTANT 的輸出不帶，
+          // 以免與 seatsLeft 合併後被反推出 capacity／占位資訊。
+          ...(plan.salesMode === 'FIXED_DEPARTURE' ? {
+            minToDepart: Number.isInteger(departure.min_to_depart_snapshot) && Number(departure.min_to_depart_snapshot) >= 1
+              ? Number(departure.min_to_depart_snapshot) : null,
+            formationDeadlineAt: typeof departure.formation_deadline_at === 'string'
+              && departure.formation_deadline_at ? departure.formation_deadline_at : null,
+            formationStatus: typeof departure.formation_status === 'string' ? departure.formation_status : null,
+          } : {}),
+        });
+        if (availableCount() >= MAX_DETAIL_DEPARTURES_PER_PLAN) {
+          // 檢查本頁剩下的列：有可售 → 確認還有未列出的可售團次；其餘為略過的客滿列。
+          for (const rest of rows.slice(index + 1)) {
+            if (hasStartedToday(rest, now)) continue;
+            if (Number(rest.seats_booked ?? 0) < Number(rest.capacity ?? 0)) unlistedSellable = true;
+            else skippedSoldOut = true;
+          }
+          break;
+        }
+      }
+
+      if (rows.length < pageSize) {
+        exhausted = true;
+        break;
+      }
+    }
+
+    // The loop stopped before exhausting the rows (six sellable listed, or the scan limit hit).
+    // `departuresMayBeTruncated` is true ONLY when a row we can see confirms an unlisted SELLABLE
+    // departure (seats_booked < capacity): either in the remainder of the last page (above) or in one
+    // lookahead page past everything examined. If everything seen is sold out we cannot confirm more
+    // sellable dates, so it stays false and the sold-out rows are reported via `soldOutOmitted`.
+    // Trade-off: a sellable departure beyond the lookahead page is not detected. The flag now only
+    // drives the "partial dates" hint copy; it never opens the booking CTA (see
+    // hasBookableListedDeparture), so the conservative choice cannot lead to an empty booking page.
+    let mayBeTruncated = unlistedSellable;
+    if (!exhausted && !unlistedSellable) {
+      const { data, error: lookaheadError } = await admin.from('trip_departures')
+        .select('id, capacity, seats_booked, departs_on, start_time')
+        .eq('tenant_id', shopData.tenantId)
+        .eq('trip_id', tripId)
+        .eq('plan_id', plan.id)
+        .eq('status', 'OPEN')
+        .gte('departs_on', now.today)
+        .order('departs_on', { ascending: true })
+        .order('start_time', { ascending: true, nullsFirst: true })
+        .order('id', { ascending: true })
+        .range(offset, offset + DETAIL_DEPARTURE_PAGE_SIZE - 1);
+      if (lookaheadError) throw queryTripDetailsFailed('trip_departures', lookaheadError);
+      const ahead = (data ?? []).filter((row) => !hasStartedToday(row, now));
+      mayBeTruncated = ahead.some(
+        (row) => Number(row.seats_booked ?? 0) < Number(row.capacity ?? 0),
+      );
+      if (ahead.length > 0 && !mayBeTruncated) skippedSoldOut = true;
+    }
+
+    return [plan.id, {
+      departures,
+      mayBeTruncated,
+      soldOutOmitted: skippedSoldOut,
+    }] as const;
+  });
+  const departuresByPlan = new Map(planDepartureResults);
+
+  // 先過濾非法 URL 再截到上限（與後台上限共用常數）；client 只渲染這份輸出。
+  const gallery = publicStringList(row.gallery)
+    .map(safePublicHttpsUrl).filter(Boolean)
+    .slice(0, MAX_PUBLIC_GALLERY_IMAGES);
+  return {
+    shop: limitPublicShopText(shopData.shop),
+    timeZone: shopData.timeZone,
+    trip: {
+      id: row.id as string,
+      slug: row.slug as string,
+      title: truncateChars((row.title as string) ?? '', MAX_PUBLIC_LIST_ITEM_CHARS),
+      tagline: truncateChars((row.tagline as string) ?? '', MAX_PUBLIC_SHORT_TEXT_CHARS),
+      summary: truncateChars((row.summary as string) ?? '', MAX_PUBLIC_SHORT_TEXT_CHARS),
+      description: truncateChars((row.description as string) ?? '', MAX_PUBLIC_LONG_TEXT_CHARS),
+      // canonical trips 無 region／category 欄；型別契約保留 string，回空字串，避免前端重複顯示 location。
+      region: '',
+      category: '',
+      location: truncateChars((row.location as string) ?? '', MAX_PUBLIC_LIST_ITEM_CHARS),
+      coverImageUrl: safePublicHttpsUrl(row.cover_image_url),
+      galleryUrls: gallery,
+      durationHours: row.duration_hours == null ? null : Number(row.duration_hours),
+      meetingPoint: truncateChars((row.meeting_point as string) ?? '', MAX_PUBLIC_LIST_ITEM_CHARS),
+      meetingPointMapUrl: safePublicHttpsUrl(row.meeting_point_map_url),
+      inclusions: limitPublicList(publicLines(row.includes)),
+      exclusions: limitPublicList(publicStringList(row.exclusions)),
+      notices: limitPublicList(publicStringList(row.notices)),
+      safetyNotice: truncateChars((row.notes as string) ?? '', MAX_PUBLIC_SHORT_TEXT_CHARS),
+      refundPolicyType: row.refund_policy_type === 'FLEXIBLE' || row.refund_policy_type === 'STRICT'
+        ? row.refund_policy_type : 'STANDARD',
+      plans: plans.map((plan) => ({
+        ...plan,
+        ...(seasonsByPlan.has(plan.id) || seasonsIncompleteFor(plan.id) ? { seasonalPricing: true as const } : {}),
+        departures: departuresByPlan.get(plan.id)?.departures ?? [],
+        departuresMayBeTruncated: departuresByPlan.get(plan.id)?.mayBeTruncated ?? false,
+        ...(departuresByPlan.get(plan.id)?.soldOutOmitted ? { soldOutOmitted: true } : {}),
+        ...(hasPublicDepartureList(plan) && !departuresByPlan.has(plan.id)
+          ? { departuresNotLoaded: true as const } : {}),
+      })),
+      ...(plansMayBeTruncated ? { plansMayBeTruncated: true as const } : {}),
+    },
+  };
+}
+
+/**
+ * 讀取已發布行程的旅客詳情。每個請求都重新讀取公開來源；`loadPublicShop()` 的
+ * React cache 只在同一個請求內合併 metadata/page 查詢，不會跨訪客保留即時團次資料。
+ */
+export const loadPublicTripDetails = cache(loadPublicTripDetailsUncached);

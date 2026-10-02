@@ -315,11 +315,13 @@ describe('看不到什麼（每一條都有對照組）', () => {
   });
 });
 
-describe('這一版誠實地說明「還不能線上下單」', () => {
-  it('頁面說明要怎麼預約，且沒有任何表單或送出按鈕', async () => {
+describe('公開店家頁區分線上入口、聯絡與付款狀態', () => {
+  it('頁面說明線上入口與聯絡方式各自的用途，且沒有假表單或送出按鈕', async () => {
     const { body } = await html(`/s/${SHOP_A.shopCode}`);
-    expect(body).toContain('線上直接下單功能正在準備中');
-    // 付款鏈（#12／#32）還沒建；一顆按了沒反應的「立即預約」比沒有按鈕糟得多。
+    expect(body).toContain('部分行程可線上申請或預約');
+    expect(body).toContain('沒有線上入口的方案');
+    expect(body).toContain('查看行程詳情');
+    // 真實 REQUEST／FIXED 入口外，不能再添加沒有後端的假表單。
     expect(body).not.toContain('立即預約');
     expect(body).not.toMatch(/<form[\s>]/);
   });

@@ -37,6 +37,7 @@ import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
 import { ApiError } from '@/lib/api';
 import { formatCurrency, formatNumber } from '@/lib/utils';
+import { MAX_PUBLIC_GALLERY_IMAGES } from '@/lib/trip-gallery';
 import {
   reorderPlans, toAdvancedPlanPayload, toQuickPlanPayload, validateAdvancedPlan, validateQuickPlan,
 } from '@/lib/trip-plan-quick-edit';
@@ -45,7 +46,7 @@ import type {
   TripDeparture, TripPlan, TripPlanSeason,
 } from '@/lib/types';
 
-const GALLERY_MAX = 8;
+const GALLERY_MAX = MAX_PUBLIC_GALLERY_IMAGES;
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 0];
 
 const REVIEW_TONE: Record<PlanReviewState, 'info' | 'danger' | 'neutral'> = {
