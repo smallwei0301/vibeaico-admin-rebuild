@@ -10,6 +10,7 @@ const SHA256 = /^[0-9a-f]{64}$/;
 const sha256 = value => createHash('sha256').update(String(value ?? ''), 'utf8').digest('hex');
 const sortKey = value => JSON.stringify(value);
 
+/** @param {{body?: string, files?: Array<{filename?: string, previous_filename?: string, previousFilename?: string, status?: string, sha?: string}>, baseSha?: string, headSha?: string}} [input] */
 export function publicationContract({ body = '', files = [], baseSha = '', headSha = '' } = {}) {
   if (!SHA40.test(baseSha) || !SHA40.test(headSha)) throw new Error('publication receipt requires exact base/head SHA');
   const inventory = files.map(file => ({
@@ -64,6 +65,7 @@ export function parsePublicationReceipt(body = '') {
   };
 }
 
+/** @param {any[]} comments @param {{prNumber?: number, contract?: any}} [expectedInput] */
 export function findMatchingPublicationReceipt(comments = [], { prNumber, contract } = {}) {
   const expected = contract ?? {};
   return comments.find(comment => {
