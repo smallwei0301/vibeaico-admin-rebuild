@@ -56,4 +56,20 @@ describe('issue #42 LISTED 方案編輯器唯讀', () => {
     expect(src).toContain("const listedPlanWritesBlocked = trip?.midaoListing === 'LISTED';");
     expect(src).toContain('if (!listedPlanWritesBlocked) return false;');
   });
+
+  it('進階切換按鈕在 LISTED 時不被 disabled（唯讀仍可進入看季節）', () => {
+    const idx = src.indexOf('onClick={openAdvancedPlanEditor}');
+    expect(idx).toBeGreaterThan(-1);
+    const btn = src.slice(src.lastIndexOf('<Button', idx), idx);
+    expect(btn).toContain('disabled={!planDraft.id || savingPlan}');
+    expect(btn).not.toContain('listedPlanWritesBlocked');
+  });
+
+  it('季節定價區塊位於第二個 fieldset 之後（不被整區 disabled）', () => {
+    const first = src.indexOf('</fieldset>');
+    const second = src.indexOf('</fieldset>', first + 1);
+    const season = src.indexOf('季節定價（issue #42）');
+    expect(second).toBeGreaterThan(first);
+    expect(season).toBeGreaterThan(second);
+  });
 });
