@@ -1730,6 +1730,10 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 - 狀態：已關閉；同類再犯已轉成 workflow 內的 bounded wait，而不是人工 polling／重派。
 
+**2026-10-02 #741 延遲 review wake-up 補充：** 已觀測兩個 failed consumer（36956941251/job110681893706、36968116362/job110716174530），皆為 `Review wake-up needs one canonical PR association`；不是 Astra 執行失敗或 #739 close guard 回歸。#737 已 merged 後，成功 producer36956929013/36956868232 的 `pull_requests=[]`，舊 fallback 只查 open PR，漏掉 exact producer head 的 closed PR。原歷史次數保留；本次記錄的是兩筆同家族 consumer failure，不推算所有通知為獨立事故。
+
+修正僅 resolver：查 all、驗 canonical repo/ref，優先唯一 open；無 open 才接受唯一 closed exact producer SHA，且 live 回讀仍需同 SHA。既有 consumer 對 closed PR 在 status/comment/label/TEST dispatch 前 return，不製造 PASS 或重開 PR。外 repo、錯 head、歧義、未知 API 仍拒絕。預防以實際 github-script branch 驗零副作用；RED3FAIL61PASS→GREEN64PASS/typecheckPASS、獨立六個對抗 mock PASS。source/main CI 與 merge 回讀由 #741 的獨立 PR/closeout 留證，局部測試不當遠端驗收，不盲重試或改模型 gate。
+
 ### PB-050 — 埋了點，卻整輪沒跑過驗證器；欄位有值，但值在另一套詞彙裡
 
 - 首次／最近：2026-09-14 / 2026-09-14
