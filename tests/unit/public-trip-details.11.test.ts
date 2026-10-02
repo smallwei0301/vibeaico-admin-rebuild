@@ -7,6 +7,7 @@ const fakeState = vi.hoisted(() => ({
   failPlanId: null as string | null,
   active: 0,
   maxActive: 0,
+  calls: [] as Array<{ table: string; filters: Record<string, unknown>; single: boolean }>,
 }));
 
 vi.mock('@/server/supabase', () => ({
@@ -15,12 +16,19 @@ vi.mock('@/server/supabase', () => ({
       const filters: Record<string, unknown> = {};
       let single = false;
       const run = async () => {
+        fakeState.calls.push({ table, filters: { ...filters }, single });
         if (table === 'tenants') {
-          return { data: { id: 'tenant-1', shop_code: 'demo', name: 'Demo', business_type: null, tenant_settings: null }, error: null };
+          const id = filters.shop_code === 'demo' ? 'tenant-1' : 'tenant-2';
+          return { data: { id, shop_code: filters.shop_code, name: 'Demo', business_type: null, tenant_settings: null }, error: null };
         }
         if (table === 'trips') {
-          const row = { id: 'trip-1', slug: 'hike', title: 'Hike', summary: '', location: '', cover_image_url: null, duration_hours: 2, refund_policy_type: 'STANDARD' };
-          return { data: single ? row : [row], error: null };
+          const all = [
+            { id: 'trip-1', tenant_id: 'tenant-1', slug: 'hike', status: 'PUBLISHED' },
+            { id: 'trip-2', tenant_id: 'tenant-1', slug: 'draft', status: 'DRAFT' },
+            { id: 'trip-3', tenant_id: 'tenant-2', slug: 'other-shop', status: 'PUBLISHED' },
+          ].filter((r) => Object.entries(filters).every(([k, v]) => !(k in r) || (r as Record<string, unknown>)[k] === v))
+            .map((r) => ({ ...r, title: 'Hike', summary: '', location: '花蓮', cover_image_url: null, duration_hours: 2, refund_policy_type: 'STANDARD' }));
+          return { data: single ? (all[0] ?? null) : all, error: null };
         }
         if (table === 'trip_plans') {
           const data = Array.from({ length: fakeState.planCount }, (_, i) => ({
@@ -86,12 +94,11 @@ describe('#11 公開行程詳情', () => {
     expect(columns?.[1]).toContain('cover_image_url');
     expect(detailQuery).toContain(".select(PUBLIC_TRIP_DETAILS_COLUMNS.join(', '))");
     expect(detailQuery).toContain(".eq('tenant_id', shopData.tenantId)");
-    expect(detailQuery).toContain(".eq('id', knownTrip.id)");
     expect(detailQuery).toContain(".eq('slug', slug)");
     expect(detailQuery).toContain(".eq('status', 'PUBLISHED')");
     expect(columns?.[1]).not.toMatch(/midao_listing_note|midao_listing|tenant_settings|customers|staff|tour_orders/);
     expect(detailQuery).toContain(".select('id, departs_on, start_time, capacity, seats_booked')");
-    expect(detailQuery).toContain(".eq('trip_id', knownTrip.id)");
+    expect(detailQuery).toContain(".eq('trip_id', tripId)");
     expect(detailQuery).toContain(".eq('plan_id', plan.id)");
     expect(detailQuery).toContain(".eq('status', 'OPEN')");
     expect(loader).toContain(".eq('plan_id', plan.id)");
@@ -158,6 +165,7 @@ describe('#11 公開行程詳情：方案團次查詢併發上限', () => {
     fakeState.failPlanId = null;
     fakeState.active = 0;
     fakeState.maxActive = 0;
+    fakeState.calls = [];
   });
 
   it('10 個方案時同時進行的 trip_departures 查詢不超過 3，且結果順序與方案一致', async () => {
@@ -177,5 +185,48 @@ describe('#11 公開行程詳情：方案團次查詢併發上限', () => {
     fakeState.failPlanId = 'plan-4';
     const { loadPublicTripDetails } = await import('@/server/public-shop');
     await expect(loadPublicTripDetails('demo', 'hike')).rejects.toThrow('PUBLIC_TRIP_DETAILS');
+  });
+});
+
+describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', () => {
+  beforeEach(() => {
+    fakeState.planCount = 3;
+    fakeState.failPlanId = null;
+    fakeState.active = 0;
+    fakeState.maxActive = 0;
+    fakeState.calls = [];
+  });
+
+  it('trips 只查一次，條件含 tenant、slug、PUBLISHED 並用 maybeSingle；方案綁 tenant+trip+active', async () => {
+    const { loadPublicTripDetails } = await import('@/server/public-shop');
+    const result = await loadPublicTripDetails('demo', 'hike');
+    const tripCalls = fakeState.calls.filter((c) => c.table === 'trips');
+    expect(tripCalls).toHaveLength(1);
+    expect(tripCalls[0]).toMatchObject({
+      single: true,
+      filters: { tenant_id: 'tenant-1', slug: 'hike', status: 'PUBLISHED' },
+    });
+    const planCalls = fakeState.calls.filter((c) => c.table === 'trip_plans');
+    expect(planCalls).toHaveLength(1);
+    expect(planCalls[0].filters).toMatchObject({ tenant_id: 'tenant-1', trip_id: 'trip-1', active: true });
+    expect(fakeState.calls.some((c) => c.table === 'services')).toBe(false);
+    expect(result?.trip.plans).toHaveLength(3);
+  });
+
+  it('region 為空字串，location 照常回傳', async () => {
+    const { loadPublicTripDetails } = await import('@/server/public-shop');
+    const result = await loadPublicTripDetails('demo', 'hike');
+    expect(result?.trip.region).toBe('');
+    expect(result?.trip.location).toBe('花蓮');
+  });
+
+  it.each([
+    ['demo', 'draft'],
+    ['demo', 'other-shop'],
+    ['other', 'hike'],
+    ['demo', 'missing'],
+  ])('shop=%s slug=%s 回 null（DRAFT／他店／不存在）', async (shop, slug) => {
+    const { loadPublicTripDetails } = await import('@/server/public-shop');
+    expect(await loadPublicTripDetails(shop, slug)).toBeNull();
   });
 });

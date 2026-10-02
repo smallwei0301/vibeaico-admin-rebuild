@@ -234,17 +234,11 @@ function taipeiToday(): string {
   return new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
-/**
- * 讀一家店的公開資料。找不到、或該店沒有任何可公開內容時回 null（呼叫端轉 404）。
- *
- * ⚠️ 這裡刻意**不**因為「店家存在但沒有上架任何行程」而回 null —— 那會讓剛註冊
- * 還沒建行程的店家，把自己的公開網址傳出去時拿到 404，而他完全不知道為什麼。
- * 空的店家頁會誠實顯示「這家店還沒有上架的行程」。
- */
-async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData | null> {
+async function loadPublicShopCore(
+  admin: ReturnType<typeof createAdminSupabase>,
+  shopCode: string,
+): Promise<{ shop: PublicShop; tenantId: string } | null> {
   if (!SHOP_CODE_PATTERN.test(shopCode)) return null;
-
-  const admin = createAdminSupabase();
 
   // ① 店家 ＋ 公開的基本設定。白名單欄位；tenant_settings 只取 basic 與 line 兩塊，
   //    而 line 那塊底下只會用到 lineBasicId（見下方），加密欄位一概不取。
@@ -277,7 +271,37 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
     businessType: (tenantRow.business_type as string | null) ?? null,
   };
 
-  const tenantId = tenantRow.id as string;
+  return { shop, tenantId: tenantRow.id as string };
+}
+
+function mapPublicPlan(row: Record<string, unknown>): PublicPlan {
+  return {
+    id: row.id as string,
+    name: (row.name as string) ?? '',
+    description: (row.description as string) ?? '',
+    pricePerPerson: Number(row.price_per_person ?? 0),
+    priceType: row.price_type === 'PER_GROUP' ? 'PER_GROUP' : 'PER_PERSON',
+    minParty: Number(row.min_party ?? 1),
+    maxParty: Number(row.max_party ?? 1),
+    salesMode: row.sales_mode === 'INSTANT' || row.sales_mode === 'REQUEST'
+      ? row.sales_mode : 'FIXED_DEPARTURE',
+  };
+}
+
+/**
+ * 讀一家店的公開資料。找不到、或該店沒有任何可公開內容時回 null（呼叫端轉 404）。
+ *
+ * ⚠️ 這裡刻意**不**因為「店家存在但沒有上架任何行程」而回 null —— 那會讓剛註冊
+ * 還沒建行程的店家，把自己的公開網址傳出去時拿到 404，而他完全不知道為什麼。
+ * 空的店家頁會誠實顯示「這家店還沒有上架的行程」。
+ */
+async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData | null> {
+  if (!SHOP_CODE_PATTERN.test(shopCode)) return null;
+
+  const admin = createAdminSupabase();
+  const core = await loadPublicShopCore(admin, shopCode);
+  if (!core) return null;
+  const { shop, tenantId } = core;
   const today = taipeiToday();
 
   // ② 已發布的行程 ＋ 其方案。`status = 'PUBLISHED'` 是這裡的閘門：草稿與封存
@@ -327,17 +351,7 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
   const plansByTrip = new Map<string, PublicPlan[]>();
   for (const row of planRows ?? []) {
     const list = plansByTrip.get(row.trip_id as string) ?? [];
-    list.push({
-      id: row.id as string,
-      name: (row.name as string) ?? '',
-      description: (row.description as string) ?? '',
-      pricePerPerson: Number(row.price_per_person ?? 0),
-      priceType: row.price_type === 'PER_GROUP' ? 'PER_GROUP' : 'PER_PERSON',
-      minParty: Number(row.min_party ?? 1),
-      maxParty: Number(row.max_party ?? 1),
-      salesMode: row.sales_mode === 'INSTANT' || row.sales_mode === 'REQUEST'
-        ? row.sales_mode : 'FIXED_DEPARTURE',
-    });
+    list.push(mapPublicPlan(row));
     plansByTrip.set(row.trip_id as string, list);
   }
 
@@ -439,27 +453,37 @@ async function loadPublicTripDetailsUncached(
   shopCode: string,
   slug: string,
 ): Promise<PublicTripDetails | null> {
-  // Reuse the existing published-only tenant resolver and public shop whitelist.
-  // `tenantId` never leaves this server-only loader.
-  const shopData = await loadPublicShop(shopCode);
-  if (!shopData || !slug || slug.length > 160 || slug.trim() !== slug) return null;
-
-  const knownTrip = shopData.trips.find((trip) => trip.slug === slug);
-  if (!knownTrip) return null;
-
+  // 只讀店家本身（tenant＋公開設定 allowlist），不讀全店行程清單：全店查詢會被
+  // PostgREST 1000 列上限靜默截斷，較舊的已發布行程會誤回 404。
+  if (!slug || slug.length > 160 || slug.trim() !== slug) return null;
   const admin = createAdminSupabase();
+  const core = await loadPublicShopCore(admin, shopCode);
+  if (!core) return null;
+  const shopData = core;
+
   const { data: rawRow, error } = await admin.from('trips')
     .select(PUBLIC_TRIP_DETAILS_COLUMNS.join(', '))
     .eq('tenant_id', shopData.tenantId)
-    .eq('id', knownTrip.id)
     .eq('slug', slug)
     .eq('status', 'PUBLISHED')
     .maybeSingle();
   if (error) throw queryTripDetailsFailed('trips', error);
   const row = rawRow as Record<string, unknown> | null;
   if (!row) return null;
+  const tripId = row.id as string;
 
-  const planDepartureResults = await mapWithConcurrency(knownTrip.plans, DETAIL_PLAN_QUERY_CONCURRENCY, async (plan) => {
+  const { data: planRows, error: planError } = await admin.from('trip_plans')
+    .select('id, trip_id, name, description, price_per_person, price_type, min_party, max_party, sales_mode')
+    .eq('tenant_id', shopData.tenantId)
+    .eq('trip_id', tripId)
+    .eq('active', true)
+    .order('sort_order', { ascending: true });
+  if (planError) throw queryTripDetailsFailed('trip_plans', planError);
+  const plans: PublicPlan[] = (planRows ?? []).map(
+    (r) => mapPublicPlan(r as unknown as Record<string, unknown>),
+  );
+
+  const planDepartureResults = await mapWithConcurrency(plans, DETAIL_PLAN_QUERY_CONCURRENCY, async (plan) => {
     const departures: PublicTripDetailDeparture[] = [];
     let offset = 0;
     let scanned = 0;
@@ -475,7 +499,7 @@ async function loadPublicTripDetailsUncached(
       const { data, error: departureError } = await admin.from('trip_departures')
         .select('id, departs_on, start_time, capacity, seats_booked')
         .eq('tenant_id', shopData.tenantId)
-        .eq('trip_id', knownTrip.id)
+        .eq('trip_id', tripId)
         .eq('plan_id', plan.id)
         .eq('status', 'OPEN')
         .gte('departs_on', taipeiToday())
@@ -515,7 +539,7 @@ async function loadPublicTripDetailsUncached(
       const { data, error: lookaheadError } = await admin.from('trip_departures')
         .select('id')
         .eq('tenant_id', shopData.tenantId)
-        .eq('trip_id', knownTrip.id)
+        .eq('trip_id', tripId)
         .eq('plan_id', plan.id)
         .eq('status', 'OPEN')
         .gte('departs_on', taipeiToday())
@@ -545,8 +569,8 @@ async function loadPublicTripDetailsUncached(
       tagline: (row.tagline as string) ?? '',
       summary: (row.summary as string) ?? '',
       description: (row.description as string) ?? '',
-      // canonical trips 無 region／category 欄；與後台 mapTrip 同語意（region 由 location 推得、category 為空字串）。
-      region: (row.location as string) ?? '',
+      // canonical trips 無 region／category 欄；型別契約保留 string，回空字串，避免前端重複顯示 location。
+      region: '',
       category: '',
       location: (row.location as string) ?? '',
       coverImageUrl: safePublicHttpsUrl(row.cover_image_url),
@@ -560,7 +584,7 @@ async function loadPublicTripDetailsUncached(
       safetyNotice: (row.notes as string) ?? '',
       refundPolicyType: row.refund_policy_type === 'FLEXIBLE' || row.refund_policy_type === 'STRICT'
         ? row.refund_policy_type : 'STANDARD',
-      plans: knownTrip.plans.map((plan) => ({
+      plans: plans.map((plan) => ({
         ...plan,
         departures: departuresByPlan.get(plan.id)?.departures ?? [],
         departuresMayBeTruncated: departuresByPlan.get(plan.id)?.mayBeTruncated ?? false,
