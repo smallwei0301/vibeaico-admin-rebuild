@@ -19,6 +19,9 @@
     },
     {
       "ref": "issue/43"
+    },
+    {
+      "ref": "issue/11"
     }
   ],
   "main": {
@@ -572,13 +575,52 @@
         "requestedModel": "sol",
         "actualModel": "unknown",
         "note": "ANTHROPIC main session (configured claude-opus-5-5, served identity unverified) TRIAGE on main b5e3b123: serialize Product convergence. 715 -> TEST_VALIDATION (canonical TEST + ordinary #730 review, closeability 4); 731 -> PARKED (needs canonical TEST after 715 releases holder, frees BUILD slot); 734 -> next single TERRA_BUILD (SOURCE_ONLY, TENANT_AUTH_BOUNDARY Final Risk); 733 -> after 734 (metadata repair + Final Risk); then #46 INSTANT. No dual Terra: 731/734 share AUTH hot boundary."
+      },
+      {
+        "id": "20261001-luna-triage46-safe-successor-775",
+        "role": "luna",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "2026-10-01T14:13:42Z Live read-only inventory on main 7752361: #46/#11/#12 remain open; #725/#727/#715/#714 parked; #727 canonical TEST run 36857198490 failed and released TEST; no active shared TEST holder; main push CI 36869400302 success. 0135 explicitly read-only; no safe persistent INSTANT writer without common atomic occupancy + departure duration snapshot. Suggested independent #11 public-trip details slice; actual model unknown."
+      },
+      {
+        "id": "20261001-sol-retriage46-select11-775",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "2026-10-01T14:13:42Z Root re-triage against current main 775236159ab55cbbaca22fdc44608e5bf4383fc6 and live Issue/PR/CI/TEST/docs. #710/#709 remains parked for real Auth duplicate proof and live review contract; #46 keeps its INSTANT transaction as source-blocked (0135 is read-only; 0131 does not provide common interval exclusion). Select #11 public trip detail page, tenant-scoped from existing PUBLISHED data and linking only existing real FIXED_DEPARTURE/REQUEST journeys; no payment/INSTANT claim. Owner authorized OpenAI Product build and audit requested gpt-6.1-sol; actual unknown."
+      },
+      {
+        "id": "20261001-sol-builder11-public-trip-details",
+        "role": "build",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "2026-10-01T14:13:42Z Root starts bounded Product slice #11: public PUBLISHED trip detail from explicit safe fields, plan/date choices link to existing real booking/request endpoints, same tenant scope, no INSTANT writer/payment/synthetic data. New branch product/issue11-public-trip-details-20261001 starts exact current origin/main 7752361. Owner session permits requested Sol6.1 Product construction; actual provider/model unverified."
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 4,
+    "issuesStarted": 5,
     "issuesClosed": 0,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -604,8 +646,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 10,
-    "lunaAccepted": 10,
+    "lunaTasks": 11,
+    "lunaAccepted": 11,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
