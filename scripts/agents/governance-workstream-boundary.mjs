@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { ALLOWED, isPlaceholder, metadataLines, parseLaneMetadata, readField, rewriteField } from './agent-wip-policy.mjs';
 
 const DELIVERY_TYPES = new Set(['SLICE', 'STANDALONE', 'EPIC', 'GOVERNANCE']);
@@ -216,22 +217,26 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
   const recordPending = async (observed, reason) => {
     if (observed.state !== 'closed') return;
     const plan = terminalBodyPlan(observed);
-    if (!plan.changed && !plan.errors.length && !reason) return;
-    const marker = `<!-- agent-terminal-state-sync:v1 pr=${current.number} head=${observed.head?.sha} closed_at=${observed.closed_at} -->`;
-    warning(`STATE_SYNC_PENDING PR #${current.number}; closed_at=${observed.closed_at}; ` +
-      `unsynced fields: ${plan.unsyncedFields.join(', ') || 'none (label reconciliation only)'}; reason=${reason || plan.errors.join('; ') || 'UNSAFE_NON_CONDITIONAL_BODY_PATCH'}`);
+    const pending = Boolean(plan.changed || plan.errors.length || plan.unsyncedFields.length || reason);
+    const fields = plan.unsyncedFields.join(', ') || 'none (label reconciliation only)';
+    const failure = reason || plan.errors.join('; ') || (pending ? 'UNSAFE_NON_CONDITIONAL_BODY_PATCH' : 'none');
+    const status = pending ? 'STATE_SYNC_PENDING' : 'STATE_SYNC_RESOLVED';
+    const prefix = `<!-- agent-terminal-state-sync:v1 pr=${current.number} head=${observed.head?.sha} closed_at=${observed.closed_at}`;
+    const marker = `${prefix} digest=${createHash('sha256').update(JSON.stringify([status, fields, failure])).digest('hex').slice(0, 16)} -->`;
+    if (pending) warning(`${status} PR #${current.number}; closed_at=${observed.closed_at}; unsynced fields: ${fields}; reason=${failure}`);
     const comments = await github.paginate(github.rest.issues.listComments,
       { owner, repo, issue_number: current.number, per_page: 100 });
     if (!Array.isArray(comments)) throw new Error('STATE_SYNC_PENDING comment inventory unavailable');
-    if (comments.some(comment => comment.user?.login === 'github-actions[bot]' && comment.user?.id === 41898282 &&
-      String(comment.body ?? '').startsWith(marker))) return;
-    await github.rest.issues.createComment({ owner, repo, issue_number: current.number, body: `${marker}\nSTATE_SYNC_PENDING\n` +
+    const prior = comments.filter(comment => comment.user?.login === 'github-actions[bot]' && comment.user?.id === 41898282 &&
+      String(comment.body ?? '').startsWith(prefix));
+    if (!pending && !prior.length || String(prior.at(-1)?.body ?? '').startsWith(marker)) return;
+    await github.rest.issues.createComment({ owner, repo, issue_number: current.number, body: `${marker}\n${status}\n` +
       `PR: #${current.number}\nVERIFIED_TERMINAL_STATE: ${observed.merged || observed.merged_at ? 'MERGED' : 'CLOSED_UNMERGED'}\n` +
       `HEAD: ${observed.head?.sha}\nCLOSED_AT: ${observed.closed_at}\n` +
-      `UNSYNCED_FIELDS: ${plan.unsyncedFields.join(', ') || 'none (label reconciliation only)'}\n` +
-      `FAILED_ACTION_OR_ERROR: ${reason || plan.errors.join('; ') || 'UNSAFE_NON_CONDITIONAL_BODY_PATCH'}\n` +
+      `UNSYNCED_FIELDS: ${fields}\nFAILED_ACTION_OR_ERROR: ${failure}\n` +
       `OWNING_SESSION: PR #${current.number} closeout owner\n` +
-      'NEXT_SAFE_WRITE_PATH: Owning session must coordinate an exclusive body edit, re-read live PR, sync terminal fields, and verify the live result before POST_MERGE_CLOSEOUT=COMPLETE. This comment does not grant Product or Production acceptance.\n' });
+      (pending ? 'NEXT_SAFE_WRITE_PATH: Owning session must coordinate an exclusive body edit, re-read live PR, sync terminal fields, and verify the live result before POST_MERGE_CLOSEOUT=COMPLETE.' : 'NEXT_SAFE_WRITE_PATH: Body fields are synchronized for this observed close generation; verify Issue closeout and remaining gates separately.') +
+      ' This comment does not grant Product or Production acceptance.\n' });
   };
   const restoreOpen = async observed => {
     const sameOpen = pr => pr.state === 'open' && pr.head?.sha === observed.head?.sha && pr.body === observed.body;

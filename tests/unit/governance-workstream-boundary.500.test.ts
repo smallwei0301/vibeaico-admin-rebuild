@@ -289,47 +289,44 @@ describe('governance boundary regression #500', () => {
     expect(current.body).toContain('LANE_STATE: ACTIVE');
     expect([...result.labels].sort()).toEqual(['state:complete', 'unrelated:keep']);
   });
-  it('clears terminated guard warnings on a stable merged PR', async () => {
-    const current = { ...subject(), state: 'closed', merged: true, closed_at: created_at,
-      labels: [{ name: 'governance:lane-metadata-incomplete' }, { name: 'governance:wip-violation' }] };
-    const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current, paths, [], 'terminal_cleanup');
-    expect([...result.labels]).toContain('state:complete');
-    expect([...result.labels]).not.toContain('governance:lane-metadata-incomplete');
-    expect([...result.labels]).not.toContain('governance:wip-violation');
-    expect(result.calls).not.toContain('body');
-  });
-  it('retains guard warnings on a stable unmerged closed PR', async () => {
-    const current = { ...subject(), state: 'closed', merged: false, closed_at: created_at,
-      labels: [{ name: 'governance:lane-metadata-incomplete' }, { name: 'governance:wip-violation' }] };
-    const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current, paths, [], 'terminal_cleanup');
-    expect([...result.labels]).toEqual(expect.arrayContaining([
-      'state:historical', 'governance:lane-metadata-incomplete', 'governance:wip-violation',
-    ]));
-    expect(result.calls).not.toContain('body');
-  });
+  it.each([[true, 'state:complete', false], [false, 'state:historical', true]])(
+    'keeps warning labels only on unmerged closed PRs (merged=%s)', async (merged, stateLabel, keepWarnings) => {
+      const current = { ...subject(), state: 'closed', merged, closed_at: created_at,
+        labels: [{ name: 'governance:lane-metadata-incomplete' }, { name: 'governance:wip-violation' }] };
+      const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current, paths, [], 'terminal_cleanup');
+      expect(result.labels.has(stateLabel)).toBe(true);
+      for (const label of ['governance:lane-metadata-incomplete', 'governance:wip-violation']) expect(result.labels.has(label)).toBe(keepWarnings);
+      expect(result.calls).not.toContain('body');
+    });
 
   it('deduplicates only the trusted bot handoff for the same close generation', async () => {
-    const closed = { ...subject(), state: 'closed', merged: true,
-      closed_at: '2026-10-02T07:00:00Z', labels: [{ name: 'state:active' }] };
+    const initialBody = gov.replace('state: ACTIVE', 'state: MERGED').replace('LANE_STATE: ACTIVE', 'LANE_STATE: COMPLETE').replace('REMAINING_AUTONOMOUS_STEPS: source CI and exact-diff verification', 'REMAINING_AUTONOMOUS_STEPS: none') + '\nMERGE_STATUS: NOT_REQUESTED';
+    const closed = { ...subject(initialBody), state: 'closed', merged: true, closed_at: '2026-10-02T07:00:00Z', labels: [{ name: 'state:active' }] };
     const marker = `<!-- agent-terminal-state-sync:v1 pr=900 head=${closed.head.sha} closed_at=${closed.closed_at} -->`;
     const comments: any[] = [{ user: { login: 'untrusted', id: 10 }, body: `${marker}\nSTATE_SYNC_PENDING` }];
     const listComments = vi.fn();
     const github: any = { rest: {
-      pulls: { get: vi.fn(async () => ({ data: structuredClone(closed) })),
-        update: vi.fn(() => { throw new Error('Body replacement forbidden'); }) },
-      issues: { listComments, removeLabel: vi.fn(async ({ name }: any) => {
-        closed.labels = closed.labels.filter((label: { name: string }) => label.name !== name);
-      }), getLabel: vi.fn(async () => ({})), addLabels: vi.fn(async ({ labels }: any) => {
-        closed.labels.push(...labels.map((name: string) => ({ name })));
-      }), createComment: vi.fn(async ({ body }: any) => {
+      pulls: { get: vi.fn(async () => ({ data: structuredClone(closed) })), update: vi.fn(() => { throw new Error('Body replacement forbidden'); }) },
+      issues: { listComments, removeLabel: vi.fn(async ({ name }: any) => { closed.labels = closed.labels.filter((label: { name: string }) => label.name !== name); }),
+        getLabel: vi.fn(async () => ({})), addLabels: vi.fn(async ({ labels }: any) => { closed.labels.push(...labels.map((name: string) => ({ name }))); }), createComment: vi.fn(async ({ body }: any) => {
         comments.push({ user: { login: 'github-actions[bot]', id: 41898282 }, body });
       }) },
     }, paginate: vi.fn(async (method: any) => method === listComments ? comments : []) };
     const call = () => boundaryPolicy.reconcileTerminalPr({ github, owner: 'owner', repo: 'repo', current: closed });
     await call();
     expect(github.rest.issues.createComment).toHaveBeenCalledTimes(1); // A forged marker cannot suppress handoff.
+    expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: MERGE_STATUS');
     await call();
     expect(github.rest.issues.createComment).toHaveBeenCalledTimes(1);
+    closed.body = closed.body.replace('OWNER_OR_EXTERNAL_BLOCKER: none', 'OWNER_OR_EXTERNAL_BLOCKER: old queue');
+    await call();
+    expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: MERGE_STATUS, OWNER_OR_EXTERNAL_BLOCKER');
+    closed.body = closed.body.replace('MERGE_STATUS: NOT_REQUESTED', 'MERGE_STATUS: VERIFIED_MERGED')
+      .replace('OWNER_OR_EXTERNAL_BLOCKER: old queue', 'OWNER_OR_EXTERNAL_BLOCKER: none');
+    await call();
+    expect(comments.at(-1).body).toContain('STATE_SYNC_RESOLVED');
+    await call();
+    expect(github.rest.issues.createComment).toHaveBeenCalledTimes(3);
     expect(github.rest.pulls.update).not.toHaveBeenCalled();
   });
 
