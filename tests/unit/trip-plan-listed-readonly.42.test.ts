@@ -81,7 +81,7 @@ describe('issue #42 LISTED 方案編輯器唯讀', () => {
     const L = String.raw`(?<![!\w])listedPlanWritesBlocked\s*\?\s*`;
     const tern = (a: string, b: string) => new RegExp(`${L}${a}\\s*:\\s*${b}(?![\\w.])`);
     expect(src).toMatch(tern('t\\.actions\\.view', 't\\.actions\\.edit'));
-    expect(src.match(new RegExp(`(?:title|aria-label)=\\{${L}t\\.actions\\.view\\s*:\\s*t\\.actions\\.edit\\}`, 'g'))?.length).toBe(4);
+    expect(src.match(new RegExp(`(?:title|aria-label)=\\{${L}t\\.actions\\.view\\s*:\\s*t\\.actions\\.edit\\}`, 'g'))?.length).toBe(2);
     expect(src).toMatch(tern('t\\.plans\\.review\\.changesHintListed', 't\\.plans\\.review\\.changesHint'));
     expect(src).toMatch(tern('t\\.plans\\.viewTitle\\(planDraft\\.name\\)', 't\\.plans\\.editTitle\\(planDraft\\.name\\)'));
     expect(src).toMatch(/\{!listedPlanWritesBlocked \? <Alert tone="info">\{t\.plans\.quick\.intro\}<\/Alert> : null\}/);
@@ -101,7 +101,25 @@ describe('issue #42 LISTED 方案編輯器唯讀', () => {
     const L = String.raw`(?<![!\w])listedPlanWritesBlocked\s*\?\s*`;
     expect(src).toMatch(new RegExp(`${L}t\\.plans\\.advanced\\.viewTitle\\s*:\\s*t\\.plans\\.advanced\\.title(?![\\w.])`));
     expect(src).toMatch(new RegExp(`${L}t\\.plans\\.advanced\\.listedIntro\\s*:\\s*t\\.plans\\.advanced\\.intro(?![\\w.])`));
-    expect(src.match(new RegExp(`(?:title|aria-label)=\\{${L}t\\.actions\\.view\\s*:\\s*t\\.actions\\.edit\\}`, 'g'))?.length).toBe(4);
+    expect(src.match(new RegExp(`(?:title|aria-label)=\\{${L}t\\.actions\\.view\\s*:\\s*t\\.actions\\.edit\\}`, 'g'))?.length).toBe(2);
+    // 季節列：LISTED 不渲染編輯／刪除（不能標「檢視」卻按不下）；未上架保留原按鈕與原 title
+    const seasonStart = src.search(/\{!listedPlanWritesBlocked \? \(\s*<span className="btn-group shrink-0">/);
+    expect(seasonStart).toBeGreaterThan(-1);
+    const seasonBlock = src.slice(seasonStart);
+    const seasonEnd = seasonBlock.indexOf(') : null}');
+    expect(seasonEnd).toBeGreaterThan(-1);
+    const seasonBtns = seasonBlock.slice(0, seasonEnd);
+    expect(seasonBtns).toContain('title={t.actions.edit} aria-label={t.actions.edit}');
+    expect(seasonBtns).toContain('title={t.actions.delete} aria-label={t.actions.delete}');
+    expect(seasonBtns).not.toContain('t.actions.view');
+    expect(seasonBtns.match(/disabled=\{listedPlanWritesBlocked \|\| savingPlan \|\| !!seasonDraft\}/g)?.length).toBe(2);
+    // 未上架儲存按鈕：原文案、原 loadingText、無額外 disabled
+    expect(src).toContain("loadingText={planEditorMode === 'advanced' ? t.plans.advanced.saving : t.plans.quick.saving}");
+    expect(src).toContain("{planEditorMode === 'advanced' ? t.plans.advanced.save : t.plans.quick.save}");
+    const saveBtn = src.slice(src.indexOf('{!listedPlanWritesBlocked ? (\n              <Button\n                loading={savingPlan}'));
+    expect(saveBtn.slice(0, saveBtn.indexOf('</Button>'))).not.toMatch(/disabled=/);
+    expect(tripsPage.plans.quick.save).toBe('儲存快速編輯');
+    expect(tripsPage.plans.quick.saving).toBe('儲存並確認中…');
     // footer 儲存按鈕：LISTED 時完全不渲染（不是 disabled 的「儲存」）
     expect(src).toMatch(/\{!listedPlanWritesBlocked \? \(\s*<Button\s+loading=\{savingPlan\}/);
     expect(src).not.toMatch(/<Button\s+disabled=\{listedPlanWritesBlocked\}\s+loading=\{savingPlan\}/);

@@ -1648,25 +1648,26 @@ export default function TripDetailPage() {
                               {formatCurrency(season.priceOverride ?? planDraft.basePrice)}
                             </div>
                           </div>
-                          <span className="btn-group shrink-0">
-                            <Button
-                              type="button" variant="ghost" size="sm"
-                              title={listedPlanWritesBlocked ? t.actions.view : t.actions.edit}
-                              aria-label={listedPlanWritesBlocked ? t.actions.view : t.actions.edit}
-                              disabled={listedPlanWritesBlocked || savingPlan || !!seasonDraft}
-                              onClick={() => openSeasonEditor(season)}
-                            >
-                              <Pencil size={13} />
-                            </Button>
-                            <Button
-                              type="button" variant="ghost" size="sm"
-                              title={t.actions.delete} aria-label={t.actions.delete}
-                              disabled={listedPlanWritesBlocked || savingPlan || !!seasonDraft}
-                              onClick={() => setDeleteTarget({ kind: 'season', id: season.id, name: season.name })}
-                            >
-                              <Trash2 size={13} />
-                            </Button>
-                          </span>
+                          {!listedPlanWritesBlocked ? (
+                            <span className="btn-group shrink-0">
+                              <Button
+                                type="button" variant="ghost" size="sm"
+                                title={t.actions.edit} aria-label={t.actions.edit}
+                                disabled={listedPlanWritesBlocked || savingPlan || !!seasonDraft}
+                                onClick={() => openSeasonEditor(season)}
+                              >
+                                <Pencil size={13} />
+                              </Button>
+                              <Button
+                                type="button" variant="ghost" size="sm"
+                                title={t.actions.delete} aria-label={t.actions.delete}
+                                disabled={listedPlanWritesBlocked || savingPlan || !!seasonDraft}
+                                onClick={() => setDeleteTarget({ kind: 'season', id: season.id, name: season.name })}
+                              >
+                                <Trash2 size={13} />
+                              </Button>
+                            </span>
+                          ) : null}
                         </li>
                       ))}
                     </ul>
