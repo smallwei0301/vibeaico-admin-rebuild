@@ -371,7 +371,7 @@ describe('governance boundary regression #500', () => {
   });
 
   it.each([
-    ['pr-lifecycle.state', gov.replace(/<!-- pr-lifecycle[\s\S]*?-->\n/, '')], ['pr-lifecycle.state', '<!-- pr-lifecycle\nstate: ACTIVE\n'],
+    ['pr-lifecycle.state', 'WORKSTREAM: MODEL_GOVERNANCE\nAGENT_LANE: GOVERNANCE\nMERGE_STATUS: NOT_REQUESTED\nCOMPLETION_CLAIM: IN_PROGRESS'], ['pr-lifecycle.state', '<!-- pr-lifecycle\nstate: ACTIVE\n'],
     ['LANE_STATE', gov.replace('LANE_STATE: ACTIVE\n', '')], ['LANE_STATE', 'WORK_ORIGIN: AGENT\nLANE_STATE: ACTIVE\n```text\nexample'],
     ['ACTIVE_CANDIDATE', gov + '\nACTIVE_CANDIDATE: false\n'],
   ])('names %s as an unsynced body field when its declaration is missing or ambiguous', (field, body) => {

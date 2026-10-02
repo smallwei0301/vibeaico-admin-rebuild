@@ -144,7 +144,7 @@ export function terminalBodyPlan(pr) {
   const unsyncedFields = new Set();
   const lifecycle = rewriteLifecycleState(body, lifecycleState);
   const visible = metadataLines(body, { allowPartial: true });
-  const hasContract = lifecycle.present || visible.some(line => /^[ \t]*[-*]?[ \t]*(?:WORK_ORIGIN|LANE_STATE|ACTIVE_CANDIDATE)[ \t]*:/i.test(line));
+  const hasContract = lifecycle.present || visible.some(line => /^[ \t]*[-*]?[ \t]*(?:WORK_ORIGIN|WORKSTREAM|AGENT_LANE|LANE_STATE|ACTIVE_CANDIDATE|CLOSEABILITY_SCORE|SELECTION_REASON|REMAINING_AUTONOMOUS_STEPS|OWNER_OR_EXTERNAL_BLOCKER|CLOSURE_SWEEP_TARGET|TEST_LANE_REQUIRED|WHY_NOT_CLOSER_CANDIDATE|REQUESTED_MODEL \/ ACTUAL_MODEL|BPLUS_MODE|RUN_ID|RESERVE_BOUNDARY|SCORECARD_PATH|DELIVERY_UNIT_TYPE|COUNT_IN_DELIVERY_OUTCOME|RETROACTIVE_TRACKING_MIGRATION|USER_VISIBLE_OUTCOME|MERGE_STATUS|COMPLETION_CLAIM|MERGE_COMMIT_SHA|MAIN_HEAD_VERIFIED|MAIN_HEAD_SHA|MAIN_FILE_RE_READ|EXACT_HEAD_CI_STATUS|EXACT_HEAD_CI_RUN|LOCAL_JOB_RESULT|REMOTE_JOB_RESULT|VERIFIED_AT|ASTRA_RISK|FINAL_RISK_POLICY|TERRA_SLOT|PRIMARY_ISSUE|FILE_OWNERSHIP|TEST_PROFILE|TEST_ENV_ID|SCHEMA_DEPENDENCY)[ \t]*:/i.test(line));
   const hasReceipt = merged && hasContract;
   if (lifecycle.error) { errors.push(lifecycle.error); unsyncedFields.add('pr-lifecycle.state'); }
   else if (lifecycle.changed) { changedFields.push('pr-lifecycle.state'); unsyncedFields.add('pr-lifecycle.state'); }
