@@ -1155,7 +1155,7 @@
       {
         "id": "20261001-builder-11-3d527cb4",
         "role": "build",
-        "requestedModel": "sol",
+        "requestedModel": "terra",
         "actualModel": "unknown",
         "contextClass": "compact",
         "accepted": true,
@@ -1168,7 +1168,7 @@
       {
         "id": "20261001-builder-11-1928d5ab",
         "role": "build",
-        "requestedModel": "sol",
+        "requestedModel": "terra",
         "actualModel": "unknown",
         "contextClass": "compact",
         "accepted": true,
@@ -1181,7 +1181,7 @@
       {
         "id": "20261001-builder-11-4f525767",
         "role": "build",
-        "requestedModel": "sol",
+        "requestedModel": "terra",
         "actualModel": "unknown",
         "contextClass": "compact",
         "accepted": true,
@@ -1194,7 +1194,7 @@
       {
         "id": "20261001-builder-11-7364ed2b",
         "role": "build",
-        "requestedModel": "sol",
+        "requestedModel": "terra",
         "actualModel": "unknown",
         "contextClass": "compact",
         "accepted": true,
@@ -1207,7 +1207,7 @@
       {
         "id": "20261001-builder-11-ed384bbe",
         "role": "build",
-        "requestedModel": "sol",
+        "requestedModel": "terra",
         "actualModel": "unknown",
         "contextClass": "compact",
         "accepted": true,
@@ -1242,6 +1242,97 @@
         "cachedTokens": null,
         "count": 1,
         "note": "Opus review of commit 399f49d4 (r01 ledger); dispatched via Agent model=opus; self-reported claude-opus-5-5; served identity unverified."
+      },
+      {
+        "id": "20261002-builder-11-30223032",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "dispatched via Agent model=sonnet (operator-attested); commit trailer session attribution; served identity unverified. Seasonal pricing, timezone normalization, phone field standardization."
+      },
+      {
+        "id": "20261002-builder-11-2568a153",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "dispatched via Agent model=sonnet (operator-attested); commit trailer session attribution; served identity unverified. Booking and application form seasonal pricing with total amount summary."
+      },
+      {
+        "id": "20261002-audit-11-dd681ac3",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Incremental review of commit dd681ac3; conclusion: PASS. Standards/Spec: 0, Final Risk: NONE."
+      },
+      {
+        "id": "20261002-audit-11-30223032",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Incremental review of commit 30223032; conclusion: PASS. Standards/Spec: 0, Final Risk: NONE."
+      },
+      {
+        "id": "20261002-audit-11-2568a153",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Incremental review of commit 2568a153; conclusion: null (review in progress). Standards/Spec: pending, Final Risk: pending."
+      },
+      {
+        "id": "20261002-scout-ledger-fix-1ad47308",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Requested claude-haiku-4-5 scout: correction of ledger residuals for commit 1ad47308. Actual unverified."
+      },
+      {
+        "id": "20261002-scout-ledger-fix-current",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Requested claude-haiku-4-5 scout: current session ledger residuals correction. Actual unverified."
       }
     ],
     "fullContextReplays": 0,
@@ -1259,7 +1350,7 @@
   },
   "ci": {
     "fullCiRuns": 30,
-    "invalidReruns": 0,
+    "invalidReruns": 5,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
   },
@@ -1274,13 +1365,13 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 13,
-    "lunaAccepted": 13,
+    "lunaTasks": 15,
+    "lunaAccepted": 15,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 40,
+    "solTouches": 43,
     "solIssues": 5
   },
   "auditability": {
