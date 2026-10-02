@@ -4,6 +4,8 @@ export const publicTripDetailsPage = {
     title: '行程詳情',
     pageDescription: '查看行程介紹、可選方案與近期出發資訊。',
     notFound: '找不到這個行程',
+    tripTitle: (tripTitle: string, shopName: string) => `${tripTitle}｜${shopName}`,
+    descriptionMaxLength: 160,
     description: (title: string) => `${title}的行程內容、方案與近期出發資訊`,
   },
   loading: '正在載入行程詳情…',

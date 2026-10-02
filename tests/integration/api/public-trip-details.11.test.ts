@@ -186,11 +186,12 @@ afterAll(async () => {
 });
 
 describe('#11 公開行程詳情頁與 API', () => {
-  it('匿名行程頁只輸出載入殼層；公開資料由白名單 API 載入', async () => {
+  it('匿名行程頁 200，head 帶行程專屬 title／og:title；不外洩內部欄位，即時資料由白名單 API 載入', async () => {
     const { status, body } = await request('/s/' + SHOP_A.shopCode + '/trips/' + encodeURIComponent(SLUG));
     expect(status).toBe(200);
+    expect(body).toContain('<title>' + TITLE);
+    expect(body).toMatch(/property="og:title" content="[^"]*/);
     expect(body).toContain('正在載入行程詳情…');
-    expect(body).not.toContain(TITLE);
     expect(body).not.toContain(SECRET_REVIEW_NOTE);
     expect(body).not.toContain(UNSAFE_URL);
     expect(body).not.toContain(SHOP_A.id);
@@ -270,17 +271,17 @@ describe('#11 公開行程詳情頁與 API', () => {
       `/api/public/shops/${SHOP_B.shopCode}/trips/${encodeURIComponent(SLUG)}`,
     );
     const missing = await request(`/api/public/shops/${SHOP_A.shopCode}/trips/no-such-trip`);
-    expect(draft.status).toBe(200);
-    expect(draft.body).toContain('正在載入行程詳情…');
+    expect(draft.status).toBe(404);
     expect(draft.body).not.toContain(`${TAG} 草稿不可公開`);
     expect(draftApi.status).toBe(404);
     expect(otherTenant.status).toBe(200);
-    expect(otherTenant.body).toContain('正在載入行程詳情…');
-    expect(otherTenant.body).not.toContain(OTHER_TENANT_TITLE);
+    expect(otherTenant.body).toContain('<title>' + OTHER_TENANT_TITLE);
     expect(otherTenant.body).not.toContain(TITLE);
     expect(otherTenantApi.status).toBe(200);
     expect(JSON.parse(otherTenantApi.body).data.trip.title).toBe(OTHER_TENANT_TITLE);
     expect(otherTenantApi.body).not.toContain(TITLE);
     expect(missing.status).toBe(404);
+    const missingPage = await request(`/s/${SHOP_A.shopCode}/trips/no-such-trip`);
+    expect(missingPage.status).toBe(404);
   });
 });
