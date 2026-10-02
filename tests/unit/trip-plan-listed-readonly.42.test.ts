@@ -20,7 +20,7 @@ describe('issue #42 LISTED 方案編輯器唯讀', () => {
   });
 
   it('列表編輯（檢視）按鈕不因 LISTED disabled，刪除與排序仍 disabled', () => {
-    expect(src).toMatch(/aria-label=\{t\.actions\.edit\}\s*\n\s*onClick=\{\(\) => openPlanEditor\(p\)\}/);
+    expect(src).toMatch(/aria-label=\{listedPlanWritesBlocked \? t\.actions\.view : t\.actions\.edit\}\s*\n\s*onClick=\{\(\) => openPlanEditor\(p\)\}/);
     expect(src).toMatch(/disabled=\{listedPlanWritesBlocked\}\s*\n\s*onClick=\{\(\) => setDeleteTarget\(\{ kind: 'plan'/);
     expect(src).toContain('disabled={listedPlanWritesBlocked || i === 0}');
     expect(src).toContain('disabled={listedPlanWritesBlocked || i === plans.length - 1}');
@@ -76,5 +76,18 @@ describe('issue #42 LISTED 方案編輯器唯讀', () => {
   it('assistedHint（仍可自由修改）只在非 LISTED 時渲染，來源標籤保留', () => {
     expect(src).toContain('{!listedPlanWritesBlocked ? <span className="ml-1">{t.plans.source.assistedHint}</span> : null}');
     expect(src).toContain('{t.plans.source[planDraft.source]}');
+  });
+
+  it('LISTED 時列表按鈕、退回提示、Modal 標題、intro、進階提示都改用唯讀文案', () => {
+    expect(src).toContain('title={listedPlanWritesBlocked ? t.actions.view : t.actions.edit}');
+    expect(src).toContain('aria-label={listedPlanWritesBlocked ? t.actions.view : t.actions.edit}');
+    expect(src).toContain('listedPlanWritesBlocked ? t.plans.review.changesHintListed : t.plans.review.changesHint');
+    expect(src).toContain('listedPlanWritesBlocked ? t.plans.viewTitle(planDraft.name) : t.plans.editTitle(planDraft.name)');
+    expect(src).toContain('{!listedPlanWritesBlocked ? <Alert tone="info">{t.plans.quick.intro}</Alert> : null}');
+    expect(src).toContain('listedPlanWritesBlocked ? t.plans.quick.listedAdvancedHint : t.plans.quick.advancedHint');
+    expect(tripsPage.actions.view).toBe('檢視');
+    expect(tripsPage.plans.viewTitle('A')).toBe('檢視方案「A」');
+    expect(tripsPage.plans.review.changesHintListed).toContain('無法儲存或送審');
+    expect(tripsPage.plans.quick.listedAdvancedHint).toContain('僅供檢視');
   });
 });
