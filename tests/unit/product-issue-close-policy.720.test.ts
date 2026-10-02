@@ -73,7 +73,9 @@ const verifiedCloseApproval = {
   verdict: 'CLOSE_APPROVED',
   runId: '2026-10-01-product-r01',
   exactHead: 'b'.repeat(40),
-  reachableFromCurrentMain: true,
+  reachableFromCurrentMain: false,
+  latestMergeSha: 'e'.repeat(40),
+  latestMergeReachableFromCurrentMain: true,
   trusted: true,
   sameIssue: true,
   beforeClose: true,
@@ -90,6 +92,7 @@ function evaluate(overrides: Record<string, unknown> = {}) {
       state: 'closed',
       merged_at: '2026-10-01T00:40:00Z',
       head: { sha: 'b'.repeat(40) },
+      merge_commit_sha: 'e'.repeat(40),
       body: '<!-- pr-lifecycle\nissue: 704\nstate: MERGED\n-->\nWORKSTREAM: PRODUCT_MAINLINE',
     }],
     comments: [readyComment()],
@@ -176,11 +179,11 @@ describe('#720 executable Product Issue close gate', () => {
     for (const patch of [
       { role: 'LUNA' }, { verdict: 'FIX_REQUIRED' }, { trusted: false }, { sameIssue: false },
       { beforeClose: false }, { afterLastClose: false }, { runId: 'previous-run' },
-      { exactHead: 'c'.repeat(40) }, { reachableFromCurrentMain: false },
+      { exactHead: 'c'.repeat(40) }, { latestMergeReachableFromCurrentMain: false },
     ]) expect(evaluate({ verifiedCloseApproval: { ...verifiedCloseApproval, ...patch } }).allowed).toBe(false);
 
     const newer = { number: 706, state: 'closed', merged_at: '2026-10-01T00:50:00Z',
-      head: { sha: 'd'.repeat(40) },
+      head: { sha: 'd'.repeat(40) }, merge_commit_sha: 'f'.repeat(40),
       body: '<!-- pr-lifecycle\nissue: 704\nstate: MERGED\n-->\nWORKSTREAM: PRODUCT_MAINLINE' };
     expect(evaluate({ mergedPullRequests: [newer] }).errors.join('\n')).toContain('latest merged Product PR #706 head');
     expect(evaluate({ mergedPullRequests: [{ ...newer, number: 707,
@@ -199,9 +202,7 @@ describe('#720 executable Product Issue close gate', () => {
   });
 
   it('allows a fresh fully verified close-ready packet', () => {
-    const result = evaluate();
-    expect(result.allowed).toBe(true);
-    expect(result.runId).toBe('2026-10-01-product-r01');
+    const result = evaluate(); expect(result.allowed).toBe(true); expect(result.runId).toBe('2026-10-01-product-r01');
   });
 
   it('renders durable ISSUE_CLOSED_OBSERVED handoff', () => {
