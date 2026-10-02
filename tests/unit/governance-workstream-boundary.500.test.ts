@@ -433,16 +433,17 @@ describe('governance boundary regression #500', () => {
     const github: any = { rest: { pulls: { get: vi.fn(async () => ({ data: structuredClone(live) })) },
       issues: { listComments: vi.fn(), removeLabel: vi.fn(), getLabel: vi.fn(async () => ({})), addLabels: vi.fn(), createComment: vi.fn(async ({ body }: any) => { comments.push({ body, user: { login: 'github-actions[bot]', id: 41898282 } }); return { data: { id: comments.length } }; }) },
       repos: { getBranch: vi.fn(async () => ({ data: { commit: { sha: 'c'.repeat(40) } } })), compareCommitsWithBasehead: vi.fn(async () => ({ data: { status: 'ahead' } })), getContent: vi.fn(async () => ({ data: { type: 'file' } })) },
-      actions: { getWorkflowRun: vi.fn(async () => ({ data: { head_sha: live.head.sha, status: 'completed', conclusion: 'success', event: 'pull_request', path: '.github/workflows/ci.yml' } })) },
+      actions: { listWorkflowRuns: vi.fn(async () => ({ data: { total_count: 1, workflow_runs: [{ id: 1, head_sha: live.head.sha, event: 'pull_request', path: '.github/workflows/ci.yml', created_at }] } })), getWorkflowRun: vi.fn(async () => ({ data: { head_sha: live.head.sha, status: 'completed', conclusion: 'success', event: 'pull_request', path: '.github/workflows/ci.yml' } })) },
     }, paginate: vi.fn(async () => comments) };
     const call = () => boundaryPolicy.reconcileTerminalPr({ github, owner: 'owner', repo: 'repo', current: live });
     await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_RESOLVED');
     expect(github.rest.repos.getContent).toHaveBeenCalledWith(expect.objectContaining({ ref: 'c'.repeat(40), path: 'docs/AGENT-EXECUTION.md' }));
     github.rest.repos.compareCommitsWithBasehead.mockResolvedValue({ data: { status: 'diverged' } });
     await call(); expect(comments.at(-1).body).toContain('LIVE_MAIN_RECEIPT_UNVERIFIED');
-    for (const field of ['MAIN_FILE_RE_READ', 'EXACT_HEAD_CI_RUN']) for (const placeholder of ['TBD', 'UNKNOWN', 'N/A', '-']) {
-      expect(terminalBodyPlan({ ...closed, body: verified.replace(new RegExp(`${field}: [^\\n]*`), `${field}: ${placeholder}`), merge_commit_sha: 'a'.repeat(40) })?.unsyncedFields).toContain(field);
-    }
+    github.rest.repos.compareCommitsWithBasehead.mockResolvedValue({ data: { status: 'ahead' } });
+    github.rest.actions.listWorkflowRuns.mockResolvedValue({ data: { total_count: 2, workflow_runs: [{ id: 2, head_sha: live.head.sha, event: 'pull_request', path: '.github/workflows/ci.yml', run_started_at: '2026-10-02T08:00:00Z' }, { id: 1, head_sha: live.head.sha, event: 'pull_request', path: '.github/workflows/ci.yml', run_started_at: '2026-10-02T09:00:00Z' }] } });
+    await call(); expect(comments.at(-1).body).toContain('receipt does not name latest exact-head CI run');
+    for (const field of ['MAIN_FILE_RE_READ', 'EXACT_HEAD_CI_RUN']) for (const placeholder of ['TBD', 'UNKNOWN', 'N/A', '-']) expect(terminalBodyPlan({ ...closed, body: verified.replace(new RegExp(`${field}: [^\\n]*`), `${field}: ${placeholder}`), merge_commit_sha: 'a'.repeat(40) })?.unsyncedFields).toContain(field);
   });
   it.each(['Historical prose only', 'Historical notes\n```text\nexample only',
     '```text\n<!-- pr-lifecycle\nstate: ACTIVE\n-->\n```'])('ignores prose and example-only lifecycle markers', body => {

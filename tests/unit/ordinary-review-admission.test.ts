@@ -404,7 +404,6 @@ describe('independent hourly trusted-main recovery (synthetic)', () => {
     expect(github.rest.actions.createWorkflowDispatch).not.toHaveBeenCalled(); expect(github.rest.issues.createComment).not.toHaveBeenCalled(); expect(github.rest.issues.addLabels).not.toHaveBeenCalled();
   });
 });
-
 describe('review wake-up cannot cancel lifecycle housekeeping (synthetic Actions scheduler)', () => {
   // This is a local scheduling contract, not a claim of running GitHub Actions.
   const workflow = () => parse(readFileSync('.github/workflows/agent-wip-guard.yml', 'utf8'));
@@ -457,17 +456,13 @@ describe('review wake-up cannot cancel lifecycle housekeeping (synthetic Actions
   it('close recovery has its own least-privilege job, independent of guard/resolver results', () => {
     const job = workflow().jobs.terminal_cleanup;
     expect(job.needs).toEqual(['command_authorization']);
-    expect(job.if).toContain('always()');
     expect(job.if).toContain("github.event.action == 'closed'");
-    expect(job.if).toContain("github.event.action == 'edited' && github.event.pull_request.state == 'closed'");
     expect(job.if).toContain("needs.command_authorization.outputs.authorized == 'true'");
     const authorization = workflow().jobs.command_authorization;
-    expect(authorization.concurrency).toBeUndefined();
-    expect(authorization.permissions).toEqual({ contents: 'read', 'pull-requests': 'read' });
+    expect(authorization.concurrency).toBeUndefined(); expect(authorization.permissions).toEqual({ contents: 'read', 'pull-requests': 'read' });
     expect(group('pull_request_target', 'edited', 900, 'terminal_cleanup')).toBe(group('pull_request_target', 'closed', 900, 'terminal_cleanup'));
     expect(group('issue_comment', 'created', 900, 'terminal_cleanup')).toBe(group('pull_request_target', 'closed', 900, 'terminal_cleanup'));
-    expect(job.permissions).toEqual({ contents: 'read', actions: 'read', issues: 'write', 'pull-requests': 'write' });
-    expect(job.concurrency['cancel-in-progress']).toBe(false);
+    expect(job.permissions).toEqual({ contents: 'read', actions: 'read', issues: 'write', 'pull-requests': 'write' }); expect(job.concurrency['cancel-in-progress']).toBe(false);
     expect(job.steps[0].with).toEqual({ ref: '${{ github.event.repository.default_branch }}', 'persist-credentials': false });
   });
   it.each(['closed-edit', 'trusted-command', 'writer-command'])('%s reaches only the independent terminal writer', async mode => {

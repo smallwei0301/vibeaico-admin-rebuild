@@ -241,6 +241,11 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
       const reaches = async (base, head) => base === head || ['ahead', 'identical'].includes((await github.rest.repos.compareCommitsWithBasehead({ owner, repo, basehead: `${base}...${head}` })).data.status);
       if (!await reaches(merge, declared) || !await reaches(declared, main)) throw Error('merge or declared main is not reachable from live main');
       if ((await github.rest.repos.getContent({ owner, repo, path, ref: main })).data?.type !== 'file') throw Error('main file re-read failed');
+      const inventory = (await github.rest.actions.listWorkflowRuns({ owner, repo, workflow_id: 'ci.yml', head_sha: observed.head.sha, event: 'pull_request', per_page: 100 })).data;
+      if (!Array.isArray(inventory.workflow_runs) || inventory.total_count > inventory.workflow_runs.length) throw Error('exact-head CI inventory incomplete');
+      const latest = inventory.workflow_runs.filter(item => item.head_sha === observed.head.sha && item.path === '.github/workflows/ci.yml' && item.event === 'pull_request')
+        .sort((a, b) => b.id - a.id)[0];
+      if (!latest || latest.id !== Number(runId)) throw Error('receipt does not name latest exact-head CI run');
       const run = (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: Number(runId) })).data;
       if (run.head_sha !== observed.head?.sha || run.status !== 'completed' || run.conclusion !== 'success' || run.event !== 'pull_request' || run.path !== '.github/workflows/ci.yml') throw Error('exact-head CI run is not verified');
     } catch (error) { liveFailure = `LIVE_MAIN_RECEIPT_UNVERIFIED:${error.status ?? error.message ?? 'unknown'}`; }
