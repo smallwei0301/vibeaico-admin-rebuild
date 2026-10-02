@@ -53,6 +53,10 @@ jobs:
               owner, repo, issue_number: issueNumber,
             });
             if (issue.pull_request || issue.state !== 'closed') return;
+            if (!context.payload.issue.closed_at || issue.closed_at !== context.payload.issue.closed_at) {
+              core.notice('Close event was superseded; skip admission for a newer generation');
+              return;
+            }
 
             const { data: repository } = await github.rest.repos.get({ owner, repo });
             const { data: branch } = await github.rest.repos.getBranch({
@@ -103,7 +107,7 @@ jobs:
                   owner,
                   repo,
                   path: `docs/metrics/agent-runs/${ready.handoff.runId}.json`,
-                  ref: repository.default_branch,
+                  ref: currentMainSha,
                 });
                 const data = response.data;
                 if (!Array.isArray(data) && data.type === 'file' && data.encoding === 'base64' && typeof data.content === 'string') {
@@ -186,6 +190,10 @@ jobs:
               }
             }
 
+            // Bind every input to the captured SHA, then re-read after slow API work.
+            const { data: admissionBranch } = await github.rest.repos.getBranch({
+              owner, repo, branch: repository.default_branch,
+            });
             const result = policy.evaluateProductIssueClose({
               issue,
               currentMainSha,
@@ -197,6 +205,10 @@ jobs:
               verifiedCloseApproval,
               lastClosedCaptureAt,
             });
+            if (result.applicable && admissionBranch.commit.sha !== currentMainSha) {
+              result.allowed = false;
+              result.errors.push(`Current main changed during admission: ${currentMainSha} -> ${admissionBranch.commit.sha}; require fresh close-ready evidence`);
+            }
 
             await core.summary
               .addHeading('Product Issue close admission')
@@ -228,7 +240,12 @@ jobs:
               }
             }
 
-            if (!result.allowed) {
+            const rejectClose = async (errors) => {
+              const { data: rejectedIssue } = await github.rest.issues.get({ owner, repo, issue_number: issueNumber });
+              if (rejectedIssue.state !== 'closed' || rejectedIssue.closed_at !== issue.closed_at) {
+                core.notice('Issue changed before rejection; skip reopening a newer generation');
+                return;
+              }
               await github.rest.issues.update({
                 owner, repo, issue_number: issueNumber, state: 'open',
               });
@@ -244,12 +261,15 @@ jobs:
                   `CURRENT_MAIN: ${currentMainSha}`,
                   `RUN_ID: ${result.runId ?? 'missing'}`,
                   '',
-                  ...result.errors.map((error) => `- ${error}`),
+                  ...errors.map((error) => `- ${error}`),
                   '',
                   'Fix the close-ready evidence or remaining linked PR first. Do not immediately close again or rewrite history to make the gate green.',
                 ].join('\n'),
               });
-              core.setFailed(result.errors.join('; '));
+              core.setFailed(errors.join('; '));
+            };
+            if (!result.allowed) {
+              await rejectClose(result.errors);
               return;
             }
 
@@ -269,6 +289,16 @@ jobs:
             const freshComments = await github.paginate(github.rest.issues.listComments, {
               owner, repo, issue_number: issueNumber, per_page: 100,
             });
+            const { data: captureBranch } = await github.rest.repos.getBranch({ owner, repo, branch: repository.default_branch });
+            if (captureBranch.commit.sha !== currentMainSha) {
+              await rejectClose([`Current main changed before capture: ${currentMainSha} -> ${captureBranch.commit.sha}; require fresh close-ready evidence`]);
+              return;
+            }
+            const { data: captureIssue } = await github.rest.issues.get({ owner, repo, issue_number: issueNumber });
+            if (captureIssue.state !== 'closed' || captureIssue.closed_at !== issue.closed_at) {
+              core.notice('Issue changed before capture; skip ISSUE_CLOSED_OBSERVED');
+              return;
+            }
             if (!freshComments.some((comment) => {
               if (comment.user?.login !== 'github-actions[bot]' || comment.user?.type !== 'Bot') return false;
               if (!comment.body?.includes(policy.PRODUCT_ISSUE_CLOSE_CAPTURE_MARKER)) return false;

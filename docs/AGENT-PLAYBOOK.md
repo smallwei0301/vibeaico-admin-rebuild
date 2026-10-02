@@ -1481,10 +1481,10 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 ### PB-044 — 破壞性動作前的查證，有效期只有幾分鐘
 
-- 首次／最近：2026-09-14／2026-09-14
-- 發生次數：1
-- Issue／PR／CI：shared TEST 漂移排查；CI 與 scout 並行跑 integration
-- 分類：TEST DB／Agent
+- 首次／最近：2026-09-14／2026-10-02
+- 發生次數：2（#720／#735 審查發現同一快照過期家族；不推定已造成線上錯誤）
+- Issue／PR／CI：shared TEST 漂移排查；CI 與 scout 並行跑 integration；#720／#735 review 5387368429、comments 4162033639／4162033645
+- 分類：TEST DB／Agent／GitHub lifecycle
 - 事件：07:20 查詢 TEST 上 `trip_departures` 的 `formation_status`，結果是「3 列全部 COLLECTING」，於是告訴 Owner「drop 掉再重建是安全的」。07:45 準備真的執行 drop/recreate 之前再查一次，結果變成「1 列 AT_RISK + 2 列 COLLECTING」——中間 25 分鐘內 CI 跑了 #440 的 integration 測試，seed 改掉了資料。
 - 證據：兩次查詢間隔、查詢結果各一份、migration 日誌顯示該時間段有 seed 執行。
 - 根因：在共用環境（TEST 被 CI 與其他 lane 共用）上，「我剛剛查過」不等於「現在還是這樣」。查證與破壞性動作之間隔了一次對話往返，環境狀態有時間改變。
@@ -1496,6 +1496,8 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
   3. 在共用資源上，任何「我剛驗過」都必須問「期間有沒有其他工作可能改過」，特別是 CI lane 在跑時。
 - 驗證：後續 TEST 動作前先確認無 CI 運行，或改用原子查證+動作；重查成功執行且資料一致。
 - 狀態：已防止
+
+**2026-10-02 #720／#735 同根因補充：** Product close guard 在耗時 permission／pagination／ancestry 檢查前只讀一次 main，可能用舊 main 的成功 CI 批准已前進的 main；拒絕後也未核對 `closed_at`，可能 reopen 人工重新關閉的新 generation。這是 review 查出的可重現競態，沒有 remote 事故證據。Run 讀取改綁不可變 main SHA；admission／capture 前重讀 default branch，不一致即拒絕舊證據；reopen 與 capture 前回讀 Issue，event 與 live `closed_at` 不一致則停止舊事件的寫入。從 workflow 擷取真實 github-script，以 mock API 驗 main 前進、reopen／reclose、未知讀取、pending CI、正常 close 與 capture 冪等；原版 8 failed／3 passed，修正後該 11 cases 通過。GitHub REST 的 read→write 沒有原子 compare-and-swap，這是縮短競態窗口及拒絕已觀測漂移，不能宣稱消除外部併發；不編造歷史 capture 或 Product Run 事件。source／main CI 結果由本次 PR 與 #720 closeout 提供。
 
 ### PB-045 — 並行工作的判準是檔案所有權與 Issue 邊界，不是功能描述
 
