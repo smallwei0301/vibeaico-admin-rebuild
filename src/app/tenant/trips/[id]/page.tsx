@@ -306,8 +306,9 @@ export default function TripDetailPage() {
     return true;
   };
 
+  // issue #42：LISTED 行程仍可開啟方案編輯器（唯讀），季節價格清單才看得到；
+  // 所有寫入入口各自以 blockListedPlanWrite() 早退。
   const openPlanEditor = (draft: TripPlan) => {
-    if (blockListedPlanWrite()) return;
     setPlanEditorMode('quick');
     setShowChildPrice(draft.childPrice !== null);
     setPlanDraft(draft);
@@ -763,7 +764,6 @@ export default function TripDetailPage() {
         <div className="btn-group">
           <Button
             variant="outline" size="sm" title={t.actions.edit} aria-label={t.actions.edit}
-            disabled={listedPlanWritesBlocked}
             onClick={() => openPlanEditor(p)}
           >
             <Pencil size={13} />
@@ -1316,7 +1316,7 @@ export default function TripDetailPage() {
       >
         {planDraft ? (
           <div className="flex flex-col gap-3">
-            {listedPlanWritesBlocked ? <Alert tone="warning">{t.plans.review.unavailable}</Alert> : null}
+            {listedPlanWritesBlocked ? <Alert tone="warning">{t.plans.review.listedReadonly}</Alert> : null}
             {planDraft.source && planDraft.source !== 'GUIDE' ? (
               <Alert tone="info">
                 <span className="font-semibold">{t.plans.source[planDraft.source]}</span>
@@ -1333,6 +1333,7 @@ export default function TripDetailPage() {
             {planEditorMode === 'quick' ? (
               <>
                 <Alert tone="info">{t.plans.quick.intro}</Alert>
+                <fieldset disabled={listedPlanWritesBlocked} className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
 
                 <FormGroup>
                   <Label htmlFor="plan-quick-name" required>{t.plans.fields.nameLabel}</Label>
@@ -1439,6 +1440,7 @@ export default function TripDetailPage() {
                     </p>
                   </div>
                 </div>
+                </fieldset>
 
                 <div className="rounded-lg border border-neutral-200 p-3">
                   <Button
@@ -1458,6 +1460,7 @@ export default function TripDetailPage() {
             ) : (
               <>
                 <Alert tone="info">{t.plans.advanced.intro}</Alert>
+                <fieldset disabled={listedPlanWritesBlocked} className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <FormGroup>
                     <Label htmlFor="plan-advanced-sales-mode" required>{t.plans.fields.salesModeLabel}</Label>
@@ -1596,6 +1599,7 @@ export default function TripDetailPage() {
                   </FormGroup>
                 ) : null}
 
+                </fieldset>
                 {/* ---------------------------------------- 季節定價（issue #42） */}
                 <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-3">
                   <div className="flex items-center justify-between">

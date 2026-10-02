@@ -230,6 +230,7 @@ export const tripsPage = {
       changesHint: '管理者要求修改，請調整後重新儲存送審。',
       noteLabel: '管理者說明',
       unavailable: '此行程已上架 Midao，方案與季節價格異動需審核。目前尚未開放送審，本次未儲存任何變更。',
+      listedReadonly: '此行程已上架 Midao，方案與季節價格目前僅供檢視；異動需審核，尚未開放送審，無法儲存變更。',
     },
     source: {
       label: '來源',
