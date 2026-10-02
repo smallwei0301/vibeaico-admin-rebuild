@@ -1481,10 +1481,10 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 ### PB-044 — 破壞性動作前的查證，有效期只有幾分鐘
 
-- 首次／最近：2026-09-14／2026-09-14
-- 發生次數：1
-- Issue／PR／CI：shared TEST 漂移排查；CI 與 scout 並行跑 integration
-- 分類：TEST DB／Agent
+- 首次／最近：2026-09-14／2026-10-02
+- 發生次數：2（#720／#735 審查發現同一快照過期家族；不推定已造成線上錯誤）
+- Issue／PR／CI：shared TEST 漂移排查；CI 與 scout 並行跑 integration；#720／#735 review 5387368429、comments 4162033639／4162033645
+- 分類：TEST DB／Agent／GitHub lifecycle
 - 事件：07:20 查詢 TEST 上 `trip_departures` 的 `formation_status`，結果是「3 列全部 COLLECTING」，於是告訴 Owner「drop 掉再重建是安全的」。07:45 準備真的執行 drop/recreate 之前再查一次，結果變成「1 列 AT_RISK + 2 列 COLLECTING」——中間 25 分鐘內 CI 跑了 #440 的 integration 測試，seed 改掉了資料。
 - 證據：兩次查詢間隔、查詢結果各一份、migration 日誌顯示該時間段有 seed 執行。
 - 根因：在共用環境（TEST 被 CI 與其他 lane 共用）上，「我剛剛查過」不等於「現在還是這樣」。查證與破壞性動作之間隔了一次對話往返，環境狀態有時間改變。
@@ -1496,6 +1496,8 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
   3. 在共用資源上，任何「我剛驗過」都必須問「期間有沒有其他工作可能改過」，特別是 CI lane 在跑時。
 - 驗證：後續 TEST 動作前先確認無 CI 運行，或改用原子查證+動作；重查成功執行且資料一致。
 - 狀態：已防止
+
+**2026-10-02 #720／#735 同根因補充：** Product close guard 在耗時 permission／pagination／ancestry 檢查前只讀一次 main，可能用舊 main 的成功 CI 批准已前進的 main；拒絕後也未核對 `closed_at`，可能 reopen 人工重新關閉的新 generation。這是 review 查出的可重現競態，沒有 remote 事故證據。Run 讀取改綁不可變 main SHA；admission／capture 前重讀 default branch，不一致即拒絕舊證據；reopen 與 capture 前回讀 Issue，event 與 live `closed_at` 不一致則停止舊事件的寫入。#739 finding 4162743182 另指出 checkout 後、首次 main 查詢前的政策版本競態：policy／Run／CI 一律綁 captured canonical main 的同一不可變 SHA；checkout 不同時只從該 main SHA 的 Contents API 讀六個固定政策／依賴檔，驗 Git blob hash後再 import，不執行 PR code/artifacts或加權限。初始 drift 用當前政策驗證；admission／capture 漂移時先載入新 SHA 政策重新分類，再 generation-safe 拒絕 Product；不能只 fail job 留下未驗 closed Issue（4162813188），或用舊 Governance 豁免跳過新版 Product gate（4162866600）。未知政策讀取仍中止，合法 current Governance 無 Product 副作用。loader 每個觀測 SHA 只讀一次，沒有無界 retry；4162995075 另指出六檔載入期間 main 可再次前進，故 fresh load/import 完成後重讀 branch，不同即 UNKNOWN 中止，不能採用中間 Governance 豁免；initial/admission/capture 三反例先 FAIL 後 PASS，沒有盲目重試或猜最新分類。最後 read/write 仍非原子。新 canonical reload 反例 baseline 5 failed／13 passed，修後通過；歷史 checkout RED 保留。從 workflow 擷取真實 github-script，以 mock API 驗 main 前進、reopen／reclose、未知讀取、pending CI、正常 close 與 capture 冪等；原版 8 failed／3 passed，修正後 actual-script 26 cases 通過。GitHub REST 的 read→write 沒有原子 compare-and-swap，這是縮短競態窗口及拒絕已觀測漂移，不能宣稱消除外部併發；不編造歷史 capture 或 Product Run 事件。獨立審查另以兩個 FAIL 反例指出 allowed-tail 過早移除 label；移除動作已延後到 current-policy／generation 回讀之後，新 generation 或 current Governance 不再受舊 Product label 操作影響，兩反例修後 PASS。source／main CI 結果由本次 PR 與 #720 closeout 提供。
 
 ### PB-045 — 並行工作的判準是檔案所有權與 Issue 邊界，不是功能描述
 
