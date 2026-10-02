@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { phoneContact } from '@/lib/public-phone';
 import { publicTripDetailsPage as t } from '@/i18n/zh-TW/pages/public-trip-details';
 import {
   createRequestSequencer, shouldApplyResult, shouldRefreshOnVisible,
@@ -210,5 +211,19 @@ describe('#11 client 有 initialData 時不重取', () => {
       expect(client).toMatch(/sequencer\.abortAll\(\);/);
       expect(client).not.toMatch(/let active = true/);
     });
+  });
+
+  it('phoneContact：phoneHref 有值 → 撥號連結；空字串 → 純文字；無電話 → none；未提供 phoneHref（首頁）→ 維持舊行為', () => {
+    expect(phoneContact({ phone: '03-123-4567', phoneHref: '031234567' })).toEqual({ kind: 'link', href: '031234567' });
+    expect(phoneContact({ phone: '02-1234-5678#12', phoneHref: '' })).toEqual({ kind: 'text' });
+    expect(phoneContact({ phone: '', phoneHref: '' })).toEqual({ kind: 'none' });
+    expect(phoneContact({ phone: '03-123-4567' })).toEqual({ kind: 'link', href: '031234567' });
+  });
+
+  it('季節價顯示：seasonalPricing 時標題改用 i18n 文案、團次顯示 unitPrice，並以誠實的 priceNote', () => {
+    expect(client).toContain('plan.seasonalPricing ? t.plans.seasonalHeadline');
+    expect(client).toContain('departure.unitPrice !== undefined');
+    expect(t.plans.priceNote).not.toContain('請先向店家確認');
+    expect(t.plans.seasonalHeadline).toContain('依出發日期');
   });
 });

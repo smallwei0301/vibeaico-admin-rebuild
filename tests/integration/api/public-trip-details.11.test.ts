@@ -13,6 +13,7 @@ const REQUEST_PLAN = randomUUID();
 const FIXED_PLAN = randomUUID();
 const REQUEST_DEPARTURE = randomUUID();
 const FIXED_DEPARTURE = randomUUID();
+const FIXED_SEASON = randomUUID();
 const SOLD_OUT_DEPARTURES = Array.from({ length: 125 }, () => randomUUID());
 const EXTRA_AVAILABLE_DEPARTURES = Array.from({ length: 6 }, () => randomUUID());
 const SLUG = `issue-11-${randomUUID().slice(0, 8)}`;
@@ -134,6 +135,12 @@ beforeAll(async () => {
     formation_status: 'COLLECTING',
     formation_deadline_at: `${FUTURE}T00:00:00.000Z`,
   };
+  // 季節定價（canonical 0128 trip_plan_seasons）：全年季節，price_override 2500（方案基本價 2200）。
+  mustWrite('trip_plan_seasons', await admin.from('trip_plan_seasons').insert({
+    id: FIXED_SEASON, tenant_id: SHOP_A.id, plan_id: FIXED_PLAN, name: `${TAG} 全年季節`,
+    start_month: 1, start_day: 1, end_month: 12, end_day: 31, price_override: 2500, active: true, sort_order: 0,
+  }));
+
   mustWrite('trip_departures', await admin.from('trip_departures').insert([
     {
       id: REQUEST_DEPARTURE, tenant_id: SHOP_A.id, trip_id: PUBLISHED_TRIP,
@@ -195,16 +202,19 @@ afterAll(async () => {
   };
 
   await runCleanup('trip_departures', () => admin.from('trip_departures').delete().in('id', allDepartureIds));
+  await runCleanup('trip_plan_seasons', () => admin.from('trip_plan_seasons').delete().eq('id', FIXED_SEASON));
   await runCleanup('trip_plans', () => admin.from('trip_plans').delete().in('id', [REQUEST_PLAN, FIXED_PLAN]));
   await runCleanup('trips', () => admin.from('trips').delete().in('id', [PUBLISHED_TRIP, FIXED_TRIP, DRAFT_TRIP, OTHER_TENANT_TRIP]));
 
-  const [departureReadback, planReadback, tripReadback] = await Promise.all([
+  const [departureReadback, planReadback, tripReadback, seasonReadback] = await Promise.all([
     admin.from('trip_departures').select('id').in('id', allDepartureIds),
     admin.from('trip_plans').select('id').in('id', [REQUEST_PLAN, FIXED_PLAN]),
     admin.from('trips').select('id').in('id', [PUBLISHED_TRIP, FIXED_TRIP, DRAFT_TRIP, OTHER_TENANT_TRIP]),
+    admin.from('trip_plan_seasons').select('id').eq('id', FIXED_SEASON),
   ]);
   for (const [label, result] of [
     ['trip_departures', departureReadback], ['trip_plans', planReadback], ['trips', tripReadback],
+    ['trip_plan_seasons', seasonReadback],
   ] as const) {
     if (result.error) cleanupFailures.push(`${label} cleanup readback failed: ${JSON.stringify(result.error)}`);
     else if ((result.data ?? []).length > 0) {
@@ -317,6 +327,9 @@ describe('#11 公開行程詳情頁與 API', () => {
     const fixedPlan = response.data.trip.plans[0];
     expect(fixedPlan.name).toBe(`${TAG} FIXED 方案`);
     expect(fixedPlan.departures.map((departure) => departure.seatsLeft)).toEqual([6]);
+    // 季節定價：全年季節 override 2500 → 團次 unitPrice 2500，方案標 seasonalPricing。
+    expect(fixedPlan.departures.map((departure) => departure.unitPrice)).toEqual([2500]);
+    expect((fixedPlan as unknown as { seasonalPricing?: boolean }).seasonalPricing).toBe(true);
     // 19 分冊 §2.1：固定團次公開成團資訊（最低人數、截止、狀態）。
     const formation = fixedPlan.departures[0] ?? {};
     expect(formation.minToDepart).toBe(4);

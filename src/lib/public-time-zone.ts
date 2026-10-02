@@ -9,8 +9,10 @@ export function resolvePublicTimeZone(value: unknown): string {
   const zone = value.trim();
   if (!zone || zone.length > 64) return PUBLIC_DEFAULT_TIME_ZONE;
   try {
-    new Intl.DateTimeFormat('en-US', { timeZone: zone }).format(new Date(0));
-    return zone;
+    // 回傳正規化後的 canonical 名稱；偏移寫法（如 +08:00）無法正規化成 IANA 名稱，回退台北。
+    const canonical = new Intl.DateTimeFormat('en-US', { timeZone: zone }).resolvedOptions().timeZone;
+    if (!canonical || /^[+-]\d/.test(canonical)) return PUBLIC_DEFAULT_TIME_ZONE;
+    return canonical;
   } catch {
     return PUBLIC_DEFAULT_TIME_ZONE;
   }

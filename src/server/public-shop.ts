@@ -33,6 +33,8 @@
 import { cache } from 'react';
 import { createAdminSupabase } from '@/server/supabase';
 import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
+import { buildPublicPhone } from '@/lib/public-phone';
+import { resolveSeasonUnitPrice, type PublicSeasonRow } from '@/lib/public-season-price';
 import { resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
 import { MAX_PUBLIC_GALLERY_IMAGES } from '@/lib/trip-gallery';
 import {
@@ -49,6 +51,8 @@ export type PublicShop = {
   name: string;
   description: string;
   phone: string;
+  /** 詳情輸出才有：可安全撥號的值（僅數字與 +，≤20 碼）；空字串＝不可撥號（例如含分機），只顯示文字。 */
+  phoneHref?: string;
   email: string;
   address: string;
   /** LINE 官方帳號基本 ID（例如 @abc1234x）；空字串＝店家沒填 */
@@ -79,6 +83,8 @@ export type PublicPlan = {
    * 透過上方的聯絡方式（LINE／電話）詢問，該按鈕本輪不做（見檔頭）。
    */
   salesMode: 'FIXED_DEPARTURE' | 'INSTANT' | 'REQUEST';
+  /** 方案有啟用的季節定價：基本價只是參考，實際價格依各團次出發日（見團次 unitPrice）。 */
+  seasonalPricing?: true;
 };
 
 export type PublicTrip = {
@@ -106,6 +112,8 @@ export type PublicTripDetailDeparture = {
   departsOn: string;
   startTime: string;
   seatsLeft: number;
+  /** 依出發日套用季節定價後的實際單價（與 create_tour_order 同規則）；方案沒有啟用季節時不輸出。 */
+  unitPrice?: number;
   /* #11／19 分冊 §2.1：固定團次成團資訊。canonical 值為 null／缺少時前端不顯示該項。 */
   /** 建立團次時 snapshot 的最低成團人數（`min_to_depart_snapshot`）。 */
   minToDepart?: number | null;
@@ -355,7 +363,6 @@ function limitPublicPlanText(plan: PublicPlan): PublicPlan {
 
 const MAX_PUBLIC_URL_CHARS = 2048;
 const MAX_PUBLIC_EMAIL_CHARS = 254;
-const MAX_PUBLIC_PHONE_CHARS = 20;
 const MAX_PUBLIC_LINE_ID_CHARS = 64;
 
 /** email：過長或格式不合就不輸出（空字串），不截斷成錯誤的地址。 */
@@ -363,12 +370,6 @@ function publicEmail(value: string): string {
   const email = value.trim();
   if (email.length > MAX_PUBLIC_EMAIL_CHARS || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return '';
   return email;
-}
-
-/** phone：只留數字與 +；為空或超過 20 碼就不輸出。 */
-function publicPhone(value: string): string {
-  const phone = value.replace(/[^\d+]/g, '');
-  return phone.length === 0 || phone.length > MAX_PUBLIC_PHONE_CHARS ? '' : phone;
 }
 
 /** LINE 基本 ID：超過 64 字元或含 [A-Za-z0-9@._-] 以外字元就不輸出。 */
@@ -385,7 +386,7 @@ function limitPublicShopText(shop: PublicShop): PublicShop {
     ...shop,
     name: truncateChars(shop.name, MAX_PUBLIC_LIST_ITEM_CHARS),
     description: truncateChars(shop.description, MAX_PUBLIC_SHORT_TEXT_CHARS),
-    phone: publicPhone(shop.phone),
+    ...buildPublicPhone(shop.phone),
     email: publicEmail(shop.email),
     address: truncateChars(shop.address, MAX_PUBLIC_LIST_ITEM_CHARS),
     lineBasicId: publicLineBasicId(shop.lineBasicId),
@@ -611,6 +612,39 @@ async function loadPublicTripDetailsUncached(
     .slice(0, MAX_PUBLIC_PLANS_OUTPUT)
     .map((r) => limitPublicPlanText(mapPublicPlan(r)));
 
+  // 季節定價（canonical 0128 trip_plan_seasons、0132 create_tour_order 的解析規則）：一次查回輸出方案的啟用季節。
+  // 一次查詢上限 1000 列（PostgREST 預設）；達上限視為資料可能不完整，不輸出 unitPrice（避免顯示錯誤價格），
+  // 但仍標 seasonalPricing，讓畫面誠實說明價格依出發日期而定。
+  const SEASON_QUERY_LIMIT = 1000;
+  const seasonsByPlan = new Map<string, PublicSeasonRow[]>();
+  let seasonsIncomplete = false;
+  if (plans.length > 0) {
+    const { data: seasonRows, error: seasonError } = await admin.from('trip_plan_seasons')
+      .select('id, plan_id, start_month, start_day, end_month, end_day, price_override, sort_order')
+      .eq('tenant_id', shopData.tenantId)
+      .in('plan_id', plans.map((plan) => plan.id))
+      .eq('active', true)
+      .order('plan_id', { ascending: true })
+      .order('id', { ascending: true })
+      .range(0, SEASON_QUERY_LIMIT - 1);
+    if (seasonError) throw queryTripDetailsFailed('trip_plan_seasons', seasonError);
+    const rows = (seasonRows ?? []) as unknown as Array<Record<string, unknown>>;
+    seasonsIncomplete = rows.length >= SEASON_QUERY_LIMIT;
+    for (const r of rows) {
+      const list = seasonsByPlan.get(r.plan_id as string) ?? [];
+      list.push({
+        id: r.id as string,
+        startMonth: Number(r.start_month),
+        startDay: Number(r.start_day),
+        endMonth: Number(r.end_month),
+        endDay: Number(r.end_day),
+        priceOverride: r.price_override === null || r.price_override === undefined ? null : Number(r.price_override),
+        sortOrder: Number(r.sort_order ?? 0),
+      });
+      seasonsByPlan.set(r.plan_id as string, list);
+    }
+  }
+
   // 只有 FIXED_DEPARTURE／REQUEST 方案進入團次查詢集合（30 個額度只算這兩類）。INSTANT（及未知模式）
   // 一律不查團次、departures 為 []、也不標 departuresNotLoaded：canonical 自選時間流程只顯示重新驗證過的
   // 導遊 availability，INSTANT 方案若有手動或私人用途的 OPEN 團次，不得公開成「近期開放日期」。
@@ -669,6 +703,9 @@ async function loadPublicTripDetailsUncached(
           departsOn: departure.departs_on as string,
           startTime: departure.start_time == null ? '' : String(departure.start_time).slice(0, 5),
           seatsLeft: soldOut ? 0 : capacity - seatsBooked,
+          ...(seasonsByPlan.has(plan.id) && !seasonsIncomplete
+            ? { unitPrice: resolveSeasonUnitPrice(departure.departs_on as string, seasonsByPlan.get(plan.id)!, plan.pricePerPerson) }
+            : {}),
           ...(soldOut ? { soldOut: true } : {}),
           // M1：成團欄位只對 FIXED_DEPARTURE 輸出，REQUEST／INSTANT 的輸出不帶，
           // 以免與 seatsLeft 合併後被反推出 capacity／占位資訊。
@@ -765,6 +802,7 @@ async function loadPublicTripDetailsUncached(
         ? row.refund_policy_type : 'STANDARD',
       plans: plans.map((plan) => ({
         ...plan,
+        ...(seasonsByPlan.has(plan.id) || seasonsIncomplete ? { seasonalPricing: true as const } : {}),
         departures: departuresByPlan.get(plan.id)?.departures ?? [],
         departuresMayBeTruncated: departuresByPlan.get(plan.id)?.mayBeTruncated ?? false,
         ...(departuresByPlan.get(plan.id)?.soldOutOmitted ? { soldOutOmitted: true } : {}),

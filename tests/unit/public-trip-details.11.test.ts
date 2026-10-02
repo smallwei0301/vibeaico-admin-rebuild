@@ -17,6 +17,7 @@ const fakeState = vi.hoisted(() => ({
   planText: undefined as undefined | { name?: string; description?: string },
   tenantBasic: undefined as undefined | Record<string, unknown>,
   lineId: '@abc',
+  seasons: [] as Array<Record<string, unknown>>,
   modeFor: null as null | ((i: number) => string),
   active: 0,
   maxActive: 0,
@@ -35,6 +36,7 @@ vi.mock('@/server/supabase', () => ({
           const id = filters.shop_code === 'demo' ? 'tenant-1' : 'tenant-2';
           return { data: { id, shop_code: filters.shop_code, name: 'Demo', business_type: null, tenant_settings: fakeState.tenantBasic ? { basic: fakeState.tenantBasic, line: { lineBasicId: fakeState.lineId } } : null }, error: null };
         }
+        if (table === 'trip_plan_seasons') return { data: fakeState.seasons, error: null };
         if (table === 'trips') {
           const all = [
             { id: 'trip-1', tenant_id: 'tenant-1', slug: 'hike', status: 'PUBLISHED' },
@@ -219,6 +221,7 @@ describe('#11 公開行程詳情：方案團次查詢併發上限', () => {
     fakeState.planText = undefined;
     fakeState.tenantBasic = undefined;
     fakeState.lineId = '@abc';
+    fakeState.seasons = [];
     fakeState.active = 0;
     fakeState.maxActive = 0;
     fakeState.calls = [];
@@ -569,6 +572,35 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
       expect(r.ids).toEqual(['c-1', 'c-2', 'c-3']);
     });
 
+    it('正規化為 canonical 名稱；偏移寫法回退台北（T1）', async () => {
+      const { resolvePublicTimeZone } = await import('@/lib/public-time-zone');
+      expect(resolvePublicTimeZone('asia/taipei')).toBe('Asia/Taipei');
+      expect(resolvePublicTimeZone(' America/Los_Angeles ')).toBe('America/Los_Angeles');
+      expect(resolvePublicTimeZone('+08:00')).toBe('Asia/Taipei');
+    });
+
+    it('Q2：半夜 00:00 輸出 "00:00"，不是 "24:00"', async () => {
+      const { tenantNowParts } = await import('@/lib/public-time-zone');
+      // UTC 2098-01-01 16:00 ＝ 台北 2098-01-02 00:00
+      expect(tenantNowParts('Asia/Taipei', Date.parse('2098-01-01T16:00:00Z'))).toEqual({ today: '2098-01-02', hm: '00:00' });
+    });
+
+    it('Q4：超過 64 字元一律回退（即使 Intl 接受）', async () => {
+      const { resolvePublicTimeZone } = await import('@/lib/public-time-zone');
+      const original = Intl.DateTimeFormat;
+      const long = 'Z'.repeat(80);
+      const stub = function (this: unknown, _l: unknown, o: { timeZone: string }) {
+        return { format: () => '', resolvedOptions: () => ({ timeZone: o.timeZone }) };
+      } as unknown as typeof Intl.DateTimeFormat;
+      (Intl as { DateTimeFormat: unknown }).DateTimeFormat = stub;
+      try {
+        expect(resolvePublicTimeZone(long)).toBe('Asia/Taipei');
+        expect(resolvePublicTimeZone('Z'.repeat(64))).toBe('Z'.repeat(64));
+      } finally {
+        (Intl as { DateTimeFormat: unknown }).DateTimeFormat = original;
+      }
+    });
+
     it.each([undefined, 'Mars/Phobos', 42, 'x'.repeat(80)])('時區 %j 缺值或無效 → 回退台北（台北 1/2 10:00）', async (tz) => {
       const r = await run(tz);
       expect(r.timeZone).toBe('Asia/Taipei');
@@ -592,10 +624,25 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
       expect((await shopWith({ tenantEmail: 'shop@example.com' })).email).toBe('shop@example.com');
     });
 
-    it('phone：只留數字與 +；超過 20 碼或為空 → 空字串', async () => {
-      expect((await shopWith({ tenantPhone: '+886 (2) 1234-5678' })).phone).toBe('+886212345678');
-      expect((await shopWith({ tenantPhone: '1'.repeat(21) })).phone).toBe('');
-      expect((await shopWith({ tenantPhone: 'call me' })).phone).toBe('');
+    it('phone（T3）：顯示字串保留原樣、phoneHref 只留數字與 +；含分機或過長 → phoneHref 為空字串', async () => {
+      const a = await shopWith({ tenantPhone: '03-123-4567' });
+      expect(a.phone).toBe('03-123-4567');
+      expect(a.phoneHref).toBe('031234567');
+      const b = await shopWith({ tenantPhone: '02-1234-5678#12' });
+      expect(b.phone).toBe('02-1234-5678#12');
+      expect(b.phoneHref).toBe('');
+      for (const withExt of ['02-1234-5678 ext. 12', '02-1234-5678 轉 12', '02-1234-5678 分機12', '02-1234 x12']) {
+        expect((await shopWith({ tenantPhone: withExt })).phoneHref, withExt).toBe('');
+      }
+      expect((await shopWith({ tenantPhone: '+886 2 1234 5678' })).phoneHref).toBe('+88621234 5678'.replace(' ', ''));
+      expect((await shopWith({ tenantPhone: '1'.repeat(21) })).phoneHref).toBe('');
+      const long = await shopWith({ tenantPhone: '9'.repeat(100) });
+      expect(Array.from(long.phone)).toHaveLength(40);
+      expect(long.phoneHref).toBe('');
+      const text = await shopWith({ tenantPhone: 'call me' });
+      expect(text.phone).toBe('call me');
+      expect(text.phoneHref).toBe('');
+      expect((await shopWith({ tenantPhone: '   ' })).phone).toBe('');
     });
 
     it('lineBasicId（C2）：超過 64 或含非 [A-Za-z0-9@._-] 字元 → 空字串', async () => {
@@ -610,7 +657,8 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
 
     it('client 對空字串不顯示對應按鈕', () => {
       const actions = readFileSync(resolve(ROOT, 'src/components/public/PublicContactActions.tsx'), 'utf8');
-      expect(actions).toContain('if (shop.phone) {');
+      expect(actions).toContain("phone.kind === 'link'");
+      expect(actions).toContain("phone.kind === 'text'");
       expect(actions).toContain('if (shop.email) {');
       expect(actions).toContain('if (shop.lineBasicId) {');
     });
@@ -626,6 +674,40 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     expect(trip.coverImageUrl).toBe('');
     expect(trip.galleryUrls).toEqual([ok]);
     expect(trip.meetingPointMapUrl).toBe('');
+  });
+
+  describe('季節單價（0132 規則）', () => {
+    const season = (over: Record<string, unknown>) => ({
+      id: 's-a', plan_id: 'plan-0', start_month: 7, start_day: 1, end_month: 8, end_day: 31, price_override: 3000, sort_order: 0, ...over,
+    });
+    const loadSeason = async (rows: Array<Record<string, unknown>>, departs: string[]) => {
+      fakeState.planCount = 1;
+      fakeState.seasons = rows;
+      fakeState.customRows = departs.map((d) => ({ departs_on: d, start_time: '09:00:00', seats_booked: 0, capacity: 5 }));
+      const { loadPublicTripDetails } = await import('@/server/public-shop');
+      return (await loadPublicTripDetails('demo', 'hike'))!.trip.plans[0];
+    };
+
+    it('命中季節的團次輸出 unitPrice，未命中用基本價 100；方案標 seasonalPricing', async () => {
+      const plan = await loadSeason([season({})], ['2098-07-15', '2098-09-15']);
+      expect(plan.seasonalPricing).toBe(true);
+      expect(plan.departures.map((d) => d.unitPrice)).toEqual([3000, 100]);
+    });
+
+    it('沒有啟用季節的方案：不輸出 unitPrice、不標 seasonalPricing', async () => {
+      const plan = await loadSeason([], ['2098-07-15']);
+      expect(plan).not.toHaveProperty('seasonalPricing');
+      expect(plan.departures[0]).not.toHaveProperty('unitPrice');
+    });
+
+    it('季節查詢綁 tenant、plan in、active；達 1000 列視為不完整 → 不輸出 unitPrice 但標 seasonalPricing', async () => {
+      const rows = Array.from({ length: 1000 }, (_, i) => season({ id: `s-${i}`, price_override: 1 }));
+      const plan = await loadSeason(rows, ['2098-07-15']);
+      expect(plan.seasonalPricing).toBe(true);
+      expect(plan.departures[0]).not.toHaveProperty('unitPrice');
+      const call = fakeState.calls.find((c) => c.table === 'trip_plan_seasons')!;
+      expect(call.filters).toMatchObject({ tenant_id: 'tenant-1', active: true });
+    });
   });
 
   it('M1：成團欄位只在 FIXED_DEPARTURE 輸出；REQUEST／INSTANT 不帶', async () => {

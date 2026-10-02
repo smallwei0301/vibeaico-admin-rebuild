@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { PublicShop } from '@/server/public-shop';
+import { phoneContact } from '@/lib/public-phone';
 
 type PublicContactLabels = {
   viaLine: string;
@@ -29,12 +30,16 @@ export function PublicContactActions({
       </a>,
     );
   }
-  if (shop.phone) {
+  const phone = phoneContact(shop);
+  if (phone.kind === 'link') {
     actions.push(
-      <a key="phone" className="btn btn-outline" href={`tel:${shop.phone.replace(/[^\d+]/g, '')}`}>
+      <a key="phone" className="btn btn-outline" href={`tel:${phone.href}`}>
         {labels.viaPhone(shop.phone)}
       </a>,
     );
+  } else if (phone.kind === 'text') {
+    // 不可撥號（例如含分機）：只顯示純文字，不提供撥號按鈕。
+    actions.push(<span key="phone-text" className="text-sm text-secondary">{shop.phone}</span>);
   }
   if (shop.email) {
     actions.push(
