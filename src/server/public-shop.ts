@@ -185,12 +185,13 @@ const MAX_DEPARTURES_PER_TRIP = 6;
 /** 詳情頁每個方案最多顯示的近期團次。 */
 const MAX_DETAIL_DEPARTURES_PER_PLAN = 6;
 /**
- * 詳情頁讀取方案時每頁列數與最多頁數（防止超過 PostgREST 列數上限被靜默截斷，也避免無限迴圈）。
- * 10 頁 × 200 筆＝單一行程 2000 個啟用方案，遠高於實際業務上限（一個行程不會有這麼多方案）；
- * 真的到達上限時以 plansMayBeTruncated 誠實標示，而不是靜默截斷。
+ * 詳情頁公開輸出的方案總數上限（必須 >= MAX_DETAIL_PLANS_WITH_DEPARTURES）。多讀 1 筆（MAX+1）只用來判斷是否
+ * 截斷，超過的方案不輸出並設 plansMayBeTruncated。
+ * 最壞情況 payload 估算（CJK 每字元以 3 bytes 計）：方案 60 × (name 300 + description 2000) 字 ≈ 0.41MB；
+ * 團次 30 個方案 × (6 可售 + 6 客滿) × 約 200B ≈ 0.07MB；行程文字（description 5000 + 短文字 3×2000 +
+ * 陣列 3×20×300 + 單行 3×300）字 ≈ 0.1MB；店家層級欄位 < 0.01MB；合計約 0.6MB。
  */
-const DETAIL_PLAN_PAGE_SIZE = 200;
-const MAX_DETAIL_PLAN_PAGES = 10;
+const MAX_PUBLIC_PLANS_OUTPUT = 60;
 /** 詳情頁每個方案最多額外列出的客滿團次（不占上面的可售名額）。 */
 const MAX_DETAIL_SOLD_OUT_PER_PLAN = 6;
 /**
@@ -339,6 +340,27 @@ async function loadPublicShopCore(
 /** 這種販售方式的方案才會在詳情頁公開列出團次。 */
 function hasPublicDepartureList(plan: { salesMode: string }): boolean {
   return plan.salesMode === 'FIXED_DEPARTURE' || plan.salesMode === 'REQUEST';
+}
+
+/** 詳情輸出邊界：方案文字欄位上限（name 300、description 2000）；id、數字、enum 不截。 */
+function limitPublicPlanText(plan: PublicPlan): PublicPlan {
+  return {
+    ...plan,
+    name: truncateChars(plan.name, MAX_PUBLIC_LIST_ITEM_CHARS),
+    description: truncateChars(plan.description, MAX_PUBLIC_SHORT_TEXT_CHARS),
+  };
+}
+
+/** 詳情輸出邊界：店家層級文字欄位上限；shopCode、lineBasicId（識別碼）、businessType（類別代碼）不截。 */
+function limitPublicShopText(shop: PublicShop): PublicShop {
+  return {
+    ...shop,
+    name: truncateChars(shop.name, MAX_PUBLIC_LIST_ITEM_CHARS),
+    description: truncateChars(shop.description, MAX_PUBLIC_SHORT_TEXT_CHARS),
+    phone: truncateChars(shop.phone, MAX_PUBLIC_LIST_ITEM_CHARS),
+    email: truncateChars(shop.email, MAX_PUBLIC_LIST_ITEM_CHARS),
+    address: truncateChars(shop.address, MAX_PUBLIC_LIST_ITEM_CHARS),
+  };
 }
 
 function mapPublicPlan(row: Record<string, unknown>): PublicPlan {
@@ -541,29 +563,22 @@ async function loadPublicTripDetailsUncached(
 
   const now = taipeiNowParts();
 
-  // trip_plans 以穩定排序（sort_order、id）分頁讀到底；範圍限定 tenant、trip、active。
-  const planRows: Array<Record<string, unknown>> = [];
-  let plansMayBeTruncated = false;
-  for (let page = 0; page < MAX_DETAIL_PLAN_PAGES; page += 1) {
-    const from = page * DETAIL_PLAN_PAGE_SIZE;
-    const { data: pageRows, error: planError } = await admin.from('trip_plans')
-      .select('id, trip_id, name, description, price_per_person, price_type, min_party, max_party, sales_mode')
-      .eq('tenant_id', shopData.tenantId)
-      .eq('trip_id', tripId)
-      .eq('active', true)
-      .order('sort_order', { ascending: true })
-      .order('id', { ascending: true })
-      .range(from, from + DETAIL_PLAN_PAGE_SIZE - 1);
-    if (planError) throw queryTripDetailsFailed('trip_plans', planError);
-    const got = (pageRows ?? []) as unknown as Array<Record<string, unknown>>;
-    planRows.push(...got);
-    if (got.length < DETAIL_PLAN_PAGE_SIZE) break;
-    if (page === MAX_DETAIL_PLAN_PAGES - 1) {
-      plansMayBeTruncated = true;
-      console.warn('public trip details: plan page limit reached');
-    }
-  }
-  const plans: PublicPlan[] = planRows.map((r) => mapPublicPlan(r));
+  // trip_plans 以穩定排序（sort_order、id）讀 MAX+1 筆；範圍限定 tenant、trip、active。
+  const { data: planPageRows, error: planError } = await admin.from('trip_plans')
+    .select('id, trip_id, name, description, price_per_person, price_type, min_party, max_party, sales_mode')
+    .eq('tenant_id', shopData.tenantId)
+    .eq('trip_id', tripId)
+    .eq('active', true)
+    .order('sort_order', { ascending: true })
+    .order('id', { ascending: true })
+    .range(0, MAX_PUBLIC_PLANS_OUTPUT);
+  if (planError) throw queryTripDetailsFailed('trip_plans', planError);
+  const fetchedPlanRows = (planPageRows ?? []) as unknown as Array<Record<string, unknown>>;
+  const plansMayBeTruncated = fetchedPlanRows.length > MAX_PUBLIC_PLANS_OUTPUT;
+  if (plansMayBeTruncated) console.warn('public trip details: plan output limit reached');
+  const plans: PublicPlan[] = fetchedPlanRows
+    .slice(0, MAX_PUBLIC_PLANS_OUTPUT)
+    .map((r) => limitPublicPlanText(mapPublicPlan(r)));
 
   // 只有 FIXED_DEPARTURE／REQUEST 方案進入團次查詢集合（30 個額度只算這兩類）。INSTANT（及未知模式）
   // 一律不查團次、departures 為 []、也不標 departuresNotLoaded：canonical 自選時間流程只顯示重新驗證過的
@@ -693,7 +708,7 @@ async function loadPublicTripDetailsUncached(
     .map(safePublicHttpsUrl).filter(Boolean)
     .slice(0, MAX_PUBLIC_GALLERY_IMAGES);
   return {
-    shop: shopData.shop,
+    shop: limitPublicShopText(shopData.shop),
     trip: {
       id: row.id as string,
       slug: row.slug as string,

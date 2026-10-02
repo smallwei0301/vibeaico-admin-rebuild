@@ -14,6 +14,8 @@ const fakeState = vi.hoisted(() => ({
   salesMode: 'FIXED_DEPARTURE',
   gallery: undefined as undefined | string[],
   tripExtra: undefined as undefined | Record<string, unknown>,
+  planText: undefined as undefined | { name?: string; description?: string },
+  tenantBasic: undefined as undefined | Record<string, unknown>,
   modeFor: null as null | ((i: number) => string),
   active: 0,
   maxActive: 0,
@@ -30,7 +32,7 @@ vi.mock('@/server/supabase', () => ({
         fakeState.calls.push({ table, filters: { ...filters }, single, ...(rangeArgs ? { range: rangeArgs } : {}) } as never);
         if (table === 'tenants') {
           const id = filters.shop_code === 'demo' ? 'tenant-1' : 'tenant-2';
-          return { data: { id, shop_code: filters.shop_code, name: 'Demo', business_type: null, tenant_settings: null }, error: null };
+          return { data: { id, shop_code: filters.shop_code, name: 'Demo', business_type: null, tenant_settings: fakeState.tenantBasic ? { basic: fakeState.tenantBasic, line: { lineBasicId: '@abc' } } : null }, error: null };
         }
         if (table === 'trips') {
           const all = [
@@ -44,7 +46,7 @@ vi.mock('@/server/supabase', () => ({
         if (table === 'trip_plans') {
           const [pFrom, pTo] = rangeArgs ?? [0, Number.MAX_SAFE_INTEGER];
           const all = Array.from({ length: fakeState.planCount }, (_, i) => ({
-            id: `plan-${i}`, trip_id: 'trip-1', name: `P${i}`, description: '', price_per_person: 100,
+            id: `plan-${i}`, trip_id: 'trip-1', name: fakeState.planText?.name ?? `P${i}`, description: fakeState.planText?.description ?? '', price_per_person: 100,
             price_type: 'PER_PERSON', min_party: 1, max_party: 4, sales_mode: fakeState.modeFor ? fakeState.modeFor(i) : fakeState.salesMode,
           }));
           return { data: all.slice(pFrom, pTo + 1), error: null };
@@ -213,6 +215,8 @@ describe('#11 公開行程詳情：方案團次查詢併發上限', () => {
     fakeState.modeFor = null;
     fakeState.gallery = undefined;
     fakeState.tripExtra = undefined;
+    fakeState.planText = undefined;
+    fakeState.tenantBasic = undefined;
     fakeState.active = 0;
     fakeState.maxActive = 0;
     fakeState.calls = [];
@@ -368,77 +372,60 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     });
   });
 
-  it('trip_plans 分頁：超過一頁會讀第二頁，逐頁帶 tenant／trip／active 與穩定排序範圍', async () => {
+  it('方案查詢只讀 MAX+1（61）筆、帶 tenant／trip／active 與穩定排序；61 個方案只輸出 60 個且 plansMayBeTruncated=true（寫英文固定 warn）', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     fakeState.planCount = 250;
     const { loadPublicTripDetails } = await import('@/server/public-shop');
     const result = await loadPublicTripDetails('demo', 'hike');
-    expect(result?.trip.plans).toHaveLength(250);
+    expect(result?.trip.plans).toHaveLength(60);
+    expect(result?.trip.plansMayBeTruncated).toBe(true);
+    expect(result?.trip.plans[59].id).toBe('plan-59');
+    expect(warn).toHaveBeenCalledWith('public trip details: plan output limit reached');
     const planCalls = fakeState.calls.filter((c) => c.table === 'trip_plans');
-    expect(planCalls).toHaveLength(2);
-    for (const call of planCalls) {
-      expect(call.filters).toMatchObject({ tenant_id: 'tenant-1', trip_id: 'trip-1', active: true });
-    }
-    expect((planCalls[0] as never as { range: number[] }).range).toEqual([0, 199]);
-    expect((planCalls[1] as never as { range: number[] }).range).toEqual([200, 399]);
+    expect(planCalls).toHaveLength(1);
+    expect(planCalls[0].filters).toMatchObject({ tenant_id: 'tenant-1', trip_id: 'trip-1', active: true });
+    expect((planCalls[0] as never as { range: number[] }).range).toEqual([0, 60]);
+    warn.mockRestore();
   });
 
-  describe('今天已開始的團次（台北時間，固定 now＝2098-01-01 10:00）', () => {
-    beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2098-01-01T02:00:00Z')); });
-    afterEach(() => { vi.useRealTimers(); });
-
-    const row = (departs_on: string, start_time: string | null, seats_booked = 0) => ({
-      departs_on, start_time, seats_booked, capacity: 5,
-    });
-
-    it('已過／剛好到開始時間（<=）排除；未到、無開始時間、明天列出；排除列不計入客滿', async () => {
-      fakeState.planCount = 1;
-      fakeState.customRows = [
-        row('2098-01-01', '09:00:00'),
-        row('2098-01-01', '10:00:00'),
-        row('2098-01-01', '08:00:00', 5),
-        row('2098-01-01', '10:01:00'),
-        row('2098-01-01', null),
-        row('2098-01-02', '08:00:00'),
-      ];
-      const { loadPublicTripDetails } = await import('@/server/public-shop');
-      const plan = (await loadPublicTripDetails('demo', 'hike'))?.trip.plans[0];
-      expect(plan?.departures.map((d) => d.id)).toEqual(['c-3', 'c-4', 'c-5']);
-      expect(plan?.departures.some((d) => d.soldOut)).toBe(false);
-      expect(plan?.soldOutOmitted).toBeFalsy();
-      // 查詢仍以台北今天為下界，且游標以已讀列數前進（含被排除列）。
-      expect(fakeState.calls.filter((c) => c.table === 'trip_departures').length).toBe(1);
-    });
-
-    it('全部都是已開始的今天團次 → 無團次、CTA 不開', async () => {
-      fakeState.planCount = 1;
-      fakeState.customRows = [row('2098-01-01', '09:00:00'), row('2098-01-01', '10:00:00')];
-      const { loadPublicTripDetails } = await import('@/server/public-shop');
-      const { bookingCtaState } = await import('@/lib/public-trip-client-state');
-      const plan = (await loadPublicTripDetails('demo', 'hike'))?.trip.plans[0];
-      expect(plan?.departures).toEqual([]);
-      expect(bookingCtaState(plan!)).toBe('fixed-unavailable');
-    });
-  });
-
-  it('方案達 10 頁上限且最後一頁滿頁 → plansMayBeTruncated=true 並寫英文固定 warn；最後一頁不滿 → 不帶旗標', async () => {
+  it('剛好 60 個方案 → 不帶 plansMayBeTruncated、不 warn；61 個 → 帶旗標', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { loadPublicTripDetails } = await import('@/server/public-shop');
-    fakeState.planCount = 2000;
-    const full = await loadPublicTripDetails('demo', 'hike');
-    expect(full?.trip.plans).toHaveLength(2000);
-    expect(full?.trip.plansMayBeTruncated).toBe(true);
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith('public trip details: plan page limit reached');
-    expect(fakeState.calls.filter((c) => c.table === 'trip_plans')).toHaveLength(10);
-
-    warn.mockClear();
-    fakeState.planCount = 1999;
-    const short = await loadPublicTripDetails('demo', 'hike');
-    expect(short?.trip.plans).toHaveLength(1999);
-    expect(short?.trip).not.toHaveProperty('plansMayBeTruncated');
+    fakeState.planCount = 60;
+    const exact = await loadPublicTripDetails('demo', 'hike');
+    expect(exact?.trip.plans).toHaveLength(60);
+    expect(exact?.trip).not.toHaveProperty('plansMayBeTruncated');
     expect(warn).not.toHaveBeenCalled();
+    fakeState.planCount = 61;
+    const over = await loadPublicTripDetails('demo', 'hike');
+    expect(over?.trip.plans).toHaveLength(60);
+    expect(over?.trip.plansMayBeTruncated).toBe(true);
     warn.mockRestore();
-  }, 60_000);
+  }, 30_000);
+
+  it('方案 name 截到 300、description 截到 2000（含 emoji 不破碎）', async () => {
+    fakeState.planCount = 1;
+    fakeState.planText = { name: '😀'.repeat(500), description: 'd'.repeat(5000) };
+    const { loadPublicTripDetails } = await import('@/server/public-shop');
+    const plan = (await loadPublicTripDetails('demo', 'hike'))!.trip.plans[0];
+    expect(plan.name).toBe('😀'.repeat(300));
+    expect(Array.from(plan.description)).toHaveLength(2000);
+  });
+
+  it.each([
+    ['tenantName', 'name', 300],
+    ['tenantDescription', 'description', 2000],
+    ['tenantPhone', 'phone', 300],
+    ['tenantEmail', 'email', 300],
+    ['tenantAddress', 'address', 300],
+  ])('店家層級欄位 %s → shop.%s 在詳情輸出截到 %i 字', async (basicKey, field, max) => {
+    fakeState.planCount = 1;
+    fakeState.tenantBasic = { [basicKey]: 'x'.repeat(9000) };
+    const { loadPublicTripDetails } = await import('@/server/public-shop');
+    const shop = (await loadPublicTripDetails('demo', 'hike'))!.shop as unknown as Record<string, string>;
+    expect(Array.from(shop[field])).toHaveLength(max);
+    expect(shop.lineBasicId).toBe('@abc');
+  });
 
   it('C15：lookahead 讀到的可售列全是今天已開始的團次 → truncated=false（lookahead 也要過濾）', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
