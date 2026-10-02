@@ -72,4 +72,9 @@ describe('issue #42 LISTED 方案編輯器唯讀', () => {
     expect(second).toBeGreaterThan(first);
     expect(season).toBeGreaterThan(second);
   });
+
+  it('assistedHint（仍可自由修改）只在非 LISTED 時渲染，來源標籤保留', () => {
+    expect(src).toContain('{!listedPlanWritesBlocked ? <span className="ml-1">{t.plans.source.assistedHint}</span> : null}');
+    expect(src).toContain('{t.plans.source[planDraft.source]}');
+  });
 });

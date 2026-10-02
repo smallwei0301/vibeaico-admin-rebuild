@@ -1320,7 +1320,7 @@ export default function TripDetailPage() {
             {planDraft.source && planDraft.source !== 'GUIDE' ? (
               <Alert tone="info">
                 <span className="font-semibold">{t.plans.source[planDraft.source]}</span>
-                <span className="ml-1">{t.plans.source.assistedHint}</span>
+                {!listedPlanWritesBlocked ? <span className="ml-1">{t.plans.source.assistedHint}</span> : null}
               </Alert>
             ) : null}
 
