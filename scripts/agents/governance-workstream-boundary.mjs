@@ -225,11 +225,28 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
     return true;
   };
   const recordPending = async (observed, reason) => {
+    let handoffError;
+    try {
     if (observed.state !== 'closed') return;
     const plan = terminalBodyPlan(observed);
-    const pending = Boolean(plan.changed || plan.errors.length || plan.unsyncedFields.length || reason);
-    const fields = plan.unsyncedFields.join(', ') || 'none (label reconciliation only)';
-    const failure = reason || plan.errors.join('; ') || (pending ? 'UNSAFE_NON_CONDITIONAL_BODY_PATCH' : 'none');
+    let liveFailure = '';
+    if ((observed.merged || observed.merged_at) && !plan.changed && !plan.errors.length && !plan.unsyncedFields.length && !reason) try {
+      const branch = observed.base?.ref, merge = observed.merge_commit_sha;
+      const declared = readField(observed.body, 'MAIN_HEAD_SHA');
+      const path = readField(observed.body, 'MAIN_FILE_RE_READ');
+      const runId = readField(observed.body, 'EXACT_HEAD_CI_RUN').match(/(?:^|\/runs\/)(\d+)$/)?.[1];
+      if (branch !== 'main' || !merge || !/^[a-f0-9]{40}$/i.test(declared) || !path || isPlaceholder(path) || !runId ||
+          ['MERGE_COMMIT_SHA', 'MAIN_HEAD_VERIFIED', 'VERIFIED_AT', 'EXACT_HEAD_CI_STATUS', 'LOCAL_JOB_RESULT', 'REMOTE_JOB_RESULT'].some(field => !readField(observed.body, field))) throw Error('incomplete merged receipt');
+      const main = (await github.rest.repos.getBranch({ owner, repo, branch })).data.commit.sha;
+      const reaches = async (base, head) => base === head || ['ahead', 'identical'].includes((await github.rest.repos.compareCommitsWithBasehead({ owner, repo, basehead: `${base}...${head}` })).data.status);
+      if (!await reaches(merge, declared) || !await reaches(declared, main)) throw Error('merge or declared main is not reachable from live main');
+      if ((await github.rest.repos.getContent({ owner, repo, path, ref: main })).data?.type !== 'file') throw Error('main file re-read failed');
+      const run = (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: Number(runId) })).data;
+      if (run.head_sha !== observed.head?.sha || run.status !== 'completed' || run.conclusion !== 'success' || run.event !== 'pull_request' || run.path !== '.github/workflows/ci.yml') throw Error('exact-head CI run is not verified');
+    } catch (error) { liveFailure = `LIVE_MAIN_RECEIPT_UNVERIFIED:${error.status ?? error.message ?? 'unknown'}`; }
+    const pending = Boolean(plan.changed || plan.errors.length || plan.unsyncedFields.length || reason || liveFailure);
+    const fields = plan.unsyncedFields.join(', ') || (liveFailure ? 'MAIN_HEAD_SHA, MAIN_FILE_RE_READ, EXACT_HEAD_CI_RUN' : 'none (label reconciliation only)');
+    const failure = reason || plan.errors.join('; ') || liveFailure || (pending ? 'UNSAFE_NON_CONDITIONAL_BODY_PATCH' : 'none');
     const status = pending ? 'STATE_SYNC_PENDING' : 'STATE_SYNC_RESOLVED';
     const prefix = `<!-- agent-terminal-state-sync:v1 pr=${current.number} head=${observed.head?.sha} closed_at=${observed.closed_at}`;
     const marker = `${prefix} digest=${createHash('sha256').update(JSON.stringify([status, fields, failure])).digest('hex').slice(0, 16)} -->`;
@@ -239,14 +256,33 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
     if (!Array.isArray(comments)) throw new Error('STATE_SYNC_PENDING comment inventory unavailable');
     const prior = comments.filter(comment => comment.user?.login === 'github-actions[bot]' && comment.user?.id === 41898282 &&
       String(comment.body ?? '').startsWith(prefix));
-    if (!pending && !prior.length || String(prior.at(-1)?.body ?? '').startsWith(marker)) return;
-    await github.rest.issues.createComment({ owner, repo, issue_number: current.number, body: `${marker}\n${status}\n` +
+    const sameObserved = pr => pr.state === 'closed' && pr.head?.sha === observed.head?.sha && pr.closed_at === observed.closed_at && Boolean(pr.merged || pr.merged_at) === Boolean(observed.merged || observed.merged_at) && pr.body === observed.body;
+    const before = await read();
+    if (!sameObserved(before)) return;
+    if (!pending && !prior.length || (String(prior.at(-1)?.body ?? '').startsWith(marker) && String(prior.at(-1)?.body ?? '').split('\n')[1] === status)) return;
+    const priorIds = new Set(comments.map(comment => comment.id));
+    let created;
+    try { created = await github.rest.issues.createComment({ owner, repo, issue_number: current.number, body: `${marker}\n${status}\n` +
       `PR: #${current.number}\nVERIFIED_TERMINAL_STATE: ${observed.merged || observed.merged_at ? 'MERGED' : 'CLOSED_UNMERGED'}\n` +
       `HEAD: ${observed.head?.sha}\nCLOSED_AT: ${observed.closed_at}\n` +
       `UNSYNCED_FIELDS: ${fields}\nFAILED_ACTION_OR_ERROR: ${failure}\n` +
       `OWNING_SESSION: PR #${current.number} closeout owner\n` +
       (pending ? 'NEXT_SAFE_WRITE_PATH: Owning session must coordinate an exclusive body edit, re-read live PR, sync terminal fields, and verify the live result before POST_MERGE_CLOSEOUT=COMPLETE.' : 'NEXT_SAFE_WRITE_PATH: Body fields are synchronized for this observed close generation; verify Issue closeout and remaining gates separately.') +
-      ' This comment does not grant Product or Production acceptance.\n' });
+      ' This comment does not grant Product or Production acceptance.\n' }); }
+    catch (error) {
+      if (!sameObserved(await read())) try {
+        const afterComments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: current.number, per_page: 100 });
+        for (const comment of afterComments.filter(item => item.id && !priorIds.has(item.id) && item.user?.login === 'github-actions[bot]' && item.user?.id === 41898282 && String(item.body ?? '').startsWith(marker)))
+          await github.rest.issues.updateComment({ owner, repo, comment_id: comment.id, body: `${marker}\nSTATE_SYNC_SUPERSEDED\nREASON: comment write was uncertain and PR reopened; recheck live PR.\n` });
+      } catch (inventoryError) { throw new AggregateError([error, inventoryError], 'Comment write uncertain; stale handoff could not be checked'); }
+      throw error;
+    }
+    const after = await read();
+    if (!sameObserved(after)) await github.rest.issues.updateComment({ owner, repo, comment_id: created.data.id,
+      body: `${marker}\nSTATE_SYNC_SUPERSEDED\nREASON: close generation or body changed after comment creation; recheck live PR before closeout.\n` });
+    } catch (error) { handoffError = error; throw error; }
+    finally { try { const fresh = await read(); if (touched && fresh.state === 'open') await restoreOpen(fresh); }
+      catch (error) { if (handoffError) throw new AggregateError([handoffError, error], 'Terminal handoff and reopen compensation failed'); throw error; } }
   };
   const restoreOpen = async observed => {
     const sameOpen = pr => pr.state === 'open' && pr.head?.sha === observed.head?.sha && pr.body === observed.body;

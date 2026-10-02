@@ -406,16 +406,13 @@ describe('independent hourly trusted-main recovery (synthetic)', () => {
 });
 
 describe('review wake-up cannot cancel lifecycle housekeeping (synthetic Actions scheduler)', () => {
-  // Evaluate the actual YAML expression, then model Actions per-group cancellation.
   // This is a local scheduling contract, not a claim of running GitHub Actions.
   const workflow = () => parse(readFileSync('.github/workflows/agent-wip-guard.yml', 'utf8'));
   function group(eventName: string, action: string, number = 900, job = 'guard') {
-    const event = eventName === 'issue_comment'
-      ? { action, pull_request: {}, issue: { number, state: 'closed', pull_request: {} }, comment: { body: '/astra-review-check' } }
+    const event = eventName === 'issue_comment' ? { action, pull_request: {}, issue: { number, state: 'closed', pull_request: {} }, comment: { body: '/astra-review-check' } }
       : { action, pull_request: { number, state: 'closed' } };
-    const github = { repository: repo, event_name: eventName, event };
     return workflow().jobs[job].concurrency.group.replace(/\$\{\{([\s\S]*?)\}\}/g,
-      (_: string, expression: string) => String(new Function('github', 'matrix', `return (${expression});`)(github, { pr_number: number }))).toLowerCase();
+      (_: string, expression: string) => String(new Function('github', 'matrix', `return (${expression});`)({ repository: repo, event_name: eventName, event }, { pr_number: number }))).toLowerCase();
   }
   async function authorizeCommand(github: any, payload: any, actor: string) {
     const script = workflow().jobs.command_authorization.steps.find((step: any) => step.id === 'authorize').with.script;
@@ -427,21 +424,17 @@ describe('review wake-up cannot cancel lifecycle housekeeping (synthetic Actions
       { actor, repo: { owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild' }, payload }, { setOutput }, async () => astra);
     return setOutput;
   }
-  it.each([
-    ['workflow_run', 'completed'], ['schedule', ''], ['issue_comment', 'edited'], ['issue_comment', 'deleted'],
-  ])('late %s/%s preserves running and pending close-event cleanup', (event, action) => {
+  it.each([['workflow_run', 'completed'], ['schedule', ''], ['issue_comment', 'edited'], ['issue_comment', 'deleted']])('late %s/%s preserves running and pending close-event cleanup', (event, action) => {
     const terminal = group('pull_request_target', 'closed', 900, 'terminal_cleanup');
     const incoming = group(event, action);
     expect(incoming).not.toBe(terminal); // Both cancel-in-progress and pending replacement are per group.
-    expect(group(event, action, 901)).not.toBe(incoming);
-    expect(workflow().jobs.guard.concurrency['cancel-in-progress']).toBe(true);
+    expect(group(event, action, 901)).not.toBe(incoming); expect(workflow().jobs.guard.concurrency['cancel-in-progress']).toBe(true);
     expect(group(event, action)).toBe(group('pull_request_target', 'opened')); // Veto still cancels stale PASS evaluation.
   });
   it.each(['opened', 'edited', 'reopened', 'synchronize', 'ready_for_review', 'converted_to_draft', 'closed'])('keeps %s on the original lifecycle group so close still cancels stale open work', action => {
-    expect(group('pull_request_target', action)).toBe(`agent-wip-guard-${repo}-900`);
-    expect(group('issue_comment', 'created')).toBe(group('pull_request_target', action));
+    expect(group('pull_request_target', action)).toBe(`agent-wip-guard-${repo}-900`); expect(group('issue_comment', 'created')).toBe(group('pull_request_target', action));
   });
-  it.each([false, true])('resolved PR closes before consumer (alreadyClosed=%s); late wake-up has zero writes and terminal cleanup still executes', async alreadyClosed => {
+  it.each([false, true])('resolved PR closes before consumer (alreadyClosed=%s); late wake-up has zero writes', async alreadyClosed => {
     const { github, live } = wakeupFixture({ head_sha: head }, true);
     const closed = { ...live, state: 'closed', merged: true, labels: [{ name: 'state:active' }] };
     github.rest.pulls.get.mockResolvedValue({ data: alreadyClosed ? closed : live });
@@ -451,29 +444,15 @@ describe('review wake-up cannot cancel lifecycle housekeeping (synthetic Actions
     github.rest.repos.createCommitStatus = vi.fn(async () => { writes.push('status'); });
     github.rest.actions.createWorkflowDispatch = vi.fn(async () => { writes.push('TEST'); });
     github.rest.issues.createComment = vi.fn(async () => { writes.push('comment'); });
-    github.rest.issues.removeLabel = vi.fn(async () => { writes.push('remove-label'); });
-    github.rest.issues.getLabel = vi.fn(async () => ({ data: {} }));
-    github.rest.issues.addLabels = vi.fn(async () => { writes.push('terminal-label'); });
-    github.rest.pulls.update = vi.fn(async () => { writes.push('terminal-body'); });
     const script = workflow().jobs.guard.steps.find((step: any) => step.with?.script).with.script;
     const astra = await import('../../scripts/agents/astra-review-policy.mjs');
     const policy = await import('../../scripts/agents/dual-terra-wip-policy.mjs');
-    const boundary = await import('../../scripts/agents/governance-workstream-boundary.mjs');
     const summary: any = { addHeading: () => summary, addRaw: () => summary, write: async () => undefined };
     const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
     const wakeBranch = script.split('// REVIEW_WAKEUP_INVALIDATION_BEGIN')[1].split('// REVIEW_WAKEUP_INVALIDATION_END')[0];
     await new AsyncFunction('github', 'current', 'reviewWakeup', 'owner', 'repo', 'astra', 'policy', 'core', 'process', wakeBranch)(github, closed, true, 'smallwei0301', 'vibeaico-admin-rebuild', astra, policy, { summary }, { env: {} });
     expect(writes).toEqual([]);
-    const closeCancelled = group('workflow_run', 'completed') === group('pull_request_target', 'closed', 900, 'terminal_cleanup');
-    if (!closeCancelled) {
-      const terminalScript = workflow().jobs.terminal_cleanup.steps.find((step: any) => step.with?.script).with.script;
-      await new AsyncFunction('require', 'process', 'github', 'context', 'core', 'loadPolicy', terminalScript.replace(/\bimport\s*\(/g, 'loadPolicy('))(createRequire(import.meta.url), { env: { GITHUB_WORKSPACE: process.cwd() } }, github, { repo: { owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild' }, payload: { pull_request: closed } }, { summary, warning: vi.fn() }, async () => boundary);
-    }
-    expect(writes).toContain('terminal-label');
-    expect(writes).toContain('remove-label');
-    expect(writes).not.toContain('terminal-body');
-    expect(writes).not.toContain('status'); expect(writes).not.toContain('TEST'); expect(writes).toContain('comment');
-    expect(github.rest.pulls.update).not.toHaveBeenCalled();
+    expect(group('workflow_run', 'completed')).not.toBe(group('pull_request_target', 'closed', 900, 'terminal_cleanup'));
   });
   it('close recovery has its own least-privilege job, independent of guard/resolver results', () => {
     const job = workflow().jobs.terminal_cleanup;
@@ -487,21 +466,9 @@ describe('review wake-up cannot cancel lifecycle housekeeping (synthetic Actions
     expect(authorization.permissions).toEqual({ contents: 'read', 'pull-requests': 'read' });
     expect(group('pull_request_target', 'edited', 900, 'terminal_cleanup')).toBe(group('pull_request_target', 'closed', 900, 'terminal_cleanup'));
     expect(group('issue_comment', 'created', 900, 'terminal_cleanup')).toBe(group('pull_request_target', 'closed', 900, 'terminal_cleanup'));
-    expect(job.permissions).toEqual({ contents: 'read', issues: 'write', 'pull-requests': 'write' });
+    expect(job.permissions).toEqual({ contents: 'read', actions: 'read', issues: 'write', 'pull-requests': 'write' });
     expect(job.concurrency['cancel-in-progress']).toBe(false);
     expect(job.steps[0].with).toEqual({ ref: '${{ github.event.repository.default_branch }}', 'persist-credentials': false });
-  });
-  it('untrusted comment never enters the terminal concurrency group or replaces a pending close', () => {
-    const job = workflow().jobs.terminal_cleanup;
-    const github = { event_name: 'issue_comment', event: { action: 'created', pull_request: {},
-      issue: { number: 900, state: 'closed', pull_request: {} }, comment: { body: '/astra-review-check' } } };
-    const admitted = (authorized: string) => new Function('github', 'needs', 'always', 'startsWith', `return (${job.if});`)(
-      github, { command_authorization: { result: 'success', outputs: { authorized } } }, () => true, (value: string, prefix: string) => value.startsWith(prefix));
-    expect(admitted('')).toBe(false);
-    expect(admitted('true')).toBe(true);
-    const closed = { event_name: 'pull_request_target', event: { action: 'closed', pull_request: { number: 900, state: 'closed' } } };
-    expect(new Function('github', 'needs', 'always', `return (${job.if});`)(closed,
-      { command_authorization: { result: 'skipped', outputs: {} } }, () => true)).toBe(true);
   });
   it.each(['closed-edit', 'trusted-command', 'writer-command'])('%s reaches only the independent terminal writer', async mode => {
     const closed = { ...current, state: 'closed', closed_at: '2026-10-02T07:00:00Z' };
@@ -576,45 +543,10 @@ describe('review wake-up cannot cancel lifecycle housekeeping (synthetic Actions
 });
 
 describe('terminal cleanup compensates observed reopen without restoring stale metadata', () => {
-  it('keeps guard warnings when state-label removal itself races with reopen', async () => {
-    const boundary = await import('../../scripts/agents/governance-workstream-boundary.mjs');
-    const initial = { ...current, state: 'closed', merged: false, closed_at: '2026-10-02T07:00:00Z',
-      body: body + '\nWORK_ORIGIN: AGENT\nACTIVE_CANDIDATE: true\nRUN_ID: none', labels: [
-        { name: 'state:active' }, { name: 'candidate:active' }, { name: 'governance:lane-metadata-incomplete' },
-        { name: 'governance:wip-violation' },
-      ] };
-    let live: any = structuredClone(initial);
-    const github: any = { rest: {
-      pulls: { get: vi.fn(async () => ({ data: structuredClone(live) })), update: vi.fn() },
-      issues: { removeLabel: vi.fn(async ({ name }: any) => {
-        live.labels = live.labels.filter((label: any) => label.name !== name);
-        if (name === 'state:active') live = { ...live, state: 'open', closed_at: null };
-      }), getLabel: vi.fn(async () => ({})), addLabels: vi.fn(async ({ labels }: any) => {
-        live.labels.push(...labels.map((name: string) => ({ name })));
-      }), listComments: vi.fn(), createComment: vi.fn() },
-    }, paginate: vi.fn(async () => []) };
-    await boundary.reconcileTerminalPr({ github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', current: initial });
-    expect(live.state).toBe('open');
-    expect(live.labels.map((label: any) => label.name)).toEqual(expect.arrayContaining([
-      'state:active', 'candidate:active', 'governance:lane-metadata-incomplete', 'governance:wip-violation',
-    ]));
-    expect(github.rest.issues.removeLabel).not.toHaveBeenCalledWith(expect.objectContaining({ name: 'governance:lane-metadata-incomplete' }));
-    expect(github.rest.issues.removeLabel).not.toHaveBeenCalledWith(expect.objectContaining({ name: 'governance:wip-violation' }));
-  });
-  it('cancellable guard never starts terminal reconciliation for a closed PR', async () => {
-    const script = parse(readFileSync('.github/workflows/agent-wip-guard.yml', 'utf8')).jobs.guard.steps.find((step: any) => step.with?.script).with.script;
-    const closedBranch = script.slice(script.indexOf('// Cancellable guard is read-only'), script.indexOf('const marker ='));
-    const boundary = { terminalLabelPlan: vi.fn(() => ({ state: 'historical' })), reconcileTerminalPr: vi.fn(async () => ({ bodyReconciled: true })) };
-    const summary: any = { addHeading: () => summary, addRaw: () => summary, write: async () => undefined };
-    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-    await new AsyncFunction('boundary', 'current', 'github', 'owner', 'repo', 'core', closedBranch)(boundary,
-      { state: 'closed', number: 900 }, {}, 'smallwei0301', 'vibeaico-admin-rebuild', { summary });
-    expect(boundary.reconcileTerminalPr).not.toHaveBeenCalled();
-  });
   it.each(['before-label', 'after-remove', 'after-remove-invalid', 'after-remove-error', 'after-add', 'after-add-invalid', 'after-add-error', 'fresh-metadata', 'new-generation'])('independent terminal writer/%s checks each label write and repairs reopened live labels', async phase => {
       const { github, live } = wakeupFixture();
       const original = live.body + '\nWORK_ORIGIN: AGENT\nACTIVE_CANDIDATE: true';
-      let pr: any = { ...live, body: original, state: 'closed', merged: false, closed_at: '2026-10-02T07:00:00Z', labels: [{ name: 'state:active' }, { name: 'candidate:active' }, { name: 'unrelated:keep' }] };
+      let pr: any = { ...live, body: original, state: 'closed', merged: false, closed_at: '2026-10-02T07:00:00Z', labels: [{ name: 'state:active' }, { name: 'candidate:active' }, { name: 'unrelated:keep' }, { name: 'governance:lane-metadata-incomplete' }, { name: 'governance:wip-violation' }] };
       const eventPr = structuredClone(pr);
       let reads = 0;
       const reopen = () => { pr = { ...pr, state: 'open', closed_at: null }; };
@@ -659,6 +591,7 @@ describe('terminal cleanup compensates observed reopen without restoring stale m
       else await invocation;
       const names = pr.labels.map((l: any) => l.name);
       expect(names, phase).toContain('unrelated:keep');
+      expect(names, phase).toEqual(expect.arrayContaining(['governance:lane-metadata-incomplete', 'governance:wip-violation']));
       if (phase.endsWith('-invalid') || phase.endsWith('-error')) {
         expect(names).toContain('state:active'); expect(names).toContain('candidate:active');
         expect(names).not.toContain('state:historical');

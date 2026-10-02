@@ -300,8 +300,8 @@ describe('governance boundary regression #500', () => {
     });
 
   it('deduplicates only the trusted bot handoff for the same close generation', async () => {
-    const initialBody = gov.replace('state: ACTIVE', 'state: MERGED').replace('LANE_STATE: ACTIVE', 'LANE_STATE: COMPLETE').replace('REMAINING_AUTONOMOUS_STEPS: source CI and exact-diff verification', 'REMAINING_AUTONOMOUS_STEPS: none') + '\nMERGE_STATUS: NOT_REQUESTED';
-    const closed = { ...subject(initialBody), state: 'closed', merged: true, closed_at: '2026-10-02T07:00:00Z', labels: [{ name: 'state:active' }] };
+    const initialBody = gov.replace('state: ACTIVE', 'state: HISTORICAL').replace('LANE_STATE: ACTIVE', 'LANE_STATE: HISTORICAL').replace('REMAINING_AUTONOMOUS_STEPS: source CI and exact-diff verification', 'REMAINING_AUTONOMOUS_STEPS: none') + '\nMERGE_STATUS: NOT_REQUESTED';
+    const closed = { ...subject(initialBody), state: 'closed', merged: false, closed_at: '2026-10-02T07:00:00Z', labels: [{ name: 'state:active' }] };
     const marker = `<!-- agent-terminal-state-sync:v1 pr=900 head=${closed.head.sha} closed_at=${closed.closed_at} -->`;
     const comments: any[] = [{ user: { login: 'untrusted', id: 10 }, body: `${marker}\nSTATE_SYNC_PENDING` }];
     const listComments = vi.fn();
@@ -312,7 +312,7 @@ describe('governance boundary regression #500', () => {
         comments.push({ user: { login: 'github-actions[bot]', id: 41898282 }, body });
       }) },
     }, paginate: vi.fn(async (method: any) => method === listComments ? comments : []) };
-    const call = () => boundaryPolicy.reconcileTerminalPr({ github, owner: 'owner', repo: 'repo', current: closed });
+    const call = () => boundaryPolicy.reconcileTerminalPr({ github, owner: 'owner', repo: 'repo', current: structuredClone(closed) });
     await call();
     expect(github.rest.issues.createComment).toHaveBeenCalledTimes(1); // A forged marker cannot suppress handoff.
     expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: MERGE_STATUS');
@@ -321,13 +321,32 @@ describe('governance boundary regression #500', () => {
     closed.body = closed.body.replace('OWNER_OR_EXTERNAL_BLOCKER: none', 'OWNER_OR_EXTERNAL_BLOCKER: old queue');
     await call();
     expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: MERGE_STATUS, OWNER_OR_EXTERNAL_BLOCKER');
-    closed.body = closed.body.replace('MERGE_STATUS: NOT_REQUESTED', 'MERGE_STATUS: VERIFIED_MERGED')
+    closed.body = closed.body.replace('MERGE_STATUS: NOT_REQUESTED', 'MERGE_STATUS: VERIFIED_NOT_MERGED')
       .replace('OWNER_OR_EXTERNAL_BLOCKER: old queue', 'OWNER_OR_EXTERNAL_BLOCKER: none');
     await call();
     expect(comments.at(-1).body).toContain('STATE_SYNC_RESOLVED');
     await call();
     expect(github.rest.issues.createComment).toHaveBeenCalledTimes(3);
     expect(github.rest.pulls.update).not.toHaveBeenCalled();
+    closed.body = closed.body.replace('MERGE_STATUS: VERIFIED_NOT_MERGED', 'MERGE_STATUS: NOT_REQUESTED');
+    const pendingBody = closed.body;
+    github.paginate.mockImplementationOnce(async () => { closed.state = 'open'; closed.body = gov; return comments; });
+    await call(); expect(github.rest.issues.createComment).toHaveBeenCalledTimes(3);
+    expect(closed.labels.map((label: any) => label.name)).toContain('state:active');
+    closed.state = 'closed'; closed.body = pendingBody; github.rest.issues.updateComment = vi.fn(async ({ body }: any) => { comments.at(-1).body = body; });
+    github.rest.issues.createComment.mockImplementationOnce(async ({ body }: any) => { comments.push({ body, user: { login: 'github-actions[bot]', id: 41898282 } }); closed.state = 'open'; closed.body = gov; return { data: { id: 4, body } }; });
+    await call(); expect(github.rest.issues.updateComment).toHaveBeenCalledWith(expect.objectContaining({ comment_id: 4, body: expect.stringContaining('STATE_SYNC_SUPERSEDED') }));
+    expect(closed.labels.map((label: any) => label.name)).toContain('state:active');
+    closed.state = 'closed'; closed.body = pendingBody; await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_PENDING');
+    github.paginate.mockImplementationOnce(async () => { closed.state = 'open'; closed.body = gov; throw Error('inventory failed'); });
+    await expect(call()).rejects.toThrow('inventory failed'); expect(closed.labels.map((label: any) => label.name)).toContain('state:active');
+    closed.state = 'closed'; closed.body = pendingBody.replace('OWNER_OR_EXTERNAL_BLOCKER: none', 'OWNER_OR_EXTERNAL_BLOCKER: new queue');
+    github.rest.issues.createComment.mockImplementationOnce(async ({ body }: any) => { comments.push({ id: 5, body, user: { login: 'github-actions[bot]', id: 41898282 } }); closed.state = 'open'; closed.body = gov; throw Error('create failed'); });
+    await expect(call()).rejects.toThrow('create failed'); expect(closed.labels.map((label: any) => label.name)).toContain('state:active');
+    expect(comments.at(-1).body).toContain('STATE_SYNC_SUPERSEDED');
+    closed.state = 'closed'; closed.body = pendingBody.replace('OWNER_OR_EXTERNAL_BLOCKER: none', 'OWNER_OR_EXTERNAL_BLOCKER: third queue');
+    github.rest.issues.createComment.mockImplementationOnce(async ({ body }: any) => { comments.push({ id: 6, body, user: { login: 'github-actions[bot]', id: 41898282 } }); closed.body = pendingBody; throw Error('create after body edit'); });
+    await expect(call()).rejects.toThrow('create after body edit'); expect(comments.at(-1).body).toContain('STATE_SYNC_SUPERSEDED');
   });
 
   it('rewrites only live terminal declarations and preserves fenced examples', () => {
@@ -409,6 +428,18 @@ describe('governance boundary regression #500', () => {
     const verified = Object.entries(receipts).reduce((text, [field, value]) => text.replace(new RegExp(`${field}: [^\\n]*`), `${field}: ${value}`), body);
     expect(terminalBodyPlan({ ...closed, body: verified, merge_commit_sha: 'a'.repeat(40) })?.unsyncedFields).toEqual([]);
     expect(terminalBodyPlan({ ...closed, body: verified, merge_commit_sha: 'c'.repeat(40) })?.unsyncedFields).toContain('MERGE_COMMIT_SHA');
+    const live = { ...closed, body: verified, merge_commit_sha: 'a'.repeat(40), base: { ref: 'main' } };
+    const comments: any[] = [{ body: `<!-- agent-terminal-state-sync:v1 pr=900 head=${live.head.sha} closed_at=${live.closed_at} digest=old -->\nSTATE_SYNC_PENDING`, user: { login: 'github-actions[bot]', id: 41898282 } }];
+    const github: any = { rest: { pulls: { get: vi.fn(async () => ({ data: structuredClone(live) })) },
+      issues: { listComments: vi.fn(), removeLabel: vi.fn(), getLabel: vi.fn(async () => ({})), addLabels: vi.fn(), createComment: vi.fn(async ({ body }: any) => { comments.push({ body, user: { login: 'github-actions[bot]', id: 41898282 } }); return { data: { id: comments.length } }; }) },
+      repos: { getBranch: vi.fn(async () => ({ data: { commit: { sha: 'c'.repeat(40) } } })), compareCommitsWithBasehead: vi.fn(async () => ({ data: { status: 'ahead' } })), getContent: vi.fn(async () => ({ data: { type: 'file' } })) },
+      actions: { getWorkflowRun: vi.fn(async () => ({ data: { head_sha: live.head.sha, status: 'completed', conclusion: 'success', event: 'pull_request', path: '.github/workflows/ci.yml' } })) },
+    }, paginate: vi.fn(async () => comments) };
+    const call = () => boundaryPolicy.reconcileTerminalPr({ github, owner: 'owner', repo: 'repo', current: live });
+    await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_RESOLVED');
+    expect(github.rest.repos.getContent).toHaveBeenCalledWith(expect.objectContaining({ ref: 'c'.repeat(40), path: 'docs/AGENT-EXECUTION.md' }));
+    github.rest.repos.compareCommitsWithBasehead.mockResolvedValue({ data: { status: 'diverged' } });
+    await call(); expect(comments.at(-1).body).toContain('LIVE_MAIN_RECEIPT_UNVERIFIED');
     for (const field of ['MAIN_FILE_RE_READ', 'EXACT_HEAD_CI_RUN']) for (const placeholder of ['TBD', 'UNKNOWN', 'N/A', '-']) {
       expect(terminalBodyPlan({ ...closed, body: verified.replace(new RegExp(`${field}: [^\\n]*`), `${field}: ${placeholder}`), merge_commit_sha: 'a'.repeat(40) })?.unsyncedFields).toContain(field);
     }
