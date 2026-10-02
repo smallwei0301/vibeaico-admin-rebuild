@@ -50,21 +50,29 @@ async function setPlanRequestMode(
 ): Promise<void> {
   const patch: Record<string, unknown> = { sales_mode: mode };
   if (holdHours !== undefined) patch.request_hold_hours = holdHours;
-  const { error } = await admin.from('trip_plans').update(patch).eq('id', planId);
+  const { data, error } = await admin.from('trip_plans').update(patch)
+    .eq('tenant_id', SHOP_A.id).eq('id', planId).select('sales_mode, request_hold_hours').single();
   expect(error).toBeNull();
+  expect(data?.sales_mode).toBe(mode);
+  if (holdHours !== undefined) expect(Number(data?.request_hold_hours)).toBe(holdHours);
 }
 
 const createdOrderIds: string[] = [];
+const createdOrderNotes: string[] = [];
 
 async function createOrder(
   api: AuthedApi, departureId: string, partySize: number, note = '',
 ): Promise<Response> {
+  // Register ownership before the request: a failed response can still have
+  // committed a real order. Never infer ownership from a shared tenant alone.
+  const marker = `request-accept-46-${randomUUID()}${note ? ` ${note}` : ''}`;
+  createdOrderNotes.push(marker);
   return api.post('/api/tour-orders/manual', {
     departureId,
     customerName: `測試顧客-${randomUUID().slice(0, 8)}`,
     customerPhone: '0912345678',
     partySize,
-    note,
+    note: marker,
   });
 }
 
@@ -77,14 +85,50 @@ beforeAll(async () => {
   ownerB = await loginAs(SHOP_B.owner.email, SHOP_B.owner.password);
 });
 
-afterEach(async () => {
-  if (createdOrderIds.length) {
-    await admin.from('tour_orders').delete().in('id', createdOrderIds);
-    createdOrderIds.length = 0;
+afterEach(async ({ task }) => {
+  const errors: unknown[] = [];
+  if (admin && createdOrderNotes.length) {
+    try {
+      const owned = await admin.from('tour_orders').select('id')
+        .eq('tenant_id', SHOP_A.id).in('note', [...createdOrderNotes]);
+      if (owned.error) errors.push(owned.error);
+      else {
+        const foundIds = new Set((owned.data ?? []).map(row => row.id));
+        if (createdOrderIds.length) {
+          const recorded = await admin.from('tour_orders').select('id, tenant_id, note').in('id', [...createdOrderIds]);
+          if (recorded.error) errors.push(recorded.error);
+          else for (const row of recorded.data ?? []) {
+            if (row.tenant_id !== SHOP_A.id || !createdOrderNotes.includes(row.note)) {
+              errors.push(new Error(`order ${row.id}: recorded ID lacks this suite's exact owned marker`));
+            }
+          }
+        }
+        for (const id of foundIds) if (!createdOrderIds.includes(id)) createdOrderIds.push(id);
+        // Exact registered notes only; no broad deletion of shared fixture orders.
+        const deleted = await admin.from('tour_orders').delete()
+          .eq('tenant_id', SHOP_A.id).in('note', [...createdOrderNotes]);
+        if (deleted.error) errors.push(deleted.error);
+      }
+      const remaining = await admin.from('tour_orders').select('id')
+        .eq('tenant_id', SHOP_A.id).in('note', [...createdOrderNotes]);
+      if (remaining.error) errors.push(remaining.error);
+      else if (remaining.data?.length) errors.push(new Error('REQUEST owned order marker residue after cleanup'));
+      if (createdOrderIds.length) {
+        const remainingIds = await admin.from('tour_orders').select('id').in('id', [...createdOrderIds]);
+        if (remainingIds.error) errors.push(remainingIds.error);
+        else if (remainingIds.data?.length) errors.push(new Error('REQUEST recorded owned order IDs remain after cleanup'));
+      }
+    } catch (error) { errors.push(error); }
   }
-  // 每個案例自理歸還：不留著 REQUEST 模式污染其他檔案共用的 planA1／planA2。
-  await setPlanRequestMode(TRIP_A.planA1, 'FIXED_DEPARTURE', 12);
-  await setPlanRequestMode(TRIP_A.planA2, 'FIXED_DEPARTURE', 12);
+  // Restore both plans even if order cleanup failed; each update verifies its
+  // persisted readback. Keep ownership arrays if any cleanup/restoration fails.
+  if (admin) for (const plan of [TRIP_A.planA1, TRIP_A.planA2]) {
+    try { await setPlanRequestMode(plan, 'FIXED_DEPARTURE', 12); }
+    catch (error) { errors.push(error); }
+  }
+  if (errors.length) throw new AggregateError([...(task.result?.errors ?? []), ...errors], '#46 REQUEST cleanup/restoration failed');
+  createdOrderIds.length = 0;
+  createdOrderNotes.length = 0;
 });
 
 describe('REQUEST 訂單送出申請時不鎖名額（18 分冊 §0.2；0111 修正的假成功）', () => {
