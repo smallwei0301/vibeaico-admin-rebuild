@@ -638,6 +638,26 @@ CI 失敗由 Luna 先壓縮：exact head、job／step、suite／case、錯誤碼
 `STATE_SYNC_PENDING`，精確列出 PR、已驗證 terminal state、尚未同步欄位、失敗 action／error 與下一個合法
 寫入路徑；在清掉這個 pending 前不得宣稱 `POST_MERGE_CLOSEOUT=COMPLETE`。
 
+### 9.0.1.1 Product Issue close admission：先證明可關，再送 close
+
+Product Issue 的 GitHub `closed` 事件由 trusted `product-issue-close-guard` 機械驗證。關閉前，同一工作回合先在 Issue 留下：
+
+```text
+RUN_CAPTURE_HANDOFF
+RUN_ID: <owning Product Run>
+EVENT: ISSUE_CLOSE_READY
+EVIDENCE_REF: github:workflow#<canonical current-main ci push run id>
+CLOSE_APPROVED_REF: github:issuecomment#<同 Issue 的 trusted final Sol CLOSE_APPROVED comment id>
+REVIEWED_HEAD: <exact final Product source head reviewed by Sol>
+OBSERVED_AT: <UTC timestamp>
+WRITER_BLOCKER: <為何目前不能直接把 close event 寫回 protected ledger>
+NEXT_SAFE_WRITE_PATH: <關閉後如何 reconcile ISSUE_CLOSED / delivery.issuesClosed>
+```
+
+close guard 重新讀 live Issue、current main、owning Run、open/merged PR、canonical CI 與 final Sol approval。只有 handoff 建立與最後編輯都在 close 前且不超過 6 小時、Run 是 current-main 上仍 OPEN 的 v4 Product-owned Run 且 sources 含本 Issue、final Sol `CLOSE_APPROVED` 屬於同一 Issue／同一 `RUN_ID`／本次 close generation，且 `EXACT_HEAD=REVIEWED_HEAD` 並涵蓋本 Issue 最後一張已 merge Product PR、CI 是 `.github/workflows/ci.yml` 的 current-main exact SHA `push` success，且沒有同 Issue 的 open PR，Issue 才能維持 closed。trusted reviewer 可由既有 immutable Agent-bot allowlist 或 GitHub live write/maintain/admin permission 證明；不得另造信任名單。
+
+任一條不成立會自動 reopen 並標 `governance:premature-close`；failure label 建立須併發冪等。合法 close 後 workflow 留下 `EVENT: ISSUE_CLOSED_OBSERVED` 的 `RUN_CAPTURE_HANDOFF`，owning Product session 仍須把 `ISSUE_CLOSED` Completion Truth 與 `delivery.issuesClosed` reconcile 回 Run、重跑 readiness，再完成 `POST_MERGE_CLOSEOUT`。只有正文與 managed label 明確一致為 `MODEL_GOVERNANCE` 且沒有 Product label 的 Issue 才不套此 gate；缺失、歧義或衝突一律 fail closed。
+
 ### 9.0.2 STAGE_TRUTH_SYNC：環境階段一變，就更新，不等 closeout／複盤
 
 POST_MERGE_CLOSEOUT 不是唯一同步點。以下任何一項發生時，都視為 Product delivery stage change：
