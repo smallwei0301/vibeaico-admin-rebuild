@@ -20,7 +20,7 @@ describe('issue #42 LISTED 方案編輯器唯讀', () => {
   });
 
   it('列表編輯（檢視）按鈕不因 LISTED disabled，刪除與排序仍 disabled', () => {
-    expect(src).toMatch(/aria-label=\{t\.actions\.edit\}\s*\n\s*onClick=\{\(\) => openPlanEditor\(p\)\}/);
+    expect(src).toMatch(/aria-label=\{listedPlanWritesBlocked \? t\.actions\.view : t\.actions\.edit\}\s*\n\s*onClick=\{\(\) => openPlanEditor\(p\)\}/);
     expect(src).toMatch(/disabled=\{listedPlanWritesBlocked\}\s*\n\s*onClick=\{\(\) => setDeleteTarget\(\{ kind: 'plan'/);
     expect(src).toContain('disabled={listedPlanWritesBlocked || i === 0}');
     expect(src).toContain('disabled={listedPlanWritesBlocked || i === plans.length - 1}');
@@ -76,5 +76,25 @@ describe('issue #42 LISTED 方案編輯器唯讀', () => {
   it('assistedHint（仍可自由修改）只在非 LISTED 時渲染，來源標籤保留', () => {
     expect(src).toContain('{!listedPlanWritesBlocked ? <span className="ml-1">{t.plans.source.assistedHint}</span> : null}');
     expect(src).toContain('{t.plans.source[planDraft.source]}');
+  });
+
+  it('LISTED 時列表按鈕、退回提示、Modal 標題、intro、進階提示都改用唯讀文案', () => {
+    const L = String.raw`(?<![!\w])listedPlanWritesBlocked\s*\?\s*`;
+    const tern = (a: string, b: string) => new RegExp(`${L}${a}\\s*:\\s*${b}(?![\\w.])`);
+    expect(src).toMatch(tern('t\\.actions\\.view', 't\\.actions\\.edit'));
+    expect(src.match(new RegExp(`(?:title|aria-label)=\\{${L}t\\.actions\\.view\\s*:\\s*t\\.actions\\.edit\\}`, 'g'))?.length).toBe(2);
+    expect(src).toMatch(tern('t\\.plans\\.review\\.changesHintListed', 't\\.plans\\.review\\.changesHint'));
+    expect(src).toMatch(tern('t\\.plans\\.viewTitle\\(planDraft\\.name\\)', 't\\.plans\\.editTitle\\(planDraft\\.name\\)'));
+    expect(src).toMatch(/\{!listedPlanWritesBlocked \? <Alert tone="info">\{t\.plans\.quick\.intro\}<\/Alert> : null\}/);
+    expect(src).toMatch(tern('t\\.plans\\.quick\\.listedAdvancedHint', 't\\.plans\\.quick\\.advancedHint'));
+    expect(tripsPage.actions.view).toBe('檢視');
+    expect(tripsPage.plans.viewTitle('X')).toBe('檢視方案「X」');
+    expect(tripsPage.plans.review.changesHintListed).toBe('管理者要求修改，但此行程已上架 Midao，目前無法儲存或送審；方案內容僅供檢視。');
+    expect(tripsPage.plans.quick.listedAdvancedHint).toBe('可開啟進階設定檢視販售方式、人數、成團規則、訂金、時長與季節定價，目前僅供檢視。');
+    for (const s of [tripsPage.plans.review.changesHintListed, tripsPage.plans.quick.listedAdvancedHint]) {
+      expect(s).not.toContain('請調整');
+      expect(s).not.toContain('並送審');
+      expect(s).not.toContain('重新儲存');
+    }
   });
 });

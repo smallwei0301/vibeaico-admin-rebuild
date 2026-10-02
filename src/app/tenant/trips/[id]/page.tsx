@@ -763,7 +763,9 @@ export default function TripDetailPage() {
       render: (p) => (
         <div className="btn-group">
           <Button
-            variant="outline" size="sm" title={t.actions.edit} aria-label={t.actions.edit}
+            variant="outline" size="sm"
+            title={listedPlanWritesBlocked ? t.actions.view : t.actions.edit}
+            aria-label={listedPlanWritesBlocked ? t.actions.view : t.actions.edit}
             onClick={() => openPlanEditor(p)}
           >
             <Pencil size={13} />
@@ -985,7 +987,9 @@ export default function TripDetailPage() {
           title={`${p.name}｜${t.plans.review[p.reviewState]}`}
           className="mb-3"
         >
-          {p.reviewState === 'PENDING' ? t.plans.review.pendingHint : t.plans.review.changesHint}
+          {p.reviewState === 'PENDING'
+            ? t.plans.review.pendingHint
+            : listedPlanWritesBlocked ? t.plans.review.changesHintListed : t.plans.review.changesHint}
           {p.reviewNote ? (
             <div className="mt-1">
               <span className="font-semibold">{t.plans.review.noteLabel}：</span>{p.reviewNote}
@@ -1287,7 +1291,9 @@ export default function TripDetailPage() {
         onClose={closePlanEditor}
         title={planEditorMode === 'advanced'
           ? t.plans.advanced.title
-          : planDraft?.id ? t.plans.editTitle(planDraft.name) : t.plans.quick.createTitle}
+          : planDraft?.id
+            ? (listedPlanWritesBlocked ? t.plans.viewTitle(planDraft.name) : t.plans.editTitle(planDraft.name))
+            : t.plans.quick.createTitle}
         footer={
           <>
             <Button
@@ -1332,7 +1338,7 @@ export default function TripDetailPage() {
 
             {planEditorMode === 'quick' ? (
               <>
-                <Alert tone="info">{t.plans.quick.intro}</Alert>
+                {!listedPlanWritesBlocked ? <Alert tone="info">{t.plans.quick.intro}</Alert> : null}
                 <fieldset disabled={listedPlanWritesBlocked} className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
 
                 <FormGroup>
@@ -1453,7 +1459,9 @@ export default function TripDetailPage() {
                     {t.plans.advanced.open}
                   </Button>
                   <FormText>
-                    {planDraft.id ? t.plans.quick.advancedHint : t.plans.advanced.requireQuickSave}
+                    {planDraft.id
+                      ? (listedPlanWritesBlocked ? t.plans.quick.listedAdvancedHint : t.plans.quick.advancedHint)
+                      : t.plans.advanced.requireQuickSave}
                   </FormText>
                 </div>
               </>

@@ -18,6 +18,7 @@ export const tripsPage = {
   actions: {
     create: '新增行程',
     edit: '編輯',
+    view: '檢視',
     duplicate: '複製',
     delete: '刪除',
     publish: '發布到商店頁',
@@ -141,6 +142,7 @@ export const tripsPage = {
     sectionHint: '同一個行程可以有多個方案。旅客下單時先選方案，再選出團日期。',
     create: '新增方案',
     editTitle: (name: string) => `編輯方案「${name}」`,
+    viewTitle: (name: string) => `檢視方案「${name}」`,
     createTitle: '新增方案',
     empty: {
       title: '還沒有方案',
@@ -228,6 +230,7 @@ export const tripsPage = {
       CHANGES_REQUESTED: '已退回',
       pendingHint: '此方案的異動正在等 Midao 管理者審核，審核期間 Midao 前台仍以原內容販售。',
       changesHint: '管理者要求修改，請調整後重新儲存送審。',
+      changesHintListed: '管理者要求修改，但此行程已上架 Midao，目前無法儲存或送審；方案內容僅供檢視。',
       noteLabel: '管理者說明',
       unavailable: '此行程已上架 Midao，方案與季節價格異動需審核。目前尚未開放送審，本次未儲存任何變更。',
       listedReadonly: '此行程已上架 Midao，方案與季節價格目前僅供檢視；異動需審核，尚未開放送審，無法儲存變更。',
@@ -257,6 +260,7 @@ export const tripsPage = {
       previewTitle: '公開頁預覽',
       previewEmpty: '儲存方案名稱與內容後，這裡會顯示公開頁預覽摘要。',
       previewLink: '開啟商店頁預覽',
+      listedAdvancedHint: '可開啟進階設定檢視販售方式、人數、成團規則、訂金、時長與季節定價，目前僅供檢視。',
       advancedHint: '需要調整販售方式、人數、成團規則、訂金、時長或季節定價時，開啟進階設定。',
       save: '儲存快速編輯',
       saving: '儲存並確認中…',
