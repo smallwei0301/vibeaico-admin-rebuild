@@ -40,7 +40,6 @@ describe('issue #42 LISTED 方案編輯器唯讀', () => {
   });
 
   it('儲存方案與季節新增／編輯／刪除按鈕 disabled', () => {
-    expect(src).toMatch(/disabled=\{listedPlanWritesBlocked\}\s*\n\s*loading=\{savingPlan\}/);
     expect(src).toContain('disabled={listedPlanWritesBlocked || savingPlan || !!seasonDraft}');
     expect(src).toMatch(/<Button type="button" size="sm" disabled=\{listedPlanWritesBlocked\} loading=\{savingSeason\}/);
   });
@@ -96,5 +95,41 @@ describe('issue #42 LISTED 方案編輯器唯讀', () => {
       expect(s).not.toContain('並送審');
       expect(s).not.toContain('重新儲存');
     }
+  });
+
+  it('進階模式 LISTED：標題、intro、季節檢視按鈕、footer 儲存按鈕都走唯讀分支', () => {
+    const L = String.raw`(?<![!\w])listedPlanWritesBlocked\s*\?\s*`;
+    expect(src).toMatch(new RegExp(`${L}t\\.plans\\.advanced\\.viewTitle\\s*:\\s*t\\.plans\\.advanced\\.title(?![\\w.])`));
+    expect(src).toMatch(new RegExp(`${L}t\\.plans\\.advanced\\.listedIntro\\s*:\\s*t\\.plans\\.advanced\\.intro(?![\\w.])`));
+    expect(src.match(new RegExp(`(?:title|aria-label)=\\{${L}t\\.actions\\.view\\s*:\\s*t\\.actions\\.edit\\}`, 'g'))?.length).toBe(2);
+    // 季節列：LISTED 不渲染編輯／刪除（不能標「檢視」卻按不下）；未上架保留原按鈕與原 title
+    const seasonStart = src.search(/\{!listedPlanWritesBlocked \? \(\s*<span className="btn-group shrink-0">/);
+    expect(seasonStart).toBeGreaterThan(-1);
+    const seasonBlock = src.slice(seasonStart);
+    const seasonEnd = seasonBlock.indexOf(') : null}');
+    expect(seasonEnd).toBeGreaterThan(-1);
+    const seasonBtns = seasonBlock.slice(0, seasonEnd);
+    expect(seasonBtns).toContain('title={t.actions.edit} aria-label={t.actions.edit}');
+    expect(seasonBtns).toContain('title={t.actions.delete} aria-label={t.actions.delete}');
+    expect(seasonBtns).not.toContain('t.actions.view');
+    expect(seasonBtns.match(/disabled=\{listedPlanWritesBlocked \|\| savingPlan \|\| !!seasonDraft\}/g)?.length).toBe(2);
+    // 未上架儲存按鈕：原文案、原 loadingText、無額外 disabled
+    expect(src).toContain("loadingText={planEditorMode === 'advanced' ? t.plans.advanced.saving : t.plans.quick.saving}");
+    expect(src).toContain("{planEditorMode === 'advanced' ? t.plans.advanced.save : t.plans.quick.save}");
+    const saveBtn = src.slice(src.indexOf('{!listedPlanWritesBlocked ? (\n              <Button\n                loading={savingPlan}'));
+    expect(saveBtn.slice(0, saveBtn.indexOf('</Button>'))).not.toMatch(/disabled=/);
+    expect(tripsPage.plans.quick.save).toBe('儲存快速編輯');
+    expect(tripsPage.plans.quick.saving).toBe('儲存並確認中…');
+    // footer 儲存按鈕：LISTED 時完全不渲染（不是 disabled 的「儲存」）
+    expect(src).toMatch(/\{!listedPlanWritesBlocked \? \(\s*<Button\s+loading=\{savingPlan\}/);
+    expect(src).not.toMatch(/<Button\s+disabled=\{listedPlanWritesBlocked\}\s+loading=\{savingPlan\}/);
+    expect(tripsPage.plans.advanced.viewTitle).toBe('檢視方案進階設定');
+    expect(tripsPage.plans.advanced.listedIntro).toBe('以下為此方案的販售方式、團型、單筆人數、成團規則、時長、計價方式、訂金政策與季節定價，目前僅供檢視。');
+    for (const s of [tripsPage.plans.advanced.viewTitle, tripsPage.plans.advanced.listedIntro]) {
+      for (const bad of ['請調整', '並送審', '儲存', '設定販售方式']) expect(s).not.toContain(bad);
+    }
+    // 未上架文案不變
+    expect(tripsPage.plans.advanced.title).toBe('方案進階設定');
+    expect(tripsPage.plans.advanced.save).toBe('儲存進階設定');
   });
 });

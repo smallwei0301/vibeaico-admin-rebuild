@@ -1290,7 +1290,7 @@ export default function TripDetailPage() {
         open={!!planDraft}
         onClose={closePlanEditor}
         title={planEditorMode === 'advanced'
-          ? t.plans.advanced.title
+          ? (listedPlanWritesBlocked ? t.plans.advanced.viewTitle : t.plans.advanced.title)
           : planDraft?.id
             ? (listedPlanWritesBlocked ? t.plans.viewTitle(planDraft.name) : t.plans.editTitle(planDraft.name))
             : t.plans.quick.createTitle}
@@ -1309,14 +1309,15 @@ export default function TripDetailPage() {
             >
               {planEditorMode === 'advanced' ? t.plans.advanced.backToQuick : common.cancel}
             </Button>
-            <Button
-              disabled={listedPlanWritesBlocked}
-              loading={savingPlan}
-              loadingText={planEditorMode === 'advanced' ? t.plans.advanced.saving : t.plans.quick.saving}
-              onClick={() => void savePlan()}
-            >
-              {planEditorMode === 'advanced' ? t.plans.advanced.save : t.plans.quick.save}
-            </Button>
+            {!listedPlanWritesBlocked ? (
+              <Button
+                loading={savingPlan}
+                loadingText={planEditorMode === 'advanced' ? t.plans.advanced.saving : t.plans.quick.saving}
+                onClick={() => void savePlan()}
+              >
+                {planEditorMode === 'advanced' ? t.plans.advanced.save : t.plans.quick.save}
+              </Button>
+            ) : null}
           </>
         }
       >
@@ -1467,7 +1468,7 @@ export default function TripDetailPage() {
               </>
             ) : (
               <>
-                <Alert tone="info">{t.plans.advanced.intro}</Alert>
+                <Alert tone="info">{listedPlanWritesBlocked ? t.plans.advanced.listedIntro : t.plans.advanced.intro}</Alert>
                 <fieldset disabled={listedPlanWritesBlocked} className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <FormGroup>
@@ -1647,24 +1648,26 @@ export default function TripDetailPage() {
                               {formatCurrency(season.priceOverride ?? planDraft.basePrice)}
                             </div>
                           </div>
-                          <span className="btn-group shrink-0">
-                            <Button
-                              type="button" variant="ghost" size="sm"
-                              title={t.actions.edit} aria-label={t.actions.edit}
-                              disabled={listedPlanWritesBlocked || savingPlan || !!seasonDraft}
-                              onClick={() => openSeasonEditor(season)}
-                            >
-                              <Pencil size={13} />
-                            </Button>
-                            <Button
-                              type="button" variant="ghost" size="sm"
-                              title={t.actions.delete} aria-label={t.actions.delete}
-                              disabled={listedPlanWritesBlocked || savingPlan || !!seasonDraft}
-                              onClick={() => setDeleteTarget({ kind: 'season', id: season.id, name: season.name })}
-                            >
-                              <Trash2 size={13} />
-                            </Button>
-                          </span>
+                          {!listedPlanWritesBlocked ? (
+                            <span className="btn-group shrink-0">
+                              <Button
+                                type="button" variant="ghost" size="sm"
+                                title={t.actions.edit} aria-label={t.actions.edit}
+                                disabled={listedPlanWritesBlocked || savingPlan || !!seasonDraft}
+                                onClick={() => openSeasonEditor(season)}
+                              >
+                                <Pencil size={13} />
+                              </Button>
+                              <Button
+                                type="button" variant="ghost" size="sm"
+                                title={t.actions.delete} aria-label={t.actions.delete}
+                                disabled={listedPlanWritesBlocked || savingPlan || !!seasonDraft}
+                                onClick={() => setDeleteTarget({ kind: 'season', id: season.id, name: season.name })}
+                              >
+                                <Trash2 size={13} />
+                              </Button>
+                            </span>
+                          ) : null}
                         </li>
                       ))}
                     </ul>
