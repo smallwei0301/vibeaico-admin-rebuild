@@ -34,7 +34,7 @@ test('匿名旅客可從公開頁讀回真實方案與名額，重新整理後�
   const planId = randomUUID();
   const departureId = randomUUID();
   const suffix = randomUUID().slice(0, 8);
-  const slug = 'e2e-public-' + suffix;
+  const slug = 'e2e-公開-' + suffix;
   const title = 'E2E 公開行程 ' + suffix;
   const planName = 'E2E 固定日期方案 ' + suffix;
   const departsOn = dateAfter(30);
@@ -99,6 +99,17 @@ test('匿名旅客可從公開頁讀回真實方案與名額，重新整理後�
       'href',
       '/s/' + SHOP_A.shopCode + '/plans/' + planId + '/book',
     );
+
+    // 中文 slug：LINE 舊式單數連結需 308 轉到單次編碼的 /trips/，且詳情頁可開。
+    const legacy = await page.request.get(
+      '/s/' + SHOP_A.shopCode + '/trip/' + encodeURIComponent(slug),
+      { maxRedirects: 0 },
+    );
+    expect(legacy.status()).toBe(308);
+    expect(legacy.headers()['location']).toContain(
+      '/s/' + SHOP_A.shopCode + '/trips/' + encodeURIComponent(slug),
+    );
+    expect(legacy.headers()['location']).not.toContain('%25');
 
     await page.reload();
     await expect(page.getByRole('heading', { name: title, level: 1 })).toBeVisible({ timeout: 15_000 });

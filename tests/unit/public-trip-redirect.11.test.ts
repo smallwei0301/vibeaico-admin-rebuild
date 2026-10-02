@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildTripCarousel, type TripCardSource } from '@/server/trip-flex';
 
 const permanentRedirect = vi.fn();
+const notFound = vi.fn(() => { throw new Error('NEXT_NOT_FOUND'); });
 vi.mock('next/navigation', () => ({
   permanentRedirect: (...args: unknown[]) => permanentRedirect(...args),
+  notFound: () => notFound(),
 }));
 
 import LegacyTripRedirectPage from '@/app/s/[shopCode]/trip/[slug]/page';
@@ -14,19 +16,38 @@ const source = (slug: string): TripCardSource => ({
 });
 
 describe('#11 LINE 行程連結 /trip/{slug} 相容轉址', () => {
-  beforeEach(() => permanentRedirect.mockClear());
+  beforeEach(() => { permanentRedirect.mockClear(); notFound.mockClear(); });
 
-  it.each(['guishan-island', '龜山島 一日遊'])('slug=%s 永久轉址到 /trips/{encoded slug}', async (slug) => {
-    await LegacyTripRedirectPage({ params: Promise.resolve({ shopCode: 'demo', slug }) });
+  // Next 15 的 page params 不會 URL 解碼：mock 必須給「未解碼」的編碼字串。
+  it.each([
+    ['guishan-island', 'guishan-island'],
+    ['%E9%BE%9C%E5%B1%B1%E5%B3%B6', '%E9%BE%9C%E5%B1%B1%E5%B3%B6'],
+    ['%E9%BE%9C%20x', '%E9%BE%9C%20x'],
+  ])('slug=%s 永久轉址到 /trips/{只編碼一次}', async (rawSlug, expectedSeg) => {
+    await LegacyTripRedirectPage({ params: Promise.resolve({ shopCode: 'demo', slug: rawSlug }) });
     expect(permanentRedirect).toHaveBeenCalledTimes(1);
-    expect(permanentRedirect).toHaveBeenCalledWith(`/s/demo/trips/${encodeURIComponent(slug)}`);
+    const target = permanentRedirect.mock.calls[0][0] as string;
+    expect(target).toBe(`/s/demo/trips/${expectedSeg}`);
+    expect(target).not.toContain('%25');
   });
 
-  it('不雙重編碼：params 為解碼後的值，轉址只編碼一次', async () => {
-    await LegacyTripRedirectPage({ params: Promise.resolve({ shopCode: 'a b', slug: '龜山島 一日遊' }) });
-    const target = permanentRedirect.mock.calls[0][0] as string;
-    expect(target).toBe(`/s/${encodeURIComponent('a b')}/trips/${encodeURIComponent('龜山島 一日遊')}`);
-    expect(target).not.toContain('%25');
+  it.each(['%E0%A4%A', '%00', '%0A', ''])(
+    '惡意或空 slug %j → notFound、不轉址',
+    async (rawSlug) => {
+      await expect(
+        LegacyTripRedirectPage({ params: Promise.resolve({ shopCode: 'demo', slug: rawSlug }) }),
+      ).rejects.toThrow('NEXT_NOT_FOUND');
+      expect(permanentRedirect).not.toHaveBeenCalled();
+    },
+  );
+
+  it('shopCode 不符 SHOP_CODE_PATTERN 或解碼失敗 → notFound', async () => {
+    for (const shopCode of ['a%20b', '%E0%A4%A', 'DEMO']) {
+      await expect(
+        LegacyTripRedirectPage({ params: Promise.resolve({ shopCode, slug: 'x' }) }),
+      ).rejects.toThrow('NEXT_NOT_FOUND');
+    }
+    expect(permanentRedirect).not.toHaveBeenCalled();
   });
 
   it('trip-flex 產生的 CTA 路徑正好符合本相容路由 /s/[shopCode]/trip/[slug]', async () => {
@@ -36,7 +57,7 @@ describe('#11 LINE 行程連結 /trip/{slug} 相容轉址', () => {
     const m = new URL(uri).pathname.match(/^\/s\/([^/]+)\/trip\/([^/]+)$/);
     expect(m).not.toBeNull();
     await LegacyTripRedirectPage({
-      params: Promise.resolve({ shopCode: decodeURIComponent(m![1]), slug: decodeURIComponent(m![2]) }),
+      params: Promise.resolve({ shopCode: m![1], slug: m![2] }),
     });
     expect(permanentRedirect).toHaveBeenCalledWith(`/s/demo/trips/${encodeURIComponent(slug)}`);
   });

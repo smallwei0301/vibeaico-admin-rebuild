@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { resolvePublicTripDetailsParams } from '@/lib/public-route-params';
 import { PublicTripDetailsClient } from '@/components/public/PublicTripDetailsClient';
 import { publicTripDetailsPage as t } from '@/i18n/zh-TW/pages/public-trip-details';
 
@@ -13,6 +14,7 @@ export const metadata: Metadata = {
 };
 
 export default async function PublicTripDetailsPage({ params }: Params) {
-  const { shopCode, slug } = await params;
+  // page params 未經 URL 解碼；client 會再 encode 一次呼叫 API，所以這裡必須傳解碼值。
+  const { shopCode, slug } = await resolvePublicTripDetailsParams(params);
   return <PublicTripDetailsClient shopCode={shopCode} slug={slug} />;
 }
