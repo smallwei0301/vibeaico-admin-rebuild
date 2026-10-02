@@ -140,7 +140,7 @@ export function terminalBodyPlan(pr) {
   const unsyncedFields = new Set();
   const lifecycle = rewriteLifecycleState(body, lifecycleState);
   const visible = metadataLines(body, { allowPartial: true });
-  const hasContract = lifecycle.present || visible.some(line => /^[ \t]*[-*]?[ \t]*(?:WORK_ORIGIN|WORKSTREAM|AGENT_LANE|LANE_STATE|ACTIVE_CANDIDATE|CLOSEABILITY_SCORE|SELECTION_REASON|REMAINING_AUTONOMOUS_STEPS|OWNER_OR_EXTERNAL_BLOCKER|CLOSURE_SWEEP_TARGET|TEST_LANE_REQUIRED|WHY_NOT_CLOSER_CANDIDATE|REQUESTED_MODEL \/ ACTUAL_MODEL|BPLUS_MODE|RUN_ID|RESERVE_BOUNDARY|SCORECARD_PATH|DELIVERY_UNIT_TYPE|COUNT_IN_DELIVERY_OUTCOME|RETROACTIVE_TRACKING_MIGRATION|USER_VISIBLE_OUTCOME|MERGE_STATUS|COMPLETION_CLAIM|MERGE_COMMIT_SHA|MAIN_HEAD_VERIFIED|MAIN_HEAD_SHA|MAIN_FILE_RE_READ|EXACT_HEAD_CI_STATUS|EXACT_HEAD_CI_RUN|LOCAL_JOB_RESULT|REMOTE_JOB_RESULT|VERIFIED_AT|ASTRA_RISK|FINAL_RISK_POLICY|TERRA_SLOT|PRIMARY_ISSUE|FILE_OWNERSHIP|TEST_PROFILE|TEST_ENV_ID|SCHEMA_DEPENDENCY)[ \t]*:/i.test(line));
+  const machine = visible.map(line => line.match(/^[ \t]*[-*]?[ \t]*(WORKSTREAM|DELIVERY_UNIT_TYPE|PARENT_EPIC|COUNT_IN_DELIVERY_OUTCOME|RETROACTIVE_TRACKING_MIGRATION|USER_VISIBLE_OUTCOME|WORK_ORIGIN|BPLUS_MODE|RUN_ID|SCORECARD_PATH|AGENT_LANE|LANE_STATE|ACTIVE_CANDIDATE|CLOSEABILITY_SCORE|SELECTION_REASON|REMAINING_AUTONOMOUS_STEPS|OWNER_OR_EXTERNAL_BLOCKER|CLOSURE_SWEEP_TARGET|TEST_LANE_REQUIRED|RESERVE_BOUNDARY|WHY_NOT_CLOSER_CANDIDATE|GOVERNANCE_SCOPE_EXCEPTION|REQUESTED_MODEL \/ ACTUAL_MODEL|ASTRA_RISK|ASTRA_RATIONALE|FINAL_RISK_POLICY|ASTRA_TEST_BASELINE|ASTRA_SCHEMA_BASELINE|BUILDER_EXECUTION_RECEIPT|DUAL_TERRA_PILOT|TERRA_SLOT|PRIMARY_ISSUE|FILE_OWNERSHIP|TEST_PROFILE|TEST_ENV_ID|LOCAL_SLOT_HEALTH|FINAL_CANONICAL_REQUIRED|PAID_PREVIEW_BRANCH_STATUS|MIGRATION_TOUCH|AUTH_TOUCH|STORAGE_TOUCH|MIGRATION_LEDGER_STATUS|ISOLATION_CANARY_STATUS|ISOLATED_TEST_STATUS|CANONICAL_TEST_STATUS|TEST_CLEANUP_STATUS|SCHEMA_DEPENDENCY|SCHEMA_RELEASE_STAGE|SCHEMA_ACTIVATION_GATE|SCHEMA_ACTIVATION_ENV|SCHEMA_ACTIVATION_GUARD_PATH|SCHEMA_ACTIVATION_GATE_SYMBOL|SCHEMA_READINESS_EVIDENCE_PATH|COMPLETION_CLAIM|EXACT_HEAD_CI_STATUS|EXACT_HEAD_CI_RUN|LOCAL_JOB_RESULT|REMOTE_JOB_RESULT|MERGE_STATUS|MERGE_COMMIT_SHA|MAIN_HEAD_VERIFIED|MAIN_HEAD_SHA|MAIN_FILE_RE_READ|VERIFIED_AT|MANUAL_PRODUCTION_PROMOTE|AUTO_VERCEL_PRODUCTION_DEPLOY|PRODUCTION_SCHEMA_STATUS|PRODUCTION_SCHEMA_EVIDENCE|AUTHENTICATED_PRODUCTION_ACCEPTANCE|AUTHENTICATED_PRODUCTION_EVIDENCE)[ \t]*:/i)).filter(Boolean), hasContract = lifecycle.present || machine.length > 0;
   const hasReceipt = merged && hasContract;
   if (lifecycle.error) { errors.push(lifecycle.error); unsyncedFields.add('pr-lifecycle.state'); }
   else if (lifecycle.changed) { changedFields.push('pr-lifecycle.state'); unsyncedFields.add('pr-lifecycle.state'); }
@@ -183,6 +183,7 @@ export function terminalBodyPlan(pr) {
     const value = readField(visible.join('\n'), field);
     if (!value || value.includes('|') || stale(upper(value))) unsyncedFields.add(field);
   }
+  for (const [, field] of machine) { const value = upper(readField(visible.join('\n'), field)); if (['PENDING', 'FAILED'].includes(value) || value.startsWith('AMBIGUOUS|')) unsyncedFields.add(field); }
   return {
     body,
     changed: body !== String(pr.body ?? ''),
@@ -260,8 +261,7 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
     const sameObserved = pr => pr.state === 'closed' && pr.head?.sha === observed.head?.sha && pr.closed_at === observed.closed_at && Boolean(pr.merged || pr.merged_at) === Boolean(observed.merged || observed.merged_at) && pr.body === observed.body;
     const before = await read(); if (!sameObserved(before)) return; if (!pending && labelMismatch(before)) return recordPending(before, 'TERMINAL_LABELS_UNVERIFIED');
     if (!pending && !prior.length && !unresolvedPrior || (String(prior.at(-1)?.body ?? '').startsWith(marker) && String(prior.at(-1)?.body ?? '').split('\n')[1] === status)) return;
-    const priorIds = new Set(comments.map(comment => comment.id));
-    let created;
+    const priorIds = new Set(comments.map(comment => comment.id)); let created;
     try { created = await github.rest.issues.createComment({ owner, repo, issue_number: current.number, body: `${marker}\n${status}\n` +
       `PR: #${current.number}\nVERIFIED_TERMINAL_STATE: ${observed.merged || observed.merged_at ? 'MERGED' : 'CLOSED_UNMERGED'}\n` +
       `HEAD: ${observed.head?.sha}\nCLOSED_AT: ${observed.closed_at}\n` +
