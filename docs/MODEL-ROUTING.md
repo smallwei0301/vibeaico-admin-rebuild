@@ -90,13 +90,13 @@ WORKSTREAM: PRODUCT_MAINLINE
 
 Product 仍走既有 B+ topology：Luna 窄盤點 → Sol TRIAGE → Product builder / Terra lane → 必要 TEST → Sol audit → 需要時 Product Final Risk → closeout。
 
-`models.build = gpt-5.6-terra` 是 OpenAI Product builder 預設。其他 provider 的 Product 主 Session 可依其可用模型執行等價 builder，但 PR 必須據實記錄 requested / actual model，不能從 lane 名稱推論模型真的跑過。
+`models.build = gpt-6.1-sol` 是 OpenAI Product builder 預設（Owner 2026-10-01T00:01:00Z 成本／可用性裁示）。同模型 ID 可用於 build 與 audit，但必須不同 actor／session，builder 不得自審放行；lane 名稱／容量數值／風險 gate 與 Anthropic 對應不變。PR 必須據實記錄 requested / actual model，不能從 lane 名稱推論模型真的跑過。決策：`docs/decisions/2026-10-01-owner-openai-sol61-builder.md`。
 
 ## 2026-09-30 Provider 選擇與版本相容性
 
 PROVIDER_FIRST：先從 session/runtime provider metadata 判定環境，再查該 provider 的 runtime catalog，按角色、任務大小與風險選擇可用模型。requested/actual 據實記錄；其他 provider 缺席不是 blocker。開工與本地角色選擇契約見 `docs/AGENT-EXECUTION.md` §4，保持獨立 review。
 
-目前映射：Luna=`gpt-6-luna`、Sol=`gpt-6.1-sol`、Sonnet=`claude-sonnet-5-5`、Opus=`claude-opus-5-5`。Anthropic ID 已由[官方模型表](https://platform.claude.com/docs/en/models/overview)核實；本次 OpenAI runtime catalog 可選 Luna／Sol，沒有 Sonnet／Opus，不能宣稱可派工。Terra、Astra／Fable 不換版本；本次 Owner 澄清的是 provider-local 選擇原則，不把 Anthropic 缺席當作 OpenAI blocker。
+目前映射：Luna=`gpt-6-luna`、OpenAI Terra／Sol=`gpt-6.1-sol`、Sonnet=`claude-sonnet-5-5`、Opus=`claude-opus-5-5`。Anthropic ID 已由[官方模型表](https://platform.claude.com/docs/en/models/overview)核實；OpenAI runtime catalog 的 Sonnet／Opus 缺席不阻擋 OpenAI 施工。2026-09-30 provider 澄清保留；OpenAI Terra 由 2026-10-01 決策更新，Astra／Fable 不換版本。
 
 `modelMappingVersion` 與 `anthropicEquivalents.version` 更新；頂層審查 `version` 保留，避免使既有 attestation 作廢。AUDIT downgrade 預設使用新 Sol／Opus；舊 ID 只保留既有可驗證 receipt／runtime 相容性，所有 identity、trust、lineage 與成本條件不變。歷史決策與 ledger／receipt 不重寫；当前派工以本表和設定為準。
 
@@ -112,7 +112,7 @@ Claude 環境依 lane 選對應層級；OpenAI 按 PROVIDER_FIRST 與任務大�
 | Lane | 職責 | OpenAI | Anthropic |
 |---|---|---|---|
 | `scout` / Luna | 窄盤點、Closure、CI 摘要、文件、QA、Metrics | `gpt-6-luna` | `claude-haiku-4-5` |
-| `build` / Terra | **施工**（Product builder lane） | `gpt-5.6-terra` | **`claude-sonnet-5-5`** |
+| `build` / Terra | **施工**（Product builder lane） | `gpt-6.1-sol` | **`claude-sonnet-5-5`** |
 | `audit` / Sol | TRIAGE、高風險設計、最終 AUDIT、結案判定 | `gpt-6.1-sol` | `claude-opus-5-5` |
 
 機器可讀的來源是 `scripts/agents/model-routing.json` 的 `anthropicEquivalents`；本表與它必須一致。
@@ -142,7 +142,7 @@ model ID 逐字取自 Anthropic 官方型號表，**本身即完整，不得附�
 
 以下規則只適用 Product mainline，不適用純 MODEL_GOVERNANCE。
 
-第一輪昂貴模型預設 `claude-fable-5-1`，另有 `gpt-6-astra`；兩者合計最多一次。Owner #552 已授權後續直接降為 Sol／Opus，無法選模型時用目前 agent 做對抗審查。型號是 runtime 模型選擇，不是外部 reviewer channel。
+OpenAI 第一輪高風險 reviewer 預設 `gpt-6-astra`；Anthropic 保留 `claude-fable-5-1`，两者同 lineage 合計最多一次。普通風險不得 dispatch premium；Astra 不施工或盤點。Owner #552 已授權後續直接降為 Sol／Opus，無法選模型時用目前 agent 做對抗審查。型號是同環境 subagent 的 runtime 模型選擇，不是外部 reviewer channel；主 Agent 保留 ownership、收回驗證並繼續，獨立 reviewer actor／fresh context 不因模型同 ID 而取消。
 
 Product 高後果類型維持：
 

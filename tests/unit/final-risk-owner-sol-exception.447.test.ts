@@ -24,6 +24,20 @@ const context = {
   schemaBaseline: 'isolated PostgreSQL rebuilt and verified from zero',
 };
 
+// Current-policy synthetic role read-back, independent of historical model identities.
+function independentRoleContext() {
+  const role = (kind: 'BUILD' | 'REVIEW', id: number) => ({
+    role: kind, repository: context.repository, headSha: context.headSha, changeDigest: digest,
+    sourceRef: `https://github.com/${context.repository}/pull/447#issuecomment-${id}`,
+    actorId: `fixture-${kind}-actor`, sessionId: `fixture-${kind}-session`,
+    executionRef: kind === 'REVIEW' ? 'fixture-sol-review-447' : 'fixture-build-447',
+    startedAt: kind === 'BUILD' ? '2026-09-16T23:58:00Z' : '2026-09-16T23:59:00Z',
+    completedAt: kind === 'BUILD' ? '2026-09-16T23:58:30Z' : '2026-09-16T23:59:30Z',
+    freshContext: kind === 'REVIEW', executionEvidence: 'OPERATOR_ATTESTED',
+  });
+  return { ...context, roleEvidence: { trusted: true, builder: role('BUILD', 101), reviewer: role('REVIEW', 102) } };
+}
+
 // Synthetic review fixture; not a claim about a real #551 model execution.
 function trustedSolReview() {
   const payload = {
@@ -62,8 +76,9 @@ function trustedSolReview() {
 }
 
 describe('Owner #447 Sol review continues under the permanent #552 downgrade policy', () => {
-  it('keeps Fable as initial premium default and Sol in the conditional downgrade allowlist', () => {
-    expect(routing.models.finalRisk).toBe('claude-fable-5-1');
+  it('uses the current OpenAI Astra default while retaining Fable and conditional Sol downgrade', () => {
+    expect(routing.models.finalRisk).toBe('gpt-6-astra');
+    expect(routing.models.finalRiskAllowedModels).toContain('claude-fable-5-1');
     expect(routing.models.finalRiskAllowedModels).not.toContain('gpt-5.6-sol');
     expect(routing.models.finalRiskDowngradeAllowedModels).toContain('gpt-5.6-sol');
     expect(routing.finalRiskCostControl.version).toBe(FINAL_RISK_COST_POLICY_VERSION);
@@ -73,10 +88,23 @@ describe('Owner #447 Sol review continues under the permanent #552 downgrade pol
     const result = evaluateAstra({
       body,
       changedFiles: files.map((file) => file.filename),
-      context,
+      context: independentRoleContext(),
       reviews: [trustedSolReview()],
     });
     expect(result.status).toBe('ASTRA_APPROVED');
     expect(result.errors).toEqual([]);
   });
+
+  it('rejects missing independent role proof and builder self-review under current policy', () => {
+    const requiredPolicy = { ...routing, openaiBuilderDecision: { ...routing.openaiBuilderDecision, independentReviewerRequired: true } };
+    const self = independentRoleContext();
+    self.roleEvidence.reviewer.actorId = self.roleEvidence.builder.actorId;
+    for (const candidate of [context, self]) {
+      const result = evaluateAstra({ body, changedFiles: files.map(file => file.filename), context: candidate,
+        reviews: [trustedSolReview()] }, requiredPolicy);
+      expect(result.status).toBe('ASTRA_PENDING');
+      expect(result.errors.join(' ')).toMatch(/role evidence|own actor/);
+    }
+  });
+
 });
