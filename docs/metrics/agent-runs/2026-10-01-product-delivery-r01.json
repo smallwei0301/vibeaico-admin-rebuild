@@ -46,6 +46,9 @@
     },
     {
       "ref": "issue/761"
+    },
+    {
+      "ref": "issue/764"
     }
   ],
   "main": {
@@ -2286,6 +2289,74 @@
         "count": 1,
         "accepted": true,
         "note": "Ledger append for #762 closeout, #761 status and #758 build."
+      },
+      {
+        "id": "20261003-premium-763-finalrisk",
+        "role": "audit",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "issue": 758,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/763#issuecomment-5970530508",
+        "startedAt": "2026-10-03T15:19:47Z",
+        "completedAt": "2026-10-03T15:21:27Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "Final Risk PREMIUM requested claude-fable-5-1 (single reservation #issuecomment-5970507849, lineage pr763-issue758-transient-parity); first tool_use 15:19:59Z; PASS 0 blocking, 6/6 mutations; astra-review 5401427597. NON_BLOCKING findings -> #764."
+      },
+      {
+        "id": "20261003-audit-763-codex-p1-verify",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "issue": 758,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/763#discussion_r4173726448",
+        "startedAt": null,
+        "completedAt": null,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "Codex P1 verified: recipient-specific provider rejections opened the instance-wide window, creating a new enumeration oracle; PR returned to draft; Fable budget consumed so re-review downgrades to Opus."
+      },
+      {
+        "id": "20261003-build-758-recipient-kind",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "issue": 758,
+        "evidenceRef": "7203a715",
+        "startedAt": "2026-10-03T15:27:12Z",
+        "completedAt": "2026-10-03T15:30:49Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "failureKind config/service/recipient; only config and service open the parity window; recipient 4xx returns 503 for that request only; docs overclaim fixed; npm test 311/4232."
+      },
+      {
+        "id": "20261003-scout-ledger-763-p1",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "issue": 758,
+        "evidenceRef": "ledger append for #763 P1 round",
+        "startedAt": null,
+        "completedAt": "2026-10-03T15:31:59Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "Ledger append for #763 Final Risk and Codex P1 fix round."
       }
     ],
     "fullContextReplays": 0,
@@ -2302,11 +2373,11 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 40,
+    "fullCiRuns": 41,
     "invalidReruns": 5,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0,
-    "note": "37007212982 因 head 被取代 cancelled，37083653366 在 classify 被拒，37082211071 為 #714 source CI，三者不計入；先前 5 個 dispatch run 是否已計入原 30 仍待查證。本輪新增 3 個完整 canonical TEST run：37008702923、37083761493、37090025615 #757: 37105978199 failure（mock 形狀不擬真，已修）、37108030479 success；main push 37112300377 監看中。 #762：37121399537、37124644493 success；37120725291、37124319682 因 head 被取代而取消（不計）。"
+    "note": "37007212982 因 head 被取代 cancelled，37083653366 在 classify 被拒，37082211071 為 #714 source CI，三者不計入；先前 5 個 dispatch run 是否已計入原 30 仍待查證。本輪新增 3 個完整 canonical TEST run：37008702923、37083761493、37090025615 #757: 37105978199 failure（mock 形狀不擬真，已修）、37108030479 success；main push 37112300377 監看中。 #762：37121399537、37124644493 success；37120725291、37124319682 因 head 被取代而取消（不計）。 #763：37128355259 success（cce85365）。"
   },
   "quality": {
     "acceptanceEvidenceCoveragePercent": null,
@@ -2319,8 +2390,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 33,
-    "lunaAccepted": 29,
+    "lunaTasks": 34,
+    "lunaAccepted": 30,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
