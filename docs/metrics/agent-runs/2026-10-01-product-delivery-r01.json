@@ -2184,13 +2184,115 @@
         "cachedTokens": null,
         "count": 1,
         "note": "Reconcile #747 ISSUE_CLOSED claim and checkedAt with the guard-accepted close."
+      },
+      {
+        "id": "20261003-audit-762-reattest-ab585edf",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "issue": 762,
+        "evidenceRef": "ab585edf",
+        "startedAt": "2026-10-03T12:53:44Z",
+        "completedAt": "2026-10-03T12:54:14Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "Fresh-context re-attestation FIX_REQUIRED: ledger claimed issue#747 ISSUE_CLOSED/VERIFIED while the close-guard had reopened #747; led to the guarded re-close."
+      },
+      {
+        "id": "20261003-audit-762-reattest-bfa400dd",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "issue": 762,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/762#issuecomment-5968952554",
+        "startedAt": "2026-10-03T12:59:32Z",
+        "completedAt": "2026-10-03T13:00:03Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "Exact-head re-attestation PASS (ledger-only delta; #747 claim matches guard-accepted close); sol-review 5400904507."
+      },
+      {
+        "id": "20261003-audit-761-production-regression",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "issue": 761,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/761#issuecomment-5969791930",
+        "startedAt": "2026-10-03T13:47:00Z",
+        "completedAt": "2026-10-03T13:50:00Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "Audit-tier QA after #762 merge 6d02420d (exception: Production test-data writes with credentials): homepage bookingCta fixed, detail bookableDepartureAvailable true, booking page 200; trip restored to DRAFT 13:49:01Z. #761 specific scenario NOT_VERIFIED-live: Production plan GET/PUT 500 (#755). #761 left OPEN state:owner-blocked."
+      },
+      {
+        "id": "20261003-build-758-parity-window",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "issue": 758,
+        "evidenceRef": "2d00f796",
+        "startedAt": "2026-10-03T13:50:11Z",
+        "completedAt": "2026-10-03T13:59:45Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "#758 option B: any failed send opens the parity window (config 10 min, transient 60 s, never shortened), SENT clears it; 4 unit tests incl. missing M6; 03-AUTH/04-API-CONTRACTS synced to 503 MAIL_001; npm test 311/4215."
+      },
+      {
+        "id": "20261003-audit-758-review-1",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "issue": 758,
+        "evidenceRef": "2d00f796",
+        "startedAt": null,
+        "completedAt": null,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "Audit diff review PASS: Math.max window, SENT clear, modified 754 test asserted the removed leak; integration auth.03 only exercises 401 so unaffected."
+      },
+      {
+        "id": "20261003-scout-ledger-758",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "issue": 758,
+        "evidenceRef": "ledger append for #758 PR",
+        "startedAt": null,
+        "completedAt": "2026-10-03T14:01:03Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "Ledger append for #762 closeout, #761 status and #758 build."
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 9,
+    "issuesStarted": 10,
     "issuesClosed": 1,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -2200,11 +2302,11 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 38,
+    "fullCiRuns": 40,
     "invalidReruns": 5,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0,
-    "note": "37007212982 因 head 被取代 cancelled，37083653366 在 classify 被拒，37082211071 為 #714 source CI，三者不計入；先前 5 個 dispatch run 是否已計入原 30 仍待查證。本輪新增 3 個完整 canonical TEST run：37008702923、37083761493、37090025615 #757: 37105978199 failure（mock 形狀不擬真，已修）、37108030479 success；main push 37112300377 監看中。"
+    "note": "37007212982 因 head 被取代 cancelled，37083653366 在 classify 被拒，37082211071 為 #714 source CI，三者不計入；先前 5 個 dispatch run 是否已計入原 30 仍待查證。本輪新增 3 個完整 canonical TEST run：37008702923、37083761493、37090025615 #757: 37105978199 failure（mock 形狀不擬真，已修）、37108030479 success；main push 37112300377 監看中。 #762：37121399537、37124644493 success；37120725291、37124319682 因 head 被取代而取消（不計）。"
   },
   "quality": {
     "acceptanceEvidenceCoveragePercent": null,
@@ -2217,8 +2319,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 32,
-    "lunaAccepted": 28,
+    "lunaTasks": 33,
+    "lunaAccepted": 29,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -2387,7 +2489,8 @@
     "2026-10-03 RUN_CAPTURE_HANDOFF (Owner /goal message): two ACTUAL_PERMISSION_DENIED events around 2026-10-02T01:40Z in the prior Claude session (Self-Approval block on canonical review submission); exact commands not recoverable from live GitHub.",
     "2026-10-03 RUN_CAPTURE_HANDOFF (Owner /goal message): Owner chose option 2 on 2026-10-02 to open the blocked permissions; recorded as Owner decision from handoff text.",
     "2026-10-03 PLAYBOOK_DELTA 候選：#757 在 Codex 審查完成前（ready 後 1 分鐘）就 merge，Codex P1/P2 於 merge 後才出現 → 已開 #758；預防：ready 後等 Codex summary 為 Completed 或明確無 finding 再 merge。",
-    "2026-10-03 PLAYBOOK_DELTA（#747 closeout）：等 Codex 對 exact head Completed 才 merge；scout 改 ledger 後推送前必跑 scorecard-readiness --strict-live 與 md 重產比對（本輪 notes 覆蓋、md 未重產、luna 計數未重算各一次）；TEST_VALIDATION lane 上程式與 ledger 修正合併一次推送、已確定被取代的 head 取消 CI；#724 body 每改一次 receipt 失效，轉 ready 前等新 PASS receipt。"
+    "2026-10-03 PLAYBOOK_DELTA（#747 closeout）：等 Codex 對 exact head Completed 才 merge；scout 改 ledger 後推送前必跑 scorecard-readiness --strict-live 與 md 重產比對（本輪 notes 覆蓋、md 未重產、luna 計數未重算各一次）；TEST_VALIDATION lane 上程式與 ledger 修正合併一次推送、已確定被取代的 head 取消 CI；#724 body 每改一次 receipt 失效，轉 ready 前等新 PASS receipt。",
+    "2026-10-03 PLAYBOOK_DELTA（#762）：關閉 Product Issue 前必須先補 Issue 本文 WORKSTREAM、final Sol CLOSE_APPROVED（EXACT_HEAD=最後合併 PR head）與 RUN_CAPTURE_HANDOFF ISSUE_CLOSE_READY（current-main push CI），並在 close-guard 跑完後確認 Issue 仍為 closed 才寫 ledger；推送後計算 changeDigest 前，先確認 PR files API 的 blob sha 已與本地 HEAD 一致；scout ledger 的 task 時間倒置不會被 validator 擋下，audit 需逐欄檢查。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
