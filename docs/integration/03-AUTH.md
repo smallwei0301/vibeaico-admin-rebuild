@@ -51,7 +51,8 @@
   唯一已知差異是既有的 REGISTER 60 秒重寄 429 節流，它只套用在「真的寄過信」的位址。
   寄信失敗分三類（`src/server/email/send.ts` 的 `failureKind`）：
   `config`（無 key、401／403、金鑰／寄件者／網域設定錯誤）、`service`（429、5xx、網路／逾時、SDK 無 statusCode）、
-  `recipient`（其他 4xx，如 422 收件人格式錯誤）。`config`／`service` 該次請求回 503 `MAIL_001`、刪除驗證碼，並開啟 parity 視窗
+  `recipient`（僅限可證明為 `to` 收件人被拒的 4xx：statusCode 4xx 且 message 指涉 `to` 欄位，如 422 "Invalid `to` field"）。
+  `from` 欄位錯誤（MAIL_FROM 格式錯，422 "Invalid `from` field"）與其餘無法證明是收件人造成的 4xx（400、422 非 to、404、409…）一律 fail-closed 歸 `config`，不得歸 `recipient`（否則全站寄不出信卻回 200，#763 Codex P1 #4）。`config`／`service` 該次請求回 503 `MAIL_001`、刪除驗證碼，並開啟 parity 視窗
   （`config` 10 分鐘、`service` 60 秒；多次失敗取較長者，不縮短既有視窗）。
   **`recipient`（收件人專屬拒絕）回 200 `{sent:true}`，與「不寄信分支」對外無法區分**：驗證碼已刪除、不儲存，
   只寫 server log，不開啟／延伸／清除視窗（#763 P1 #3；若回 503，攻擊者可用 provider 會拒絕的位址反覆探測：

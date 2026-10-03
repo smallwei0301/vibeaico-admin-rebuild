@@ -44,12 +44,27 @@ describe('sendVerificationCodeEmail 結果分類 (#754)', () => {
     expect(resendSend).not.toHaveBeenCalled();
   });
 
+  const FROM_422 = 'Invalid `from` field. The email address needs to follow the `email@example.com` or `Name <email@example.com>` format.';
   it.each([
-    [422, 'validation_error'], [400, 'validation_error'], [404, 'not_found'],
-  ])('%i %s → recipient（#763）', async (statusCode, name) => {
-    resendSend.mockResolvedValue({ data: null, error: { name, message: 'Invalid `to` field', statusCode } });
+    [422, 'validation_error', 'Invalid `to` field. The email address needs to follow the `email@example.com` format.'],
+    [400, 'validation_error', 'Invalid `to` field.'],
+  ])('%i 且 message 指涉 to 欄位 → recipient（#763）', async (statusCode, name, message) => {
+    resendSend.mockResolvedValue({ data: null, error: { name, message, statusCode } });
     expect(await run()).toEqual({ result: 'FAILED', configFailure: false, failureKind: 'recipient' });
   });
+  it('422 validation_error 且 message 指涉 from 欄位（MAIL_FROM 格式錯誤）→ config', async () => {
+    resendSend.mockResolvedValue({ data: null, error: { name: 'validation_error', message: FROM_422, statusCode: 422 } });
+    expect(await run()).toEqual({ result: 'FAILED', configFailure: true, failureKind: 'config' });
+  });
+  it('400 無 to 指涉（Missing `subject` field）→ config（fail-closed）', async () => {
+    resendSend.mockResolvedValue({ data: null, error: { name: 'missing_required_field', message: 'Missing `subject` field.', statusCode: 400 } });
+    expect((await run()).failureKind).toBe('config');
+  });
+  it.each([[422, 'validation_error'], [404, 'not_found'], [409, 'invalid_idempotent_request']])(
+    '%i 泛用訊息（不含 to 指涉）→ config（fail-closed）', async (statusCode, name) => {
+      resendSend.mockResolvedValue({ data: null, error: { name, message: 'Something is wrong with the request', statusCode } });
+      expect(await run()).toEqual({ result: 'FAILED', configFailure: true, failureKind: 'config' });
+    });
   it.each([429, 500, 502, 503])('%i → service', async (statusCode) => {
     resendSend.mockResolvedValue({ data: null, error: { name: 'application_error', message: 'x', statusCode } });
     expect((await run()).failureKind).toBe('service');

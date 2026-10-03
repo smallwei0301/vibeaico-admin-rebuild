@@ -65,13 +65,13 @@ describe('send.ts 經真實 HTTP + resend SDK 的分類 (#754)', () => {
     mock.failNext(429);
     expect(await run()).toEqual({ result: 'FAILED', configFailure: false, failureKind: 'service' });
   });
-  it('failNext(422) → FAILED + failureKind=recipient（#763）', async () => {
+  it('failNext(422)（mock 為 to 欄位錯誤）→ FAILED + failureKind=recipient（#763）', async () => {
     mock.failNext(422);
     expect(await run()).toEqual({ result: 'FAILED', configFailure: false, failureKind: 'recipient' });
   });
-  it('failNext(400) → recipient', async () => {
+  it('failNext(400)（無 to 欄位指涉）→ config（fail-closed）', async () => {
     mock.failNext(400);
-    expect((await run()).failureKind).toBe('recipient');
+    expect(await run()).toEqual({ result: 'FAILED', configFailure: true, failureKind: 'config' });
   });
   it('連不上 provider（mock 關閉）→ FAILED + 暫時性', async () => {
     await mock.stop();

@@ -30,8 +30,10 @@ const MAIL_UNAVAILABLE_MESSAGE = '驗證信暫時無法寄出，請稍後再試�
  * （視窗內根本不會寄信）；否則 provider 在視窗內恢復時，未註冊 email 會寄成功回 200，已註冊 email
  * 仍回 503，形成枚舉 oracle（#763 Codex P1 #2）。檢查必須在 60 秒重寄冷卻（429，只對真的寄過信的
  * 位址成立）與 email_exists 分支之前，否則兩條分支的回應會不同。
- * TTL：設定類 10 分鐘；服務層級（5xx／429／網路）60 秒；收件人專屬拒絕（其他 4xx）不開窗、不延伸、
- * 不清除，且對外回 200（與不寄信分支一致，見下方 recipient 說明）。多次失敗以 Math.max 延伸，不縮短既有較長視窗。
+ * TTL：設定類（含 MAIL_FROM 錯誤與其餘無法證明是收件人造成的 4xx，fail-closed）10 分鐘；
+ * 服務層級（5xx／429／網路）60 秒；可證明為 to 欄位的 4xx 拒絕（recipient）不開窗、不延伸、
+ * 不清除，且對外回 200（與不寄信分支一致，見下方 recipient 說明）。
+ * 多次失敗以 Math.max 延伸，不縮短既有較長視窗。
  *
  * 可用性代價：服務層級失敗後，本 instance 暫停寄信至多 60 秒（Resend 429 突發也會造成 60 秒暫停，
  * #764）；設定類失敗暫停到 TTL 結束或重新部署。
@@ -77,7 +79,7 @@ export async function dispatchVerificationCode(email: string, purpose: 'REGISTER
   const { error: delErr } = await admin.from('auth_verification_codes')
     .delete().eq('email', email).eq('purpose', purpose).eq('code', code);
   if (delErr) console.error('[send-code] 無法刪除未寄出的驗證碼', delErr);
-  // recipient（收件人專屬拒絕，如 422）：對外必須與「不寄信分支」無法區分（#763 P1 #3）——
+  // recipient（可證明為 to 欄位的 4xx 拒絕，如 "Invalid `to` field"）：對外必須與「不寄信分支」無法區分（#763 P1 #3）——
   // 碼已刪除、只寫 server log、不開啟／延伸／清除視窗，並**正常返回**（route 回 200 {sent:true}），
   // 不得丟 503：否則攻擊者可用 provider 會拒絕的位址反覆探測（已註冊 → 200、未註冊 → 503）。
   // 理由：被 provider 拒絕的位址，等同「受理後退信」的不可投遞位址（使用者看到已寄出、信不會到）；

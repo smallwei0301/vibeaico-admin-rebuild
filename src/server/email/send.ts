@@ -45,8 +45,10 @@ export interface EmailSendDetail {
   result: EmailSendResult;
   configFailure: boolean;
   /**
-   * 失敗種類（#763）。`config`：設定類（需 Owner 介入）；`service`：可證明為服務層級
-   * （429、5xx、網路／逾時、SDK 無 statusCode）；`recipient`：其餘 4xx（如 422 收件人格式），
+   * 失敗種類（#763）。`config`：設定類（需 Owner 介入），含 401／403、`from` 欄位錯誤，
+   * 以及所有「無法證明是收件人造成」的 4xx（fail-closed：請求層級問題重試不會好）；
+   * `service`：可證明為服務層級（429、5xx、網路／逾時、SDK 無 statusCode）；
+   * `recipient`：僅限可明確證明是 `to` 收件人被拒的 4xx（statusCode 4xx 且 message 指涉 `to` 欄位），
    * 只與該收件人有關，不得被當成全站狀態（否則可被攻擊者用來開啟 parity 視窗做枚舉）。
    * SENT 時為 null。
    */
@@ -58,10 +60,17 @@ const CONFIG_ERROR_NAMES = new Set([
   'missing_api_key', 'invalid_api_key', 'restricted_api_key', 'invalid_from_address',
 ]);
 
+/** message 明確指涉 `to` 欄位（如 "Invalid `to` field."）；不得命中 "Invalid `from` field"。 */
+const RECIPIENT_FIELD_PATTERN = /`to`|\binvalid\s+to\s+(?:field|address)\b/i;
+/** message 指涉 `from` 欄位（MAIL_FROM 格式錯誤，Resend 回 422 validation_error）。 */
+const FROM_FIELD_PATTERN = /`from`|\binvalid\s+from\b/i;
+
 function isConfigFailure(error: { name?: string; statusCode?: number | null; message?: string }): boolean {
   if (error.statusCode === 401 || error.statusCode === 403) return true;
   if (error.name && CONFIG_ERROR_NAMES.has(error.name)) return true;
-  return /domain is not verified|api key is invalid/i.test(error.message ?? '');
+  const message = error.message ?? '';
+  if (FROM_FIELD_PATTERN.test(message)) return true;
+  return /domain is not verified|api key is invalid/i.test(message);
 }
 
 function classifyFailure(error: { name?: string; statusCode?: number | null; message?: string }): EmailFailureKind {
@@ -69,7 +78,10 @@ function classifyFailure(error: { name?: string; statusCode?: number | null; mes
   const status = error.statusCode;
   // 無 statusCode：SDK 網路／連線／逾時錯誤；429 與 5xx：服務層級。
   if (typeof status !== 'number' || status === 429 || status >= 500) return 'service';
-  return 'recipient'; // 其他 4xx（422 validation_error、400 等）
+  // 4xx：只有「可證明是 to 收件人被拒」才算 recipient；其餘（MAIL_FROM 的 422、400、404、409…）
+  // 都是請求層級問題，重試不會好 → fail-closed 歸 config（503 MAIL_001 並開視窗），不可把全站停擺藏成 200。
+  if (RECIPIENT_FIELD_PATTERN.test(error.message ?? '')) return 'recipient';
+  return 'config';
 }
 
 async function sendDetailed(to: string, subject: string, html: string): Promise<EmailSendDetail> {
