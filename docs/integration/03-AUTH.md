@@ -71,39 +71,38 @@
 
 ```ts
 import { z } from 'zod';
-import { randomInt } from 'crypto';
-import { handle, ok, fail, ERR } from '@/server/http';
-import { createAdminSupabase } from '@/server/supabase';
-import { sendVerificationCodeEmail } from '@/server/email/send'; // 05 分冊
+import { handle, ok } from '@/server/http';
+import { dispatchVerificationCode } from '@/server/send-code';
 
 const bodySchema = z.object({
   email: z.string().email('請輸入有效的 Email'),
   purpose: z.enum(['REGISTER', 'RESET_PASSWORD']),
 });
 
+// route 只做：zod 解析 → dispatchVerificationCode → ok({ sent: true })。
+// 視窗檢查、冷卻、email_exists、產碼寫入、寄信與失敗分類全在 @/server/send-code。
 export const POST = handle(async (req) => {
   const { email, purpose } = bodySchema.parse(await req.json());
-  const admin = createAdminSupabase();
-
-  const { data: recent } = await admin.from('auth_verification_codes')
-    .select('created_at').eq('email', email).eq('purpose', purpose)
-    .order('created_at', { ascending: false }).limit(1).maybeSingle();
-  if (recent && Date.now() - new Date(recent.created_at).getTime() < 60_000)
-    return fail(429, '請稍候再重新發送驗證碼', ERR.CONFLICT);
-
-  // email 是否已註冊（枚舉防護：不論結果都回 success）
-  const { data: users } = await admin.auth.admin.listUsers({ page: 1, perPage: 1 } as any);
-  const exists = !!(await admin.rpc('email_exists', { p_email: email })).data; // 見下方 SQL
-  if ((purpose === 'REGISTER') === exists) return ok({ sent: true });
-
-  const code = String(randomInt(100000, 999999));
-  await admin.from('auth_verification_codes').insert({
-    email, code, purpose, expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
-  });
-  await sendVerificationCodeEmail(email, code, purpose);
+  await dispatchVerificationCode(email, purpose);
   return ok({ sent: true });
 });
 ```
+
+> **不得**在 route 內直接呼叫 `sendVerificationCodeEmail` 後無條件回 `{ sent: true }`：
+> 那會把寄信失敗變成假成功，且讓「已註冊／未註冊」兩條分支的回應可區分（枚舉 oracle）。
+
+#### `src/server/send-code.ts` `dispatchVerificationCode(email, purpose)` 流程（順序不可調換）
+
+1. **parity 視窗檢查最先**：`Date.now() < configFailureUntil` → 直接丟 503 `MAIL_001`。
+   早於 DB 查詢、60 秒冷卻與 `email_exists`，兩條分支回應一致，且不呼叫 provider。
+2. **60 秒重寄冷卻**：該 email＋purpose 最近一筆碼不到 60 秒 → 丟 429（`ERR.CONFLICT`）。
+3. **`email_exists` 判斷**：`(purpose === 'REGISTER') === exists`（不需寄信的分支）→ 直接返回，route 回 200 `{ sent: true }`。
+4. **產碼寫入** `auth_verification_codes`，再 `await sendVerificationCodeEmail(...)`；`result === 'SENT'` → 返回（SENT 不清除視窗）。
+5. **寄信失敗**：先刪除剛寫入的碼（刪除失敗只寫 log），再依 `failureKind` 分流：
+   - `recipient`（僅可證明為 `to` 欄位的 4xx）：只寫 server log，**正常返回**（route 回 200），不開視窗、不丟 503，避免與不寄信分支可區分。
+   - `config`（含 MAIL_FROM 錯誤與其餘無法證明的 4xx，fail-closed）：視窗 10 分鐘。
+   - `service`（5xx／429／網路）：視窗 60 秒。
+   - 視窗以 `configFailureUntil = Math.max(configFailureUntil, Date.now() + ttl)` 延伸，不縮短既有較長視窗，之後丟 503 `MAIL_001`。
 
 輔助 SQL（併入 migration `0003`，或新開 `0010`）：
 
