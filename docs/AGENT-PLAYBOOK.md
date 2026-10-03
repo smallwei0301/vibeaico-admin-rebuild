@@ -1923,12 +1923,12 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 發生次數：1。
 - Issue／PR／CI：Issue #11；PR #731；run `36996336894` 被取消、`36996678336` success。
 - 分類：CI／concurrency／TEST 排程。
-- 事件：同一分支上 pull_request run（integration job 進入 pending）與 workflow_dispatch canonical TEST 先後排隊；dispatch run 於 PR run 之前完成，但 PR run 的 integration 後續取代了 dispatch。
-- 根因：shared TEST concurrency group 保留多個 pending job；當 PR run 的 integration 晚進佇列時，會以更新的 head 取代先前的 dispatch run。
-- 影響：本輪 dispatch run `36996336894` 被取消（`reason=replaced`），實際有效 TEST 運行是 `36996678336`（PR run 的 integration+後續 dispatch）；無法預測哪個 TEST run 成為規範。
+- 事件：#731 的 canonical TEST dispatch run 36996336894 先進入 shared TEST concurrency group 等待；之後同分支 pull_request run 的 integration job 才進佇列，由於 group 只保留一個 pending，較晚進來的 PR run integration 取代了 dispatch，36996336894 因而被取消。之後先等 PR run 的 integration 進入 pending 再 dispatch，dispatch run 36996678336（不是 PR run）才成功執行並 SUCCESS。
+- 根因：shared TEST concurrency group 設定只保留一個 pending job；dispatch 與 PR run 同時進佇列時，較晚進來的 job 會取代先前的 pending。
+- 影響：dispatch run 36996336894 被取消（`reason=replaced`），實際完成的 canonical TEST 是 36996678336；搞錯 dispatch 與 PR run 的順序導致浪費一次 CI 額度。
 - 修正：先確保 PR run 的 integration 進入 pending（已可觀測），再 dispatch canonical TEST；dispatch 應晚於 PR run 進入佇列。
 - 預防：監看 shared TEST concurrency 仲裁機制；同分支的 pull_request 與 workflow_dispatch job 應序列化，或明確定義優先順序與取代規則。不同 branch 的 concurrent dispatch 仍可保留。
-- 驗證：PR #731 merged；後續 PR #714、#709、#751 的 TEST run 均未見相同的 concurrency 衝突。
+- 驗證：PR #731 merged；本次 #714、#709、#751 並無因 concurrency 被取代的 dispatch。
 - 狀態：已防止；待監看後續 multi-lane 部署的 concurrency policy 穩定性。
 
 ### PB-057 — Next.js 15.5.23：App Router page params 不解碼、API route params 會解碼
@@ -1942,8 +1942,8 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 影響：同一個 slug 值在頁面與 API 間可能被不同處理；若頁面只解碼一次而 API 已解過，會造成二次解碼問題；反之亦然。
 - 修正：App Router page 與 API route 在同一分支內必須統一解碼次數；由頁面負責一次解碼（使用 `decodeURIComponent` 或等效），API 層假設已解碼的值，不再解碼。確認外部 reviewer 的相反主張時，以同版本 Next.js 最小專案實測作裁決，不信任文件或版本說明。
 - 預防：頁面與 API 若使用相同 route parameter，先驗證編碼次數一致；E2E 應包含特殊字元的 URL 對照測試，確認往返不丟失或誤解碼。框架版本更新時重新驗證此行為；不同版本間無法假設一致性。
-- 驗證：PR #731 exact head；audit tier 已實測驗證；後續 PR #714–#751 未再見編碼衝突。
-- 狀態：已防止；同類框架行為差異仍監看中。
+- 驗證：PR #731 exact head；audit tier 已實測驗證；本次 #714–#751 編碼逻辑一致。
+- 狀態：已防止；同類框架行為差異待後續監看。
 
 ### PB-058 — 子代理禁止 git reset --hard 與 local integration test（含 reset-db）
 
@@ -1951,9 +1951,9 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 發生次數：1。
 - Issue／PR／CI：Issue #11；派工委派（Agent task within shared session）。
 - 分類：子代理權限／測試隔離。
-- 事件：子代理啟動執行工作時，若被派工指令中未明確禁止，可能執行 `git reset --hard` 或 `vitest --config vitest.integration.config.mts`（會觸發 reset-db，破壞 local Supabase 狀態）。
-- 根因：子代理未被告知這些操作的危害；缺乏預設防護。
-- 影響：local dev 環境的 Supabase 狀態被誤重置，影響同工作樹的其他並行工作；本輪多筆 build／audit task 延後補記。
+- 事件：子代理在本地 worktree 執行 `git reset --hard`（違反禁令），以及執行 `vitest list --config vitest.integration.config.mts` 觸發 reset-db 腳本。
+- 根因：子代理未被明確禁止此類操作；缺乏預設防護。
+- 影響：子代理確實執行了破壞性命令，但經查本機沒有 SUPABASE 環境變數，loadTestEnv 在建立任何連線前即 exit(1)，**沒有任何資料庫被重置或觸及**。風險在於若環境有 TEST 憑證就會重置共用 TEST。
 - 修正：派工委派時在指令中明文寫入「禁止 `git reset --hard`」與「禁止本地執行 `vitest --config vitest.integration.config.mts`」；若必須執行測試，改用 CI runner 或隔離環境。
 - 預防：子代理授權清單應列出禁止清單（reset、rm -rf、remote 變更），而不是白名單制；委派指令應明確說明哪些操作會影響環境與共用資源。
 - 驗證：PR #731 merged；後續派工中已明文禁止此類操作。
@@ -2012,7 +2012,7 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 影響：本輪先 push 後改本文，多執行一次 guard；guard 的控制流不穩定，後續 commit 會再次遇擋。
 - 修正：PARKED PR 的重新啟用順序應為：（1）Sol/audit 批准重新施工；（2）修改 PR 本文，設定 ACTIVE_CANDIDATE=true、補充 BUILDER_EXECUTION_RECEIPT；（3）再推送新 commit。這樣 guard 在檢驗 commit 時已看到新的 ACTIVE metadata。
 - 預防：PR 本文更新與新 commit 應同時進行或先改本文；preflight 應驗證 PARKED 狀態下的元數據變更；自動化可在檢測到 PARKED 進 ACTIVE 轉換時，重新驗證 pending commit。
-- 驗證：PR #714 修正後按新順序重新啟用，guard 成功；後續 PR #709、#751 未見同類 guard 擋阻。
+- 驗證：PR #714 修正後按新順序重新啟用，guard 成功；本次 #709、#751 無 PARKED 狀態轉換。
 - 狀態：已防止；guard 與 lifecycle 轉換的交互應進一步明確化。
 
 ### PB-063 — Scout 盤點宣稱「可立即 merge」前，須附 live 證據與 CI 結果
@@ -2040,7 +2040,7 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 影響：衝突解決增加複雜度；若用錯方式（例如合併兩份內容），ledger 會損壞。本輪解法為 `ledger 以 main 逐字解決`，因 #731 的 ledger 已是 main 現況。
 - 修正：不在 Product slice PR（如 #714）中新增或修改 ledger；ledger 檔由獨立的 scout 層 ledger PR（例如 #732）統一管理。若 Product slice 需要記事件，改由共用欄位（例如 notes）在 slice 內提及，ledger PR 後續補記完整 task record。
 - 預防：Product PR template 應提醒禁止新增 `docs/metrics/agent-runs/**` 檔；preflight guard 應檢測與拒絕。ledger PR 的定義應明確為 scout 層作業，不借用 Product 工作樹。
-- 驗證：PR #714 以 main 解決衝突後 merge；後續 PR #709、#751 未再觸發 ledger 衝突。scout 層另開 PR #732 統一補記。
+- 驗證：PR #714 以 main 解決衝突後 merge；本次 #709、#751 無新增 ledger 檔。scout 層另開 PR #732 統一補記。
 - 狀態：已防止；Product template 與 guard 應強制執行。
 
 ### PB-065 — TEST_VALIDATION lane dispatch 需先驗證 PR 本文 metadata
