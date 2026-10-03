@@ -4,6 +4,86 @@ import { tenantOwnedPublicStoragePath, tenantOwnedPublicStorageUrl } from './sto
 
 /** keyword-reply 附加圖片使用的 bucket（`/api/upload` 白名單同名）。 */
 export const KEYWORD_REPLY_IMAGES_BUCKET = 'keyword-reply-images';
+export const RICHMENU_ASSETS_BUCKET = 'richmenu-assets';
+
+type RichmenuLine = Record<string, unknown>;
+
+/**
+ * Return the canonical, tenant-owned rich-menu URLs in a complete line JSON.
+ * External URLs and malformed legacy values deliberately stay out of the
+ * retirement set; the database trigger remains the final fail-closed guard.
+ */
+export function richmenuAssetReferences(line: RichmenuLine, tenantId: string): Set<string> {
+  const urls: string[] = [];
+  if (typeof line.richMenuBgImageUrl === 'string' && line.richMenuBgImageUrl) {
+    urls.push(line.richMenuBgImageUrl);
+  }
+
+  if (Array.isArray(line.flexCards)) {
+    for (const card of line.flexCards) {
+      if (!card || typeof card !== 'object' || Array.isArray(card)) continue;
+      const imageUrl = (card as Record<string, unknown>).imageUrl;
+      if (typeof imageUrl === 'string' && imageUrl) urls.push(imageUrl);
+    }
+  }
+
+  return new Set(
+    urls
+      .map((url) => tenantOwnedPublicStorageUrl(url, RICHMENU_ASSETS_BUCKET, tenantId))
+      .filter((url): url is string => Boolean(url)),
+  );
+}
+
+/**
+ * Canonicalize rich-menu URLs at the application boundary before they reach
+ * the retirement trigger. Non-rich-menu and external URLs are preserved.
+ */
+export function canonicalizeRichmenuLine(line: RichmenuLine, tenantId: string): RichmenuLine {
+  const next = { ...line };
+  if (typeof next.richMenuBgImageUrl === 'string' && next.richMenuBgImageUrl) {
+    next.richMenuBgImageUrl =
+      tenantOwnedPublicStorageUrl(next.richMenuBgImageUrl, RICHMENU_ASSETS_BUCKET, tenantId) ??
+      next.richMenuBgImageUrl;
+  }
+
+  if (Array.isArray(next.flexCards)) {
+    next.flexCards = next.flexCards.map((card) => {
+      if (!card || typeof card !== 'object' || Array.isArray(card)) return card;
+      const nextCard = { ...(card as Record<string, unknown>) };
+      if (typeof nextCard.imageUrl === 'string' && nextCard.imageUrl) {
+        nextCard.imageUrl =
+          tenantOwnedPublicStorageUrl(nextCard.imageUrl, RICHMENU_ASSETS_BUCKET, tenantId) ??
+          nextCard.imageUrl;
+      }
+      return nextCard;
+    });
+  }
+  return next;
+}
+
+/**
+ * Candidate set for cleanup after a successful settings write. Both sides
+ * are canonicalized so query/fragment/percent-encoding aliases cannot create
+ * a false replacement or duplicate retirement attempt.
+ */
+export function removedRichmenuAssetReferences(
+  previousLine: RichmenuLine,
+  nextLine: RichmenuLine,
+  tenantId: string,
+): string[] {
+  const previous = richmenuAssetReferences(previousLine, tenantId);
+  const next = richmenuAssetReferences(nextLine, tenantId);
+  return [...previous].filter((url) => !next.has(url)).sort();
+}
+
+/** Detect the Phase A trigger conflict without swallowing other 23514 errors. */
+export function isRetiredRichmenuAssetError(error: unknown): boolean {
+  const candidate = error as { code?: unknown; constraint?: unknown; message?: unknown } | null;
+  return candidate?.code === '23514' && (
+    candidate.constraint === 'richmenu_asset_not_retired' ||
+    candidate.message === 'richmenu asset has been retired'
+  );
+}
 
 const KEYWORD_REPLY_REFERENCE_PAGE_SIZE = 200;
 
@@ -100,5 +180,63 @@ export async function deleteTenantStorageObjectBestEffort(params: {
       path,
       err,
     });
+  }
+}
+
+/**
+ * Atomically retire one canonical rich-menu URL, then best-effort remove its
+ * Storage object. Only a successful service-role retirement may reach the
+ * irreversible Storage remove call; RPC false/error is fail-closed.
+ */
+export async function retireRichmenuAssetBestEffort(params: {
+  url: string;
+  tenantId: string;
+}): Promise<boolean> {
+  const { url, tenantId } = params;
+  const canonicalUrl = tenantOwnedPublicStorageUrl(url, RICHMENU_ASSETS_BUCKET, tenantId);
+  const path = tenantOwnedPublicStoragePath(url, RICHMENU_ASSETS_BUCKET, tenantId);
+  if (!canonicalUrl || !path) return false;
+
+  try {
+    const admin = createAdminSupabase();
+    const { data: retired, error } = await admin.rpc('retire_richmenu_asset', {
+      p_tenant_id: tenantId,
+      p_image_url: canonicalUrl,
+    });
+    if (error) {
+      console.error('[storage-cleanup] richmenu retirement RPC failed; keeping Storage object', {
+        tenantId,
+        canonicalUrl,
+        message: error.message,
+      });
+      return false;
+    }
+    if (retired !== true) return false;
+
+    await deleteTenantStorageObjectBestEffort({
+      bucket: RICHMENU_ASSETS_BUCKET,
+      url: canonicalUrl,
+      tenantId,
+    });
+    return true;
+  } catch (err) {
+    console.error('[storage-cleanup] richmenu retirement failed; keeping Storage object', {
+      tenantId,
+      canonicalUrl,
+      err,
+    });
+    return false;
+  }
+}
+
+/** Cleanup every removed URL once, preserving the fail-closed boundary. */
+export async function cleanupRemovedRichmenuAssetsBestEffort(params: {
+  previousLine: RichmenuLine;
+  nextLine: RichmenuLine;
+  tenantId: string;
+}): Promise<void> {
+  const { previousLine, nextLine, tenantId } = params;
+  for (const url of removedRichmenuAssetReferences(previousLine, nextLine, tenantId)) {
+    await retireRichmenuAssetBestEffort({ url, tenantId });
   }
 }
