@@ -43,17 +43,21 @@
 - 驗證成功即寫 `consumed_at`，一碼一次。
 - 為防 email 枚舉：email 已存在時 `send-verification-code(REGISTER)` 與
   不存在時 `forgot-password` **都回成功**，只是不寄信（或寄「此信箱已註冊」提醒信）。
-- **寄信失敗契約（#754／#758）**：該寄信卻寄失敗時（無 API key、provider 401／403、5xx、429、網路錯誤等），
+- **寄信失敗契約（#754／#758）**：該寄信卻發生 provider／設定層級失敗時（無 API key、provider 401／403、5xx、429、網路錯誤等），
   `send-verification-code` 與 `forgot-password` 回 **503 `MAIL_001`**，訊息固定為
   「驗證信暫時無法寄出，請稍後再試或聯絡我們」，剛插入的驗證碼即刪除（不留 60 秒冷卻），
-  provider 細節只進 server log、不回給 client。**不得**在沒寄出時回 `{sent:true}`。
+  provider 細節只進 server log、不回給 client。**不得**在 provider／設定層級失敗而沒寄出時回 `{sent:true}`（收件人專屬拒絕例外，見下）。
 - **枚舉防護的精確保證**（best-effort，非絕對）：正常運作時，已存在／不存在 email 的回應盡量一致（皆 200 `{sent:true}`）；
   唯一已知差異是既有的 REGISTER 60 秒重寄 429 節流，它只套用在「真的寄過信」的位址。
   寄信失敗分三類（`src/server/email/send.ts` 的 `failureKind`）：
   `config`（無 key、401／403、金鑰／寄件者／網域設定錯誤）、`service`（429、5xx、網路／逾時、SDK 無 statusCode）、
-  `recipient`（其他 4xx，如 422 收件人格式錯誤）。三類該次請求都回 503 `MAIL_001`、刪除驗證碼，
-  但只有 `config`（10 分鐘）與 `service`（60 秒）會開啟 parity 視窗（多次失敗取較長者，不縮短既有視窗）；
-  `recipient` 只讓該次請求回 503，不開啟、不延伸、也不清除視窗（否則攻擊者可用 provider 會拒絕的位址開窗，再探測枚舉，#763）。
+  `recipient`（其他 4xx，如 422 收件人格式錯誤）。`config`／`service` 該次請求回 503 `MAIL_001`、刪除驗證碼，並開啟 parity 視窗
+  （`config` 10 分鐘、`service` 60 秒；多次失敗取較長者，不縮短既有視窗）。
+  **`recipient`（收件人專屬拒絕）回 200 `{sent:true}`，與「不寄信分支」對外無法區分**：驗證碼已刪除、不儲存，
+  只寫 server log，不開啟／延伸／清除視窗（#763 P1 #3；若回 503，攻擊者可用 provider 會拒絕的位址反覆探測：
+  已註冊 → 200、未註冊 → 503）。理由：被 provider 拒絕的位址等同「受理後退信」的不可投遞位址
+  （使用者看到已寄出、信不會到）；#754 的誠實回報保留給真正影響使用者的 provider／設定層級故障。
+  驗證碼已刪除，故重複請求不會產生只對未註冊位址成立的 429 冷卻。
   **視窗內，所有寄碼請求（已註冊／未註冊、REGISTER／RESET_PASSWORD 兩條分支）在最前面短路回同一個 503 `MAIL_001`**：
   不查 DB、不寫驗證碼、不呼叫 provider，也早於 60 秒重寄冷卻（429）與 email 存在判斷。視窗只由 TTL 結束，
   不會因 provider 恢復而提前清除（否則未註冊 email 寄成功回 200、已註冊 email 仍 503，形成枚舉 oracle，#763）。

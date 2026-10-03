@@ -142,16 +142,43 @@ describe('寄信失敗 parity 視窗 (#758)', () => {
     expect((await forgot('ghost@example.com')).status).toBe(200);
   });
 
-  it('收件人專屬拒絕（#763）：該次 503，但不開窗——下一個已存在 email 的 REGISTER 回 200', async () => {
+  it('收件人專屬拒絕（#763 P1 #3）：回 200 {sent:true}、不存碼、provider 呼叫一次、不開窗', async () => {
     mail.fn.mockResolvedValue(RECIPIENT);
     const bad = await reg('attacker-bad@example.com');
-    expect(bad.status).toBe(503);
-    expect((await bad.json()).code).toBe('MAIL_001');
+    expect(bad.status).toBe(200);
+    expect((await bad.json()).data.sent).toBe(true);
     expect(state.rows).toHaveLength(0);
+    expect(mail.fn).toHaveBeenCalledTimes(1);
     mail.fn.mockClear();
     state.exists = true;
     expect((await reg('registered@example.com')).status).toBe(200);
     expect(mail.fn).not.toHaveBeenCalled();
+  });
+
+  it('收件人專屬拒絕 parity：provider 拒絕位址 X，未註冊與已註冊的 REGISTER 回應相同；可重複探測', async () => {
+    mail.fn.mockResolvedValue(RECIPIENT);
+    const bodies: unknown[] = [];
+    for (const exists of [false, true, false, true]) {
+      state.exists = exists;
+      const res = await reg('x-rejected@example.com');
+      expect(res.status).toBe(200);
+      bodies.push(await res.json());
+    }
+    expect(new Set(bodies.map((b) => JSON.stringify(b))).size).toBe(1);
+    expect(state.rows).toHaveLength(0); // 無殘留碼 → 不會有只對未註冊位址成立的 429 冷卻
+  });
+
+  it('收件人專屬拒絕 parity：RESET_PASSWORD 鏡像（存在／不存在皆 200 同 body）', async () => {
+    mail.fn.mockResolvedValue(RECIPIENT);
+    const bodies: unknown[] = [];
+    for (const exists of [true, false, true, false]) {
+      state.exists = exists;
+      const res = await forgot('x-rejected@example.com');
+      expect(res.status).toBe(200);
+      bodies.push(await res.json());
+    }
+    expect(new Set(bodies.map((b) => JSON.stringify(b))).size).toBe(1);
+    expect(state.rows).toHaveLength(0);
   });
 
   it('服務層級失敗仍開窗（對照）', async () => {
@@ -161,12 +188,12 @@ describe('寄信失敗 parity 視窗 (#758)', () => {
     expect((await reg('registered@example.com')).status).toBe(503);
   });
 
-  it('收件人專屬拒絕不清除、也不延伸既有視窗', async () => {
+  it('既有視窗內的收件人專屬拒絕請求同樣被短路 503，不清除、也不延伸視窗', async () => {
     mail.fn.mockResolvedValue(TRANSIENT);
     await reg('new@example.com'); // 開 60s 視窗
     vi.advanceTimersByTime(30_000);
     mail.fn.mockResolvedValue(RECIPIENT);
-    expect((await reg('bad@example.com')).status).toBe(503);
+    expect((await reg('bad@example.com')).status).toBe(503); // 視窗內於最前面短路
     state.exists = true;
     expect((await reg('registered@example.com')).status).toBe(503); // 視窗仍在（未被清除）
     vi.advanceTimersByTime(31_000); // 距開窗 61s；若被延伸則仍 503

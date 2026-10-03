@@ -31,7 +31,7 @@ const MAIL_UNAVAILABLE_MESSAGE = '驗證信暫時無法寄出，請稍後再試�
  * 仍回 503，形成枚舉 oracle（#763 Codex P1 #2）。檢查必須在 60 秒重寄冷卻（429，只對真的寄過信的
  * 位址成立）與 email_exists 分支之前，否則兩條分支的回應會不同。
  * TTL：設定類 10 分鐘；服務層級（5xx／429／網路）60 秒；收件人專屬拒絕（其他 4xx）不開窗、不延伸、
- * 不清除。多次失敗以 Math.max 延伸，不縮短既有較長視窗。
+ * 不清除，且對外回 200（與不寄信分支一致，見下方 recipient 說明）。多次失敗以 Math.max 延伸，不縮短既有較長視窗。
  *
  * 可用性代價：服務層級失敗後，本 instance 暫停寄信至多 60 秒（Resend 429 突發也會造成 60 秒暫停，
  * #764）；設定類失敗暫停到 TTL 結束或重新部署。
@@ -77,11 +77,18 @@ export async function dispatchVerificationCode(email: string, purpose: 'REGISTER
   const { error: delErr } = await admin.from('auth_verification_codes')
     .delete().eq('email', email).eq('purpose', purpose).eq('code', code);
   if (delErr) console.error('[send-code] 無法刪除未寄出的驗證碼', delErr);
-  // recipient（收件人專屬拒絕，如 422）：只讓本次請求回 503，不開啟、不延伸、也不清除視窗；
-  // 否則攻擊者可用 provider 會拒絕的位址開窗，再探測已註冊 / 未註冊 email（#763）。
-  if (failureKind === 'config' || failureKind === 'service') {
-    const ttl = failureKind === 'config' ? MAIL_CONFIG_FAILURE_TTL_MS : MAIL_TRANSIENT_FAILURE_TTL_MS;
-    configFailureUntil = Math.max(configFailureUntil, Date.now() + ttl); // 不縮短既有較長視窗
+  // recipient（收件人專屬拒絕，如 422）：對外必須與「不寄信分支」無法區分（#763 P1 #3）——
+  // 碼已刪除、只寫 server log、不開啟／延伸／清除視窗，並**正常返回**（route 回 200 {sent:true}），
+  // 不得丟 503：否則攻擊者可用 provider 會拒絕的位址反覆探測（已註冊 → 200、未註冊 → 503）。
+  // 理由：被 provider 拒絕的位址，等同「受理後退信」的不可投遞位址（使用者看到已寄出、信不會到）；
+  // #754 的誠實回報保留給 provider／設定層級的真實故障（config／service → 503 + 視窗）。
+  // 冷卻檢查：碼已刪除，故未註冊位址再次請求不會被 429 擋下，與已註冊位址（從無碼）一致；
+  // 唯一例外是刪除碼本身失敗（delErr，只留 log）時才會殘留一筆而觸發 429，屬資料庫故障的極端邊界。
+  if (failureKind === 'recipient') {
+    console.error('[send-code] 收件人專屬拒絕（對外回 200，不開視窗）');
+    return;
   }
+  const ttl = failureKind === 'config' ? MAIL_CONFIG_FAILURE_TTL_MS : MAIL_TRANSIENT_FAILURE_TTL_MS;
+  configFailureUntil = Math.max(configFailureUntil, Date.now() + ttl); // 不縮短既有較長視窗
   throw mailUnavailable();
 }
