@@ -10,7 +10,10 @@ import * as astraPolicy from '../../scripts/agents/astra-review-policy.mjs';
 import * as boundaryPolicy from '../../scripts/agents/governance-workstream-boundary.mjs';
 import * as capturePolicy from '../../scripts/agents/scorecard-required-gate.mjs';
 import * as schemaStagePolicy from '../../scripts/agents/schema-staged-release-policy.mjs';
+import * as preflightPolicy from '../../scripts/agents/agent-wip-preflight.mjs';
+import * as publicationPolicy from '../../scripts/agents/pr-publication-receipt.mjs';
 import { createRunLedgerV2 } from '../../scripts/agents/run-ledger-v2.mjs';
+import { renderCurrentMarkdown, scoreRunCurrent } from '../../scripts/agents/score-run-current.mjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { classifyWorkstream } from '../../scripts/agents/astra-review-policy.mjs';
 import { parseLaneMetadata } from '../../scripts/agents/agent-wip-policy.mjs';
@@ -77,7 +80,7 @@ function truth(body: string, changedFiles: any[] = ['supabase/migrations/0113_te
 // Execute the actual trusted workflow script with real policy modules and fake GitHub I/O.
 // Vitest's VM cannot dynamically import from AsyncFunction. Replace module loading only,
 // not policy behavior: each exact trusted file URL resolves to its real static import.
-async function runWorkflow(file: string, current = subject(), files: any[] = paths, peers: any[] = [], job = 'guard') {
+async function runWorkflow(file: string, current = subject(), files: any[] = paths, peers: any[] = [], job = 'guard', injected: { capture?: string[]; schema?: string[] } = {}) {
   vi.stubEnv('GITHUB_WORKSPACE', process.cwd());
   const failures: string[] = []; const statuses: any[] = []; const calls: string[] = []; const comments: string[] = [];
   const labels = new Set<string>(current.labels.map((label: any) => label.name));
@@ -86,14 +89,25 @@ async function runWorkflow(file: string, current = subject(), files: any[] = pat
   for (const name of ['addHeading', 'addRaw', 'addTable', 'write']) summary[name] = () => summary;
   const github: any = {
     rest: {
-      git: { getBlob: async ({ file_sha }: any) => {
-        const file = files.find(item => item.sha === file_sha && typeof item.content === 'string');
+      git: { getTree: async () => ({ data: { truncated: false, tree: files.flatMap(file => {
+        if (typeof file !== 'object' || !file.sha) return [];
+        const entries = [{ path: file.filename, type: 'blob', mode: '100644', sha: file.sha }];
+        if (file.report) entries.push({ path: file.filename.replace(/\.json$/, '.md'), type: 'blob', mode: '100644', sha: file.report.sha });
+        return entries;
+      }) } }), getBlob: async ({ file_sha }: any) => {
+        const file = files.find(item => item.sha === file_sha && typeof item.content === 'string')
+          ?? files.map(item => item.report).find(report => report?.sha === file_sha);
         if (!file) throw new Error('Missing fixture blob');
         return { data: { sha: file_sha, encoding: 'base64', size: Buffer.byteLength(file.content),
           content: Buffer.from(file.content).toString('base64') } };
       } },
       pulls: {
-        get: async () => ({ data: current }),
+        get: async ({ pull_number }: any) => {
+          if (pull_number === 736) calls.push('rollout');
+          return { data: pull_number === 736
+            ? { merged: true, merged_at: '2026-10-03T07:00:00Z' }
+            : current };
+        },
         update: async ({ body }: any) => { calls.push('body'); current.body = body; return { data: current }; },
         listFiles, list,
       },
@@ -102,7 +116,7 @@ async function runWorkflow(file: string, current = subject(), files: any[] = pat
       issues: { listComments, getLabel: async () => ({}),
         addLabels: async ({ labels: added }: any) => { calls.push('labels'); added.forEach((name: string) => labels.add(name)); },
         removeLabel: async ({ name }: any) => { calls.push('labels'); labels.delete(name); },
-        createComment: async ({ body }: any) => { calls.push('comment'); comments.push(body); },
+        createComment: async ({ body }: any) => { calls.push(body?.includes('agent-publication-preflight-receipt') ? 'publication-receipt' : 'comment'); comments.push(body); },
         updateComment: async () => { calls.push('comment'); },
         setLabels: async () => { throw new Error('Whole-label replacement is forbidden'); } },
       actions: { createWorkflowDispatch: async () => { calls.push('dispatch'); } },
@@ -127,8 +141,14 @@ async function runWorkflow(file: string, current = subject(), files: any[] = pat
     ['wip-alert-fingerprint.mjs', alertPolicy],
     ['astra-review-policy.mjs', astraPolicy],
     ['governance-workstream-boundary.mjs', boundaryPolicy],
-    ['scorecard-required-gate.mjs', capturePolicy],
-    ['schema-staged-release-policy.mjs', schemaStagePolicy],
+    ['scorecard-required-gate.mjs', injected.capture
+      ? { ...capturePolicy, validateGithubRunLedgerChanges: async () => injected.capture }
+      : capturePolicy],
+    ['schema-staged-release-policy.mjs', injected.schema
+      ? { ...schemaStagePolicy, validateGithubSchemaStagedRelease: async () => injected.schema }
+      : schemaStagePolicy],
+    ['agent-wip-preflight.mjs', preflightPolicy],
+    ['pr-publication-receipt.mjs', publicationPolicy],
   ].map(([name, module]) => [pathToFileURL(resolve(process.cwd(), 'scripts/agents', String(name))).href, module]));
   const loadPolicy = async (specifier: string) => {
     if (!modules.has(specifier)) throw new Error(`Unexpected policy module: ${specifier}`);
@@ -145,6 +165,45 @@ async function runWorkflow(file: string, current = subject(), files: any[] = pat
 afterEach(() => vi.unstubAllEnvs());
 
 describe('governance boundary regression #500', () => {
+  it('executes rollout against live guard: old Agent stays grandfathered, new Agent stages, Owner is exempt', async () => {
+    const oldAgent = await runWorkflow('.github/workflows/agent-wip-guard.yml', subject());
+    expect(oldAgent.calls).toContain('rollout');
+    expect(oldAgent.calls).not.toContain('publication-receipt');
+    const newAgent = await runWorkflow('.github/workflows/agent-wip-guard.yml', {
+      ...subject(), created_at: '2026-10-03T08:00:00Z',
+    });
+    expect(newAgent.calls).toContain('publication-receipt');
+    const owner = await runWorkflow('.github/workflows/agent-wip-guard.yml', {
+      ...subject(gov.replace('WORK_ORIGIN: AGENT', 'WORK_ORIGIN: OWNER')),
+      created_at: '2026-10-03T08:00:00Z',
+    });
+    expect(owner.calls).not.toContain('rollout');
+    expect(owner.calls).not.toContain('publication-receipt');
+  });
+  it('does not sign a publication receipt while deterministic ledger or schema preflight fails', async () => {
+    const current = { ...subject(), created_at: '2026-10-03T08:00:00Z' };
+    expect((await runWorkflow('.github/workflows/agent-wip-guard.yml', current)).calls).toContain('publication-receipt');
+    for (const injected of [{ capture: ['invalid run ledger'] }, { schema: ['invalid staged schema'] }]) {
+      const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current, paths, [], 'guard', injected);
+      expect(result.calls).not.toContain('publication-receipt');
+      expect(result.statuses.at(-1).state).toBe('failure');
+    }
+  });
+  it('does not sign a new Agent publication receipt without its canonical paired Run report', async () => {
+    const run = createRunLedgerV2('2026-10-03-publication-fixture', created_at, { closeoutOwner: 'PRODUCT_MAIN_SESSION' });
+    const content = JSON.stringify(run);
+    const sha = createHash('sha1').update(`blob ${Buffer.byteLength(content)}\0`).update(content).digest('hex');
+    const current = { ...subject(), created_at: '2026-10-03T08:00:00Z' };
+    const file = { filename: 'docs/metrics/agent-runs/2026-10-03-publication-fixture.json', status: 'modified', sha, content };
+    const missing = await runWorkflow('.github/workflows/agent-wip-guard.yml', current, [file]);
+    expect(missing.calls).not.toContain('publication-receipt');
+    expect(missing.failures.join('\n')).toContain('PUBLICATION_REPORT_REJECTED');
+    const markdown = renderCurrentMarkdown(run, scoreRunCurrent(run));
+    const reportSha = createHash('sha1').update(`blob ${Buffer.byteLength(markdown)}\0`).update(markdown).digest('hex');
+    const valid = await runWorkflow('.github/workflows/agent-wip-guard.yml', current,
+      [{ ...file, report: { sha: reportSha, content: markdown } }]);
+    expect(valid.calls).toContain('publication-receipt');
+  });
   describe('delivery applicability regression #555', () => {
     it('shares the post-merge applicability and preserves undeclared historical records', () => {
       const applies = boundaryPolicy.shouldValidateDeliveryUnitBoundary;
@@ -469,7 +528,10 @@ describe('governance boundary regression #500', () => {
     for (const closedCount of [0, 1]) {
       const content = JSON.stringify({ ...run, delivery: { ...run.delivery, issuesClosed: closedCount } });
       const sha = createHash('sha1').update(`blob ${Buffer.byteLength(content)}\0`).update(content).digest('hex');
-      const file = { filename: 'docs/metrics/agent-runs/2026-09-16-synthetic-538.json', status: 'modified', sha, content };
+      const markdown = renderCurrentMarkdown(JSON.parse(content), scoreRunCurrent(JSON.parse(content)));
+      const reportSha = createHash('sha1').update(`blob ${Buffer.byteLength(markdown)}\0`).update(markdown).digest('hex');
+      const file = { filename: 'docs/metrics/agent-runs/2026-09-16-synthetic-538.json', status: 'modified', sha, content,
+        report: { sha: reportSha, content: markdown } };
       const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', subject(), [file]);
       expect(result.calls).not.toContain('product-peers');
       expect(result.calls).not.toContain('dispatch');

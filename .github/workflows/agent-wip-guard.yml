@@ -1,6 +1,9 @@
 name: agent-wip-guard
 
 on:
+  push:
+    branches: [main]
+
   schedule:
     - cron: '37 * * * *'
 
@@ -23,7 +26,7 @@ permissions:
 
 jobs:
   review_wakeup:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_run' || (github.event_name == 'issue_comment' && (github.event.action == 'edited' || github.event.action == 'deleted'))
+    if: github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_run' || (github.event_name == 'issue_comment' && (github.event.action == 'edited' || github.event.action == 'deleted'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -41,7 +44,7 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: >-
-            const { pathToFileURL } = require('node:url'); const path = require('node:path'); const astra = await import(pathToFileURL(path.join(process.env.GITHUB_WORKSPACE, 'scripts/agents/astra-review-policy.mjs')).href); const { owner, repo } = context.repo; const packet = context.eventName === 'schedule' ? await astra.resolveReviewRecovery({ github, owner, repo }) : context.eventName === 'workflow_run' ? { numbers: [await astra.resolveReviewWakeup({ github, owner, repo, runId: context.payload.workflow_run.id })], associationIncomplete: false } : await astra.resolveRoleReceiptWakeup({ github, owner, repo, repository: context.payload.repository.full_name, issueNumber: context.payload.issue.number, commentId: context.payload.comment.id, nativePr: Boolean(context.payload.issue.pull_request) }); core.setOutput('pr_numbers', JSON.stringify(packet.numbers)); core.setOutput('association_incomplete', String(packet.associationIncomplete)); if (packet.associationIncomplete) core.warning('Receipt association reads incomplete: known heads are invalidated pending; unknown associations require recovery');
+            const { pathToFileURL } = require('node:url'); const path = require('node:path'); const astra = await import(pathToFileURL(path.join(process.env.GITHUB_WORKSPACE, 'scripts/agents/astra-review-policy.mjs')).href); const publication = await import(pathToFileURL(path.join(process.env.GITHUB_WORKSPACE, 'scripts/agents/pr-publication-receipt.mjs')).href); const { owner, repo } = context.repo; const packet = context.eventName === 'push' ? await publication.resolvePublicationBaseWakeup({ github, owner, repo, baseRef: context.payload.repository.default_branch }) : context.eventName === 'schedule' ? await astra.resolveReviewRecovery({ github, owner, repo }) : context.eventName === 'workflow_run' ? { numbers: [await astra.resolveReviewWakeup({ github, owner, repo, runId: context.payload.workflow_run.id })], associationIncomplete: false } : await astra.resolveRoleReceiptWakeup({ github, owner, repo, repository: context.payload.repository.full_name, issueNumber: context.payload.issue.number, commentId: context.payload.comment.id, nativePr: Boolean(context.payload.issue.pull_request) }); core.setOutput('pr_numbers', JSON.stringify(packet.numbers)); core.setOutput('association_incomplete', String(packet.associationIncomplete)); if (packet.associationIncomplete) core.warning('Receipt association reads incomplete: known heads are invalidated pending; unknown associations require recovery');
 
   # Untrusted issue comments must be filtered before entering the terminal concurrency queue.
   command_authorization:
@@ -126,7 +129,7 @@ jobs:
 
   guard:
     needs: [review_wakeup]
-    if: always() && (github.event_name == 'pull_request_target' || ((github.event_name == 'schedule' || github.event_name == 'workflow_run' || (github.event_name == 'issue_comment' && (github.event.action == 'edited' || github.event.action == 'deleted'))) && needs.review_wakeup.result == 'success' && needs.review_wakeup.outputs.pr_numbers != '[]') || (github.event.issue.pull_request && (github.event.comment.body == '/astra-review-check' || startsWith(github.event.comment.body, '/astra-review-check'))))
+    if: always() && (github.event_name == 'pull_request_target' || ((github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_run' || (github.event_name == 'issue_comment' && (github.event.action == 'edited' || github.event.action == 'deleted'))) && needs.review_wakeup.result == 'success' && needs.review_wakeup.outputs.pr_numbers != '[]') || (github.event.issue.pull_request && (github.event.comment.body == '/astra-review-check' || startsWith(github.event.comment.body, '/astra-review-check'))))
     strategy:
       fail-fast: false
       matrix:
@@ -176,8 +179,15 @@ jobs:
               process.env.GITHUB_WORKSPACE, 'scripts/agents/schema-staged-release-policy.mjs',
             )).href);
 
+            const preflight = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE, 'scripts/agents/agent-wip-preflight.mjs',
+            )).href);
+            const publication = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE, 'scripts/agents/pr-publication-receipt.mjs',
+            )).href);
+
             const { owner, repo } = context.repo;
-            const reviewWakeup = context.eventName === 'schedule' || context.eventName === 'workflow_run' || (context.eventName === 'issue_comment' && ['edited', 'deleted'].includes(context.payload.action));
+            const reviewWakeup = context.eventName === 'push' || context.eventName === 'schedule' || context.eventName === 'workflow_run' || (context.eventName === 'issue_comment' && ['edited', 'deleted'].includes(context.payload.action));
             const payloadCurrent = reviewWakeup ? { number: Number(process.env.REVIEW_WAKEUP_PR) }
               : context.payload.pull_request ?? { number: context.payload.issue.number };
             if (!Number.isSafeInteger(payloadCurrent.number) || payloadCurrent.number < 1) throw new Error('Invalid canonical PR number');
@@ -288,6 +298,57 @@ jobs:
               }
               if (!scorecardFound) {
                 metadataErrors.push(`SCORECARD_PATH does not exist on the PR head or main: ${metadata.scorecardPath}`);
+              }
+            }
+
+            let publicationApplies = false;
+            if (isAgent) {
+              const { data: rollout } = await github.rest.pulls.get({
+                owner, repo, pull_number: publication.PUBLICATION_ROLLOUT_PR,
+              });
+              if (rollout.merged !== true || !rollout.merged_at) throw new Error('PUBLICATION_ROLLOUT_UNVERIFIED: #736 merge truth is unavailable');
+              publicationApplies = publication.publicationPolicyApplies({
+                origin: metadata.origin, createdAt: current.created_at, rolloutMergedAt: rollout.merged_at,
+              });
+            }
+            if (publicationApplies && current.state === 'open') {
+              metadataErrors.push(...await publication.validateGithubChangedRunReports({
+                github, owner, repo, current, changedFiles: ownFiles,
+              }));
+            }
+            const publicationValidation = publicationApplies
+              ? preflight.validatePublicationMetadata({
+                  body: current.body ?? '', changedFiles: ownPaths, prNumber: current.number,
+                  headSha: current.head.sha,
+                  createdAt: current.created_at,
+                  action: context.payload.action ?? 'opened', requireAstraClassification: true,
+                })
+              : null;
+            if (publicationApplies) metadataErrors.push(...publicationValidation.errors);
+            const publicationComments = isAgent
+              ? await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: current.number, per_page: 100 })
+              : [];
+            let publicationExpected = null;
+            let publicationReceipt = null;
+            if (publicationApplies && completeInventory) {
+              publicationExpected = publication.publicationContract({
+                body: current.body ?? '', files: ownFiles, baseSha: current.base.sha, headSha: current.head.sha,
+              });
+              publicationReceipt = publication.findMatchingPublicationReceipt(publicationComments, {
+                prNumber: current.number, contract: publicationExpected,
+              });
+            }
+            if (publicationApplies && current.state === 'open') {
+              if (current.draft === true) {
+                if (completeInventory && publicationValidation.valid && metadataErrors.length === 0 &&
+                    !captureErrors.length && schemaStageErrors.length === 0 && !publicationReceipt) {
+                  await github.rest.issues.createComment({
+                    owner, repo, issue_number: current.number,
+                    body: publication.renderPublicationReceipt({ prNumber: current.number, contract: publicationExpected }),
+                  });
+                }
+              } else if (!publicationReceipt) {
+                metadataErrors.push('PUBLICATION_PREFLIGHT_RECEIPT_REQUIRED: open as Draft, obtain trusted exact body/files/base/head receipt, then publish ready/ACTIVE');
               }
             }
 
@@ -441,14 +502,7 @@ jobs:
                   errors,
                 })
               : null;
-            const comments = isAgent
-              ? await github.paginate(github.rest.issues.listComments, {
-                  owner,
-                  repo,
-                  issue_number: current.number,
-                  per_page: 100,
-                })
-              : [];
+            const comments = publicationComments;
             const previous = comments.find((comment) => comment.body?.includes(marker));
             const duplicateFailure = Boolean(
               errors.length &&
