@@ -44,33 +44,62 @@ export type EmailSendResult =
 export interface EmailSendDetail {
   result: EmailSendResult;
   configFailure: boolean;
+  /**
+   * 失敗種類（#763）。`config`：設定類（需 Owner 介入），含 401／403、`from` 欄位錯誤，
+   * 以及所有「無法證明是收件人造成」的 4xx（fail-closed：請求層級問題重試不會好）；
+   * `service`：可證明為服務層級（429、5xx、網路／逾時、SDK 無 statusCode）；
+   * `recipient`：僅限可明確證明是 `to` 收件人被拒的 4xx（statusCode 4xx 且 message 指涉 `to` 欄位），
+   * 只與該收件人有關，不得被當成全站狀態（否則可被攻擊者用來開啟 parity 視窗做枚舉）。
+   * SENT 時為 null。
+   */
+  failureKind: EmailFailureKind | null;
 }
+export type EmailFailureKind = 'config' | 'service' | 'recipient';
 
 const CONFIG_ERROR_NAMES = new Set([
   'missing_api_key', 'invalid_api_key', 'restricted_api_key', 'invalid_from_address',
 ]);
 
+/** message 明確指涉 `to` 欄位（如 "Invalid `to` field."）；不得命中 "Invalid `from` field"。 */
+const RECIPIENT_FIELD_PATTERN = /`to`|\binvalid\s+to\s+(?:field|address)\b/i;
+/** message 指涉 `from` 欄位（MAIL_FROM 格式錯誤，Resend 回 422 validation_error）。 */
+const FROM_FIELD_PATTERN = /`from`|\binvalid\s+from\b/i;
+
 function isConfigFailure(error: { name?: string; statusCode?: number | null; message?: string }): boolean {
   if (error.statusCode === 401 || error.statusCode === 403) return true;
   if (error.name && CONFIG_ERROR_NAMES.has(error.name)) return true;
-  return /domain is not verified|api key is invalid/i.test(error.message ?? '');
+  const message = error.message ?? '';
+  if (FROM_FIELD_PATTERN.test(message)) return true;
+  return /domain is not verified|api key is invalid/i.test(message);
+}
+
+function classifyFailure(error: { name?: string; statusCode?: number | null; message?: string }): EmailFailureKind {
+  if (isConfigFailure(error)) return 'config';
+  const status = error.statusCode;
+  // 無 statusCode：SDK 網路／連線／逾時錯誤；429 與 5xx：服務層級。
+  if (typeof status !== 'number' || status === 429 || status >= 500) return 'service';
+  // 4xx：只有「可證明是 to 收件人被拒」才算 recipient；其餘（MAIL_FROM 的 422、400、404、409…）
+  // 都是請求層級問題，重試不會好 → fail-closed 歸 config（503 MAIL_001 並開視窗），不可把全站停擺藏成 200。
+  if (RECIPIENT_FIELD_PATTERN.test(error.message ?? '')) return 'recipient';
+  return 'config';
 }
 
 async function sendDetailed(to: string, subject: string, html: string): Promise<EmailSendDetail> {
   if (!process.env.RESEND_API_KEY) {           // 未設定時不擋主流程，只留 log
     console.warn('[email] RESEND_API_KEY 未設定，略過寄信：', subject, '→', to);
-    return { result: 'SKIPPED_NO_KEY', configFailure: true };
+    return { result: 'SKIPPED_NO_KEY', configFailure: true, failureKind: 'config' };
   }
   try {
     const { error } = await resend().emails.send({ from: FROM(), to, subject, html });
     if (error) {
       console.error('[email] 寄送失敗', subject, to, error);  // 細節只進 server log
-      return { result: 'FAILED', configFailure: isConfigFailure(error) };
+      const failureKind = classifyFailure(error);
+      return { result: 'FAILED', configFailure: failureKind === 'config', failureKind };
     }
-    return { result: 'SENT', configFailure: false };
+    return { result: 'SENT', configFailure: false, failureKind: null };
   } catch (e) {
     console.error('[email] 寄送丟出例外', subject, to, e);
-    return { result: 'FAILED', configFailure: false };
+    return { result: 'FAILED', configFailure: false, failureKind: 'service' };
   }
 }
 
