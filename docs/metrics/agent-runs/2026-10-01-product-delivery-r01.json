@@ -2425,6 +2425,74 @@
         "count": 1,
         "accepted": true,
         "note": "Ledger append for #763 Opus Final Risk and Codex P1 #2 round."
+      },
+      {
+        "id": "20261003-audit-763-finalrisk-opus-2",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 758,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/763#issuecomment-5971170919",
+        "startedAt": "2026-10-03T16:36:58Z",
+        "completedAt": "2026-10-03T16:38:37Z",
+        "accepted": true,
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "AUDIT-tier Final Risk re-review #2 at ae6cabfe: PASS 0 blocking; astra-review 5401869800; NON_BLOCKING -> #764."
+      },
+      {
+        "id": "20261003-audit-763-codex-p1c-verify",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 758,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/763#discussion_r4174137263",
+        "startedAt": null,
+        "completedAt": null,
+        "accepted": true,
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Codex P1 #3 verified: a provider-rejected candidate address was directly probeable (registered 200 vs unregistered 503 after recipient failure, repeatable); audit decided recipient rejection returns 200 like the no-send branch."
+      },
+      {
+        "id": "20261003-build-758-recipient-200",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "issue": 758,
+        "evidenceRef": "75a69cf7",
+        "startedAt": "2026-10-03T17:31:53Z",
+        "completedAt": "2026-10-03T17:35:18Z",
+        "accepted": true,
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Recipient-specific rejection deletes the code, logs, opens no window and returns normally (200 sent:true) so both branches are indistinguishable; config/service keep 503 + window; docs updated; npm test 311/4235."
+      },
+      {
+        "id": "20261003-scout-ledger-763-p1c",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "issue": 758,
+        "evidenceRef": "ledger append for #763 P1 #3 round",
+        "startedAt": null,
+        "completedAt": "2026-10-03T17:36:15Z",
+        "accepted": true,
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Ledger append for #763 Opus re-review #2 and Codex P1 #3 round."
       }
     ],
     "fullContextReplays": 0,
@@ -2441,11 +2509,11 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 42,
+    "fullCiRuns": 43,
     "invalidReruns": 5,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0,
-    "note": "37007212982 因 head 被取代 cancelled，37083653366 在 classify 被拒，37082211071 為 #714 source CI，三者不計入；先前 5 個 dispatch run 是否已計入原 30 仍待查證。本輪新增 3 個完整 canonical TEST run：37008702923、37083761493、37090025615 #757: 37105978199 failure（mock 形狀不擬真，已修）、37108030479 success；main push 37112300377 監看中。 #762：37121399537、37124644493 success；37120725291、37124319682 因 head 被取代而取消（不計）。 #763：37128355259 success（cce85365）。 37133703835 success（39748ec3）。"
+    "note": "37007212982 因 head 被取代 cancelled，37083653366 在 classify 被拒，37082211071 為 #714 source CI，三者不計入；先前 5 個 dispatch run 是否已計入原 30 仍待查證。本輪新增 3 個完整 canonical TEST run：37008702923、37083761493、37090025615 #757: 37105978199 failure（mock 形狀不擬真，已修）、37108030479 success；main push 37112300377 監看中。 #762：37121399537、37124644493 success；37120725291、37124319682 因 head 被取代而取消（不計）。 #763：37128355259 success（cce85365）。 37133703835 success（39748ec3）。 37137459820 success（ae6cabfe）。"
   },
   "quality": {
     "acceptanceEvidenceCoveragePercent": null,
@@ -2458,8 +2526,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 35,
-    "lunaAccepted": 31,
+    "lunaTasks": 36,
+    "lunaAccepted": 32,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
