@@ -43,44 +43,66 @@
 - 驗證成功即寫 `consumed_at`，一碼一次。
 - 為防 email 枚舉：email 已存在時 `send-verification-code(REGISTER)` 與
   不存在時 `forgot-password` **都回成功**，只是不寄信（或寄「此信箱已註冊」提醒信）。
+- **寄信失敗契約（#754／#758）**：該寄信卻發生 provider／設定層級失敗時（無 API key、provider 401／403、5xx、429、網路錯誤等），
+  `send-verification-code` 與 `forgot-password` 回 **503 `MAIL_001`**，訊息固定為
+  「驗證信暫時無法寄出，請稍後再試或聯絡我們」，剛插入的驗證碼即刪除（不留 60 秒冷卻），
+  provider 細節只進 server log、不回給 client。**不得**在 provider／設定層級失敗而沒寄出時回 `{sent:true}`（收件人專屬拒絕例外，見下）。
+- **枚舉防護的精確保證**（best-effort，非絕對）：正常運作時，已存在／不存在 email 的回應盡量一致（皆 200 `{sent:true}`）；
+  唯一已知差異是既有的 REGISTER 60 秒重寄 429 節流，它只套用在「真的寄過信」的位址。
+  寄信失敗分三類（`src/server/email/send.ts` 的 `failureKind`）：
+  `config`（無 key、401／403、金鑰／寄件者／網域設定錯誤）、`service`（429、5xx、網路／逾時、SDK 無 statusCode）、
+  `recipient`（僅限可證明為 `to` 收件人被拒的 4xx：statusCode 4xx 且 message 指涉 `to` 欄位，如 422 "Invalid `to` field"）。
+  `from` 欄位錯誤（MAIL_FROM 格式錯，422 "Invalid `from` field"）與其餘無法證明是收件人造成的 4xx（400、422 非 to、404、409…）一律 fail-closed 歸 `config`，不得歸 `recipient`（否則全站寄不出信卻回 200，#763 Codex P1 #4）。`config`／`service` 該次請求回 503 `MAIL_001`、刪除驗證碼，並開啟 parity 視窗
+  （`config` 10 分鐘、`service` 60 秒；多次失敗取較長者，不縮短既有視窗）。
+  **`recipient`（收件人專屬拒絕）回 200 `{sent:true}`，與「不寄信分支」對外無法區分**：驗證碼已刪除、不儲存，
+  只寫 server log，不開啟／延伸／清除視窗（#763 P1 #3；若回 503，攻擊者可用 provider 會拒絕的位址反覆探測：
+  已註冊 → 200、未註冊 → 503）。理由：被 provider 拒絕的位址等同「受理後退信」的不可投遞位址
+  （使用者看到已寄出、信不會到）；#754 的誠實回報保留給真正影響使用者的 provider／設定層級故障。
+  驗證碼已刪除，故重複請求不會產生只對未註冊位址成立的 429 冷卻。
+  **視窗內，所有寄碼請求（已註冊／未註冊、REGISTER／RESET_PASSWORD 兩條分支）在最前面短路回同一個 503 `MAIL_001`**：
+  不查 DB、不寫驗證碼、不呼叫 provider，也早於 60 秒重寄冷卻（429）與 email 存在判斷。視窗只由 TTL 結束，
+  不會因 provider 恢復而提前清除（否則未註冊 email 寄成功回 200、已註冊 email 仍 503，形成枚舉 oracle，#763）。
+  **可用性代價**：服務層級失敗後，該 instance 暫停寄信至多 60 秒（Resend 429 突發同樣造成 60 秒暫停，#764）；
+  設定類失敗暫停到 TTL（10 分鐘）結束或重新部署。
+  視窗存於 instance 記憶體：跨 serverless instance 不共享；每個 instance 第一個失敗請求之前仍可能出現差異；
+  持續故障時，視窗每次過期後會重新暴露，直到下一次失敗再開（追蹤於 #764）。實作見 `src/server/send-code.ts`。
 
 ### `/api/auth/send-verification-code/route.ts`
 
 ```ts
 import { z } from 'zod';
-import { randomInt } from 'crypto';
-import { handle, ok, fail, ERR } from '@/server/http';
-import { createAdminSupabase } from '@/server/supabase';
-import { sendVerificationCodeEmail } from '@/server/email/send'; // 05 分冊
+import { handle, ok } from '@/server/http';
+import { dispatchVerificationCode } from '@/server/send-code';
 
 const bodySchema = z.object({
   email: z.string().email('請輸入有效的 Email'),
   purpose: z.enum(['REGISTER', 'RESET_PASSWORD']),
 });
 
+// route 只做：zod 解析 → dispatchVerificationCode → ok({ sent: true })。
+// 視窗檢查、冷卻、email_exists、產碼寫入、寄信與失敗分類全在 @/server/send-code。
 export const POST = handle(async (req) => {
   const { email, purpose } = bodySchema.parse(await req.json());
-  const admin = createAdminSupabase();
-
-  const { data: recent } = await admin.from('auth_verification_codes')
-    .select('created_at').eq('email', email).eq('purpose', purpose)
-    .order('created_at', { ascending: false }).limit(1).maybeSingle();
-  if (recent && Date.now() - new Date(recent.created_at).getTime() < 60_000)
-    return fail(429, '請稍候再重新發送驗證碼', ERR.CONFLICT);
-
-  // email 是否已註冊（枚舉防護：不論結果都回 success）
-  const { data: users } = await admin.auth.admin.listUsers({ page: 1, perPage: 1 } as any);
-  const exists = !!(await admin.rpc('email_exists', { p_email: email })).data; // 見下方 SQL
-  if ((purpose === 'REGISTER') === exists) return ok({ sent: true });
-
-  const code = String(randomInt(100000, 999999));
-  await admin.from('auth_verification_codes').insert({
-    email, code, purpose, expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
-  });
-  await sendVerificationCodeEmail(email, code, purpose);
+  await dispatchVerificationCode(email, purpose);
   return ok({ sent: true });
 });
 ```
+
+> **不得**在 route 內直接呼叫 `sendVerificationCodeEmail` 後無條件回 `{ sent: true }`：
+> 那會把寄信失敗變成假成功，且讓「已註冊／未註冊」兩條分支的回應可區分（枚舉 oracle）。
+
+#### `src/server/send-code.ts` `dispatchVerificationCode(email, purpose)` 流程（順序不可調換）
+
+1. **parity 視窗檢查最先**：`Date.now() < configFailureUntil` → 直接丟 503 `MAIL_001`。
+   早於 DB 查詢、60 秒冷卻與 `email_exists`，兩條分支回應一致，且不呼叫 provider。
+2. **60 秒重寄冷卻**：該 email＋purpose 最近一筆碼不到 60 秒 → 丟 429（`ERR.CONFLICT`）。
+3. **`email_exists` 判斷**：`(purpose === 'REGISTER') === exists`（不需寄信的分支）→ 直接返回，route 回 200 `{ sent: true }`。
+4. **產碼寫入** `auth_verification_codes`，再 `await sendVerificationCodeEmail(...)`；`result === 'SENT'` → 返回（SENT 不清除視窗）。
+5. **寄信失敗**：先刪除剛寫入的碼（刪除失敗只寫 log），再依 `failureKind` 分流：
+   - `recipient`（僅可證明為 `to` 欄位的 4xx）：只寫 server log，**正常返回**（route 回 200），不開視窗、不丟 503，避免與不寄信分支可區分。
+   - `config`（含 MAIL_FROM 錯誤與其餘無法證明的 4xx，fail-closed）：視窗 10 分鐘。
+   - `service`（5xx／429／網路）：視窗 60 秒。
+   - 視窗以 `configFailureUntil = Math.max(configFailureUntil, Date.now() + ttl)` 延伸，不縮短既有較長視窗，之後丟 503 `MAIL_001`。
 
 輔助 SQL（併入 migration `0003`，或新開 `0010`）：
 
@@ -243,7 +265,7 @@ revoke execute on function user_id_by_email(text) from anon, authenticated;
 ```
 
 `forgot-password` route 只是 `send-verification-code` 的殼：固定
-`purpose = 'RESET_PASSWORD'`，一律回 `ok({ sent: true })`。
+`purpose = 'RESET_PASSWORD'`；正常時一律回 `ok({ sent: true })`，寄信失敗（或處於 parity 視窗內）回 503 `MAIL_001`（見 §2 寄信失敗契約）。
 
 ---
 

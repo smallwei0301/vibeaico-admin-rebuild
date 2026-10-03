@@ -58,7 +58,7 @@ export function realisticResendError(status: number): { statusCode: number; name
   if (status === 401) return { statusCode: 401, name: 'validation_error', message: 'API key is invalid' };
   if (status === 403) return { statusCode: 403, name: 'invalid_access', message: 'The domain is not verified. Please, add and verify your domain.' };
   if (status === 429) return { statusCode: 429, name: 'rate_limit_exceeded', message: 'Too many requests. You can only make 2 requests per second.' };
-  if (status === 422) return { statusCode: 422, name: 'validation_error', message: 'mock forced validation failure (422)' };
+  if (status === 422) return { statusCode: 422, name: 'validation_error', message: 'Invalid `to` field. The email address needs to follow the `email@example.com` or `Name <email@example.com>` format.' };
   return { statusCode: status, name: 'application_error', message: `mock forced failure (${status})` };
 }
 
