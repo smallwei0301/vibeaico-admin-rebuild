@@ -49,6 +49,10 @@ export const publicShopPage = {
      */
     bookBadge: '可線上預約',
     bookCta: '線上預約（送出後立即為您保留名額）',
+    /** #747：方案沒有可訂／可申請日期，或日期未載入時的提示（首頁專用，不沿用詳情頁的措辭）。 */
+    noRequestableHint: '目前沒有可申請的日期，請聯絡店家確認。',
+    noBookableHint: '目前沒有可預約的日期，請聯絡店家確認。',
+    datesNotLoadedHint: '請聯絡店家查詢日期。',
     /**
      * #46：下單前顯示現行取消／退款政策——與
      * `src/i18n/zh-TW/pages/public-tour-request.ts` 的 `cancellationPolicy`

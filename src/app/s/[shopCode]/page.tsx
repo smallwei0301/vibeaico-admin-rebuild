@@ -190,7 +190,7 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
                           <span className="text-2xs text-secondary">
                             {t.trips.partyRange(plan.minParty, plan.maxParty)}
                           </span>
-                          {plan.salesMode === 'REQUEST' ? (
+                          {plan.bookingCta === 'request' ? (
                             <>
                               <span className="badge badge-success">{t.trips.requestBadge}</span>
                               <Link
@@ -201,7 +201,7 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
                               </Link>
                             </>
                           ) : null}
-                          {plan.salesMode === 'FIXED_DEPARTURE' ? (
+                          {plan.bookingCta === 'fixed' ? (
                             <>
                               <span className="badge badge-success">{t.trips.bookBadge}</span>
                               <Link
@@ -211,6 +211,15 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
                                 {t.trips.bookCta}
                               </Link>
                             </>
+                          ) : null}
+                          {plan.bookingCta === 'request-unavailable' ? (
+                            <span className="text-2xs text-secondary">{t.trips.noRequestableHint}</span>
+                          ) : null}
+                          {plan.bookingCta === 'fixed-unavailable' ? (
+                            <span className="text-2xs text-secondary">{t.trips.noBookableHint}</span>
+                          ) : null}
+                          {plan.bookingCta === 'dates-not-loaded' ? (
+                            <span className="text-2xs text-secondary">{t.trips.datesNotLoadedHint}</span>
                           ) : null}
                         </li>
                       ))}
