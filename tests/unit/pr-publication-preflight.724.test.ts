@@ -127,6 +127,22 @@ describe('#724 immutable Agent PR publication preflight receipt', () => {
     expect(validatePublicationMetadata(input).errors).toContain('SOURCE_FREEZE does not match live exact head');
   });
 
+  it('uses canonical PR creation time when classifying an undeclared new workstream', () => {
+    const body = ['WORK_ORIGIN: AGENT', 'AGENT_LANE: TERRA_BUILD', 'LANE_STATE: ACTIVE', 'ASTRA_RISK: NONE', 'ASTRA_RATIONALE: bounded fixture'].join('\n');
+    const result = validatePublicationMetadata({ body, changedFiles: ['src/app/example.ts'], prNumber: 724, createdAt: '2026-10-03T07:00:00Z' });
+    expect(result.errors).toContain('WORKSTREAM is required for PRs created after the two-workstream policy effective time');
+  });
+
+  it('rejects changed files outside active Dual Terra FILE_OWNERSHIP before a receipt', () => {
+    const body = [
+      'WORK_ORIGIN: AGENT', 'WORKSTREAM: PRODUCT_MAINLINE', 'AGENT_LANE: TERRA_BUILD',
+      'LANE_STATE: ACTIVE', 'DUAL_TERRA_PILOT: true', 'TERRA_SLOT: 1',
+      'FILE_OWNERSHIP: src/app/expected.ts',
+    ].join('\n');
+    const result = validatePublicationMetadata({ body, changedFiles: ['src/app/other.ts'], prNumber: 724, createdAt: '2026-10-03T07:00:00Z' });
+    expect(result.errors.join('\n')).toContain('changed files outside FILE_OWNERSHIP: src/app/other.ts');
+  });
+
   it('wires Draft staging, trusted receipt verification and base-policy grandfathering into the remote guard', () => {
     const workflow = fs.readFileSync('.github/workflows/agent-wip-guard.yml', 'utf8');
     for (const needle of [
@@ -142,6 +158,7 @@ describe('#724 immutable Agent PR publication preflight receipt', () => {
     const guard = parsed.jobs.guard.steps.find((step: any) => step.with?.script).with.script;
     expect(guard).toContain('publicationPolicyApplies');
     expect(guard).toMatch(/validatePublicationMetadata\([\s\S]*?headSha: current\.head\.sha/);
+    expect(guard).toMatch(/validatePublicationMetadata\([\s\S]*?createdAt: current\.created_at/);
     expect(guard).toContain('if (publicationApplies) metadataErrors.push(...publicationValidation.errors)');
     expect(guard).not.toMatch(/^\s*metadataErrors\.push\(\.\.\.publicationValidation\.errors\);/m);
     expect(workflow).toContain('resolvePublicationBaseWakeup');

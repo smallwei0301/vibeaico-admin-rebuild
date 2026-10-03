@@ -181,6 +181,7 @@ export function discoverChangedFiles({
  *   changedFiles?: string[] | null,
  *   prNumber?: number | string,
  *   headSha?: string,
+ *   createdAt?: string,
  *   action?: string,
  *   repositoryRoot?: string,
  *   fileExists?: (path: import('node:fs').PathLike) => boolean,
@@ -195,7 +196,7 @@ export function validatePublicationMetadata(input = {}) {
   const origin = upper(readField(body, 'WORK_ORIGIN'));
 
   if (input.requireAstraClassification !== false) {
-    errors.push(...classifyAstra({ body, changedFiles }).errors);
+    errors.push(...classifyAstra({ body, changedFiles, createdAt: input.createdAt }).errors);
   }
   errors.push(...missingAstraBaselines(body, changedFiles));
   if (!ORIGINS.has(origin)) errors.push('WORK_ORIGIN must be OWNER, AGENT, or UNKNOWN');
@@ -203,6 +204,7 @@ export function validatePublicationMetadata(input = {}) {
     errors.push('REQUESTED_MODEL / ACTUAL_MODEL is required');
   }
   errors.push(...validateLaneMetadata(metadata, { action: input.action ?? 'opened' }));
+  errors.push(...validateActualFileOwnership(metadata, changedFiles));
   errors.push(...validateDeliveryUnitBoundary(body, metadata));
   errors.push(...validateBookkeepingWorkstream({ body, changedFiles }));
   if (metadata.origin === 'AGENT' && metadata.state === 'ACTIVE' && metadata.lane === 'GOVERNANCE') {

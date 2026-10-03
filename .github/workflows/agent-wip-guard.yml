@@ -315,6 +315,7 @@ jobs:
               ? preflight.validatePublicationMetadata({
                   body: current.body ?? '', changedFiles: ownPaths, prNumber: current.number,
                   headSha: current.head.sha,
+                  createdAt: current.created_at,
                   action: context.payload.action ?? 'opened', requireAstraClassification: true,
                 })
               : null;
