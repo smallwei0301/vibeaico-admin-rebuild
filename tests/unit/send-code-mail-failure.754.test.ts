@@ -54,7 +54,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('send-verification-code 寄信失敗誠實回報 (#754)', () => {
   it('SENT → 200 sent:true，驗證碼保留', async () => {
-    mail.fn.mockResolvedValue({ result: 'SENT', configFailure: false });
+    mail.fn.mockResolvedValue({ result: 'SENT', configFailure: false, failureKind: null });
     const res = await call('a@example.com');
     expect(res.status).toBe(200);
     expect((await res.json()).data.sent).toBe(true);
@@ -62,7 +62,7 @@ describe('send-verification-code 寄信失敗誠實回報 (#754)', () => {
   });
 
   it('provider 401（設定類）→ 503 MAIL_001，驗證碼被刪除，不外洩 provider 細節', async () => {
-    mail.fn.mockResolvedValue({ result: 'FAILED', configFailure: true });
+    mail.fn.mockResolvedValue({ result: 'FAILED', configFailure: true, failureKind: 'config' });
     const res = await call('a@example.com');
     const body = await res.json();
     expect(res.status).toBe(503);
@@ -74,20 +74,20 @@ describe('send-verification-code 寄信失敗誠實回報 (#754)', () => {
   });
 
   it('暫時性失敗 → 503，驗證碼被刪除（parity 視窗行為見 send-code-parity.758）', async () => {
-    mail.fn.mockResolvedValue({ result: 'FAILED', configFailure: false });
+    mail.fn.mockResolvedValue({ result: 'FAILED', configFailure: false, failureKind: 'service' });
     expect((await call('a@example.com')).status).toBe(503);
     expect(state.rows).toHaveLength(0);
   });
 
   it('無 key（SKIPPED_NO_KEY）→ 503，驗證碼被刪除', async () => {
-    mail.fn.mockResolvedValue({ result: 'SKIPPED_NO_KEY', configFailure: true });
+    mail.fn.mockResolvedValue({ result: 'SKIPPED_NO_KEY', configFailure: true, failureKind: 'config' });
     const res = await call('a@example.com');
     expect(res.status).toBe(503);
     expect(state.rows).toHaveLength(0);
   });
 
   it('設定類失敗後，已存在 email（原本不寄信）也回同一個 503', async () => {
-    mail.fn.mockResolvedValue({ result: 'FAILED', configFailure: true });
+    mail.fn.mockResolvedValue({ result: 'FAILED', configFailure: true, failureKind: 'config' });
     await call('a@example.com');
     mail.fn.mockClear();
     state.exists = true;
@@ -101,7 +101,7 @@ describe('send-verification-code 寄信失敗誠實回報 (#754)', () => {
   it('設定類旗標 10 分鐘後過期', async () => {
     vi.useFakeTimers();
     try {
-      mail.fn.mockResolvedValue({ result: 'FAILED', configFailure: true });
+      mail.fn.mockResolvedValue({ result: 'FAILED', configFailure: true, failureKind: 'config' });
       await call('a@example.com');
       state.exists = true;
       expect((await call('r@example.com')).status).toBe(503);
@@ -120,12 +120,12 @@ describe('send-verification-code 寄信失敗誠實回報 (#754)', () => {
 
   it('forgot-password：寄信失敗同樣回 503（不吞）；正常仍回 sent:true', async () => {
     state.exists = true; // RESET_PASSWORD 在 email 存在時才寄
-    mail.fn.mockResolvedValue({ result: 'FAILED', configFailure: false });
+    mail.fn.mockResolvedValue({ result: 'FAILED', configFailure: false, failureKind: 'service' });
     const f = () => FORGOT(new Request('http://localhost/api/auth/forgot-password', {
       method: 'POST', body: JSON.stringify({ email: 'a@example.com' }),
     }), {});
     expect((await f()).status).toBe(503);
-    mail.fn.mockResolvedValue({ result: 'SENT', configFailure: false });
+    mail.fn.mockResolvedValue({ result: 'SENT', configFailure: false, failureKind: null });
     expect((await f()).status).toBe(200);
   });
 });

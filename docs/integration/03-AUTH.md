@@ -47,11 +47,16 @@
   `send-verification-code` 與 `forgot-password` 回 **503 `MAIL_001`**，訊息固定為
   「驗證信暫時無法寄出，請稍後再試或聯絡我們」，剛插入的驗證碼即刪除（不留 60 秒冷卻），
   provider 細節只進 server log、不回給 client。**不得**在沒寄出時回 `{sent:true}`。
-- **枚舉防護的精確保證**：正常運作時，已存在／不存在 email 的回應完全相同（皆 200 `{sent:true}`）。
-  寄信失敗後會開啟「parity 視窗」（設定類失敗 10 分鐘、暫時性失敗 60 秒，不縮短既有較長視窗；
-  寄信成功即清除），視窗內原本「不寄信」的路徑也回同一個 503 `MAIL_001`，讓兩類 email 回應一致。
-  視窗存於 instance 記憶體，**僅 best-effort**：跨 serverless instance 不共享，且每個 instance
-  第一個失敗請求之前（視窗尚未建立）仍可能出現差異。實作見 `src/server/send-code.ts`。
+- **枚舉防護的精確保證**（best-effort，非絕對）：正常運作時，已存在／不存在 email 的回應盡量一致（皆 200 `{sent:true}`）；
+  唯一已知差異是既有的 REGISTER 60 秒重寄 429 節流，它只套用在「真的寄過信」的位址。
+  寄信失敗分三類（`src/server/email/send.ts` 的 `failureKind`）：
+  `config`（無 key、401／403、金鑰／寄件者／網域設定錯誤）、`service`（429、5xx、網路／逾時、SDK 無 statusCode）、
+  `recipient`（其他 4xx，如 422 收件人格式錯誤）。三類該次請求都回 503 `MAIL_001`、刪除驗證碼，
+  但只有 `config`（10 分鐘）與 `service`（60 秒）會開啟 parity 視窗（不縮短既有較長視窗；寄信成功即清除）；
+  `recipient` 只讓該次請求回 503，不開啟、不延伸、也不清除視窗（否則攻擊者可用 provider 會拒絕的位址開窗，再探測枚舉，#763）。
+  視窗內原本「不寄信」的路徑也回同一個 503，讓兩類 email 回應一致。
+  視窗存於 instance 記憶體：跨 serverless instance 不共享；每個 instance 第一個失敗請求之前仍可能出現差異；
+  持續故障時，視窗每次過期後會重新暴露，直到下一次失敗再開（追蹤於 #764）。實作見 `src/server/send-code.ts`。
 
 ### `/api/auth/send-verification-code/route.ts`
 

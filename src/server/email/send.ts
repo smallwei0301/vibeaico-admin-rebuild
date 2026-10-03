@@ -44,7 +44,15 @@ export type EmailSendResult =
 export interface EmailSendDetail {
   result: EmailSendResult;
   configFailure: boolean;
+  /**
+   * 失敗種類（#763）。`config`：設定類（需 Owner 介入）；`service`：可證明為服務層級
+   * （429、5xx、網路／逾時、SDK 無 statusCode）；`recipient`：其餘 4xx（如 422 收件人格式），
+   * 只與該收件人有關，不得被當成全站狀態（否則可被攻擊者用來開啟 parity 視窗做枚舉）。
+   * SENT 時為 null。
+   */
+  failureKind: EmailFailureKind | null;
 }
+export type EmailFailureKind = 'config' | 'service' | 'recipient';
 
 const CONFIG_ERROR_NAMES = new Set([
   'missing_api_key', 'invalid_api_key', 'restricted_api_key', 'invalid_from_address',
@@ -56,21 +64,30 @@ function isConfigFailure(error: { name?: string; statusCode?: number | null; mes
   return /domain is not verified|api key is invalid/i.test(error.message ?? '');
 }
 
+function classifyFailure(error: { name?: string; statusCode?: number | null; message?: string }): EmailFailureKind {
+  if (isConfigFailure(error)) return 'config';
+  const status = error.statusCode;
+  // 無 statusCode：SDK 網路／連線／逾時錯誤；429 與 5xx：服務層級。
+  if (typeof status !== 'number' || status === 429 || status >= 500) return 'service';
+  return 'recipient'; // 其他 4xx（422 validation_error、400 等）
+}
+
 async function sendDetailed(to: string, subject: string, html: string): Promise<EmailSendDetail> {
   if (!process.env.RESEND_API_KEY) {           // 未設定時不擋主流程，只留 log
     console.warn('[email] RESEND_API_KEY 未設定，略過寄信：', subject, '→', to);
-    return { result: 'SKIPPED_NO_KEY', configFailure: true };
+    return { result: 'SKIPPED_NO_KEY', configFailure: true, failureKind: 'config' };
   }
   try {
     const { error } = await resend().emails.send({ from: FROM(), to, subject, html });
     if (error) {
       console.error('[email] 寄送失敗', subject, to, error);  // 細節只進 server log
-      return { result: 'FAILED', configFailure: isConfigFailure(error) };
+      const failureKind = classifyFailure(error);
+      return { result: 'FAILED', configFailure: failureKind === 'config', failureKind };
     }
-    return { result: 'SENT', configFailure: false };
+    return { result: 'SENT', configFailure: false, failureKind: null };
   } catch (e) {
     console.error('[email] 寄送丟出例外', subject, to, e);
-    return { result: 'FAILED', configFailure: false };
+    return { result: 'FAILED', configFailure: false, failureKind: 'service' };
   }
 }
 

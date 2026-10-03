@@ -49,9 +49,10 @@ const forgot = (email: string) =>
     method: 'POST', body: JSON.stringify({ email }),
   }), {});
 
-const TRANSIENT = { result: 'FAILED', configFailure: false };
-const CONFIG = { result: 'FAILED', configFailure: true };
-const SENT = { result: 'SENT', configFailure: false };
+const TRANSIENT = { result: 'FAILED', configFailure: false, failureKind: 'service' };
+const CONFIG = { result: 'FAILED', configFailure: true, failureKind: 'config' };
+const RECIPIENT = { result: 'FAILED', configFailure: false, failureKind: 'recipient' };
+const SENT = { result: 'SENT', configFailure: false, failureKind: null };
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -116,5 +117,36 @@ describe('寄信失敗 parity 視窗 (#758)', () => {
     expect(mail.fn).not.toHaveBeenCalled();
     vi.advanceTimersByTime(61_000);
     expect((await forgot('ghost@example.com')).status).toBe(200);
+  });
+
+  it('收件人專屬拒絕（#763）：該次 503，但不開窗——下一個已存在 email 的 REGISTER 回 200', async () => {
+    mail.fn.mockResolvedValue(RECIPIENT);
+    const bad = await reg('attacker-bad@example.com');
+    expect(bad.status).toBe(503);
+    expect((await bad.json()).code).toBe('MAIL_001');
+    expect(state.rows).toHaveLength(0);
+    mail.fn.mockClear();
+    state.exists = true;
+    expect((await reg('registered@example.com')).status).toBe(200);
+    expect(mail.fn).not.toHaveBeenCalled();
+  });
+
+  it('服務層級失敗仍開窗（對照）', async () => {
+    mail.fn.mockResolvedValue(TRANSIENT);
+    await reg('new@example.com');
+    state.exists = true;
+    expect((await reg('registered@example.com')).status).toBe(503);
+  });
+
+  it('收件人專屬拒絕不清除、也不延伸既有視窗', async () => {
+    mail.fn.mockResolvedValue(TRANSIENT);
+    await reg('new@example.com'); // 開 60s 視窗
+    vi.advanceTimersByTime(30_000);
+    mail.fn.mockResolvedValue(RECIPIENT);
+    expect((await reg('bad@example.com')).status).toBe(503);
+    state.exists = true;
+    expect((await reg('registered@example.com')).status).toBe(503); // 視窗仍在（未被清除）
+    vi.advanceTimersByTime(31_000); // 距開窗 61s；若被延伸則仍 503
+    expect((await reg('registered@example.com')).status).toBe(200);
   });
 });

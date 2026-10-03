@@ -46,29 +46,37 @@ const run = () => sendVerificationCodeEmail('a@example.com', '123456', 'REGISTER
 
 describe('send.ts 經真實 HTTP + resend SDK 的分類 (#754)', () => {
   it('正常 → SENT，mock 收到一封信', async () => {
-    expect(await run()).toEqual({ result: 'SENT', configFailure: false });
+    expect(await run()).toEqual({ result: 'SENT', configFailure: false, failureKind: null });
     expect(mock.emails).toHaveLength(1);
   });
   it('failNext(401) → FAILED + configFailure=true', async () => {
     mock.failNext(401);
-    expect(await run()).toEqual({ result: 'FAILED', configFailure: true });
+    expect(await run()).toEqual({ result: 'FAILED', configFailure: true, failureKind: 'config' });
   });
   it('failNext(403) → FAILED + configFailure=true', async () => {
     mock.failNext(403);
-    expect(await run()).toEqual({ result: 'FAILED', configFailure: true });
+    expect(await run()).toEqual({ result: 'FAILED', configFailure: true, failureKind: 'config' });
   });
   it('failNext(500) → FAILED + configFailure=false', async () => {
     mock.failNext(500);
-    expect(await run()).toEqual({ result: 'FAILED', configFailure: false });
+    expect(await run()).toEqual({ result: 'FAILED', configFailure: false, failureKind: 'service' });
   });
   it('failNext(429) → FAILED + configFailure=false', async () => {
     mock.failNext(429);
-    expect(await run()).toEqual({ result: 'FAILED', configFailure: false });
+    expect(await run()).toEqual({ result: 'FAILED', configFailure: false, failureKind: 'service' });
+  });
+  it('failNext(422) → FAILED + failureKind=recipient（#763）', async () => {
+    mock.failNext(422);
+    expect(await run()).toEqual({ result: 'FAILED', configFailure: false, failureKind: 'recipient' });
+  });
+  it('failNext(400) → recipient', async () => {
+    mock.failNext(400);
+    expect((await run()).failureKind).toBe('recipient');
   });
   it('連不上 provider（mock 關閉）→ FAILED + 暫時性', async () => {
     await mock.stop();
     try {
-      expect(await run()).toEqual({ result: 'FAILED', configFailure: false });
+      expect(await run()).toEqual({ result: 'FAILED', configFailure: false, failureKind: 'service' });
     } finally {
       await mock.start();
     }

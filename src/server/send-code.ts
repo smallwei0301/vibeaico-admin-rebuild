@@ -24,13 +24,14 @@ import { sendVerificationCodeEmail } from './email/send';
 const MAIL_UNAVAILABLE_MESSAGE = '驗證信暫時無法寄出，請稍後再試或聯絡我們';
 
 /**
- * 寄信失敗 parity 視窗（#754／#758 枚舉防護）：任何一次「該寄卻寄失敗」之後的這段時間內，連
+ * 寄信失敗 parity 視窗（#754／#758 枚舉防護）：設定類或服務層級的「該寄卻寄失敗」之後的這段時間內，連
  * 「email 已存在（或 reset 時不存在）所以本來不寄信」的路徑也回同一個 503，讓已註冊／未註冊
- * email 在服務異常時回應一致。設定類失敗 10 分鐘；暫時性失敗（5xx／429／網路）60 秒，且不縮短
+ * email 在服務異常時回應一致。設定類失敗 10 分鐘；服務層級失敗（5xx／429／網路）60 秒；收件人專屬拒絕（其他 4xx）不開窗，且不縮短
  * 已存在的較長視窗。SENT 會清除視窗。
  *
  * 已知殘餘（文件化，best-effort）：視窗存於本 instance 記憶體，serverless 各 instance 獨立、
- * 不跨 instance 共享；且每個 instance「第一個」失敗請求之前（視窗尚未建立）仍可能洩漏差異。
+ * 不跨 instance 共享；每個 instance「第一個」失敗請求之前（視窗尚未建立）仍可能洩漏差異；
+ * 持續故障時，視窗每次過期後會重新暴露，直到下一次失敗再開（#764 追蹤）。
  */
 export const MAIL_CONFIG_FAILURE_TTL_MS = 10 * 60_000;
 export const MAIL_TRANSIENT_FAILURE_TTL_MS = 60_000;
@@ -61,7 +62,7 @@ export async function dispatchVerificationCode(email: string, purpose: 'REGISTER
   await admin.from('auth_verification_codes').insert({
     email, code, purpose, expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
   });
-  const { result, configFailure } = await sendVerificationCodeEmail(email, code, purpose);
+  const { result, failureKind } = await sendVerificationCodeEmail(email, code, purpose);
   if (result === 'SENT') {
     configFailureUntil = 0; // 已恢復：清除 parity 視窗
     return;
@@ -71,7 +72,11 @@ export async function dispatchVerificationCode(email: string, purpose: 'REGISTER
   const { error: delErr } = await admin.from('auth_verification_codes')
     .delete().eq('email', email).eq('purpose', purpose).eq('code', code);
   if (delErr) console.error('[send-code] 無法刪除未寄出的驗證碼', delErr);
-  const ttl = configFailure ? MAIL_CONFIG_FAILURE_TTL_MS : MAIL_TRANSIENT_FAILURE_TTL_MS;
-  configFailureUntil = Math.max(configFailureUntil, Date.now() + ttl); // 不縮短既有較長視窗
+  // recipient（收件人專屬拒絕，如 422）：只讓本次請求回 503，不開啟、不延伸、也不清除視窗；
+  // 否則攻擊者可用 provider 會拒絕的位址開窗，再探測已註冊 / 未註冊 email（#763）。
+  if (failureKind === 'config' || failureKind === 'service') {
+    const ttl = failureKind === 'config' ? MAIL_CONFIG_FAILURE_TTL_MS : MAIL_TRANSIENT_FAILURE_TTL_MS;
+    configFailureUntil = Math.max(configFailureUntil, Date.now() + ttl); // 不縮短既有較長視窗
+  }
   throw mailUnavailable();
 }
