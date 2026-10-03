@@ -37,7 +37,6 @@ import { loadPublicShop } from '@/server/public-shop';
 import { PublicContactActions } from '@/components/public/PublicContactActions';
 import { recordPromotionPageView } from '@/server/promotion-events';
 import { publicShopPage as t } from '@/i18n/zh-TW/pages/public-shop';
-import { publicTripDetailsPage as publicTripT } from '@/i18n/zh-TW/pages/public-trip-details';
 import { formatCurrency } from '@/lib/utils';
 
 type Params = {
@@ -214,13 +213,13 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
                             </>
                           ) : null}
                           {plan.bookingCta === 'request-unavailable' ? (
-                            <span className="text-2xs text-secondary">{publicTripT.departures.noRequestable}</span>
+                            <span className="text-2xs text-secondary">{t.trips.noRequestableHint}</span>
                           ) : null}
                           {plan.bookingCta === 'fixed-unavailable' ? (
-                            <span className="text-2xs text-secondary">{publicTripT.departures.noBookable}</span>
+                            <span className="text-2xs text-secondary">{t.trips.noBookableHint}</span>
                           ) : null}
                           {plan.bookingCta === 'dates-not-loaded' ? (
-                            <span className="text-2xs text-secondary">{publicTripT.departures.notLoaded}</span>
+                            <span className="text-2xs text-secondary">{t.trips.datesNotLoadedHint}</span>
                           ) : null}
                         </li>
                       ))}

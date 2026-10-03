@@ -284,17 +284,6 @@ function queryFailed(stage: string, cause: unknown): Error {
   return new Error(`PUBLIC_SHOP_QUERY_FAILED:${stage}`, { cause });
 }
 
-/**
- * 台北「今天」的日期字串。
- *
- * ⚠️ 用 UTC 的 `toISOString().slice(0,10)` 會在台北時間 00:00–08:00 之間算成
- * 「昨天」，於是已經出發的團次還會出現在公開頁上。這個 +8 與
- * `src/server/staff-availability.ts` 是同一個常數來源的道理。
- */
-function taipeiToday(): string {
-  return new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
-}
-
 async function loadPublicShopCore(
   admin: ReturnType<typeof createAdminSupabase>,
   shopCode: string,
@@ -414,7 +403,8 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
   const core = await loadPublicShopCore(admin, shopCode);
   if (!core) return null;
   const { shop, tenantId } = core;
-  const today = taipeiToday();
+  // 店家時區的「現在」：團次列表與方案入口（bookingCtaState）共用同一個，兩者不會分岔（#747）。
+  const homeNow = tenantNowParts(core.timeZone);
 
   // ② 已發布的行程 ＋ 其方案。`status = 'PUBLISHED'` 是這裡的閘門：草稿與封存
   //    的行程不得出現在公開頁上。
@@ -452,8 +442,8 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
           .eq('tenant_id', tenantId).in('trip_id', tripIds)
           // 只有還在賣的團次：OPEN。CLOSED（停售）與 CANCELLED（取消）都不列。
           .eq('status', 'OPEN')
-          // 已經出發的不列。用台北今天比對，不是 UTC。
-          .gte('departs_on', today)
+          // 已經出發的不列。用店家時區的今天比對，不是 UTC。
+          .gte('departs_on', homeNow.today)
           .order('departs_on', { ascending: true })
           .order('start_time', { ascending: true, nullsFirst: true }),
       ]);
@@ -470,7 +460,6 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
   // #747：首頁方案入口與詳情頁用同一套規則（loadPlanDepartureWindow＋bookingCtaState，店家時區的「今天」）。
   // 只對前 N 個 FIXED／REQUEST 方案查團次（與詳情頁同上限）；其餘或查詢失敗一律視為「團次未載入」，
   // 不顯示可點入口、也不讓整頁失敗。
-  const homeNow = tenantNowParts(core.timeZone);
   const homePlans = (tripRows ?? []).flatMap((trip) =>
     (plansByTrip.get(trip.id as string) ?? [])
       .filter(hasPublicDepartureList)
@@ -498,6 +487,8 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
 
   const departuresByTrip = new Map<string, PublicDeparture[]>();
   for (const row of departureRows ?? []) {
+    // 今天已到開始時間的團次不列（與詳情頁、方案入口同一規則）。
+    if (hasStartedToday(row, homeNow)) continue;
     const tripId = row.trip_id as string;
     const list = departuresByTrip.get(tripId) ?? [];
     const capacity = Number(row.capacity ?? 0);
