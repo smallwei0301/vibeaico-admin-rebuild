@@ -1551,7 +1551,7 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null,
-        "count": 0,
+        "count": 1,
         "note": "ledger/Playbook catch-up\uff1b\u5b50\u4ee3\u7406 bash \u88ab\u6b0a\u9650\u7cfb\u7d71\u64cb\u4e0b\uff0c\u7121\u7522\u51fa\uff082026-10-03 ~00:19Z\uff09"
       },
       {
@@ -1565,7 +1565,7 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null,
-        "count": 0,
+        "count": 1,
         "note": "\u7a84\u76e4\u9ede\uff1b\u300e#714 \u53ef\u7acb\u5373 merge\u300f\u8207 live \u4e0d\u7b26\uff08dirty\u3001TEST NOT_RUN\uff09\uff0cLUNA_CLOSURE \u672a\u9644\u9010\u9805\u7406\u7531\uff0caudit \u5c64\u672a\u63a1\u7528"
       },
       {
