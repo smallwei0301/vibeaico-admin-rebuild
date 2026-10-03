@@ -221,33 +221,33 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
     try {
     if (observed.state !== 'closed') return;
     const plan = terminalBodyPlan(observed), labelMismatch = pr => { const expected = terminalLabelPlan(pr), actual = names(pr); return expected && (!actual.includes(expected.add) || expected.remove.some(name => actual.includes(name))); };
-    let liveFailure = labelMismatch(observed) ? 'TERMINAL_LABELS_UNVERIFIED' : '', verifiedMain = '';
+    let liveFailure = labelMismatch(observed) ? 'TERMINAL_LABELS_UNVERIFIED' : '', verifiedMain = '', liveFields = [];
     if ((observed.merged || observed.merged_at) && plan.hasContract && !plan.changed && !plan.errors.length && !plan.unsyncedFields.length && !reason) try {
       const branch = observed.base?.ref, merge = observed.merge_commit_sha;
       const declared = readField(observed.body, 'MAIN_HEAD_SHA');
-      const path = readField(observed.body, 'MAIN_FILE_RE_READ'), runId = readField(observed.body, 'EXACT_HEAD_CI_RUN').match(/(?:^|\/runs\/)(\d+)$/)?.[1];
+      const path = readField(observed.body, 'MAIN_FILE_RE_READ'), runId = readField(observed.body, 'EXACT_HEAD_CI_RUN').match(/(?:^|\/runs\/)(\d+)$/)?.[1]; liveFields = [...(branch !== 'main' ? ['MAIN_HEAD_SHA', 'MAIN_HEAD_VERIFIED'] : []), ...(!merge ? ['MERGE_COMMIT_SHA'] : []), ...(!/^[a-f0-9]{40}$/i.test(declared) ? ['MAIN_HEAD_SHA'] : []), ...(!path || isPlaceholder(path) ? ['MAIN_FILE_RE_READ'] : []), ...(!runId ? ['EXACT_HEAD_CI_RUN'] : []), ...['MERGE_COMMIT_SHA', 'MAIN_HEAD_VERIFIED', 'VERIFIED_AT', 'EXACT_HEAD_CI_STATUS', 'LOCAL_JOB_RESULT', 'REMOTE_JOB_RESULT'].filter(field => !readField(observed.body, field))];
       if (branch !== 'main' || !merge || !/^[a-f0-9]{40}$/i.test(declared) || !path || isPlaceholder(path) || !runId ||
           ['MERGE_COMMIT_SHA', 'MAIN_HEAD_VERIFIED', 'VERIFIED_AT', 'EXACT_HEAD_CI_STATUS', 'LOCAL_JOB_RESULT', 'REMOTE_JOB_RESULT'].some(field => !readField(observed.body, field))) throw Error('incomplete merged receipt');
-      const main = (await github.rest.repos.getBranch({ owner, repo, branch })).data.commit.sha;
+      liveFields = ['MAIN_HEAD_SHA', 'MAIN_HEAD_VERIFIED', 'MAIN_FILE_RE_READ']; const main = (await github.rest.repos.getBranch({ owner, repo, branch })).data.commit.sha;
       const reaches = async (base, head) => base === head || ['ahead', 'identical'].includes((await github.rest.repos.compareCommitsWithBasehead({ owner, repo, basehead: `${base}...${head}` })).data.status);
-      if (upper(declared) !== upper(main) || !await reaches(merge, main)) throw Error('declared main SHA does not match live main or merge is unreachable');
-      const changed = await github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number: observed.number, per_page: 100 }); if (!Array.isArray(changed) || !Number.isSafeInteger(observed.changed_files) || changed.length !== observed.changed_files || !changed.some(file => file.filename === path && file.status !== 'removed')) throw Error('main re-read path is not a changed PR file');
+      if (upper(declared) !== upper(main)) throw Error('declared main SHA does not match live main or merge is unreachable'); liveFields = ['MERGE_COMMIT_SHA', 'MAIN_HEAD_VERIFIED']; if (!await reaches(merge, main)) throw Error('declared main SHA does not match live main or merge is unreachable');
+      liveFields = ['MAIN_FILE_RE_READ']; const changed = await github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number: observed.number, per_page: 100 }); if (!Array.isArray(changed) || !Number.isSafeInteger(observed.changed_files) || changed.length !== observed.changed_files || !changed.some(file => file.filename === path && file.status !== 'removed')) throw Error('main re-read path is not a changed PR file');
       if ((await github.rest.repos.getContent({ owner, repo, path, ref: main })).data?.type !== 'file') throw Error('main file re-read failed');
-      const inventory = (await github.rest.actions.listWorkflowRuns({ owner, repo, workflow_id: 'ci.yml', head_sha: observed.head.sha, event: 'pull_request', per_page: 100 })).data;
+      liveFields = ['EXACT_HEAD_CI_STATUS', 'EXACT_HEAD_CI_RUN']; const inventory = (await github.rest.actions.listWorkflowRuns({ owner, repo, workflow_id: 'ci.yml', head_sha: observed.head.sha, event: 'pull_request', per_page: 100 })).data;
       if (!Array.isArray(inventory.workflow_runs) || inventory.total_count > inventory.workflow_runs.length) throw Error('exact-head CI inventory incomplete');
       const latest = inventory.workflow_runs.filter(item => item.head_sha === observed.head.sha && item.path === '.github/workflows/ci.yml' && item.event === 'pull_request' && !(item.pull_requests?.length === 1 && Number.isSafeInteger(item.pull_requests[0]?.number) && item.pull_requests[0].number !== observed.number)).sort((a, b) => b.id - a.id)[0];
       if (!latest || latest.id !== Number(runId)) throw Error('receipt does not name latest exact-head CI run');
       const run = (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: Number(runId) })).data;
       if (run.head_sha !== observed.head?.sha || run.status !== 'completed' || run.conclusion !== 'success' || run.event !== 'pull_request' || run.path !== '.github/workflows/ci.yml' || run.pull_requests?.length !== 1 || run.pull_requests[0]?.number !== observed.number) throw Error('exact-head CI run is not verified for this PR');
-      if (upper(readField(observed.body, 'LOCAL_JOB_RESULT')) === 'VERIFIED_GREEN') throw Error('local isolated integration/E2E evidence not verified');
+      liveFields = ['LOCAL_JOB_RESULT']; if (upper(readField(observed.body, 'LOCAL_JOB_RESULT')) === 'VERIFIED_GREEN') throw Error('local isolated integration/E2E evidence not verified');
       if (upper(readField(observed.body, 'REMOTE_JOB_RESULT')) === 'VERIFIED_GREEN') {
-        const jobs = (await github.rest.actions.listJobsForWorkflowRun({ owner, repo, run_id: Number(runId), filter: 'latest', per_page: 100 })).data;
+        liveFields = ['REMOTE_JOB_RESULT']; const jobs = (await github.rest.actions.listJobsForWorkflowRun({ owner, repo, run_id: Number(runId), filter: 'latest', per_page: 100 })).data;
         const remote = jobs.jobs?.filter(job => job.name === 'integration');
         if (!Array.isArray(jobs.jobs) || jobs.total_count !== jobs.jobs.length || remote?.length !== 1 || remote[0].status !== 'completed' || remote[0].conclusion !== 'success' || !['Run integration tests', 'Run E2E tests'].every(name => remote[0].steps?.filter(step => step.name === name && step.conclusion === 'success').length === 1)) throw Error('remote integration/E2E steps not verified');
       } verifiedMain = main;
     } catch (error) { liveFailure = `LIVE_MAIN_RECEIPT_UNVERIFIED:${error.status ?? error.message ?? 'unknown'}`; }
     const pending = Boolean(plan.changed || plan.errors.length || plan.unsyncedFields.length || reason || liveFailure);
-    const fields = plan.unsyncedFields.join(', ') || (liveFailure ? 'none (live receipt verification pending)' : 'none (label reconciliation only)');
+    const fields = [...new Set([...plan.unsyncedFields, ...(liveFailure.startsWith('LIVE_MAIN_RECEIPT_UNVERIFIED') ? liveFields : []), ...(String(reason).startsWith('LIVE_MAIN_RECEIPT_UNVERIFIED') ? ['MAIN_HEAD_SHA', 'MAIN_HEAD_VERIFIED', 'MAIN_FILE_RE_READ'] : [])])].join(', ') || 'none (label reconciliation only)';
     const failure = reason || plan.errors.join('; ') || liveFailure || (pending ? 'UNSAFE_NON_CONDITIONAL_BODY_PATCH' : 'none');
     const status = pending ? 'STATE_SYNC_PENDING' : 'STATE_SYNC_RESOLVED';
     const prefix = `<!-- agent-terminal-state-sync:v1 pr=${current.number} head=${observed.head?.sha} closed_at=${observed.closed_at}`;
