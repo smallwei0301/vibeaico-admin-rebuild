@@ -335,7 +335,8 @@ jobs:
             }
             if (publicationApplies && current.state === 'open') {
               if (current.draft === true) {
-                if (completeInventory && publicationValidation.valid && !publicationReceipt) {
+                if (completeInventory && publicationValidation.valid && metadataErrors.length === 0 &&
+                    captureErrors.length === 0 && schemaStageErrors.length === 0 && !publicationReceipt) {
                   await github.rest.issues.createComment({
                     owner, repo, issue_number: current.number,
                     body: publication.renderPublicationReceipt({ prNumber: current.number, contract: publicationExpected }),

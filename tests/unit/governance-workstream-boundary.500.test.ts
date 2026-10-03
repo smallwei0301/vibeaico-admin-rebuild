@@ -79,7 +79,7 @@ function truth(body: string, changedFiles: any[] = ['supabase/migrations/0113_te
 // Execute the actual trusted workflow script with real policy modules and fake GitHub I/O.
 // Vitest's VM cannot dynamically import from AsyncFunction. Replace module loading only,
 // not policy behavior: each exact trusted file URL resolves to its real static import.
-async function runWorkflow(file: string, current = subject(), files: any[] = paths, peers: any[] = [], job = 'guard') {
+async function runWorkflow(file: string, current = subject(), files: any[] = paths, peers: any[] = [], job = 'guard', injected: { capture?: string[]; schema?: string[] } = {}) {
   vi.stubEnv('GITHUB_WORKSPACE', process.cwd());
   const failures: string[] = []; const statuses: any[] = []; const calls: string[] = []; const comments: string[] = [];
   const labels = new Set<string>(current.labels.map((label: any) => label.name));
@@ -134,8 +134,12 @@ async function runWorkflow(file: string, current = subject(), files: any[] = pat
     ['wip-alert-fingerprint.mjs', alertPolicy],
     ['astra-review-policy.mjs', astraPolicy],
     ['governance-workstream-boundary.mjs', boundaryPolicy],
-    ['scorecard-required-gate.mjs', capturePolicy],
-    ['schema-staged-release-policy.mjs', schemaStagePolicy],
+    ['scorecard-required-gate.mjs', injected.capture
+      ? { ...capturePolicy, validateGithubRunLedgerChanges: async () => injected.capture }
+      : capturePolicy],
+    ['schema-staged-release-policy.mjs', injected.schema
+      ? { ...schemaStagePolicy, validateGithubSchemaStagedRelease: async () => injected.schema }
+      : schemaStagePolicy],
     ['agent-wip-preflight.mjs', preflightPolicy],
     ['pr-publication-receipt.mjs', publicationPolicy],
   ].map(([name, module]) => [pathToFileURL(resolve(process.cwd(), 'scripts/agents', String(name))).href, module]));
@@ -168,6 +172,15 @@ describe('governance boundary regression #500', () => {
     });
     expect(owner.calls).not.toContain('rollout');
     expect(owner.calls).not.toContain('publication-receipt');
+  });
+  it('does not sign a publication receipt while deterministic ledger or schema preflight fails', async () => {
+    const current = { ...subject(), created_at: '2026-10-03T08:00:00Z' };
+    expect((await runWorkflow('.github/workflows/agent-wip-guard.yml', current)).calls).toContain('publication-receipt');
+    for (const injected of [{ capture: ['invalid run ledger'] }, { schema: ['invalid staged schema'] }]) {
+      const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current, paths, [], 'guard', injected);
+      expect(result.calls).not.toContain('publication-receipt');
+      expect(result.statuses.at(-1).state).toBe('failure');
+    }
   });
   describe('delivery applicability regression #555', () => {
     it('shares the post-merge applicability and preserves undeclared historical records', () => {
