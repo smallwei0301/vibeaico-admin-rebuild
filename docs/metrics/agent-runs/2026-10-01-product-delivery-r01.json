@@ -40,6 +40,12 @@
     },
     {
       "ref": "issue/758"
+    },
+    {
+      "ref": "issue/760"
+    },
+    {
+      "ref": "issue/761"
     }
   ],
   "main": {
@@ -1957,14 +1963,116 @@
         "count": 1,
         "accepted": true,
         "note": "Fix flow.lunaTasks/lunaAccepted not recomputed in 067460d2 (CI SCORECARD_CAPTURE_REJECTED)."
+      },
+      {
+        "id": "20261003-audit-759-incremental-review",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "issue": 747,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/759#issuecomment-5968461537",
+        "startedAt": "2026-10-03T10:49:43Z",
+        "completedAt": "2026-10-03T10:52:03Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "Incremental review af74353e PASS (5/7 mutations, 2 equivalent/test-gap) + exact-head re-attestation of ledger-only delta to cef9570e; sol-review 5400393599."
+      },
+      {
+        "id": "20261003-audit-747-production-acceptance",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "issue": 747,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/747#issuecomment-5968744372",
+        "startedAt": "2026-10-03T11:28:00Z",
+        "completedAt": "2026-10-03T11:32:00Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "Audit-tier QA on Production after #759 merge 71c0079e (exception: Production test-data writes with credentials): publish test trip, bookingCta fixed + link; departure CLOSED -> fixed-unavailable hint; restored OPEN + DRAFT 11:31:16Z. #747 closed completed."
+      },
+      {
+        "id": "20261003-build-761-candidate-parity",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "issue": 761,
+        "evidenceRef": "c1957043",
+        "startedAt": "2026-10-03T11:32:47Z",
+        "completedAt": "2026-10-03T11:37:45Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "#761: shared public-departure-candidates rule (first 12 candidates, seatsLeft >= minParty) for booking/request loaders and detail/homepage CTA; 10 unit tests; npm test 310/4201."
+      },
+      {
+        "id": "20261003-audit-761-review-1",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "issue": 761,
+        "evidenceRef": "c1957043",
+        "startedAt": null,
+        "completedAt": null,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "FIX_REQUIRED: booking/request loader queries lack id tie-break while detail window orders by id; candidate sets can differ on equal date/time."
+      },
+      {
+        "id": "20261003-build-761-id-tiebreak",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "issue": 761,
+        "evidenceRef": "bdc7977d",
+        "startedAt": "2026-10-03T11:38:29Z",
+        "completedAt": "2026-10-03T11:41:22Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "Audit fix: id tie-break on booking/request loader departure queries; 4 tests (13 same-time departures); npm test 310/4205."
+      },
+      {
+        "id": "20261003-scout-ledger-761",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "issue": 761,
+        "evidenceRef": "ledger append commit for #761 PR",
+        "startedAt": "2026-10-03T11:41:52Z",
+        "completedAt": "2026-10-03T11:42:28Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "Ledger append for #759 closeout and #761 events."
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 8,
-    "issuesClosed": 0,
+    "issuesStarted": 9,
+    "issuesClosed": 1,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
     "exactHeadCiOnly": 0,
@@ -1973,7 +2081,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 37,
+    "fullCiRuns": 38,
     "invalidReruns": 5,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0,
@@ -1990,8 +2098,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 28,
-    "lunaAccepted": 24,
+    "lunaTasks": 29,
+    "lunaAccepted": 25,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -2159,7 +2267,8 @@
     "2026-10-03 RUN_CAPTURE_HANDOFF (Owner /goal message): ci.fullCiRuns +1 for canonical dispatch run 36951973057 (PR #715 exact 183f0208, workflow_dispatch, conclusion failure: #43 lifecycle integration test exceeded 30s; repaired in f9663d81 and re-run 36958243227 green).",
     "2026-10-03 RUN_CAPTURE_HANDOFF (Owner /goal message): two ACTUAL_PERMISSION_DENIED events around 2026-10-02T01:40Z in the prior Claude session (Self-Approval block on canonical review submission); exact commands not recoverable from live GitHub.",
     "2026-10-03 RUN_CAPTURE_HANDOFF (Owner /goal message): Owner chose option 2 on 2026-10-02 to open the blocked permissions; recorded as Owner decision from handoff text.",
-    "2026-10-03 PLAYBOOK_DELTA 候選：#757 在 Codex 審查完成前（ready 後 1 分鐘）就 merge，Codex P1/P2 於 merge 後才出現 → 已開 #758；預防：ready 後等 Codex summary 為 Completed 或明確無 finding 再 merge。"
+    "2026-10-03 PLAYBOOK_DELTA 候選：#757 在 Codex 審查完成前（ready 後 1 分鐘）就 merge，Codex P1/P2 於 merge 後才出現 → 已開 #758；預防：ready 後等 Codex summary 為 Completed 或明確無 finding 再 merge。",
+    "2026-10-03 PLAYBOOK_DELTA（#747 closeout）：等 Codex 對 exact head Completed 才 merge；scout 改 ledger 後推送前必跑 scorecard-readiness --strict-live 與 md 重產比對（本輪 notes 覆蓋、md 未重產、luna 計數未重算各一次）；TEST_VALIDATION lane 上程式與 ledger 修正合併一次推送、已確定被取代的 head 取消 CI；#724 body 每改一次 receipt 失效，轉 ready 前等新 PASS receipt。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
