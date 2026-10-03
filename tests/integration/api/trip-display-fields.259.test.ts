@@ -113,4 +113,25 @@ describe('trips 展示欄位真的持久化（#259）', () => {
     const trip = await getTrip(tripId);
     expect(trip.refundPolicyType).toBe('STANDARD');
   });
+  it('gallery 超過上限（9 張）→ 400 REQ_001，且資料未變（#748）', async () => {
+    const tooMany = Array.from({ length: 9 }, (_, i) => `https://img.example.com/${i}.jpg`);
+    const ok = Array.from({ length: 8 }, (_, i) => `https://img.example.com/ok-${i}.jpg`);
+
+    const rejectedCreate = await ownerA.post('/api/trips', { title: `gallery-bad-${randomUUID()}`, gallery: tooMany });
+    expect(rejectedCreate.status, 'create 接受了超量 gallery').toBe(400);
+    expect((await json(rejectedCreate)).code).toBe('REQ_001');
+
+    const created = await ownerA.post('/api/trips', { title: `gallery-${randomUUID()}`, gallery: ok });
+    expect(created.status).toBe(200);
+    const tripId = (await json<{ id: string }>(created)).data!.id;
+
+    const bad = await ownerA.put(`/api/trips/${tripId}`, { gallery: tooMany });
+    expect(bad.status, 'update 接受了超量 gallery').toBe(400);
+    const body = await json(bad);
+    expect(body.code).toBe('REQ_001');
+    expect(body.message).toContain('8');
+
+    const trip = (await getTrip(tripId)) as TripView & { galleryUrls?: string[] };
+    expect(trip.galleryUrls).toEqual(ok);
+  });
 });
