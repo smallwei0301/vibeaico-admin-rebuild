@@ -37,6 +37,7 @@ import { loadPublicShop } from '@/server/public-shop';
 import { PublicContactActions } from '@/components/public/PublicContactActions';
 import { recordPromotionPageView } from '@/server/promotion-events';
 import { publicShopPage as t } from '@/i18n/zh-TW/pages/public-shop';
+import { publicTripDetailsPage as publicTripT } from '@/i18n/zh-TW/pages/public-trip-details';
 import { formatCurrency } from '@/lib/utils';
 
 type Params = {
@@ -190,7 +191,7 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
                           <span className="text-2xs text-secondary">
                             {t.trips.partyRange(plan.minParty, plan.maxParty)}
                           </span>
-                          {plan.salesMode === 'REQUEST' ? (
+                          {plan.bookingCta === 'request' ? (
                             <>
                               <span className="badge badge-success">{t.trips.requestBadge}</span>
                               <Link
@@ -201,7 +202,7 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
                               </Link>
                             </>
                           ) : null}
-                          {plan.salesMode === 'FIXED_DEPARTURE' ? (
+                          {plan.bookingCta === 'fixed' ? (
                             <>
                               <span className="badge badge-success">{t.trips.bookBadge}</span>
                               <Link
@@ -211,6 +212,15 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
                                 {t.trips.bookCta}
                               </Link>
                             </>
+                          ) : null}
+                          {plan.bookingCta === 'request-unavailable' ? (
+                            <span className="text-2xs text-secondary">{publicTripT.departures.noRequestable}</span>
+                          ) : null}
+                          {plan.bookingCta === 'fixed-unavailable' ? (
+                            <span className="text-2xs text-secondary">{publicTripT.departures.noBookable}</span>
+                          ) : null}
+                          {plan.bookingCta === 'dates-not-loaded' ? (
+                            <span className="text-2xs text-secondary">{publicTripT.departures.notLoaded}</span>
                           ) : null}
                         </li>
                       ))}

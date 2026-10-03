@@ -36,6 +36,7 @@ import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
 import { buildPublicPhone } from '@/lib/public-phone';
 import { resolveSeasonUnitPrice } from '@/lib/public-season-price';
 import { readPlanSeasons } from '@/server/public-plan-seasons';
+import { bookingCtaState, type BookingCtaState } from '@/lib/public-trip-client-state';
 import { hasStartedToday, resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
 import { MAX_PUBLIC_GALLERY_IMAGES } from '@/lib/trip-gallery';
 import {
@@ -86,6 +87,11 @@ export type PublicPlan = {
   salesMode: 'FIXED_DEPARTURE' | 'INSTANT' | 'REQUEST';
   /** 方案有啟用的季節定價：基本價只是參考，實際價格依各團次出發日（見團次 unitPrice）。 */
   seasonalPricing?: true;
+  /**
+   * #747：只有店家首頁（loadPublicShop）會填。與詳情頁共用 `bookingCtaState`＋同一個團次視窗
+   * （loadPlanDepartureWindow），所以首頁有／無入口與詳情頁一致；其餘載入器不輸出。
+   */
+  bookingCta?: BookingCtaState;
 };
 
 export type PublicTrip = {
@@ -461,6 +467,35 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
     plansByTrip.set(row.trip_id as string, list);
   }
 
+  // #747：首頁方案入口與詳情頁用同一套規則（loadPlanDepartureWindow＋bookingCtaState，店家時區的「今天」）。
+  // 只對前 N 個 FIXED／REQUEST 方案查團次（與詳情頁同上限）；其餘或查詢失敗一律視為「團次未載入」，
+  // 不顯示可點入口、也不讓整頁失敗。
+  const homeNow = tenantNowParts(core.timeZone);
+  const homePlans = (tripRows ?? []).flatMap((trip) =>
+    (plansByTrip.get(trip.id as string) ?? [])
+      .filter(hasPublicDepartureList)
+      .map((plan) => ({ tripId: trip.id as string, plan })))
+    .slice(0, MAX_DETAIL_PLANS_WITH_DEPARTURES);
+  const loadedWindows = new Map<string, Awaited<ReturnType<typeof loadPlanDepartureWindow>>>();
+  await mapWithConcurrency(homePlans, DETAIL_PLAN_QUERY_CONCURRENCY, async ({ tripId, plan }) => {
+    try {
+      loadedWindows.set(plan.id, await loadPlanDepartureWindow(admin, { tenantId, tripId, plan, now: homeNow }));
+    } catch (error) {
+      console.warn('public shop: plan departures unavailable', error);
+    }
+  });
+  for (const list of plansByTrip.values()) {
+    for (const plan of list) {
+      const win = loadedWindows.get(plan.id);
+      plan.bookingCta = bookingCtaState({
+        salesMode: plan.salesMode,
+        minParty: plan.minParty,
+        departures: win?.departures ?? [],
+        ...(hasPublicDepartureList(plan) && !win ? { departuresNotLoaded: true } : {}),
+      });
+    }
+  }
+
   const departuresByTrip = new Map<string, PublicDeparture[]>();
   for (const row of departureRows ?? []) {
     const tripId = row.trip_id as string;
@@ -613,122 +648,8 @@ async function loadPublicTripDetailsUncached(
     .filter(hasPublicDepartureList)
     .slice(0, MAX_DETAIL_PLANS_WITH_DEPARTURES);
   const planDepartureResults = await mapWithConcurrency(plansWithDepartures, DETAIL_PLAN_QUERY_CONCURRENCY, async (plan) => {
-    const departures: PublicTripDetailDeparture[] = [];
-    let offset = 0;
-    let scanned = 0;
-    let exhausted = false;
-    let soldOutCount = 0;
-    let skippedSoldOut = false;
-    // 已確認「本頁剩下未列出的列」中有可售團次。
-    let unlistedSellable = false;
-    const availableCount = () => departures.length - soldOutCount;
-
-    // Query each plan independently. A busy plan must not consume another plan's window.
-    while (availableCount() < MAX_DETAIL_DEPARTURES_PER_PLAN
-      && scanned < MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN) {
-      const pageSize = Math.min(
-        DETAIL_DEPARTURE_PAGE_SIZE,
-        MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN - scanned,
-      );
-      const { data, error: departureError } = await admin.from('trip_departures')
-        .select('id, departs_on, start_time, capacity, seats_booked, min_to_depart_snapshot, formation_deadline_at, formation_status')
-        .eq('tenant_id', shopData.tenantId)
-        .eq('trip_id', tripId)
-        .eq('plan_id', plan.id)
-        .eq('status', 'OPEN')
-        .gte('departs_on', now.today)
-        .order('departs_on', { ascending: true })
-        .order('start_time', { ascending: true, nullsFirst: true })
-        .order('id', { ascending: true })
-        .range(offset, offset + pageSize - 1);
-      if (departureError) throw queryTripDetailsFailed('trip_departures', departureError);
-
-      const rows = data ?? [];
-      scanned += rows.length;
-      offset += rows.length;
-      for (let index = 0; index < rows.length; index += 1) {
-        const departure = rows[index];
-        // 今天已到開始時間的團次不列出，也不計入可售或客滿（游標仍以已讀列數前進）。
-        if (hasStartedToday(departure, now)) continue;
-        const capacity = Number(departure.capacity ?? 0);
-        const seatsBooked = Number(departure.seats_booked ?? 0);
-        const soldOut = seatsBooked >= capacity;
-        // canonical 19 §2.1：旅客要能分辨「客滿」，所以客滿團次保留並標示 soldOut（不提供動作）。
-        // 客滿團次不占可售名額上限；另設上限避免整頁被客滿團次佔滿。
-        if (soldOut) {
-          if (soldOutCount >= MAX_DETAIL_SOLD_OUT_PER_PLAN) { skippedSoldOut = true; continue; }
-          soldOutCount += 1;
-        }
-        departures.push({
-          id: departure.id as string,
-          departsOn: departure.departs_on as string,
-          startTime: departure.start_time == null ? '' : String(departure.start_time).slice(0, 5),
-          seatsLeft: soldOut ? 0 : capacity - seatsBooked,
-          ...(seasonsByPlan.has(plan.id) && !seasonsIncompleteFor(plan.id)
-            ? { unitPrice: resolveSeasonUnitPrice(departure.departs_on as string, seasonsByPlan.get(plan.id)!, plan.pricePerPerson) }
-            : {}),
-          ...(soldOut ? { soldOut: true } : {}),
-          // M1：成團欄位只對 FIXED_DEPARTURE 輸出，REQUEST／INSTANT 的輸出不帶，
-          // 以免與 seatsLeft 合併後被反推出 capacity／占位資訊。
-          ...(plan.salesMode === 'FIXED_DEPARTURE' ? {
-            minToDepart: Number.isInteger(departure.min_to_depart_snapshot) && Number(departure.min_to_depart_snapshot) >= 1
-              ? Number(departure.min_to_depart_snapshot) : null,
-            formationDeadlineAt: typeof departure.formation_deadline_at === 'string'
-              && departure.formation_deadline_at ? departure.formation_deadline_at : null,
-            formationStatus: typeof departure.formation_status === 'string' ? departure.formation_status : null,
-          } : {}),
-        });
-        if (availableCount() >= MAX_DETAIL_DEPARTURES_PER_PLAN) {
-          // 檢查本頁剩下的列：有可售 → 確認還有未列出的可售團次；其餘為略過的客滿列。
-          for (const rest of rows.slice(index + 1)) {
-            if (hasStartedToday(rest, now)) continue;
-            if (Number(rest.seats_booked ?? 0) < Number(rest.capacity ?? 0)) unlistedSellable = true;
-            else skippedSoldOut = true;
-          }
-          break;
-        }
-      }
-
-      if (rows.length < pageSize) {
-        exhausted = true;
-        break;
-      }
-    }
-
-    // The loop stopped before exhausting the rows (six sellable listed, or the scan limit hit).
-    // `departuresMayBeTruncated` is true ONLY when a row we can see confirms an unlisted SELLABLE
-    // departure (seats_booked < capacity): either in the remainder of the last page (above) or in one
-    // lookahead page past everything examined. If everything seen is sold out we cannot confirm more
-    // sellable dates, so it stays false and the sold-out rows are reported via `soldOutOmitted`.
-    // Trade-off: a sellable departure beyond the lookahead page is not detected. The flag now only
-    // drives the "partial dates" hint copy; it never opens the booking CTA (see
-    // hasBookableListedDeparture), so the conservative choice cannot lead to an empty booking page.
-    let mayBeTruncated = unlistedSellable;
-    if (!exhausted && !unlistedSellable) {
-      const { data, error: lookaheadError } = await admin.from('trip_departures')
-        .select('id, capacity, seats_booked, departs_on, start_time')
-        .eq('tenant_id', shopData.tenantId)
-        .eq('trip_id', tripId)
-        .eq('plan_id', plan.id)
-        .eq('status', 'OPEN')
-        .gte('departs_on', now.today)
-        .order('departs_on', { ascending: true })
-        .order('start_time', { ascending: true, nullsFirst: true })
-        .order('id', { ascending: true })
-        .range(offset, offset + DETAIL_DEPARTURE_PAGE_SIZE - 1);
-      if (lookaheadError) throw queryTripDetailsFailed('trip_departures', lookaheadError);
-      const ahead = (data ?? []).filter((row) => !hasStartedToday(row, now));
-      mayBeTruncated = ahead.some(
-        (row) => Number(row.seats_booked ?? 0) < Number(row.capacity ?? 0),
-      );
-      if (ahead.length > 0 && !mayBeTruncated) skippedSoldOut = true;
-    }
-
-    return [plan.id, {
-      departures,
-      mayBeTruncated,
-      soldOutOmitted: skippedSoldOut,
-    }] as const;
+    const seasons = seasonsByPlan.has(plan.id) && !seasonsIncompleteFor(plan.id) ? seasonsByPlan.get(plan.id)! : undefined;
+    return [plan.id, await loadPlanDepartureWindow(admin, { tenantId: shopData.tenantId, tripId, plan, now, seasons })] as const;
   });
   const departuresByPlan = new Map(planDepartureResults);
 
@@ -780,3 +701,133 @@ async function loadPublicTripDetailsUncached(
  * React cache 只在同一個請求內合併 metadata/page 查詢，不會跨訪客保留即時團次資料。
  */
 export const loadPublicTripDetails = cache(loadPublicTripDetailsUncached);
+
+/**
+ * 單一方案的團次視窗（詳情頁與店家首頁共用，兩邊的「可訂」判斷因此不會分岔）：
+ * 只看 OPEN、今天（店家時區）以後、尚未開始的團次，最多列 6 筆可售＋有上限的客滿團次。
+ * `seasons` 只有詳情頁需要（輸出 unitPrice）；首頁不傳。
+ */
+export async function loadPlanDepartureWindow(
+  admin: ReturnType<typeof createAdminSupabase>,
+  args: {
+    tenantId: string;
+    tripId: string;
+    plan: PublicPlan;
+    now: { today: string; hm: string };
+    seasons?: Parameters<typeof resolveSeasonUnitPrice>[1];
+  },
+): Promise<{ departures: PublicTripDetailDeparture[]; mayBeTruncated: boolean; soldOutOmitted: boolean }> {
+  const { tenantId, tripId, plan, now, seasons } = args;
+  const departures: PublicTripDetailDeparture[] = [];
+  let offset = 0;
+  let scanned = 0;
+  let exhausted = false;
+  let soldOutCount = 0;
+  let skippedSoldOut = false;
+  // 已確認「本頁剩下未列出的列」中有可售團次。
+  let unlistedSellable = false;
+  const availableCount = () => departures.length - soldOutCount;
+
+  // Query each plan independently. A busy plan must not consume another plan's window.
+  while (availableCount() < MAX_DETAIL_DEPARTURES_PER_PLAN
+    && scanned < MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN) {
+    const pageSize = Math.min(
+      DETAIL_DEPARTURE_PAGE_SIZE,
+      MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN - scanned,
+    );
+    const { data, error: departureError } = await admin.from('trip_departures')
+      .select('id, departs_on, start_time, capacity, seats_booked, min_to_depart_snapshot, formation_deadline_at, formation_status')
+      .eq('tenant_id', tenantId)
+      .eq('trip_id', tripId)
+      .eq('plan_id', plan.id)
+      .eq('status', 'OPEN')
+      .gte('departs_on', now.today)
+      .order('departs_on', { ascending: true })
+      .order('start_time', { ascending: true, nullsFirst: true })
+      .order('id', { ascending: true })
+      .range(offset, offset + pageSize - 1);
+    if (departureError) throw queryTripDetailsFailed('trip_departures', departureError);
+
+    const rows = data ?? [];
+    scanned += rows.length;
+    offset += rows.length;
+    for (let index = 0; index < rows.length; index += 1) {
+      const departure = rows[index];
+      // 今天已到開始時間的團次不列出，也不計入可售或客滿（游標仍以已讀列數前進）。
+      if (hasStartedToday(departure, now)) continue;
+      const capacity = Number(departure.capacity ?? 0);
+      const seatsBooked = Number(departure.seats_booked ?? 0);
+      const soldOut = seatsBooked >= capacity;
+      // canonical 19 §2.1：旅客要能分辨「客滿」，所以客滿團次保留並標示 soldOut（不提供動作）。
+      // 客滿團次不占可售名額上限；另設上限避免整頁被客滿團次佔滿。
+      if (soldOut) {
+        if (soldOutCount >= MAX_DETAIL_SOLD_OUT_PER_PLAN) { skippedSoldOut = true; continue; }
+        soldOutCount += 1;
+      }
+      departures.push({
+        id: departure.id as string,
+        departsOn: departure.departs_on as string,
+        startTime: departure.start_time == null ? '' : String(departure.start_time).slice(0, 5),
+        seatsLeft: soldOut ? 0 : capacity - seatsBooked,
+        ...(seasons
+          ? { unitPrice: resolveSeasonUnitPrice(departure.departs_on as string, seasons, plan.pricePerPerson) }
+          : {}),
+        ...(soldOut ? { soldOut: true } : {}),
+        // M1：成團欄位只對 FIXED_DEPARTURE 輸出，REQUEST／INSTANT 的輸出不帶，
+        // 以免與 seatsLeft 合併後被反推出 capacity／占位資訊。
+        ...(plan.salesMode === 'FIXED_DEPARTURE' ? {
+          minToDepart: Number.isInteger(departure.min_to_depart_snapshot) && Number(departure.min_to_depart_snapshot) >= 1
+            ? Number(departure.min_to_depart_snapshot) : null,
+          formationDeadlineAt: typeof departure.formation_deadline_at === 'string'
+            && departure.formation_deadline_at ? departure.formation_deadline_at : null,
+          formationStatus: typeof departure.formation_status === 'string' ? departure.formation_status : null,
+        } : {}),
+      });
+      if (availableCount() >= MAX_DETAIL_DEPARTURES_PER_PLAN) {
+        // 檢查本頁剩下的列：有可售 → 確認還有未列出的可售團次；其餘為略過的客滿列。
+        for (const rest of rows.slice(index + 1)) {
+          if (hasStartedToday(rest, now)) continue;
+          if (Number(rest.seats_booked ?? 0) < Number(rest.capacity ?? 0)) unlistedSellable = true;
+          else skippedSoldOut = true;
+        }
+        break;
+      }
+    }
+
+    if (rows.length < pageSize) {
+      exhausted = true;
+      break;
+    }
+  }
+
+  // The loop stopped before exhausting the rows (six sellable listed, or the scan limit hit).
+  // `departuresMayBeTruncated` is true ONLY when a row we can see confirms an unlisted SELLABLE
+  // departure (seats_booked < capacity): either in the remainder of the last page (above) or in one
+  // lookahead page past everything examined. If everything seen is sold out we cannot confirm more
+  // sellable dates, so it stays false and the sold-out rows are reported via `soldOutOmitted`.
+  // Trade-off: a sellable departure beyond the lookahead page is not detected. The flag now only
+  // drives the "partial dates" hint copy; it never opens the booking CTA (see
+  // hasBookableListedDeparture), so the conservative choice cannot lead to an empty booking page.
+  let mayBeTruncated = unlistedSellable;
+  if (!exhausted && !unlistedSellable) {
+    const { data, error: lookaheadError } = await admin.from('trip_departures')
+      .select('id, capacity, seats_booked, departs_on, start_time')
+      .eq('tenant_id', tenantId)
+      .eq('trip_id', tripId)
+      .eq('plan_id', plan.id)
+      .eq('status', 'OPEN')
+      .gte('departs_on', now.today)
+      .order('departs_on', { ascending: true })
+      .order('start_time', { ascending: true, nullsFirst: true })
+      .order('id', { ascending: true })
+      .range(offset, offset + DETAIL_DEPARTURE_PAGE_SIZE - 1);
+    if (lookaheadError) throw queryTripDetailsFailed('trip_departures', lookaheadError);
+    const ahead = (data ?? []).filter((row) => !hasStartedToday(row, now));
+    mayBeTruncated = ahead.some(
+      (row) => Number(row.seats_booked ?? 0) < Number(row.capacity ?? 0),
+    );
+    if (ahead.length > 0 && !mayBeTruncated) skippedSoldOut = true;
+  }
+
+  return { departures, mayBeTruncated, soldOutOmitted: skippedSoldOut };
+}
