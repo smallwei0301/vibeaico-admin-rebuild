@@ -6,8 +6,9 @@
  *
  * 「今天已過／未到」為了不受執行時刻影響，用可確定的邊界造：
  *   - 已過：今天（店家時區）start_time = 00:00（任何時刻都 <= 現在）。
- *   - 未到：今天 start_time = 23:59；若執行時已 >= 23:30 則跳過依賴它的案例（見 NOT_YET_POSSIBLE，留 29 分鐘餘裕給跨午夜）。
- * 店家時區由本檔明確寫成 Asia/Taipei（afterAll 還原 basic 快照），不依賴種子。
+ *   - 未到：今天 start_time = 23:59。
+ * 店家時區由本檔動態選（pickShopTimeZone：Asia/Taipei／Europe/London／America/Los_Angeles 中當地 01:00–20:00 者），
+ * 任何執行時刻都造得出「已過」與「未到」，不跳過任何案例；寫入 basic.timezone，afterAll 還原快照，不依賴種子。
  *
  * ⚠️ 若 shared TEST 疊著 #41 overlay，其 deadline trigger 可能阻擋「已過」團次的寫入；
  * 那時 beforeAll 會在 mustWrite 明確失敗（而非讓斷言指向錯方向）。
@@ -41,14 +42,22 @@ const R = {
 };
 const ALL_DEPARTURES = [...Object.values(F), ...Object.values(R)];
 
-const tenantNow = tenantNowParts('Asia/Taipei');
-const TODAY = tenantNow.today;
-const TOMORROW = new Date(Date.parse(`${TODAY}T00:00:00Z`) + 24 * 3600 * 1000).toISOString().slice(0, 10);
 /**
- * 現在 < 23:30 才造得出穩定的「今天未到」（start_time 23:59）；否則相關案例跳過（不是通過）。
- * 留 29 分鐘餘裕：模組載入到 HTTP 請求之間的耗時、或接近午夜時跨日，都不會讓 23:59 變成已開始。
+ * 動態選店家時區：候選三個時區相距約 8 小時，任何時刻至少一個當地時間落在 [01:00, 20:00)（19 小時窗）。
+ * 這保證「今天 00:00 已開始」與「今天 23:59 未開始」在任何執行時刻都成立，且距午夜至少 4 小時餘裕；
+ * 因此不需要依執行時刻跳過任何案例。都不符合時明確失敗，不得跳過。
  */
-const NOT_YET_POSSIBLE = tenantNow.hm < '23:30';
+const SHOP_TZ_CANDIDATES = ['Asia/Taipei', 'Europe/London', 'America/Los_Angeles'];
+function pickShopTimeZone(now: Date = new Date()): string {
+  for (const tz of SHOP_TZ_CANDIDATES) {
+    const { hm } = tenantNowParts(tz, now.getTime());
+    if (hm >= '01:00' && hm < '20:00') return tz;
+  }
+  throw new Error(`找不到當地時間介於 01:00–20:00 的候選時區：${SHOP_TZ_CANDIDATES.join(', ')}`);
+}
+const SHOP_TZ = pickShopTimeZone();
+const TODAY = tenantNowParts(SHOP_TZ).today;
+const TOMORROW = new Date(Date.parse(`${TODAY}T00:00:00Z`) + 24 * 3600 * 1000).toISOString().slice(0, 10);
 
 let admin: SupabaseClient;
 /** 以旗標判斷是否需要還原：basic 原值可能就是 JSON null，不能用 `!== null` 當「有快照」。 */
@@ -100,7 +109,7 @@ beforeAll(async () => {
   basicSnapshot = settings.data!.basic;
   basicCaptured = true;
   mustWrite('tenant_settings.basic.timezone', await admin.from('tenant_settings')
-    .update({ basic: { ...((basicSnapshot as Record<string, unknown>) ?? {}), timezone: 'Asia/Taipei' } })
+    .update({ basic: { ...((basicSnapshot as Record<string, unknown>) ?? {}), timezone: SHOP_TZ } })
     .eq('tenant_id', SHOP_A.id));
 
   // 公開寫入端點有 TOUR_MODULE 閘門：列不存在或 inactive 都要處理。先快照整列，afterAll 逐字還原。
@@ -219,7 +228,7 @@ describe('#746 FIXED_DEPARTURE：POST /api/public/tour-bookings', () => {
     expect(await orderCount(F.started)).toBe(0);
   });
 
-  it.skipIf(!NOT_YET_POSSIBLE)('今天未到開始時間（23:59）→ 201，名額 +1（對照組：不是整個端點都在拒絕）', async () => {
+  it('今天未到開始時間（23:59）→ 201，名額 +1（對照組：不是整個端點都在拒絕）', async () => {
     const res = await post('/api/public/tour-bookings', bookingBody(F.notYet));
     expect(res.status).toBe(201);
     expect(res.json.data?.orderId).toBeTruthy();
@@ -249,7 +258,7 @@ describe('#746 REQUEST：POST /api/public/tour-requests', () => {
     expect(await seatsBooked(R.started)).toBe(0);
   });
 
-  it.skipIf(!NOT_YET_POSSIBLE)('今天未到開始時間 → 201（REQUEST 不鎖位，但會有一筆訂單）', async () => {
+  it('今天未到開始時間 → 201（REQUEST 不鎖位，但會有一筆訂單）', async () => {
     const res = await post('/api/public/tour-requests', requestBody(R.notYet));
     expect(res.status).toBe(201);
     expect(await orderCount(R.notYet)).toBe(1);
@@ -264,7 +273,7 @@ describe('#746 預約頁不列出已開始團次', () => {
     // 對照組：頁面真的渲染出來、且團次 id 會被序列化進頁面（否則下面的 not.toContain 恆真）。
     expect(body).toContain(F.nullTime);
     expect(body).toContain(F.tomorrow);
-    if (NOT_YET_POSSIBLE) expect(body).toContain(F.notYet);
+    expect(body).toContain(F.notYet);
     expect(body, '已開始的團次出現在預約頁').not.toContain(F.started);
   });
 
@@ -274,7 +283,7 @@ describe('#746 預約頁不列出已開始團次', () => {
     expect(res.status).toBe(200);
     // 對照組（無條件）：明天的團次一定存在，頁面真的渲染且 id 會序列化進去，下面的 not.toContain 才不是恆真。
     expect(body).toContain(R.tomorrow);
-    if (NOT_YET_POSSIBLE) expect(body).toContain(R.notYet);
+    expect(body).toContain(R.notYet);
     expect(body, '已開始的團次出現在申請頁').not.toContain(R.started);
   });
 });
