@@ -2058,7 +2058,7 @@
         "issue": 761,
         "evidenceRef": "ledger append commit for #761 PR",
         "startedAt": "2026-10-03T11:41:52Z",
-        "completedAt": "2026-10-03T11:42:28Z",
+        "completedAt": "2026-10-03T11:45:03Z",
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null,
@@ -2386,6 +2386,14 @@
         "observedState": "MERGED_TO_MAIN",
         "verification": "VERIFIED",
         "evidenceRef": "PR723live mergedtrue/merged_at2026-10-01T10:00:58Z mergea30acac04aad838d4b04da9c5464b5b6f33e06b6; freshfetchmaina30/reachable andboth sourcefiles rereadBYTE_IDENTICAL0d. Current sourceLOCALcanonical+distinctreview47FinalCLOSE_APPROVED StandardsSpec0 RiskNONE verified withflakyfirstattempt/welcome29.6retry+cleanupjournalUNKNOWNpreserved. MainpushCI/AUTOdeploy/ProductionSchema/authpending; #42wholeOPEN; necessaryPBdelta/Issuecloseoutpendinguntilactualmain. Sourceacceptance only no transactionshipped."
+      },
+      {
+        "type": "ISSUE_CLOSED",
+        "subject": "issue#747",
+        "claimedState": "closed",
+        "observedState": "closed",
+        "verification": "VERIFIED",
+        "evidenceRef": "github:issue#747; https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/747#issuecomment-5968744372"
       }
     ]
   },
