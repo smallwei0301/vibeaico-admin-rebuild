@@ -1492,19 +1492,20 @@
       {
         "id": "20261003-audit-710-1e4c7f69-fable",
         "role": "audit",
-        "requestedModel": "sol",
+        "requestedModel": "unknown",
         "actualModel": "unknown",
         "contextClass": "compact",
         "accepted": true,
         "issue": 710,
         "evidenceRef": "1e4c7f69",
-        "note": "Final Risk PREMIUM (Fable) for #709: PASS 0 blocking (8 mutation, 5 killed); astra-review 5398524799; 2026-10-03T02:08:43Z\u201302:11:13Z",
+        "note": "Final Risk premium \u4e0d\u5c6c luna/terra/sol tier\uff0c\u4f9d\u65e2\u6709\u6163\u4f8b\u8a18 unknown\uff1b\u5be6\u969b\u59d4\u6d3e claude-fable-5-1\uff08operator-attested\uff09",
         "startedAt": "2026-10-03T02:08:43Z",
         "completedAt": "2026-10-03T02:11:13Z",
         "count": 1,
         "inputTokens": null,
         "outputTokens": null,
-        "cachedTokens": null
+        "cachedTokens": null,
+        "actualModelId": "claude-fable-5-1"
       },
       {
         "id": "20261003-build-748-4d29a358",
@@ -1522,6 +1523,81 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null
+      },
+      {
+        "id": "20261003-audit-748-4d29a358",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "issue": 748,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/751#issuecomment-5965410020",
+        "startedAt": "2026-10-03T03:26:24Z",
+        "completedAt": "2026-10-03T03:29:06Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "#751 ordinary review PASS 0 blocking, 6/6 mutations killed"
+      },
+      {
+        "id": "20261003-scout-ledger-blocked",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": false,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 0,
+        "note": "ledger/Playbook catch-up\uff1b\u5b50\u4ee3\u7406 bash \u88ab\u6b0a\u9650\u7cfb\u7d71\u64cb\u4e0b\uff0c\u7121\u7522\u51fa\uff082026-10-03 ~00:19Z\uff09"
+      },
+      {
+        "id": "20261003-scout-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": false,
+        "completedAt": "2026-10-03T00:22:16Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 0,
+        "note": "\u7a84\u76e4\u9ede\uff1b\u300e#714 \u53ef\u7acb\u5373 merge\u300f\u8207 live \u4e0d\u7b26\uff08dirty\u3001TEST NOT_RUN\uff09\uff0cLUNA_CLOSURE \u672a\u9644\u9010\u9805\u7406\u7531\uff0caudit \u5c64\u672a\u63a1\u7528"
+      },
+      {
+        "id": "20261003-scout-748-source",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "issue": 748,
+        "evidenceRef": "4d29a358",
+        "completedAt": "2026-10-03T02:26:06Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "r01 sources \u52a0 issue/748"
+      },
+      {
+        "id": "20261003-scout-ledger-catchup-6b36be13",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": false,
+        "startedAt": "2026-10-03T04:17:00Z",
+        "completedAt": "2026-10-03T04:25:01Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "ledger \u88dc\u8a18\uff1b\u8986\u84cb fullCiRuns/invalidReruns\u3001\u8aa4\u8a08 issuesClosed\u3001\u6f0f\u8a18 5 \u7b46\uff0c\u7d93 audit \u5c64\u88c1\u6c7a\u4ee5\u4fee\u6b63 commit \u66f4\u6b63"
       }
     ],
     "fullContextReplays": 0,
@@ -1529,20 +1605,20 @@
   },
   "delivery": {
     "issuesStarted": 7,
-    "issuesClosed": 1,
+    "issuesClosed": 0,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
     "exactHeadCiOnly": 0,
     "commitOnly": 0,
     "unfinishedCarryover": 0,
-    "cycleTimeMinutes": null,
-    "productionAcceptanceVerified": 0
+    "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 4,
-    "invalidReruns": 0,
+    "fullCiRuns": 33,
+    "invalidReruns": 5,
     "firstPassRatePercent": null,
-    "sharedTestCollisions": 0
+    "sharedTestCollisions": 0,
+    "note": "37007212982 \u56e0 head \u88ab\u53d6\u4ee3 cancelled\uff0c37083653366 \u5728 classify \u88ab\u62d2\uff0c37082211071 \u70ba #714 source CI\uff0c\u4e09\u8005\u4e0d\u8a08\u5165\uff1b\u5148\u524d 5 \u500b dispatch run \u662f\u5426\u5df2\u8a08\u5165\u539f 30 \u4ecd\u5f85\u67e5\u8b49\u3002\u672c\u8f2a\u65b0\u589e 3 \u500b\u5b8c\u6574 canonical TEST run\uff1a37008702923\u300137083761493\u300137090025615"
   },
   "quality": {
     "acceptanceEvidenceCoveragePercent": null,
@@ -1555,13 +1631,13 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 15,
-    "lunaAccepted": 15,
+    "lunaTasks": 19,
+    "lunaAccepted": 16,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 47,
+    "solTouches": 48,
     "solIssues": 5
   },
   "auditability": {
