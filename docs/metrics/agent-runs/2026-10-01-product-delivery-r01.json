@@ -49,6 +49,9 @@
     },
     {
       "ref": "issue/764"
+    },
+    {
+      "ref": "issue/746"
     }
   ],
   "main": {
@@ -2680,14 +2683,184 @@
         "cachedTokens": null,
         "count": 1,
         "note": "Ledger append for #763 TEST f3997cf0 and Codex P2 round (retry in the PR worktree)."
+      },
+      {
+        "id": "20261003-ci-763-test-236c17bf",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 758,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/37148553012",
+        "startedAt": "2026-10-03T20:19:21Z",
+        "completedAt": "2026-10-03T20:19:21Z",
+        "accepted": true,
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Canonical shared TEST on exact 236c17bf success (80 files/768 tests, auth.03 10, E2E 22 + 2 unrelated flaky); AUDIT astra-review 5402575100 submitted, PR ready; Codex Completed on 236c17b with +1 and no findings."
+      },
+      {
+        "id": "20261003-audit-763-merge",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 758,
+        "evidenceRef": "d5d88f1ec66e0a971021db32ca1213fd77f75318",
+        "startedAt": "2026-10-03T20:23:20Z",
+        "completedAt": "2026-10-03T20:23:20Z",
+        "accepted": true,
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "PR #763 squash merged at exact head 236c17bf after Agent WIP Policy success (ENFORCED) and Codex Completed; main d5d88f1e; Vercel Production success."
+      },
+      {
+        "id": "20261003-audit-758-production-verify",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 758,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/758#issuecomment-5973179083",
+        "startedAt": "2026-10-03T20:25:11Z",
+        "completedAt": "2026-10-03T20:25:32Z",
+        "accepted": true,
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Production: unregistered REGISTER 503 MAIL_001; forgot-password no-send branch (previously 200) x3 also 503 MAIL_001 inside the window — both branches indistinguishable."
+      },
+      {
+        "id": "20261003-ci-main-d5d88f1e",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 758,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/37151361102",
+        "startedAt": "2026-10-03T21:29:42Z",
+        "completedAt": "2026-10-03T21:29:42Z",
+        "accepted": true,
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Main push CI attempt 1 failed (18 unrelated files, 127 ECONNRESET/fetch failed to TEST Supabase; main tree 8175f4d0 identical to green PR head; auth.03 passed); single permitted rerun attempt 2 success (80 files/768 tests, E2E 24)."
+      },
+      {
+        "id": "20261003-audit-758-close",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 758,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/758#issuecomment-5973674211",
+        "startedAt": "2026-10-03T21:30:31Z",
+        "completedAt": "2026-10-03T21:30:31Z",
+        "accepted": true,
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "CLOSE_APPROVED 5973674211 + ISSUE_CLOSE_READY handoff 5973675336 (main CI 37151361102); closed 21:30:31Z; product-issue-close-guard 37155347607 success; ISSUE_CLOSED_OBSERVED 5973677791."
+      },
+      {
+        "id": "20261003-scout-inventory-after-758",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "issue": 746,
+        "evidenceRef": "inventory after #763 merge (open PRs 9, issues #764/#760/#753/#120/#761/#755/#754/#746/#749)",
+        "startedAt": "2026-10-03T20:29:00Z",
+        "completedAt": "2026-10-03T20:29:00Z",
+        "accepted": true,
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Narrow inventory recommended #746/#761/#749; audit corrected two errors (#746 RPC-level check still needs a migration blocked by #755; missed latest #764 comment)."
+      },
+      {
+        "id": "20261003-sol-triage-746",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 746,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/746",
+        "startedAt": "2026-10-03T20:30:00Z",
+        "completedAt": "2026-10-03T20:30:00Z",
+        "accepted": true,
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "TRIAGE: MAIN #746. Submit paths already reload the timezone-aware loader and reject started departures (409 DEPARTURE_NOT_AVAILABLE) since #731; remaining: integration proof for direct API rejection and <= boundary tests; RPC-level check deferred (migration, blocked by #755)."
+      },
+      {
+        "id": "20261003-build-746-tests",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "issue": 746,
+        "evidenceRef": "43c5d98a",
+        "startedAt": "2026-10-03T20:30:51Z",
+        "completedAt": "2026-10-03T20:35:33Z",
+        "accepted": true,
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Unit public-started-departure.746 (19 tests: <= boundary, null, tomorrow, LA timezone, both submit paths reject before rpc) and integration public-started-departure.746 (booking/request API 409 REQ_003, seats unchanged, pages exclude started); mutations <= to < 5 failed, > 11 failed, skip-check 6 failed; one audit fix amended (two trips to avoid plan slug constraint)."
+      },
+      {
+        "id": "20261003-audit-746-diff-review",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 746,
+        "evidenceRef": "43c5d98a",
+        "startedAt": "2026-10-03T20:35:00Z",
+        "completedAt": "2026-10-03T20:35:50Z",
+        "accepted": true,
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Audit review: found two plans under one trip would hit the overlay trip_plans_tenant_trip_slug_key on shared TEST (returned, fixed by amend); re-review PASS; unit 59 passed, tsc 0; integration to be validated by canonical shared TEST."
+      },
+      {
+        "id": "20261003-scout-ledger-763-close-746",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "issue": 746,
+        "evidenceRef": "ledger append for #763 merge, #758 close and #746 start",
+        "startedAt": null,
+        "completedAt": "2026-10-03T21:32:49Z",
+        "accepted": true,
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Ledger append in the #746 worktree."
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 10,
-    "issuesClosed": 1,
+    "issuesStarted": 11,
+    "issuesClosed": 2,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
     "exactHeadCiOnly": 0,
@@ -2696,11 +2869,11 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 44,
+    "fullCiRuns": 47,
     "invalidReruns": 5,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0,
-    "note": "37007212982 因 head 被取代 cancelled，37083653366 在 classify 被拒，37082211071 為 #714 source CI，三者不計入；先前 5 個 dispatch run 是否已計入原 30 仍待查證。本輪新增 3 個完整 canonical TEST run：37008702923、37083761493、37090025615 #757: 37105978199 failure（mock 形狀不擬真，已修）、37108030479 success；main push 37112300377 監看中。 #762：37121399537、37124644493 success；37120725291、37124319682 因 head 被取代而取消（不計）。 #763：37128355259 success（cce85365）。 37133703835 success（39748ec3）。 37137459820 success（ae6cabfe）。"
+    "note": "37007212982 因 head 被取代 cancelled，37083653366 在 classify 被拒，37082211071 為 #714 source CI，三者不計入；先前 5 個 dispatch run 是否已計入原 30 仍待查證。本輪新增 3 個完整 canonical TEST run：37008702923、37083761493、37090025615 #757: 37105978199 failure（mock 形狀不擬真，已修）、37108030479 success；main push 37112300377 監看中。 #762：37121399537、37124644493 success；37120725291、37124319682 因 head 被取代而取消（不計）。 #763：37128355259 success（cce85365）。 37133703835 success（39748ec3）。 37137459820 success（ae6cabfe）。 #763 收尾：PR 37148553012 success；main push 37151361102 attempt 1 failure（TEST Supabase ECONNRESET，18 無關檔案）、attempt 2 rerun success。"
   },
   "quality": {
     "acceptanceEvidenceCoveragePercent": null,
@@ -2713,8 +2886,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 39,
-    "lunaAccepted": 34,
+    "lunaTasks": 41,
+    "lunaAccepted": 36,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -2886,7 +3059,8 @@
     "2026-10-03 PLAYBOOK_DELTA（#747 closeout）：等 Codex 對 exact head Completed 才 merge；scout 改 ledger 後推送前必跑 scorecard-readiness --strict-live 與 md 重產比對（本輪 notes 覆蓋、md 未重產、luna 計數未重算各一次）；TEST_VALIDATION lane 上程式與 ledger 修正合併一次推送、已確定被取代的 head 取消 CI；#724 body 每改一次 receipt 失效，轉 ready 前等新 PASS receipt。",
     "2026-10-03 PLAYBOOK_DELTA（#762）：關閉 Product Issue 前必須先補 Issue 本文 WORKSTREAM、final Sol CLOSE_APPROVED（EXACT_HEAD=最後合併 PR head）與 RUN_CAPTURE_HANDOFF ISSUE_CLOSE_READY（current-main push CI），並在 close-guard 跑完後確認 Issue 仍為 closed 才寫 ledger；推送後計算 changeDigest 前，先確認 PR files API 的 blob sha 已與本地 HEAD 一致；scout ledger 的 task 時間倒置不會被 validator 擋下，audit 需逐欄檢查。",
     "2026-10-03T18:47Z #763: AUDIT astra-review submitted at ba4bca9a and PR marked ready; Codex P1 #4 (MAIL_FROM 422 hidden as recipient 200) verified and fixed at 59fe02a8 (build tier), audit diff review PASS after one comment fix; head to be re-validated by canonical shared TEST.",
-    "2026-10-03T19:40Z #763: canonical TEST success on f3997cf0 (run 37145666175); AUDIT astra-review submitted and PR ready; Codex P2 (03-AUTH route example still unconditional sent:true) verified and fixed docs-only at f18aeb8a; audit PASS; first scout ledger attempt committed on a stale local branch and was rejected; head to be re-validated by canonical shared TEST."
+    "2026-10-03T19:40Z #763: canonical TEST success on f3997cf0 (run 37145666175); AUDIT astra-review submitted and PR ready; Codex P2 (03-AUTH route example still unconditional sent:true) verified and fixed docs-only at f18aeb8a; audit PASS; first scout ledger attempt committed on a stale local branch and was rejected; head to be re-validated by canonical shared TEST.",
+    "2026-10-03T21:35Z #763 merged (d5d88f1e) and Production-verified; #758 closed via guard (CLOSE_APPROVED 5973674211, handoff 5973675336, guard 37155347607); main CI needed one rerun after TEST Supabase ECONNRESET; TRIAGE selected #746 as MAIN (tests-only slice, RPC check deferred to migration lane)."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -2899,7 +3073,7 @@
   },
   "completionTruth": {
     "status": "VERIFIED",
-    "checkedAt": "2026-10-03T12:56:00Z",
+    "checkedAt": "2026-10-03T21:32:49Z",
     "claims": [
       {
         "type": "LOCAL_TEST_GREEN",
@@ -3012,6 +3186,14 @@
         "observedState": "closed",
         "verification": "VERIFIED",
         "evidenceRef": "github:issue#747; github:issuecomment#5969376693 (ISSUE_CLOSED_OBSERVED 2026-10-03T12:55:44Z after guard-accepted close; first close 11:31:40Z was guard-reopened 11:31:55Z)"
+      },
+      {
+        "type": "ISSUE_CLOSED",
+        "subject": "issue#758",
+        "claimedState": "closed",
+        "observedState": "closed",
+        "verification": "VERIFIED",
+        "evidenceRef": "github:issue#758; github:issuecomment#5973677791 (ISSUE_CLOSED_OBSERVED after guard-accepted close 2026-10-03T21:30:31Z; product-issue-close-guard run 37155347607 success)"
       }
     ]
   },
