@@ -17,6 +17,13 @@ export const publicTourBookingPage = {
     },
     partyRange: (min: number, max: number) => `此方案 ${min}–${max} 人成行`,
     departureLabel: '選擇出發日期',
+    seasonalContactHeadline: '價格依出發日期而定，請洽店家',
+    seasonalHeadline: '依出發日期而定',
+    departurePrice: (amount: string, unit: string) => ` · ${amount}${unit}`,
+    totalLabel: '實際金額',
+    totalPerPerson: (unit: string, party: number, total: string) => `${unit} × ${party} 人 ＝ ${total}`,
+    totalPerGroup: (total: string) => `${total}（整團一口價）`,
+    totalUnknown: '目前無法確認此日期的金額，請聯絡店家或改選其他日期。',
     departurePlaceholder: '請選擇一個日期',
     departureOption: (dateText: string, startTime: string, seatsLeft: number) =>
       `${dateText}${startTime ? ` ${startTime}` : ''}（剩 ${seatsLeft} 位）`,

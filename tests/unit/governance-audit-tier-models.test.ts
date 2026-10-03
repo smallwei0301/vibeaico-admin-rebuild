@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
+
 import { describe, it } from 'vitest';
-import { classifyWorkstream, evaluateAstra, evaluateGithubAstra, routing } from '../../scripts/agents/astra-review-policy.mjs';
+import { classifyWorkstream, evaluateAstra as evaluateCurrentAstra, evaluateGithubAstra as evaluateCurrentGithubAstra, routing } from '../../scripts/agents/astra-review-policy.mjs';
 import { parseLaneMetadata, validateLaneMetadata } from '../../scripts/agents/agent-wip-policy.mjs';
+
+// Enforce the prospective role contract even when this test PR lands before #711's config.
+const requiredRolePolicy = { ...routing, openaiBuilderDecision: { independentReviewerRequired: true } };
+const evaluateAstra = (input: Parameters<typeof evaluateCurrentAstra>[0]) => evaluateCurrentAstra(input, requiredRolePolicy);
+const evaluateGithubAstra = (input: { github: any; owner: string; repo: string; current: any }) => evaluateCurrentGithubAstra(input, requiredRolePolicy);
 
 // Owner #360 removes governance model pinning. Model names below are test data,
 // never claims that those models were dispatched or that unknown is verified.
@@ -32,6 +38,13 @@ const context = {
   baseSha: 'a'.repeat(40), headSha: 'b'.repeat(40), changeDigest: 'c'.repeat(64),
   policyVersion: routing.version, testBaseline: 'source checks fixture', schemaBaseline: 'schema baseline fixture',
 };
+// Synthetic current role-context read-back; no real model execution claim.
+const role = (kind: 'BUILD' | 'REVIEW') => ({ role: kind, repository: context.repository,
+  headSha: context.headSha, changeDigest: context.changeDigest,
+  sourceRef: `https://github.com/${context.repository}/issues/360#issuecomment-${kind === 'BUILD' ? 101 : 102}`,
+  actorId: `fixture-${kind}-actor`, sessionId: `fixture-${kind}-session`, executionRef: `fixture-${kind}-execution`,
+  startedAt: createdAt, completedAt: createdAt, freshContext: kind === 'REVIEW', executionEvidence: 'OPERATOR_ATTESTED' });
+const roleContext = { ...context, roleEvidence: { trusted: true, builder: role('BUILD'), reviewer: role('REVIEW') } };
 const productBody = (risk = 'TENANT_AUTH_BOUNDARY') => [
   'WORKSTREAM: PRODUCT_MAINLINE', 'AGENT_LANE: TERRA_BUILD',
   `${modelRow} requested=not_requested; actual=unknown`,
@@ -42,13 +55,13 @@ const review = (requestedModel = routing.models.finalRisk, actualModel = request
   trusted: true, state: 'COMMENTED', commit_id: context.headSha, id: 1,
   submitted_at: createdAt,
   body: '```astra-review\n' + JSON.stringify({
-    ...context, requestedModel, actualModel, identityEvidence: 'OPERATOR_ATTESTED', verdict: 'PASS',
+    ...context, executionRef: roleContext.roleEvidence.reviewer.executionRef, requestedModel, actualModel, identityEvidence: 'OPERATOR_ATTESTED', verdict: 'PASS',
     report: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/360',
     findings: 'Fixture only; all source checks satisfied',
   }) + '\n```',
 });
 const evaluateProduct = (reviews: Array<Record<string, any>> = [], risk = 'TENANT_AUTH_BOUNDARY') =>
-  evaluateAstra({ body: productBody(risk), changedFiles: ['src/lib/product.ts'], context, reviews });
+  evaluateAstra({ body: productBody(risk), changedFiles: ['src/lib/product.ts'], context: roleContext, reviews });
 
 describe('MODEL_GOVERNANCE has no designated executor model (#360)', () => {
   it('removes the designated model and whitelist without changing Product risk version', () => {
@@ -149,4 +162,10 @@ describe('MODEL_GOVERNANCE has no designated executor model (#360)', () => {
     assert.equal(evaluateProduct([{ ...review(), trusted: false }]).status, 'ASTRA_PENDING');
     assert.equal(evaluateProduct([{ ...review(), state: 'CHANGES_REQUESTED' }]).status, 'ASTRA_PENDING');
   });
+  it('does not let current Product model evidence substitute for missing independent roles', () => {
+    const result = evaluateAstra({ body: productBody(), changedFiles: ['src/lib/product.ts'], context, reviews: [review()] });
+    assert.equal(result.status, 'ASTRA_PENDING');
+    assert.ok(result.errors.includes('Missing independently read-back builder/reviewer role evidence'));
+  });
+
 });

@@ -11,7 +11,7 @@ const workflow = readFileSync(
 describe('agent WIP Guard live-state dispatch', () => {
   it('re-reads the current PR before parsing metadata or deciding a TEST transition', () => {
     const payloadIndex = workflow.indexOf(
-      'const payloadCurrent = context.payload.pull_request ?? { number: context.payload.issue.number };',
+      'const payloadCurrent = reviewWakeup',
     );
     const liveReadIndex = workflow.indexOf(
       'const { data: current } = await github.rest.pulls.get({',
@@ -34,7 +34,7 @@ describe('agent WIP Guard live-state dispatch', () => {
       'const liveExisting = (current.labels ?? [])',
     );
     const labelWriteIndex = workflow.indexOf(
-      'if (additions.length) await github.rest.issues.addLabels({',
+      'if (!reviewWakeup && additions.length) await github.rest.issues.addLabels({',
     );
     const dispatchDecisionIndex = workflow.indexOf(
       "!liveExisting.includes('lane:test-validation')",
@@ -62,6 +62,7 @@ describe('agent WIP Guard live-state dispatch', () => {
     );
     const evaluationIndex = workflow.indexOf(
       'await astra.evaluateGithubAstra({ github, owner, repo, current })',
+      gateIndex,
     );
 
     expect(metadataIndex).toBeGreaterThan(-1);
@@ -93,7 +94,7 @@ describe('agent WIP Guard live-state dispatch', () => {
 
   it('serializes only the same PR and cancels stale in-flight guard runs', () => {
     expect(workflow).toContain(
-      'group: agent-wip-guard-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}',
+      'group: agent-wip-guard-${{ github.repository }}-${{ matrix.pr_number }}',
     );
     expect(workflow).toContain('cancel-in-progress: true');
     expect(workflow).not.toMatch(/^concurrency:/m);
@@ -131,8 +132,62 @@ describe('agent WIP Guard live-state dispatch', () => {
 });
 
 import {
-  changeDigestOf, classifyAstra, evaluateAstra, evaluateGithubAstra, finalRiskGateStatus, routing, shouldEnforceFinalRisk,
+  changeDigestOf, classifyAstra, evaluateAstra as evaluateCurrentAstra, evaluateGithubAstra, finalRiskGateStatus, routing, shouldEnforceFinalRisk,
 } from '../../scripts/agents/astra-review-policy.mjs';
+// Original contract fixtures are explicit pre-role-policy replay, never the live caller's default.
+const legacyPolicy = { ...routing, openaiBuilderDecision: { independentReviewerRequired: false } };
+const evaluateAstra = (input: any, policy = legacyPolicy) => evaluateCurrentAstra(input, policy);
+
+describe('prospective GitHub role receipts from independent durable readback', () => {
+  const policy = { ...routing, openaiBuilderDecision: { independentReviewerRequired: true } };
+  const repository = 'smallwei0301/vibeaico-admin-rebuild', headSha = 'b'.repeat(40);
+  const changedFiles = [{ filename: 'src/server/payment/role-fixture.ts', status: 'modified', sha: 'c'.repeat(40) }];
+  const digest = changeDigestOf(changedFiles);
+  const source = (id: number) => `https://github.com/${repository}/pull/1#issuecomment-${id}`;
+  const role = (kind: string) => ({ role: kind, repository, headSha, changeDigest: digest,
+    actorId: `synthetic-${kind}-actor`, sessionId: `synthetic-${kind}-session`, executionRef: `synthetic-${kind}-execution`,
+    startedAt: kind === 'REVIEW' ? '2026-10-01T03:00:01Z' : '2026-10-01T03:00:00Z', completedAt: '2026-10-01T03:00:01Z',
+    freshContext: kind === 'REVIEW', executionEvidence: 'OPERATOR_ATTESTED' });
+  const harness = (patch: any = {}) => {
+    const payload = { repository, baseSha: 'a'.repeat(40), headSha, changeDigest: digest, policyVersion: policy.version,
+      testBaseline: 'synthetic-source-test', schemaBaseline: 'synthetic-schema-test', verdict: 'PASS',
+      requestedModel: 'gpt-6.1-sol', actualModel: 'gpt-6.1-sol', reviewerTier: 'AUDIT', identityEvidence: 'OPERATOR_ATTESTED',
+      costPolicyVersion: '2026-09-17.1', downgradeReason: 'PREMIUM_REVIEW_COMPLETED', downgradeEvidenceRef: source(100),
+      reviewLineage: 'synthetic-payment-lineage', executionRef: role('REVIEW').executionRef,
+      adversarialEvidence: 'Synthetic counterexamples covered', priorFindingsReviewed: true, unresolvedFindingCount: 0,
+      report: source(102), findings: 'Synthetic only', reviewerExecutionReceipt: source(102), ...patch.payload };
+    const current = { number: 1, changed_files: 1, base: { sha: 'a'.repeat(40) }, head: { sha: headSha },
+      body: `WORKSTREAM: PRODUCT_MAINLINE\nASTRA_RISK: PAYMENT_CONSISTENCY\nASTRA_RATIONALE: Synthetic payment boundary\nASTRA_TEST_BASELINE: synthetic-source-test\nASTRA_SCHEMA_BASELINE: synthetic-schema-test\nBUILDER_EXECUTION_RECEIPT: ${patch.builderRef ?? source(101)}` };
+    const review = { trusted: false, id: 1, state: patch.state ?? 'COMMENTED', commit_id: headSha,
+      submitted_at: '2026-10-01T03:00:03Z', user: { login: 'synthetic-operator', id: 123, type: 'User' },
+      body: '```astra-review\n' + JSON.stringify(payload) + '\n```' };
+    const github: any = { rest: { pulls: { listFiles: 'files', listReviews: 'reviews' },
+      repos: { getCollaboratorPermissionLevel: async () => ({ data: { permission: patch.permission ?? 'write' } }) },
+      issues: { getComment: async ({ comment_id }: any) => {
+        if (patch.unavailable) throw new Error('Unavailable');
+        const receipt = { ...role(comment_id === 101 ? 'BUILD' : 'REVIEW'), ...(comment_id === 101 ? patch.builder : patch.reviewer) };
+        return { data: { html_url: source(comment_id), user: review.user, updated_at: patch.updatedAt ?? '2026-10-01T03:00:02Z',
+          body: patch.malformed ? 'not a receipt' : '```agent-role-execution\n' + JSON.stringify(receipt) + '\n```' } };
+      } } }, paginate: async (endpoint: string) => endpoint === 'files' ? changedFiles : [review] };
+    return { github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', current };
+  };
+  it('admits independent same-Sol roles read from canonical comments', async () => {
+    expect((await evaluateGithubAstra(harness(), policy)).status).toBe('ASTRA_APPROVED');
+  });
+  it('admits truthful unknown CURRENT_AGENT identity only with independent read-back roles', async () => {
+    expect((await evaluateGithubAstra(harness({ payload: { reviewerTier: 'CURRENT_AGENT', modelSelectionAvailable: false,
+      requestedModel: 'not_requested', actualModel: 'unknown', identityEvidence: 'UNKNOWN',
+      executionEvidence: 'OPERATOR_ATTESTED', downgradeReason: 'MODEL_SELECTION_UNAVAILABLE' } }), policy)).status).toBe('ASTRA_APPROVED');
+  });
+  it.each([{ reviewer: { actorId: role('BUILD').actorId } }, { reviewer: { sessionId: role('BUILD').sessionId } },
+    { reviewer: { freshContext: false } }, { builder: { headSha: 'd'.repeat(40) } }, { builder: { repository: 'other/repo' } },
+    { builderRef: 'https://github.com/other/repo/pull/1#issuecomment-101' }, { unavailable: true },
+    { permission: 'read' }, { payload: { verdict: 'FIX_REQUIRED' } }, { state: 'CHANGES_REQUESTED' },
+    { builderRef: '' }, { malformed: true }, { updatedAt: '2026-10-01T03:00:04Z' },
+    { builderRef: '', payload: { roleEvidence: { trusted: true, builder: role('BUILD'), reviewer: role('REVIEW') } } }])('rejects missing/stale/self-reviewed or latest-veto receipt %j', async patch => {
+    expect((await evaluateGithubAstra(harness(patch), policy)).status).toBe('ASTRA_PENDING');
+  });
+});
 
 const body = 'ASTRA_RISK: NONE\nASTRA_RATIONALE: Change only an ordinary heading\n';
 /** 一份代表性的 changed-file 清單；blob sha 是指紋的唯一內容來源 */
@@ -198,7 +253,10 @@ describe('Astra risk review contract', () => {
     for (const key of Object.keys(context)) expect(evaluateAstra(candidate([makeReview({ [key]: 'stale' })])).status).toBe('ASTRA_PENDING');
   });
   it('rejects unknown actual model, self-declared body pass and untrusted reviewers', () => {
-    expect(evaluateAstra(candidate([makeReview({ actualModel: 'unknown' })])).status).toBe('ASTRA_PENDING');
+    const unknownIdentity = evaluateAstra(candidate([makeReview({ actualModel: 'unknown' })]));
+    expect(unknownIdentity.status).toBe('ASTRA_PENDING');
+    expect(unknownIdentity.errors).toContain('Astra model identity is unverified');
+    expect(unknownIdentity.errors).toContain('Unverified premium reviewer identity');
     expect(evaluateAstra(candidate([makeReview({}, { trusted: false })])).status).toBe('ASTRA_PENDING');
     expect(evaluateAstra(candidate([], { body: body + '\nASTRA_STATUS: PASS' })).status).toBe('ASTRA_PENDING');
   });
@@ -249,8 +307,11 @@ describe('Astra risk review contract', () => {
   it('純換底沿用：commit 換了但變更內容指紋相同 → 仍然有效', () => {
     // rebase 只換 parent，檔案內容一個字都沒改：blob sha 逐一相同 ⇒ 指紋不變。
     // 這正是 PR #292 連跑四輪、其中兩輪只是換底的那個情形。
-    const rebased = makeReview({}, { commit_id: 'c'.repeat(40) });
-    expect(evaluateAstra(candidate([rebased])).status).toBe('ASTRA_APPROVED');
+    const original = makeReview(); // canonical review/attested head remain original b
+    const rebased = candidate([original], { context: { ...context, headSha: 'c'.repeat(40) } });
+    expect(evaluateAstra(rebased).status).toBe('ASTRA_APPROVED');
+    const mismatched = makeReview({}, { commit_id: 'c'.repeat(40) });
+    expect(evaluateAstra(candidate([mismatched])).status).toBe('ASTRA_PENDING');
   });
 
   it('換底時若有任何檔案被夾帶修改 → 指紋改變 → 不得沿用', () => {

@@ -2,15 +2,19 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import { premiumExecutionState, selectFinalRiskReviewer, finalRiskReviewerErrors,
   FINAL_RISK_COST_POLICY_VERSION } from '../../scripts/agents/final-risk-cost-policy.mjs';
-import { evaluateAstra, routing } from '../../scripts/agents/astra-review-policy.mjs';
+import { evaluateAstra, routing as currentRouting } from '../../scripts/agents/astra-review-policy.mjs';
 import { decideFinalRiskRecovery } from '../../scripts/agents/final-risk-workflow.mjs';
 import { evaluateReleasePreflight, releaseEvidenceDigestOf } from '../../scripts/agents/production-db-release-preflight.mjs';
 
 // Fixtures are not claims that a model was run or a real release was admitted.
+// Original #552 model/fallback fixtures replay their pre-role-proof policy explicitly.
+// Live admission uses currentRouting; new regressions below explicitly require role evidence.
+const routing = { ...currentRouting, openaiBuilderDecision: { independentReviewerRequired: false } };
 const ref = 'https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/552';
 const start = '2026-09-17T01:00:00Z';
 const dispatch = { requestedAt: start, executionRef: 'fixture-execution-552' };
-const history = { historyVerified: true, historyEvidenceRef: ref, reviewLineage: 'vibeaico-admin-rebuild#552', modelSelectionAvailable: true };
+const history = { historyVerified: true, historyEvidenceRef: ref, reviewLineage: 'vibeaico-admin-rebuild#552', modelSelectionAvailable: true,
+  provider: 'OPENAI', availableModels: ['gpt-6-astra', 'gpt-6.1-sol'], runtimeCatalog: { provider: 'OPENAI', models: ['gpt-6-astra', 'gpt-6.1-sol'], captureStartedAt: start, observedAt: start, evidenceRef: ref, providerEvidenceRef: ref } };
 const audit = () => ({ reviewerTier: 'AUDIT', requestedModel: 'gpt-5.6-sol', actualModel: 'gpt-5.6-sol',
   identityEvidence: 'OPERATOR_ATTESTED', costPolicyVersion: FINAL_RISK_COST_POLICY_VERSION,
   downgradeReason: 'PREMIUM_REVIEW_COMPLETED', downgradeEvidenceRef: ref,
@@ -26,7 +30,69 @@ const context = { repository: 'smallwei0301/vibeaico-admin-rebuild', createdAt: 
 const body = 'WORKSTREAM: PRODUCT_MAINLINE\nAGENT_LANE: TERRA_BUILD\nASTRA_RISK: PAYMENT_CONSISTENCY\nASTRA_RATIONALE: Synthetic payment boundary fixture\nFINAL_RISK_POLICY: BY_PRODUCT_RISK_CLASSIFICATION';
 const evaluate = (reviewer = {}, extra = {}, trusted = true) => evaluateAstra({ body, changedFiles: ['src/server/payment/fixture.ts'], context,
   reviews: [{ trusted, id: 552, state: 'COMMENTED', commit_id: context.headSha, submitted_at: start,
-    body: '```astra-review\n' + JSON.stringify({ ...context, ...reviewer, report: ref, findings: 'Synthetic findings reconciled', verdict: 'PASS', ...extra }) + '\n```' }] });
+    body: '```astra-review\n' + JSON.stringify({ ...context, ...reviewer, report: ref, findings: 'Synthetic findings reconciled', verdict: 'PASS', ...extra }) + '\n```' }] }, routing);
+
+describe('prospective independent role and provider admission regressions', () => {
+  const requiredPolicy = { ...routing, openaiBuilderDecision: { independentReviewerRequired: true } };
+  const role = (kind: string) => ({ role: kind, repository: context.repository, headSha: context.headSha,
+    changeDigest: context.changeDigest, actorId: `fixture-${kind}-actor`, sessionId: `fixture-${kind}-session`,
+    executionRef: kind === 'REVIEW' ? current().executionRef : 'fixture-builder-execution',
+    startedAt: start, completedAt: start, freshContext: kind === 'REVIEW', executionEvidence: 'OPERATOR_ATTESTED' });
+  const roleContext = () => ({ ...context, roleEvidence: { trusted: true,
+    builder: { ...role('BUILD'), sourceRef: ref + '#issuecomment-101' },
+    reviewer: { ...role('REVIEW'), sourceRef: ref + '#issuecomment-102' } } });
+  it('rejects same runtime actor/session and missing or payload-self-reported builder proof', () => {
+    const ctx = roleContext(); ctx.roleEvidence.reviewer.actorId = ctx.roleEvidence.builder.actorId;
+    assert.ok(finalRiskReviewerErrors(current(), requiredPolicy, ctx).length);
+    const sameSession = roleContext(); sameSession.roleEvidence.reviewer.sessionId = sameSession.roleEvidence.builder.sessionId;
+    assert.ok(finalRiskReviewerErrors(current(), requiredPolicy, sameSession).length);
+    assert.ok(finalRiskReviewerErrors({ ...current(), roleEvidence: roleContext().roleEvidence }, requiredPolicy, context).length);
+  });
+  it('accepts distinct same-Sol role actors and truthful unknown CURRENT_AGENT model', () => {
+    const ctx = roleContext();
+    assert.deepEqual(finalRiskReviewerErrors(current(), requiredPolicy, ctx), []);
+    assert.deepEqual(finalRiskReviewerErrors({ ...audit(), executionRef: ctx.roleEvidence.reviewer.executionRef,
+      requestedModel: 'gpt-6.1-sol', actualModel: 'gpt-6.1-sol' }, requiredPolicy, ctx), []);
+  });
+  it('rejects foreign or stale role evidence and non-fresh review context', () => {
+    for (const patch of [{ repository: 'other/repository' }, { headSha: 'd'.repeat(40) }, { changeDigest: 'e'.repeat(64) }, { freshContext: false }]) {
+      const ctx = roleContext(); Object.assign(ctx.roleEvidence.reviewer, patch);
+      assert.ok(finalRiskReviewerErrors(current(), requiredPolicy, ctx).length);
+    }
+  });
+  it('never reserves premium on missing provider/catalog or cross-provider catalog alone', () => {
+    for (const extra of [{}, { provider: 'ANTHROPIC' }, { provider: 'unknown', availableModels: ['gpt-6-astra'] }, { provider: 'ANTHROPIC', availableModels: ['gpt-6-astra'] }]) {
+      assert.notEqual(selectFinalRiskReviewer({ ...history, provider: undefined, availableModels: undefined, runtimeCatalog: undefined, ...extra }, requiredPolicy).action, 'RESERVE_ONE_PREMIUM_CONSULTATION');
+    }
+  });
+  it('uses only the explicitly observed provider-local premium model', () => {
+    for (const [provider, model] of [['OPENAI', 'gpt-6-astra'], ['ANTHROPIC', 'claude-fable-5-1']]) {
+      const result = selectFinalRiskReviewer({ ...history, provider, availableModels: [model],
+        runtimeCatalog: { provider, models: [model], captureStartedAt: start, observedAt: start, evidenceRef: ref, providerEvidenceRef: ref } }, requiredPolicy);
+      assert.equal(result.action, 'RESERVE_ONE_PREMIUM_CONSULTATION'); assert.equal(result.nextModel, model);
+    }
+  });
+  it('keeps first-infra and 300-second audit fallback provider-local and never guesses missing catalogs', () => {
+    const model = 'claude-opus-5-5';
+    const anthro = { ...history, provider: 'ANTHROPIC', availableModels: [model],
+      runtimeCatalog: { provider: 'ANTHROPIC', models: [model], captureStartedAt: start, observedAt: start, evidenceRef: ref, providerEvidenceRef: ref } };
+    assert.equal(selectFinalRiskReviewer({ ...anthro, failureClass: 'ENVIRONMENT' }, requiredPolicy).nextModel, model);
+    assert.equal(selectFinalRiskReviewer({ ...anthro, dispatch, now: '2026-09-17T01:05:00Z' }, requiredPolicy).nextModel, model);
+    for (const provider of ['ANTHROPIC', 'unknown']) {
+      assert.equal(selectFinalRiskReviewer({ ...history, provider, runtimeCatalog: undefined, failureClass: 'ENVIRONMENT' }, requiredPolicy).nextModel, null);
+    }
+    assert.equal(selectFinalRiskReviewer({ modelSelectionAvailable: false }, requiredPolicy).action, 'REVIEW_WITH_CURRENT_AGENT');
+  });
+});
+
+describe('compatible identity rejection summary retains tier diagnostics', () => {
+  it('reports both the established summary and current AUDIT rejection details', () => {
+    const result = evaluate({ ...audit(), actualModel: 'unknown' });
+    assert.equal(result.status, 'ASTRA_PENDING');
+    assert.ok(result.errors.includes('Astra model identity is unverified'));
+    assert.ok(result.errors.some(error => error !== 'Astra model identity is unverified' && /audit|AUDIT|model/i.test(error)));
+  });
+});
 
 describe('Owner #552 startup timeout is exactly 300 seconds without execution proof', () => {
   it('waits before 300 seconds and downgrades at the boundary', () => {
@@ -57,7 +123,7 @@ describe('Owner #552 startup timeout is exactly 300 seconds without execution pr
 describe('Owner #552 single premium consultation and immediate downgrade', () => {
   it('requires durable empty history before reserving the first premium consultation', () => {
     assert.equal(selectFinalRiskReviewer(history, routing).action, 'RESERVE_ONE_PREMIUM_CONSULTATION');
-    assert.equal(selectFinalRiskReviewer({}, routing).nextModel, 'gpt-6.1-sol');
+    assert.equal(selectFinalRiskReviewer({}, routing).nextModel, null);
     assert.equal(selectFinalRiskReviewer({ ...history, historyVerified: false }, routing).reason, 'HISTORY_UNAVAILABLE');
   });
   it('does not reset the budget for source fixes, a new digest, or session changes', () => {
@@ -71,13 +137,14 @@ describe('Owner #552 single premium consultation and immediate downgrade', () =>
   });
   for (const failureClass of ['TIMEOUT', 'MODEL_DISPATCH', 'RATE_LIMIT', 'TOOLING', 'ENVIRONMENT']) {
     it(`downgrades the first ${failureClass}, never Fable to Astra`, () => {
-      const result = decideFinalRiskRecovery({ failureClass, sameClassAttempts: 1, currentModel: 'claude-fable-5-1' });
+      const result = decideFinalRiskRecovery({ ...history, failureClass, sameClassAttempts: 1, currentModel: 'claude-fable-5-1' });
       assert.equal(result.action, 'DOWNGRADE_REVIEWER_MODEL');
       assert.equal(result.nextModel, 'gpt-6.1-sol');
     });
   }
   it('uses Opus when Sol is unavailable, current agent only when selector is unavailable', () => {
-    assert.equal(selectFinalRiskReviewer({ premiumUnavailable: true, availableModels: ['claude-opus-5'] }, routing).nextModel, 'claude-opus-5');
+    assert.equal(selectFinalRiskReviewer({ ...history, provider: 'ANTHROPIC', premiumUnavailable: true, availableModels: ['claude-opus-5'],
+      runtimeCatalog: { provider: 'ANTHROPIC', models: ['claude-opus-5'], captureStartedAt: start, observedAt: start, evidenceRef: ref, providerEvidenceRef: ref } }, routing).nextModel, 'claude-opus-5');
     assert.equal(selectFinalRiskReviewer({ modelSelectionAvailable: false }, routing).action, 'REVIEW_WITH_CURRENT_AGENT');
     assert.equal(selectFinalRiskReviewer({ premiumUnavailable: true, availableModels: [] }, routing).action, 'PARK_CURRENT_AND_CONTINUE_CLOSURE_TRIAGE');
   });
@@ -139,6 +206,11 @@ describe('DB release uses the same downgrade gate without granting DB write perm
     return value;
   };
   it('accepts lower-tier evidence only for read-only READY_FOR_LOCK', () => {
+    if (currentRouting.openaiBuilderDecision?.independentReviewerRequired === true) {
+      // Old DB packet contains no prospective independently captured roles; never invent them.
+      assert.throws(() => evaluateReleasePreflight(packet(), { now: start }), /FINAL_RISK_MODEL_UNVERIFIED/);
+      return;
+    }
     const result = evaluateReleasePreflight(packet(), { now: start });
     assert.equal(result.status, 'READY_FOR_LOCK');
     assert.equal(result.databaseMutationAuthorized, false);
@@ -147,6 +219,7 @@ describe('DB release uses the same downgrade gate without granting DB write perm
     const bad = packet(); bad.finalRisk.adversarialEvidence = '';
     assert.throws(() => evaluateReleasePreflight(bad, { now: start }), /FINAL_RISK_MODEL_UNVERIFIED/);
     const stale = packet(); stale.finalRisk.evidenceDigest = 'f'.repeat(64);
-    assert.throws(() => evaluateReleasePreflight(stale, { now: start }), /FINAL_RISK_EVIDENCE_MISMATCH/);
+    assert.throws(() => evaluateReleasePreflight(stale, { now: start }), currentRouting.openaiBuilderDecision?.independentReviewerRequired === true
+      ? /FINAL_RISK_MODEL_UNVERIFIED/ : /FINAL_RISK_EVIDENCE_MISMATCH/);
   });
 });

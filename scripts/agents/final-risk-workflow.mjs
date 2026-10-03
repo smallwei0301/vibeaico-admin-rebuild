@@ -86,7 +86,9 @@ export function previousReviewFromCanonicalReviews(reviews = [], repository = ''
 
   const canonicalTrustEligible =
     latest.parseError !== true &&
-    finalRiskReviewerErrors(latest, routing).length === 0 &&
+    // Historical model/semantic metadata replay is not live role admission.
+    // evaluateGithubAstra separately requires current independent role receipts.
+    finalRiskReviewerErrors(latest, { ...routing, openaiBuilderDecision: { independentReviewerRequired: false } }).length === 0 &&
     (latest.reviewerTier === 'CURRENT_AGENT' || latest.identityEvidence === 'OPERATOR_ATTESTED') &&
     DIGEST64.test(text(latest.changeDigest)) &&
     requiredForReviewedScope &&

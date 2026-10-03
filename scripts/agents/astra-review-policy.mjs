@@ -1,4 +1,4 @@
-import { finalRiskReviewerErrors } from './final-risk-cost-policy.mjs';
+import { finalRiskReviewerErrors, independentRoleErrors } from './final-risk-cost-policy.mjs';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { AMBIGUOUS_FIELD, readField } from './agent-wip-policy.mjs';
@@ -44,6 +44,17 @@ export function finalRiskGateStatus({ hasErrors = false, finalRiskRequired = fal
  * 證據不被一個無內容變更的 CI 編號更新自行作廢。
  */
 const fields = ['repository', 'policyVersion', 'testBaseline', 'schemaBaseline', 'changeDigest'];
+
+/** Canonical review binding, not a candidate-supplied carryover head. Ordinary Sol
+ * admission never calls this: its head remains exact current. Semantic reuse keeps
+ * original role receipts unchanged only when every reviewed baseline still matches.
+ */
+function semanticRoleHead(review, context) {
+  return review && review.verdict === 'PASS' && ['COMMENTED', 'APPROVED'].includes(review.reviewState)
+    && Number.isFinite(Date.parse(review.submittedAt))
+    && SHA.test(review.headSha ?? '') && review.commitId === review.headSha
+    && fields.every(key => review[key] === context[key]) ? review.headSha : context.headSha;
+}
 
 /**
  * 這次候選變更的內容指紋。
@@ -249,10 +260,10 @@ export function isAstraReviewRequired(risks = [], changedFiles = [], policy = ro
 // that actor may be a write-capable human or an explicitly allowlisted Agent bot.
 // This is still not provider-signed model telemetry.
 /** @param {Array<Record<string, any>>} [reviews] */
-export function parseAstraReviews(reviews = []) {
+export function parseAstraReviews(reviews = [], evidenceType = 'astra-review') {
   return reviews.filter(r => r.trusted === true).flatMap(r => {
     const body = String(r.body ?? '');
-    if (!body.includes('astra-review') && !['CHANGES_REQUESTED', 'DISMISSED'].includes(r.state)) return [];
+    if (!body.includes(evidenceType) && !['CHANGES_REQUESTED', 'DISMISSED'].includes(r.state)) return [];
     const record = {
       reviewState: r.state,
       commitId: r.commit_id,
@@ -263,7 +274,7 @@ export function parseAstraReviews(reviews = []) {
       reviewerId: r.user?.id ?? null,
       reviewerType: r.user?.type ?? '',
     };
-    const match = body.match(/```astra-review\s*\n([\s\S]*?)\n```/);
+    const match = body.match(evidenceType === 'sol-review' ? /```sol-review\s*\n([\s\S]*?)\n```/ : /```astra-review\s*\n([\s\S]*?)\n```/);
     try {
       if (!match) throw new Error('Malformed attestation');
       return [{ ...JSON.parse(match[1]), ...record }];
@@ -271,11 +282,13 @@ export function parseAstraReviews(reviews = []) {
   }).sort((a, b) => String(b.submittedAt).localeCompare(String(a.submittedAt)) || Number(b.reviewId) - Number(a.reviewId));
 }
 
-/** @param {{body?: string, changedFiles?: string[] | null, context?: Record<string, string>, reviews?: Array<Record<string, any>>}} [input] */
+/** @param {{body?: string, changedFiles?: string[] | null, context?: Record<string, any>, reviews?: Array<Record<string, any>>}} [input] */
 export function evaluateAstra({ body = '', changedFiles = null, context = {}, reviews = [] } = {}, policy = routing) {
   const classification = classifyAstra({ body, changedFiles, createdAt: context.createdAt }, policy);
   if (classification.errors.length) return { ...classification, status: 'ASTRA_PENDING' };
-  if (!classification.required) return { ...classification, status: 'NOT_REQUIRED' };
+  if (!classification.required) return context.ordinaryReviewRequired === true && !classification.isModelGovernance
+    ? { ...classification, ...evaluateOrdinaryReview(parseAstraReviews(reviews, 'sol-review'), context, policy) }
+    : { ...classification, status: 'NOT_REQUIRED' };
   const errors = [];
   if (!/^[\w.-]+\/[\w.-]+$/.test(context.repository ?? '')) errors.push('Missing repository identity');
   for (const key of ['baseSha', 'headSha']) if (!SHA.test(context[key] ?? '')) errors.push(`Missing exact ${key}`);
@@ -293,7 +306,10 @@ export function evaluateAstra({ body = '', changedFiles = null, context = {}, re
     }
     if (!['COMMENTED', 'APPROVED'].includes(latest.reviewState)) errors.push('Astra review is dismissed or requests changes');
     if (latest.verdict !== 'PASS') errors.push('Astra verdict is not PASS');
-    if (finalRiskReviewerErrors(latest, policy).length) errors.push('Astra model identity is unverified');
+    if (latest.commitId !== latest.headSha) errors.push('Canonical review commit does not match its attested head');
+    const roleContext = { ...context, headSha: semanticRoleHead(latest, context) };
+    const reviewerErrors = finalRiskReviewerErrors(latest, policy, roleContext);
+    if (reviewerErrors.length) errors.push('Astra model identity is unverified', ...reviewerErrors);
     if (latest.reviewerTier !== 'CURRENT_AGENT' && latest.identityEvidence !== 'OPERATOR_ATTESTED') {
       errors.push('Missing explicit operator model attestation');
     }
@@ -303,6 +319,36 @@ export function evaluateAstra({ body = '', changedFiles = null, context = {}, re
   return { ...classification, errors, status: errors.length ? 'ASTRA_PENDING' : 'ASTRA_APPROVED' };
 }
 
+const ordinaryConcrete = value => typeof value === 'string' && value.trim().length >= 8 && !/^(unknown|none|tbd)$/i.test(value);
+/** Ordinary merge review. Inputs are trusted adapter read-back, not body stage/proof claims.
+ * No premium model dispatch, cost policy or schema-baseline requirement is created.
+ */
+export function evaluateOrdinaryReview(reviews = [], context = {}, policy = {}) {
+  const errors = [];
+  const review = reviews[0]; // trusted parser keeps latest negative/malformed records, never skips to older PASS
+  if (!review) errors.push('Missing trusted ordinary Sol review');
+  else {
+    for (const key of ['repository', 'headSha', 'changeDigest', 'policyVersion']) {
+      if (review[key] !== context[key]) errors.push(`Ordinary review is stale: ${key}`);
+    }
+    if (review.commitId !== context.headSha || !['APPROVED', 'COMMENTED'].includes(review.reviewState)
+      || review.verdict !== 'PASS') errors.push('Latest ordinary review is not current PASS');
+    errors.push(...independentRoleErrors(review, context));
+    const reviewer = context.roleEvidence?.reviewer;
+    const model = reviewer?.provider === 'OPENAI' ? policy.models?.audit
+      : reviewer?.provider === 'ANTHROPIC' ? policy.anthropicEquivalents?.audit : null;
+    if (!model || !ordinaryConcrete(reviewer?.providerEvidenceRef) || reviewer?.requestedModel !== model
+      || review.requestedModel !== model) errors.push('Ordinary reviewer needs attested provider-local Sol/Opus request');
+    if (review.servedVerified !== undefined && typeof review.servedVerified !== 'boolean') errors.push('Malformed ordinary served verification claim');
+    if (review.actualModel === 'unknown') {
+      if (review.identityEvidence !== 'UNKNOWN' || review.servedVerified === true) errors.push('Ordinary unknown actual cannot claim served identity');
+    } else if (review.actualModel !== model || review.identityEvidence !== 'OPERATOR_ATTESTED') errors.push('Ordinary model identity is unverified');
+    if (!ordinaryConcrete(review.findings) || !ordinaryConcrete(review.report)
+      || !review.report.startsWith(`https://github.com/${context.repository}/`)) errors.push('Missing durable ordinary findings/report');
+  }
+  return { status: errors.length ? 'SOL_REVIEW_PENDING' : 'SOL_REVIEW_APPROVED', errors };
+}
+
 // REST calls are read-only. Never load policy/code from a PR or execute evidence content.
 export async function evaluateGithubAstra({ github, owner, repo, current }, policy = routing) {
   const files = await github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number: current.number, per_page: 100 });
@@ -310,11 +356,15 @@ export async function evaluateGithubAstra({ github, owner, repo, current }, poli
   const changedFiles = [...new Set(files.flatMap(f => [f.filename, f.previous_filename].filter(Boolean)))];
   const body = current.body ?? '';
   const classification = classifyAstra({ body, changedFiles, createdAt: current.created_at }, policy);
+  const ordinaryReviewRequired = !classification.required && !classification.isModelGovernance
+    && classification.workstream === 'PRODUCT_MAINLINE' && shouldEnforceFinalRisk({
+      pullRequestState: current.state, draft: current.draft === true, laneState: readField(body, 'LANE_STATE') });
+  const evidenceType = ordinaryReviewRequired ? 'sol-review' : 'astra-review';
   const reviews = [];
-  if (classification.required && !classification.errors.length) {
+  if ((classification.required || ordinaryReviewRequired) && !classification.errors.length) {
     const records = await github.paginate(github.rest.pulls.listReviews, { owner, repo, pull_number: current.number, per_page: 100 });
     const permissions = new Map();
-    for (const review of records.filter(r => r.body?.includes('astra-review') || ['CHANGES_REQUESTED', 'DISMISSED'].includes(r.state))) {
+    for (const review of records.filter(r => r.body?.includes(evidenceType) || ['CHANGES_REQUESTED', 'DISMISSED'].includes(r.state))) {
       const login = review.user?.login;
       if (!login) continue;
 
@@ -336,11 +386,155 @@ export async function evaluateGithubAstra({ github, owner, repo, current }, poli
     }
   }
   const digest = changeDigestOf(files);
+  let roleEvidence;
+  if (ordinaryReviewRequired || (classification.required && policy.openaiBuilderDecision?.independentReviewerRequired === true)) {
+    const latest = parseAstraReviews(reviews, evidenceType)[0];
+    const roleHead = ordinaryReviewRequired ? current.head.sha : semanticRoleHead(latest, {
+      repository: `${owner}/${repo}`, headSha: current.head.sha, changeDigest: digest,
+      policyVersion: policy.version, testBaseline: readField(body, 'ASTRA_TEST_BASELINE'),
+      schemaBaseline: readField(body, 'ASTRA_SCHEMA_BASELINE') });
+    const readRole = async (sourceRef, role) => {
+      // Source references are locators, not candidate-provided proof; read authoritative bytes and actor permissions.
+      const match = typeof sourceRef === 'string' && sourceRef.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/(?:issues|pull)\/\d+#issuecomment-(\d+)$/);
+      if (!match || match[1] !== owner || match[2] !== repo) throw new Error('Foreign or missing role receipt');
+      const { data } = await github.rest.issues.getComment({ owner, repo, comment_id: Number(match[3]) });
+      if (data.html_url !== sourceRef || !data.user?.login) throw new Error('Role source differs from canonical comment');
+      let trusted = isTrustedFinalRiskAgentUser(data.user, policy);
+      if (!trusted) {
+        const permission = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: data.user.login });
+        trusted = ['write', 'maintain', 'admin'].includes(permission.data.permission);
+      }
+      if (!trusted) throw new Error('Untrusted role evidence actor');
+      const blocks = [...String(data.body ?? '').matchAll(/```agent-role-execution\s*\n([\s\S]*?)\n```/g)];
+      if (blocks.length !== 1) throw new Error('One concrete role execution receipt required');
+      const receipt = JSON.parse(blocks[0][1]);
+      if (receipt.role !== role || receipt.repository !== `${owner}/${repo}` || receipt.headSha !== roleHead
+        || receipt.changeDigest !== digest || !Number.isFinite(Date.parse(data.updated_at))
+        || !Number.isFinite(Date.parse(latest?.submittedAt))
+        || Date.parse(data.updated_at) > Date.parse(latest?.submittedAt)
+        || Date.parse(receipt.completedAt) > Date.parse(data.updated_at)) throw new Error('Role receipt is stale or recorded after its review');
+      return { ...receipt, sourceRef }; // authoritative sourceRef wins over payload claims
+    };
+    try {
+      roleEvidence = { trusted: true,
+        builder: await readRole(readField(body, 'BUILDER_EXECUTION_RECEIPT'), 'BUILD'),
+        reviewer: await readRole(latest?.reviewerExecutionReceipt, 'REVIEW') };
+    } catch { roleEvidence = undefined; } // missing runtime capture stays pending, never manufacture historical actors
+  }
   const result = evaluateAstra({ body, changedFiles, reviews, context: {
     repository: `${owner}/${repo}`, baseSha: current.base.sha, headSha: current.head.sha,
     policyVersion: policy.version, testBaseline: readField(body, 'ASTRA_TEST_BASELINE'),
     schemaBaseline: readField(body, 'ASTRA_SCHEMA_BASELINE'),
-    changeDigest: digest, createdAt: current.created_at,
+    changeDigest: digest, createdAt: current.created_at, roleEvidence, ordinaryReviewRequired,
   } }, policy);
   return { ...result, changeDigest: digest };
+}
+
+/** Wake-up only: trust REST run/workflow/PR metadata, never producer artifacts or conclusions.
+ * Missing/ambiguous association rejects refresh rather than guessing a PR.
+ */
+export async function resolveReviewWakeup({ github, owner, repo, runId }) {
+  if (!Number.isSafeInteger(runId) || runId < 1) throw new Error('Invalid review wake-up run id');
+  const { data: workflow } = await github.rest.actions.getWorkflow({ owner, repo, workflow_id: 'agent-review-wakeup.yml' });
+  const { data: run } = await github.rest.actions.getWorkflowRun({ owner, repo, run_id: runId });
+  const repository = `${owner}/${repo}`;
+  if (workflow.path !== '.github/workflows/agent-review-wakeup.yml' || workflow.state !== 'active'
+    || String(run.path ?? '').split('@')[0] !== workflow.path
+    || run.id !== runId || run.workflow_id !== workflow.id || run.event !== 'pull_request_review'
+    || run.status !== 'completed' || run.repository?.full_name !== repository) throw new Error('Invalid canonical review producer run');
+  let numbers = [...new Set((run.pull_requests ?? []).map(pr => pr.number))];
+  if (!numbers.length) {
+    const headOwner = run.head_repository?.owner?.login;
+    if (!/^[\w.-]+$/.test(headOwner ?? '') || typeof run.head_branch !== 'string'
+      || !run.head_branch || !run.head_repository?.full_name) throw new Error('Missing canonical review PR association');
+    const pulls = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'all', head: `${headOwner}:${run.head_branch}`, per_page: 100 });
+    const canonical = pulls.filter(pr => pr.base?.repo?.full_name === repository
+      && pr.head?.repo?.full_name === run.head_repository.full_name && pr.head?.ref === run.head_branch);
+    const open = canonical.filter(pr => pr.state === 'open');
+    // Prefer live open work over same-branch history. A delayed review of an
+    // already-closed exact producer head only enters the consumer's no-write return.
+    const candidates = open.length ? open : canonical.filter(pr => pr.state === 'closed'
+      && SHA.test(run.head_sha ?? '') && pr.head?.sha === run.head_sha);
+    numbers = [...new Set(candidates.map(pr => pr.number))];
+  }
+  if (numbers.length !== 1 || !Number.isSafeInteger(numbers[0]) || numbers[0] < 1) throw new Error('Review wake-up needs one canonical PR association');
+  const { data: current } = await github.rest.pulls.get({ owner, repo, pull_number: numbers[0] });
+  if (current.number !== numbers[0] || !['open', 'closed'].includes(current.state) || current.base?.repo?.full_name !== repository
+    || current.head?.repo?.full_name !== run.head_repository?.full_name
+    || current.head?.ref !== run.head_branch || !SHA.test(current.head?.sha ?? '')
+    || (current.state === 'closed' && (!SHA.test(run.head_sha ?? '') || current.head.sha !== run.head_sha))) throw new Error('Review wake-up PR source differs from canonical run');
+  return current.number;
+}
+
+/** Receipt events are wake-up locators, never proof; fan out to every canonical referenced PR. */
+export async function resolveRoleReceiptWakeup({ github, owner, repo, repository, issueNumber, commentId, nativePr = false }) {
+  const expected = `${owner}/${repo}`;
+  if (repository !== expected || !Number.isSafeInteger(issueNumber) || issueNumber < 1
+    || !Number.isSafeInteger(commentId) || commentId < 1) throw new Error('Invalid canonical receipt event locator');
+  const sources = new Set(['issues', 'pull'].map(kind => `https://github.com/${expected}/${kind}/${issueNumber}#issuecomment-${commentId}`));
+  const affected = new Set();
+  let associationIncomplete = false;
+  if (nativePr) {
+    let current, nativeReadFailed = false;
+    try { current = (await github.rest.pulls.get({ owner, repo, pull_number: issueNumber })).data; }
+    catch { nativeReadFailed = true; associationIncomplete = true; }
+    if (!nativeReadFailed) {
+      if (!current || current.number !== issueNumber || current.base?.repo?.full_name !== expected || !SHA.test(current.head?.sha ?? '')) throw new Error('Foreign or invalid native receipt PR');
+      if (current.state === 'open') affected.add(issueNumber);
+    }
+  }
+  let inventory;
+  try { inventory = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', per_page: 100 }); }
+  catch { return { numbers: [...affected], associationIncomplete: true }; }
+  const open = inventory.filter(pr => pr.base?.repo?.full_name === expected && pr.state === 'open' && SHA.test(pr.head?.sha ?? ''));
+  // Capture every body-linked head before optional review association reads can fail.
+  for (const pr of open) if ((nativePr && pr.number === issueNumber) || sources.has(readField(pr.body ?? '', 'BUILDER_EXECUTION_RECEIPT'))) affected.add(pr.number);
+  for (const pr of open) {
+    let records;
+    try { records = await github.paginate(github.rest.pulls.listReviews, { owner, repo, pull_number: pr.number, per_page: 100 }); }
+    catch { associationIncomplete = true; affected.add(pr.number); continue; }
+    const trusted = [];
+    for (const record of records) {
+      const login = record.user?.login;
+      if (!login) continue;
+      let allowed = isTrustedFinalRiskAgentUser(record.user);
+      if (!allowed) {
+        try {
+          const response = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: login });
+          allowed = ['admin', 'maintain', 'write'].includes(response.data.permission);
+        } catch (error) { if (error?.status !== 404) { associationIncomplete = true; affected.add(pr.number); } }
+      }
+      if (allowed) trusted.push({ ...record, trusted: true });
+    }
+    // Older canonical references remain wake-up links even if newer negative/dismissed reviews supersede PASS.
+    for (const kind of ['sol-review', 'astra-review']) for (const receipt of parseAstraReviews(trusted, kind)) {
+      if (receipt.commitId === receipt.headSha && sources.has(receipt.reviewerExecutionReceipt)) affected.add(pr.number);
+    }
+  }
+  const numbers = [...affected].sort((a, b) => a - b);
+  if (numbers.some(number => !Number.isSafeInteger(number) || number < 1)) throw new Error('Invalid canonical affected PR');
+
+  return { numbers, associationIncomplete };
+}
+
+/** Independent recovery reads current inventory; missed event payloads never become evidence. */
+export async function resolveReviewRecovery({ github, owner, repo }) {
+  let inventory;
+  try { inventory = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', per_page: 100 }); }
+  catch { throw new Error('REVIEW_RECOVERY_UNAVAILABLE: canonical open PR inventory could not be read'); }
+  if (!Array.isArray(inventory)) throw new Error('REVIEW_RECOVERY_UNAVAILABLE: malformed canonical inventory');
+  for (const pr of inventory) {
+    if (!pr || typeof pr !== 'object' || !Number.isSafeInteger(pr.number) || pr.number < 1
+      || !['open', 'closed'].includes(pr.state) || typeof pr.draft !== 'boolean'
+      || (pr.body !== null && typeof pr.body !== 'string') || !SHA.test(pr.head?.sha ?? '')
+      || typeof pr.base?.repo?.full_name !== 'string' || !/^[\w.-]+\/[\w.-]+$/.test(pr.base.repo.full_name)) {
+      throw new Error('REVIEW_RECOVERY_UNAVAILABLE: malformed canonical PR member');
+    }
+  }
+  // Governance markers do not exempt heads here; the consumer classifies complete live scope.
+  const numbers = inventory.filter(pr => pr.state === 'open' && pr.base?.repo?.full_name === `${owner}/${repo}` && SHA.test(pr.head?.sha ?? '')
+    && shouldEnforceFinalRisk({ pullRequestState: pr.state, draft: pr.draft === true, laneState: readField(pr.body ?? '', 'LANE_STATE') }))
+    .map(pr => pr.number);
+  if (numbers.some(number => !Number.isSafeInteger(number) || number < 1)) throw new Error('REVIEW_RECOVERY_UNAVAILABLE: invalid canonical PR number');
+  return { numbers: [...new Set(numbers)].sort((a, b) => a - b), associationIncomplete: false };
 }

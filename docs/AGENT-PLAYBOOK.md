@@ -104,6 +104,8 @@
 | PB-041 | 一條**永遠失敗**的斷言，比恆真的斷言更糟 | PB-039 講的是「從來沒有受測對象的 guard」——恆真，沒用。它有個反面：**恆假**。`0108` 的 enum 值域後置斷言寫成 `array_agg(e.enumlabel::text order by e.enumlabel) is distinct from array['PAID','PARTIAL','REFUND_PENDING','REFUNDED','UNPAID']`，看起來嚴謹（「不多不少」），實際上永遠不相等：`pg_enum.enumlabel` 的型別是 `name`，排序走 C collation，共同前綴 `REFUND` 之後比 `E`(0x45) 與 `_`(0x5F)，所以實際順序是 `REFUNDED` 在 `REFUND_PENDING` **之前**，而手寫的期望陣列把兩者寫反。結果不是「驗得寬鬆」，是**這支 migration 在任何環境都套不上去**。本機 unit 測試沒抓到，因為它只對 migration 做字串比對；抓到它的是 CI 的 fresh-install replay，以及 Final Risk 覆核（`claude-fable-5-1`）在本機 PG16 上的實際重現。**預防**：(1) 斷言「集合相等」就用集合運算（不在預期集合內的值 + 數量），不要比對有序陣列——排序規則是環境變數，不是常數；(2) 對 catalog 欄位排序前先確認它的型別，`name` 與 `text` 的 collation 不同；(3) 新增或修改後置斷言時，至少跑一次**真的資料庫**，字串比對的 unit 測試證明不了斷言會通過。 | `supabase/migrations/0108_issue_41_payment_state_model.sql`、PB-039、PB-026 |
 | PB-042 | 用 migration 帳本比對判斷「某環境缺什麼」，會得到危險的錯誤結論 | 2026-09-14 排查 shared TEST 時，我把 `supabase_migrations.schema_migrations` 的檔名集合與 `origin/main:supabase/migrations/` 的檔名集合做 `comm` 比對，得到「canonical 有 36 支 TEST 沒套用」（含 `0001`–`0014` 基礎建設與 `0066`／`0087` tour domain）與「TEST 有 37 支 canonical 沒有」。**那個結論是錯的**：實查 `to_regclass` 後，`tour_orders`(0087)、`trip_plans`(0066)、`tenants`(0003)、`bookings_view`(0007)、`trip_departure_staff`(0092)、`is_tenant_member()`(0010) 全都存在。原因是 shared TEST 是從 `supabase/local-migrations/historical-integration-baseline/` 那套**另一個編號體系**建起來的，帳本記的是 overlay 的檔名，與 canonical 檔名天生對不上。若照那張比對表去「補套 36 支」，會在一個物件已經存在的資料庫上重跑建表與 ACL，後果不可逆。這是 PB-017／PB-037「比對內容，不要只比對檔名」的第三種變形——這次連「檔名」都不是同一個命名空間。**預防**：(1) 判斷某環境是否具備某個物件，一律查 `to_regclass`／`information_schema`／`pg_proc` 等**實際 catalog**，不查 migration 帳本；(2) 帳本只能證明「這個檔名被這個環境跑過」，不能證明「這個環境缺什麼」；(3) 要宣告某支 canonical migration 未套用，必須拿出該 migration 所建物件不存在的實查證據——`0105` 的判定之所以成立，是因為 `to_regclass('public.traveler_risk_policies')` 回 `null`，不是因為帳本裡沒有它。 <br><br>**同一天的第二個實例：只比對欄位，會漏掉 trigger 與 function——而行為就在那裡。** 確認了「欄位清單」之後，我向 Owner 回報 shared TEST 的漂移是「三個形狀不對的欄位，範圍有限可列舉」。執行 `drop column` 時才被資料庫擋下來：`cannot drop column formation_status ... other objects depend on it`。實查後，TEST 上是一整套**活的**舊 #41 實作——15 個 function 與 8 個 trigger，包含 `decide_tour_formation`、`record_tour_order_payment_41` 等完整業務 RPC。委派的 scout 用 `git grep` 查函式名，正確回報「repo 端零引用」，**但那個方法本身也有盲點**：trigger 是自動觸發的，不需要被任何程式碼「引用」，所以 grep 找不到「某測試依賴 trigger 副作用」這種依賴。親讀 `snapshot_trip_departure_formation` 的函式本體才看到它會`raise FORMATION_DEADLINE_INVALID` 拒絕成團截止日已過的 INSERT、並在欄位為 null 時自動改寫 `min_to_depart_snapshot`——canonical `0107` 沒有這個 trigger，因此 TEST 的**寫入行為**不等於 canonical，整合測試在那裡跑出來的結果是假訊號。**預防**：(1) 盤點 schema 漂移時，欄位、constraint、index、trigger、function、view、RPC 授權要各自查一遍，缺一項就不要宣稱「範圍可列舉」；(2) 判斷「移除某物件會不會弄壞東西」時，`git grep` 名稱只能證明「沒有人按名字呼叫它」，證明不了「沒有人依賴它的副作用」——自動觸發的物件必須讀本體；(3) 對 Owner 回報範圍時，明說這份清單是用什麼維度查出來的，好讓讀的人知道它可能漏掉什麼。 | shared TEST `nmwhwngojosmagjuvxol`；PB-017、PB-037、PB-026 |
 | PB-053 | E2E 先以輸入控件文字判定保存完成，會與送出中的草稿撞名 | 保存完成前先等待只有成功才出現的畫面轉換／已保存標記，並保留重新載入查證；同字串 draft 與 persisted 並存時不用未限定 `getByText` | `tests/e2e/support-chat-threads.spec.ts`；Issue #589／PR #615 |
+| PB-054 | 截斷讀取不可當完整檔案覆寫 | 全檔更新必須從完整原文生成；提交前後比對差異與刪除量 | PR #615 文件收尾分支；本檔事件紀錄 |
+| PB-055 | 公開 Server Component 共用 loader 先清理回傳欄位；slug 依租戶解析 | RSC 診斷可序列化原始 loader props；`unique (tenant_id, slug)` 允許不同店家同 slug，測試須驗證各自資料而非預設 404 | Issue #11／PR #731；`src/server/public-shop.ts`；`tests/integration/api/public-trip-details.11.test.ts` |
 | PB-043 | 在乾淨的最小 schema 上驗 migration，驗不出「既有資料」類的缺陷 | 2026-09-14 的 `0108` 覆核：build 端**確實**起了一個真的 PostgreSQL 16、跑了 9 次 INSERT 探測與突變測試——方法是對的，比字串比對強得多。但它是在一個**自己現建的最小 schema** 上跑的，那張表裡沒有任何既有列。於是它沒測出：`refunded_amount` 是本檔**新增**的欄位（`not null default 0`），而 M1 的 `check (payment_status::text <> 'REFUNDED' or (paid_amount > 0 and refunded_amount > 0))` 會在 `add constraint` 當下驗證既有資料——任何既有的 REFUNDED 訂單加完欄位後都是 `refunded_amount = 0`，於是整支 migration 以 23514 失敗。同一支檔案裡的 M2 有既有資料前置 guard，M1 沒有，兩個等價風險處理方式不對稱。**預防**：(1) 新增 CHECK 時先問「這條約束會不會對既有列失敗」，特別是當約束引用的欄位是**本檔新增**的（新欄位的 default 幾乎必然不滿足誠實性約束）；(2) 本機探測除了空表，至少要塞一列「本檔之前就合法、加上新約束後會違規」的既有資料；(3) 這類 migration 要嘛附既有資料前置 guard 並明確中止，要嘛說明為何既有資料不可能違規——不得靠「目前那張表是空的」，空表是當下的偶然不是保證。 | `supabase/migrations/0108_issue_41_payment_state_model.sql`、PB-026 |
 
 ## 事件紀錄
@@ -144,6 +146,17 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 預防：optional-table 只接受可證明「relation／table 不存在」的 code 或訊息；父資料略過時不得繼續寫入依賴它的子資料，並為錯誤分類器補 table-missing／column-missing／function-missing 測試。
 - 驗證：新增單元測試區分 missing table、missing column、missing function；待有新 TEST CI 時驗證會在 schema mismatch 的原始錯誤停止，且不產生子表 FK 錯誤。
 - 狀態：監看中
+
+### PB-004 — 身分已驗證，不代表預設店家就是測試指定店家
+
+- 本次首次／最近：2026-10-01／2026-10-01；本次同類身分判讀事件 1 件，不追填既有 401 事件次數。
+- Issue／PR／CI：#42／#46；#723 merge main `a30acac04aad838d4b04da9c5464b5b6f33e06b6` 的 `36846439984`；來源修正 #727 exact `ec1d55084d6ad167861b47018ae4d1da780d1373`。
+- 事件／證據：welcome E2E attempt0 只有 30.1 秒總 timeout，卡點未定位；retry1／2 的 `/api/auth/me` 均為 HTTP200、success=true、正確 owner email／OWNER，但 tenantId 是同一其他合法 membership。不能把三次失敗都診斷為登入失敗或 network timeout。
+- 根因：沒有 active-tenant cookie 時，現行 `requireTenant` 可取使用者的第一個合法 membership；測試直接假設它必為 SHOP_A，未先使用真實 membership-checked switch。其他 membership 的來源及首次 timeout 是否留下 fixture 尚未證明，不宣稱 Auth 越權或污染根因。
+- 影響：main acceptance 失敗；#46 canonical tail 需先修正必要前置條件。既有 seasonal source 與真實訂單 snapshot 的歷史驗收不因此被改寫。
+- 修正／預防：先核對登入 email，透過現有 `/api/auth/switch-tenant` 明確選 SHOP_A，再重新 `/me` 完整驗 email／tenantId／OWNER；不得偽造 cookie、改 seed 權限、忽略租戶／角色斷言或猜測加長 timeout。保留 disposable fixture、Storage 退役、owned cleanup 的 fail-closed 與零殘留讀回。
+- 驗證：#727 的獨立 EARLY 審查 Standards／Spec 0 blocking、Risk NONE；來源 CI `36852969928` 成功。新 LOCAL／canonical／merge-main 驗收仍需獨立記錄；本條不把來源修正當成首次 timeout 已解、cleanup 已完成或 Production accepted。
+- 狀態：監看中；只解除已確認的 default-tenant 測試假設，原始 timeout 根因仍未知。
 
 ### PB-007 — migration 必須在實際 runner 的交易邊界內驗證
 
@@ -281,6 +294,14 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 反面教訓：把教訓寫成「某個具體形狀會出事」而非「某個不變量被破壞」，就會在下一個形狀出現時失效。PB 條目的預防欄應盡量寫成**可驗證的不變量**（`HEAD^ == main`），而不是症狀清單。
 - 驗證：壓成單一 commit 後，不帶 `BASE_REVISION` 執行 → `{ ok: true, errors: [], baseRevision: "HEAD^" }`；CI `check` job 101606950146 success。第三次的替代交付 PR #244 於 exact head `36022c1f` 以 `BASE_REVISION=13fafcd3` 驗得 `{ ok: true, errors: [] }`，遠端 `guard` 亦 success。
 - 狀態：監看中（症狀已繞過，根因待 Issue #227 / PR #240 修）
+
+
+#### 2026-10-01 再發：#46／PR #719 的 canonical baseline pin 與來源祖先
+
+- 證據：bootstrap `36827423735` 在 Docker 前以 `FRESH_INSTALL_BASELINE_BLOCKED` 停止：canonical bytes 變更而 manifest 未同步；source CI `36827423772` alias guard 缺 `0135` 分類 FAIL。
+- 修正：`36f41fc` 補 alias／manifest pin 至正常 merge `955b109`（含同 SQL 祖先），exact counts 64 PASS；guards 未弱化。
+- 預防：派送前核對 pinned commit、SQL bytes／digest、來源 ancestry 與同 exact head 的 alias 分類，不能引用舊基線的本機結果。
+- 驗證：Source／bootstrap／LOCAL 全 SUCCESS；current native 36 cases、whole integration 804 PASS／3 skipped、E2E 23 PASS／3 skipped，cleanup 於 2026-10-01T07:28:50Z verified。獨立 final review 0 unresolved，僅批准 source prep；#719 的 final head `7a05bbcd` 已合併，merge/current main `701845e4783f9eb87a19e3b3da52f49018134ea9`。remote `0135` NOT_APPLIED／RPC absent，不宣稱 remote TEST／Production readiness 或驗收。 歷史 findings／counters 保留。
 
 ### PB-016 — 管線或後續命令的退出碼會蓋掉失敗，讓紅燈顯示成綠燈
 
@@ -458,8 +479,8 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 
 ### PB-027 — 用「名字出現幾次」代替「那件事真的會發生」
 
-- 首次／最近：2026-09-07／2026-09-29
-- 發生次數：5（原輪四種形態，加 #37／PR #688 一次）
+- 首次／最近：2026-09-07／2026-10-01
+- 發生次數：6（原輪四種形態，加 #37／PR #688 與 #42／PR #713 各一次）
 - Issue／PR／CI：Issue #27、#50、#8；PR #264、#268、#271、#273
 - 分類：稽核方法
 - 事件：同一輪出現四種同型的誤判——
@@ -472,7 +493,10 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 修正：#273 把四種形態並列寫進 `14-GAP-AUDIT.md` §7.4.4；#8 的錯誤結論已發留言更正。
 - 預防：① 判準一律改成**「呼叫端在哪裡」**：`grep -n "<symbol>(" <呼叫端檔案>`，而不是 `grep -c "<symbol>" .`。② `grep -c` 的結果**必須連同檔名一起看**（用 `-rn` 或 `-l`，不要用 `-c` 加總）。③ 對「文件說有」「路由檔在」「政策提到」三種線索，一律再走一步查到實際執行路徑；查不到就當作沒有。
 - **#37／PR #688 再發與修正：** 0131 的 SQL 名字已在 main，最初的 bounded selector 只驗 0131 pending，卻沒證明它依賴的 0066／0092 已按 canonical identity 套用；「migration 存在」再次被誤讀為「可單獨套用」。獨立 Final Risk 在合併前找出，補上 0066／0092 各恰好一筆 `EXACT` applied alias 與非空 ledger identity 的 fail-closed 檢查。缺少、非 EXACT、空 ledger、重複及偽造前置條件的負例均拒絕；PR head `2751af66` 的 CI `36586785630` 與 local-isolated `36586786188` 成功。預防：每個 bounded root 明列 pending closure 和已套用的前置，兩類都以 exact alias／ledger 證據驗證；這不替代 fresh G2 形狀比對或 G3 遠端實測。
-- 狀態：已防止
+- **#42／PR #713 第六種代理證據再發（2026-10-01）：** helper、Plan PUT/readback 與 focused unit 都通過，卻沒有涵蓋下游 single/batch Departure 建立 consumer；獨立 Sol review 以真實 route consumer 對照發現未保存 `min_to_depart_snapshot`／`formation_deadline_at`，撤回先前 bounded-source approval 並報 P1 FIX_REQUIRED。證據與可重現反例在 `/workspace/issue42-independent-review.md`（2026-10-01T03:36:50Z finding）；此證據是 code-path review，不是真 DB write。後續同一 PR／同一 review chain 又確認三個規格缺口（04:31:11Z）：departure 截止時間固定 +08、未採用 tenant settings 已有的 IANA timezone；單筆編輯無法明確更新 deadline override，reschedule 可留下晚於新出發時間的 deadline；capacity 可低於既有 `min_to_depart_snapshot`，造成 DB constraint 失敗並落成 500。這些是同一交付事件的後續範圍發現，不另增本條事件次數；完整反例及有界契約見該 review 的 CURRENT VERDICT。
+- 預防：涉及「未來新建物件繼承設定」時，驗收必須從每個 single/batch consumer 的實際 insert seam追到 persisted snapshot；producer UI／PUT／helper 測試不構成消費端覆蓋。編輯路徑還須對照現存 tenant settings、更新後日期與容量，以及已持久化 snapshot 的約束。修正後由不同 reviewer 重審 exact head；未完成前不恢復 audit approval，也不宣稱資料庫／Production 驗收通過。此 PR 的先前 bounded-source approval 已於 03:36:50Z 因 consumer P1 撤回；其後任何 provisional source verdict 也不代表後續發現已解決。與 PB-046 相同的代理證據家族；此處屬呼叫端／消費者與更新路徑證據，不是新增一筆 PB-046 migration 漂移事件。
+- 本條近期總數依既有 5 次記錄新增 #42／PR #713 交付事件 1 次；不把同一事件的後續 finding、report reproduction 或各 workflow run 拆作額外 Product finding。
+- 狀態：#713 的歷史 source-review findings 已在 exact head `f1c4984c0a2dfda85207c08086ba80d3ada797cf` 修正並獲 distinct final review；PR #713 已於 2026-10-01T06:04:53Z 合併為 `9b291ebbc878ac68e3378aee1f44991401d5b211`，root 已核實 main ancestry 與關鍵 runtime bytes。ordinary canonical TEST integration/E2E 及 fixture/server cleanup 通過；無 DDL，G3 release/schema-evidence 步驟刻意 skipped，不宣稱 G3 schema-ready 或 Production acceptance。Issue #42 保持 OPEN，authenticated Production acceptance 仍 pending；先前撤回批准與 FIX_REQUIRED checkpoints 保留為歷史。
 
 ### PB-028 — `revoke execute … from anon, authenticated` 不會關掉 PUBLIC 的預設授權
 
@@ -819,6 +843,9 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 
 ### PB-034 — 用 CI 當規則查詢器：靠一次次被退來湊出正確的 PR 中繼資料
 
+- 2026-10-01 #713 paired-scorecard report reproduction 續例：exact-head workflow `36810577964` rejected the generated Markdown because it recorded weighted usage 27 while the ledger/scorer computed 33 after the new audit task. Root initially treated `score-run-current.mjs` as a file writer; it prints to stdout. The repair at `4a7c8a0abc00d97c502abe5ebfa1dcc24df7664b` generated the paired report from stdout and reproduced it byte-for-byte; exact-head workflow `36810825595` passed. Preserve the original failure as a report-generation failure, not a Product feature failure. Prevention: generate with `node scripts/agents/score-run-current.mjs <ledger> > <RUN_ID>.md`, then rerun and `diff -u` the canonical output against the paired Markdown before publishing; a green ledger validator/readiness alone does not verify the paired report.
+- 新增可核對事件：+1 report-generation reproduction（截至 2026-10-01）；既有次數按本條最新已記 5 件加一，非 CI 執行總數。
+
 - 2026-09-30 #704／PR #705 續例：新 v4 run ledger 通過 JSON/readiness，卻漏交
   `score-run-current.mjs` 規定的同名 Markdown report，remote scorecard
   `36720245829` 因此拒絕。這不是可重跑的暫態 CI；先以 canonical 產生器生成 report，
@@ -847,9 +874,9 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
   驗證以 #566 對應版本的 focused mutation、preflight、required source CI 與合併後分類事件為準；
   SOURCE_ONLY 不宣稱資料庫或產品驗收通過，舊失敗通知不覆寫。
 
-- 首次／最近：2026-09-11／2026-09-17
-- 發生次數：5（#352、#361、#370、#553、#586；次數是事件，不是 CI 執行總數）
-- Issue／PR／CI：PR #352、#361、#370
+- 首次／最近：2026-09-11／2026-10-01
+- 發生次數：6（#352、#361、#370、#553、#586，加 #713 paired-scorecard reproduction；次數是事件，不是 CI 執行總數）
+- Issue／PR／CI：PR #352、#361、#370；PR #713／exact-head workflows `36810577964` and `36810825595`
 - 分類：Agent
 - 事件：#352 開出後被守門與 CI 連退四次，**四次都是中繼資料填錯，沒有一次是程式碼問題**：
   1. `FINAL_CANONICAL_REQUIRED: false` —— `TEST_PROFILE: LOCAL_ISOLATED` 強制要求 `true`
@@ -1013,6 +1040,17 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 狀態：已防止於 #586；後續開放 PR 沿用「merge 前 ACTIVE、merge 後 COMPLETE」。
 - 相關教訓：PB-021、PB-049。
 
+#### 2026-10-01 再發：#46／PR #719 的 preflight 漏驗 mergeability、alias 與 pin
+
+- 證據：`473050c` 因 Run JSON／Markdown merge conflict 未進 source CI，正常 merge `955b109` 解決；source CI `36827423772` alias guard 缺 `0135` 分類 FAIL；bootstrap `36827423735` 在 Docker 前因 canonical bytes 變更而 `FRESH_INSTALL_BASELINE_BLOCKED`。
+- 修正：正常 merge 保留 Run 歷史；`36f41fc` 補 alias／manifest pin `955b109`（含同 SQL 祖先），exact counts 64 PASS，guards 未弱化。
+- 預防：dispatch 前先確認 mergeability，再用同候選 head／pinned baseline 做 alias、manifest bytes／ancestry preflight；deterministic 失敗先修輸入，不 blind rerun。
+- 驗證：`d7de123` source CI `36828034389` SUCCESS，當時 native 尚未接受；後續 bootstrap `36828034375` FAILED（見下）。review `4152599457`：無關歷史／未來 ambiguous shift／departure 污染候選；`4152657882`：WEEKLY full_day 在 DST 25h 日漏封鎖最後一小時。Issue #46 同一 MAIN builder42 已將兩項 P2 修復 source freeze 至 `3074bbf`（SQL pin `d009399` 後同步 pin）；其後修正／驗證完成（見下）；不以 source freeze 或 CI 綠單獨當 semantic acceptance。既有 counters 不重寫。
+- 後續 caller coverage 缺口：bootstrap `36828034375` FAILED 僅 #46 suite admission（79 files PASS／1 skipped）；合法 LOCAL 環境為 `TEST_ENV_ID=local-schema-36828034375`、`LOCAL_PROJECT_ID=schema-proof-36828034375-1`、`TEST_PROFILE=LOCAL_ISOLATED`、loopback `54321`，但新 suite 只接受 PR pair，於 before hooks 拒絕，並非 DB bug。
+- Issue #46 同一 MAIN builder42 修正精確 workflow／run／attempt／project 匹配 admission；不接受 generic prefix 或 remote 豁免。預防：preflight 覆蓋真正 bootstrap caller 身分與 PR pair 的正反例，不只驗 PR pair。
+
+- 最終驗證：Source／bootstrap／LOCAL 全 SUCCESS；current native 36 cases、whole integration 804 PASS／3 skipped、E2E 23 PASS／3 skipped，cleanup 於 2026-10-01T07:28:50Z verified。獨立 final review 0 unresolved，僅批准 source prep；#719 的 final head `7a05bbcd` 已合併，merge/current main `701845e4783f9eb87a19e3b3da52f49018134ea9`。remote `0135` NOT_APPLIED／RPC absent，不宣稱 remote TEST／Production readiness 或驗收。
+
 ### PB-035 — 從欄位定義推斷「這筆 insert 會失敗」，卻沒查參與寫入的 trigger
 
 - 首次／最近：2026-09-11／2026-09-11
@@ -1077,6 +1115,8 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 相關教訓：PB-026、PB-027、PB-032、PB-033。
 
 ### PB-036 — `TERRA_BUILD` 的施工跑在 audit 層模型上，因為「反正我已經在跑了」
+
+- 2026-10-01 根因補強：configuration 的 independentReviewerRequired flag 不等於 runtime 准入。live evaluator 必須由 GitHub canonical source 獨立回讀 current builder／reviewer actor-session-execution，精確綁 head/digest，再驗 fresh context／非自審；payload 自填 proof 或 GitHub 提交者不能冒充 runtime builder。未知 actor 不回填歷史，缺證據就 pending。相關反例：sameactor／samesession／foreign-stale proof／latest finding；歷史事件次數與 actual 保留。
 
 - 首次／最近：2026-09-12／2026-09-14
 - 發生次數：**5**（第 5 次見本條最末「2026-09-14 第五次」）
@@ -1443,10 +1483,10 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 ### PB-044 — 破壞性動作前的查證，有效期只有幾分鐘
 
-- 首次／最近：2026-09-14／2026-09-14
-- 發生次數：1
-- Issue／PR／CI：shared TEST 漂移排查；CI 與 scout 並行跑 integration
-- 分類：TEST DB／Agent
+- 首次／最近：2026-09-14／2026-10-02
+- 發生次數：2（#720／#735 審查發現同一快照過期家族；不推定已造成線上錯誤）
+- Issue／PR／CI：shared TEST 漂移排查；CI 與 scout 並行跑 integration；#720／#735 review 5387368429、comments 4162033639／4162033645
+- 分類：TEST DB／Agent／GitHub lifecycle
 - 事件：07:20 查詢 TEST 上 `trip_departures` 的 `formation_status`，結果是「3 列全部 COLLECTING」，於是告訴 Owner「drop 掉再重建是安全的」。07:45 準備真的執行 drop/recreate 之前再查一次，結果變成「1 列 AT_RISK + 2 列 COLLECTING」——中間 25 分鐘內 CI 跑了 #440 的 integration 測試，seed 改掉了資料。
 - 證據：兩次查詢間隔、查詢結果各一份、migration 日誌顯示該時間段有 seed 執行。
 - 根因：在共用環境（TEST 被 CI 與其他 lane 共用）上，「我剛剛查過」不等於「現在還是這樣」。查證與破壞性動作之間隔了一次對話往返，環境狀態有時間改變。
@@ -1458,6 +1498,8 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
   3. 在共用資源上，任何「我剛驗過」都必須問「期間有沒有其他工作可能改過」，特別是 CI lane 在跑時。
 - 驗證：後續 TEST 動作前先確認無 CI 運行，或改用原子查證+動作；重查成功執行且資料一致。
 - 狀態：已防止
+
+**2026-10-02 #720／#735 同根因補充：** Product close guard 在耗時 permission／pagination／ancestry 檢查前只讀一次 main，可能用舊 main 的成功 CI 批准已前進的 main；拒絕後也未核對 `closed_at`，可能 reopen 人工重新關閉的新 generation。這是 review 查出的可重現競態，沒有 remote 事故證據。Run 讀取改綁不可變 main SHA；admission／capture 前重讀 default branch，不一致即拒絕舊證據；reopen 與 capture 前回讀 Issue，event 與 live `closed_at` 不一致則停止舊事件的寫入。#739 finding 4162743182 另指出 checkout 後、首次 main 查詢前的政策版本競態：policy／Run／CI 一律綁 captured canonical main 的同一不可變 SHA；checkout 不同時只從該 main SHA 的 Contents API 讀六個固定政策／依賴檔，驗 Git blob hash後再 import，不執行 PR code/artifacts或加權限。初始 drift 用當前政策驗證；admission／capture 漂移時先載入新 SHA 政策重新分類，再 generation-safe 拒絕 Product；不能只 fail job 留下未驗 closed Issue（4162813188），或用舊 Governance 豁免跳過新版 Product gate（4162866600）。未知政策讀取仍中止，合法 current Governance 無 Product 副作用。loader 每個觀測 SHA 只讀一次，沒有無界 retry；4162995075 另指出六檔載入期間 main 可再次前進，故 fresh load/import 完成後重讀 branch，不同即 UNKNOWN 中止，不能採用中間 Governance 豁免；initial/admission/capture 三反例先 FAIL 後 PASS，沒有盲目重試或猜最新分類。最後 read/write 仍非原子。新 canonical reload 反例 baseline 5 failed／13 passed，修後通過；歷史 checkout RED 保留。從 workflow 擷取真實 github-script，以 mock API 驗 main 前進、reopen／reclose、未知讀取、pending CI、正常 close 與 capture 冪等；原版 8 failed／3 passed，修正後 actual-script 26 cases 通過。GitHub REST 的 read→write 沒有原子 compare-and-swap，這是縮短競態窗口及拒絕已觀測漂移，不能宣稱消除外部併發；不編造歷史 capture 或 Product Run 事件。獨立審查另以兩個 FAIL 反例指出 allowed-tail 過早移除 label；移除動作已延後到 current-policy／generation 回讀之後，新 generation 或 current Governance 不再受舊 Product label 操作影響，兩反例修後 PASS。source／main CI 結果由本次 PR 與 #720 closeout 提供。
 
 ### PB-045 — 並行工作的判準是檔案所有權與 Issue 邊界，不是功能描述
 
@@ -1690,6 +1732,10 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 - 狀態：已關閉；同類再犯已轉成 workflow 內的 bounded wait，而不是人工 polling／重派。
 
+**2026-10-02 #741 延遲 review wake-up 補充：** 已觀測兩個 failed consumer（36956941251/job110681893706、36968116362/job110716174530），皆為 `Review wake-up needs one canonical PR association`；不是 Astra 執行失敗或 #739 close guard 回歸。#737 已 merged 後，成功 producer36956929013/36956868232 的 `pull_requests=[]`，舊 fallback 只查 open PR，漏掉 exact producer head 的 closed PR。原歷史次數保留；本次記錄的是兩筆同家族 consumer failure，不推算所有通知為獨立事故。
+
+修正僅 resolver：查 all、驗 canonical repo/ref，優先唯一 open；無 open 才接受唯一 closed exact producer SHA，且 live 回讀仍需同 SHA。既有 consumer 對 closed PR 在 status/comment/label/TEST dispatch 前 return，不製造 PASS 或重開 PR。外 repo、錯 head、歧義、未知 API 仍拒絕。預防以實際 github-script branch 驗零副作用；RED3FAIL61PASS→GREEN64PASS/typecheckPASS、獨立六個對抗 mock PASS。source/main CI 與 merge 回讀由 #741 的獨立 PR/closeout 留證，局部測試不當遠端驗收，不盲重試或改模型 gate。
+
 ### PB-050 — 埋了點，卻整輪沒跑過驗證器；欄位有值，但值在另一套詞彙裡
 
 - 首次／最近：2026-09-14 / 2026-09-14
@@ -1769,6 +1815,10 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 ### PB-051：昂貴審查反覆重派，且入口／WIP／release 各保留一份模型規則
 
+- 2026-10-01 CI 相容性教訓：PR #716 full source CI `36819205130`／job `110230922644` 的4個失敗揭露舊 downgrade fixture 缺當次 provider/catalog，及擴充拒絕診斷時遺失既有 identity 摘要。正向 fixture 必須提供合成當次 catalog，缺 catalog 仍 park；`evaluateAstra` 保留既有摘要並附全部 role／tier diagnostics，不能為測試通過放寬准入。變更共用 evaluator／selector 後驗 full unit，targeted 綠不代表其餘呼叫端相容。
+
+- 2026-10-01 防復發：省略 runtime catalog 不能默認成整個 premium／audit allowlist；global default 不得跨 provider。prepare 與 fallback 共用 provider-local catalog capture 判準，缺證據 park、明確無 selector 才 CURRENT_AGENT；OpenAI Astra、Anthropic Fable 的唯一昂貴預算與300秒／首次infra降級不變。catalog record 驗證不假稱 provider-signed 可用性，歷史 usage 不改。
+
 - 最近發生：2026-09-29；次數：3 個可重用事件（#552 成本政策收斂；#447 實戰驗證；#37／PR #688 派工前記帳失序），歷史昂貴諮詢總數未知，不補零。
 - 證據：Owner 成本超支回報、#552；#455/#551/#561/#581/#591；#447 readiness run `35335418384`。
 - 根因：#533 將首次故障視為同級重試；修復重審可反覆使用昂貴模型。WIP 與 release
@@ -1804,9 +1854,9 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
   由 run `35335418384` 機械證明，且 `databaseMutationAuthorized=false`，沒有用流程簡化換取 Production 寫入豁免。
 ### PB-052 — 不可逆刪除 Storage 前，只看「目前這一列」會把共用物件誤判成孤兒
 
-- 首次／最近：2026-09-17／2026-09-18
-- 發生次數：1
-- Issue／PR／CI：Issue #50、#572；舊 PR #573；successor PR #583；exact-head CI `35210358280`
+- 首次／最近：2026-09-17／2026-10-01
+- 發生次數：2（#42 是相同 Storage 物件生命週期的測試 fixture 缺陷；未證實為 canonical timeout 根因）
+- Issue／PR／CI：Issue #50、#572；舊 PR #573；successor PR #583；exact-head CI `35210358280`；Issue #42／PR #723；canonical TEST run `36840741621`
 - 分類：Storage／不可逆資料／引用生命週期
 - 事件：舊 #573 在 keyword reply 換圖或移除圖片後，只比較「目前這一列」的新舊 canonical URL，就 best-effort 刪除舊 Storage 物件。若同租戶另一筆 keyword reply 仍引用同一張實體圖，刪除會成功，但另一筆立刻變成破圖。
 - 證據：Final Risk 對 #573 重讀後建立 successor #583；#583 的 regression tests 明確涵蓋「另一列直接共用相同 URL」「query string／fragment 別名仍是同一物件」「共用引用落在第 2 頁」「引用掃描失敗」四種反例。Final Risk change digest `bd270fc460f9fda16d76851687e33cba3bd39512729543870fd90539eb2d64c0`。
@@ -1823,6 +1873,10 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 驗證：#583 exact head `a638bcb90a578b97330fb3c4bb2ad8092771a297` 的 repository integrity、ledger map、typecheck、完整 unit 與 build 實際通過；integration 與 local-isolated 依 SOURCE_ONLY policy skip，沒有冒充真 DB／Storage E2E。Agent WIP Guard 與 GPT-5.6 Sol Final Risk PASS。merge 後 current main 已重讀 `src/server/storage-cleanup.ts`，確認 fail-closed shared-reference guard 存在。
 - 狀態：keyword-reply bucket 已防止；同族的其他 bucket 與整列 DELETE cleanup 仍由 #572 監看中。
 - 相關教訓：PB-023（查詢失敗不可冒充空結果）、PB-044（破壞性動作的查證有效期有限）。
+
+**2026-10-01 #42 測試 fixture 補充：** 舊 welcome-card E2E 共用既有 tenant；若原 `notify` 有圖片 A，換圖流程會退役並刪除 A，`finally` 再把資料列還原成原 URL 時會被 `0070 welcome_card_image_not_retired`（`23514`）拒絕，且單還原資料列無法復原已刪 blob。此條件式重現證明 fixture 有破壞性生命週期缺陷；原 canonical 30 秒失敗缺少原圖 URL／trace，不能據附近的 `23514` 認定失敗由此造成。PR #723 的 canonical run `36840741621`：welcome 首次 30.0 秒在 `tests/e2e/welcome-card-upload.spec.ts:142` 等待 upload DELETE response timeout，retry #1 於 29.6 秒通過；整個 E2E 為 21 passed、3 skipped、2 flaky（welcome 與 booking-addons 均 retry #1 通過），不能記成 first-pass green 或「所有 flakiness 已解決」。
+- #42 修正：改用新建 disposable tenant 與合法 membership/switch/me 驗證；立即記錄 upload response 的 owned path，以 tenant-owned prefix 發現遺失 response 的資產；驗證設定持久化、Storage／retirement 清理及 owned rows 歸零；等待中的 mutation 若狀態未知則 fail closed。保留一般 30 秒 case budget，沒有用加 timeout 猜綠。
+- 新增預防：不可用還原共享資料列 URL 來「復原」已退役／刪除的 Storage blob。E2E 應使用可丟棄且所有權可驗證的 fixture；在首次持久化前即保存 cleanup 身分，並驗證 late write／cleanup 狀態。canonical timeout 根因未知、retry 後僅有 0.4 秒 budget 餘裕；不可把成功 retry 當穩定性證明。Native LOCAL welcome 23.3 秒通過；其 cleanup stack shutdown 成功，但沒有獨立 zero-row journal，不補造零殘留證據。
 
 ### PB-053 — E2E 先以輸入控件文字判定保存完成，會與送出中的草稿撞名
 
@@ -1847,3 +1901,18 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 修正：從本地完整 main 基線加預期增補取回全部內容，以 guarded Contents update 追加修復 commit `21cf6621edde0beb7157e48bb937e9609cd3561d`，不改寫歷史、不合併損壞版本。
 - 預防：全檔替換必須使用完整原始內容，確認讀取未截斷；提交後檢查 exact remote head 的檔案位元與差異，新增教訓不應大量刪除既有內容。畫面摘要不能作全檔寫入來源。
 - 驗證：修復後比較 current main 與遠端分支，Playbook 只增加預期教訓；提交 PR 前再次核對無刪除。此事故未影響 main、產品或資料庫。
+
+### PB-055 — 公開 Server Component 的共用 loader 必須先清理回傳欄位；slug 依租戶解析
+
+- 首次／最近：2026-10-01／2026-10-01。
+- 發生次數：1。
+- Issue／PR／CI：Issue #11；PR #731；exact head `228a8c1051f27e3d740620c97d3291ebda254204`；agent-schema-bootstrap run `36885381267`、job `110447503574`。
+- 分類：公開讀取／測試契約／資料邊界。
+- 事件：disposable local Supabase integration 共 83 個檔案，811 passed／8 skipped／2 failed；其中行程詳情頁 HTML 的 Next dev RSC 診斷包含 fixture sentinel `javascript:` cover URL。另一失敗是 SHOP_B 有自己的 PUBLISHED trip，與 SHOP_A 使用相同 slug；測試錯誤地期待 SHOP_B 回 404。
+- 證據：run `36885381267` job `110447503574`；`supabase stop` 與 disposable stack cleanup 成功。另一家店的記錄符合 `unique (tenant_id, slug)`，slug 並非跨租戶唯一。
+- 根因：行程詳情專屬 mapper 雖清理圖片 URL，頁面仍透過共用 `loadPublicShop()` 把原始 `cover_image_url` 帶入 Server Component props；開發 RSC 診斷會序列化該回傳值。測試則忽略 schema 的租戶內唯一約束，將跨店同 slug 誤認成必須 404。
+- 影響：不安全的原始媒體 URL 會出現在開發 RSC 診斷輸出；錯誤的負向預期會把合法的 SHOP_B 公開行程誤判為租戶洩漏。此次沒有 Production 寫入或 shared TEST 使用。
+- 修正：在共用 `public-shop.ts` loader 邊界用 `safePublicHttpsUrl()` 驗證圖片 URL；改為斷言 SHOP_B 同 slug 的頁面與 API 回傳 SHOP_B 自己的標題、且不含 SHOP_A 的標題。
+- 預防：任何 Server Component 使用的共用 loader 都要在回傳 props 前驗證公開 URL／欄位；租戶 scoped slug 測試應放入另一租戶的同 slug 正向對照，分別驗證本租戶記錄可讀、另一租戶內容不可見。
+- 驗證：初次 isolated run 的 2 個失敗由 exact head 修正；工作樹 `npm run typecheck`、286 個 unit files／3,715 tests、`npm run build`、`git diff --check` 已通過。新 exact-head Source CI 與 LOCAL_ISOLATED integration/E2E、cleanup 尚待執行；舊 run 的 failure 不視為新 head acceptance。
+- 狀態：監看中；待新 exact-head 隔離驗收完成。

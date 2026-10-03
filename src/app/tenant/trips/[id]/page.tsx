@@ -26,6 +26,8 @@ import {
   getTrip, listTripAddons, listTripDepartures, listTripPlans, requestMidaoListing,
   saveTripAddon, saveTripDeparture, saveTripPlan, saveTripPlanSeason, updateTrip,
 } from '@/services/tours';
+import { getTenantSettings } from '@/services/settings';
+import { formationTimeZone, formationLocalDateTime, formationWallTimeToIso } from '@/lib/departure-formation-time';
 import { listStaff } from '@/services/catalog';
 import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
@@ -35,6 +37,7 @@ import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
 import { ApiError } from '@/lib/api';
 import { formatCurrency, formatNumber } from '@/lib/utils';
+import { MAX_PUBLIC_GALLERY_IMAGES } from '@/lib/trip-gallery';
 import {
   reorderPlans, toAdvancedPlanPayload, toQuickPlanPayload, validateAdvancedPlan, validateQuickPlan,
 } from '@/lib/trip-plan-quick-edit';
@@ -43,7 +46,7 @@ import type {
   TripDeparture, TripPlan, TripPlanSeason,
 } from '@/lib/types';
 
-const GALLERY_MAX = 8;
+const GALLERY_MAX = MAX_PUBLIC_GALLERY_IMAGES;
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 0];
 
 const REVIEW_TONE: Record<PlanReviewState, 'info' | 'danger' | 'neutral'> = {
@@ -68,6 +71,7 @@ const emptyPlan = (tripId: string): TripPlan => ({
   id: '', tripId, name: '', description: '', durationMinutes: 180,
   priceType: 'PER_PERSON', basePrice: 0, childPrice: null,
   minParticipants: 1, maxParticipants: 10, bookingType: 'SCHEDULED',
+  salesMode: 'FIXED_DEPARTURE', participationMode: 'SHARED', minToDepart: 1, formationDeadlineDaysBefore: 7,
   depositMode: 'FULL', depositValue: 0,
   active: true, yearRound: true, seasons: [], reviewState: 'NONE',
   reviewNote: '', sortOrder: 0, source: 'GUIDE',
@@ -89,6 +93,27 @@ const emptyDeparture = (tripId: string, planId: string): TripDeparture => ({
   capacity: 10, seatsBooked: 0, status: 'OPEN', note: '',
   primaryStaffId: null, assistantStaffIds: [],
 });
+
+function confirmedFormationDeadline(local: string, zone: string): string | undefined {
+  if (!local) return undefined;
+  const [date, time] = local.split('T');
+  return formationWallTimeToIso(date, time, zone);
+}
+
+function FormationDeadlineField({ id, value, onChange, plan, timeZone, editing = false, snapshotMin = 1, batch = false }: {
+  id: string; value: string; onChange: (value: string) => void; plan?: TripPlan; timeZone: string | null;
+  editing?: boolean; snapshotMin?: number; batch?: boolean;
+}) {
+  return (
+    <FormGroup>
+      <Label htmlFor={id}>{t.departures.formationDeadline.overrideLabel(timeZone ?? t.departures.formationDeadline.loading)}</Label>
+      <Input id={id} type="datetime-local" value={value} disabled={!timeZone} onChange={(e) => onChange(e.target.value)} />
+      <FormText>{editing ? t.departures.formationDeadline.editSnapshot(snapshotMin)
+        : t.departures.formationDeadline.rule(plan?.minToDepart ?? 1, plan?.formationDeadlineDaysBefore ?? 7, timeZone ?? '')}</FormText>
+      <FormText>{editing ? t.departures.formationDeadline.editHelp : batch ? t.departures.formationDeadline.batchHelp : t.departures.formationDeadline.overrideHelp}</FormText>
+    </FormGroup>
+  );
+}
 
 /**
  * issue #37：導遊指派欄位。0/1/2+ 自動適應（Owner 2026-08-27）。
@@ -185,6 +210,12 @@ export default function TripDetailPage() {
   const [busy, setBusy] = React.useState(false);
   const [addonDraft, setAddonDraft] = React.useState<TripAddon | null>(null);
   const [departureDraft, setDepartureDraft] = React.useState<TripDeparture | null>(null);
+  const [departureDeadlineLocal, setDepartureDeadlineLocal] = React.useState('');
+  const [departureDeadlineChanged, setDepartureDeadlineChanged] = React.useState(false);
+  const [departureTimeZone, setDepartureTimeZone] = React.useState<string | null>(null);
+  const tenantIdentityRef = React.useRef(currentTenant.id);
+  tenantIdentityRef.current = currentTenant.id;
+  const [batchDeadlineLocal, setBatchDeadlineLocal] = React.useState('');
   const [batchOpen, setBatchOpen] = React.useState(false);
   const [batch, setBatch] = React.useState({
     planId: '', from: '', to: '', startTime: '09:00', capacity: 10,
@@ -203,11 +234,15 @@ export default function TripDetailPage() {
 
   const load = React.useCallback(async () => {
     setLoading(true);
+    setDepartureTimeZone(null);
+    const tenantAtLoad = currentTenant.id;
     try {
-      const [tr, pl, dp, ad, st] = await Promise.all([
+      const [tr, pl, dp, ad, st, settings] = await Promise.all([
         getTrip(tripId), listTripPlans(tripId),
-        listTripDepartures(tripId), listTripAddons(tripId), listStaff(),
+        listTripDepartures(tripId), listTripAddons(tripId), listStaff(), getTenantSettings(),
       ]);
+      if (tenantIdentityRef.current !== tenantAtLoad) return;
+      setDepartureTimeZone(formationTimeZone(settings.basic.timezone));
       setTrip(tr ?? null);
       setForm(tr ?? null);
       setPlans(pl);
@@ -215,11 +250,11 @@ export default function TripDetailPage() {
       setAddons(ad);
       setGuides(st.filter((m) => m.active && m.bookable));
     } catch {
-      toast.show(t.messages.loadFailed, 'danger');
+      if (tenantIdentityRef.current === tenantAtLoad) toast.show(t.messages.loadFailed, 'danger');
     } finally {
-      setLoading(false);
+      if (tenantIdentityRef.current === tenantAtLoad) setLoading(false);
     }
-  }, [tripId, toast]);
+  }, [tripId, toast, currentTenant.id]);
 
   React.useEffect(() => { void load(); }, [load]);
 
@@ -265,6 +300,15 @@ export default function TripDetailPage() {
   };
 
   /* ------------------------------------------------------------- 方案 */
+  const listedPlanWritesBlocked = trip?.midaoListing === 'LISTED';
+  const blockListedPlanWrite = () => {
+    if (!listedPlanWritesBlocked) return false;
+    toast.show(t.plans.review.unavailable, 'danger');
+    return true;
+  };
+
+  // issue #42：LISTED 行程仍可開啟方案編輯器（唯讀），季節價格清單才看得到；
+  // 所有寫入入口各自以 blockListedPlanWrite() 早退。
   const openPlanEditor = (draft: TripPlan) => {
     setPlanEditorMode('quick');
     setShowChildPrice(draft.childPrice !== null);
@@ -290,6 +334,7 @@ export default function TripDetailPage() {
 
   /* ------------------------------------------------------- 季節定價（#42） */
   const openSeasonEditor = (season?: TripPlanSeason) => {
+    if (blockListedPlanWrite()) return;
     setSeasonDraft(season ? { ...season } : emptySeason());
   };
 
@@ -307,6 +352,7 @@ export default function TripDetailPage() {
    * 不是自己組的猜測值。
    */
   const saveSeason = async () => {
+    if (blockListedPlanWrite()) return;
     if (!planDraft?.id || !seasonDraft) return;
     if (!seasonDraft.name.trim()) {
       toast.show(t.messages.seasonNameRequired, 'danger');
@@ -353,6 +399,7 @@ export default function TripDetailPage() {
   };
 
   const savePlan = async () => {
+    if (blockListedPlanWrite()) return;
     if (!planDraft) return;
     const validationError = planEditorMode === 'advanced'
       ? validateAdvancedPlan(planDraft)
@@ -367,6 +414,16 @@ export default function TripDetailPage() {
     }
     if (validationError === 'childPrice') {
       toast.show(t.messages.planChildPriceInvalid, 'danger');
+      return;
+    }
+    const formationErrors = {
+      salesMode: t.messages.planSalesModeInvalid,
+      participationMode: t.messages.planParticipationModeInvalid,
+      minToDepart: t.messages.planMinToDepartInvalid,
+      formationDeadlineDaysBefore: t.messages.planFormationDeadlineInvalid,
+    };
+    if (validationError && validationError in formationErrors) {
+      toast.show(formationErrors[validationError as keyof typeof formationErrors], 'danger');
       return;
     }
     if (validationError === 'minParticipants') {
@@ -407,13 +464,20 @@ export default function TripDetailPage() {
       } else {
         // The success toast is only shown after a fresh server read. This is
         // the persistence check for the real tenant-scoped API path.
-        setPlans(await listTripPlans(tripId));
+        const reloadedPlans = await listTripPlans(tripId);
+        if (planEditorMode === 'advanced') {
+          const expected = toAdvancedPlanPayload(planDraft);
+          const saved = reloadedPlans.find((plan) => plan.id === planDraft.id);
+          const fields = ['salesMode', 'participationMode', 'minToDepart', 'formationDeadlineDaysBefore'] as const;
+          if (!saved || fields.some((field) => toAdvancedPlanPayload(saved)[field] !== expected[field])) {
+            throw new Error(t.messages.planAdvancedReadbackFailed);
+          }
+        }
+        setPlans(reloadedPlans);
       }
 
-      const needsReview = trip?.midaoListing === 'LISTED';
-      const savedMessage = needsReview
-        ? t.messages.planSubmitted
-        : planEditorMode === 'advanced' ? t.messages.planAdvancedSaved : t.messages.planSaved;
+      const savedMessage = planEditorMode === 'advanced'
+        ? t.messages.planAdvancedSaved : t.messages.planSaved;
       resetPlanEditor();
       toast.show(savedMessage);
     } catch (error) {
@@ -434,6 +498,7 @@ export default function TripDetailPage() {
    * 不發任何 PUT，也不顯示成功 toast。
    */
   const movePlan = async (index: number, delta: number) => {
+    if (blockListedPlanWrite()) return;
     const { plans: reordered, updates } = reorderPlans(plans, index, delta);
     if (updates.length === 0) return;
     try {
@@ -455,6 +520,12 @@ export default function TripDetailPage() {
   };
 
   /* ------------------------------------------------------------- 團次 */
+  const openDepartureEditor = (departure: TripDeparture) => {
+    setDepartureDeadlineChanged(false);
+    setDepartureDeadlineLocal(departure.formationDeadlineAt && departureTimeZone
+      ? formationLocalDateTime(departure.formationDeadlineAt, departureTimeZone).slice(0, 16) : '');
+    setDepartureDraft(departure);
+  };
   const saveDeparture = async () => {
     if (!departureDraft) return;
     if (departureDraft.capacity < departureDraft.seatsBooked) {
@@ -462,8 +533,21 @@ export default function TripDetailPage() {
       return;
     }
     const isNew = !departureDraft.id;
+    const minimum = isNew ? plans.find((plan) => plan.id === departureDraft.planId)?.minToDepart ?? 1 : departureDraft.minToDepartSnapshot ?? 1;
+    if (departureDraft.capacity < minimum) {
+      toast.show(t.departures.capacityBelowFormation(minimum), 'danger');
+      return;
+    }
+    if (!departureTimeZone || (!isNew && departureDeadlineChanged && !departureDeadlineLocal)) {
+      toast.show(t.departures.formationDeadline.invalid, 'danger');
+      return;
+    }
     const ok = await runAction(
-      () => saveTripDeparture(tripId, departureDraft),
+      () => saveTripDeparture(tripId, {
+        ...departureDraft,
+        formationDeadlineAt: isNew || departureDeadlineChanged ? confirmedFormationDeadline(departureDeadlineLocal, departureTimeZone) : undefined,
+        formationTimeZone: departureTimeZone,
+      }),
       isNew ? t.messages.departureCreated : t.messages.departureUpdated,
     );
     if (ok) setDepartureDraft(null);
@@ -489,7 +573,7 @@ export default function TripDetailPage() {
    */
   const runBatch = async () => {
     const plan = plans.find((p) => p.id === batch.planId);
-    if (!plan || batchCount === 0) return;
+    if (!plan || batchCount === 0 || !departureTimeZone) return;
     let result: { created: number; skipped: number; conflicts?: DepartureConflict[] } =
       { created: 0, skipped: 0, conflicts: [] };
     const ok = await runAction(
@@ -501,6 +585,8 @@ export default function TripDetailPage() {
           weekdays: batch.weekdays,
           startTime: batch.startTime,
           capacity: batch.capacity,
+          formationDeadlineAt: confirmedFormationDeadline(batchDeadlineLocal, departureTimeZone),
+          formationTimeZone: departureTimeZone,
           primaryStaffId: batch.primaryStaffId,
           assistantStaffIds: batch.assistantStaffIds,
         });
@@ -526,7 +612,7 @@ export default function TripDetailPage() {
      */
     const target = departures.find((d) => d.id === id);
     if (status === 'OPEN' && guides.length >= 2 && target && !target.primaryStaffId) {
-      setDepartureDraft({ ...target, status: 'OPEN' });
+      openDepartureEditor({ ...target, status: 'OPEN' });
       toast.show(t.departures.guide.reopenNeedsGuide, 'info');
       return;
     }
@@ -549,6 +635,7 @@ export default function TripDetailPage() {
   const doDelete = async () => {
     if (!deleteTarget) return;
     const { kind, id } = deleteTarget;
+    if ((kind === 'plan' || kind === 'season') && blockListedPlanWrite()) return;
     // issue #42：季節走同一套 runAction()（fn → load() → toast），與
     // plan/addon/departure 三種既有刪除一致，不另開一條「直接改 state」的路徑
     // ——那正是 PR #266 修掉的假成功形狀。
@@ -589,13 +676,13 @@ export default function TripDetailPage() {
           <span className="btn-group">
             <Button
               variant="ghost" size="sm" title={t.plans.labels.moveUp} aria-label={t.plans.labels.moveUp}
-              disabled={i === 0} onClick={() => void movePlan(i, -1)}
+              disabled={listedPlanWritesBlocked || i === 0} onClick={() => void movePlan(i, -1)}
             >
               <ChevronUp size={13} />
             </Button>
             <Button
               variant="ghost" size="sm" title={t.plans.labels.moveDown} aria-label={t.plans.labels.moveDown}
-              disabled={i === plans.length - 1} onClick={() => void movePlan(i, 1)}
+              disabled={listedPlanWritesBlocked || i === plans.length - 1} onClick={() => void movePlan(i, 1)}
             >
               <ChevronDown size={13} />
             </Button>
@@ -677,13 +764,16 @@ export default function TripDetailPage() {
       render: (p) => (
         <div className="btn-group">
           <Button
-            variant="outline" size="sm" title={t.actions.edit} aria-label={t.actions.edit}
+            variant="outline" size="sm"
+            title={listedPlanWritesBlocked ? t.actions.view : t.actions.edit}
+            aria-label={listedPlanWritesBlocked ? t.actions.view : t.actions.edit}
             onClick={() => openPlanEditor(p)}
           >
             <Pencil size={13} />
           </Button>
           <Button
             variant="outlineDanger" size="sm" title={t.actions.delete} aria-label={t.actions.delete}
+            disabled={listedPlanWritesBlocked}
             onClick={() => setDeleteTarget({ kind: 'plan', id: p.id, name: p.name })}
           >
             <Trash2 size={13} />
@@ -769,7 +859,7 @@ export default function TripDetailPage() {
         <div className="btn-group">
           <Button
             variant="outline" size="sm" title={t.actions.edit} aria-label={t.actions.edit}
-            onClick={() => setDepartureDraft(d)}
+            onClick={() => openDepartureEditor(d)}
           >
             <Pencil size={13} />
           </Button>
@@ -898,7 +988,9 @@ export default function TripDetailPage() {
           title={`${p.name}｜${t.plans.review[p.reviewState]}`}
           className="mb-3"
         >
-          {p.reviewState === 'PENDING' ? t.plans.review.pendingHint : t.plans.review.changesHint}
+          {p.reviewState === 'PENDING'
+            ? t.plans.review.pendingHint
+            : listedPlanWritesBlocked ? t.plans.review.changesHintListed : t.plans.review.changesHint}
           {p.reviewNote ? (
             <div className="mt-1">
               <span className="font-semibold">{t.plans.review.noteLabel}：</span>{p.reviewNote}
@@ -1088,12 +1180,14 @@ export default function TripDetailPage() {
 
       {/* ====================================================== 分頁：方案 */}
       <TabPanel active={tab === 'plans'}>
-        <Alert tone="info" className="mb-3">{t.plans.review.submitNotice}</Alert>
+        {listedPlanWritesBlocked ? (
+          <Alert tone="warning" className="mb-3">{t.plans.review.unavailable}</Alert>
+        ) : null}
         <DataTableContainer>
           <DataTableHeader
             title={t.plans.sectionTitle}
             actions={
-              <Button size="sm" onClick={() => openPlanEditor(emptyPlan(tripId))}>
+              <Button size="sm" disabled={listedPlanWritesBlocked} onClick={() => openPlanEditor(emptyPlan(tripId))}>
                 <Plus size={14} />{t.plans.create}
               </Button>
             }
@@ -1108,7 +1202,7 @@ export default function TripDetailPage() {
                 title={t.plans.empty.title}
                 description={t.plans.empty.description}
                 action={
-                  <Button onClick={() => openPlanEditor(emptyPlan(tripId))}>
+                  <Button disabled={listedPlanWritesBlocked} onClick={() => openPlanEditor(emptyPlan(tripId))}>
                     <Plus size={15} />{t.plans.create}
                   </Button>
                 }
@@ -1126,12 +1220,12 @@ export default function TripDetailPage() {
             title={t.departures.sectionTitle}
             actions={
               <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" onClick={() => setBatchOpen(true)}>
+                <Button size="sm" variant="outline" onClick={() => { setBatchDeadlineLocal(''); setBatchOpen(true); }}>
                   <CalendarPlus size={14} />{t.departures.batchCreate}
                 </Button>
                 <Button
                   size="sm"
-                  onClick={() => setDepartureDraft(emptyDeparture(tripId, plans[0]?.id ?? ''))}
+                  onClick={() => openDepartureEditor(emptyDeparture(tripId, plans[0]?.id ?? ''))}
                 >
                   <Plus size={14} />{t.departures.create}
                 </Button>
@@ -1149,7 +1243,7 @@ export default function TripDetailPage() {
                 title={t.departures.empty.title}
                 description={t.departures.empty.description}
                 action={
-                  <Button onClick={() => setDepartureDraft(emptyDeparture(tripId, plans[0]?.id ?? ''))}>
+                  <Button onClick={() => openDepartureEditor(emptyDeparture(tripId, plans[0]?.id ?? ''))}>
                     <Plus size={15} />{t.departures.create}
                   </Button>
                 }
@@ -1197,8 +1291,10 @@ export default function TripDetailPage() {
         open={!!planDraft}
         onClose={closePlanEditor}
         title={planEditorMode === 'advanced'
-          ? t.plans.advanced.title
-          : planDraft?.id ? t.plans.editTitle(planDraft.name) : t.plans.quick.createTitle}
+          ? (listedPlanWritesBlocked ? t.plans.advanced.viewTitle : t.plans.advanced.title)
+          : planDraft?.id
+            ? (listedPlanWritesBlocked ? t.plans.viewTitle(planDraft.name) : t.plans.editTitle(planDraft.name))
+            : t.plans.quick.createTitle}
         footer={
           <>
             <Button
@@ -1214,22 +1310,25 @@ export default function TripDetailPage() {
             >
               {planEditorMode === 'advanced' ? t.plans.advanced.backToQuick : common.cancel}
             </Button>
-            <Button
-              loading={savingPlan}
-              loadingText={planEditorMode === 'advanced' ? t.plans.advanced.saving : t.plans.quick.saving}
-              onClick={() => void savePlan()}
-            >
-              {planEditorMode === 'advanced' ? t.plans.advanced.save : t.plans.quick.save}
-            </Button>
+            {!listedPlanWritesBlocked ? (
+              <Button
+                loading={savingPlan}
+                loadingText={planEditorMode === 'advanced' ? t.plans.advanced.saving : t.plans.quick.saving}
+                onClick={() => void savePlan()}
+              >
+                {planEditorMode === 'advanced' ? t.plans.advanced.save : t.plans.quick.save}
+              </Button>
+            ) : null}
           </>
         }
       >
         {planDraft ? (
           <div className="flex flex-col gap-3">
+            {listedPlanWritesBlocked ? <Alert tone="warning">{t.plans.review.listedReadonly}</Alert> : null}
             {planDraft.source && planDraft.source !== 'GUIDE' ? (
               <Alert tone="info">
                 <span className="font-semibold">{t.plans.source[planDraft.source]}</span>
-                <span className="ml-1">{t.plans.source.assistedHint}</span>
+                {!listedPlanWritesBlocked ? <span className="ml-1">{t.plans.source.assistedHint}</span> : null}
               </Alert>
             ) : null}
 
@@ -1241,7 +1340,8 @@ export default function TripDetailPage() {
 
             {planEditorMode === 'quick' ? (
               <>
-                <Alert tone="info">{t.plans.quick.intro}</Alert>
+                {!listedPlanWritesBlocked ? <Alert tone="info">{t.plans.quick.intro}</Alert> : null}
+                <fieldset disabled={listedPlanWritesBlocked} className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
 
                 <FormGroup>
                   <Label htmlFor="plan-quick-name" required>{t.plans.fields.nameLabel}</Label>
@@ -1348,6 +1448,7 @@ export default function TripDetailPage() {
                     </p>
                   </div>
                 </div>
+                </fieldset>
 
                 <div className="rounded-lg border border-neutral-200 p-3">
                   <Button
@@ -1360,13 +1461,51 @@ export default function TripDetailPage() {
                     {t.plans.advanced.open}
                   </Button>
                   <FormText>
-                    {planDraft.id ? t.plans.quick.advancedHint : t.plans.advanced.requireQuickSave}
+                    {planDraft.id
+                      ? (listedPlanWritesBlocked ? t.plans.quick.listedAdvancedHint : t.plans.quick.advancedHint)
+                      : t.plans.advanced.requireQuickSave}
                   </FormText>
                 </div>
               </>
             ) : (
               <>
-                <Alert tone="info">{t.plans.advanced.intro}</Alert>
+                <Alert tone="info">{listedPlanWritesBlocked ? t.plans.advanced.listedIntro : t.plans.advanced.intro}</Alert>
+                <fieldset disabled={listedPlanWritesBlocked} className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FormGroup>
+                    <Label htmlFor="plan-advanced-sales-mode" required>{t.plans.fields.salesModeLabel}</Label>
+                    <Select id="plan-advanced-sales-mode" value={planDraft.salesMode ?? 'FIXED_DEPARTURE'}
+                      onChange={(e) => patchPlan({ salesMode: e.target.value as TripPlan['salesMode'] })}>
+                      {Object.entries(t.plans.salesMode).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </Select>
+                  </FormGroup>
+                  <FormGroup>
+                    <Label htmlFor="plan-advanced-participation-mode" required>{t.plans.fields.participationModeLabel}</Label>
+                    <Select id="plan-advanced-participation-mode" value={planDraft.participationMode ?? 'SHARED'}
+                      onChange={(e) => patchPlan({ participationMode: e.target.value as TripPlan['participationMode'] })}>
+                      {Object.entries(t.plans.participationMode).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </Select>
+                  </FormGroup>
+                </div>
+                <FormText>{t.plans.fields.participationModeHelp}</FormText>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FormGroup>
+                    <Label htmlFor="plan-advanced-formation-min" required>{t.plans.fields.minToDepartLabel}</Label>
+                    <Input id="plan-advanced-formation-min" type="number" min={1} step={1}
+                      value={Number.isNaN(planDraft.minToDepart) ? '' : planDraft.minToDepart ?? 1}
+                      onChange={(e) => patchPlan({ minToDepart: e.target.valueAsNumber })} />
+                    <FormText>{t.plans.fields.minToDepartHelp}</FormText>
+                  </FormGroup>
+                  <FormGroup>
+                    <Label htmlFor="plan-advanced-formation-deadline" required>{t.plans.fields.formationDeadlineLabel}</Label>
+                    <Input id="plan-advanced-formation-deadline" type="number" min={0} max={90} step={1}
+                      value={Number.isNaN(planDraft.formationDeadlineDaysBefore) ? '' : planDraft.formationDeadlineDaysBefore ?? 7}
+                      onChange={(e) => patchPlan({ formationDeadlineDaysBefore: e.target.valueAsNumber })} />
+                    <FormText>{t.plans.fields.formationDeadlineHelp}</FormText>
+                  </FormGroup>
+                </div>
+                {planDraft.formationDeadlineDaysBefore === 0 ? <Alert tone="warning">{t.plans.fields.formationDeadlineZeroWarning}</Alert> : null}
+
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <FormGroup>
@@ -1470,6 +1609,7 @@ export default function TripDetailPage() {
                   </FormGroup>
                 ) : null}
 
+                </fieldset>
                 {/* ---------------------------------------- 季節定價（issue #42） */}
                 <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-3">
                   <div className="flex items-center justify-between">
@@ -1479,7 +1619,7 @@ export default function TripDetailPage() {
                     </div>
                     <Button
                       type="button" variant="outline" size="sm"
-                      disabled={savingPlan || !!seasonDraft}
+                      disabled={listedPlanWritesBlocked || savingPlan || !!seasonDraft}
                       onClick={() => openSeasonEditor()}
                     >
                       <Plus size={14} /> {t.seasons.add}
@@ -1509,24 +1649,26 @@ export default function TripDetailPage() {
                               {formatCurrency(season.priceOverride ?? planDraft.basePrice)}
                             </div>
                           </div>
-                          <span className="btn-group shrink-0">
-                            <Button
-                              type="button" variant="ghost" size="sm"
-                              title={t.actions.edit} aria-label={t.actions.edit}
-                              disabled={savingPlan || !!seasonDraft}
-                              onClick={() => openSeasonEditor(season)}
-                            >
-                              <Pencil size={13} />
-                            </Button>
-                            <Button
-                              type="button" variant="ghost" size="sm"
-                              title={t.actions.delete} aria-label={t.actions.delete}
-                              disabled={savingPlan || !!seasonDraft}
-                              onClick={() => setDeleteTarget({ kind: 'season', id: season.id, name: season.name })}
-                            >
-                              <Trash2 size={13} />
-                            </Button>
-                          </span>
+                          {!listedPlanWritesBlocked ? (
+                            <span className="btn-group shrink-0">
+                              <Button
+                                type="button" variant="ghost" size="sm"
+                                title={t.actions.edit} aria-label={t.actions.edit}
+                                disabled={listedPlanWritesBlocked || savingPlan || !!seasonDraft}
+                                onClick={() => openSeasonEditor(season)}
+                              >
+                                <Pencil size={13} />
+                              </Button>
+                              <Button
+                                type="button" variant="ghost" size="sm"
+                                title={t.actions.delete} aria-label={t.actions.delete}
+                                disabled={listedPlanWritesBlocked || savingPlan || !!seasonDraft}
+                                onClick={() => setDeleteTarget({ kind: 'season', id: season.id, name: season.name })}
+                              >
+                                <Trash2 size={13} />
+                              </Button>
+                            </span>
+                          ) : null}
                         </li>
                       ))}
                     </ul>
@@ -1609,7 +1751,7 @@ export default function TripDetailPage() {
                         <Button type="button" variant="secondary" size="sm" onClick={closeSeasonEditor}>
                           {t.seasons.cancel}
                         </Button>
-                        <Button type="button" size="sm" loading={savingSeason} onClick={saveSeason}>
+                        <Button type="button" size="sm" disabled={listedPlanWritesBlocked} loading={savingSeason} onClick={saveSeason}>
                           {savingSeason ? t.seasons.saving : t.seasons.save}
                         </Button>
                       </div>
@@ -1666,11 +1808,15 @@ export default function TripDetailPage() {
             <FormGroup>
               <Label required>{t.departures.fields.capacityLabel}</Label>
               <Input
-                type="number" min={departureDraft.seatsBooked} value={departureDraft.capacity}
+                type="number" min={Math.max(departureDraft.seatsBooked, departureDraft.id ? departureDraft.minToDepartSnapshot ?? 1 : plans.find((plan) => plan.id === departureDraft.planId)?.minToDepart ?? 1)} value={departureDraft.capacity}
                 onChange={(e) => setDepartureDraft({ ...departureDraft, capacity: Number(e.target.value) })}
               />
               <FormText>{t.departures.fields.capacityHelp}</FormText>
             </FormGroup>
+            <FormationDeadlineField id="departure-formation-deadline" value={departureDeadlineLocal} timeZone={departureTimeZone}
+              onChange={(value) => { setDepartureDeadlineLocal(value); setDepartureDeadlineChanged(true); }}
+              plan={plans.find((plan) => plan.id === departureDraft.planId)} editing={!!departureDraft.id}
+              snapshotMin={departureDraft.minToDepartSnapshot ?? 1} />
             <GuidePicker
               guides={guides}
               primaryStaffId={departureDraft.primaryStaffId}
@@ -1756,6 +1902,8 @@ export default function TripDetailPage() {
               />
             </FormGroup>
           </div>
+          <FormationDeadlineField id="batch-formation-deadline" value={batchDeadlineLocal}
+            onChange={setBatchDeadlineLocal} plan={plans.find((plan) => plan.id === batch.planId)} timeZone={departureTimeZone} batch />
           <GuidePicker
             guides={guides}
             primaryStaffId={batch.primaryStaffId}
