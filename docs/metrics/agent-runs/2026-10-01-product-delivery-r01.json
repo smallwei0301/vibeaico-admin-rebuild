@@ -2357,6 +2357,74 @@
         "count": 1,
         "accepted": true,
         "note": "Ledger append for #763 Final Risk and Codex P1 fix round."
+      },
+      {
+        "id": "20261003-audit-763-finalrisk-opus",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "issue": 758,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/763#issuecomment-5970651192",
+        "startedAt": "2026-10-03T15:34:50Z",
+        "completedAt": "2026-10-03T15:36:55Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "AUDIT-tier Final Risk re-review after single Fable PREMIUM (downgrade PREMIUM_REVIEW_COMPLETED): PASS 0 blocking, 7/7 mutations; astra-review 5401650785; NON_BLOCKING -> #764."
+      },
+      {
+        "id": "20261003-audit-763-codex-p1b-verify",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "issue": 758,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/763#discussion_r4173927671",
+        "startedAt": null,
+        "completedAt": null,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "Codex P1 #2 verified: a single SENT inside the window cleared it while registered emails still got 503, an enumeration oracle during provider recovery; PR returned to draft."
+      },
+      {
+        "id": "20261003-build-758-window-shortcircuit",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "issue": 758,
+        "evidenceRef": "7d764ff9",
+        "startedAt": "2026-10-03T16:29:46Z",
+        "completedAt": "2026-10-03T16:33:26Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "Window check moved before DB lookup, cooldown and branch selection; both branches 503 inside the window without provider call; window ends only by TTL; auth.03 integration case rewritten to a 60 s service window; npm test 311/4233."
+      },
+      {
+        "id": "20261003-scout-ledger-763-p1b",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "issue": 758,
+        "evidenceRef": "ledger append for #763 P1 #2 round",
+        "startedAt": null,
+        "completedAt": "2026-10-03T16:34:32Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "Ledger append for #763 Opus Final Risk and Codex P1 #2 round."
       }
     ],
     "fullContextReplays": 0,
@@ -2373,11 +2441,11 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 41,
+    "fullCiRuns": 42,
     "invalidReruns": 5,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0,
-    "note": "37007212982 因 head 被取代 cancelled，37083653366 在 classify 被拒，37082211071 為 #714 source CI，三者不計入；先前 5 個 dispatch run 是否已計入原 30 仍待查證。本輪新增 3 個完整 canonical TEST run：37008702923、37083761493、37090025615 #757: 37105978199 failure（mock 形狀不擬真，已修）、37108030479 success；main push 37112300377 監看中。 #762：37121399537、37124644493 success；37120725291、37124319682 因 head 被取代而取消（不計）。 #763：37128355259 success（cce85365）。"
+    "note": "37007212982 因 head 被取代 cancelled，37083653366 在 classify 被拒，37082211071 為 #714 source CI，三者不計入；先前 5 個 dispatch run 是否已計入原 30 仍待查證。本輪新增 3 個完整 canonical TEST run：37008702923、37083761493、37090025615 #757: 37105978199 failure（mock 形狀不擬真，已修）、37108030479 success；main push 37112300377 監看中。 #762：37121399537、37124644493 success；37120725291、37124319682 因 head 被取代而取消（不計）。 #763：37128355259 success（cce85365）。 37133703835 success（39748ec3）。"
   },
   "quality": {
     "acceptanceEvidenceCoveragePercent": null,
@@ -2390,8 +2458,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 34,
-    "lunaAccepted": 30,
+    "lunaTasks": 35,
+    "lunaAccepted": 31,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
