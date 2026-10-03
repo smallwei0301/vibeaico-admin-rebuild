@@ -7,9 +7,9 @@ import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 type Row = { departs_on?: string; start_time?: string | null; capacity: number; seats_booked: number };
-type PlanFx = { mode: 'FIXED_DEPARTURE' | 'REQUEST' | 'INSTANT'; min: number; rows: Row[]; fail?: boolean };
+type PlanFx = { trip?: string; sort?: number; mode: 'FIXED_DEPARTURE' | 'REQUEST' | 'INSTANT'; min: number; rows: Row[]; fail?: boolean };
 
-const fx = vi.hoisted(() => ({ plans: {} as Record<string, PlanFx>, tripRows: [] as Array<Record<string, unknown>> }));
+const fx = vi.hoisted(() => ({ plans: {} as Record<string, PlanFx>, tripRows: [] as Array<Record<string, unknown>>, trips: ['trip-1'] as string[] }));
 
 vi.mock('@/server/supabase', () => ({
   createAdminSupabase: () => ({
@@ -17,19 +17,32 @@ vi.mock('@/server/supabase', () => ({
       const filters: Record<string, unknown> = {};
       let single = false;
       let range: [number, number] | null = null;
+      const orders: string[] = [];
       const run = async () => {
         if (table === 'tenants') {
           return { data: { id: 'tenant-1', shop_code: 'demo', name: 'Demo', business_type: null, tenant_settings: null }, error: null };
         }
         if (table === 'trips') {
-          const row = { id: 'trip-1', slug: 'hike', title: 'Hike', summary: '', location: '', cover_image_url: null, duration_hours: 2, refund_policy_type: 'STANDARD', status: 'PUBLISHED', tenant_id: 'tenant-1' };
-          return { data: single ? row : [row], error: null };
+          const rows = fx.trips.map((id) => ({ id, slug: id, title: id, summary: '', location: '', cover_image_url: null, duration_hours: 2, refund_policy_type: 'STANDARD', status: 'PUBLISHED', tenant_id: 'tenant-1' }));
+          if (single) return { data: rows.find((r) => r.slug === filters.slug) ?? null, error: null };
+          return { data: rows, error: null };
         }
         if (table === 'trip_plans') {
-          const all = Object.entries(fx.plans).map(([id, p]) => ({
-            id, trip_id: 'trip-1', name: id, description: '', price_per_person: 100, price_type: 'PER_PERSON',
+          // 模擬 DB：只依呼叫端實際下的 order() 欄位排序；沒下 id 排序時同 sort_order 保持插入順序。
+          let all = Object.entries(fx.plans).map(([id, p]) => ({
+            id, trip_id: p.trip ?? 'trip-1', sort_order: p.sort ?? 0, name: id, description: '', price_per_person: 100, price_type: 'PER_PERSON',
             min_party: p.min, max_party: 8, sales_mode: p.mode,
           }));
+          if (filters.trip_id) all = all.filter((r) => r.trip_id === filters.trip_id);
+          all = all.map((r, i) => ({ r, i })).sort((x, y) => {
+            for (const col of orders) {
+              const xv = (x.r as Record<string, unknown>)[col] as string | number;
+              const yv = (y.r as Record<string, unknown>)[col] as string | number;
+              if (xv < yv) return -1;
+              if (xv > yv) return 1;
+            }
+            return x.i - y.i;
+          }).map((e) => e.r);
           const [a, b] = range ?? [0, all.length];
           return { data: all.slice(a, b + 1), error: null };
         }
@@ -43,7 +56,7 @@ vi.mock('@/server/supabase', () => ({
         return { data: [], error: null };
       };
       const chain: Record<string, unknown> = {
-        select: () => chain, in: () => chain, gte: () => chain, order: () => chain,
+        select: () => chain, in: () => chain, gte: () => chain, order: (col: string) => { orders.push(col); return chain; },
         range: (a: number, b: number) => { range = [a, b]; return chain; },
         eq: (k: string, v: unknown) => { filters[k] = v; return chain; },
         maybeSingle: () => { single = true; return run(); },
@@ -66,7 +79,7 @@ async function homeCta() {
 }
 
 describe('#747 首頁方案入口與詳情頁一致', () => {
-  beforeEach(() => { fx.plans = {}; fx.tripRows = []; vi.spyOn(console, 'warn').mockImplementation(() => {}); });
+  beforeEach(() => { fx.plans = {}; fx.tripRows = []; fx.trips = ['trip-1']; vi.spyOn(console, 'warn').mockImplementation(() => {}); });
 
   it('FIXED 有可訂團次 → fixed；REQUEST 有可訂團次 → request', async () => {
     fx.plans = { f: { mode: 'FIXED_DEPARTURE', min: 1, rows: [ok(3)] }, r: { mode: 'REQUEST', min: 2, rows: [ok(3)] } };
@@ -98,6 +111,38 @@ describe('#747 首頁方案入口與詳情頁一致', () => {
     expect(cta.p30).toBe('dates-not-loaded');
   });
 
+  it('2 個行程 × 20 方案：兩個行程各取 15 個，行程 2 前 15 個方案都不是 dates-not-loaded', async () => {
+    fx.trips = ['trip-1', 'trip-2'];
+    fx.plans = {};
+    for (const t of fx.trips) for (let i = 0; i < 20; i += 1) {
+      fx.plans[`${t}-p${String(i).padStart(2, '0')}`] = { trip: t, sort: i, mode: 'FIXED_DEPARTURE', min: 1, rows: [ok(2)] };
+    }
+    const data = await loadPublicShop('demo');
+    for (const trip of data!.trips) {
+      trip.plans.forEach((p, i) => expect(p.bookingCta, p.id).toBe(i < 15 ? 'fixed' : 'dates-not-loaded'));
+    }
+  });
+
+  it('40 個行程 × 1 方案：前 30 個行程載入，其餘 dates-not-loaded', async () => {
+    fx.trips = Array.from({ length: 40 }, (_, i) => `trip-${String(i).padStart(2, '0')}`);
+    fx.plans = Object.fromEntries(fx.trips.map((t) => [`${t}-p`, { trip: t, mode: 'REQUEST', min: 1, rows: [ok(2)] } as PlanFx]));
+    const data = await loadPublicShop('demo');
+    data!.trips.forEach((trip, i) => expect(trip.plans[0].bookingCta, trip.id).toBe(i < 30 ? 'request' : 'dates-not-loaded'));
+  });
+
+  it('同 sort_order 的方案以 id 排序，與詳情頁順序一致（首頁超過上限時被選中的是同一批）', async () => {
+    // 插入順序故意與 id 相反；同 sort_order，總共 31 個方案，第 31 個（id 最大）應是未載入的那個。
+    const ids = Array.from({ length: 31 }, (_, i) => `p${String(i).padStart(2, '0')}`).reverse();
+    fx.plans = Object.fromEntries(ids.map((id) => [id, { mode: 'FIXED_DEPARTURE', min: 1, rows: [ok(2)] } as PlanFx]));
+    const data = await loadPublicShop('demo');
+    const detail = await loadPublicTripDetails('demo', 'trip-1');
+    const homeIds = data!.trips[0].plans.map((p) => p.id);
+    expect(homeIds).toEqual(detail!.trip.plans.map((p) => p.id));
+    expect(homeIds).toEqual([...ids].sort());
+    expect(data!.trips[0].plans.find((p) => p.id === 'p30')!.bookingCta).toBe('dates-not-loaded');
+    expect(data!.trips[0].plans.find((p) => p.id === 'p00')!.bookingCta).toBe('fixed');
+  });
+
   it('INSTANT → none', async () => {
     fx.plans = { i: { mode: 'INSTANT', min: 1, rows: [ok(3)] } };
     expect(await homeCta()).toEqual({ i: 'none' });
@@ -112,7 +157,7 @@ describe('#747 首頁方案入口與詳情頁一致', () => {
       i: { mode: 'INSTANT', min: 1, rows: [] },
     };
     const home = await homeCta();
-    const detail = await loadPublicTripDetails('demo', 'hike');
+    const detail = await loadPublicTripDetails('demo', 'trip-1');
     expect(detail).not.toBeNull();
     for (const plan of detail!.trip.plans) {
       expect(home[plan.id], plan.id).toBe(bookingCtaState(plan));

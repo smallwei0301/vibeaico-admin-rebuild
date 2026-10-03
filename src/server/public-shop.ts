@@ -436,7 +436,8 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
           // 加欄位必須有人主動決定它可不可以公開（見檔頭三條規則）。
           .select('id, trip_id, name, description, price_per_person, price_type, min_party, max_party, sales_mode')
           .eq('tenant_id', tenantId).in('trip_id', tripIds).eq('active', true)
-          .order('sort_order', { ascending: true }),
+          .order('sort_order', { ascending: true })
+          .order('id', { ascending: true }),
         admin.from('trip_departures')
           .select('id, trip_id, departs_on, start_time, capacity, seats_booked')
           .eq('tenant_id', tenantId).in('trip_id', tripIds)
@@ -458,13 +459,23 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
   }
 
   // #747：首頁方案入口與詳情頁用同一套規則（loadPlanDepartureWindow＋bookingCtaState，店家時區的「今天」）。
-  // 只對前 N 個 FIXED／REQUEST 方案查團次（與詳情頁同上限）；其餘或查詢失敗一律視為「團次未載入」，
-  // 不顯示可點入口、也不讓整頁失敗。
-  const homePlans = (tripRows ?? []).flatMap((trip) =>
-    (plansByTrip.get(trip.id as string) ?? [])
-      .filter(hasPublicDepartureList)
-      .map((plan) => ({ tripId: trip.id as string, plan })))
-    .slice(0, MAX_DETAIL_PLANS_WITH_DEPARTURES);
+  // 團次查詢總數上限與詳情頁同為 N（單一匿名請求的查詢數不隨店家行程數放大）。為避免前面的行程吃光名額、
+  // 讓後面行程的方案全變「團次未載入」，改以 round-robin 選取：依行程順序，先取每個行程的第 1 個可查方案，
+  // 再取第 2 個…直到湊滿 N 個。單一行程內順序與詳情頁一致（sort_order、id），且單一行程最多取 N 個
+  // （不會比詳情頁多）。未被選中或查詢失敗的方案一律視為「團次未載入」，不顯示可點入口、也不讓整頁失敗。
+  const eligibleByTrip = (tripRows ?? []).map((trip) => ({
+    tripId: trip.id as string,
+    plans: (plansByTrip.get(trip.id as string) ?? []).filter(hasPublicDepartureList)
+      .slice(0, MAX_DETAIL_PLANS_WITH_DEPARTURES),
+  }));
+  const homePlans: Array<{ tripId: string; plan: PublicPlan }> = [];
+  for (let index = 0; index < MAX_DETAIL_PLANS_WITH_DEPARTURES && homePlans.length < MAX_DETAIL_PLANS_WITH_DEPARTURES; index += 1) {
+    for (const { tripId, plans } of eligibleByTrip) {
+      if (index < plans.length && homePlans.length < MAX_DETAIL_PLANS_WITH_DEPARTURES) {
+        homePlans.push({ tripId, plan: plans[index] });
+      }
+    }
+  }
   const loadedWindows = new Map<string, Awaited<ReturnType<typeof loadPlanDepartureWindow>>>();
   await mapWithConcurrency(homePlans, DETAIL_PLAN_QUERY_CONCURRENCY, async ({ tripId, plan }) => {
     try {
