@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { parse } from 'yaml';
 import * as dualPolicy from '../../scripts/agents/dual-terra-wip-policy.mjs';
 import * as alertPolicy from '../../scripts/agents/wip-alert-fingerprint.mjs';
 import * as astraPolicy from '../../scripts/agents/astra-review-policy.mjs';
@@ -76,9 +77,9 @@ function truth(body: string, changedFiles: any[] = ['supabase/migrations/0113_te
 // Execute the actual trusted workflow script with real policy modules and fake GitHub I/O.
 // Vitest's VM cannot dynamically import from AsyncFunction. Replace module loading only,
 // not policy behavior: each exact trusted file URL resolves to its real static import.
-async function runWorkflow(file: string, current = subject(), files: any[] = paths, peers: any[] = []) {
+async function runWorkflow(file: string, current = subject(), files: any[] = paths, peers: any[] = [], job = 'guard') {
   vi.stubEnv('GITHUB_WORKSPACE', process.cwd());
-  const failures: string[] = []; const statuses: any[] = []; const calls: string[] = [];
+  const failures: string[] = []; const statuses: any[] = []; const calls: string[] = []; const comments: string[] = [];
   const labels = new Set<string>(current.labels.map((label: any) => label.name));
   const listFiles = vi.fn(); const list = vi.fn(); const listComments = vi.fn();
   const summary: any = {};
@@ -101,7 +102,7 @@ async function runWorkflow(file: string, current = subject(), files: any[] = pat
       issues: { listComments, getLabel: async () => ({}),
         addLabels: async ({ labels: added }: any) => { calls.push('labels'); added.forEach((name: string) => labels.add(name)); },
         removeLabel: async ({ name }: any) => { calls.push('labels'); labels.delete(name); },
-        createComment: async () => { calls.push('comment'); },
+        createComment: async ({ body }: any) => { calls.push('comment'); comments.push(body); },
         updateComment: async () => { calls.push('comment'); },
         setLabels: async () => { throw new Error('Whole-label replacement is forbidden'); } },
       actions: { createWorkflowDispatch: async () => { calls.push('dispatch'); } },
@@ -116,11 +117,11 @@ async function runWorkflow(file: string, current = subject(), files: any[] = pat
     },
   };
   const context: any = { repo: { owner: 'owner', repo: 'repo' }, eventName: 'pull_request_target',
-    payload: { action: 'opened', pull_request: current, repository: { default_branch: 'main' } },
+    payload: { action: job === 'terminal_cleanup' ? 'closed' : 'opened', pull_request: current, repository: { default_branch: 'main' } },
     serverUrl: 'https://github.com', runId: 1 };
-  const source = readFileSync(file, 'utf8').split('          script: |\n')[1];
-  expect(source).toBeTruthy();
-  const script = source.split('\n').map(line => line.replace(/^ {12}/, '')).join('\n');
+  const jobName = file.endsWith('agent-workstream-classification.yml') ? 'classify' : job;
+  const script = parse(readFileSync(file, 'utf8')).jobs[jobName].steps.find((step: any) => step.with?.script)?.with.script;
+  expect(script).toBeTruthy();
   const modules = new Map<string, unknown>([
     ['dual-terra-wip-policy.mjs', dualPolicy],
     ['wip-alert-fingerprint.mjs', alertPolicy],
@@ -139,7 +140,7 @@ async function runWorkflow(file: string, current = subject(), files: any[] = pat
   await new AsyncFunction('require', 'process', 'github', 'context', 'core', 'loadPolicy', executable)(
     createRequire(import.meta.url), process, github, context,
     { summary, setFailed: (message: string) => failures.push(message), warning: () => {} }, loadPolicy);
-  return { failures, statuses, calls, labels };
+  return { failures, statuses, calls, labels, comments };
 }
 afterEach(() => vi.unstubAllEnvs());
 
@@ -185,18 +186,20 @@ describe('governance boundary regression #500', () => {
       const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', subject(body));
       expect(result.failures.join('\n')).toContain('AGENT_LANE=GOVERNANCE must use DELIVERY_UNIT_TYPE=GOVERNANCE');
     });
-    it('keeps closed OWNER housekeeping ahead of validation and only rewrites current terminal fields', async () => {
+    it('keeps closed OWNER housekeeping ahead of validation without replacing the PR body', async () => {
       const body = gov.replace('WORK_ORIGIN: AGENT', 'WORK_ORIGIN: OWNER')
         .replace('DELIVERY_UNIT_TYPE: GOVERNANCE', 'DELIVERY_UNIT_TYPE: STANDALONE');
       const current = { ...subject(body), state: 'closed', merged: true };
-      const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current);
+      const guard = await runWorkflow('.github/workflows/agent-wip-guard.yml', current);
+      expect(guard.statuses).toEqual([]); expect(guard.calls).toEqual([]);
+      const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current, paths, [], 'terminal_cleanup');
       expect(result.statuses).toEqual([]);
       expect(result.failures).toEqual([]);
-      expect(result.calls).toContain('body');
-      expect(current.body).toContain('LANE_STATE: COMPLETE');
+      expect(result.calls).not.toContain('body');
+      expect(current.body).toContain('LANE_STATE: ACTIVE');
       expect(current.body).toContain('ACTIVE_CANDIDATE: false');
       expect(result.calls).not.toContain('dispatch');
-      expect(result.calls).not.toContain('comment');
+      expect(result.calls).toContain('comment'); // Durable STATE_SYNC_PENDING handoff.
     });
   });
 
@@ -248,6 +251,9 @@ describe('governance boundary regression #500', () => {
     expect(terminalLabelPlan(subject())).toBeNull();
     expect(terminalLabelPlan({ state: 'closed', merged: true })?.add).toBe('state:complete');
     expect(terminalLabelPlan({ state: 'closed', merged: false })?.add).toBe('state:historical');
+    expect(terminalLabelPlan({ state: 'closed', merged: true })?.remove).toEqual(expect.arrayContaining(['governance:lane-metadata-incomplete', 'governance:wip-violation']));
+    expect(terminalLabelPlan({ state: 'closed', merged: false })?.remove).not.toContain('governance:lane-metadata-incomplete');
+    expect(terminalLabelPlan({ state: 'closed', merged: false })?.remove).not.toContain('governance:wip-violation');
   });
   it('executes the real guard: malformed Product peers cannot block valid governance', async () => {
     const peers = Array.from({ length: 4 }, (_, index) => ({ ...subject(product), number: index + 1, draft: false }));
@@ -264,18 +270,79 @@ describe('governance boundary regression #500', () => {
       [{ filename: paths[0], previous_filename: 'src/server/payment.ts' }]);
     expect(result.failures.length).toBeGreaterThan(0);
   });
-  it('executes closed-event cleanup without a pending status, TEST or rewritten comments', async () => {
+  it('executes closed-event cleanup without a pending status or TEST and leaves a sync handoff', async () => {
     const current = { ...subject(), state: 'closed', merged: true,
       labels: [{ name: 'state:active' }, { name: 'candidate:active' }, { name: 'unrelated:keep' }] };
-    const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current);
+    const guard = await runWorkflow('.github/workflows/agent-wip-guard.yml', current);
+    expect(guard.statuses).toEqual([]); expect(guard.calls).toEqual([]);
+    const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current, paths, [], 'terminal_cleanup');
     expect(result.statuses).toEqual([]);
-    expect(result.calls).toContain('body');
+    expect(result.calls).not.toContain('body');
     expect(result.calls.filter(call => call === 'labels').length).toBeGreaterThan(0);
     expect(result.calls).not.toContain('dispatch');
-    expect(result.calls).not.toContain('comment');
-    expect(current.body).toContain('state: MERGED');
-    expect(current.body).toContain('LANE_STATE: COMPLETE');
+    expect(result.calls).toContain('comment');
+    expect(current.body).toContain('state: ACTIVE');
+    expect(current.body).toContain('LANE_STATE: ACTIVE');
     expect([...result.labels].sort()).toEqual(['state:complete', 'unrelated:keep']);
+  });
+  it.each([[true, 'state:complete', false], [false, 'state:historical', true]])(
+    'keeps warning labels only on unmerged closed PRs (merged=%s)', async (merged, stateLabel, keepWarnings) => {
+      const current = { ...subject(), state: 'closed', merged, closed_at: created_at, labels: [{ name: 'governance:lane-metadata-incomplete' }, { name: 'governance:wip-violation' }] };
+      const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current, paths, [], 'terminal_cleanup');
+      expect(result.labels.has(stateLabel)).toBe(true);
+      for (const label of ['governance:lane-metadata-incomplete', 'governance:wip-violation']) expect(result.labels.has(label)).toBe(keepWarnings);
+      expect(result.calls).not.toContain('body');
+    });
+  it('deduplicates only the trusted bot handoff for the same close generation', async () => {
+    const initialBody = gov.replace('state: ACTIVE', 'state: HISTORICAL').replace('LANE_STATE: ACTIVE', 'LANE_STATE: HISTORICAL').replace('REMAINING_AUTONOMOUS_STEPS: source CI and exact-diff verification', 'REMAINING_AUTONOMOUS_STEPS: none') + '\nMERGE_STATUS: NOT_REQUESTED\nCOMPLETION_CLAIM: VERIFIED_CLOSED';
+    const closed = { ...subject(initialBody), state: 'closed', merged: false, closed_at: '2026-10-02T07:00:00Z', labels: [{ name: 'state:active' }] };
+    const marker = `<!-- agent-terminal-state-sync:v1 pr=900 head=${closed.head.sha} closed_at=${closed.closed_at} -->`;
+    const comments: any[] = [{ user: { login: 'untrusted', id: 10 }, body: `${marker}\nSTATE_SYNC_PENDING` }];
+    const listComments = vi.fn();
+    const github: any = { rest: {
+      pulls: { get: vi.fn(async () => ({ data: structuredClone(closed) })), update: vi.fn(() => { throw new Error('Body replacement forbidden'); }) },
+      issues: { listComments, removeLabel: vi.fn(async ({ name }: any) => { closed.labels = closed.labels.filter((label: { name: string }) => label.name !== name); }),
+        getLabel: vi.fn(async () => ({})), addLabels: vi.fn(async ({ labels }: any) => { closed.labels.push(...labels.map((name: string) => ({ name }))); }), createComment: vi.fn(async ({ body }: any) => {
+        comments.push({ user: { login: 'github-actions[bot]', id: 41898282 }, body });
+      }) },
+    }, paginate: vi.fn(async (method: any) => method === listComments ? comments : []) };
+    const call = () => boundaryPolicy.reconcileTerminalPr({ github, owner: 'owner', repo: 'repo', current: structuredClone(closed) });
+    await call();
+    expect(github.rest.issues.createComment).toHaveBeenCalledTimes(1); // A forged marker cannot suppress handoff.
+    expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: MERGE_STATUS');
+    await call();
+    expect(github.rest.issues.createComment).toHaveBeenCalledTimes(1);
+    closed.body = closed.body.replace('OWNER_OR_EXTERNAL_BLOCKER: none', 'OWNER_OR_EXTERNAL_BLOCKER: old queue');
+    await call();
+    expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: MERGE_STATUS, OWNER_OR_EXTERNAL_BLOCKER');
+    closed.body = closed.body.replace('MERGE_STATUS: NOT_REQUESTED', 'MERGE_STATUS: VERIFIED_NOT_MERGED')
+      .replace('OWNER_OR_EXTERNAL_BLOCKER: old queue', 'OWNER_OR_EXTERNAL_BLOCKER: none');
+    await call();
+    expect(comments.at(-1).body).toContain('STATE_SYNC_RESOLVED');
+    await call();
+    expect(github.rest.issues.createComment).toHaveBeenCalledTimes(3);
+    expect(github.rest.pulls.update).not.toHaveBeenCalled();
+    closed.body = closed.body.replace('MERGE_STATUS: VERIFIED_NOT_MERGED', 'MERGE_STATUS: NOT_REQUESTED');
+    const pendingBody = closed.body;
+    github.paginate.mockImplementationOnce(async () => { closed.state = 'open'; closed.body = gov; return comments; });
+    await call(); expect(github.rest.issues.createComment).toHaveBeenCalledTimes(3);
+    expect(closed.labels.map((label: any) => label.name)).toContain('state:active');
+    closed.state = 'closed'; closed.body = pendingBody; github.rest.issues.updateComment = vi.fn(async ({ body }: any) => { comments.at(-1).body = body; });
+    github.rest.issues.createComment.mockImplementationOnce(async ({ body }: any) => { comments.push({ body, user: { login: 'github-actions[bot]', id: 41898282 } }); closed.state = 'open'; closed.body = gov; return { data: { id: 4, body } }; });
+    await call(); expect(github.rest.issues.updateComment).toHaveBeenCalledWith(expect.objectContaining({ comment_id: 4, body: expect.stringContaining('STATE_SYNC_SUPERSEDED') }));
+    expect(closed.labels.map((label: any) => label.name)).toContain('state:active');
+    closed.state = 'closed'; closed.body = pendingBody; await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_PENDING');
+    github.paginate.mockImplementationOnce(async () => { closed.state = 'open'; closed.body = gov; throw Error('inventory failed'); });
+    await expect(call()).rejects.toThrow('inventory failed'); expect(closed.labels.map((label: any) => label.name)).toContain('state:active');
+    closed.state = 'closed'; closed.body = pendingBody.replace('OWNER_OR_EXTERNAL_BLOCKER: none', 'OWNER_OR_EXTERNAL_BLOCKER: new queue');
+    github.rest.issues.createComment.mockImplementationOnce(async ({ body }: any) => { comments.push({ id: 5, body, user: { login: 'github-actions[bot]', id: 41898282 } }); closed.state = 'open'; closed.body = gov; throw Error('create failed'); });
+    await expect(call()).rejects.toThrow('create failed'); expect(closed.labels.map((label: any) => label.name)).toContain('state:active');
+    expect(comments.at(-1).body).toContain('STATE_SYNC_SUPERSEDED');
+    closed.state = 'closed'; closed.body = pendingBody.replace('OWNER_OR_EXTERNAL_BLOCKER: none', 'OWNER_OR_EXTERNAL_BLOCKER: third queue');
+    github.rest.issues.createComment.mockImplementationOnce(async ({ body }: any) => { comments.push({ id: 6, body, user: { login: 'github-actions[bot]', id: 41898282 } }); closed.body = pendingBody; throw Error('create after body edit'); });
+    await expect(call()).rejects.toThrow('create after body edit'); expect(comments.at(-1).body).toContain('STATE_SYNC_SUPERSEDED');
+    closed.body = pendingBody; await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_PENDING');
+    closed.closed_at = '2026-10-02T08:00:00Z'; closed.body = pendingBody.replace('MERGE_STATUS: NOT_REQUESTED', 'MERGE_STATUS: VERIFIED_NOT_MERGED'); await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_RESOLVED'); closed.body += '\nEXACT_HEAD_CI_STATUS: VERIFIED_GREEN\nEXACT_HEAD_CI_RUN: https://github.com/owner/repo/actions/runs/999\nLOCAL_JOB_RESULT: VERIFIED_GREEN\nREMOTE_JOB_RESULT: VERIFIED_GREEN'; await call(); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: EXACT_HEAD_CI_STATUS, EXACT_HEAD_CI_RUN, LOCAL_JOB_RESULT, REMOTE_JOB_RESULT'); closed.body = closed.body.replace(/\n(?:EXACT_HEAD_CI_STATUS|EXACT_HEAD_CI_RUN|LOCAL_JOB_RESULT|REMOTE_JOB_RESULT):[^\n]*/g, '') + `\nMAIN_HEAD_VERIFIED: true\nMAIN_HEAD_SHA: ${'c'.repeat(40)}\nMAIN_FILE_RE_READ: docs/AGENT-EXECUTION.md`; await call(); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: MAIN_HEAD_VERIFIED, MAIN_HEAD_SHA, MAIN_FILE_RE_READ'); closed.body = pendingBody.replace('MERGE_STATUS: NOT_REQUESTED', 'MERGE_STATUS: VERIFIED_NOT_MERGED'); closed.labels = [{ name: 'state:active' }]; github.rest.issues.addLabels.mockImplementationOnce(async ({ labels }: any) => { closed.labels.push(...labels.map((name: string) => ({ name })), { name: 'state:active' }); }); await call(); expect(comments.at(-1).body).toContain('TERMINAL_LABELS_UNVERIFIED');
   });
 
   it('rewrites only live terminal declarations and preserves fenced examples', () => {
@@ -291,18 +358,102 @@ describe('governance boundary regression #500', () => {
 
   it('marks closed-unmerged lifecycle metadata HISTORICAL', () => {
     const plan = terminalBodyPlan({ state: 'closed', merged: false, body: gov });
-    expect(plan?.errors).toEqual([]);
+    expect(plan?.errors).toEqual([]); expect(plan?.unsyncedFields).toEqual(expect.arrayContaining(['MERGE_STATUS', 'COMPLETION_CLAIM']));
     expect(plan?.body).toContain('state: HISTORICAL');
     expect(plan?.body).toContain('LANE_STATE: HISTORICAL');
     expect(plan?.body).toContain('ACTIVE_CANDIDATE: false');
   });
 
   it('fails safe when multiple current pr-lifecycle blocks exist', () => {
-    const extra = '<!-- pr-lifecycle\nissue: 501\nstate: ACTIVE\nsupersedes: none\n-->';
-    const plan = terminalBodyPlan({ state: 'closed', merged: true, body: gov + '\n' + extra });
-    expect(plan?.errors.join(' ')).toContain('Ambiguous pr-lifecycle blocks');
+    const extra = '<!-- pr-lifecycle\nissue: 501\nstate: ACTIVE\nsupersedes: none\n-->'; for (const separator of ['\n', '']) { const plan = terminalBodyPlan({ state: 'closed', merged: true, body: gov.replace('-->', `-->${separator}${extra}`) }); expect(plan?.errors.join(' ')).toContain('Ambiguous pr-lifecycle blocks'); }
   });
 
+  it.each([
+    ['pr-lifecycle.state', 'WORKSTREAM: MODEL_GOVERNANCE\nAGENT_LANE: GOVERNANCE\nMERGE_STATUS: NOT_REQUESTED\nCOMPLETION_CLAIM: IN_PROGRESS'], ['pr-lifecycle.state', '<!-- pr-lifecycle\nstate: ACTIVE\n'],
+    ['LANE_STATE', gov.replace('LANE_STATE: ACTIVE\n', '')], ['LANE_STATE', 'WORK_ORIGIN: AGENT\nLANE_STATE: ACTIVE\n```text\nexample'],
+    ['ACTIVE_CANDIDATE', gov + '\nACTIVE_CANDIDATE: false\n'],
+  ])('names %s as an unsynced body field when its declaration is missing or ambiguous', (field, body) => {
+    const plan = terminalBodyPlan({ state: 'closed', merged: true, body });
+    expect(plan?.unsyncedFields).toContain(field);
+    expect(plan?.errors.length).toBeGreaterThan(0);
+  });
+  it('puts failed and changed fields together in the actual STATE_SYNC_PENDING handoff', async () => {
+    const closed = { ...subject(gov + '\nACTIVE_CANDIDATE: true\n'), state: 'closed', merged: true, closed_at: created_at, labels: [] as { name: string }[] };
+    const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', closed, paths, [], 'terminal_cleanup');
+    expect(result.comments).toEqual([expect.stringContaining('UNSYNCED_FIELDS: pr-lifecycle.state, LANE_STATE, ACTIVE_CANDIDATE')]);
+  });
+  it('lists other current-state fields for manual terminal closeout without rewriting them', async () => {
+    const body = gov.replace('OWNER_OR_EXTERNAL_BLOCKER: none', 'OWNER_OR_EXTERNAL_BLOCKER: waiting on old TEST queue') +
+      '\nMERGE_STATUS: NOT_REQUESTED\nCOMPLETION_CLAIM: IN_PROGRESS\n';
+    const closed = { ...subject(body), state: 'closed', merged: true, closed_at: created_at, labels: [] };
+    const plan = terminalBodyPlan(closed);
+    expect(plan?.unsyncedFields).toEqual(expect.arrayContaining(['MERGE_STATUS', 'COMPLETION_CLAIM', 'OWNER_OR_EXTERNAL_BLOCKER', 'REMAINING_AUTONOMOUS_STEPS']));
+    const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', closed, paths, [], 'terminal_cleanup');
+    expect(result.comments[0]).toContain('MERGE_STATUS, COMPLETION_CLAIM');
+    expect(result.calls).not.toContain('body');
+  });
+  it.each([[false, gov.replace('REMAINING_AUTONOMOUS_STEPS: source CI and exact-diff verification', 'REMAINING_AUTONOMOUS_STEPS: none') + '\nMERGE_STATUS: VERIFIED_NOT_MERGED\nCOMPLETION_CLAIM: VERIFIED_CLOSED'], [true, gov.replace('REMAINING_AUTONOMOUS_STEPS: source CI and exact-diff verification', 'REMAINING_AUTONOMOUS_STEPS: none') + '\n```text\nMERGE_STATUS: NOT_REQUESTED\nCOMPLETION_CLAIM: IN_PROGRESS']])('does not use fenced examples as merged receipts', (merged, body) => {
+    const unsynced = terminalBodyPlan({ state: 'closed', merged, body })?.unsyncedFields;
+    for (const field of ['MERGE_STATUS', 'COMPLETION_CLAIM']) expect(unsynced?.includes(field)).toBe(merged);
+    for (const field of ['OWNER_OR_EXTERNAL_BLOCKER', 'REMAINING_AUTONOMOUS_STEPS']) expect(unsynced).not.toContain(field);
+  });
+  it.each([[false, 'VERIFIED_MERGED'], [true, 'VERIFIED_CLOSED'], [true, 'OWNER_BLOCKED']])('flags %s terminal PR with mismatched claim %s', (merged, claim) => {
+    const body = gov.replace('state: ACTIVE', `state: ${merged ? 'MERGED' : 'HISTORICAL'}`).replace('LANE_STATE: ACTIVE', `LANE_STATE: ${merged ? 'COMPLETE' : 'HISTORICAL'}`).replace('REMAINING_AUTONOMOUS_STEPS: source CI and exact-diff verification', 'REMAINING_AUTONOMOUS_STEPS: none') + `\nMERGE_STATUS: ${merged ? 'VERIFIED_MERGED' : 'VERIFIED_NOT_MERGED'}\nCOMPLETION_CLAIM: ${claim}`;
+    expect(terminalBodyPlan({ state: 'closed', merged, body })?.unsyncedFields).toContain('COMPLETION_CLAIM');
+  });
+  it('keeps merged Completion Truth receipt gaps in the pending handoff', async () => {
+    const body = gov.replace('state: ACTIVE', 'state: MERGED').replace('LANE_STATE: ACTIVE', 'LANE_STATE: COMPLETE')
+      .replace('REMAINING_AUTONOMOUS_STEPS: source CI and exact-diff verification', 'REMAINING_AUTONOMOUS_STEPS: none') +
+      '\nMERGE_STATUS: VERIFIED_MERGED\nCOMPLETION_CLAIM: VERIFIED_MERGED\nMERGE_COMMIT_SHA: none\nMAIN_HEAD_VERIFIED: false\nMAIN_HEAD_SHA: none\nMAIN_FILE_RE_READ: none\nVERIFIED_AT: none\nEXACT_HEAD_CI_STATUS: NOT_RUN\nEXACT_HEAD_CI_RUN: none\nLOCAL_JOB_RESULT: NOT_RUN\nREMOTE_JOB_RESULT: NOT_RUN';
+    const closed = { ...subject(body), state: 'closed', merged: true, closed_at: created_at, labels: [] };
+    const fields = ['MERGE_COMMIT_SHA', 'MAIN_HEAD_VERIFIED', 'MAIN_HEAD_SHA', 'MAIN_FILE_RE_READ', 'VERIFIED_AT', 'EXACT_HEAD_CI_STATUS', 'EXACT_HEAD_CI_RUN', 'LOCAL_JOB_RESULT', 'REMOTE_JOB_RESULT'];
+    expect(terminalBodyPlan(closed)?.unsyncedFields).toEqual(fields);
+    const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', closed, paths, [], 'terminal_cleanup');
+    expect(result.comments[0]).toContain(`UNSYNCED_FIELDS: ${fields.join(', ')}`);
+    expect(result.calls).not.toContain('body');
+    const receipts = { MERGE_COMMIT_SHA: 'a'.repeat(40), MAIN_HEAD_VERIFIED: 'true', MAIN_HEAD_SHA: 'c'.repeat(40),
+      MAIN_FILE_RE_READ: 'docs/AGENT-EXECUTION.md', VERIFIED_AT: created_at, EXACT_HEAD_CI_STATUS: 'VERIFIED_GREEN', EXACT_HEAD_CI_RUN: 'https://github.com/owner/repo/actions/runs/1', LOCAL_JOB_RESULT: 'SKIPPED', REMOTE_JOB_RESULT: 'SKIPPED' };
+    const verified = Object.entries(receipts).reduce((text, [field, value]) => text.replace(new RegExp(`${field}: [^\\n]*`), `${field}: ${value}`), body);
+    expect(terminalBodyPlan({ ...closed, body: verified, merge_commit_sha: 'a'.repeat(40) })?.unsyncedFields).toEqual([]);
+    expect(terminalBodyPlan({ ...closed, body: verified, merge_commit_sha: 'c'.repeat(40) })?.unsyncedFields).toContain('MERGE_COMMIT_SHA');
+    const live = { ...closed, body: verified, merge_commit_sha: 'a'.repeat(40), base: { ref: 'main' }, changed_files: 1 };
+    const comments: any[] = [{ body: `<!-- agent-terminal-state-sync:v1 pr=900 head=${live.head.sha} closed_at=${live.closed_at} digest=old -->\nSTATE_SYNC_PENDING`, user: { login: 'github-actions[bot]', id: 41898282 } }]; const listFiles = vi.fn(), files = [{ filename: 'docs/AGENT-EXECUTION.md', status: 'modified' }];
+    const github: any = { rest: { pulls: { get: vi.fn(async () => ({ data: structuredClone(live) })), listFiles },
+      issues: { listComments: vi.fn(), removeLabel: vi.fn(), getLabel: vi.fn(async () => ({})), addLabels: vi.fn(async ({ labels }: any) => { live.labels.push(...labels.map((name: string) => ({ name }))); }), createComment: vi.fn(async ({ body }: any) => { comments.push({ body, user: { login: 'github-actions[bot]', id: 41898282 } }); return { data: { id: comments.length } }; }), updateComment: vi.fn(async ({ comment_id, body }: any) => { comments[comment_id - 1].body = body; }) },
+      repos: { getBranch: vi.fn(async () => ({ data: { commit: { sha: 'c'.repeat(40) } } })), compareCommitsWithBasehead: vi.fn(async () => ({ data: { status: 'ahead' } })), getContent: vi.fn(async () => ({ data: { type: 'file' } })) },
+      actions: { listWorkflowRuns: vi.fn(async () => ({ data: { total_count: 1, workflow_runs: [{ id: 1, head_sha: live.head.sha, event: 'pull_request', path: '.github/workflows/ci.yml', pull_requests: [{ number: 900 }], created_at }] } })), getWorkflowRun: vi.fn(async () => ({ data: { head_sha: live.head.sha, status: 'completed', conclusion: 'success', event: 'pull_request', path: '.github/workflows/ci.yml', pull_requests: [{ number: 900 }] } })) },
+    }, paginate: vi.fn(async method => method === listFiles ? files : comments) };
+    const call = () => boundaryPolicy.reconcileTerminalPr({ github, owner: 'owner', repo: 'repo', current: live });
+    await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_RESOLVED'); const uncertain = async (drift: 'main' | 'labels', fallback = false) => { comments.push({ id: comments.length + 1, body: `<!-- agent-terminal-state-sync:v1 pr=900 head=${live.head.sha} closed_at=${live.closed_at} digest=retry -->\nSTATE_SYNC_PENDING`, user: { login: 'github-actions[bot]', id: 41898282 } }); const id = comments.length + 1; github.rest.issues.createComment.mockImplementationOnce(async ({ body }: any) => { comments.push({ id, body, user: { login: 'github-actions[bot]', id: 41898282 } }); if (drift === 'main') github.rest.repos.getBranch.mockResolvedValueOnce({ data: { commit: { sha: 'd'.repeat(40) } } }); else live.labels.push({ name: 'state:active' }); throw Error('response lost after remote create'); }); if (fallback) github.rest.issues.updateComment.mockRejectedValueOnce(Error('supersede failed')); await expect(call()).rejects.toThrow('response lost after remote create'); expect(comments[id - 1].body).toContain(fallback ? 'STATE_SYNC_RESOLVED' : 'STATE_SYNC_SUPERSEDED'); if (fallback) expect(comments.at(-1).body).toContain('STATE_SYNC_PENDING'); if (drift === 'labels') live.labels = live.labels.filter((label: { name: string }) => label.name !== 'state:active'); }; await uncertain('main'); await uncertain('labels'); await uncertain('main', true); github.rest.repos.getBranch.mockResolvedValueOnce({ data: { commit: { sha: 'c'.repeat(40) } } }).mockResolvedValueOnce({ data: { commit: { sha: 'd'.repeat(40) } } }); await call(); expect(comments.at(-1).body).toContain('LIVE_MAIN_RECEIPT_UNVERIFIED:main moved'); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: MAIN_HEAD_SHA, MAIN_HEAD_VERIFIED, MAIN_FILE_RE_READ'); github.rest.repos.getBranch.mockResolvedValueOnce({ data: { commit: { sha: 'c'.repeat(40) } } }).mockResolvedValueOnce({ data: { commit: { sha: 'c'.repeat(40) } } }).mockResolvedValueOnce({ data: { commit: { sha: 'd'.repeat(40) } } }); await call(); expect(comments.at(-1).body).toContain('LIVE_MAIN_RECEIPT_UNVERIFIED:main moved'); const createComment = github.rest.issues.createComment.getMockImplementation(); github.rest.issues.createComment.mockImplementationOnce(createComment).mockImplementationOnce(async () => { throw Error('pending create failed'); }); github.rest.repos.getBranch.mockResolvedValueOnce({ data: { commit: { sha: 'c'.repeat(40) } } }).mockResolvedValueOnce({ data: { commit: { sha: 'c'.repeat(40) } } }).mockResolvedValueOnce({ data: { commit: { sha: 'd'.repeat(40) } } }); await expect(call()).rejects.toThrow('pending create failed'); expect(comments.at(-1).body).toContain('STATE_SYNC_SUPERSEDED'); live.body = 'Historical prose only'; await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_RESOLVED'); live.body = verified.replace(`MAIN_HEAD_SHA: ${'c'.repeat(40)}`, `MAIN_HEAD_SHA: ${'b'.repeat(40)}`); await call(); expect(comments.at(-1).body).toContain('declared main SHA does not match live main'); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: MAIN_HEAD_SHA, MAIN_HEAD_VERIFIED, MAIN_FILE_RE_READ'); live.body = verified.replace('MAIN_FILE_RE_READ: docs/AGENT-EXECUTION.md', 'MAIN_FILE_RE_READ: README.md'); await call(); expect(comments.at(-1).body).toContain('main re-read path is not a changed PR file'); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: MAIN_FILE_RE_READ'); live.body = verified;
+    live.body = verified.replace('LOCAL_JOB_RESULT: SKIPPED', 'LOCAL_JOB_RESULT: VERIFIED_GREEN'); await call(); expect(comments.at(-1).body).toContain('local isolated integration/E2E evidence not verified'); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: LOCAL_JOB_RESULT'); live.body = verified;
+    live.body = verified.replace('REMOTE_JOB_RESULT: SKIPPED', 'REMOTE_JOB_RESULT: VERIFIED_GREEN'); github.rest.actions.listJobsForWorkflowRun = vi.fn(async () => ({ data: { total_count: 1, jobs: [{ name: 'integration', status: 'completed', conclusion: 'success', steps: [{ name: 'Run integration tests', conclusion: 'skipped' }, { name: 'Run E2E tests', conclusion: 'skipped' }] }] } }));
+    await call(); expect(comments.at(-1).body).toContain('remote integration/E2E steps not verified'); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: REMOTE_JOB_RESULT');
+    github.rest.actions.listJobsForWorkflowRun.mockResolvedValue({ data: { total_count: 1, jobs: [{ name: 'integration', status: 'completed', conclusion: 'success', steps: [{ name: 'Run integration tests', conclusion: 'success' }, { name: 'Run E2E tests', conclusion: 'success' }] }] } }); await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_RESOLVED'); live.body = verified;
+    live.body = verified.replace('EXACT_HEAD_CI_RUN: https://github.com/owner/repo/actions/runs/1', 'EXACT_HEAD_CI_RUN: https://github.com/owner/repo/actions/runs/2'); github.rest.actions.listWorkflowRuns.mockResolvedValue({ data: { total_count: 1, workflow_runs: [{ id: 2, head_sha: live.head.sha, event: 'workflow_dispatch', path: '.github/workflows/ci.yml', pull_requests: [] }] } }); await call(); expect(comments.at(-1).body).toContain('LIVE_MAIN_RECEIPT_UNVERIFIED'); github.rest.actions.listWorkflowRuns.mockResolvedValue({ data: { total_count: 1, workflow_runs: [{ id: 1, head_sha: live.head.sha, event: 'pull_request', path: '.github/workflows/ci.yml', pull_requests: [{ number: 900 }] }] } }); live.body = verified; github.rest.actions.getWorkflowRun.mockResolvedValueOnce({ data: { head_sha: live.head.sha, status: 'completed', conclusion: 'failure', event: 'pull_request', path: '.github/workflows/ci.yml', pull_requests: [{ number: 900 }] } }); await call(); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: EXACT_HEAD_CI_STATUS, EXACT_HEAD_CI_RUN');
+    live.body = verified.replace(/^MERGE_COMMIT_SHA:.*\n/m, ''); await call(); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: MERGE_COMMIT_SHA');
+    live.body = verified.replace(/^(?:MERGE_STATUS|COMPLETION_CLAIM|MERGE_COMMIT_SHA|MAIN_HEAD_VERIFIED|MAIN_HEAD_SHA|MAIN_FILE_RE_READ|VERIFIED_AT|EXACT_HEAD_CI_STATUS|EXACT_HEAD_CI_RUN|LOCAL_JOB_RESULT|REMOTE_JOB_RESULT):.*\n?/gm, ''); await call(); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: MERGE_STATUS, COMPLETION_CLAIM, MERGE_COMMIT_SHA');
+    live.body = verified; expect(github.rest.repos.getContent).toHaveBeenCalledWith(expect.objectContaining({ ref: 'c'.repeat(40), path: 'docs/AGENT-EXECUTION.md' }));
+    github.rest.repos.compareCommitsWithBasehead.mockResolvedValue({ data: { status: 'diverged' } });
+    await call(); expect(comments.at(-1).body).toContain('LIVE_MAIN_RECEIPT_UNVERIFIED'); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: MERGE_COMMIT_SHA, MAIN_HEAD_VERIFIED');
+    github.rest.repos.compareCommitsWithBasehead.mockResolvedValue({ data: { status: 'ahead' } });
+    github.rest.actions.listWorkflowRuns.mockResolvedValue({ data: { total_count: 2, workflow_runs: [{ id: 2, head_sha: live.head.sha, event: 'pull_request', path: '.github/workflows/ci.yml', pull_requests: [{ number: 900 }], run_started_at: '2026-10-02T08:00:00Z' }, { id: 1, head_sha: live.head.sha, event: 'pull_request', path: '.github/workflows/ci.yml', pull_requests: [{ number: 900 }], run_started_at: '2026-10-02T09:00:00Z' }] } });
+    await call(); expect(comments.at(-1).body).toContain('receipt does not name latest exact-head CI run'); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: EXACT_HEAD_CI_STATUS, EXACT_HEAD_CI_RUN');
+    const foreignInventory = { data: { total_count: 2, workflow_runs: [{ id: 2, head_sha: live.head.sha, event: 'pull_request', path: '.github/workflows/ci.yml', pull_requests: [{ number: 901 }] }, { id: 1, head_sha: live.head.sha, event: 'pull_request', path: '.github/workflows/ci.yml', pull_requests: [{ number: 900 }] }] } }; github.rest.actions.listWorkflowRuns.mockResolvedValue(foreignInventory); await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_RESOLVED');
+    github.rest.actions.listWorkflowRuns.mockResolvedValue({ data: { ...foreignInventory.data, workflow_runs: [{ ...foreignInventory.data.workflow_runs[0], pull_requests: [] }, foreignInventory.data.workflow_runs[1]] } }); await call(); expect(comments.at(-1).body).toContain('LIVE_MAIN_RECEIPT_UNVERIFIED'); github.rest.actions.listWorkflowRuns.mockResolvedValue(foreignInventory); github.rest.actions.getWorkflowRun.mockResolvedValue({ data: { head_sha: live.head.sha, status: 'completed', conclusion: 'success', event: 'pull_request', path: '.github/workflows/ci.yml', pull_requests: [{ number: 901 }, { number: 900 }] } }); await call(); expect(comments.at(-1).body).toContain('LIVE_MAIN_RECEIPT_UNVERIFIED'); const greenRun = { data: { head_sha: live.head.sha, status: 'completed', conclusion: 'success', event: 'pull_request', path: '.github/workflows/ci.yml', pull_requests: [{ number: 900 }] } }; github.rest.actions.getWorkflowRun.mockResolvedValue(greenRun).mockResolvedValueOnce(greenRun).mockResolvedValueOnce({ data: { ...greenRun.data, status: 'in_progress', conclusion: null } }); await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_PENDING'); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: EXACT_HEAD_CI_STATUS, EXACT_HEAD_CI_RUN'); github.rest.actions.getWorkflowRun.mockResolvedValue(greenRun); const normalRead = github.rest.pulls.get.getMockImplementation(), normalCreate = github.rest.issues.createComment.getMockImplementation(); let rerunAfterCreate = false; github.rest.actions.getWorkflowRun.mockImplementation(async () => ({ data: rerunAfterCreate ? { ...greenRun.data, status: 'queued', conclusion: null } : greenRun.data })); github.rest.issues.createComment.mockImplementationOnce(async (args: any) => { const result = await normalCreate(args); rerunAfterCreate = true; return result; }); await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_PENDING'); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: EXACT_HEAD_CI_STATUS, EXACT_HEAD_CI_RUN'); rerunAfterCreate = false; github.rest.actions.getWorkflowRun.mockResolvedValue(greenRun); let failAfterCreate = false; github.rest.pulls.get.mockImplementation(async () => { if (failAfterCreate) { failAfterCreate = false; throw Error('post-create read 503'); } return normalRead(); }); github.rest.issues.createComment.mockImplementationOnce(async (args: any) => { const result = await normalCreate(args); failAfterCreate = true; return result; }); await expect(call()).rejects.toThrow('post-create read 503'); expect(comments.at(-1).body).toContain('STATE_SYNC_SUPERSEDED'); github.rest.issues.createComment.mockImplementationOnce(async (args: any) => { const result = await normalCreate(args); live.body += '\nConcurrent body edit'; return result; }); github.rest.issues.updateComment.mockRejectedValueOnce(Error('supersede update failed')).mockRejectedValueOnce(Error('recovery update failed')); await expect(call()).rejects.toThrow('supersede update failed'); expect(comments.at(-1).body).toContain('STATE_SYNC_PENDING'); live.body = verified; files[0].status = 'removed'; github.rest.repos.getContent.mockRejectedValue(Object.assign(Error('not found'), { status: 404 })); await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_RESOLVED'); github.rest.repos.getContent.mockResolvedValue({ data: { type: 'file' } }); await call(); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: MAIN_FILE_RE_READ'); files[0].status = 'modified'; github.rest.repos.getContent.mockRejectedValue(Object.assign(Error('not found'), { status: 404 })); await call(); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: MAIN_FILE_RE_READ'); github.rest.repos.getContent.mockResolvedValue({ data: { type: 'file' } });
+    for (const field of ['MAIN_FILE_RE_READ', 'EXACT_HEAD_CI_RUN']) for (const placeholder of ['TBD', 'UNKNOWN', 'N/A', '-']) expect(terminalBodyPlan({ ...closed, body: verified.replace(new RegExp(`${field}: [^\\n]*`), `${field}: ${placeholder}`), merge_commit_sha: 'a'.repeat(40) })?.unsyncedFields).toContain(field); expect(terminalBodyPlan({ ...closed, body: verified.replace(`VERIFIED_AT: ${created_at}`, 'VERIFIED_AT: 2999-01-01T00:00:00Z'), merge_commit_sha: 'a'.repeat(40) })?.unsyncedFields).toContain('VERIFIED_AT'); const templateFields = [...new Set([...readFileSync('.github/pull_request_template.md', 'utf8').matchAll(/^\s*-\s*([A-Z][A-Z0-9_ /]+):/gm)].map(match => match[1]))]; for (const field of templateFields) expect(terminalBodyPlan({ state: 'closed', merged: true, body: `${field}: PENDING` })?.hasContract).toBe(true); expect(terminalBodyPlan({ state: 'closed', merged: true, body: 'CANONICAL_TEST_STATUS: PENDING' })?.unsyncedFields).toContain('CANONICAL_TEST_STATUS'); expect(terminalBodyPlan({ state: 'closed', merged: false, body: 'CANONICAL_TEST_STATUS: PENDING\nCANONICAL_TEST_STATUS: VERIFIED_GREEN' })?.unsyncedFields).toContain('CANONICAL_TEST_STATUS');
+  });
+  it.each(['Historical prose only', 'Historical notes\n```text\nexample only',
+    '```text\n<!-- pr-lifecycle\nstate: ACTIVE\n-->\n```'])('ignores prose and example-only lifecycle markers', body => {
+    const plan = terminalBodyPlan({ state: 'closed', merged: true, body });
+    expect(plan?.body).toBe(body);
+    expect(plan?.errors).toEqual([]);
+    expect(plan?.unsyncedFields).toEqual([]);
+  });
+  it.each(['\n', '\r'])('recognizes current-state fields after a same-line HTML comment close', newline => {
+    const body = ['<!-- explanatory note', '-->LANE_STATE: ACTIVE', '<!-- explanatory note', '-->ACTIVE_CANDIDATE: true'].join(newline);
+    const plan = terminalBodyPlan({ state: 'closed', merged: true, body });
+    expect(plan?.unsyncedFields).toEqual(expect.arrayContaining(['pr-lifecycle.state', 'LANE_STATE', 'ACTIVE_CANDIDATE']));
+  });
   it('fails safe on ambiguous terminal metadata instead of partially rewriting the PR body', async () => {
     const body = gov + '\nACTIVE_CANDIDATE: true\n';
     const plan = terminalBodyPlan({ state: 'closed', merged: true, body });
