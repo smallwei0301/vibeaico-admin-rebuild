@@ -1940,6 +1940,23 @@
         "count": 1,
         "accepted": true,
         "note": "Ledger append for #759 review/round-robin events."
+      },
+      {
+        "id": "20261003-scout-ledger-759-flowfix",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "issue": 747,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-03T10:50:22Z",
+        "completedAt": "2026-10-03T10:50:55Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "Fix flow.lunaTasks/lunaAccepted not recomputed in 067460d2 (CI SCORECARD_CAPTURE_REJECTED)."
       }
     ],
     "fullContextReplays": 0,
@@ -1973,8 +1990,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 26,
-    "lunaAccepted": 22,
+    "lunaTasks": 28,
+    "lunaAccepted": 24,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
