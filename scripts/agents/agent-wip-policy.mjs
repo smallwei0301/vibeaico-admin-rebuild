@@ -75,7 +75,7 @@ export const MAX_ACTIVE_CANDIDATES = 3;
  * An unterminated container invalidates the body, including earlier declarations.
  * This is a conservative metadata reader, not a general Markdown renderer.
  */
-function metadataLines(body) {
+export function metadataLines(body, { allowPartial = false } = {}) {
   const lines = [];
   let fence = null;
   let inComment = false;
@@ -119,7 +119,7 @@ function metadataLines(body) {
     }
     if (!indented.test(visible)) lines.push(visible);
   }
-  return fence || inComment ? null : lines;
+  return (fence || inComment) && !allowPartial ? null : lines;
 }
 
 // Keep distinct diagnostics; both are rejected by existing placeholder/enum checks.
