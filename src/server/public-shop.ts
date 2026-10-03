@@ -36,6 +36,7 @@ import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
 import { buildPublicPhone } from '@/lib/public-phone';
 import { resolveSeasonUnitPrice } from '@/lib/public-season-price';
 import { readPlanSeasons } from '@/server/public-plan-seasons';
+import { bookingCandidateSeatsLeft, createCandidateTracker } from '@/lib/public-departure-candidates';
 import { bookingCtaState, type BookingCtaState } from '@/lib/public-trip-client-state';
 import { hasStartedToday, resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
 import { MAX_PUBLIC_GALLERY_IMAGES } from '@/lib/trip-gallery';
@@ -142,6 +143,11 @@ export type PublicTripDetailPlan = PublicPlan & {
   departuresMayBeTruncated: boolean;
   /** 只代表有「客滿」列因顯示上限被略過；不代表還有可售團次未列出。 */
   soldOutOmitted?: boolean;
+  /**
+   * #761：預約／申請頁會提供的前 12 個候選團次中，至少有一個剩餘名額 >= 最低人數（即使它不在上面 6 筆列出的視窗內）。
+   * 只輸出 true；`bookingCtaState` 用它決定入口，與目的頁同一套規則（public-departure-candidates）。
+   */
+  bookableDepartureAvailable?: true;
   /** 超過可查團次的方案數上限：此方案未載入團次，前端不提供入口並請旅客聯絡店家。 */
   departuresNotLoaded?: true;
 };
@@ -491,6 +497,7 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
         salesMode: plan.salesMode,
         minParty: plan.minParty,
         departures: win?.departures ?? [],
+        ...(win?.bookableDepartureAvailable ? { bookableDepartureAvailable: true as const } : {}),
         ...(hasPublicDepartureList(plan) && !win ? { departuresNotLoaded: true } : {}),
       });
     }
@@ -690,6 +697,7 @@ async function loadPublicTripDetailsUncached(
         departures: departuresByPlan.get(plan.id)?.departures ?? [],
         departuresMayBeTruncated: departuresByPlan.get(plan.id)?.mayBeTruncated ?? false,
         ...(departuresByPlan.get(plan.id)?.soldOutOmitted ? { soldOutOmitted: true } : {}),
+        ...(departuresByPlan.get(plan.id)?.bookableDepartureAvailable ? { bookableDepartureAvailable: true as const } : {}),
         ...(hasPublicDepartureList(plan) && !departuresByPlan.has(plan.id)
           ? { departuresNotLoaded: true as const } : {}),
       })),
@@ -718,7 +726,12 @@ export async function loadPlanDepartureWindow(
     now: { today: string; hm: string };
     seasons?: Parameters<typeof resolveSeasonUnitPrice>[1];
   },
-): Promise<{ departures: PublicTripDetailDeparture[]; mayBeTruncated: boolean; soldOutOmitted: boolean }> {
+): Promise<{
+  departures: PublicTripDetailDeparture[];
+  mayBeTruncated: boolean;
+  soldOutOmitted: boolean;
+  bookableDepartureAvailable: boolean;
+}> {
   const { tenantId, tripId, plan, now, seasons } = args;
   const departures: PublicTripDetailDeparture[] = [];
   let offset = 0;
@@ -729,9 +742,11 @@ export async function loadPlanDepartureWindow(
   // 已確認「本頁剩下未列出的列」中有可售團次。
   let unlistedSellable = false;
   const availableCount = () => departures.length - soldOutCount;
+  // #761：入口只看預約／申請頁會提供的前 12 個候選團次（與 6 筆列出視窗無關），掃描到找到可訂的或候選用完為止。
+  const candidates = createCandidateTracker(plan.minParty);
 
   // Query each plan independently. A busy plan must not consume another plan's window.
-  while (availableCount() < MAX_DETAIL_DEPARTURES_PER_PLAN
+  while ((availableCount() < MAX_DETAIL_DEPARTURES_PER_PLAN || !candidates.settled)
     && scanned < MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN) {
     const pageSize = Math.min(
       DETAIL_DEPARTURE_PAGE_SIZE,
@@ -760,6 +775,21 @@ export async function loadPlanDepartureWindow(
       const capacity = Number(departure.capacity ?? 0);
       const seatsBooked = Number(departure.seats_booked ?? 0);
       const soldOut = seatsBooked >= capacity;
+      const candidateSeats = bookingCandidateSeatsLeft(departure, now);
+      if (candidateSeats !== null) candidates.observe(candidateSeats);
+      // 已列滿 6 筆可售：只為判斷入口／截斷旗標繼續看後面的列，不再列出。
+      if (availableCount() >= MAX_DETAIL_DEPARTURES_PER_PLAN) {
+        if (soldOut) skippedSoldOut = true; else unlistedSellable = true;
+        if (candidates.settled) {
+          for (const rest of rows.slice(index + 1)) {
+            if (hasStartedToday(rest, now)) continue;
+            if (Number(rest.seats_booked ?? 0) < Number(rest.capacity ?? 0)) unlistedSellable = true;
+            else skippedSoldOut = true;
+          }
+          break;
+        }
+        continue;
+      }
       // canonical 19 §2.1：旅客要能分辨「客滿」，所以客滿團次保留並標示 soldOut（不提供動作）。
       // 客滿團次不占可售名額上限；另設上限避免整頁被客滿團次佔滿。
       if (soldOut) {
@@ -785,7 +815,7 @@ export async function loadPlanDepartureWindow(
           formationStatus: typeof departure.formation_status === 'string' ? departure.formation_status : null,
         } : {}),
       });
-      if (availableCount() >= MAX_DETAIL_DEPARTURES_PER_PLAN) {
+      if (availableCount() >= MAX_DETAIL_DEPARTURES_PER_PLAN && candidates.settled) {
         // 檢查本頁剩下的列：有可售 → 確認還有未列出的可售團次；其餘為略過的客滿列。
         for (const rest of rows.slice(index + 1)) {
           if (hasStartedToday(rest, now)) continue;
@@ -802,14 +832,17 @@ export async function loadPlanDepartureWindow(
     }
   }
 
-  // The loop stopped before exhausting the rows (six sellable listed, or the scan limit hit).
+  // The loop stopped before exhausting the rows. It stops when six sellable rows are listed AND the
+  // 12-candidate booking decision is settled, or when the 600-row scan bound is hit; while that decision
+  // is unsettled the scan keeps paging past the six listed rows (up to the bound), so a sellable
+  // departure far down the list can still open the CTA. If the bound is hit first the CTA stays off
+  // (conservative: never a false CTA, possibly a missed one).
   // `departuresMayBeTruncated` is true ONLY when a row we can see confirms an unlisted SELLABLE
-  // departure (seats_booked < capacity): either in the remainder of the last page (above) or in one
+  // departure (seats_booked < capacity): either among the rows examined after the listing filled, or in one
   // lookahead page past everything examined. If everything seen is sold out we cannot confirm more
   // sellable dates, so it stays false and the sold-out rows are reported via `soldOutOmitted`.
-  // Trade-off: a sellable departure beyond the lookahead page is not detected. The flag now only
-  // drives the "partial dates" hint copy; it never opens the booking CTA (see
-  // hasBookableListedDeparture), so the conservative choice cannot lead to an empty booking page.
+  // Trade-off: a sellable departure beyond the lookahead page is not detected. These flags only drive
+  // the hint copy; the CTA comes from `bookableDepartureAvailable` / the listed rows.
   let mayBeTruncated = unlistedSellable;
   if (!exhausted && !unlistedSellable) {
     const { data, error: lookaheadError } = await admin.from('trip_departures')
@@ -831,5 +864,5 @@ export async function loadPlanDepartureWindow(
     if (ahead.length > 0 && !mayBeTruncated) skippedSoldOut = true;
   }
 
-  return { departures, mayBeTruncated, soldOutOmitted: skippedSoldOut };
+  return { departures, mayBeTruncated, soldOutOmitted: skippedSoldOut, bookableDepartureAvailable: candidates.bookable };
 }

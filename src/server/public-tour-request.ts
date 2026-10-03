@@ -36,7 +36,8 @@
  *    但 API 端點本身不能只靠「畫面沒有連結」當作唯一防線（連結可以被猜到／分享）。
  */
 import { z } from 'zod';
-import { hasStartedToday, resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
+import { bookingCandidateSeatsLeft, MAX_BOOKING_CANDIDATE_DEPARTURES } from '@/lib/public-departure-candidates';
+import { resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
 import { hasSeasonalPricing, loadPlanSeasons, seasonUnitPriceFor } from '@/server/public-plan-seasons';
 import { createAdminSupabase } from '@/server/supabase';
 import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
@@ -101,7 +102,7 @@ export type PublicRequestPlan = {
   departures: PublicRequestDeparture[];
 };
 
-const MAX_DEPARTURES = 12;
+const MAX_DEPARTURES = MAX_BOOKING_CANDIDATE_DEPARTURES;
 
 /**
  * 讀一個 REQUEST 方案的申請頁資料。找不到、非 REQUEST、未上架、或所屬行程未發布
@@ -150,7 +151,9 @@ export async function loadPublicRequestPlan(
     .eq('tenant_id', tenantId).eq('plan_id', planId).eq('status', 'OPEN')
     .gte('departs_on', now.today)
     .order('departs_on', { ascending: true })
-    .order('start_time', { ascending: true, nullsFirst: true });
+    .order('start_time', { ascending: true, nullsFirst: true })
+    // #761：與詳情頁／首頁（loadPlanDepartureWindow）同一個 tie-break，同日同時間的候選集合才會一致。
+    .order('id', { ascending: true });
   if (departureError) throw queryFailed('trip_departures', departureError);
 
   const seasons = options.withSeasonPrices === false
@@ -159,17 +162,16 @@ export async function loadPublicRequestPlan(
   const basePrice = Number(plan.price_per_person ?? 0);
   const departures: PublicRequestDeparture[] = [];
   for (const row of departureRows ?? []) {
-    if (hasStartedToday(row, now)) continue;
-    const capacity = Number(row.capacity ?? 0);
-    const seatsBooked = Number(row.seats_booked ?? 0);
-    if (seatsBooked >= capacity) continue;
+    // #761：候選規則（未開始、未客滿）與詳情頁／首頁入口共用 public-departure-candidates。
+    const seatsLeft = bookingCandidateSeatsLeft(row, now);
+    if (seatsLeft === null) continue;
     if (departures.length >= MAX_DEPARTURES) break;
     const unitPrice = seasonUnitPriceFor(seasons, row.departs_on as string, basePrice);
     departures.push({
       id: row.id as string,
       departsOn: row.departs_on as string,
       startTime: row.start_time == null ? '' : String(row.start_time).slice(0, 5),
-      seatsLeft: capacity - seatsBooked,
+      seatsLeft,
       ...(unitPrice !== undefined ? { unitPrice } : {}),
     });
   }

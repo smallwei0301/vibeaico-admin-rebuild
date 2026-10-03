@@ -1,3 +1,4 @@
+import { candidateIsBookable } from '@/lib/public-departure-candidates';
 import type { PublicTripDetails } from '@/server/public-shop';
 
 /** Server 已載入並清理的公開資料（與公開 API 回應同一 allowlist 形狀）。 */
@@ -30,9 +31,11 @@ export function shouldFetchOnMount(initialData: PublicTripInitialData | undefine
 export function hasBookableListedDeparture(plan: {
   minParty?: number;
   departures: Array<{ seatsLeft: number; soldOut?: true }>;
+  bookableDepartureAvailable?: boolean;
 }): boolean {
-  const min = Number.isInteger(plan.minParty) && (plan.minParty as number) >= 1 ? (plan.minParty as number) : 1;
-  return plan.departures.some((departure) => departure.soldOut !== true && departure.seatsLeft >= min);
+  // #761：6 筆列出視窗之外、但仍在預約／申請頁前 12 個候選內的可訂團次（server 以同一套候選規則算出）。
+  if (plan.bookableDepartureAvailable === true) return true;
+  return plan.departures.some((departure) => departure.soldOut !== true && candidateIsBookable(departure.seatsLeft, plan.minParty));
 }
 
 export type PublicTripFetchOutcome =
@@ -82,6 +85,7 @@ export function bookingCtaState(plan: {
   salesMode: string;
   minParty?: number;
   departuresNotLoaded?: boolean;
+  bookableDepartureAvailable?: boolean;
   departures: Array<{ seatsLeft: number; soldOut?: true }>;
 }): BookingCtaState {
   // 未載入團次的方案（超過方案數上限）：不提供入口，請旅客聯絡店家。
