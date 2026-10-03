@@ -1608,6 +1608,55 @@
         "accepted": true,
         "evidenceRef": "bac57747",
         "note": "Routing violation recorded: audit tier reverted scout out-of-scope commit 5ac3a6db instead of dispatching build tier; no new code; verified tsc 0, npm test 304 files/4090 passed."
+      },
+      {
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261002-build-715-183f0208",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "accepted": true,
+        "issue": 43,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/715#issuecomment-5943977784",
+        "startedAt": "2026-10-02T01:33:12Z",
+        "completedAt": "2026-10-02T01:38:33Z",
+        "note": "RUN_CAPTURE_HANDOFF (Owner /goal): Sonnet builder for PR #715 merged main b5e3b123 into the #43 slice, no source change; unit 288 files/3790 passed. Requested claude-sonnet-5-5; actual unverified."
+      },
+      {
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261002-premium-734-145026b5",
+        "role": "PR #734 Final Risk premium（Astra gate）。Final Risk 不屬 luna/terra/sol tier，依既有慣例記 unknown；實際委派 claude-fable-5-1（operator-attested），PASS 0 blocking。",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "actualModelId": "claude-fable-5-1",
+        "accepted": true,
+        "issue": 47,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/734#issuecomment-5944024198",
+        "startedAt": "2026-10-02T01:35:00Z",
+        "completedAt": "2026-10-02T01:38:44Z",
+        "note": "RUN_CAPTURE_HANDOFF (Owner /goal). Budget reservation #issuecomment-5943940151; lineage premium budget consumed."
+      },
+      {
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261002-scout-46-inventory-handoff",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "accepted": true,
+        "issue": 46,
+        "note": "RUN_CAPTURE_HANDOFF (Owner /goal): Haiku #46 inventory by prior Claude session (2026-10-02). Exact times and output location not recoverable from live GitHub; recorded from Owner handoff, acceptance as stated by handoff, not re-verified."
       }
     ],
     "fullContextReplays": 0,
@@ -1624,7 +1673,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 33,
+    "fullCiRuns": 34,
     "invalidReruns": 5,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0,
@@ -1641,8 +1690,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 21,
-    "lunaAccepted": 17,
+    "lunaTasks": 22,
+    "lunaAccepted": 18,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -1806,7 +1855,10 @@
     "2026-10-01T13:21:27.971Z Review follow-up for exact f56: independent Standards found the new error body at 14px and retry control below GUIDE's 44px minimum; independent Spec review confirmed 360px/card variants/real browser action-reload/Preview acceptance remain pending. Root fixed the error body/button in dashboard/page.tsx and added computed-size assertions to the source-only browser harness. Node typecheck, Next production build, focused 30 unit tests and Chromium /usr/bin/chromium 390px+desktop harness pass. Fresh exact-head SourceCI/isolated LOCAL remain pending.",
     "2026-10-02T01:32:03.681Z Session takeover by ANTHROPIC Claude Code Product main session (claude.ai session_017zCGiPpVX9atSFECgEsVdC). Continues this IN_PROGRESS Run rather than declaring a concurrent Run. RULES_MAIN_SHA=b5e3b123e. Builder lane will request claude-sonnet-5-5 per Anthropic routing; reviewer claude-opus-5-5 in a fresh subagent context. Prior OpenAI identities are not rewritten.",
     "CI fullCiRuns evidence: 7 CI tasks removed from modelUsage.tasks (duplicates of fullCiRuns=30 count). Removed task IDs: 20261001-ci-11-92333574, 20261001-ci-11-95455916, 20261001-ci-11-96336894, 20261001-ci-11-96678336, 20261001-ci-11-97841530, 20261001-ci-11-98617637, 20261001-ci-11-99374507",
-    "Pending verification: dispatch run IDs 36964322403, 36965063988, 36965230556, 36971391119, 36978961820 need to be verified against fullCiRuns=30. Require evidence query or manual count confirmation."
+    "Pending verification: dispatch run IDs 36964322403, 36965063988, 36965230556, 36971391119, 36978961820 need to be verified against fullCiRuns=30. Require evidence query or manual count confirmation.",
+    "2026-10-03 RUN_CAPTURE_HANDOFF (Owner /goal message): ci.fullCiRuns +1 for canonical dispatch run 36951973057 (PR #715 exact 183f0208, workflow_dispatch, conclusion failure: #43 lifecycle integration test exceeded 30s; repaired in f9663d81 and re-run 36958243227 green).",
+    "2026-10-03 RUN_CAPTURE_HANDOFF (Owner /goal message): two ACTUAL_PERMISSION_DENIED events around 2026-10-02T01:40Z in the prior Claude session (Self-Approval block on canonical review submission); exact commands not recoverable from live GitHub.",
+    "2026-10-03 RUN_CAPTURE_HANDOFF (Owner /goal message): Owner chose option 2 on 2026-10-02 to open the blocked permissions; recorded as Owner decision from handoff text."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
