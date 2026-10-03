@@ -202,6 +202,8 @@ PR body、`TEST_PROFILE`、lane、candidate、Closure、Final Risk metadata 等 
 - metadata 到 CI 才第一次被擋，優先視為 **preflight coverage gap**；補 shared validator／parser，而不是再教每個 Agent 背一段 prose exception。
 - metadata 修正不靠 blind rerun；workflow 若不監聽 `edited`，使用既有 `workflow_dispatch` 或下一個**真實內容變更**觸發，不堆 no-op commit。
 - 同一 deterministic error 不用多輪 CI 猜合法值；先讀 validator 或讓 preflight 直接呼叫與 CI 相同的判定函式。
+- **Agent PR publication receipt（#724）**：#736 實際 merge 時間是不可變的 rollout 邊界；該時間以前建立的 PR 永久 grandfather，即使 live base 前進也不追討歷史 Draft receipt。新建立的 Agent-origin PR 先以 Draft 作 staging；OWNER／UNKNOWN 與 grandfathered PR 不套用新 publication validator。trusted-main guard 用 `agent-wip-preflight.mjs` 的共用 deterministic validator 驗 exact body + GitHub actual changed-file inventory；PASS 才由 `github-actions[bot]` 留 immutable `PUBLICATION_PREFLIGHT_RECEIPT`，其 digest 綁 exact body、files、base SHA、head SHA。轉 ready／ACTIVE 時 receipt 必須仍精確匹配；body edit、source synchronize、base/head/file inventory 改變都會讓舊 receipt 失效，必須回 Draft 取得新 receipt。main push 會喚醒以 main 為 base 的開放 Agent PR，重新驗證 base-bound receipt 並更新當前 head 的 required status；定時 recovery 仍保留。若 push 喚醒無法取得 PR 清單，該 run 失敗，但先前 head 的成功 status 不會自動失效；合併者必須核對最新 base、receipt 與本次有效 guard，不能將失敗 run 當成 PASS。純 MODEL_GOVERNANCE 仍只驗自己的治理 metadata，不借 Product Run。
+- receipt 不是 Final Risk、CI、TEST 或 merge approval，也不能由 PR body 自稱 PASS 取代；remote WIP/Final Risk/TEST/schema/branch-protection 規則照常執行。no-op commit 只會改 head 並使 receipt 失效，不是修 metadata 的手段。
 
 ### 2.0.2 Final Risk blocker 判讀：審查、提交證據、Owner action 必須分開
 
