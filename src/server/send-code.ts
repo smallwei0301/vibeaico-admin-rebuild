@@ -24,10 +24,17 @@ import { sendVerificationCodeEmail } from './email/send';
 const MAIL_UNAVAILABLE_MESSAGE = '驗證信暫時無法寄出，請稍後再試或聯絡我們';
 
 /**
- * 寄信失敗 parity 視窗（#754／#758 枚舉防護）：設定類或服務層級的「該寄卻寄失敗」之後的這段時間內，連
- * 「email 已存在（或 reset 時不存在）所以本來不寄信」的路徑也回同一個 503，讓已註冊／未註冊
- * email 在服務異常時回應一致。設定類失敗 10 分鐘；服務層級失敗（5xx／429／網路）60 秒；收件人專屬拒絕（其他 4xx）不開窗，且不縮短
- * 已存在的較長視窗。SENT 會清除視窗。
+ * 寄信失敗 parity 視窗（#754／#758／#763 枚舉防護）：設定類或服務層級的「該寄卻寄失敗」之後，
+ * 在視窗內「所有」請求（不論 email 是否已註冊、不論 purpose 對應的分支）都在最前面短路回同一個
+ * 503 `MAIL_001`——不查 DB、不寫驗證碼、不呼叫 provider。視窗只由 TTL 結束，SENT 不會提前清除
+ * （視窗內根本不會寄信）；否則 provider 在視窗內恢復時，未註冊 email 會寄成功回 200，已註冊 email
+ * 仍回 503，形成枚舉 oracle（#763 Codex P1 #2）。檢查必須在 60 秒重寄冷卻（429，只對真的寄過信的
+ * 位址成立）與 email_exists 分支之前，否則兩條分支的回應會不同。
+ * TTL：設定類 10 分鐘；服務層級（5xx／429／網路）60 秒；收件人專屬拒絕（其他 4xx）不開窗、不延伸、
+ * 不清除。多次失敗以 Math.max 延伸，不縮短既有較長視窗。
+ *
+ * 可用性代價：服務層級失敗後，本 instance 暫停寄信至多 60 秒（Resend 429 突發也會造成 60 秒暫停，
+ * #764）；設定類失敗暫停到 TTL 結束或重新部署。
  *
  * 已知殘餘（文件化，best-effort）：視窗存於本 instance 記憶體，serverless 各 instance 獨立、
  * 不跨 instance 共享；每個 instance「第一個」失敗請求之前（視窗尚未建立）仍可能洩漏差異；
@@ -42,6 +49,9 @@ const mailUnavailable = () => new ApiHttpError(503, MAIL_UNAVAILABLE_MESSAGE, ER
 export function __resetMailConfigFailureFlag() { configFailureUntil = 0; }
 
 export async function dispatchVerificationCode(email: string, purpose: 'REGISTER' | 'RESET_PASSWORD') {
+  // parity 視窗內：兩條分支一律在最前面短路成同一個 503（見上方說明）。
+  if (Date.now() < configFailureUntil) throw mailUnavailable();
+
   const admin = createAdminSupabase();
 
   const { data: recent } = await admin.from('auth_verification_codes')
@@ -53,9 +63,7 @@ export async function dispatchVerificationCode(email: string, purpose: 'REGISTER
   // email 是否已註冊（枚舉防護：不論結果都當作已寄送處理，只是不真的寄信）
   const exists = !!(await admin.rpc('email_exists', { p_email: email })).data;
   if ((purpose === 'REGISTER') === exists) {
-    // 不寄信的路徑：服務處於寄信失敗 parity 視窗內時也回同一個 503，避免洩漏 email 是否已註冊。
-    if (Date.now() < configFailureUntil) throw mailUnavailable();
-    return;
+    return; // 不寄信的路徑（視窗內已在最前面短路）
   }
 
   const code = String(randomInt(100000, 999999));
@@ -63,10 +71,7 @@ export async function dispatchVerificationCode(email: string, purpose: 'REGISTER
     email, code, purpose, expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
   });
   const { result, failureKind } = await sendVerificationCodeEmail(email, code, purpose);
-  if (result === 'SENT') {
-    configFailureUntil = 0; // 已恢復：清除 parity 視窗
-    return;
-  }
+  if (result === 'SENT') return; // 視窗內不會走到這裡，故 SENT 不清除視窗
 
   // 沒寄出：讓剛插入的碼失效（刪除；也不會留下 60 秒冷卻擋住使用者重試），再回明確錯誤。
   const { error: delErr } = await admin.from('auth_verification_codes')

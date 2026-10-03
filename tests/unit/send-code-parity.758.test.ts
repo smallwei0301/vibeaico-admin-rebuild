@@ -1,5 +1,5 @@
 /**
- * #758 — 寄信失敗 parity 視窗：暫時性失敗也要讓「不寄信路徑」回同一個 503；SENT 清除視窗。
+ * #758 — 寄信失敗 parity 視窗：暫時性失敗也要讓「不寄信路徑」回同一個 503；視窗內一律短路 503（不寄信、不寫碼），只由 TTL 結束（#763 P1 #2）。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -91,17 +91,40 @@ describe('寄信失敗 parity 視窗 (#758)', () => {
     expect((await reg('old@example.com')).status).toBe(200);
   });
 
-  it('SENT 清除視窗（M6）：恢復後已存在 email 立刻回 200', async () => {
+  it('視窗內未註冊與已註冊的 REGISTER 都回 503，不呼叫 provider、不寫驗證碼；SENT 不可能在視窗內發生，只由 TTL 結束', async () => {
     mail.fn.mockResolvedValue(CONFIG);
-    await reg('new@example.com');
-    state.exists = true;
-    expect((await reg('old@example.com')).status).toBe(503);
+    await reg('first@example.com');
+    mail.fn.mockReset();
+    mail.fn.mockResolvedValue(SENT); // provider 已恢復，但視窗內不得寄信
+    for (const exists of [false, true]) {
+      state.exists = exists;
+      const res = await reg(`probe-${exists}@example.com`);
+      expect(res.status).toBe(503);
+      expect((await res.json()).code).toBe('MAIL_001');
+    }
+    expect(mail.fn).not.toHaveBeenCalled();
+    expect(state.rows).toHaveLength(0);
+    vi.advanceTimersByTime(10 * 60_000 + 1_000);
     state.exists = false;
-    mail.fn.mockResolvedValue(SENT);
-    expect((await reg('new2@example.com')).status).toBe(200);
+    expect((await reg('after@example.com')).status).toBe(200); // TTL 後恢復寄信
+    expect(mail.fn).toHaveBeenCalledTimes(1);
     state.exists = true;
-    state.rows = []; // 清掉 SENT 留下的碼，避免 60 秒重寄節流（429）干擾
-    expect((await reg('old@example.com')).status).toBe(200);
+    state.rows = [];
+    expect((await reg('registered@example.com')).status).toBe(200);
+  });
+
+  it('視窗內 RESET_PASSWORD 鏡像：存在與不存在的 email 都回 503，不呼叫 provider、不寫碼', async () => {
+    state.exists = true;
+    mail.fn.mockResolvedValue(TRANSIENT);
+    await forgot('real@example.com');
+    mail.fn.mockReset();
+    mail.fn.mockResolvedValue(SENT);
+    for (const exists of [true, false]) {
+      state.exists = exists;
+      expect((await forgot(`p-${exists}@example.com`)).status).toBe(503);
+    }
+    expect(mail.fn).not.toHaveBeenCalled();
+    expect(state.rows).toHaveLength(0);
   });
 
   it('forgot-password 鏡像：暫時性失敗後，不存在的 email 在視窗內也回 503，視窗後回 200', async () => {

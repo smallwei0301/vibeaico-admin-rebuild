@@ -52,9 +52,13 @@
   寄信失敗分三類（`src/server/email/send.ts` 的 `failureKind`）：
   `config`（無 key、401／403、金鑰／寄件者／網域設定錯誤）、`service`（429、5xx、網路／逾時、SDK 無 statusCode）、
   `recipient`（其他 4xx，如 422 收件人格式錯誤）。三類該次請求都回 503 `MAIL_001`、刪除驗證碼，
-  但只有 `config`（10 分鐘）與 `service`（60 秒）會開啟 parity 視窗（不縮短既有較長視窗；寄信成功即清除）；
+  但只有 `config`（10 分鐘）與 `service`（60 秒）會開啟 parity 視窗（多次失敗取較長者，不縮短既有視窗）；
   `recipient` 只讓該次請求回 503，不開啟、不延伸、也不清除視窗（否則攻擊者可用 provider 會拒絕的位址開窗，再探測枚舉，#763）。
-  視窗內原本「不寄信」的路徑也回同一個 503，讓兩類 email 回應一致。
+  **視窗內，所有寄碼請求（已註冊／未註冊、REGISTER／RESET_PASSWORD 兩條分支）在最前面短路回同一個 503 `MAIL_001`**：
+  不查 DB、不寫驗證碼、不呼叫 provider，也早於 60 秒重寄冷卻（429）與 email 存在判斷。視窗只由 TTL 結束，
+  不會因 provider 恢復而提前清除（否則未註冊 email 寄成功回 200、已註冊 email 仍 503，形成枚舉 oracle，#763）。
+  **可用性代價**：服務層級失敗後，該 instance 暫停寄信至多 60 秒（Resend 429 突發同樣造成 60 秒暫停，#764）；
+  設定類失敗暫停到 TTL（10 分鐘）結束或重新部署。
   視窗存於 instance 記憶體：跨 serverless instance 不共享；每個 instance 第一個失敗請求之前仍可能出現差異；
   持續故障時，視窗每次過期後會重新暴露，直到下一次失敗再開（追蹤於 #764）。實作見 `src/server/send-code.ts`。
 

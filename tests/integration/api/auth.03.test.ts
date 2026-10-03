@@ -396,15 +396,16 @@ describe('POST /api/auth/change-password 需先驗證舊密碼（03 §4）', () 
   });
 });
 
-// ⚠️ 必須放在檔案最後：provider 401 屬「設定類失敗」，Next server 會在該 instance 記憶體
-// 設 10 分鐘旗標（#754 枚舉防護），旗標存在期間連已註冊 email 也回 503。本案例最後以一次
-// 成功寄信清掉旗標；本檔其他案例都在它之前跑，不受影響。
-describe('POST /api/auth/send-verification-code 寄信失敗誠實回報（#754）', () => {
-  it('Resend 401 → 503 MAIL_001、DB 無殘留驗證碼；旗標期間已註冊 email 也 503；恢復後可再寄', async () => {
+// ⚠️ 必須放在檔案最後：provider 失敗會在 Next server 的 instance 記憶體開 parity 視窗
+// （#754／#763 枚舉防護），視窗內「所有」寄碼請求（含已註冊 email）都短路回 503、不呼叫 provider，
+// 且只由 TTL 結束（SENT 不會提前清除）。為避免拖累後續檔案，這裡用服務層級失敗（500 → 60 秒視窗）
+// 並實際等視窗過期；若用 401（設定類）視窗長達 10 分鐘，無法在測試中清除。
+describe('POST /api/auth/send-verification-code 寄信失敗誠實回報（#754／#763）', () => {
+  it('Resend 500 → 503 MAIL_001、DB 無殘留驗證碼；視窗內已註冊／未註冊 email 都 503 且不呼叫 provider；視窗過期後可再寄', async () => {
     resendMock.reset();
     const email = uniqueEmail('mailfail');
 
-    resendMock.failNext(401);
+    resendMock.failNext(500);
     const failed = await postJson('/api/auth/send-verification-code', { email, purpose: 'REGISTER' });
     expect(failed.status).toBe(503);
     const failedBody = await readJson(failed);
@@ -417,22 +418,28 @@ describe('POST /api/auth/send-verification-code 寄信失敗誠實回報（#754�
     expect(error).toBeNull();
     expect(leftover).toEqual([]);
 
-    // 枚舉防護：設定類失敗旗標期間，已註冊 email（原本不寄信直接回成功）也回同樣 503
+    // 枚舉防護：視窗內，已註冊 email 與（provider 已恢復的）未註冊 email 都回同樣 503，provider 不被呼叫
+    const sentBefore = resendMock.emails.length;
     const existing = await postJson('/api/auth/send-verification-code', {
       email: SHOP_A.owner.email, purpose: 'REGISTER',
     });
     expect(existing.status).toBe(503);
     expect((await readJson(existing)).code).toBe('MAIL_001');
+    const unregistered = await postJson('/api/auth/send-verification-code', { email, purpose: 'REGISTER' });
+    expect(unregistered.status).toBe(503);
+    expect((await readJson(unregistered)).code).toBe('MAIL_001');
+    expect(resendMock.emails.length).toBe(sentBefore);
 
-    // mock 恢復正常：同一個 email 立刻可再寄（失敗那筆已刪除，不留 60 秒冷卻），並清掉旗標
+    // 等 60 秒視窗過期後，恢復寄信（失敗那筆已刪除，不留 60 秒冷卻）
+    await new Promise((r) => setTimeout(r, 61_000));
     const retry = await postJson('/api/auth/send-verification-code', { email, purpose: 'REGISTER' });
     expect(retry.status).toBe(200);
     expect((await readJson<{ sent: boolean }>(retry)).data!.sent).toBe(true);
-    expect(resendMock.emails.length).toBeGreaterThanOrEqual(2);
+    expect(resendMock.emails.length).toBeGreaterThan(sentBefore);
 
     const existingAfter = await postJson('/api/auth/send-verification-code', {
       email: SHOP_A.owner.email, purpose: 'REGISTER',
     });
     expect(existingAfter.status).toBe(200);
-  });
+  }, 120_000);
 });

@@ -125,6 +125,7 @@ describe('send-verification-code 寄信失敗誠實回報 (#754)', () => {
       method: 'POST', body: JSON.stringify({ email: 'a@example.com' }),
     }), {});
     expect((await f()).status).toBe(503);
+    __resetMailConfigFailureFlag(); // 失敗已開 parity 視窗；視窗內不寄信，這裡重置以驗證正常寄送路徑
     mail.fn.mockResolvedValue({ result: 'SENT', configFailure: false, failureKind: null });
     expect((await f()).status).toBe(200);
   });

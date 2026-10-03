@@ -91,7 +91,7 @@ export const POST = handle(async (_req, { params }) => {
 | POST `/api/auth/tenant/register` | `{email, code, password, tenantName, shopCode}` | `{registered:true}` |
 | POST `/api/auth/login` | `{email, password}` | `{loggedIn:true}` |
 | POST `/api/auth/logout` | – | `{loggedOut:true}` |
-| POST `/api/auth/forgot-password` | `{email}` | `{sent:true}`；寄信失敗（或處於 config／service 失敗 parity 視窗內）回 503 `MAIL_001`；收件人專屬拒絕（其他 4xx）只讓該次請求 503、不開窗。枚舉防護為 best-effort（不跨 instance、視窗過期後重新暴露，#764），詳見 `03-AUTH.md` §2 |
+| POST `/api/auth/forgot-password` | `{email}` | `{sent:true}`；寄信失敗（或處於 config／service 失敗 parity 視窗內）回 503 `MAIL_001`；收件人專屬拒絕（其他 4xx）只讓該次請求 503、不開窗。視窗內所有寄碼請求（含已註冊 email）短路回同一個 503、不寄信（可用性代價：該 instance 暫停寄信至多 60 秒／設定類 10 分鐘，429 突發亦然）。枚舉防護為 best-effort（不跨 instance、視窗過期後重新暴露，#764），詳見 `03-AUTH.md` §2 |
 | POST `/api/auth/reset-password` | `{email, code, newPassword}` | `{reset:true}` |
 | POST `/api/auth/change-password` | `{currentPassword, newPassword}` | `{changed:true}` |
 | GET `/api/auth/me` | – | `{email, tenantId, tenantName, shopCode, role}` |
