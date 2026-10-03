@@ -58,8 +58,10 @@ describe('#724 immutable Agent PR publication preflight receipt', () => {
       number, state, body: `WORK_ORIGIN: ${origin}`, base: { ref: base, repo: { full_name: 'owner/repo' } },
     });
     const emptyBody = { ...pr(5, 'AGENT'), body: null };
-    const github = { rest: { pulls: { list: () => {} } }, paginate: async () => [pr(1, 'AGENT'), pr(2, 'OWNER'), pr(3, 'AGENT', 'release'), pr(4, 'AGENT', 'main', 'closed'), emptyBody] };
-    expect(await resolvePublicationBaseWakeup({ github, owner: 'owner', repo: 'repo', baseRef: 'main' })).toEqual({ numbers: [1, 5], associationIncomplete: false });
+    const agentWithExample = { ...pr(6, 'AGENT'), body: '- WORK_ORIGIN: AGENT\n```text\nWORK_ORIGIN: OWNER\n```' };
+    const ownerWithExample = { ...pr(7, 'OWNER'), body: '- WORK_ORIGIN: OWNER\n```text\nWORK_ORIGIN: AGENT\n```' };
+    const github = { rest: { pulls: { list: () => {} } }, paginate: async () => [pr(1, 'AGENT'), pr(2, 'OWNER'), pr(3, 'AGENT', 'release'), pr(4, 'AGENT', 'main', 'closed'), emptyBody, agentWithExample, ownerWithExample] };
+    expect(await resolvePublicationBaseWakeup({ github, owner: 'owner', repo: 'repo', baseRef: 'main' })).toEqual({ numbers: [1, 5, 6], associationIncomplete: false });
     await expect(resolvePublicationBaseWakeup({ github: { rest: { pulls: { list: () => {} } }, paginate: async () => { throw new Error('api'); } }, owner: 'owner', repo: 'repo', baseRef: 'main' })).rejects.toThrow('PUBLICATION_BASE_WAKEUP_UNAVAILABLE');
   });
 

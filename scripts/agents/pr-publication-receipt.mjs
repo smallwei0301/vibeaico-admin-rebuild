@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
+import { parseLaneMetadata } from './agent-wip-policy.mjs';
 
 export const PUBLICATION_PREFLIGHT_RECEIPT_MARKER = '<!-- agent-publication-preflight-receipt -->';
 export const PUBLICATION_PREFLIGHT_RECEIPT_VERSION = 1;
@@ -34,9 +35,9 @@ export async function resolvePublicationBaseWakeup({ github, owner, repo, baseRe
   }
   const numbers = pulls.filter(pr => {
     if (pr.state !== 'open' || pr.base.repo.full_name !== `${owner}/${repo}` || pr.base.ref !== baseRef) return false;
-    const origins = [...String(pr.body ?? '').matchAll(/^\s*WORK_ORIGIN\s*:\s*(AGENT|OWNER|UNKNOWN)\s*$/gmi)];
-    // Ambiguous metadata is rechecked instead of silently treating a possible Agent PR as exempt.
-    return origins.length !== 1 || origins[0][1].toUpperCase() === 'AGENT';
+    const origin = parseLaneMetadata(pr).origin;
+    // Ambiguous or missing metadata is rechecked instead of silently exempting a possible Agent PR.
+    return origin !== 'OWNER' && origin !== 'UNKNOWN';
   }).map(pr => pr.number);
   return { numbers: [...new Set(numbers)].sort((a, b) => a - b), associationIncomplete: false };
 }
