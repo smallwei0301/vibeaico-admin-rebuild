@@ -37,7 +37,7 @@ import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
 import { ApiError } from '@/lib/api';
 import { formatCurrency, formatNumber } from '@/lib/utils';
-import { MAX_PUBLIC_GALLERY_IMAGES } from '@/lib/trip-gallery';
+import { MAX_PUBLIC_GALLERY_IMAGES, omitUnchangedGallery } from '@/lib/trip-gallery';
 import {
   reorderPlans, toAdvancedPlanPayload, toQuickPlanPayload, validateAdvancedPlan, validateQuickPlan,
 } from '@/lib/trip-plan-quick-edit';
@@ -296,7 +296,8 @@ export default function TripDetailPage() {
 
   const saveBasic = async () => {
     if (!form) return;
-    await runAction(() => updateTrip(tripId, form), t.messages.updated);
+    // 相簿未變更就不送 gallery：舊資料超過寫入上限時，只改其他欄位仍可儲存。
+    await runAction(() => updateTrip(tripId, omitUnchangedGallery(form, trip)), t.messages.updated);
   };
 
   /* ------------------------------------------------------------- 方案 */

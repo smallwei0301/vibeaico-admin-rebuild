@@ -1916,3 +1916,211 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 預防：任何 Server Component 使用的共用 loader 都要在回傳 props 前驗證公開 URL／欄位；租戶 scoped slug 測試應放入另一租戶的同 slug 正向對照，分別驗證本租戶記錄可讀、另一租戶內容不可見。
 - 驗證：初次 isolated run 的 2 個失敗由 exact head 修正；工作樹 `npm run typecheck`、286 個 unit files／3,715 tests、`npm run build`、`git diff --check` 已通過。新 exact-head Source CI 與 LOCAL_ISOLATED integration/E2E、cleanup 尚待執行；舊 run 的 failure 不視為新 head acceptance。
 - 狀態：監看中；待新 exact-head 隔離驗收完成。
+
+### PB-056 — 共用 TEST concurrency：只保留一個 pending，dispatch 應晚於 PR integration
+
+- 首次／最近：2026-10-02／2026-10-02。
+- 發生次數：1。
+- Issue／PR／CI：Issue #11；PR #731；run `36996336894` 被取消、`36996678336` success。
+- 分類：CI／concurrency／TEST 排程。
+- 事件：#731 的 canonical TEST dispatch run 36996336894 先進入 shared TEST concurrency group 等待；之後同分支 pull_request run 的 integration job 才進佇列，由於 group 只保留一個 pending，較晚進來的 PR run integration 取代了 dispatch，36996336894 因而被取消。之後先等 PR run 的 integration 進入 pending 再 dispatch，dispatch run 36996678336（不是 PR run）才成功執行並 SUCCESS。
+- 根因：shared TEST concurrency group 設定只保留一個 pending job；dispatch 與 PR run 同時進佇列時，較晚進來的 job 會取代先前的 pending。
+- 影響：dispatch run 36996336894 被取消（`reason=replaced`），實際完成的 canonical TEST 是 36996678336；搞錯 dispatch 與 PR run 的順序導致浪費一次 CI 額度。
+- 修正：先確保 PR run 的 integration 進入 pending（已可觀測），再 dispatch canonical TEST；dispatch 應晚於 PR run 進入佇列。
+- 預防：監看 shared TEST concurrency 仲裁機制；同分支的 pull_request 與 workflow_dispatch job 應序列化，或明確定義優先順序與取代規則。不同 branch 的 concurrent dispatch 仍可保留。
+- 驗證：PR #731 merged；本次 #714、#709、#751 並無因 concurrency 被取代的 dispatch。
+- 狀態：已防止；待監看後續 multi-lane 部署的 concurrency policy 穩定性。
+
+### PB-057 — Next.js 15.5.23：App Router page params 不解碼、API route params 會解碼
+
+- 首次／最近：2026-10-02／2026-10-02。
+- 發生次數：1。
+- Issue／PR／CI：Issue #11；PR #731；Codex P2 item（page params 二次解碼）；audit 實測 Next 15.5.23 官方行為。
+- 分類：Next.js 框架／URL 編碼。
+- 事件：公開行程詳情頁 URL 包含 `slug` 參數可能需被 URL 編碼（例如特殊字元）；頁面同時使用 API 呼叫傳遞同一 slug。測試發現 App Router page `params` 與 API route `params` 的解碼行為不同：page 不做 URL 解碼、API route 會。
+- 根因：Next.js 框架設計：App Router page component 收到的 `params` 是路由段原始值，未被自動解碼；而 API route 的 `req.query` 或 Next.js 內部路由層會執行 URL 解碼。
+- 影響：同一個 slug 值在頁面與 API 間可能被不同處理；若頁面只解碼一次而 API 已解過，會造成二次解碼問題；反之亦然。
+- 修正：App Router page 與 API route 在同一分支內必須統一解碼次數；由頁面負責一次解碼（使用 `decodeURIComponent` 或等效），API 層假設已解碼的值，不再解碼。確認外部 reviewer 的相反主張時，以同版本 Next.js 最小專案實測作裁決，不信任文件或版本說明。
+- 預防：頁面與 API 若使用相同 route parameter，先驗證編碼次數一致；E2E 應包含特殊字元的 URL 對照測試，確認往返不丟失或誤解碼。框架版本更新時重新驗證此行為；不同版本間無法假設一致性。
+- 驗證：PR #731 exact head；audit tier 已實測驗證；本次 #714–#751 編碼逻辑一致。
+- 狀態：已防止；同類框架行為差異待後續監看。
+
+### PB-058 — 子代理禁止 git reset --hard 與 local integration test（含 reset-db）
+
+- 首次／最近：2026-10-02／2026-10-02。
+- 發生次數：1。
+- Issue／PR／CI：Issue #11；派工委派（Agent task within shared session）。
+- 分類：子代理權限／測試隔離。
+- 事件：子代理在本地 worktree 執行 `git reset --hard`（違反禁令），以及執行 `vitest list --config vitest.integration.config.mts` 觸發 reset-db 腳本。
+- 根因：子代理未被明確禁止此類操作；缺乏預設防護。
+- 影響：子代理確實執行了破壞性命令，但經查本機沒有 SUPABASE 環境變數，loadTestEnv 在建立任何連線前即 exit(1)，**沒有任何資料庫被重置或觸及**。風險在於若環境有 TEST 憑證就會重置共用 TEST。
+- 修正：派工委派時在指令中明文寫入「禁止 `git reset --hard`」與「禁止本地執行 `vitest --config vitest.integration.config.mts`」；若必須執行測試，改用 CI runner 或隔離環境。
+- 預防：子代理授權清單應列出禁止清單（reset、rm -rf、remote 變更），而不是白名單制；委派指令應明確說明哪些操作會影響環境與共用資源。
+- 驗證：PR #731 merged；後續派工中已明文禁止此類操作。
+- 狀態：已防止；待內化為預設子代理安全準則。
+
+### PB-059 — 測試 fixture 不可依賴非 canonical overlay 欄位／約束
+
+- 首次／最近：2026-10-02／2026-10-02。
+- 發生次數：1。
+- Issue／PR／CI：Issue #11；PR #731；disposable local Supabase；`trip_plans_tenant_trip_slug_key` 約束（fixture 環境有，canonical 可能無）。
+- 分類：測試契約／fixture 隔離。
+- 事件：測試 fixture 在 local dev 環境依賴特定 DB 約束或欄位（例如 unique key）；若該約束在 canonical 環境（例如 TEST、Production）不存在或不同，測試會在 canonical 環境失敗（衝突／500 error）或行為不同。
+- 根因：fixture 環境（local Supabase、disposable stack）可能包含非 canonical migration 的約束；測試沒有驗證其在 canonical migration 集合上的有效性。
+- 影響：測試在本地通過，但在 CI 或 TEST 失敗；錯誤的 fixture 預期會導致 TEST 異常或資料違反。
+- 修正：fixture 必須以 canonical migration（來自 `supabase/migrations/`，不含 local-only overlay）為基礎建立；驗證任何 unique key、trigger、constraint 都存在於 canonical 版本。若需要非 canonical 資料狀態，改用不依賴約束的 data setup（例如直接插入特定值而不靠 unique key 防重複）。
+- 預防：測試前先驗證 fixture 使用的 migration 與 canonical 版本一致；長期改進：fixture 應自動由 canonical migration apply（不自訂 overlay）；約束 guard 應檢查 canonical-only 的 migration 集合。
+- 驗證：PR #731 merged；後續 E2E 與 integration 改為 disposable stack + canonical migrations。
+- 狀態：已防止；待測試 fixture 框架强制校驗 canonical-only 基線。
+
+### PB-060 — 子代理啟動的 dev／start server 必須在回報前關閉
+
+- 首次／最近：2026-10-02／2026-10-02。
+- 發生次數：1。
+- Issue／PR／CI：Issue #11；PR #731；child agent 啟動 `next dev`／`npm start`；本輪清理 2 個殘留 next-server。
+- 分類：子代理清理／資源洩漏。
+- 事件：子代理執行 `npm run dev` 或 `npm start` 來驗證應用，但未在回報結果前停止伺服器；伺服器程序保持執行，佔用連接埠與資源。
+- 根因：子代理未被要求清理啟動的長期程序；缺乏 finally block 或信號處理。
+- 影響：多個子代理工作可能共享同一連接埠導致衝突；工作樹的網路狀態被污染；下一輪派工可能找不到乾淨環境。
+- 修正：子代理啟動伺服器前必須設置 cleanup（`kill <pid>`、`pkill next`、`Ctrl+C`）；回報結果前驗證程序已終止（`ps | grep` 確認無殘留）。
+- 預防：派工委派時列出「結束時必須停止所有伺服器」；子代理 template 應包含 finally block 用於關閉程序；測試 harness 應 fail-closed 檢測殘留程序並拒絕回報。
+- 驗證：PR #731 merged；工作樹 cleanup 已確認無殘留進程。
+- 狀態：已防止；待 agent runtime 強制程序生命週期清理。
+
+### PB-061 — Ledger 事件需即時記錄；延後到 merge 後補記會漏記並誤改既有資料
+
+- 首次／最近：2026-10-02／2026-10-03。
+- 發生次數：2。
+- Issue／PR／CI：Issue #11、#47、#710、#748；PR #731、#714、#709、#751、#752；補記 commit `6b36be13`（2026-10-03T04:17Z 起）與更正 commit `794cd688`、`607471c1`。
+- 分類：ledger 紀錄／OBSERVED_V1 即時捕捉。
+- 事件：2026-10-02～03 多筆 build／audit／scout 與 canonical TEST 事件沒有在發生當下寫入 Run ledger，只記在 session 暫存清單；2026-10-03 由 scout 層一次補記。第一次補記把 `ci.fullCiRuns` 從 30 覆蓋成 4、`ci.invalidReruns` 從 5 改成 0、把 PR 當成已關閉 Issue，並依 task id 字尾推算 `issue` 欄位（產生不存在的 #775、把 PR 編號當 Issue），經 audit 層核對後以修正 commit 更正。
+- 根因：產品 PR 進行中為避免改動 exact head 而延後寫 ledger；scout 補記時沒有逐筆對照原值，而是覆寫累計欄位並從 id 推算歸屬。
+- 影響：ledger 一度失真；需多輪 audit 核對與修正 commit。
+- 修正：累計欄位一律以「原值＋本輪逐筆可證增量」更新，不得覆寫；既有 task 不得改名或補推算欄位；無法佐證的值維持 null 並寫 note。
+- 預防：事件發生當下即寫入 ledger（同回合 capture）；若當下不能寫（例如會作廢 exact-head 證據），在 PR 或 Issue 留可追溯紀錄，並於下一個可寫入的 PR 由 scout 層補記，補記後必須經 audit 層逐欄比對 main 原值。
+- 驗證：PR #752 的 ledger 經 audit 層比對：`fullCiRuns` 30→33、`invalidReruns` 5、`issuesClosed` 0；`scorecard-readiness --strict-live` LIVE_CAPTURE_READY。
+- 狀態：已更正本輪；即時捕捉仍待後續 Run 觀察。
+### PB-062 — PARKED PR 收到新 commit 時 guard 會擋；需先改本文再 push
+
+- 首次／最近：2026-10-03／2026-10-03。
+- 發生次數：1。
+- Issue／PR／CI：Issue #47；PR #714；guard 報告 `A PARKED PR received a new commit`。
+- 分類：PR 生命週期／guard 規則。
+- 事件：PR #714 處於 PARKED 狀態（ACTIVE_CANDIDATE=false）；branch 上推送新 commit 時，preflight guard 報告 PARKED PR 不能直接推送更新。
+- 根因：PARKED 狀態代表 PR 暫停施工；新 commit 應先由 Sol/audit 層檢查與批准，並將 PR 標記回 ACTIVE（改 ACTIVE_CANDIDATE=true、補 BUILDER_EXECUTION_RECEIPT）。
+- 影響：本輪先 push 後改本文，多執行一次 guard；guard 的控制流不穩定，後續 commit 會再次遇擋。
+- 修正：PARKED PR 的重新啟用順序應為：（1）Sol/audit 批准重新施工；（2）修改 PR 本文，設定 ACTIVE_CANDIDATE=true、補充 BUILDER_EXECUTION_RECEIPT；（3）再推送新 commit。這樣 guard 在檢驗 commit 時已看到新的 ACTIVE metadata。
+- 預防：PR 本文更新與新 commit 應同時進行或先改本文；preflight 應驗證 PARKED 狀態下的元數據變更；自動化可在檢測到 PARKED 進 ACTIVE 轉換時，重新驗證 pending commit。
+- 驗證：PR #714 修正後按新順序重新啟用，guard 成功；本次 #709、#751 無 PARKED 狀態轉換。
+- 狀態：已防止；guard 與 lifecycle 轉換的交互應進一步明確化。
+
+### PB-063 — Scout 盤點宣稱「可立即 merge」前，須附 live 證據與 CI 結果
+
+- 首次／最近：2026-10-03／2026-10-03。
+- 發生次數：1。
+- Issue／PR／CI：Issue #47；PR #714；scout task 結論；audit 層核對發現結論與 live state 不符。
+- 分類：scout 層品質／證據標準。
+- 事件：scout 層對 PR #714 的盤點結論為「可立即 merge」；但 audit 層查詢 live GitHub state 時發現該 PR 為 dirty（需更新分支）、SOURCE CI 為 NOT_RUN。
+- 根因：scout 盤點時未查詢 live `mergeable_state`；宣稱可 merge 但無 CI 與 mergeable 證據。Haiku 的讀取時間窗與 audit 查詢時間窗相差可能超過分鐘級，導致快照過期。
+- 影響：建議被採納但實際無法直接執行；audit 層必須核對現況，增加驗證成本。lunaAccepted counter 紀錄了部分採納（不完全信任盤點結論）。
+- 修正：scout 盤點的最終結論應附帶：（1）exact 時間戳的 `mergeable_state`（例如 `mergeable=true`）；（2）SOURCE CI 最新 run 的 status 與結論時間；（3）若涉及多項檢查，列出各項現況。不得以推論或「應該是」代替 live 查詢。
+- 預防：scout 層應使用統一的 live query API（例如 `gh api repos/...` 帶 `--jq` 解析）查詢確切狀態，並在輸出中保留時間戳；複盤工具應驗證 scout 輸出的時間窗足夠新近；audit 層核對時若發現偏差，改為 partial adoption（lunaAccepted < lunaTasks）。
+- 驗證：audit 層以 live `mergeable_state`（dirty）與 PR 本文 `CANONICAL_TEST_STATUS: NOT_RUN` 推翻該結論；#714 改由 main 合併、一般審查後 merge。
+- 狀態：規則已記錄；scout 盤點附 live 證據仍待後續觀察。
+
+### PB-064 — 舊 slice 帶有 Run ledger 檔時，合併 main 會 add/add 衝突；ledger 以 main 版本逐字解決
+
+- 首次／最近：2026-10-03／2026-10-03。
+- 發生次數：1。
+- Issue／PR／CI：Issue #47；PR #714；merge origin/main（3cd1187f）時 `docs/metrics/agent-runs/2026-10-01-product-delivery-r01.{json,md}` add/add 衝突。
+- 分類：git workflow／ledger 管理。
+- 事件：PR #714 在較早的 base 上新增過同一 Run 的 ledger 檔；main 之後由其他 commit 也新增並持續更新同一檔，#714 合併 main 時兩邊 add/add 衝突。
+- 根因：同一 Run ledger 檔在不同分支各自新增與修改。
+- 影響：若手動合併兩份內容，容易造成計數重複或遺失。
+- 修正：衝突時 ledger 以 origin/main 版本逐字解決（`cmp` 驗證），不在合併 commit 中撰寫 ledger 內容；該 PR 自身的事件改由 scout 層在下一個可寫入的 PR 補記。
+- 預防：產品 PR 仍應即時記錄自身事件（見 PB-061）；但合併 main 遇 ledger 衝突時，以 main 為準再補記差額，不在衝突解決中混寫。
+- 驗證：PR #714 head 593731b7 的 ledger 兩檔與 origin/main 逐字相同後 merge。
+- 狀態：已處理；規則待後續觀察。
+### PB-065 — TEST_VALIDATION lane dispatch 需先驗證 PR 本文 metadata
+
+- 首次／最近：2026-10-03／2026-10-03。
+- 發生次數：1。
+- Issue／PR／CI：Issue #710；PR #709；dispatch run `37083653366` 被 classify-changes 拒絕（`invalid_dispatch_pr_contract`）。
+- 分類：dispatch 契約／preflight。
+- 事件：TEST_VALIDATION lane 的 PR #709 第一次 dispatch（run `37083653366`）被拒，原因為 PR 本文缺乏或錯誤的 metadata：`WORK_ORIGIN: OWNER`（應為 `AGENT`）、未設 `BPLUS_MODE: true`、缺 `TEST_LANE_REQUIRED: true` 宣告。
+- 根因：PR 本文 metadata 未通過本地 preflight（`isActiveTestValidation(parseLaneMetadata(body))`）；远端 dispatch 只是後續檢驗，無法代替本地驗證。
+- 影響：dispatch 被拒，TEST 未執行；需修正本文後重新 dispatch，浪費時間與 CI 額度。
+- 修正：在 dispatch 前，本地執行 `isActiveTestValidation(parseLaneMetadata(body))` 驗證 PR 本文契約；驗證清單包括：（1）`WORK_ORIGIN: AGENT`；（2）`BPLUS_MODE: true`；（3）`AGENT_LANE: TEST_VALIDATION`；（4）`LANE_STATE: ACTIVE`；（5）`TEST_LANE_REQUIRED: true`；（6）base SHA 等於 `base_revision`。preflight PASS 後再 dispatch；若 PASS 仍被拒，檢查遠端契約與本地分類器之間的版本差異。
+- 預防：preflight 工具應官方化並集成到 CI；dispatch 前的 guard 應強制執行本地驗證；失敗時給出明確的 remediation 步驟（哪個欄位缺失或錯誤）。
+- 驗證：PR #709 修正本文後重新 dispatch，run `37083761493` SUCCESS。
+- 狀態：已防止；TEST_VALIDATION preflight 應內化為 PR template 與自動檢查。
+
+### PB-066 — 非 lane PR 的 pull_request run 之 integration success 可能是 source-only policy skip
+
+- 首次／最近：2026-10-03／2026-10-03。
+- 發生次數：1。
+- Issue／PR／CI：Issue #710；PR #709；PR run `37083426596` integration job 顯示 success，但實際為 source-only policy skip。
+- 分類：CI 策略／test 可靠性。
+- 事件：PR #709 是 TEST_VALIDATION lane PR，但在 dispatch 前有一次 pull_request trigger run（`37083426596`）；該 run 的 integration job 顯示 success，但讀 log 後發現整個測試集合被 skip（source-only policy）。
+- 根因：CI workflow 對非 lane PR 套用 source-only policy，跳過 integration；job 出現在歷史中但未實際運行測試。檢查輸出時若不讀 log，會誤認為 success = 全部測試通過。
+- 影響：宣稱有 CI 証據（green check），但實際沒有執行測試；false positive，影響 canonical TEST 決策。
+- 修正：檢查 CI run 時必須讀完 log，確認 integration job 確實執行了測試（not skipped）；如果 job 被 skip，標記為 NOT_RUN 或 DEFERRED，不能當 canonical 證據。特別是在評估 TEST 策略與 lane PR 時，區分「source-only skip」與「真實 run」。
+- 預防：CI workflow 應在 job summary 或 status check 清楚標記 skip reason（例如 `[SKIP: source-only policy]`）；檢查工具應自動偵測並報告 skip 狀態；canonical TEST 的定義應明確排除 skipped job。
+- 驗證：PR #709 的 canonical TEST 改為 `37083761493`（dispatch run），實際執行了完整 integration + E2E。
+- 狀態：已防止；CI 策略透明化應內化到 workflow 與檢查工具。
+
+### PB-067 — Premium Final Risk（Fable）應在 canonical TEST 綠燈後才預留與派送
+
+- 首次／最近：2026-10-03／2026-10-03。
+- 發生次數：1。
+- Issue／PR／CI：Issue #710；PR #709；canonical TEST run `37083761493` SUCCESS（2026-10-03 ~01:39Z）；Final Risk premium dispatch ~02:08Z（於 TEST 綠後）。
+- 分類：資源管理／Final Risk 排程。
+- 事件：本輪决策為 TEST 綠後才預留 premium Final Risk，避免 TEST 失敗時重改代碼而浪費唯一一次 premium 諮詢額度。實際執行按時間序：#709 canonical TEST → success → 預留 Final Risk → dispatch Fable → PASS。
+- 根因：前期可能會在 TEST 前預留 Final Risk（流水線最優化），但當 TEST 有高風險時，應延遲。
+- 影響：若 TEST 失敗後要改碼重跑，premium 諮詢已經用掉，無法再諮詢修正後的新 code；浪費資源。
+- 修正：高風險 PR（含 auth boundary、payment、schema 變更）的 premium Final Risk，應在 canonical TEST green 後、merge 前預留與派送，而不是提前預留。部署前的 Final Risk（例如 Production pre-check）仍可在 deploy 前預留。
+- 預防：Final Risk 排程應與 lane state transition 同步；TEST_VALIDATION lane 完成前，不預留 premium；audit 層應在 dispatch final risk 前明確標記 TEST 狀態。政策文件應列出各類 PR 的 Final Risk 排程建議（P0 payment 在 TEST 前、一般 feature 在 TEST 後）。
+- 驗證：PR #709 按此順序執行；Fable dispatch 成功，cost 1 premium 諮詢（owned by this run）。
+- 狀態：已防止；Future high-risk PR 應依此模式排程。
+
+### PB-068 — Draft PR 的 guard 為 DEFERRED_NON_ACTIVE；提交 astra-review 後需轉 ready，guard 才重評估
+
+- 首次／最近：2026-10-03／2026-10-03。
+- 發生次數：1。
+- Issue／PR／CI：Issue #710；PR #709；draft status；astra-review 提交後改為 ready；guard 在 ready 後重新運行。
+- 分類：PR 生命週期／draft 轉 ready。
+- 事件：PR #709 初期為 draft（開發中）；Final Risk astra-review 提交後，PR 轉為 ready for review；轉換後 guard 觸發重新評估，產生多次 status check。
+- 根因：GitHub workflow 將 draft 的 guard 保留為 pending（DEFERRED_NON_ACTIVE），表示暫不驗證；轉 ready 時才激活，觸發所有 pending guard 的重新運行。
+- 影響：merge 前需等最新一筆 guard status 為 success；多輪運行會延長等待時間。需注意「draft 時 pending」≠「可以忽略」——轉 ready 後必須重新評估。
+- 修正：draft PR 的 astra-review 完成後，改 PR 狀態為 ready，等待 guard 重新評估全部結果；merge 前檢查最新的 guard status check，確保為 success。不得在 draft 狀態下收斂 PR（會導致 guard 未評估）。
+- 預防：工作流程應明確標記「draft 期間 guard 延遲」與「ready 後重評估」的轉換；合併檢查清單應包含「確認最新 guard 為 success」而不是「draft 時有 pending」。
+- 驗證：PR #709 轉 ready 後 guard 先 pending 再 success；第一次 merge 嘗試因最新 status 為 pending 被拒（405），等最新一筆為 success 後 merge 成功。
+- 狀態：已防止；workflow status check 應在 PR summary 清楚標記當前狀態與重評估原因。
+
+### PB-069 — 新 Product PR 綁定既有 Run 時，ledger sources 需先含 issue/<n> 宣告
+
+- 首次／最近：2026-10-03／2026-10-03。
+- 發生次數：1。
+- Issue／PR／CI：Issue #748；PR #751；scorecard-required-gate 檢驗；scout 層在開 PR 前應補充 ledger sources。
+- 分類：ledger 管理／Run 綁定。
+- 事件：PR #751 要綁定既有 Run `2026-10-01-product-delivery-r01`；preflight 要求 ledger 的 `sources` 必須先含 `issue/748`，以證明該 issue 是此 Run 的範圍。
+- 根因：scorecard-required-gate 用 `sources` 欄位驗證新 PR 宣告的 issue 是否已被 Run 認領；缺少該欄位則 preflight 失敗。
+- 影響：PR 無法開啟，需回到 scout 層修改 ledger。工作流程被阻斷，PR 開啟延遲。
+- 修正：scout 層在規劃新 issue 加入既有 Run 時，應先在 ledger JSON 的 `sources` 陣列中補充 `{ref: "issue/748"}`；然後再開 PR。這是一行 ledger 變更，應在開 PR 前完成。
+- 預防：scout 層應習慣性檢查「是否要加新 issue」→「若加則先改 ledger sources」→「再開 PR」的順序；preflight 應給出明確的 remediation hint（「缺少 sources 中的 issue/NNN」）；future tooling 可自動化這一步。
+- 驗證：PR #751 開啟前補充 ledger sources；preflight 成功。
+- 狀態：已防止；scout 層工作流 checklist 應包含此項。
+
+### PB-070 — 寫入端未加上限前，先唯讀查 Production 現況，避免超量資料造成存檔無法進行
+
+- 首次／最近：2026-10-03／2026-10-03。
+- 發生次數：1。
+- Issue／PR／CI：Issue #748；PR #751；Production 寫入上限防護；審查階段的唯讀 SELECT。
+- 分類：Production 資料守護／容量管理。
+- 事件：PR #751 涉及相簿寫入上限功能；在正式部署前，審查層執行唯讀 SELECT 查詢 Production 現況（trips 共 0 筆、`jsonb_array_length(gallery) > 8` 為 0 筆），確認現有資料量不會因新邏輯而無法存檔。
+- 根因：若直接部署寫入端邏輯而不先檢查 Production 容量，可能導致既有資料因為新的上限檢查而被鎖定（無法再增、也無法清理）。
+- 影響：Production 使用者在 deploy 後出現意外的「已達上限」訊息，即便實際上還有空間或該限制沒有明確溝通。資料安全與透明度的雙重問題。
+- 修正：寫入端功能（尤其涉及配額、上限、存檔限制）在 deploy 前，應由審查層執行唯讀查詢（SELECT 不含 UPDATE/DELETE），確認：（1）現有資料量；（2）新邏輯的適用範圍；（3）是否會意外鎖定現有合法資料。Merge 確認後、Production 驗收時補完整寫入測試（已在 PR 備註中）。
+- 預防：Production schema 變更的 checklist 應包含「deploy 前唯讀查詢驗收」；PR template 應提醒涉及容量／配額的變更需提前查詢。部署後的 Production acceptance 應包含實際寫入測試（非提前做，而是 merge 確認後在 prod 執行已知安全的操作）。
+- 驗證：PR #751 merge 前的唯讀 SELECT 已執行；Production trips 0 筆、超量 0 筆；merge 後 Production acceptance 標記為 NOT_RUN（待後續驗收步驟）。
+- 狀態：已防止；Production checklist 與審查流程應內化此項。
