@@ -1987,20 +1987,19 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 驗證：PR #731 merged；工作樹 cleanup 已確認無殘留進程。
 - 狀態：已防止；待 agent runtime 強制程序生命週期清理。
 
-### PB-061 — Ledger 事件需即時記錄；延後 merge 後補記會遺漏並增加複盤成本
+### PB-061 — Ledger 事件需即時記錄；延後到 merge 後補記會漏記並誤改既有資料
 
-- 首次／最近：2026-10-02／2026-10-02。
-- 發生次數：1。
-- Issue／PR／CI：Issue #11；PR #731；多筆 build／audit／CI 事件延到 merge 後 ledger PR 補記（#732）。
-- 分類：ledger 紀錄／OBSERVED_V1 捕捉。
-- 事件：2026-10-01 與 2026-10-02 的工作（build #11、audit #11、CI run 等）未在發生時立即寫入 run ledger；改由 2026-10-03 的 scout 層 ledger PR 補記。造成 run ledger 與實際事件時間脫鉤，複盤時無法還原準確的任務流水線。
-- 根因：當時 run ledger 還在 demo 階段（未全量啟用 OBSERVED_V1）；task 與 CI 事件尚未有統一的即時捕捉機制。
-- 影響：`docs/metrics/agent-runs/2026-10-01-product-delivery-r01.json` 的 `modelUsage.tasks` 與 `ci.fullCiRuns` 無法準確對應實際派工時間線；復盤與 scorecard readiness 無法驗證完整的 raw event 序列。不回填推算值會導致 OBSERVED_V1 評分 NEEDS_CAPTURE。
-- 修正：即時記錄機制（AGENT-EXECUTION.md §10.3）：當 build task accepted 時，立即寫 task record（id、role、requestedModel、startedAt）；audit task / CI run 完成時立即補充 completedAt、actualModel、result；merge 時補充 delivery truth（不補造缺失的 raw task 記錄）。
-- 預防：同回合 capture 是硬規則。OBSERVED_V1 run 的任何 durable event 一旦在本 session 可觀測，就先寫 raw fact，再繼續派工；不得延後到 ledger PR。若無法即時寫（session 不持有 ledger、工具失敗），必須留 `RUN_CAPTURE_HANDOFF`（含 RUN_ID、EVENT、EVIDENCE_REF、BLOCKER 原因）明確標記為待補。
-- 驗證：PR #731 merged；2026-10-03 後續 work（#714、#709、#751）的 ledger event 已改為即時記錄。本輪 2026-10-02 延遲項由 scout 層逐筆補記至 2026-10-03T04:17:00Z。
-- 狀態：已防止；scorecard-readiness 已驗證 2026-10-02–2026-10-03 完整 event 序列。
-
+- 首次／最近：2026-10-02／2026-10-03。
+- 發生次數：2。
+- Issue／PR／CI：Issue #11、#47、#710、#748；PR #731、#714、#709、#751、#752；補記 commit `6b36be13`（2026-10-03T04:17Z 起）與更正 commit `794cd688`、`607471c1`。
+- 分類：ledger 紀錄／OBSERVED_V1 即時捕捉。
+- 事件：2026-10-02～03 多筆 build／audit／scout 與 canonical TEST 事件沒有在發生當下寫入 Run ledger，只記在 session 暫存清單；2026-10-03 由 scout 層一次補記。第一次補記把 `ci.fullCiRuns` 從 30 覆蓋成 4、`ci.invalidReruns` 從 5 改成 0、把 PR 當成已關閉 Issue，並依 task id 字尾推算 `issue` 欄位（產生不存在的 #775、把 PR 編號當 Issue），經 audit 層核對後以修正 commit 更正。
+- 根因：產品 PR 進行中為避免改動 exact head 而延後寫 ledger；scout 補記時沒有逐筆對照原值，而是覆寫累計欄位並從 id 推算歸屬。
+- 影響：ledger 一度失真；需多輪 audit 核對與修正 commit。
+- 修正：累計欄位一律以「原值＋本輪逐筆可證增量」更新，不得覆寫；既有 task 不得改名或補推算欄位；無法佐證的值維持 null 並寫 note。
+- 預防：事件發生當下即寫入 ledger（同回合 capture）；若當下不能寫（例如會作廢 exact-head 證據），在 PR 或 Issue 留可追溯紀錄，並於下一個可寫入的 PR 由 scout 層補記，補記後必須經 audit 層逐欄比對 main 原值。
+- 驗證：PR #752 的 ledger 經 audit 層比對：`fullCiRuns` 30→33、`invalidReruns` 5、`issuesClosed` 0；`scorecard-readiness --strict-live` LIVE_CAPTURE_READY。
+- 狀態：已更正本輪；即時捕捉仍待後續 Run 觀察。
 ### PB-062 — PARKED PR 收到新 commit 時 guard 會擋；需先改本文再 push
 
 - 首次／最近：2026-10-03／2026-10-03。
@@ -2026,23 +2025,22 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 影響：建議被採納但實際無法直接執行；audit 層必須核對現況，增加驗證成本。lunaAccepted counter 紀錄了部分採納（不完全信任盤點結論）。
 - 修正：scout 盤點的最終結論應附帶：（1）exact 時間戳的 `mergeable_state`（例如 `mergeable=true`）；（2）SOURCE CI 最新 run 的 status 與結論時間；（3）若涉及多項檢查，列出各項現況。不得以推論或「應該是」代替 live 查詢。
 - 預防：scout 層應使用統一的 live query API（例如 `gh api repos/...` 帶 `--jq` 解析）查詢確切狀態，並在輸出中保留時間戳；複盤工具應驗證 scout 輸出的時間窗足夠新近；audit 層核對時若發現偏差，改為 partial adoption（lunaAccepted < lunaTasks）。
-- 驗證：PR #714 修正後重新評估，符合 merge 條件；後續 PR 的盤點均附帶具體 CI run ID 與 mergeable state。
-- 狀態：已防止；scout 層 readiness check 應強制驗證時間窗。
+- 驗證：audit 層以 live `mergeable_state`（dirty）與 PR 本文 `CANONICAL_TEST_STATUS: NOT_RUN` 推翻該結論；#714 改由 main 合併、一般審查後 merge。
+- 狀態：規則已記錄；scout 盤點附 live 證據仍待後續觀察。
 
-### PB-064 — 舊 slice 若新增過 ledger 檔，合併時會 add/add 衝突；解法是以 main 解決、ledger 改由 scout PR 補記
+### PB-064 — 舊 slice 帶有 Run ledger 檔時，合併 main 會 add/add 衝突；ledger 以 main 版本逐字解決
 
 - 首次／最近：2026-10-03／2026-10-03。
 - 發生次數：1。
-- Issue／PR／CI：Issue #47；PR #714；merge with origin/main 的 add/add 衝突（ledger 檔）。
+- Issue／PR／CI：Issue #47；PR #714；merge origin/main（3cd1187f）時 `docs/metrics/agent-runs/2026-10-01-product-delivery-r01.{json,md}` add/add 衝突。
 - 分類：git workflow／ledger 管理。
-- 事件：PR #714 基於較舊的 main commit；期間另一個 slice（例如 #731）新增了 ledger 檔 `docs/metrics/agent-runs/2026-10-01-*.json`；當 #714 合併 origin/main 時遇到 add/add 衝突（兩邊都新增同一檔）。
-- 根因：ledger 檔不應在個別 Product PR 中新建；應集中由 scout 層在一個統一的 ledger PR 中增補。
-- 影響：衝突解決增加複雜度；若用錯方式（例如合併兩份內容），ledger 會損壞。本輪解法為 `ledger 以 main 逐字解決`，因 #731 的 ledger 已是 main 現況。
-- 修正：不在 Product slice PR（如 #714）中新增或修改 ledger；ledger 檔由獨立的 scout 層 ledger PR（例如 #732）統一管理。若 Product slice 需要記事件，改由共用欄位（例如 notes）在 slice 內提及，ledger PR 後續補記完整 task record。
-- 預防：Product PR template 應提醒禁止新增 `docs/metrics/agent-runs/**` 檔；preflight guard 應檢測與拒絕。ledger PR 的定義應明確為 scout 層作業，不借用 Product 工作樹。
-- 驗證：PR #714 以 main 解決衝突後 merge；本次 #709、#751 無新增 ledger 檔。scout 層另開 PR #732 統一補記。
-- 狀態：已防止；Product template 與 guard 應強制執行。
-
+- 事件：PR #714 在較早的 base 上新增過同一 Run 的 ledger 檔；main 之後由其他 commit 也新增並持續更新同一檔，#714 合併 main 時兩邊 add/add 衝突。
+- 根因：同一 Run ledger 檔在不同分支各自新增與修改。
+- 影響：若手動合併兩份內容，容易造成計數重複或遺失。
+- 修正：衝突時 ledger 以 origin/main 版本逐字解決（`cmp` 驗證），不在合併 commit 中撰寫 ledger 內容；該 PR 自身的事件改由 scout 層在下一個可寫入的 PR 補記。
+- 預防：產品 PR 仍應即時記錄自身事件（見 PB-061）；但合併 main 遇 ledger 衝突時，以 main 為準再補記差額，不在衝突解決中混寫。
+- 驗證：PR #714 head 593731b7 的 ledger 兩檔與 origin/main 逐字相同後 merge。
+- 狀態：已處理；規則待後續觀察。
 ### PB-065 — TEST_VALIDATION lane dispatch 需先驗證 PR 本文 metadata
 
 - 首次／最近：2026-10-03／2026-10-03。
@@ -2096,7 +2094,7 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 影響：merge 前需等最新一筆 guard status 為 success；多輪運行會延長等待時間。需注意「draft 時 pending」≠「可以忽略」——轉 ready 後必須重新評估。
 - 修正：draft PR 的 astra-review 完成後，改 PR 狀態為 ready，等待 guard 重新評估全部結果；merge 前檢查最新的 guard status check，確保為 success。不得在 draft 狀態下收斂 PR（會導致 guard 未評估）。
 - 預防：工作流程應明確標記「draft 期間 guard 延遲」與「ready 後重評估」的轉換；合併檢查清單應包含「確認最新 guard 為 success」而不是「draft 時有 pending」。
-- 驗證：PR #709 轉 ready 後，後續 guard run 均為 success；merge 前確認最新 status 為綠燈。
+- 驗證：PR #709 轉 ready 後 guard 先 pending 再 success；第一次 merge 嘗試因最新 status 為 pending 被拒（405），等最新一筆為 success 後 merge 成功。
 - 狀態：已防止；workflow status check 應在 PR summary 清楚標記當前狀態與重評估原因。
 
 ### PB-069 — 新 Product PR 綁定既有 Run 時，ledger sources 需先含 issue/<n> 宣告
@@ -2119,10 +2117,10 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 發生次數：1。
 - Issue／PR／CI：Issue #748；PR #751；Production 寫入上限防護；審查階段的唯讀 SELECT。
 - 分類：Production 資料守護／容量管理。
-- 事件：PR #751 涉及相簿寫入上限功能；在正式部署前，審查層執行唯讀 SELECT 查詢 Production 現況（1 tenant、0 trips、current quota），確認現有資料量不會因新邏輯而無法存檔。
+- 事件：PR #751 涉及相簿寫入上限功能；在正式部署前，審查層執行唯讀 SELECT 查詢 Production 現況（trips 共 0 筆、`jsonb_array_length(gallery) > 8` 為 0 筆），確認現有資料量不會因新邏輯而無法存檔。
 - 根因：若直接部署寫入端邏輯而不先檢查 Production 容量，可能導致既有資料因為新的上限檢查而被鎖定（無法再增、也無法清理）。
 - 影響：Production 使用者在 deploy 後出現意外的「已達上限」訊息，即便實際上還有空間或該限制沒有明確溝通。資料安全與透明度的雙重問題。
 - 修正：寫入端功能（尤其涉及配額、上限、存檔限制）在 deploy 前，應由審查層執行唯讀查詢（SELECT 不含 UPDATE/DELETE），確認：（1）現有資料量；（2）新邏輯的適用範圍；（3）是否會意外鎖定現有合法資料。Merge 確認後、Production 驗收時補完整寫入測試（已在 PR 備註中）。
 - 預防：Production schema 變更的 checklist 應包含「deploy 前唯讀查詢驗收」；PR template 應提醒涉及容量／配額的變更需提前查詢。部署後的 Production acceptance 應包含實際寫入測試（非提前做，而是 merge 確認後在 prod 執行已知安全的操作）。
-- 驗證：PR #751 merge 前的唯讀 SELECT 已執行；Production 1 tenant / 0 trips；merge 後 Production acceptance 標記為 NOT_RUN（待後續驗收步驟）。
+- 驗證：PR #751 merge 前的唯讀 SELECT 已執行；Production trips 0 筆、超量 0 筆；merge 後 Production acceptance 標記為 NOT_RUN（待後續驗收步驟）。
 - 狀態：已防止；Production checklist 與審查流程應內化此項。
