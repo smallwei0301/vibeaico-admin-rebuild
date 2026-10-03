@@ -114,6 +114,19 @@ describe('#724 immutable Agent PR publication preflight receipt', () => {
     expect(errors).toMatch(/RUN_ID|SCORECARD_PATH|issue|COUNT_IN_DELIVERY_OUTCOME/i);
   });
 
+  it('validates AUDIT_READY SOURCE_FREEZE against the live exact head, never an empty or claimed head', () => {
+    const freeze = JSON.stringify({ head, writes: 'STOPPED', at: new Date().toISOString() });
+    const body = [
+      'WORK_ORIGIN: AGENT', 'LANE_STATE: ACTIVE', 'AGENT_LANE: TERRA_BUILD',
+      'DUAL_TERRA_PILOT: true', 'TERRA_SLOT: 1', 'COMPLETION_CLAIM: AUDIT_READY',
+      `SOURCE_FREEZE: ${freeze}`,
+    ].join('\n');
+    const input = { body, changedFiles: ['src/app/example.ts'], prNumber: 724, action: 'opened' };
+    expect(validatePublicationMetadata({ ...input, headSha: head }).errors).not.toContain('SOURCE_FREEZE does not match live exact head');
+    expect(validatePublicationMetadata({ ...input, headSha: 'c'.repeat(40) }).errors).toContain('SOURCE_FREEZE does not match live exact head');
+    expect(validatePublicationMetadata(input).errors).toContain('SOURCE_FREEZE does not match live exact head');
+  });
+
   it('wires Draft staging, trusted receipt verification and base-policy grandfathering into the remote guard', () => {
     const workflow = fs.readFileSync('.github/workflows/agent-wip-guard.yml', 'utf8');
     for (const needle of [
@@ -128,6 +141,7 @@ describe('#724 immutable Agent PR publication preflight receipt', () => {
     expect(parsed.on.push.branches).toContain('main');
     const guard = parsed.jobs.guard.steps.find((step: any) => step.with?.script).with.script;
     expect(guard).toContain('publicationPolicyApplies');
+    expect(guard).toMatch(/validatePublicationMetadata\([\s\S]*?headSha: current\.head\.sha/);
     expect(guard).toContain('if (publicationApplies) metadataErrors.push(...publicationValidation.errors)');
     expect(guard).not.toMatch(/^\s*metadataErrors\.push\(\.\.\.publicationValidation\.errors\);/m);
     expect(workflow).toContain('resolvePublicationBaseWakeup');

@@ -314,6 +314,7 @@ jobs:
             const publicationValidation = publicationApplies
               ? preflight.validatePublicationMetadata({
                   body: current.body ?? '', changedFiles: ownPaths, prNumber: current.number,
+                  headSha: current.head.sha,
                   action: context.payload.action ?? 'opened', requireAstraClassification: true,
                 })
               : null;

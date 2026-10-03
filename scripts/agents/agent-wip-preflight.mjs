@@ -180,6 +180,7 @@ export function discoverChangedFiles({
  *   requireAstraClassification?: boolean,
  *   changedFiles?: string[] | null,
  *   prNumber?: number | string,
+ *   headSha?: string,
  *   action?: string,
  *   repositoryRoot?: string,
  *   fileExists?: (path: import('node:fs').PathLike) => boolean,
@@ -188,7 +189,7 @@ export function discoverChangedFiles({
 export function validatePublicationMetadata(input = {}) {
   const body = String(input.body ?? '');
   const changedFiles = Array.isArray(input.changedFiles) ? input.changedFiles : [];
-  const pr = { number: Number(input.prNumber) || 1, state: 'open', body, head: { sha: '' } };
+  const pr = { number: Number(input.prNumber) || 1, state: 'open', body, head: { sha: String(input.headSha ?? '') } };
   const metadata = parseLaneMetadata(pr);
   const errors = [];
   const origin = upper(readField(body, 'WORK_ORIGIN'));
