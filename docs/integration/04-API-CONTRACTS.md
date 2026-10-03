@@ -87,11 +87,11 @@ export const POST = handle(async (_req, { params }) => {
 
 | 端點 | Body（zod） | data 回傳 |
 |---|---|---|
-| POST `/api/auth/send-verification-code` | `{email, purpose:'REGISTER'\|'RESET_PASSWORD'}` | `{sent:true}` |
+| POST `/api/auth/send-verification-code` | `{email, purpose:'REGISTER'\|'RESET_PASSWORD'}` | `{sent:true}`；寄信失敗（或處於失敗 parity 視窗內）回 503 `MAIL_001`「驗證信暫時無法寄出，請稍後再試或聯絡我們」，詳見 `03-AUTH.md` §2 |
 | POST `/api/auth/tenant/register` | `{email, code, password, tenantName, shopCode}` | `{registered:true}` |
 | POST `/api/auth/login` | `{email, password}` | `{loggedIn:true}` |
 | POST `/api/auth/logout` | – | `{loggedOut:true}` |
-| POST `/api/auth/forgot-password` | `{email}` | `{sent:true}` |
+| POST `/api/auth/forgot-password` | `{email}` | `{sent:true}`；寄信失敗（或處於失敗 parity 視窗內）回 503 `MAIL_001`，枚舉防護保證（正常時回應一致；失敗時視窗內一致，best-effort 不跨 instance）詳見 `03-AUTH.md` §2 |
 | POST `/api/auth/reset-password` | `{email, code, newPassword}` | `{reset:true}` |
 | POST `/api/auth/change-password` | `{currentPassword, newPassword}` | `{changed:true}` |
 | GET `/api/auth/me` | – | `{email, tenantId, tenantName, shopCode, role}` |

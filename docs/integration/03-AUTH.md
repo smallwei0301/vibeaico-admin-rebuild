@@ -43,6 +43,15 @@
 - 驗證成功即寫 `consumed_at`，一碼一次。
 - 為防 email 枚舉：email 已存在時 `send-verification-code(REGISTER)` 與
   不存在時 `forgot-password` **都回成功**，只是不寄信（或寄「此信箱已註冊」提醒信）。
+- **寄信失敗契約（#754／#758）**：該寄信卻寄失敗時（無 API key、provider 401／403、5xx、429、網路錯誤等），
+  `send-verification-code` 與 `forgot-password` 回 **503 `MAIL_001`**，訊息固定為
+  「驗證信暫時無法寄出，請稍後再試或聯絡我們」，剛插入的驗證碼即刪除（不留 60 秒冷卻），
+  provider 細節只進 server log、不回給 client。**不得**在沒寄出時回 `{sent:true}`。
+- **枚舉防護的精確保證**：正常運作時，已存在／不存在 email 的回應完全相同（皆 200 `{sent:true}`）。
+  寄信失敗後會開啟「parity 視窗」（設定類失敗 10 分鐘、暫時性失敗 60 秒，不縮短既有較長視窗；
+  寄信成功即清除），視窗內原本「不寄信」的路徑也回同一個 503 `MAIL_001`，讓兩類 email 回應一致。
+  視窗存於 instance 記憶體，**僅 best-effort**：跨 serverless instance 不共享，且每個 instance
+  第一個失敗請求之前（視窗尚未建立）仍可能出現差異。實作見 `src/server/send-code.ts`。
 
 ### `/api/auth/send-verification-code/route.ts`
 
@@ -243,7 +252,7 @@ revoke execute on function user_id_by_email(text) from anon, authenticated;
 ```
 
 `forgot-password` route 只是 `send-verification-code` 的殼：固定
-`purpose = 'RESET_PASSWORD'`，一律回 `ok({ sent: true })`。
+`purpose = 'RESET_PASSWORD'`；正常時一律回 `ok({ sent: true })`，寄信失敗（或處於 parity 視窗內）回 503 `MAIL_001`（見 §2 寄信失敗契約）。
 
 ---
 

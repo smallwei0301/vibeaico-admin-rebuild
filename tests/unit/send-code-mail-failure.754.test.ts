@@ -73,14 +73,10 @@ describe('send-verification-code 寄信失敗誠實回報 (#754)', () => {
     expect(state.rows).toHaveLength(0);
   });
 
-  it('暫時性失敗 → 503，驗證碼被刪除，且不影響之後的已存在 email', async () => {
+  it('暫時性失敗 → 503，驗證碼被刪除（parity 視窗行為見 send-code-parity.758）', async () => {
     mail.fn.mockResolvedValue({ result: 'FAILED', configFailure: false });
     expect((await call('a@example.com')).status).toBe(503);
     expect(state.rows).toHaveLength(0);
-    state.exists = true;
-    const res = await call('b@example.com');
-    expect(res.status).toBe(200);
-    expect(mail.fn).toHaveBeenCalledTimes(1);
   });
 
   it('無 key（SKIPPED_NO_KEY）→ 503，驗證碼被刪除', async () => {
