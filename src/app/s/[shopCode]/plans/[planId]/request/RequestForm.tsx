@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { ApiError, request } from '@/lib/api';
 import { publicTourRequestPage as t } from '@/i18n/zh-TW/pages/public-tour-request';
 import { formatCurrency } from '@/lib/utils';
+import { canSubmitBooking, resolveBookingTotal, seasonalHeadlineKind } from '@/lib/public-booking-price';
 import type { PublicRequestPlan } from '@/server/public-tour-request';
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
@@ -48,8 +49,13 @@ export function RequestForm({
   const [error, setError] = React.useState('');
 
   const hasContact = !!(contactPhone.trim() || contactLine.trim() || contactEmail.trim());
-  const canSubmit = !!departureId && !!contactName.trim() && hasContact
-    && partySize >= plan.minParty && partySize <= plan.maxParty && !submitting;
+  // 實際金額摘要只使用 resolveBookingTotal 的結果（與 create_tour_order 同順序：季節單價 → PER_GROUP 一口價／PER_PERSON × 人數）。
+  const selectedDeparture = plan.departures.find((d) => d.id === departureId);
+  const bookingTotal = resolveBookingTotal(selectedDeparture, plan, partySize);
+  const canSubmit = canSubmitBooking({
+    departureId, contactName, hasContact, partySize, minParty: plan.minParty, maxParty: plan.maxParty, submitting,
+    seasonalPricing: plan.seasonalPricing, bookingTotal,
+  });
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,7 +96,7 @@ export function RequestForm({
           <p className="whitespace-pre-line text-sm text-secondary">{plan.planDescription}</p>
         ) : null}
         <div className="text-sm font-medium text-dark">
-          {formatCurrency(plan.pricePerPerson)}{t.form.planPriceUnit[plan.priceType]}
+          {seasonalHeadlineKind(plan) === 'by-departure' ? t.form.seasonalHeadline : seasonalHeadlineKind(plan) === 'contact' ? t.form.seasonalContactHeadline : <>{formatCurrency(plan.pricePerPerson)}{t.form.planPriceUnit[plan.priceType]}</>}
           {' · '}
           {t.form.partyRange(plan.minParty, plan.maxParty)}
         </div>
@@ -128,6 +134,7 @@ export function RequestForm({
                 {plan.departures.map((d) => (
                   <option key={d.id} value={d.id}>
                     {t.form.departureOption(formatDepartureDate(d.departsOn), d.startTime, d.seatsLeft)}
+                    {d.unitPrice !== undefined ? t.form.departurePrice(formatCurrency(d.unitPrice), t.form.planPriceUnit[plan.priceType]) : ''}
                   </option>
                 ))}
               </select>
@@ -204,6 +211,19 @@ export function RequestForm({
           </div>
 
           {error ? <p className="text-sm text-danger">{error}</p> : null}
+
+          {bookingTotal ? (
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium">{t.form.totalLabel}</span>
+              <span className="text-base font-semibold">
+                {plan.priceType === 'PER_GROUP'
+                  ? t.form.totalPerGroup(formatCurrency(bookingTotal.total))
+                  : t.form.totalPerPerson(formatCurrency(bookingTotal.unitPrice), partySize, formatCurrency(bookingTotal.total))}
+              </span>
+            </div>
+          ) : selectedDeparture && plan.seasonalPricing ? (
+            <p className="text-sm text-secondary">{t.form.totalUnknown}</p>
+          ) : null}
 
           <button type="submit" className="btn btn-primary" disabled={!canSubmit}>
             {submitting ? t.form.submitting : t.form.submit}

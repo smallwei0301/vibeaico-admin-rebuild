@@ -131,6 +131,11 @@ const bodySchema = z.object({
   shopCode: z.string().regex(/^[a-z0-9-]+$/, '僅限小寫英文、數字、連字號'),
 });
 
+function isDuplicateEmailError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null &&
+    'code' in error && error.code === 'email_exists';
+}
+
 export const POST = handle(async (req) => {
   const b = bodySchema.parse(await req.json());
   const admin = createAdminSupabase();
@@ -143,7 +148,10 @@ export const POST = handle(async (req) => {
   const { data: created, error: uerr } = await admin.auth.admin.createUser({
     email: b.email, password: b.password, email_confirm: true,   // 驗證碼已確認過信箱
   });
-  if (uerr) return fail(409, 'Email 已註冊', ERR.EMAIL_TAKEN);
+  if (uerr) {
+    if (isDuplicateEmailError(uerr)) return fail(409, 'Email 已註冊', ERR.EMAIL_TAKEN);
+    throw uerr;   // 其他錯誤由 handle() 轉成 500 SYS_001，不洩漏 provider 訊息
+  }
   const userId = created.user.id;
 
   try {
@@ -163,6 +171,8 @@ export const POST = handle(async (req) => {
   return ok({ registered: true });
 });
 ```
+
+錯誤分類規則（Issue #710）：`createUser` 失敗時，只有 `code === 'email_exists'` 才回 409 `AUTH_003`；其他錯誤（provider 5xx、網路故障等）一律 `throw`，由 `handle()` 轉成 500 `SYS_001`，且不建立 tenant、不洩漏 provider 訊息。理由：provider 暫時故障若被誤報成「Email 已註冊」，使用者會被導去登入或重設密碼，卻不知道其實是註冊沒成功。
 
 ---
 

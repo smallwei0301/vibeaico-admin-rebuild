@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_TRIP_GALLERY_IMAGES } from '@/lib/trip-gallery';
 
 export const tripStatus = ['DRAFT', 'PUBLISHED', 'ARCHIVED'] as const;
 export const departureStatus = ['OPEN', 'CLOSED', 'CANCELLED'] as const;
@@ -27,7 +28,10 @@ export const tripCreateSchema = z.object({
   summary: optionalText,
   description: optionalText,
   coverImageUrl: optionalText,
-  gallery: z.array(z.unknown()).optional(),
+  gallery: z
+    .array(z.unknown())
+    .max(MAX_TRIP_GALLERY_IMAGES, `行程相簿最多 ${MAX_TRIP_GALLERY_IMAGES} 張`)
+    .optional(),
   location: optionalText,
   durationHours: z.number().finite().nonnegative().nullable().optional(),
   meetingPoint: optionalText,

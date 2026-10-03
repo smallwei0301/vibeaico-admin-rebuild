@@ -180,11 +180,41 @@ export function discoverChangedFiles({
  *   requireAstraClassification?: boolean,
  *   changedFiles?: string[] | null,
  *   prNumber?: number | string,
+ *   headSha?: string,
+ *   createdAt?: string,
  *   action?: string,
  *   repositoryRoot?: string,
  *   fileExists?: (path: import('node:fs').PathLike) => boolean,
  * }} [input]
  */
+export function validatePublicationMetadata(input = {}) {
+  const body = String(input.body ?? '');
+  const changedFiles = Array.isArray(input.changedFiles) ? input.changedFiles : [];
+  const pr = { number: Number(input.prNumber) || 1, state: 'open', body, head: { sha: String(input.headSha ?? '') } };
+  const metadata = parseLaneMetadata(pr);
+  const errors = [];
+  const origin = upper(readField(body, 'WORK_ORIGIN'));
+
+  if (input.requireAstraClassification !== false) {
+    errors.push(...classifyAstra({ body, changedFiles, createdAt: input.createdAt }).errors);
+  }
+  errors.push(...missingAstraBaselines(body, changedFiles));
+  if (!ORIGINS.has(origin)) errors.push('WORK_ORIGIN must be OWNER, AGENT, or UNKNOWN');
+  if (isPlaceholder(readField(body, 'REQUESTED_MODEL / ACTUAL_MODEL'))) {
+    errors.push('REQUESTED_MODEL / ACTUAL_MODEL is required');
+  }
+  errors.push(...validateLaneMetadata(metadata, { action: input.action ?? 'opened' }));
+  errors.push(...validateActualFileOwnership(metadata, changedFiles));
+  errors.push(...validateDeliveryUnitBoundary(body, metadata));
+  errors.push(...validateBookkeepingWorkstream({ body, changedFiles }));
+  if (metadata.origin === 'AGENT' && metadata.state === 'ACTIVE' && metadata.lane === 'GOVERNANCE') {
+    const exception = parseGovernanceScopeException(readField(body, 'GOVERNANCE_SCOPE_EXCEPTION'));
+    if (!exception.valid) errors.push(exception.error);
+  }
+  errors.push(...(decideLocalIsolatedTest({ body }).errors ?? []));
+  return { valid: errors.length === 0, errors: [...new Set(errors)], metadata };
+}
+
 export function validateWipPreflight(input = {}) {
   const {
     body = '',

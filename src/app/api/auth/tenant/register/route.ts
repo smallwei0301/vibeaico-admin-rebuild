@@ -14,6 +14,11 @@ const bodySchema = z.object({
   shopCode: z.string().regex(SHOP_CODE_PATTERN, SHOP_CODE_MESSAGE),
 });
 
+function isDuplicateEmailError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null &&
+    'code' in error && error.code === 'email_exists';
+}
+
 export const POST = handle(async (req) => {
   const b = bodySchema.parse(await req.json());
   const admin = createAdminSupabase();
@@ -26,7 +31,10 @@ export const POST = handle(async (req) => {
   const { data: created, error: uerr } = await admin.auth.admin.createUser({
     email: b.email, password: b.password, email_confirm: true,   // 驗證碼已確認過信箱
   });
-  if (uerr) return fail(409, 'Email 已註冊', ERR.EMAIL_TAKEN);
+  if (uerr) {
+    if (isDuplicateEmailError(uerr)) return fail(409, 'Email 已註冊', ERR.EMAIL_TAKEN);
+    throw uerr;
+  }
   const userId = created.user.id;
 
   try {
