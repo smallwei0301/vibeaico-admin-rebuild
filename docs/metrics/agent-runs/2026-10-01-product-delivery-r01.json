@@ -2116,6 +2116,23 @@
         "count": 1,
         "accepted": true,
         "note": "Ledger append for #762 review/test round."
+      },
+      {
+        "id": "20261003-scout-ledger-762-checkedat",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "issue": 761,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/762#discussion_r4173221412",
+        "startedAt": "2026-10-03T12:50:55Z",
+        "completedAt": "2026-10-03T12:50:50Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "Codex P2: completionTruth.checkedAt updated to the #747 re-verification time after appending its ISSUE_CLOSED claim."
       }
     ],
     "fullContextReplays": 0,
@@ -2149,8 +2166,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 30,
-    "lunaAccepted": 26,
+    "lunaTasks": 31,
+    "lunaAccepted": 27,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -2332,7 +2349,7 @@
   },
   "completionTruth": {
     "status": "VERIFIED",
-    "checkedAt": "2026-10-01T07:39:39.472Z",
+    "checkedAt": "2026-10-03T11:32:00Z",
     "claims": [
       {
         "type": "LOCAL_TEST_GREEN",
