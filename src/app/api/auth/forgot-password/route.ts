@@ -14,7 +14,8 @@ export const POST = handle(async (req) => {
   try {
     await dispatchVerificationCode(email, 'RESET_PASSWORD');
   } catch (e) {
-    if (!(e instanceof ApiHttpError)) throw e;
+    // 只吞 429 節流；寄信服務異常（503，#754）必須讓使用者知道，不得假裝已寄出。
+    if (!(e instanceof ApiHttpError) || e.status !== 429) throw e;
   }
   return ok({ sent: true });
 });
