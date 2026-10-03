@@ -29,7 +29,7 @@ export const POST = handle(async (req) => {
     return fail(429, '請求過於頻繁，請稍後再試', ERR.RATE_LIMITED);
   }
 
-  const plan = await loadPublicBookingPlan(body.shopCode, body.planId);
+  const plan = await loadPublicBookingPlan(body.shopCode, body.planId, { withSeasonPrices: false });
   if (!plan) return fail(404, '找不到此方案，或此方案目前未開放線上預約', ERR.NOT_FOUND);
 
   // 店家若已停用旅遊模組（欠費／被平台關閉），公開頁不該還能替它收預約。

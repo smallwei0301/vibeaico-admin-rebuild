@@ -4,6 +4,8 @@ import { requireFeature } from '@/server/features';
 import { mapTripPlan } from '@/server/mappers';
 import { planPaymentError, planUpdateSchema } from '@/server/tour-domain';
 
+import { requireUnlistedTripForPlanWrite } from '@/server/trip-plan-review';
+
 type Context = { params: Promise<{ id: string }> };
 
 export const PUT = handle(async (req, { params }: Context) => {
@@ -15,6 +17,7 @@ export const PUT = handle(async (req, { params }: Context) => {
     .select('*, trip_plan_seasons(*)').eq('tenant_id', t.tenantId).eq('id', id).maybeSingle();
   if (readError) throw readError;
   if (!current) return fail(404, '找不到此方案', ERR.NOT_FOUND);
+  await requireUnlistedTripForPlanWrite(t, current.trip_id);
 
   const minParty = body.minParty ?? current.min_party;
   const maxParty = body.maxParty ?? current.max_party;
@@ -60,6 +63,11 @@ export const DELETE = handle(async (_req, { params }: Context) => {
   const { id } = await params;
   const t = await requireTenantManager();
   await requireFeature(t.tenantId, 'TOUR_MODULE');
+  const { data: current, error: readError } = await t.supabase.from('trip_plans').select('id, trip_id')
+    .eq('tenant_id', t.tenantId).eq('id', id).maybeSingle();
+  if (readError) throw readError;
+  if (!current) return fail(404, '找不到此方案', ERR.NOT_FOUND);
+  await requireUnlistedTripForPlanWrite(t, current.trip_id);
   const { data, error } = await t.supabase.from('trip_plans').delete()
     .eq('tenant_id', t.tenantId).eq('id', id).select('id').maybeSingle();
   if (error) throw error;

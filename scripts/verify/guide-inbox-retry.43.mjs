@@ -1,0 +1,87 @@
+// SOURCE_ONLY browser harness: actual dashboard with stub services; never calls providers/DB.
+import { createRequire } from 'node:module';
+import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { resolve, join } from 'node:path';
+import { createServer } from 'node:http';
+import { chromium } from '@playwright/test';
+const require = createRequire(import.meta.url);
+const repo = process.cwd();
+const dir = mkdtempSync(join(tmpdir(), 'inbox43-'));
+const webpackModule = require('next/dist/compiled/webpack/webpack');
+webpackModule.init();
+const webpack = webpackModule.webpack;
+writeFileSync(join(dir, 'loader.cjs'), `const ts=require(${JSON.stringify(require.resolve('typescript'))});module.exports=function(s){return ts.transpileModule(s,{compilerOptions:{jsx:ts.JsxEmit.ReactJSX,module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2020}}).outputText}`);
+writeFileSync(join(dir, 'link.tsx'), `import React from 'react';export default function Link(p:any){return <a {...p}/>}`);
+writeFileSync(join(dir, 'env.ts'), `export const APP_URL='http://example.test';`);
+writeFileSync(join(dir, 'reports.ts'), `export async function getDashboardStats(){return null;}export async function getDashboardAlerts(){return null;}export async function getMonthSources(){return [];}export async function getRecentActivity(){return [];}export async function getStaffPerformance(){return [];}export async function getWeeklyTrend(){return [];}`);
+writeFileSync(join(dir, 'settings.ts'), `export async function getSetupStatus(){return null;}`);
+writeFileSync(join(dir, 'bookings.ts'), `export async function listBookings(){return {content:[]};}`);
+writeFileSync(join(dir, 'context.tsx'), `import React from 'react';export const Tenant=React.createContext({id:'a',shopCode:'a'});export const useBusinessType=()=> 'GUIDE';export const useCurrentTenant=()=>React.useContext(Tenant);`);
+writeFileSync(join(dir, 'services.ts'), `window.fixture={mode:'error',pending:[],calls:0};export async function getGuideActionInbox(){window.fixture.calls++;const tenant=window.tenantId;const mode=window.fixture.mode;if(mode==='error')throw Error('offline');if(mode==='pending')return await new Promise((resolve,reject)=>window.fixture.pending.push({tenant,resolve,reject}));if(mode==='empty')return [];return [{id:tenant,kind:'BOOKING_REQUEST',priority:'IMMEDIATE',dueAt:'2026-10-01T12:00:00Z',customerName:'private-'+tenant,serviceName:'測試行程',href:'/tenant/bookings?bookingId='+tenant}];}`);
+writeFileSync(join(dir, 'entry.tsx'), `import React from 'react';import {createRoot} from 'react-dom/client';import Page from '${repo}/src/app/tenant/dashboard/page';import {ToastProvider} from '${repo}/src/components/ui/Toast';import {Tenant} from './context';function Harness(){const [id,setId]=React.useState('a');window.tenantId=id;window.switchTenant=setId;return <Tenant.Provider value={{id,shopCode:id}}><ToastProvider><Page/></ToastProvider></Tenant.Provider>;}createRoot(document.getElementById('root')!).render(<Harness/>);`);
+let server, browser;
+try {
+  await new Promise((ok, bad) => webpack({mode:'development',entry:join(dir,'entry.tsx'),output:{path:dir,filename:'bundle.js'},resolve:{extensions:['.tsx','.ts','.js'],modules:[resolve(repo,'node_modules')],alias:{'@/services/settings':join(dir,'settings.ts'),'@/services/reports':join(dir,'reports.ts'),'@/services/bookings':join(dir,'bookings.ts'),'@/services/guide-action-inbox':join(dir,'services.ts'),'@/components/layout/BusinessTypeContext':join(dir,'context.tsx'),'@/config/env':join(dir,'env.ts'),'next/link':join(dir,'link.tsx'),'@':resolve(repo,'src')}},module:{rules:[{test:/\.tsx?$/,use:join(dir,'loader.cjs')}]},devtool:false},(e,s)=>e||s.hasErrors()?bad(e||s.toString({all:false,errors:true})):ok()));
+  const cssDir=resolve(repo,'.next/static/css');
+  const css=readdirSync(cssDir).filter(f=>f.endsWith('.css')).map(f=>readFileSync(join(cssDir,f),'utf8')).join('\n');
+  server=createServer((req,res)=>{res.setHeader('Content-Type',req.url==='/bundle.js'?'text/javascript; charset=utf-8':req.url==='/style.css'?'text/css; charset=utf-8':'text/html; charset=utf-8');res.end(req.url==='/bundle.js'?readFileSync(join(dir,'bundle.js')):req.url==='/style.css'?css:'<html><head><meta charset="utf-8"><link rel="stylesheet" href="/style.css"></head><body><div id="root" style="padding:16px"></div><script src="/bundle.js"></script></body></html>');});
+  await new Promise(r=>server.listen(0,'127.0.0.1',r));
+  browser=await chromium.launch({headless:true, ...(process.env.BROWSER_EXECUTABLE ? {executablePath:process.env.BROWSER_EXECUTABLE} : {})});
+  for(const width of [390,1280]) {
+    const page=await browser.newPage({viewport:{width,height:844}});page.setDefaultTimeout(10000);
+    const errors=[];page.on('pageerror',e=>errors.push(e.message));
+    await page.goto(`http://127.0.0.1:${server.address().port}`);
+    await page.getByText('暫時無法讀取待辦',{exact:true}).waitFor();
+    const errorBody = page.locator('p.text-md');
+    if (await errorBody.count() !== 1) throw Error('missing single 16px GUIDE error body');
+    const responsiveSizes = await page.evaluate(([bodySelector, buttonSelector]) => {
+      const body = document.querySelector(bodySelector);
+      const button = document.querySelector(buttonSelector);
+      if (!(body instanceof HTMLElement) || !(button instanceof HTMLButtonElement)) return null;
+      const bodyStyle = getComputedStyle(body);
+      const buttonStyle = getComputedStyle(button);
+      return {
+        bodyFontSize: Number.parseFloat(bodyStyle.fontSize),
+        buttonFontSize: Number.parseFloat(buttonStyle.fontSize),
+        buttonHeight: button.getBoundingClientRect().height,
+        buttonWidth: button.getBoundingClientRect().width,
+      };
+    }, ['p.text-md', 'button.min-h-11.text-md']);
+    if (!responsiveSizes || responsiveSizes.bodyFontSize < 16 || responsiveSizes.buttonFontSize < 16
+      || responsiveSizes.buttonHeight < 44 || responsiveSizes.buttonWidth < 44) {
+      throw Error(`guide error/retry touch targets below mobile standard: ${JSON.stringify(responsiveSizes)}`);
+    }
+    if(await page.getByText('目前沒有待處理事項',{exact:true}).count())throw Error('error implied empty');
+    await page.evaluate(()=>window.fixture.mode='empty');
+    await page.getByRole('button',{name:'重新讀取待辦'}).click();
+    await page.getByText('目前沒有待處理事項',{exact:true}).waitFor();
+    await page.evaluate(()=>{window.fixture.mode='data';window.switchTenant('b');});
+    await page.getByText('private-b',{exact:true}).waitFor();
+    if(await page.getByRole('link',{name:'查看並處理',exact:true}).getAttribute('href')!=='/tenant/bookings?bookingId=b')throw Error('incorrect deep link');
+    await page.evaluate(()=>{window.fixture.mode='pending';window.switchTenant('a');});
+    await page.waitForFunction(()=>window.fixture.pending.length===1);
+    if(await page.getByText('private-b',{exact:true}).count())throw Error('previous tenant card remained visible');
+    await page.evaluate(()=>{window.fixture.mode='data';window.switchTenant('c');});
+    await page.getByText('private-c',{exact:true}).waitFor();
+    await page.evaluate(()=>window.fixture.pending[0].resolve([{id:'a',kind:'BOOKING_REQUEST',priority:'IMMEDIATE',dueAt:'2026-10-01T12:00:00Z',customerName:'private-a',serviceName:'late',href:'/private-a'}]));
+    await page.waitForTimeout(50);
+    if(await page.getByText('private-a',{exact:true}).count())throw Error('late tenant response leaked');
+    await page.getByText('private-c',{exact:true}).waitFor();
+    await page.evaluate(()=>{window.fixture.mode='pending';window.switchTenant('a');});
+    await page.waitForFunction(()=>window.fixture.pending.length===2);
+    await page.evaluate(()=>{window.fixture.mode='error';window.switchTenant('d');});
+    await page.getByText('暫時無法讀取待辦',{exact:true}).waitFor();
+    await page.evaluate(()=>window.fixture.pending[1].reject(Error('late tenant failure')));
+    await page.waitForTimeout(50);
+    await page.getByText('暫時無法讀取待辦',{exact:true}).waitFor();
+    await page.evaluate(()=>window.fixture.mode='data');
+    await page.getByRole('button',{name:'重新讀取待辦'}).click();
+    await page.getByText('private-d',{exact:true}).waitFor();
+    if(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth))throw Error('viewport overflow');
+    if(process.env.BROWSER_SCREENSHOT)await page.screenshot({path:process.env.BROWSER_SCREENSHOT.replace('.png',`-${width}.png`),fullPage:true});
+    if(errors.length)throw Error(errors.join('\n'));
+    await page.close();
+  }
+  console.log('PASS SOURCE_ONLY: 390px/desktop error→retry→empty/data, deep link, same-mode tenant switch, late response suppression, no page errors/overflow. Stub services, no DB acceptance.');
+} finally {await browser?.close();await new Promise(r=>server?server.close(r):r());rmSync(dir,{recursive:true,force:true});}
