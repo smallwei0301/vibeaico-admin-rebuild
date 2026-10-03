@@ -13,10 +13,11 @@
  * 測試資料一律用獨立產生的 `@test.local` email／shopCode（不共用同一個字面值），
  * 避免多個案例互踩；全域重置只在 globalSetup 跑一次，本檔不再呼叫 reset-db。
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SHOP_A } from '../../fixtures';
 import { loginAs } from '../../helpers/auth';
+import { ResendMockServer } from '../../helpers/resend-mock';
 
 const BASE = process.env.INTEGRATION_BASE_URL ?? 'http://localhost:3100';
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const;
@@ -115,13 +116,25 @@ async function registerFullFlow(
 }
 
 let admin: SupabaseClient;
+// #754：send-verification-code 寄信失敗現在回 503。CI 的 RESEND_API_KEY 是假 key、
+// RESEND_BASE_URL=http://localhost:4124，沒有 mock 在聽就會變成「寄信失敗」。
+// 監聽 port 由 resendMockPort() 從 RESEND_BASE_URL 解析（預設 4124，與 CI 一致）。
+const resendMock = new ResendMockServer();
 
-beforeAll(() => {
+beforeAll(async () => {
+  if (!process.env.RESEND_BASE_URL || !process.env.RESEND_API_KEY) {
+    throw new Error('缺少 RESEND_BASE_URL / RESEND_API_KEY：需設 RESEND_BASE_URL=http://localhost:4124 與假 key，否則寄碼會是 503（#754）。');
+  }
+  await resendMock.start();
   expect(process.env.TEST_SUPABASE_URL).toBeTruthy();
   expect(process.env.TEST_SUPABASE_SERVICE_ROLE_KEY).toBeTruthy();
   admin = createClient(process.env.TEST_SUPABASE_URL!, process.env.TEST_SUPABASE_SERVICE_ROLE_KEY!, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+});
+
+afterAll(async () => {
+  await resendMock.stop();
 });
 
 describe('寄碼 → 註冊 → 登入 → me 全流程（03 §2-§5）', () => {
@@ -380,5 +393,46 @@ describe('POST /api/auth/change-password 需先驗證舊密碼（03 §4）', () 
     const meRes = await newApi.get('/api/auth/me');
     expect(meRes.status).toBe(200);
     expect((await readJson<{ email: string }>(meRes)).data!.email).toBe(email);
+  });
+});
+
+// ⚠️ 必須放在檔案最後：provider 401 屬「設定類失敗」，Next server 會在該 instance 記憶體
+// 設 10 分鐘旗標（#754 枚舉防護），旗標存在期間連已註冊 email 也回 503。本案例最後以一次
+// 成功寄信清掉旗標；本檔其他案例都在它之前跑，不受影響。
+describe('POST /api/auth/send-verification-code 寄信失敗誠實回報（#754）', () => {
+  it('Resend 401 → 503 MAIL_001、DB 無殘留驗證碼；旗標期間已註冊 email 也 503；恢復後可再寄', async () => {
+    resendMock.reset();
+    const email = uniqueEmail('mailfail');
+
+    resendMock.failNext(401);
+    const failed = await postJson('/api/auth/send-verification-code', { email, purpose: 'REGISTER' });
+    expect(failed.status).toBe(503);
+    const failedBody = await readJson(failed);
+    expect(failedBody.success).toBe(false);
+    expect(failedBody.code).toBe('MAIL_001');
+    expect(failedBody.data).toBeUndefined();
+
+    const { data: leftover, error } = await admin
+      .from('auth_verification_codes').select('code').eq('email', email).eq('purpose', 'REGISTER');
+    expect(error).toBeNull();
+    expect(leftover).toEqual([]);
+
+    // 枚舉防護：設定類失敗旗標期間，已註冊 email（原本不寄信直接回成功）也回同樣 503
+    const existing = await postJson('/api/auth/send-verification-code', {
+      email: SHOP_A.owner.email, purpose: 'REGISTER',
+    });
+    expect(existing.status).toBe(503);
+    expect((await readJson(existing)).code).toBe('MAIL_001');
+
+    // mock 恢復正常：同一個 email 立刻可再寄（失敗那筆已刪除，不留 60 秒冷卻），並清掉旗標
+    const retry = await postJson('/api/auth/send-verification-code', { email, purpose: 'REGISTER' });
+    expect(retry.status).toBe(200);
+    expect((await readJson<{ sent: boolean }>(retry)).data!.sent).toBe(true);
+    expect(resendMock.emails.length).toBeGreaterThanOrEqual(2);
+
+    const existingAfter = await postJson('/api/auth/send-verification-code', {
+      email: SHOP_A.owner.email, purpose: 'REGISTER',
+    });
+    expect(existingAfter.status).toBe(200);
   });
 });
