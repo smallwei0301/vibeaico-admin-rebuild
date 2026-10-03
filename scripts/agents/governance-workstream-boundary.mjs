@@ -270,10 +270,10 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
       (pending ? 'NEXT_SAFE_WRITE_PATH: Owning session must coordinate an exclusive body edit, re-read live PR, sync terminal fields, and verify the live result before POST_MERGE_CLOSEOUT=COMPLETE.' : 'NEXT_SAFE_WRITE_PATH: Body fields are synchronized for this observed close generation; verify Issue closeout and remaining gates separately.') +
       ' This comment does not grant Product or Production acceptance.\n' }); }
     catch (error) {
-      if (!sameObserved(await read())) try {
+      const fresh = await read(); if (!sameObserved(fresh) || (!pending && (labelMismatch(fresh) || (verifiedMain && await mainChanged())))) try {
         const afterComments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: current.number, per_page: 100 });
         for (const comment of afterComments.filter(item => item.id && !priorIds.has(item.id) && item.user?.login === 'github-actions[bot]' && item.user?.id === 41898282 && String(item.body ?? '').startsWith(marker)))
-          await github.rest.issues.updateComment({ owner, repo, comment_id: comment.id, body: `${marker}\nSTATE_SYNC_SUPERSEDED\nREASON: comment write was uncertain and PR reopened; recheck live PR.\n` });
+          await github.rest.issues.updateComment({ owner, repo, comment_id: comment.id, body: `${marker}\nSTATE_SYNC_SUPERSEDED\nREASON: comment write was uncertain and live terminal receipt changed; recheck live PR.\n` });
       } catch (inventoryError) { throw new AggregateError([error, inventoryError], 'Comment write uncertain; stale handoff could not be checked'); }
       throw error;
     }
