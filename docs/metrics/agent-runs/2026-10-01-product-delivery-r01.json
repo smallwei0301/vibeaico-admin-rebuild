@@ -2133,6 +2133,57 @@
         "count": 1,
         "accepted": true,
         "note": "Codex P2: completionTruth.checkedAt updated to the #747 re-verification time after appending its ISSUE_CLOSED claim."
+      },
+      {
+        "id": "20261003-audit-747-close-reopened",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 747,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/747",
+        "startedAt": "2026-10-03T11:31:40Z",
+        "completedAt": "2026-10-03T11:31:55Z",
+        "accepted": false,
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Process failure: audit closed #747 without WORKSTREAM declaration and ISSUE_CLOSE_READY handoff; trusted close-guard reopened it 15s later. The earlier ledger ISSUE_CLOSED claim and checkedAt were therefore not true until the guarded re-close."
+      },
+      {
+        "id": "20261003-audit-747-guarded-close",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 747,
+        "evidenceRef": "github:issuecomment#5969372977",
+        "startedAt": "2026-10-03T12:55:22Z",
+        "completedAt": "2026-10-03T12:56:00Z",
+        "accepted": true,
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Added WORKSTREAM, final Sol CLOSE_APPROVED (EXACT_HEAD cef9570e), ISSUE_CLOSE_READY handoff (main CI 37119723468); re-closed 12:55:44Z; guard run 37124469985 success; ISSUE_CLOSED_OBSERVED captured."
+      },
+      {
+        "id": "20261003-scout-ledger-747-closefix",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "issue": 747,
+        "evidenceRef": "github:issuecomment#5969376693",
+        "startedAt": null,
+        "completedAt": "2026-10-03T12:58:11Z",
+        "accepted": true,
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Reconcile #747 ISSUE_CLOSED claim and checkedAt with the guard-accepted close."
       }
     ],
     "fullContextReplays": 0,
@@ -2166,8 +2217,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 31,
-    "lunaAccepted": 27,
+    "lunaTasks": 32,
+    "lunaAccepted": 28,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -2349,7 +2400,7 @@
   },
   "completionTruth": {
     "status": "VERIFIED",
-    "checkedAt": "2026-10-03T11:32:00Z",
+    "checkedAt": "2026-10-03T12:56:00Z",
     "claims": [
       {
         "type": "LOCAL_TEST_GREEN",
@@ -2461,7 +2512,7 @@
         "claimedState": "closed",
         "observedState": "closed",
         "verification": "VERIFIED",
-        "evidenceRef": "github:issue#747; https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/747#issuecomment-5968744372"
+        "evidenceRef": "github:issue#747; github:issuecomment#5969376693 (ISSUE_CLOSED_OBSERVED 2026-10-03T12:55:44Z after guard-accepted close; first close 11:31:40Z was guard-reopened 11:31:55Z)"
       }
     ]
   },
