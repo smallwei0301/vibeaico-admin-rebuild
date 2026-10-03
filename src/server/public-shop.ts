@@ -832,14 +832,17 @@ export async function loadPlanDepartureWindow(
     }
   }
 
-  // The loop stopped before exhausting the rows (six sellable listed, or the scan limit hit).
+  // The loop stopped before exhausting the rows. It stops when six sellable rows are listed AND the
+  // 12-candidate booking decision is settled, or when the 600-row scan bound is hit; while that decision
+  // is unsettled the scan keeps paging past the six listed rows (up to the bound), so a sellable
+  // departure far down the list can still open the CTA. If the bound is hit first the CTA stays off
+  // (conservative: never a false CTA, possibly a missed one).
   // `departuresMayBeTruncated` is true ONLY when a row we can see confirms an unlisted SELLABLE
-  // departure (seats_booked < capacity): either in the remainder of the last page (above) or in one
+  // departure (seats_booked < capacity): either among the rows examined after the listing filled, or in one
   // lookahead page past everything examined. If everything seen is sold out we cannot confirm more
   // sellable dates, so it stays false and the sold-out rows are reported via `soldOutOmitted`.
-  // Trade-off: a sellable departure beyond the lookahead page is not detected. The flag now only
-  // drives the "partial dates" hint copy; it never opens the booking CTA (see
-  // hasBookableListedDeparture), so the conservative choice cannot lead to an empty booking page.
+  // Trade-off: a sellable departure beyond the lookahead page is not detected. These flags only drive
+  // the hint copy; the CTA comes from `bookableDepartureAvailable` / the listed rows.
   let mayBeTruncated = unlistedSellable;
   if (!exhausted && !unlistedSellable) {
     const { data, error: lookaheadError } = await admin.from('trip_departures')

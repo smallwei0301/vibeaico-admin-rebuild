@@ -170,6 +170,41 @@ describe('#761 同日同時間的候選以 id 作 tie-break（候選集合各處
   }
 });
 
+describe('#761 6 筆視窗之後跨頁續掃（每頁 120 列、上限 600 列）', () => {
+  beforeEach(() => { fx.plans = {}; vi.spyOn(console, 'warn').mockImplementation(() => {}); });
+
+  async function all(mode: 'FIXED_DEPARTURE' | 'REQUEST', min: number, rows: Row[]) {
+    const r = await surfaces(mode, min, rows);
+    return r;
+  }
+
+  for (const [mode, yes, no] of [
+    ['FIXED_DEPARTURE', 'fixed', 'fixed-unavailable'],
+    ['REQUEST', 'request', 'request-unavailable'],
+  ] as const) {
+    it(`${mode}(a) 6 筆不足 + 200 筆客滿 + 1 筆足夠：入口開啟、預約頁含該筆；旗標 mayBeTruncated／soldOutOmitted 為真`, async () => {
+      const r = await all(mode, 2, [...times(6, left(1)), ...times(200, full), left(5)]);
+      expect([r.detail, r.home, r.pageHasBookable]).toEqual([yes, yes, true]);
+      expect(r.detailPlan.departures).toHaveLength(6);
+      expect(r.detailPlan.departuresMayBeTruncated).toBe(true);
+      expect(r.detailPlan.soldOutOmitted).toBe(true);
+    });
+
+    it(`${mode}(b) 足夠者在 600 列掃描上限之後：保守不開入口（沒有假入口）`, async () => {
+      const r = await all(mode, 2, [...times(6, left(1)), ...times(700, full), left(5)]);
+      expect(r.detail).toBe(no);
+      expect(r.home).toBe(no);
+    });
+
+    it(`${mode}(c) 6 筆之後只有客滿：soldOutOmitted 真、mayBeTruncated 假、入口關閉`, async () => {
+      const r = await all(mode, 2, [...times(6, left(1)), ...times(20, full)]);
+      expect([r.detail, r.home]).toEqual([no, no]);
+      expect(r.detailPlan.soldOutOmitted).toBe(true);
+      expect(r.detailPlan.departuresMayBeTruncated).toBe(false);
+    });
+  }
+});
+
 describe('#761 共用 predicate', () => {
   it('只有前 12 個候選算數；minParty 缺值視為 1', () => {
     expect(hasBookableCandidate([...Array(12).fill(1), 9], 3)).toBe(false);
