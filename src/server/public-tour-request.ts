@@ -151,7 +151,9 @@ export async function loadPublicRequestPlan(
     .eq('tenant_id', tenantId).eq('plan_id', planId).eq('status', 'OPEN')
     .gte('departs_on', now.today)
     .order('departs_on', { ascending: true })
-    .order('start_time', { ascending: true, nullsFirst: true });
+    .order('start_time', { ascending: true, nullsFirst: true })
+    // #761：與詳情頁／首頁（loadPlanDepartureWindow）同一個 tie-break，同日同時間的候選集合才會一致。
+    .order('id', { ascending: true });
   if (departureError) throw queryFailed('trip_departures', departureError);
 
   const seasons = options.withSeasonPrices === false

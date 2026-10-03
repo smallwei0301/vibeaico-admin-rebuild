@@ -5,7 +5,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-type Row = { capacity: number; seats_booked: number };
+type Row = { id?: string; capacity: number; seats_booked: number };
 type PlanFx = { trip?: string; sort?: number; mode: 'FIXED_DEPARTURE' | 'REQUEST' | 'INSTANT'; min: number; rows: Row[] };
 
 const fx = vi.hoisted(() => ({ plans: {} as Record<string, PlanFx> }));
@@ -46,8 +46,18 @@ vi.mock('@/server/supabase', () => ({
         }
         if (table === 'trip_departures' && filters.plan_id) {
           const p = fx.plans[filters.plan_id as string];
-          const [a, b] = range ?? [0, p.rows.length];
-          return { data: p.rows.slice(a, b + 1).map((r, i) => ({ id: `d-${a + i}`, departs_on: '2098-01-01', start_time: null, ...r })), error: null };
+          // 模擬 DB：只依呼叫端實際下的 order() 欄位排序（沒下 id 排序時同日同時間保持插入順序）。
+          const all = p.rows.map((r, i) => ({ id: `d-${String(i).padStart(3, '0')}`, departs_on: '2098-01-01', start_time: null, ...r }))
+            .map((r, i) => ({ r, i })).sort((x, y) => {
+              for (const col of orders) {
+                if (col !== 'id') continue;
+                if (x.r.id < y.r.id) return -1;
+                if (x.r.id > y.r.id) return 1;
+              }
+              return x.i - y.i;
+            }).map((e) => e.r);
+          const [a, b] = range ?? [0, all.length];
+          return { data: all.slice(a, b + 1), error: null };
         }
         return { data: [], error: null };
       };
@@ -122,6 +132,40 @@ describe('#761 入口與預約／申請頁同一套候選規則', () => {
         const r = await surfaces(mode, 3, times(9, left(2)));
         expect([r.detail, r.home, r.pageHasBookable]).toEqual([no, no, false]);
       });
+    });
+  }
+});
+
+describe('#761 同日同時間的候選以 id 作 tie-break（候選集合各處一致）', () => {
+  beforeEach(() => { fx.plans = {}; vi.spyOn(console, 'warn').mockImplementation(() => {}); });
+  const idRow = (id: string, n: number): Row => ({ id, ...left(n) });
+  // 13 筆同日同時間、以非 id 順序插入；足夠名額的那筆插在最前面。
+  const insufficient = Array.from({ length: 12 }, (_, i) => `b-${String(i).padStart(2, '0')}`);
+
+  for (const mode of ['FIXED_DEPARTURE', 'REQUEST'] as const) {
+    it(`${mode}：足夠者依 id 排第 13 → 預約／申請頁候選 = 前 12 個 id，入口一致為無`, async () => {
+      const rows = [idRow('z-enough', 5), ...[...insufficient].reverse().map((id) => idRow(id, 1))];
+      fx.plans = { [PLAN]: { mode, min: 3, rows } };
+      const page = mode === 'FIXED_DEPARTURE'
+        ? await loadPublicBookingPlan('demo', PLAN, { withSeasonPrices: false })
+        : await loadPublicRequestPlan('demo', PLAN, { withSeasonPrices: false });
+      expect(page!.departures.map((d) => d.id)).toEqual(insufficient);
+      const home = (await loadPublicShop('demo'))!.trips[0].plans[0].bookingCta;
+      const detail = bookingCtaState((await loadPublicTripDetails('demo', 'trip-1'))!.trip.plans[0]);
+      expect([home, detail]).toEqual(Array(2).fill(mode === 'FIXED_DEPARTURE' ? 'fixed-unavailable' : 'request-unavailable'));
+    });
+
+    it(`${mode}：足夠者依 id 排第 12 → 入口與頁面都可訂`, async () => {
+      const rows = [...[...insufficient].reverse().slice(1).map((id) => idRow(id, 1)), idRow('b-11', 5)].reverse();
+      fx.plans = { [PLAN]: { mode, min: 3, rows: [idRow('z-extra', 1), ...rows] } };
+      const page = mode === 'FIXED_DEPARTURE'
+        ? await loadPublicBookingPlan('demo', PLAN, { withSeasonPrices: false })
+        : await loadPublicRequestPlan('demo', PLAN, { withSeasonPrices: false });
+      expect(page!.departures.map((d) => d.id)).toEqual(insufficient);
+      expect(page!.departures.some((d) => d.seatsLeft >= page!.minParty)).toBe(true);
+      const home = (await loadPublicShop('demo'))!.trips[0].plans[0].bookingCta;
+      const detail = bookingCtaState((await loadPublicTripDetails('demo', 'trip-1'))!.trip.plans[0]);
+      expect([home, detail]).toEqual(Array(2).fill(mode === 'FIXED_DEPARTURE' ? 'fixed' : 'request'));
     });
   }
 });
