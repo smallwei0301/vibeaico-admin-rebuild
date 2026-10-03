@@ -193,6 +193,26 @@ export function terminalBodyPlan(pr) {
     errors: [...new Set(errors)],
   };
 }
+/** Empty CI association after merge is usable only when the exact source head has one PR. */
+export async function requireUniqueMergedCiSourcePr({ github, owner, repo, observed }) {
+  const head = observed?.head;
+  const fullName = head?.repo?.full_name;
+  const headOwner = typeof fullName === 'string' ? fullName.split('/')[0] : '';
+  if (!(observed?.merged || observed?.merged_at) || !/^[\w.-]+$/.test(headOwner)
+    || !/^[\w./-]+$/.test(fullName ?? '') || !head?.ref || !/^[a-f0-9]{40}$/i.test(head?.sha ?? '')) {
+    throw Error('exact-head CI fallback needs one unique merged source PR');
+  }
+  const pulls = await github.paginate(github.rest.pulls.list, {
+    owner, repo, state: 'all', head: `${headOwner}:${head.ref}`, per_page: 100,
+  });
+  if (!Array.isArray(pulls)) throw Error('exact-head CI fallback PR inventory unavailable');
+  const candidates = pulls.filter(pr => pr.head?.sha === head.sha && pr.head?.ref === head.ref
+    && pr.head?.repo?.full_name === fullName && pr.base?.repo?.full_name === `${owner}/${repo}`);
+  if (candidates.length !== 1 || candidates[0].number !== observed.number) {
+    throw Error('exact-head CI fallback needs one unique merged source PR');
+  }
+}
+
 /** The independent terminal writer uses bounded label reconciliation; REST is not atomic.
  * GitHub has no conditional PR-body PATCH, so lifecycle body fields require a separate
  * human-controlled closeout write. This writer never risks replacing concurrent prose.
@@ -234,10 +254,18 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
       try { const content = (await github.rest.repos.getContent({ owner, repo, path, ref: main })).data; if (selected.status === 'removed' || content?.type !== 'file') throw Error('main file re-read failed'); } catch (error) { if (selected.status !== 'removed' || error.status !== 404) throw error; }
       liveFields = ['EXACT_HEAD_CI_STATUS', 'EXACT_HEAD_CI_RUN']; const inventory = (await github.rest.actions.listWorkflowRuns({ owner, repo, workflow_id: 'ci.yml', head_sha: observed.head.sha, event: 'pull_request', per_page: 100 })).data;
       if (!Array.isArray(inventory.workflow_runs) || inventory.total_count > inventory.workflow_runs.length) throw Error('exact-head CI inventory incomplete');
+      const associated = item => (item.pull_requests?.length === 1 && item.pull_requests[0]?.number === observed.number) ||
+        ((observed.merged || observed.merged_at) && item.pull_requests?.length === 0 &&
+          typeof observed.head?.ref === 'string' && observed.head.ref.length > 0 &&
+          typeof observed.head?.repo?.full_name === 'string' && observed.head.repo.full_name.length > 0 &&
+          item.head_branch === observed.head?.ref && item.head_repository?.full_name === observed.head?.repo?.full_name);
       const latest = inventory.workflow_runs.filter(item => item.head_sha === observed.head.sha && item.path === '.github/workflows/ci.yml' && item.event === 'pull_request' && !(item.pull_requests?.length === 1 && Number.isSafeInteger(item.pull_requests[0]?.number) && item.pull_requests[0].number !== observed.number)).sort((a, b) => b.id - a.id)[0];
-      if (!latest || latest.id !== Number(runId)) throw Error('receipt does not name latest exact-head CI run');
+      if (!latest || latest.id !== Number(runId) || !associated(latest)) throw Error('receipt does not name latest exact-head CI run');
       const run = (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: Number(runId) })).data;
-      if (run.head_sha !== observed.head?.sha || run.status !== 'completed' || run.conclusion !== 'success' || run.event !== 'pull_request' || run.path !== '.github/workflows/ci.yml' || run.pull_requests?.length !== 1 || run.pull_requests[0]?.number !== observed.number) throw Error('exact-head CI run is not verified for this PR');
+      if (run.head_sha !== observed.head?.sha || run.status !== 'completed' || run.conclusion !== 'success' || run.event !== 'pull_request' || run.path !== '.github/workflows/ci.yml' || !associated(run)) throw Error('exact-head CI run is not verified for this PR');
+      if (latest.pull_requests?.length === 0 || run.pull_requests?.length === 0) {
+        await requireUniqueMergedCiSourcePr({ github, owner, repo, observed });
+      }
       liveFields = ['LOCAL_JOB_RESULT']; if (upper(readField(observed.body, 'LOCAL_JOB_RESULT')) === 'VERIFIED_GREEN') throw Error('local isolated integration/E2E evidence not verified');
       if (upper(readField(observed.body, 'REMOTE_JOB_RESULT')) === 'VERIFIED_GREEN') {
         liveFields = ['REMOTE_JOB_RESULT']; const jobs = (await github.rest.actions.listJobsForWorkflowRun({ owner, repo, run_id: Number(runId), filter: 'latest', per_page: 100 })).data;
