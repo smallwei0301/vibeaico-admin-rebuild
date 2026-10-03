@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
 import { validatePublicationMetadata } from '../../scripts/agents/agent-wip-preflight.mjs';
@@ -10,8 +11,11 @@ import {
   publicationContract,
   renderPublicationReceipt,
   resolvePublicationBaseWakeup,
+  validateGithubChangedRunReports,
 } from '../../scripts/agents/pr-publication-receipt.mjs';
 import { parse } from 'yaml';
+import { createRunLedgerV2 } from '../../scripts/agents/run-ledger-v2.mjs';
+import { renderCurrentMarkdown, scoreRunCurrent } from '../../scripts/agents/score-run-current.mjs';
 
 const base = 'a'.repeat(40);
 const head = 'b'.repeat(40);
@@ -44,6 +48,37 @@ function governanceBody() {
 }
 
 describe('#724 immutable Agent PR publication preflight receipt', () => {
+  it('requires the exact-head paired canonical report for a changed Run ledger', async () => {
+    const path = 'docs/metrics/agent-runs/2026-10-03-synthetic-publication.json';
+    const reportPath = path.replace(/\.json$/, '.md');
+    const run = createRunLedgerV2('2026-10-03-synthetic-publication', '2026-10-03T00:00:00Z', { closeoutOwner: 'PRODUCT_MAIN_SESSION' });
+    const ledger = JSON.stringify(run);
+    const canonical = renderCurrentMarkdown(run, scoreRunCurrent(run));
+    const blobs = new Map<string, { sha: string, size: number, encoding: string, content: string }>();
+    for (const content of [ledger, canonical, canonical + '\n']) {
+      const bytes = Buffer.from(content);
+      const sha = createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+      blobs.set(content, { sha, size: bytes.length, encoding: 'base64', content: bytes.toString('base64') });
+    }
+    let entries = [{ path, type: 'blob', mode: '100644', sha: blobs.get(ledger)!.sha }];
+    const github = { rest: { git: {
+      getTree: async () => ({ data: { truncated: false, tree: entries } }),
+      getBlob: async ({ file_sha }: { file_sha: string }) => ({ data: [...blobs.values()].find(blob => blob.sha === file_sha) }),
+    } } };
+    const input: { github: typeof github, owner: string, repo: string, current: { head: { sha: string }, changed_files: number }, changedFiles: Array<{ filename: string, previous_filename?: string, status: string, sha: string }> } = { github, owner: 'owner', repo: 'repo', current: { head: { sha: head }, changed_files: 1 }, changedFiles: [{ filename: path, status: 'modified', sha: blobs.get(ledger)!.sha }] };
+    expect((await validateGithubChangedRunReports(input)).join('\n')).toMatch(/canonical report unavailable/);
+    entries = [...entries, { path: reportPath, type: 'blob', mode: '100644', sha: blobs.get(canonical + '\n')!.sha }];
+    expect((await validateGithubChangedRunReports(input)).join('\n')).toMatch(/canonical report differs/);
+    entries[1].sha = blobs.get(canonical)!.sha;
+    expect(await validateGithubChangedRunReports(input)).toEqual([]);
+    input.changedFiles = [{ filename: reportPath, status: 'modified', sha: blobs.get(canonical)!.sha }];
+    expect(await validateGithubChangedRunReports(input)).toEqual([]);
+    entries[1].sha = blobs.get(canonical + '\n')!.sha;
+    expect((await validateGithubChangedRunReports(input)).join('\n')).toMatch(/canonical report unavailable/);
+    entries = entries.filter(entry => entry.path !== reportPath);
+    input.changedFiles = [{ filename: 'docs/archive/synthetic-publication.md', previous_filename: reportPath, status: 'renamed', sha: blobs.get(canonical)!.sha }];
+    expect((await validateGithubChangedRunReports(input)).join('\n')).toMatch(/canonical report unavailable/);
+  });
   it('grandfathers PRs opened before the actual policy merge despite a later live base', () => {
     const rolloutMergedAt = '2026-10-03T07:00:00Z';
     expect(publicationPolicyApplies({ origin: 'AGENT', createdAt: '2026-10-03T06:59:59Z', rolloutMergedAt })).toBe(false);

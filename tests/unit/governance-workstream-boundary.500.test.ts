@@ -13,6 +13,7 @@ import * as schemaStagePolicy from '../../scripts/agents/schema-staged-release-p
 import * as preflightPolicy from '../../scripts/agents/agent-wip-preflight.mjs';
 import * as publicationPolicy from '../../scripts/agents/pr-publication-receipt.mjs';
 import { createRunLedgerV2 } from '../../scripts/agents/run-ledger-v2.mjs';
+import { renderCurrentMarkdown, scoreRunCurrent } from '../../scripts/agents/score-run-current.mjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { classifyWorkstream } from '../../scripts/agents/astra-review-policy.mjs';
 import { parseLaneMetadata } from '../../scripts/agents/agent-wip-policy.mjs';
@@ -88,8 +89,14 @@ async function runWorkflow(file: string, current = subject(), files: any[] = pat
   for (const name of ['addHeading', 'addRaw', 'addTable', 'write']) summary[name] = () => summary;
   const github: any = {
     rest: {
-      git: { getBlob: async ({ file_sha }: any) => {
-        const file = files.find(item => item.sha === file_sha && typeof item.content === 'string');
+      git: { getTree: async () => ({ data: { truncated: false, tree: files.flatMap(file => {
+        if (typeof file !== 'object' || !file.sha) return [];
+        const entries = [{ path: file.filename, type: 'blob', mode: '100644', sha: file.sha }];
+        if (file.report) entries.push({ path: file.filename.replace(/\.json$/, '.md'), type: 'blob', mode: '100644', sha: file.report.sha });
+        return entries;
+      }) } }), getBlob: async ({ file_sha }: any) => {
+        const file = files.find(item => item.sha === file_sha && typeof item.content === 'string')
+          ?? files.map(item => item.report).find(report => report?.sha === file_sha);
         if (!file) throw new Error('Missing fixture blob');
         return { data: { sha: file_sha, encoding: 'base64', size: Buffer.byteLength(file.content),
           content: Buffer.from(file.content).toString('base64') } };
@@ -181,6 +188,21 @@ describe('governance boundary regression #500', () => {
       expect(result.calls).not.toContain('publication-receipt');
       expect(result.statuses.at(-1).state).toBe('failure');
     }
+  });
+  it('does not sign a new Agent publication receipt without its canonical paired Run report', async () => {
+    const run = createRunLedgerV2('2026-10-03-publication-fixture', created_at, { closeoutOwner: 'PRODUCT_MAIN_SESSION' });
+    const content = JSON.stringify(run);
+    const sha = createHash('sha1').update(`blob ${Buffer.byteLength(content)}\0`).update(content).digest('hex');
+    const current = { ...subject(), created_at: '2026-10-03T08:00:00Z' };
+    const file = { filename: 'docs/metrics/agent-runs/2026-10-03-publication-fixture.json', status: 'modified', sha, content };
+    const missing = await runWorkflow('.github/workflows/agent-wip-guard.yml', current, [file]);
+    expect(missing.calls).not.toContain('publication-receipt');
+    expect(missing.failures.join('\n')).toContain('PUBLICATION_REPORT_REJECTED');
+    const markdown = renderCurrentMarkdown(run, scoreRunCurrent(run));
+    const reportSha = createHash('sha1').update(`blob ${Buffer.byteLength(markdown)}\0`).update(markdown).digest('hex');
+    const valid = await runWorkflow('.github/workflows/agent-wip-guard.yml', current,
+      [{ ...file, report: { sha: reportSha, content: markdown } }]);
+    expect(valid.calls).toContain('publication-receipt');
   });
   describe('delivery applicability regression #555', () => {
     it('shares the post-merge applicability and preserves undeclared historical records', () => {
@@ -506,7 +528,10 @@ describe('governance boundary regression #500', () => {
     for (const closedCount of [0, 1]) {
       const content = JSON.stringify({ ...run, delivery: { ...run.delivery, issuesClosed: closedCount } });
       const sha = createHash('sha1').update(`blob ${Buffer.byteLength(content)}\0`).update(content).digest('hex');
-      const file = { filename: 'docs/metrics/agent-runs/2026-09-16-synthetic-538.json', status: 'modified', sha, content };
+      const markdown = renderCurrentMarkdown(JSON.parse(content), scoreRunCurrent(JSON.parse(content)));
+      const reportSha = createHash('sha1').update(`blob ${Buffer.byteLength(markdown)}\0`).update(markdown).digest('hex');
+      const file = { filename: 'docs/metrics/agent-runs/2026-09-16-synthetic-538.json', status: 'modified', sha, content,
+        report: { sha: reportSha, content: markdown } };
       const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', subject(), [file]);
       expect(result.calls).not.toContain('product-peers');
       expect(result.calls).not.toContain('dispatch');

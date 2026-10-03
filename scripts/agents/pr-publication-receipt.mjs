@@ -2,6 +2,8 @@
 
 import { createHash } from 'node:crypto';
 import { parseLaneMetadata } from './agent-wip-policy.mjs';
+import { scoreRunCurrent, renderCurrentMarkdown } from './score-run-current.mjs';
+import { scoreRun, renderMarkdown } from './score-run.mjs';
 
 export const PUBLICATION_PREFLIGHT_RECEIPT_MARKER = '<!-- agent-publication-preflight-receipt -->';
 export const PUBLICATION_PREFLIGHT_RECEIPT_VERSION = 1;
@@ -10,6 +12,63 @@ const SHA256 = /^[0-9a-f]{64}$/;
 
 const sha256 = value => createHash('sha256').update(String(value ?? ''), 'utf8').digest('hex');
 const sortKey = value => JSON.stringify(value);
+
+/** Reproduce paired reports from immutable exact-head blobs before a Draft receives PASS. */
+export async function validateGithubChangedRunReports({ github, owner, repo, current, changedFiles } = {}) {
+  const prefix = 'docs/metrics/agent-runs/';
+  const isPairedPath = path => typeof path === 'string' && path.startsWith(prefix) && /\.(json|md)$/.test(path);
+  const pairedFiles = Array.isArray(changedFiles) ? changedFiles.filter(file =>
+    isPairedPath(file?.filename) || isPairedPath(file?.previous_filename)) : [];
+  if (!pairedFiles.length) return [];
+  const fail = (path, reason) => `PUBLICATION_REPORT_REJECTED ${path}: ${reason}`;
+  if (!SHA40.test(current?.head?.sha ?? '') || changedFiles.length !== current?.changed_files) {
+    return [fail('inventory', 'complete exact-head inventory required')];
+  }
+  try {
+    const { data } = await github.rest.git.getTree({ owner, repo, tree_sha: current.head.sha, recursive: '1' });
+    if (data?.truncated !== false || !Array.isArray(data.tree)) throw new Error('incomplete exact-head tree');
+    const read = async (path, expectedSha) => {
+      const entries = data.tree.filter(entry => entry.path === path);
+      if (entries.length !== 1 || entries[0].type !== 'blob' || !['100644', '100755'].includes(entries[0].mode)
+        || !SHA40.test(entries[0].sha) || (expectedSha && entries[0].sha !== expectedSha)) {
+        throw new Error(`regular exact-head blob unavailable: ${path}`);
+      }
+      const { data: blob } = await github.rest.git.getBlob({ owner, repo, file_sha: entries[0].sha });
+      if (blob?.encoding !== 'base64' || blob.sha !== entries[0].sha || !Number.isSafeInteger(blob.size)) {
+        throw new Error(`exact blob evidence unavailable: ${path}`);
+      }
+      const bytes = Buffer.from(String(blob.content ?? '').replace(/\s/g, ''), 'base64');
+      const actualSha = createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+      if (bytes.length !== blob.size || actualSha !== entries[0].sha) throw new Error(`exact blob digest mismatch: ${path}`);
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    };
+    const errors = [];
+    const pairedPaths = pairedFiles.flatMap(file => [file.filename, file.previous_filename].filter(isPairedPath));
+    for (const ledgerPath of [...new Set(pairedPaths.map(path => path.replace(/\.md$/, '.json')))]) {
+      const reportPath = ledgerPath.replace(/\.json$/, '.md');
+      try {
+        const ledgerFile = pairedFiles.find(file => file.filename === ledgerPath);
+        const reportFile = pairedFiles.find(file => file.filename === reportPath);
+        if ([ledgerFile, reportFile].some(file => file && (!['added', 'modified', 'renamed'].includes(file.status) || !SHA40.test(file.sha)))) {
+          throw new Error('changed paired blob unavailable');
+        }
+        const run = JSON.parse(await read(ledgerPath, ledgerFile?.sha));
+        const report = await read(reportPath, reportFile?.sha);
+        const expected = run.schemaVersion === 2
+          ? renderCurrentMarkdown(run, scoreRunCurrent(run))
+          : run.schemaVersion === 1 ? renderMarkdown(run, scoreRun(run)) : null;
+        if (expected === null) throw new Error('unsupported ledger schema');
+        if (report !== expected) errors.push(fail(reportPath, 'canonical report differs from exact-head ledger'));
+      } catch (error) {
+        errors.push(fail(reportPath, error?.message?.includes('regular exact-head blob unavailable')
+          ? 'canonical report unavailable on exact head' : `canonical report validation failed: ${error?.message ?? 'unknown'}`));
+      }
+    }
+    return errors;
+  } catch (error) {
+    return [fail('inventory', `exact-head report evidence unavailable: ${error?.message ?? 'unknown'}`)];
+  }
+}
 
 // The policy starts when its owning PR is merged into main, not when a live PR base later advances.
 export const PUBLICATION_ROLLOUT_PR = 736;
