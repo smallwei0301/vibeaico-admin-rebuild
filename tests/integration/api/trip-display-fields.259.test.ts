@@ -9,6 +9,7 @@
  */
 import { describe, expect, it, beforeAll } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import { MAX_TRIP_GALLERY_IMAGES } from '@/lib/trip-gallery';
 import { SHOP_A } from '../../fixtures';
 import { loginAs, type AuthedApi } from '../../helpers/auth';
 
@@ -129,7 +130,7 @@ describe('trips 展示欄位真的持久化（#259）', () => {
     expect(bad.status, 'update 接受了超量 gallery').toBe(400);
     const body = await json(bad);
     expect(body.code).toBe('REQ_001');
-    expect(body.message).toContain('8');
+    expect(body.message).toContain(String(MAX_TRIP_GALLERY_IMAGES));
 
     const trip = (await getTrip(tripId)) as TripView & { galleryUrls?: string[] };
     expect(trip.galleryUrls).toEqual(ok);
