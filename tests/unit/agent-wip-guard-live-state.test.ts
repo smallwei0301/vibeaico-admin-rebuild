@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 
 const workflow = readFileSync(
   resolve(process.cwd(), '.github/workflows/agent-wip-guard.yml'),
@@ -10,21 +11,23 @@ const workflow = readFileSync(
 
 describe('agent WIP Guard live-state dispatch', () => {
   it('re-reads the current PR before parsing metadata or deciding a TEST transition', () => {
-    const payloadIndex = workflow.indexOf(
+    // Another job may also read a PR. Verify this ordering within the actual guard script.
+    const guard = parse(workflow).jobs.guard.steps.find((step: any) => step.with?.script).with.script;
+    const payloadIndex = guard.indexOf(
       'const payloadCurrent = reviewWakeup',
     );
-    const liveReadIndex = workflow.indexOf(
+    const liveReadIndex = guard.indexOf(
       'const { data: current } = await github.rest.pulls.get({',
     );
-    const metadataIndex = workflow.indexOf(
+    const metadataIndex = guard.indexOf(
       'const metadata = policy.parseLaneMetadata(current);',
     );
 
     expect(payloadIndex).toBeGreaterThan(-1);
     expect(liveReadIndex).toBeGreaterThan(payloadIndex);
     expect(metadataIndex).toBeGreaterThan(liveReadIndex);
-    expect(workflow).toContain('pull_number: payloadCurrent.number');
-    expect(workflow).not.toContain(
+    expect(guard).toContain('pull_number: payloadCurrent.number');
+    expect(guard).not.toContain(
       'const current = context.payload.pull_request;',
     );
   });

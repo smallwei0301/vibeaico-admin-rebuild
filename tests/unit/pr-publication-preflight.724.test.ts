@@ -6,9 +6,12 @@ import { materializeProfileBody } from '../../scripts/agents/pr-metadata-profile
 import {
   findMatchingPublicationReceipt,
   parsePublicationReceipt,
+  publicationPolicyApplies,
   publicationContract,
   renderPublicationReceipt,
+  resolvePublicationBaseWakeup,
 } from '../../scripts/agents/pr-publication-receipt.mjs';
+import { parse } from 'yaml';
 
 const base = 'a'.repeat(40);
 const head = 'b'.repeat(40);
@@ -41,6 +44,25 @@ function governanceBody() {
 }
 
 describe('#724 immutable Agent PR publication preflight receipt', () => {
+  it('grandfathers PRs opened before the actual policy merge despite a later live base', () => {
+    const rolloutMergedAt = '2026-10-03T07:00:00Z';
+    expect(publicationPolicyApplies({ origin: 'AGENT', createdAt: '2026-10-03T06:59:59Z', rolloutMergedAt })).toBe(false);
+    expect(publicationPolicyApplies({ origin: 'AGENT', createdAt: rolloutMergedAt, rolloutMergedAt })).toBe(true);
+    expect(publicationPolicyApplies({ origin: 'OWNER', createdAt: '2026-10-03T08:00:00Z', rolloutMergedAt })).toBe(false);
+    expect(publicationPolicyApplies({ origin: 'UNKNOWN', createdAt: '2026-10-03T08:00:00Z', rolloutMergedAt })).toBe(false);
+    expect(() => publicationPolicyApplies({ origin: 'AGENT', createdAt: 'invalid', rolloutMergedAt })).toThrow();
+  });
+
+  it('wakes only open Agent PRs based on main after a base push, and fails closed on unreadable inventory', async () => {
+    const pr = (number: number, origin: string, base = 'main', state = 'open') => ({
+      number, state, body: `WORK_ORIGIN: ${origin}`, base: { ref: base, repo: { full_name: 'owner/repo' } },
+    });
+    const emptyBody = { ...pr(5, 'AGENT'), body: null };
+    const github = { rest: { pulls: { list: () => {} } }, paginate: async () => [pr(1, 'AGENT'), pr(2, 'OWNER'), pr(3, 'AGENT', 'release'), pr(4, 'AGENT', 'main', 'closed'), emptyBody] };
+    expect(await resolvePublicationBaseWakeup({ github, owner: 'owner', repo: 'repo', baseRef: 'main' })).toEqual({ numbers: [1, 5], associationIncomplete: false });
+    await expect(resolvePublicationBaseWakeup({ github: { rest: { pulls: { list: () => {} } }, paginate: async () => { throw new Error('api'); } }, owner: 'owner', repo: 'repo', baseRef: 'main' })).rejects.toThrow('PUBLICATION_BASE_WAKEUP_UNAVAILABLE');
+  });
+
   it('binds the receipt to exact body, file inventory, base and head', () => {
     const body = governanceBody();
     const original = publicationContract({ body, files, baseSha: base, headSha: head });
@@ -101,7 +123,13 @@ describe('#724 immutable Agent PR publication preflight receipt', () => {
       "current.draft === true",
       'PUBLICATION_PREFLIGHT_RECEIPT_REQUIRED',
       'findMatchingPublicationReceipt',
-      'github-actions[bot]',
     ]) expect(workflow).toContain(needle);
+    const parsed = parse(workflow);
+    expect(parsed.on.push.branches).toContain('main');
+    const guard = parsed.jobs.guard.steps.find((step: any) => step.with?.script).with.script;
+    expect(guard).toContain('publicationPolicyApplies');
+    expect(guard).toContain('if (publicationApplies) metadataErrors.push(...publicationValidation.errors)');
+    expect(guard).not.toMatch(/^\s*metadataErrors\.push\(\.\.\.publicationValidation\.errors\);/m);
+    expect(workflow).toContain('resolvePublicationBaseWakeup');
   });
 });

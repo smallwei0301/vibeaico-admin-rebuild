@@ -114,7 +114,6 @@ export default function LineSettingsPage() {
   const [richMenuBgImageUrl, setRichMenuBgImageUrl] = React.useState('');
   const [richMenuNoOverlay, setRichMenuNoOverlay] = React.useState(false);
   const [richMenuTextColor, setRichMenuTextColor] = React.useState(LINE_DEFAULTS.richMenuTextColor);
-  const [richMenuPublished, setRichMenuPublished] = React.useState(false);
 
   /* --- 忙碌狀態 --- */
   const [savingLine, setSavingLine] = React.useState(false);
@@ -227,7 +226,7 @@ export default function LineSettingsPage() {
     }
   };
 
-  const patchLocalLine = (patch: Partial<LineSettings>) =>
+  const patchLocalLine = (patch: Partial<TenantSettings['line']>) =>
     setSettings((s) => (s ? { ...s, line: { ...s.line, ...patch } } : s));
 
   const saveLine = async () => {
@@ -331,8 +330,8 @@ export default function LineSettingsPage() {
       patchLocalLine({
         richMenuTheme, richMenuBgImageUrl, richMenuNoOverlay, richMenuTextColor,
       });
-      await publishRichMenu();
-      setRichMenuPublished(true);
+      const published = await publishRichMenu();
+      patchLocalLine({ richMenuId: published.richMenuId });
       toast.show(
         richMenuBgImageUrl
           ? richMenuNoOverlay
@@ -410,7 +409,6 @@ export default function LineSettingsPage() {
       await disconnectLine();
       setChannelId('');
       setLineBasicId('');
-      setRichMenuPublished(false);
       patchLocalLine({
         channelId: '', channelSecret: '', channelAccessToken: '', lineBasicId: '', webhookUrl: '',
       });
@@ -1059,14 +1057,14 @@ export default function LineSettingsPage() {
 
       {/* ========================================================= Rich Menu */}
       <Card className="mb-4">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+        <CardHeader className="flex-wrap gap-2">
+          <CardTitle className="flex flex-wrap items-center gap-2">
             <Grid3x3 size={16} />
             {t.richMenu.title}
-            {richMenuPublished ? (
-              <Badge tone="success">{t.richMenu.isDefault}</Badge>
+            {settings.line.richMenuId ? (
+              <Badge tone="neutral">{t.richMenu.savedId}</Badge>
             ) : (
-              <Badge tone="neutral">{t.richMenu.notConfigured}</Badge>
+              <Badge tone="neutral">{t.richMenu.noSavedId}</Badge>
             )}
           </CardTitle>
           <Link className="btn btn-outline btn-sm" href={t.richMenu.advancedDesignHref}>
@@ -1075,6 +1073,12 @@ export default function LineSettingsPage() {
           </Link>
         </CardHeader>
         <CardBody>
+          <p className="mb-3 text-xs text-secondary">{t.richMenu.savedIdHelp}</p>
+          {settings.line.richMenuId && (
+            <p className="mb-3 break-all text-xs text-secondary">
+              {t.richMenu.savedMenuId}: {settings.line.richMenuId}
+            </p>
+          )}
           {/* 即時預覽 */}
           <div className="mb-4">
             <div className="mb-2 text-base font-semibold text-dark">{t.richMenu.previewTitle}</div>

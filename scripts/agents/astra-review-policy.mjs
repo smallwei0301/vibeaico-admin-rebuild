@@ -447,15 +447,22 @@ export async function resolveReviewWakeup({ github, owner, repo, runId }) {
     const headOwner = run.head_repository?.owner?.login;
     if (!/^[\w.-]+$/.test(headOwner ?? '') || typeof run.head_branch !== 'string'
       || !run.head_branch || !run.head_repository?.full_name) throw new Error('Missing canonical review PR association');
-    const pulls = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', head: `${headOwner}:${run.head_branch}`, per_page: 100 });
-    numbers = [...new Set(pulls.filter(pr => pr.state === 'open' && pr.base?.repo?.full_name === repository
-      && pr.head?.repo?.full_name === run.head_repository.full_name && pr.head?.ref === run.head_branch).map(pr => pr.number))];
+    const pulls = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'all', head: `${headOwner}:${run.head_branch}`, per_page: 100 });
+    const canonical = pulls.filter(pr => pr.base?.repo?.full_name === repository
+      && pr.head?.repo?.full_name === run.head_repository.full_name && pr.head?.ref === run.head_branch);
+    const open = canonical.filter(pr => pr.state === 'open');
+    // Prefer live open work over same-branch history. A delayed review of an
+    // already-closed exact producer head only enters the consumer's no-write return.
+    const candidates = open.length ? open : canonical.filter(pr => pr.state === 'closed'
+      && SHA.test(run.head_sha ?? '') && pr.head?.sha === run.head_sha);
+    numbers = [...new Set(candidates.map(pr => pr.number))];
   }
   if (numbers.length !== 1 || !Number.isSafeInteger(numbers[0]) || numbers[0] < 1) throw new Error('Review wake-up needs one canonical PR association');
   const { data: current } = await github.rest.pulls.get({ owner, repo, pull_number: numbers[0] });
-  if (current.number !== numbers[0] || current.state !== 'open' || current.base?.repo?.full_name !== repository
+  if (current.number !== numbers[0] || !['open', 'closed'].includes(current.state) || current.base?.repo?.full_name !== repository
     || current.head?.repo?.full_name !== run.head_repository?.full_name
-    || current.head?.ref !== run.head_branch || !SHA.test(current.head?.sha ?? '')) throw new Error('Review wake-up PR source differs from canonical run');
+    || current.head?.ref !== run.head_branch || !SHA.test(current.head?.sha ?? '')
+    || (current.state === 'closed' && (!SHA.test(run.head_sha ?? '') || current.head.sha !== run.head_sha))) throw new Error('Review wake-up PR source differs from canonical run');
   return current.number;
 }
 

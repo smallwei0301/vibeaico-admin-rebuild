@@ -39,26 +39,60 @@ jobs:
           script: |
             const path = require('node:path');
             const { pathToFileURL } = require('node:url');
-            const policy = await import(pathToFileURL(path.join(
-              process.env.GITHUB_WORKSPACE,
-              'scripts/agents/product-issue-close-policy.mjs',
-            )).href);
-            const astra = await import(pathToFileURL(path.join(
-              process.env.GITHUB_WORKSPACE, 'scripts/agents/astra-review-policy.mjs',
-            )).href);
-
             const { owner, repo } = context.repo;
             const issueNumber = context.payload.issue.number;
             const { data: issue } = await github.rest.issues.get({
               owner, repo, issue_number: issueNumber,
             });
             if (issue.pull_request || issue.state !== 'closed') return;
+            if (!context.payload.issue.closed_at || issue.closed_at !== context.payload.issue.closed_at) {
+              core.notice('Close event was superseded; skip admission for a newer generation');
+              return;
+            }
 
             const { data: repository } = await github.rest.repos.get({ owner, repo });
             const { data: branch } = await github.rest.repos.getBranch({
               owner, repo, branch: repository.default_branch,
             });
+            const checkoutSha = require('node:child_process').execFileSync(
+              'git', ['rev-parse', 'HEAD'],
+              { cwd: process.env.GITHUB_WORKSPACE, encoding: 'utf8' },
+            ).trim();
+            if (!/^[0-9a-f]{40}$/.test(checkoutSha)) throw new Error('Checked-out close policy identity unavailable');
             const currentMainSha = branch.commit.sha;
+            const loadedPolicies = new Map();
+            const loadCanonicalPolicy = async (sha) => {
+              if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error('Canonical policy SHA unavailable');
+              if (loadedPolicies.has(sha)) return loadedPolicies.get(sha);
+              let root = path.join(process.env.GITHUB_WORKSPACE, 'scripts/agents');
+              if (sha !== checkoutSha) {
+                // Read only trusted canonical-main bytes, never PR code/artifacts.
+                const fs = require('node:fs');
+                root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'product-close-policy-'));
+                for (const name of ['product-issue-close-policy.mjs', 'issue-provenance-policy.mjs',
+                  'agent-wip-policy.mjs', 'astra-review-policy.mjs', 'final-risk-cost-policy.mjs', 'model-routing.json']) {
+                  const { data } = await github.rest.repos.getContent({ owner, repo, path: `scripts/agents/${name}`, ref: sha });
+                  if (Array.isArray(data) || data.type !== 'file' || data.encoding !== 'base64' || typeof data.content !== 'string') throw new Error('Canonical policy content unavailable');
+                  const bytes = Buffer.from(data.content, 'base64');
+                  const blob = require('node:crypto').createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+                  if (blob !== data.sha) throw new Error('Canonical policy blob identity differs');
+                  fs.writeFileSync(path.join(root, name), bytes);
+                }
+              }
+              const loaded = {
+                policy: await import(pathToFileURL(path.join(root, 'product-issue-close-policy.mjs')).href),
+                astra: await import(pathToFileURL(path.join(root, 'astra-review-policy.mjs')).href),
+              };
+              if (sha !== checkoutSha) {
+                const { data: loadedBranch } = await github.rest.repos.getBranch({
+                  owner, repo, branch: repository.default_branch,
+                });
+                if (loadedBranch.commit.sha !== sha) throw new Error('Current main changed while loading canonical policy; admission UNKNOWN');
+              }
+              loadedPolicies.set(sha, loaded);
+              return loaded;
+            };
+            const { policy, astra } = await loadCanonicalPolicy(currentMainSha);
 
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner, repo, issue_number: issueNumber, per_page: 100,
@@ -103,7 +137,7 @@ jobs:
                   owner,
                   repo,
                   path: `docs/metrics/agent-runs/${ready.handoff.runId}.json`,
-                  ref: repository.default_branch,
+                  ref: currentMainSha,
                 });
                 const data = response.data;
                 if (!Array.isArray(data) && data.type === 'file' && data.encoding === 'base64' && typeof data.content === 'string') {
@@ -186,7 +220,11 @@ jobs:
               }
             }
 
-            const result = policy.evaluateProductIssueClose({
+            // Bind every input to the captured SHA, then re-read after slow API work.
+            const { data: admissionBranch } = await github.rest.repos.getBranch({
+              owner, repo, branch: repository.default_branch,
+            });
+            const closeInputs = {
               issue,
               currentMainSha,
               openPullRequests,
@@ -196,7 +234,16 @@ jobs:
               verifiedRun,
               verifiedCloseApproval,
               lastClosedCaptureAt,
-            });
+            };
+            let result = policy.evaluateProductIssueClose(closeInputs);
+            if (admissionBranch.commit.sha !== currentMainSha) {
+              const fresh = await loadCanonicalPolicy(admissionBranch.commit.sha);
+              result = fresh.policy.evaluateProductIssueClose(closeInputs);
+              if (result.applicable) {
+                result.allowed = false;
+                result.errors.push(`Current main changed during admission: ${currentMainSha} -> ${admissionBranch.commit.sha}; require fresh close-ready evidence`);
+              }
+            }
 
             await core.summary
               .addHeading('Product Issue close admission')
@@ -228,7 +275,12 @@ jobs:
               }
             }
 
-            if (!result.allowed) {
+            const rejectClose = async (errors) => {
+              const { data: rejectedIssue } = await github.rest.issues.get({ owner, repo, issue_number: issueNumber });
+              if (rejectedIssue.state !== 'closed' || rejectedIssue.closed_at !== issue.closed_at) {
+                core.notice('Issue changed before rejection; skip reopening a newer generation');
+                return;
+              }
               await github.rest.issues.update({
                 owner, repo, issue_number: issueNumber, state: 'open',
               });
@@ -244,21 +296,16 @@ jobs:
                   `CURRENT_MAIN: ${currentMainSha}`,
                   `RUN_ID: ${result.runId ?? 'missing'}`,
                   '',
-                  ...result.errors.map((error) => `- ${error}`),
+                  ...errors.map((error) => `- ${error}`),
                   '',
                   'Fix the close-ready evidence or remaining linked PR first. Do not immediately close again or rewrite history to make the gate green.',
                 ].join('\n'),
               });
-              core.setFailed(result.errors.join('; '));
+              core.setFailed(errors.join('; '));
+            };
+            if (!result.allowed) {
+              await rejectClose(result.errors);
               return;
-            }
-
-            try {
-              await github.rest.issues.removeLabel({
-                owner, repo, issue_number: issueNumber, name: failureLabel,
-              });
-            } catch (error) {
-              if (error.status !== 404) throw error;
             }
 
             const { data: freshIssue } = await github.rest.issues.get({ owner, repo, issue_number: issueNumber });
@@ -269,6 +316,25 @@ jobs:
             const freshComments = await github.paginate(github.rest.issues.listComments, {
               owner, repo, issue_number: issueNumber, per_page: 100,
             });
+            const { data: captureBranch } = await github.rest.repos.getBranch({ owner, repo, branch: repository.default_branch });
+            if (captureBranch.commit.sha !== currentMainSha) {
+              const fresh = await loadCanonicalPolicy(captureBranch.commit.sha);
+              if (!fresh.policy.evaluateProductIssueClose({ ...closeInputs, issue: freshIssue }).applicable) return;
+              await rejectClose([`Current main changed before capture: ${currentMainSha} -> ${captureBranch.commit.sha}; require fresh close-ready evidence`]);
+              return;
+            }
+            const { data: captureIssue } = await github.rest.issues.get({ owner, repo, issue_number: issueNumber });
+            if (captureIssue.state !== 'closed' || captureIssue.closed_at !== issue.closed_at) {
+              core.notice('Issue changed before capture; skip ISSUE_CLOSED_OBSERVED');
+              return;
+            }
+            try {
+              await github.rest.issues.removeLabel({
+                owner, repo, issue_number: issueNumber, name: failureLabel,
+              });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
             if (!freshComments.some((comment) => {
               if (comment.user?.login !== 'github-actions[bot]' || comment.user?.type !== 'Bot') return false;
               if (!comment.body?.includes(policy.PRODUCT_ISSUE_CLOSE_CAPTURE_MARKER)) return false;

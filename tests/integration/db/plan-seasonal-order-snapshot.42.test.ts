@@ -8,6 +8,8 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SHOP_A, SHOP_B } from '../../fixtures';
 import { loginAs, type AuthedApi } from '../../helpers/auth';
 import { readTourSeedFields } from '../../../scripts/test/tour-seed-profile.mjs';
+import { resolveSeasonUnitPrice } from '../../../src/lib/public-season-price';
+import { resolveBookingTotal } from '../../../src/lib/public-booking-price';
 
 type Season = {
   name: string; startMonth: number; startDay: number; endMonth: number; endDay: number;
@@ -163,6 +165,20 @@ describe('#42 persisted seasonal prices become immutable TourOrder snapshots', (
       tenant_id: SHOP_A.id, trip_id: tripId, plan_id: planId, departure_id: departureId,
       unit_price: unit, total_amount: total, deposit_amount: deposit, seats_reserved: false,
     });
+    // #11 交叉比對：公開頁／表單用的 resolveSeasonUnitPrice 與 resolveBookingTotal（同一組啟用季節、團次日期）
+    // 必須等於 create_tour_order 實際寫入的 unit_price／total_amount（涵蓋命中、未命中、跨年、重疊、null override、
+    // 0 元、id tie-break；停用的季節不參與）。
+    const resolverUnit = resolveSeasonUnitPrice(
+      scenario.date,
+      saved.filter((season) => season.active).map((season) => ({
+        id: season.id, startMonth: season.startMonth, startDay: season.startDay, endMonth: season.endMonth,
+        endDay: season.endDay, priceOverride: season.priceOverride, sortOrder: season.sortOrder,
+      })),
+      1000,
+    );
+    expect(resolverUnit).toBe(Number(before.unit_price));
+    expect(resolveBookingTotal({ unitPrice: resolverUnit }, { pricePerPerson: 1000, priceType: scenario.type, seasonalPricing: true }, 3))
+      .toEqual({ unitPrice: Number(before.unit_price), total: Number(before.total_amount) });
     const own = await data(await owner.get(`/api/tour-orders?orderId=${createdOrder.id}`));
     expect(own.content).toHaveLength(1);
     expect(own.content[0]).toMatchObject({ id: createdOrder.id, ...snapshot });

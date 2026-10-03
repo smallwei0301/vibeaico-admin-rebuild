@@ -8,6 +8,11 @@ vi.mock('@/config/env', () => ({ USE_MOCK: false }));
 vi.mock('@/server/features', () => ({ requireFeature: async () => undefined }));
 vi.mock('@/server/tenant', () => ({ requireTenantManager: async () => ({
   tenantId: 'tenant-42', supabase: { from: (table: string) => {
+    if (table === 'trips') {
+      const query = { select: () => query, eq: () => query,
+        maybeSingle: async () => ({ data: { id: 'trip-42', midao_listing: 'NONE' }, error: null }) };
+      return query;
+    }
     expect(table).toBe('trip_plans');
     let patch: Record<string, unknown> | undefined;
     const query = {

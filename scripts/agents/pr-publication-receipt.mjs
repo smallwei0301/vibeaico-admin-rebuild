@@ -10,6 +10,37 @@ const SHA256 = /^[0-9a-f]{64}$/;
 const sha256 = value => createHash('sha256').update(String(value ?? ''), 'utf8').digest('hex');
 const sortKey = value => JSON.stringify(value);
 
+// The policy starts when its owning PR is merged into main, not when a live PR base later advances.
+export const PUBLICATION_ROLLOUT_PR = 736;
+export function publicationPolicyApplies({ origin, createdAt, rolloutMergedAt } = {}) {
+  if (origin !== 'AGENT') return false;
+  const created = Date.parse(createdAt);
+  const merged = Date.parse(rolloutMergedAt);
+  if (!Number.isFinite(created) || !Number.isFinite(merged)) {
+    throw new Error('PUBLICATION_ROLLOUT_UNVERIFIED: canonical PR creation or policy merge time is unavailable');
+  }
+  return created >= merged;
+}
+
+/** Main pushes must refresh receipts bound to the base, including PRs with an empty body. */
+export async function resolvePublicationBaseWakeup({ github, owner, repo, baseRef } = {}) {
+  let pulls;
+  try { pulls = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', per_page: 100 }); }
+  catch { throw new Error('PUBLICATION_BASE_WAKEUP_UNAVAILABLE: canonical open PR inventory could not be read'); }
+  if (!Array.isArray(pulls) || pulls.some(pr => !Number.isSafeInteger(pr?.number) || pr.number < 1 ||
+    !['open', 'closed'].includes(pr.state) || (pr.body !== null && typeof pr.body !== 'string') ||
+    typeof pr.base?.ref !== 'string' || typeof pr.base?.repo?.full_name !== 'string')) {
+    throw new Error('PUBLICATION_BASE_WAKEUP_UNAVAILABLE: malformed canonical PR inventory');
+  }
+  const numbers = pulls.filter(pr => {
+    if (pr.state !== 'open' || pr.base.repo.full_name !== `${owner}/${repo}` || pr.base.ref !== baseRef) return false;
+    const origins = [...String(pr.body ?? '').matchAll(/^\s*WORK_ORIGIN\s*:\s*(AGENT|OWNER|UNKNOWN)\s*$/gmi)];
+    // Ambiguous metadata is rechecked instead of silently treating a possible Agent PR as exempt.
+    return origins.length !== 1 || origins[0][1].toUpperCase() === 'AGENT';
+  }).map(pr => pr.number);
+  return { numbers: [...new Set(numbers)].sort((a, b) => a - b), associationIncomplete: false };
+}
+
 /** @param {{body?: string, files?: Array<{filename?: string, previous_filename?: string, previousFilename?: string, status?: string, sha?: string}>, baseSha?: string, headSha?: string}} [input] */
 export function publicationContract({ body = '', files = [], baseSha = '', headSha = '' } = {}) {
   if (!SHA40.test(baseSha) || !SHA40.test(headSha)) throw new Error('publication receipt requires exact base/head SHA');

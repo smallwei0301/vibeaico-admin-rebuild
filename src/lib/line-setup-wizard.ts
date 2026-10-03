@@ -25,6 +25,10 @@ export type VerifiableCheckKey =
   | 'WEBHOOK'
   | 'WEBHOOK_TEST';
 
+export const VERIFIABLE_CHECK_KEYS: VerifiableCheckKey[] = [
+  'CREDENTIALS', 'TOKEN', 'ID_SECRET_PAIR', 'BOT_MODE', 'WEBHOOK', 'WEBHOOK_TEST',
+];
+
 export type CheckStatus = 'PASS' | 'FAIL' | 'INFO';
 
 export interface VerifyCheck {
@@ -79,15 +83,20 @@ export function stepStatus(
   if (relevant.length === 0) return 'NOT_CHECKED';
   if (step === 'AUTO_REPLY_CONFIRM') return 'INFO';
   if (relevant.some((c) => c.status === 'FAIL')) return 'FAIL';
-  if (relevant.every((c) => c.status === 'PASS')) return 'PASS';
+  if (keys.every((key) => {
+    const matches = relevant.filter((c) => c.key === key);
+    return matches.length === 1 && matches[0].status === 'PASS';
+  })) return 'PASS';
   return 'NOT_CHECKED';
 }
 
 /** 六項可查證檢查是否全數 PASS（AUTO_REPLY 的 INFO 不計入）。 */
 export function allVerifiableChecksPassed(checks: VerifyCheck[] | null): boolean {
   if (!checks) return false;
-  const verifiable = checks.filter((c) => c.status !== 'INFO');
-  return verifiable.length > 0 && verifiable.every((c) => c.status === 'PASS');
+  return VERIFIABLE_CHECK_KEYS.every((key) => {
+    const matches = checks.filter((c) => c.key === key);
+    return matches.length === 1 && matches[0].status === 'PASS';
+  });
 }
 
 export interface CredentialsPresence {
@@ -120,7 +129,7 @@ export function deriveStartingStep(
 
   const order: (keyof typeof STEP_CHECK_KEYS)[] = ['CONNECTION', 'BOT_MODE_WEBHOOK', 'WEBHOOK_TEST'];
   for (const step of order) {
-    if (stepStatus(step, checks) === 'FAIL') return step;
+    if (stepStatus(step, checks) !== 'PASS') return step;
   }
   return 'AUTO_REPLY_CONFIRM';
 }
@@ -147,4 +156,14 @@ export function canAdvanceFromStep(
     default:
       return false;
   }
+}
+
+/** Request identity survives overlapping requests; invalidation also cancels unmounted work. */
+export function createWizardRequestGate() {
+  let generation = 0;
+  return {
+    begin: () => ++generation,
+    isCurrent: (request: number) => request === generation,
+    invalidate: () => { generation += 1; },
+  };
 }
