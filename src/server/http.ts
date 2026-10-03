@@ -20,6 +20,7 @@ export const ERR = {
   TOUR_REQUEST_NOT_ELIGIBLE: 'TOUR_002', // REQUEST 訂單非 PENDING 或方案非 REQUEST，不能接受／拒絕（#46）
   EXTERNAL_CONFIG_BLOCKED: 'EXT_001',    // 依賴的外部憑證／設定尚未到位（例：平台 ECPay 商店憑證，issue #25 C 段）
   RATE_LIMITED: 'REQ_004',         // 匿名公開端點節流（#46 Final Risk F1，見 src/server/rate-limit.ts）
+  MAIL_UNAVAILABLE: 'MAIL_001',    // 寄信服務暫時不可用（#754：provider 失敗／未設定，不得謊報已寄出）
   INTERNAL: 'SYS_001',
 } as const;
 

@@ -28,6 +28,12 @@
     },
     {
       "ref": "issue/710"
+    },
+    {
+      "ref": "issue/754"
+    },
+    {
+      "ref": "issue/755"
     }
   ],
   "main": {
@@ -1657,6 +1663,73 @@
         "accepted": true,
         "issue": 46,
         "note": "RUN_CAPTURE_HANDOFF (Owner /goal): Haiku #46 inventory by prior Claude session (2026-10-02). Exact times and output location not recoverable from live GitHub; recorded from Owner handoff, acceptance as stated by handoff, not re-verified."
+      },
+      {
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "actualModel": "unknown",
+        "id": "20261003-audit-748-38659afd-rereview",
+        "role": "audit",
+        "requestedModel": "sol",
+        "accepted": true,
+        "issue": 748,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/752#issuecomment-5965716161",
+        "startedAt": "2026-10-03T04:50:48Z",
+        "completedAt": "2026-10-03T04:53:28Z",
+        "note": "#752 incremental re-review PASS 0 blocking; sol-review 5399072626; merged e379ab03."
+      },
+      {
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "actualModel": "sol",
+        "id": "20261003-audit-production-acceptance",
+        "role": "audit 層親自執行 Production 驗收 QA（Owner 授權測試資料；涉及 Production 寫入與帳密，未委派 scout）",
+        "requestedModel": "luna",
+        "accepted": true,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/755",
+        "startedAt": "2026-10-03T05:05:01Z",
+        "completedAt": "2026-10-03T05:45:00Z",
+        "note": "Declared exception. Found #754 (Resend 401) and #755 (Production schema missing 0109-0135). Test tenant vibetest1003; trip unpublished after test."
+      },
+      {
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "actualModel": "unknown",
+        "id": "20261003-build-755-drift-classification",
+        "role": "build",
+        "requestedModel": "terra",
+        "accepted": true,
+        "issue": 755,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/755#issuecomment-5966619301",
+        "startedAt": "2026-10-03T05:50:10Z",
+        "completedAt": "2026-10-03T05:58:15Z",
+        "note": "Read-only Production drift classification: A254/B115/C119."
+      },
+      {
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "actualModel": "unknown",
+        "id": "20261003-build-754-mail-unavailable",
+        "role": "build",
+        "requestedModel": "terra",
+        "accepted": true,
+        "issue": 754,
+        "evidenceRef": "d26d09d6",
+        "startedAt": "2026-10-03T07:09:38Z",
+        "completedAt": "2026-10-03T07:25:00Z",
+        "note": "#754: honest 503 MAIL_001 on verification mail failure, config-failure flag for enumeration parity, auth.03 starts Resend mock; merge of main 8b53be5d."
       }
     ],
     "fullContextReplays": 0,
@@ -1690,13 +1763,13 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 22,
-    "lunaAccepted": 18,
+    "lunaTasks": 23,
+    "lunaAccepted": 19,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 49,
+    "solTouches": 50,
     "solIssues": 5
   },
   "auditability": {
