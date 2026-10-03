@@ -167,5 +167,14 @@ describe('#746 送出路徑拒絕今天已開始的團次（不呼叫 create_tou
         expect(state.rpcCalls).toHaveLength(1);
         expect(state.rpcCalls[0].args.p_departure).toBe(id);
       });
+
+    it('店家時區影響判斷（申請 loader）：洛杉磯 2098-01-01 18:00，台北視角「今天」的團次對它是明天 → 列出且可送出', async () => {
+      state.tz = 'America/Los_Angeles';
+      state.deps = [{ id: DEP.started, departs_on: TODAY, start_time: '09:00:00' }];
+      const plan = await loadPublicRequestPlan('tenant-a', PLAN_ID, { withSeasonPrices: false });
+      expect(plan!.departures.map((d) => d.id)).toEqual([DEP.started]);
+      await expect(submitPublicTourRequest(requestInput(DEP.started))).resolves.toMatchObject({ orderId: 'order-1' });
+      expect(state.rpcCalls).toHaveLength(1);
+    });
   });
 });

@@ -6,7 +6,7 @@
  *
  * 「今天已過／未到」為了不受執行時刻影響，用可確定的邊界造：
  *   - 已過：今天（店家時區）start_time = 00:00（任何時刻都 <= 現在）。
- *   - 未到：今天 start_time = 23:59；若執行時剛好已 >= 23:59 則跳過依賴它的案例（見 NOT_YET_POSSIBLE）。
+ *   - 未到：今天 start_time = 23:59；若執行時已 >= 23:30 則跳過依賴它的案例（見 NOT_YET_POSSIBLE，留 29 分鐘餘裕給跨午夜）。
  * 店家時區由本檔明確寫成 Asia/Taipei（afterAll 還原 basic 快照），不依賴種子。
  *
  * ⚠️ 若 shared TEST 疊著 #41 overlay，其 deadline trigger 可能阻擋「已過」團次的寫入；
@@ -37,18 +37,26 @@ const F = {
 const R = {
   started: '74600001-0000-4000-8000-000000000031',
   notYet: '74600001-0000-4000-8000-000000000032',
+  tomorrow: '74600001-0000-4000-8000-000000000033',
 };
 const ALL_DEPARTURES = [...Object.values(F), ...Object.values(R)];
 
 const tenantNow = tenantNowParts('Asia/Taipei');
 const TODAY = tenantNow.today;
 const TOMORROW = new Date(Date.parse(`${TODAY}T00:00:00Z`) + 24 * 3600 * 1000).toISOString().slice(0, 10);
-/** 現在 < 23:59 才造得出「今天未到」；否則相關案例跳過（不是通過）。 */
-const NOT_YET_POSSIBLE = tenantNow.hm < '23:59';
+/**
+ * 現在 < 23:30 才造得出穩定的「今天未到」（start_time 23:59）；否則相關案例跳過（不是通過）。
+ * 留 29 分鐘餘裕：模組載入到 HTTP 請求之間的耗時、或接近午夜時跨日，都不會讓 23:59 變成已開始。
+ */
+const NOT_YET_POSSIBLE = tenantNow.hm < '23:30';
 
 let admin: SupabaseClient;
+/** 以旗標判斷是否需要還原：basic 原值可能就是 JSON null，不能用 `!== null` 當「有快照」。 */
+let basicCaptured = false;
 let basicSnapshot: unknown = null;
-let tourModuleWasGranted = false;
+/** TOUR_MODULE 列的快照：null＝原本沒有這列（afterAll 刪除）；有值＝逐字還原（含 inactive 的情形）。 */
+let tourModuleCaptured = false;
+let tourModuleSnapshot: Record<string, unknown> | null = null;
 
 function mustWrite(label: string, result: { error: unknown }): void {
   if (result.error) throw new Error(`前置寫入失敗（${label}）：${JSON.stringify(result.error)}`);
@@ -90,19 +98,27 @@ beforeAll(async () => {
   const settings = await admin.from('tenant_settings').select('basic').eq('tenant_id', SHOP_A.id).single();
   mustWrite('tenant_settings 快照', settings);
   basicSnapshot = settings.data!.basic;
+  basicCaptured = true;
   mustWrite('tenant_settings.basic.timezone', await admin.from('tenant_settings')
     .update({ basic: { ...((basicSnapshot as Record<string, unknown>) ?? {}), timezone: 'Asia/Taipei' } })
     .eq('tenant_id', SHOP_A.id));
 
-  // 公開寫入端點有 TOUR_MODULE 閘門；標準種子不一定有，沒有就開通、afterAll 刪回去。
-  const feat = await admin.from('feature_subscriptions').select('code')
+  // 公開寫入端點有 TOUR_MODULE 閘門：列不存在或 inactive 都要處理。先快照整列，afterAll 逐字還原。
+  const feat = await admin.from('feature_subscriptions').select('*')
     .eq('tenant_id', SHOP_A.id).eq('code', 'TOUR_MODULE').maybeSingle();
-  tourModuleWasGranted = Boolean(feat.data);
-  if (!tourModuleWasGranted) {
+  mustWrite('TOUR_MODULE 快照', feat);
+  tourModuleSnapshot = (feat.data as Record<string, unknown> | null) ?? null;
+  tourModuleCaptured = true;
+  const needsGrant = !tourModuleSnapshot || tourModuleSnapshot.active !== true;
+  if (needsGrant) {
     mustWrite('開通 TOUR_MODULE', await admin.from('feature_subscriptions').upsert({
       tenant_id: SHOP_A.id, code: 'TOUR_MODULE', active: true, expires_at: null, source: 'GRANTED', cancelled_at: null,
     }, { onConflict: 'tenant_id,code' }));
   }
+
+  // 重跑一致：前次中斷可能留下訂單；先清掉這批團次的訂單（FK 在團次上），
+  // 團次／方案／行程用下方 upsert 以固定 ID 覆寫（seats_booked 重設為 0）。
+  mustWrite('清除前次殘留 tour_orders', await admin.from('tour_orders').delete().in('departure_id', ALL_DEPARTURES));
 
   // 每個 trip 只放一個方案：歷史相容 overlay 有 trip_plans_tenant_trip_slug_key (tenant_id, trip_id, slug)，
   // 同一 trip 兩個未指定 slug（default ''）的方案會撞約束（見 public-trip-details.11.test.ts 的說明）。
@@ -126,6 +142,7 @@ beforeAll(async () => {
     dep(F.tomorrow, PLAN_FIXED, TOMORROW, '00:00'),
     dep(R.started, PLAN_REQUEST, TODAY, '00:00'),
     dep(R.notYet, PLAN_REQUEST, TODAY, '23:59'),
+    dep(R.tomorrow, PLAN_REQUEST, TOMORROW, '00:00'),
   ]));
   const seeded = await admin.from('trip_departures').select('id').in('id', ALL_DEPARTURES);
   mustWrite('trip_departures 讀回核實', seeded);
@@ -133,17 +150,62 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  if (!admin) return;
+  const cleanupFailures: string[] = [];
+  const runCleanup = async (label: string, action: () => PromiseLike<{ error: unknown }>) => {
+    try {
+      const { error } = await action();
+      if (error) cleanupFailures.push(`${label} 失敗：${JSON.stringify(error)}`);
+    } catch (error) {
+      cleanupFailures.push(`${label} 拋錯：${String(error)}`);
+    }
+  };
+
   // 只刪自己造的；訂單先於團次（FK）。
-  await admin.from('tour_orders').delete().in('departure_id', ALL_DEPARTURES);
-  await admin.from('trip_departures').delete().in('id', ALL_DEPARTURES);
-  await admin.from('trip_plans').delete().in('id', [PLAN_FIXED, PLAN_REQUEST]);
-  await admin.from('trips').delete().in('id', [TRIP_FIXED, TRIP_REQUEST]);
-  if (basicSnapshot !== null) {
-    await admin.from('tenant_settings').update({ basic: basicSnapshot }).eq('tenant_id', SHOP_A.id);
+  await runCleanup('tour_orders delete', () => admin.from('tour_orders').delete().in('departure_id', ALL_DEPARTURES));
+  await runCleanup('trip_departures delete', () => admin.from('trip_departures').delete().in('id', ALL_DEPARTURES));
+  await runCleanup('trip_plans delete', () => admin.from('trip_plans').delete().in('id', [PLAN_FIXED, PLAN_REQUEST]));
+  await runCleanup('trips delete', () => admin.from('trips').delete().in('id', [TRIP_FIXED, TRIP_REQUEST]));
+  if (basicCaptured) {
+    await runCleanup('tenant_settings.basic 還原', () => admin.from('tenant_settings')
+      .update({ basic: basicSnapshot }).eq('tenant_id', SHOP_A.id));
   }
-  if (!tourModuleWasGranted) {
-    await admin.from('feature_subscriptions').delete().eq('tenant_id', SHOP_A.id).eq('code', 'TOUR_MODULE');
+  if (tourModuleCaptured) {
+    if (tourModuleSnapshot) {
+      await runCleanup('feature_subscriptions 還原', () => admin.from('feature_subscriptions')
+        .upsert(tourModuleSnapshot!, { onConflict: 'tenant_id,code' }));
+    } else {
+      await runCleanup('feature_subscriptions delete', () => admin.from('feature_subscriptions')
+        .delete().eq('tenant_id', SHOP_A.id).eq('code', 'TOUR_MODULE'));
+    }
   }
+
+  // 讀回確認：沒有「回報成功但其實沒刪／沒還原」。
+  const readbacks = await Promise.all([
+    admin.from('tour_orders').select('id').in('departure_id', ALL_DEPARTURES),
+    admin.from('trip_departures').select('id').in('id', ALL_DEPARTURES),
+    admin.from('trip_plans').select('id').in('id', [PLAN_FIXED, PLAN_REQUEST]),
+    admin.from('trips').select('id').in('id', [TRIP_FIXED, TRIP_REQUEST]),
+  ]);
+  for (const [label, result] of [
+    ['tour_orders', readbacks[0]], ['trip_departures', readbacks[1]], ['trip_plans', readbacks[2]], ['trips', readbacks[3]],
+  ] as const) {
+    if (result.error) cleanupFailures.push(`${label} 讀回失敗：${JSON.stringify(result.error)}`);
+    else if ((result.data ?? []).length > 0) cleanupFailures.push(`${label} 殘留 ${(result.data ?? []).length} 筆`);
+  }
+  if (basicCaptured) {
+    const back = await admin.from('tenant_settings').select('basic').eq('tenant_id', SHOP_A.id).single();
+    if (back.error) cleanupFailures.push(`tenant_settings 讀回失敗：${JSON.stringify(back.error)}`);
+    else if (JSON.stringify(back.data!.basic) !== JSON.stringify(basicSnapshot)) cleanupFailures.push('tenant_settings.basic 未還原成快照');
+  }
+  if (tourModuleCaptured) {
+    const back = await admin.from('feature_subscriptions').select('*')
+      .eq('tenant_id', SHOP_A.id).eq('code', 'TOUR_MODULE').maybeSingle();
+    if (back.error) cleanupFailures.push(`feature_subscriptions 讀回失敗：${JSON.stringify(back.error)}`);
+    else if (!tourModuleSnapshot && back.data) cleanupFailures.push('TOUR_MODULE 列應已刪除卻仍存在');
+    else if (tourModuleSnapshot && back.data?.active !== tourModuleSnapshot.active) cleanupFailures.push('TOUR_MODULE.active 未還原成快照');
+  }
+  if (cleanupFailures.length) throw new Error(`#746 fixture 清理失敗：\n${cleanupFailures.join('\n')}`);
 });
 
 describe('#746 FIXED_DEPARTURE：POST /api/public/tour-bookings', () => {
@@ -210,7 +272,9 @@ describe('#746 預約頁不列出已開始團次', () => {
     const res = await fetch(`${BASE}/s/${SHOP_A.shopCode}/plans/${PLAN_REQUEST}/request`);
     const body = await res.text();
     expect(res.status).toBe(200);
-    if (NOT_YET_POSSIBLE) expect(body).toContain(R.notYet); // 對照組
+    // 對照組（無條件）：明天的團次一定存在，頁面真的渲染且 id 會序列化進去，下面的 not.toContain 才不是恆真。
+    expect(body).toContain(R.tomorrow);
+    if (NOT_YET_POSSIBLE) expect(body).toContain(R.notYet);
     expect(body, '已開始的團次出現在申請頁').not.toContain(R.started);
   });
 });
