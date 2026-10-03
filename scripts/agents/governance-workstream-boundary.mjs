@@ -234,10 +234,15 @@ export async function reconcileTerminalPr({ github, owner, repo, current, warnin
       try { const content = (await github.rest.repos.getContent({ owner, repo, path, ref: main })).data; if (selected.status === 'removed' || content?.type !== 'file') throw Error('main file re-read failed'); } catch (error) { if (selected.status !== 'removed' || error.status !== 404) throw error; }
       liveFields = ['EXACT_HEAD_CI_STATUS', 'EXACT_HEAD_CI_RUN']; const inventory = (await github.rest.actions.listWorkflowRuns({ owner, repo, workflow_id: 'ci.yml', head_sha: observed.head.sha, event: 'pull_request', per_page: 100 })).data;
       if (!Array.isArray(inventory.workflow_runs) || inventory.total_count > inventory.workflow_runs.length) throw Error('exact-head CI inventory incomplete');
+      const associated = item => (item.pull_requests?.length === 1 && item.pull_requests[0]?.number === observed.number) ||
+        ((observed.merged || observed.merged_at) && item.pull_requests?.length === 0 &&
+          typeof observed.head?.ref === 'string' && observed.head.ref.length > 0 &&
+          typeof observed.head?.repo?.full_name === 'string' && observed.head.repo.full_name.length > 0 &&
+          item.head_branch === observed.head?.ref && item.head_repository?.full_name === observed.head?.repo?.full_name);
       const latest = inventory.workflow_runs.filter(item => item.head_sha === observed.head.sha && item.path === '.github/workflows/ci.yml' && item.event === 'pull_request' && !(item.pull_requests?.length === 1 && Number.isSafeInteger(item.pull_requests[0]?.number) && item.pull_requests[0].number !== observed.number)).sort((a, b) => b.id - a.id)[0];
-      if (!latest || latest.id !== Number(runId)) throw Error('receipt does not name latest exact-head CI run');
+      if (!latest || latest.id !== Number(runId) || !associated(latest)) throw Error('receipt does not name latest exact-head CI run');
       const run = (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: Number(runId) })).data;
-      if (run.head_sha !== observed.head?.sha || run.status !== 'completed' || run.conclusion !== 'success' || run.event !== 'pull_request' || run.path !== '.github/workflows/ci.yml' || run.pull_requests?.length !== 1 || run.pull_requests[0]?.number !== observed.number) throw Error('exact-head CI run is not verified for this PR');
+      if (run.head_sha !== observed.head?.sha || run.status !== 'completed' || run.conclusion !== 'success' || run.event !== 'pull_request' || run.path !== '.github/workflows/ci.yml' || !associated(run)) throw Error('exact-head CI run is not verified for this PR');
       liveFields = ['LOCAL_JOB_RESULT']; if (upper(readField(observed.body, 'LOCAL_JOB_RESULT')) === 'VERIFIED_GREEN') throw Error('local isolated integration/E2E evidence not verified');
       if (upper(readField(observed.body, 'REMOTE_JOB_RESULT')) === 'VERIFIED_GREEN') {
         liveFields = ['REMOTE_JOB_RESULT']; const jobs = (await github.rest.actions.listJobsForWorkflowRun({ owner, repo, run_id: Number(runId), filter: 'latest', per_page: 100 })).data;
