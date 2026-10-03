@@ -21,7 +21,7 @@ import { validateDeliveryUnitBoundary as preflightBoundary } from '../../scripts
 import { evaluateProductDeliveryTruth, formatProductDeliveryTruth } from '../../scripts/agents/completion-truth.mjs';
 import {
   boundaryPaths, shouldApplyProductGlobalWip, terminalBodyPlan, terminalLabelPlan,
-  validateBookkeepingWorkstream, validateDeliveryUnitBoundary,
+  validateBookkeepingWorkstream, validateDeliveryUnitBoundary, requireUniqueMergedCiSourcePr,
 } from '../../scripts/agents/governance-workstream-boundary.mjs';
 
 const gov = `<!-- pr-lifecycle\nissue: 500\nstate: ACTIVE\nsupersedes:\n-->
@@ -165,6 +165,18 @@ async function runWorkflow(file: string, current = subject(), files: any[] = pat
 afterEach(() => vi.unstubAllEnvs());
 
 describe('governance boundary regression #500', () => {
+  it('rejects an empty-association CI fallback when two PRs share exact source head across bases', async () => {
+    const candidate = { number: 745, state: 'closed', head: { sha: 'a'.repeat(40), ref: 'same-branch', repo: { full_name: 'owner/repo' } }, base: { repo: { full_name: 'owner/repo' } } };
+    const list = vi.fn();
+    let pulls = [candidate];
+    const github = { rest: { pulls: { list } }, paginate: async () => pulls };
+    const observed = { ...candidate, merged: true };
+    await expect(requireUniqueMergedCiSourcePr({ github, owner: 'owner', repo: 'repo', observed })).resolves.toBeUndefined();
+    pulls = [candidate, { ...candidate, number: 746 }];
+    await expect(requireUniqueMergedCiSourcePr({ github, owner: 'owner', repo: 'repo', observed })).rejects.toThrow(/unique/i);
+    pulls = [{ ...candidate, number: 746 }];
+    await expect(requireUniqueMergedCiSourcePr({ github, owner: 'owner', repo: 'repo', observed })).rejects.toThrow(/unique/i);
+  });
   it('executes rollout against live guard: old Agent stays grandfathered, new Agent stages, Owner is exempt', async () => {
     const oldAgent = await runWorkflow('.github/workflows/agent-wip-guard.yml', subject());
     expect(oldAgent.calls).toContain('rollout');
@@ -476,12 +488,14 @@ describe('governance boundary regression #500', () => {
     expect(terminalBodyPlan({ ...closed, body: verified, merge_commit_sha: 'a'.repeat(40) })?.unsyncedFields).toEqual([]);
     expect(terminalBodyPlan({ ...closed, body: verified, merge_commit_sha: 'c'.repeat(40) })?.unsyncedFields).toContain('MERGE_COMMIT_SHA');
     const live = { ...closed, body: verified, merge_commit_sha: 'a'.repeat(40), base: { ref: 'main' }, changed_files: 1 };
-    const comments: any[] = [{ body: `<!-- agent-terminal-state-sync:v1 pr=900 head=${live.head.sha} closed_at=${live.closed_at} digest=old -->\nSTATE_SYNC_PENDING`, user: { login: 'github-actions[bot]', id: 41898282 } }]; const listFiles = vi.fn(), files = [{ filename: 'docs/AGENT-EXECUTION.md', status: 'modified' }];
-    const github: any = { rest: { pulls: { get: vi.fn(async () => ({ data: structuredClone(live) })), listFiles },
+    const comments: any[] = [{ body: `<!-- agent-terminal-state-sync:v1 pr=900 head=${live.head.sha} closed_at=${live.closed_at} digest=old -->\nSTATE_SYNC_PENDING`, user: { login: 'github-actions[bot]', id: 41898282 } }]; const listFiles = vi.fn(), listSource = vi.fn(), files = [{ filename: 'docs/AGENT-EXECUTION.md', status: 'modified' }];
+    const sourcePr = { ...live, base: { ...live.base, repo: { full_name: 'owner/repo' } } };
+    let sourcePulls = [sourcePr];
+    const github: any = { rest: { pulls: { get: vi.fn(async () => ({ data: structuredClone(live) })), listFiles, list: listSource },
       issues: { listComments: vi.fn(), removeLabel: vi.fn(), getLabel: vi.fn(async () => ({})), addLabels: vi.fn(async ({ labels }: any) => { live.labels.push(...labels.map((name: string) => ({ name }))); }), createComment: vi.fn(async ({ body }: any) => { comments.push({ body, user: { login: 'github-actions[bot]', id: 41898282 } }); return { data: { id: comments.length } }; }), updateComment: vi.fn(async ({ comment_id, body }: any) => { comments[comment_id - 1].body = body; }) },
       repos: { getBranch: vi.fn(async () => ({ data: { commit: { sha: 'c'.repeat(40) } } })), compareCommitsWithBasehead: vi.fn(async () => ({ data: { status: 'ahead' } })), getContent: vi.fn(async () => ({ data: { type: 'file' } })) },
       actions: { listWorkflowRuns: vi.fn(async () => ({ data: { total_count: 1, workflow_runs: [{ id: 1, head_sha: live.head.sha, event: 'pull_request', path: '.github/workflows/ci.yml', pull_requests: [{ number: 900 }], created_at }] } })), getWorkflowRun: vi.fn(async () => ({ data: { head_sha: live.head.sha, status: 'completed', conclusion: 'success', event: 'pull_request', path: '.github/workflows/ci.yml', pull_requests: [{ number: 900 }] } })) },
-    }, paginate: vi.fn(async method => method === listFiles ? files : comments) };
+    }, paginate: vi.fn(async method => method === listFiles ? files : method === listSource ? sourcePulls : comments) };
     const call = () => boundaryPolicy.reconcileTerminalPr({ github, owner: 'owner', repo: 'repo', current: live });
     await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_RESOLVED'); const uncertain = async (drift: 'main' | 'labels', fallback = false) => { comments.push({ id: comments.length + 1, body: `<!-- agent-terminal-state-sync:v1 pr=900 head=${live.head.sha} closed_at=${live.closed_at} digest=retry -->\nSTATE_SYNC_PENDING`, user: { login: 'github-actions[bot]', id: 41898282 } }); const id = comments.length + 1; github.rest.issues.createComment.mockImplementationOnce(async ({ body }: any) => { comments.push({ id, body, user: { login: 'github-actions[bot]', id: 41898282 } }); if (drift === 'main') github.rest.repos.getBranch.mockResolvedValueOnce({ data: { commit: { sha: 'd'.repeat(40) } } }); else live.labels.push({ name: 'state:active' }); throw Error('response lost after remote create'); }); if (fallback) github.rest.issues.updateComment.mockRejectedValueOnce(Error('supersede failed')); await expect(call()).rejects.toThrow('response lost after remote create'); expect(comments[id - 1].body).toContain(fallback ? 'STATE_SYNC_RESOLVED' : 'STATE_SYNC_SUPERSEDED'); if (fallback) expect(comments.at(-1).body).toContain('STATE_SYNC_PENDING'); if (drift === 'labels') live.labels = live.labels.filter((label: { name: string }) => label.name !== 'state:active'); }; await uncertain('main'); await uncertain('labels'); await uncertain('main', true); github.rest.repos.getBranch.mockResolvedValueOnce({ data: { commit: { sha: 'c'.repeat(40) } } }).mockResolvedValueOnce({ data: { commit: { sha: 'd'.repeat(40) } } }); await call(); expect(comments.at(-1).body).toContain('LIVE_MAIN_RECEIPT_UNVERIFIED:main moved'); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: MAIN_HEAD_SHA, MAIN_HEAD_VERIFIED, MAIN_FILE_RE_READ'); github.rest.repos.getBranch.mockResolvedValueOnce({ data: { commit: { sha: 'c'.repeat(40) } } }).mockResolvedValueOnce({ data: { commit: { sha: 'c'.repeat(40) } } }).mockResolvedValueOnce({ data: { commit: { sha: 'd'.repeat(40) } } }); await call(); expect(comments.at(-1).body).toContain('LIVE_MAIN_RECEIPT_UNVERIFIED:main moved'); const createComment = github.rest.issues.createComment.getMockImplementation(); github.rest.issues.createComment.mockImplementationOnce(createComment).mockImplementationOnce(async () => { throw Error('pending create failed'); }); github.rest.repos.getBranch.mockResolvedValueOnce({ data: { commit: { sha: 'c'.repeat(40) } } }).mockResolvedValueOnce({ data: { commit: { sha: 'c'.repeat(40) } } }).mockResolvedValueOnce({ data: { commit: { sha: 'd'.repeat(40) } } }); await expect(call()).rejects.toThrow('pending create failed'); expect(comments.at(-1).body).toContain('STATE_SYNC_SUPERSEDED'); live.body = 'Historical prose only'; await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_RESOLVED'); live.body = verified.replace(`MAIN_HEAD_SHA: ${'c'.repeat(40)}`, `MAIN_HEAD_SHA: ${'b'.repeat(40)}`); await call(); expect(comments.at(-1).body).toContain('declared main SHA does not match live main'); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: MAIN_HEAD_SHA, MAIN_HEAD_VERIFIED, MAIN_FILE_RE_READ'); live.body = verified.replace('MAIN_FILE_RE_READ: docs/AGENT-EXECUTION.md', 'MAIN_FILE_RE_READ: README.md'); await call(); expect(comments.at(-1).body).toContain('main re-read path is not a changed PR file'); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: MAIN_FILE_RE_READ'); live.body = verified;
     live.body = verified.replace('LOCAL_JOB_RESULT: SKIPPED', 'LOCAL_JOB_RESULT: VERIFIED_GREEN'); await call(); expect(comments.at(-1).body).toContain('local isolated integration/E2E evidence not verified'); expect(comments.at(-1).body).toContain('UNSYNCED_FIELDS: LOCAL_JOB_RESULT'); live.body = verified;
@@ -513,6 +527,10 @@ describe('governance boundary regression #500', () => {
     github.rest.actions.listWorkflowRuns.mockResolvedValue({ data: { total_count: 1, workflow_runs: [{ ...strippedRun, id: 1 }] } });
     github.rest.actions.getWorkflowRun.mockResolvedValue({ data: strippedRun });
     await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_RESOLVED');
+    sourcePulls = [sourcePr, { ...sourcePr, number: 901, base: { ref: 'release', repo: { full_name: 'owner/repo' } } }];
+    await call(); expect(comments.at(-1).body).toContain('STATE_SYNC_PENDING');
+    expect(comments.at(-1).body).toContain('unique merged source PR');
+    sourcePulls = [sourcePr];
     const originalHeadRepo = live.head.repo; live.head.repo = undefined;
     await call(); expect(comments.at(-1).body).toContain('LIVE_MAIN_RECEIPT_UNVERIFIED'); live.head.repo = originalHeadRepo;
     github.rest.actions.getWorkflowRun.mockResolvedValue({ data: { ...strippedRun, head_branch: 'foreign/branch' } });
