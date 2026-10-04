@@ -1,7 +1,12 @@
 /**
- * #755 / 0136：canonical TEST（與 G3 release）上真正會執行的 create_tour_order 邊界測試。
- * service_role 無 JWT 建單後讀回 refund_policy_snapshot，必須等於 trips.refund_policy_type
- * （不得被 RLS 靜默寫成 NULL）；跨租戶呼叫被拒絕且不留訂單；anon／authenticated 不得 EXECUTE。
+ * #755 / 0136：canonical TEST（與 G3 release）上的 create_tour_order 回歸／契約測試。
+ * service_role 無 JWT 建單後讀回 refund_policy_snapshot，必須等於 trips.refund_policy_type；
+ * 跨租戶呼叫被拒絕且不留訂單；anon／authenticated 不得 EXECUTE。
+ *
+ * 注意：canonical TEST 上函式 owner 會繞過 RLS，因此本測試「不會」重現 Production 的
+ * RLS 情境（owner 為 nobypassrls 的 production_migration_owner、trips 受 RLS 過濾而寫成 NULL）。
+ * 它只守住 0136 之後的行為契約不回歸；Production 角色配置的重現是另一個待辦項目，
+ * 需要已知 Production tour_orders 擁有者與授權後的本機隔離環境才能驗證。
  * 所有 fixture 變動（trips 政策、座位、訂單）都在 finally 還原。
  */
 import { randomUUID } from 'node:crypto';
@@ -58,13 +63,21 @@ describe('#755 / 0136 create_tour_order refund policy snapshot boundary', () => 
         expect(row.data?.refund_policy_snapshot).toBe(policy);
       }
     } finally {
+      const failures: unknown[] = [];
       for (const id of createdOrders) {
-        await admin.from('tour_orders').delete().eq('id', id);
-        await admin.rpc('release_seats', { p_departure: TRIP_A.departure1, p_count: 1 });
+        const order = await admin.from('tour_orders').select('seats_reserved').eq('id', id).maybeSingle();
+        if (order.error) failures.push(order.error);
+        const deleted = await admin.from('tour_orders').delete().eq('id', id);
+        if (deleted.error) failures.push(deleted.error);
+        if (order.data?.seats_reserved === true) {
+          const released = await admin.rpc('release_seats', { p_departure: TRIP_A.departure1, p_count: 1 });
+          if (released.error) failures.push(released.error);
+        }
       }
       const restore = await admin.from('trips')
         .update({ refund_policy_type: original.data!.refund_policy_type }).eq('id', TRIP_A.id);
-      expect(restore.error).toBeNull();
+      if (restore.error) failures.push(restore.error);
+      if (failures.length) throw new AggregateError(failures, '#755 fixture cleanup failed');
     }
   });
 
