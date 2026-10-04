@@ -271,7 +271,7 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null,
-        "note": "Distinct bounded #40\u2192#43 category8 dependency read by existing /root/scout, requestedgpt6-luna actualunknown; confirmed main58 seven sources only/no canonical DEAD ledger, preserve DEPENDENCY_BLOCKED_BY_#40 for category8 only. No runtime/DB changes.",
+        "note": "Distinct bounded #40→#43 category8 dependency read by existing /root/scout, requestedgpt6-luna actualunknown; confirmed main58 seven sources only/no canonical DEAD ledger, preserve DEPENDENCY_BLOCKED_BY_#40 for category8 only. No runtime/DB changes.",
         "count": 1
       },
       {
@@ -337,7 +337,7 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "note": "Actual existingbuild47 followup admitted singleprivateRESERVE42 test-only seasonal Plan save/reload\u2192trueTourOrder price snapshot source; oneownednewintegrationfile/oneatomiccommit. MAIN46sourcefrozenawaitsnativeCI; noPR/push/DB/CI/audit/Runmutation. OwnerSol6.1builder override, noProductcompletionclaim."
+        "note": "Actual existingbuild47 followup admitted singleprivateRESERVE42 test-only seasonal Plan save/reload→trueTourOrder price snapshot source; oneownednewintegrationfile/oneatomiccommit. MAIN46sourcefrozenawaitsnativeCI; noPR/push/DB/CI/audit/Runmutation. OwnerSol6.1builder override, noProductcompletionclaim."
       },
       {
         "id": "20261001-luna-playbook719-failure-evidence",
@@ -519,7 +519,7 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "note": "Independent GUIDE responsive Standards review on exact f56 against current-main docs/integration/20 \u00a71.1/\u00a711 found the new retry error body at 14px and the default retry button below 44px. Requested gpt-6.1-sol under Owner OpenAI-session override; actual model unverified. Distinct from builder."
+        "note": "Independent GUIDE responsive Standards review on exact f56 against current-main docs/integration/20 §1.1/§11 found the new retry error body at 14px and the default retry button below 44px. Requested gpt-6.1-sol under Owner OpenAI-session override; actual model unverified. Distinct from builder."
       },
       {
         "id": "20261001-sol-spec-review43-f56",
@@ -532,7 +532,7 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "note": "Independent #43 acceptance review on exact f56: disclosed remaining gaps are 360px, guide-count/long-content/card-category CTA coverage and real browser action\u2192reload against trusted Preview. These remain Issue acceptance pending, not missing category 1\u20137 source. Requested gpt-6.1-sol, actual model unverified, distinct from builder."
+        "note": "Independent #43 acceptance review on exact f56: disclosed remaining gaps are 360px, guide-count/long-content/card-category CTA coverage and real browser action→reload against trusted Preview. These remain Issue acceptance pending, not missing category 1–7 source. Requested gpt-6.1-sol, actual model unverified, distinct from builder."
       },
       {
         "id": "20261001-sol-builder43-responsive-fix",
@@ -558,7 +558,7 @@
         "role": "scout",
         "requestedModel": "luna",
         "actualModel": "unknown",
-        "note": "ANTHROPIC session takeover. Requested claude-haiku-4-5 scout (Agent model=haiku, agentId a165e6b65f0af029d): PR734 exact145026b readback \u2014 PARKED by WIP AUTH collision with #731, source CI green, no migration, merge-tree clean. Actual served model not provider-verified."
+        "note": "ANTHROPIC session takeover. Requested claude-haiku-4-5 scout (Agent model=haiku, agentId a165e6b65f0af029d): PR734 exact145026b readback — PARKED by WIP AUTH collision with #731, source CI green, no migration, merge-tree clean. Actual served model not provider-verified."
       },
       {
         "contextClass": "compact",
@@ -571,7 +571,7 @@
         "role": "scout",
         "requestedModel": "luna",
         "actualModel": "unknown",
-        "note": "Requested claude-haiku-4-5 scout (agentId ae48d8bd62c624e2e): PR733 exact7c1bd4a \u2014 guard fails on 7 missing lane metadata fields; source CI green; no migration; merge-tree clean. Actual unverified."
+        "note": "Requested claude-haiku-4-5 scout (agentId ae48d8bd62c624e2e): PR733 exact7c1bd4a — guard fails on 7 missing lane metadata fields; source CI green; no migration; merge-tree clean. Actual unverified."
       },
       {
         "contextClass": "compact",
@@ -584,7 +584,7 @@
         "role": "scout",
         "requestedModel": "luna",
         "actualModel": "unknown",
-        "note": "Requested claude-haiku-4-5 scout (agentId a8539cdd9bfc7797e): PR731 exactf945d79 \u2014 draft ACTIVE, canonical TEST NOT_RUN, Final Risk deferred, no INSTANT/payment claim, no migration. Actual unverified."
+        "note": "Requested claude-haiku-4-5 scout (agentId a8539cdd9bfc7797e): PR731 exactf945d79 — draft ACTIVE, canonical TEST NOT_RUN, Final Risk deferred, no INSTANT/payment claim, no migration. Actual unverified."
       },
       {
         "contextClass": "compact",
@@ -597,7 +597,7 @@
         "role": "scout",
         "requestedModel": "luna",
         "actualModel": "unknown",
-        "note": "Requested claude-haiku-4-5 scout (agentId a7624670125fd0a66): PR715 exact6676255 \u2014 PARKED only for #730 BUILD/REVIEW receipt contract; exact-head SourceCI+LOCAL green; ASTRA NONE; no migration. Actual unverified."
+        "note": "Requested claude-haiku-4-5 scout (agentId a7624670125fd0a66): PR715 exact6676255 — PARKED only for #730 BUILD/REVIEW receipt contract; exact-head SourceCI+LOCAL green; ASTRA NONE; no migration. Actual unverified."
       },
       {
         "contextClass": "compact",
@@ -1379,7 +1379,7 @@
         "accepted": true,
         "issue": 11,
         "evidenceRef": "3259d2fe",
-        "note": "Build task: Sonnet ad1e91cbd33161115, 3259d2fe\u219283b3fbfb; dispatched via Agent model=sonnet (operator-attested); committed 2026-10-02T12:37:30\u201312:43:31Z",
+        "note": "Build task: Sonnet ad1e91cbd33161115, 3259d2fe→83b3fbfb; dispatched via Agent model=sonnet (operator-attested); committed 2026-10-02T12:37:30–12:43:31Z",
         "startedAt": "2026-10-02T12:37:30Z",
         "completedAt": "2026-10-02T12:43:31Z",
         "count": 1,
@@ -1430,7 +1430,7 @@
         "accepted": true,
         "issue": 47,
         "evidenceRef": "593731b7",
-        "note": "Build task #714: terra-build-714-merge; merged origin/main into #714; 2026-10-03T00:23:47Z\u201300:28:24Z",
+        "note": "Build task #714: terra-build-714-merge; merged origin/main into #714; 2026-10-03T00:23:47Z–00:28:24Z",
         "startedAt": "2026-10-03T00:23:47Z",
         "completedAt": "2026-10-03T00:28:24Z",
         "count": 1,
@@ -1447,7 +1447,7 @@
         "accepted": true,
         "issue": 47,
         "evidenceRef": "593731b7",
-        "note": "Audit task #714: sol-review-714-final PASS 0 blocking (15 mutation, 8 killed); 2026-10-03T00:30:24Z\u201300:37:20Z",
+        "note": "Audit task #714: sol-review-714-final PASS 0 blocking (15 mutation, 8 killed); 2026-10-03T00:30:24Z–00:37:20Z",
         "startedAt": "2026-10-03T00:30:24Z",
         "completedAt": "2026-10-03T00:37:20Z",
         "count": 1,
@@ -1464,7 +1464,7 @@
         "accepted": true,
         "issue": 710,
         "evidenceRef": "1e4c7f69",
-        "note": "Build task #709: terra-build-709-merge; merged main into #709; 2026-10-03T00:42:25Z\u201300:45:56Z",
+        "note": "Build task #709: terra-build-709-merge; merged main into #709; 2026-10-03T00:42:25Z–00:45:56Z",
         "startedAt": "2026-10-03T00:42:25Z",
         "completedAt": "2026-10-03T00:45:56Z",
         "count": 1,
@@ -1481,7 +1481,7 @@
         "accepted": true,
         "issue": 710,
         "evidenceRef": "1e4c7f69",
-        "note": "Final Risk premium \u4e0d\u5c6c luna/terra/sol tier\uff0c\u4f9d\u65e2\u6709\u6163\u4f8b\u8a18 unknown\uff1b\u5be6\u969b\u59d4\u6d3e claude-fable-5-1\uff08operator-attested\uff09",
+        "note": "Final Risk premium 不屬 luna/terra/sol tier，依既有慣例記 unknown；實際委派 claude-fable-5-1（operator-attested）",
         "startedAt": "2026-10-03T02:08:43Z",
         "completedAt": "2026-10-03T02:11:13Z",
         "count": 1,
@@ -1499,7 +1499,7 @@
         "accepted": true,
         "issue": 748,
         "evidenceRef": "4d29a358",
-        "note": "Build task #748: terra-build-748; 2026-10-03T02:16:35Z\u201302:22:58Z",
+        "note": "Build task #748: terra-build-748; 2026-10-03T02:16:35Z–02:22:58Z",
         "startedAt": "2026-10-03T02:16:35Z",
         "completedAt": "2026-10-03T02:22:58Z",
         "count": 1,
@@ -1535,7 +1535,7 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "note": "ledger/Playbook catch-up\uff1b\u5b50\u4ee3\u7406 bash \u88ab\u6b0a\u9650\u7cfb\u7d71\u64cb\u4e0b\uff0c\u7121\u7522\u51fa\uff082026-10-03 ~00:19Z\uff09"
+        "note": "ledger/Playbook catch-up；子代理 bash 被權限系統擋下，無產出（2026-10-03 ~00:19Z）"
       },
       {
         "id": "20261003-scout-inventory",
@@ -1549,7 +1549,7 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "note": "\u7a84\u76e4\u9ede\uff1b\u300e#714 \u53ef\u7acb\u5373 merge\u300f\u8207 live \u4e0d\u7b26\uff08dirty\u3001TEST NOT_RUN\uff09\uff0cLUNA_CLOSURE \u672a\u9644\u9010\u9805\u7406\u7531\uff0caudit \u5c64\u672a\u63a1\u7528"
+        "note": "窄盤點；『#714 可立即 merge』與 live 不符（dirty、TEST NOT_RUN），LUNA_CLOSURE 未附逐項理由，audit 層未採用"
       },
       {
         "id": "20261003-scout-748-source",
@@ -1565,7 +1565,7 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "note": "r01 sources \u52a0 issue/748"
+        "note": "r01 sources 加 issue/748"
       },
       {
         "id": "20261003-scout-ledger-catchup-6b36be13",
@@ -1580,7 +1580,7 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "note": "ledger \u88dc\u8a18\uff1b\u8986\u84cb fullCiRuns/invalidReruns\u3001\u8aa4\u8a08 issuesClosed\u3001\u6f0f\u8a18 5 \u7b46\uff0c\u7d93 audit \u5c64\u88c1\u6c7a\u4ee5\u4fee\u6b63 commit \u66f4\u6b63"
+        "note": "ledger 補記；覆蓋 fullCiRuns/invalidReruns、誤計 issuesClosed、漏記 5 筆，經 audit 層裁決以修正 commit 更正"
       },
       {
         "contextClass": "compact",
@@ -1620,7 +1620,7 @@
         "count": 1,
         "actualModel": "sol",
         "id": "20261003-audit-authored-playbook-pb061-064",
-        "role": "audit \u5c64\u4ee3\u64b0 scout \u8def\u5f91\uff08docs/AGENT-PLAYBOOK.md PB-061/064 \u5168\u6587\u8207 PB-063/068/070 \u6307\u5b9a\u884c\uff09\uff0c\u4e8b\u524d\u5ba3\u544a\u65bc PR #752 \u672c\u6587 Scout-path exception",
+        "role": "audit 層代撰 scout 路徑（docs/AGENT-PLAYBOOK.md PB-061/064 全文與 PB-063/068/070 指定行），事前宣告於 PR #752 本文 Scout-path exception",
         "requestedModel": "luna",
         "accepted": true,
         "note": "Declared exception: factual corrections held only by audit layer; scout applied verbatim (f54745b4)."
@@ -1633,7 +1633,7 @@
         "count": 1,
         "actualModel": "sol",
         "id": "20261003-audit-revert-5ac3a6db",
-        "role": "audit \u5c64\u57f7\u884c\u6a5f\u68b0\u6027 revert\uff08tests/**\u3001tsconfig.json\uff09\uff0c\u5c6c build \u8def\u5f91\u7531 audit \u4ee3\u505a",
+        "role": "audit 層執行機械性 revert（tests/**、tsconfig.json），屬 build 路徑由 audit 代做",
         "requestedModel": "terra",
         "accepted": true,
         "evidenceRef": "bac57747",
@@ -1663,7 +1663,7 @@
         "cachedTokens": null,
         "count": 1,
         "id": "20261002-premium-734-145026b5",
-        "role": "PR #734 Final Risk premium\uff08Astra gate\uff09\u3002Final Risk \u4e0d\u5c6c luna/terra/sol tier\uff0c\u4f9d\u65e2\u6709\u6163\u4f8b\u8a18 unknown\uff1b\u5be6\u969b\u59d4\u6d3e claude-fable-5-1\uff08operator-attested\uff09\uff0cPASS 0 blocking\u3002",
+        "role": "PR #734 Final Risk premium（Astra gate）。Final Risk 不屬 luna/terra/sol tier，依既有慣例記 unknown；實際委派 claude-fable-5-1（operator-attested），PASS 0 blocking。",
         "requestedModel": "unknown",
         "actualModel": "unknown",
         "actualModelId": "claude-fable-5-1",
@@ -1713,7 +1713,7 @@
         "count": 1,
         "actualModel": "sol",
         "id": "20261003-audit-production-acceptance",
-        "role": "audit \u5c64\u89aa\u81ea\u57f7\u884c Production \u9a57\u6536 QA\uff08Owner \u6388\u6b0a\u6e2c\u8a66\u8cc7\u6599\uff1b\u6d89\u53ca Production \u5beb\u5165\u8207\u5e33\u5bc6\uff0c\u672a\u59d4\u6d3e scout\uff09",
+        "role": "audit 層親自執行 Production 驗收 QA（Owner 授權測試資料；涉及 Production 寫入與帳密，未委派 scout）",
         "requestedModel": "luna",
         "accepted": true,
         "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/755",
@@ -2739,7 +2739,7 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "note": "Production: unregistered REGISTER 503 MAIL_001; forgot-password no-send branch (previously 200) x3 also 503 MAIL_001 inside the window \u2014 both branches indistinguishable."
+        "note": "Production: unregistered REGISTER 503 MAIL_001; forgot-password no-send branch (previously 200) x3 also 503 MAIL_001 inside the window — both branches indistinguishable."
       },
       {
         "id": "20261003-ci-main-d5d88f1e",
@@ -3216,6 +3216,101 @@
         "cachedTokens": null,
         "count": 1,
         "note": "Ledger append in the #753 worktree."
+      },
+      {
+        "id": "20261004-audit-767-opus-review-dee162e5",
+        "role": "audit",
+        "tier": "sol",
+        "issue": 753,
+        "description": "PR #767 ordinary review (fresh context) at dee162e5",
+        "startedAt": "2026-10-04T00:09:31Z",
+        "completedAt": "2026-10-04T00:12:20Z",
+        "isProductRun": true,
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "Opus fresh-context review PASS 0 blocking: helpers moved verbatim, public loader output unchanged, schema-compatible, no server code in client bundle, mock build ok; 6/6 mutations caught. N1: copy stored normalized URLs, non-ASCII long URL could exceed 2048 after percent-encoding and vanish on the copy's public page; N2 redundant double clamp."
+      },
+      {
+        "id": "20261004-ci-767-cancel-dee162e5",
+        "role": "audit",
+        "tier": "sol",
+        "issue": 753,
+        "description": "https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/37164022531",
+        "startedAt": null,
+        "completedAt": "2026-10-04T00:12:40Z",
+        "isProductRun": true,
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "Cancelled superseded PR CI on dee162e5 to fix review N1 before validation; not counted as a full CI run."
+      },
+      {
+        "id": "20261004-build-753-raw-gallery-urls",
+        "role": "build",
+        "tier": "terra",
+        "issue": 753,
+        "description": "4adf22c3",
+        "startedAt": "2026-10-04T00:13:06Z",
+        "completedAt": "2026-10-04T00:14:41Z",
+        "isProductRun": true,
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "clampGalleryForCopy keeps raw trimmed strings and uses safePublicHttpsUrl only as a filter, so publicGalleryUrls(copy) equals publicGalleryUrls(source) even for long non-ASCII URLs; added non-ASCII parity test; mutations: store normalized 1 failed, slice-only 2 failed; unit 314 files/4279 passed."
+      },
+      {
+        "id": "20261004-audit-753-raw-gallery-review",
+        "role": "audit",
+        "tier": "sol",
+        "issue": 753,
+        "description": "4adf22c3",
+        "startedAt": "2026-10-04T00:14:45Z",
+        "completedAt": "2026-10-04T00:14:57Z",
+        "isProductRun": true,
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "Audit review PASS: raw trimmed values pass the write schema (z.array(z.unknown()).max(8)); public loader unchanged; unit 24/24, tsc 0."
+      },
+      {
+        "id": "20261004-scout-ledger-767-review",
+        "role": "scout",
+        "tier": "luna",
+        "issue": 753,
+        "description": "ledger append for #767 review round",
+        "startedAt": null,
+        "completedAt": "2026-10-04T00:15:00Z",
+        "isProductRun": true,
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "note": "Ledger append in the #753 worktree."
       }
     ],
     "fullContextReplays": 0,
@@ -3236,7 +3331,7 @@
     "invalidReruns": 5,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0,
-    "note": "37007212982 \u56e0 head \u88ab\u53d6\u4ee3 cancelled\uff0c37083653366 \u5728 classify \u88ab\u62d2\uff0c37082211071 \u70ba #714 source CI\uff0c\u4e09\u8005\u4e0d\u8a08\u5165\uff1b\u5148\u524d 5 \u500b dispatch run \u662f\u5426\u5df2\u8a08\u5165\u539f 30 \u4ecd\u5f85\u67e5\u8b49\u3002\u672c\u8f2a\u65b0\u589e 3 \u500b\u5b8c\u6574 canonical TEST run\uff1a37008702923\u300137083761493\u300137090025615 #757: 37105978199 failure\uff08mock \u5f62\u72c0\u4e0d\u64ec\u771f\uff0c\u5df2\u4fee\uff09\u300137108030479 success\uff1bmain push 37112300377 \u76e3\u770b\u4e2d\u3002 #762\uff1a37121399537\u300137124644493 success\uff1b37120725291\u300137124319682 \u56e0 head \u88ab\u53d6\u4ee3\u800c\u53d6\u6d88\uff08\u4e0d\u8a08\uff09\u3002 #763\uff1a37128355259 success\uff08cce85365\uff09\u3002 37133703835 success\uff0839748ec3\uff09\u3002 37137459820 success\uff08ae6cabfe\uff09\u3002 #763 \u6536\u5c3e\uff1aPR 37148553012 success\uff1bmain push 37151361102 attempt 1 failure\uff08TEST Supabase ECONNRESET\uff0c18 \u7121\u95dc\u6a94\u6848\uff09\u3001attempt 2 rerun success\u3002 #765\uff1a37155693289 \u56e0 review \u4fee\u6b63\u88ab\u53d6\u4ee3\u800c\u53d6\u6d88\uff08\u4e0d\u8a08\uff09\uff1b37156263191 attempt 1 \u56e0 GitHub API 503 \u65bc classify \u5931\u6557\u3001attempt 2 success\u3002 #765\uff1aPR 37159197639 success\uff1bmain push 37161655288 success\u3002"
+    "note": "37007212982 因 head 被取代 cancelled，37083653366 在 classify 被拒，37082211071 為 #714 source CI，三者不計入；先前 5 個 dispatch run 是否已計入原 30 仍待查證。本輪新增 3 個完整 canonical TEST run：37008702923、37083761493、37090025615 #757: 37105978199 failure（mock 形狀不擬真，已修）、37108030479 success；main push 37112300377 監看中。 #762：37121399537、37124644493 success；37120725291、37124319682 因 head 被取代而取消（不計）。 #763：37128355259 success（cce85365）。 37133703835 success（39748ec3）。 37137459820 success（ae6cabfe）。 #763 收尾：PR 37148553012 success；main push 37151361102 attempt 1 failure（TEST Supabase ECONNRESET，18 無關檔案）、attempt 2 rerun success。 #765：37155693289 因 review 修正被取代而取消（不計）；37156263191 attempt 1 因 GitHub API 503 於 classify 失敗、attempt 2 success。 #765：PR 37159197639 success；main push 37161655288 success。"
   },
   "quality": {
     "acceptanceEvidenceCoveragePercent": null,
@@ -3249,8 +3344,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 44,
-    "lunaAccepted": 39,
+    "lunaTasks": 45,
+    "lunaAccepted": 40,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -3287,22 +3382,22 @@
     "Observed ac8d565 pushed, actualci36813096694/local36813096704/scorecard36813096718 inprogress. fullCiRuns3. P2 sourcefreeze036d622 latestfocused62/typecheckPASS; fullunit3645/build onlyolder286bsource, notlatestacceptance. Same review42 chain awaits source/DBgates. Scout prepared unposted47body /workspace/issue47-pr-body.md, noGitHubwrites. Scope43readonlyfound dashboardAPIerror becomes falseempty; boundedreservebuildadmitted after42sourcefrozenwaitingCI, no openPRidentity so no inventedreserveWIPevent/peak.",
     "Independent review42 preliminary on ac8d565 confirmed bothP1/P2 source repaired, Standards0/Spec0unresolvedsourcefindings,FinalRiskNONE; FINAL_APPROVAL_HOLD for latestsourceCI+LOCAL/canonical. GitHub local36813096704 startup/apply/export/localtargetproof completed successfully, realintegrationstep now running at04:03:24Z; workspace registry blocker doesnot block this disposable GitHub alternative. NoISOLATED_GREEN/CANONICAL_GREENclaimed yet. Reserve43 taskstart04:01:12Z receipt/workspace/build43-receipt.md; ownershipdashboard/i18n plusnewguide-inbox-load helper/unit/browserharness, no42/47sourcecollision.",
     "Capture clarification: followup actor continuity doesnot erase distinct new task usage.43triage and42CI summaryeachreceivedown taskrecords now; same audit42headrepairfollowups remainone auditlineage. Reserve43fullunitfailedsingleobsolete source-string assertion setActionInbox([]) afterstatecontractrepair; authorizedonly existingtests/unit/guide-action-inbox.43.test.ts ownershipextension. Newrealasynclifecycle unitand390/1280stubconsumerchecksPASS; finalcorrectedfullunitpending. NoProductionacceptanceclaimed.",
-    "Reserve43 READY_FOR_PROMOTION at04:07:29Z, sourceb82c82e0b2294b7b31913c1c98803e1908664efc singleatomiccommit6files165+/20-, clean/noPRpushAudit. Node22typecheck/build/fullunit282files3597/focused30 andactualdashboardstub390/1280APIerror\u2192retry\u2192empty/data/tenantlate-responsePASS; realDB/domaintransition/Production NOT_RUN. Olderassertionfailure preserved, correctedfocused/fullunitnecessaryrerunpassed.47sourcefrozenc3aae685 unchanged, rootmetadataheadb91263fd preparedunposted. Bothbuildersidle; 42awaitsrealLOCALintegration, no inventedreleaseBUILDcontract or dualhealth.",
+    "Reserve43 READY_FOR_PROMOTION at04:07:29Z, sourceb82c82e0b2294b7b31913c1c98803e1908664efc singleatomiccommit6files165+/20-, clean/noPRpushAudit. Node22typecheck/build/fullunit282files3597/focused30 andactualdashboardstub390/1280APIerror→retry→empty/data/tenantlate-responsePASS; realDB/domaintransition/Production NOT_RUN. Olderassertionfailure preserved, correctedfocused/fullunitnecessaryrerunpassed.47sourcefrozenc3aae685 unchanged, rootmetadataheadb91263fd preparedunposted. Bothbuildersidle; 42awaitsrealLOCALintegration, no inventedreleaseBUILDcontract or dualhealth.",
     "Current completeGitHubissuescollection fetched <100entries:53openIssues plus8openPR at04:08approx; this is currentinventorysnapshot notRunstart/end fabricatedcount. Issue43/47body synced unmergedcandidate/frozenheads/sourcechecks andremainingrealacceptance, bothOPEN. SourceCI36813096694passed current713head; LOCALintegrationstep success/E2Erunning, new42casecountsawaitterminallogs.",
     "LOCAL36813096704 exactac8d565terminalsuccess; actuallocal-pr-713-a/freshreplay/seed/integration80files767pass3skip/new42snapshot2PASS0skip/37assignment13PASS; E2E22PASS3skip1flaky bookings-export30sdownloadtimeout passedbuilt-inretry, unresolvedtimingcause preserved not cleanfirstpass. cleanuprecordsuccess/containersstopped. Evidence/workspace/issue42-local-ci-summary.md. PR713nowsoleTEST_VALIDATION; canonicaldispatchpending, fullCiRunsprevious3 untilactualmanualrunobserved. NecessaryboundedTESTreadonly7columnsconfirmed/noDDL.",
     "Actualcanonicalworkflow_dispatch ci36814238524 exact713headac8d565 inprogress, fullCiRuns4. GitHubPR714createdready exactadf0608 (47sourcec3aae685unchanged), SOURCE_ONLY/noDBprovider; distinctreview47sourcePASS currentheadsourceCIpending. Modelscope46 confirmed minimumavailabilitypolicy+readonlySQLprimitive PREPARE is feasible; doesnotproveatomiccross-writeroccupancy. Nextclosuremustincludeallbooking/departuretime/assignment/statewritersDBguard; noRPC-onlyadvisorylockclaim. Productionnotready doesnotblocksafesourceprepare, whilefinalactivationstillrequiresrelease.",
-    "Actual714sourceci36814288438inprogress \u21d2 fullCiRuns5;scorecard36814288385success/local36814288574SOURCE_ONLYskip (notDBproof). Initialreadinessafter714eventreportedpeakmismatch1vs2: currentcanonical scorecard-readiness reconstructWipPeaks counts uniqueIssues acrossBUILD+VERIFY+TEST states for inventory.activeCandidatePeak. Set reconstructedstate-inventory peak2 from actual713TEST+714BUILD events; separately actual WIPguard ACTIVE_CANDIDATE=true remainsonly714(1),713false. Preserve both denominators; nofakeBuild/TEST/PR event orpolicychange.",
+    "Actual714sourceci36814288438inprogress ⇒ fullCiRuns5;scorecard36814288385success/local36814288574SOURCE_ONLYskip (notDBproof). Initialreadinessafter714eventreportedpeakmismatch1vs2: currentcanonical scorecard-readiness reconstructWipPeaks counts uniqueIssues acrossBUILD+VERIFY+TEST states for inventory.activeCandidatePeak. Set reconstructedstate-inventory peak2 from actual713TEST+714BUILD events; separately actual WIPguard ACTIVE_CANDIDATE=true remainsonly714(1),713false. Preserve both denominators; nofakeBuild/TEST/PR event orpolicychange.",
     "Independent finalreview47 exactadf0608 CLOSE_APPROVED FOR BOUNDED SOURCE ONLY; Standard/Spec0blocking,FinalRiskNONE; actualcanonicalverifyAPIkeyconsumerchecked. AutomatedP1routingthreadPRRT_kwDOT-jF8s6nzZsL independentlysupersededbypriorOwnerOpenAI Solbuild/auditexplicitinstruction, rootrepliedcomment4151806137andresolvedthread, preserve requestedSol/actualunknown/safety0facts. PR714bodycurrent-state stalepark/noauthorization/old42repair/pendingCI corrected; reviewCOMMENTsubmittedactualroottranscribingdifferentreviewer, notselfAPPROVE. MainRunadd/addintegrationrequires713firstmerge toavoidinvalidatingcanonicalhead; nofakeshipped.",
-    "Fresh713livethreadsP1timezonePRRT_kwDOT-jF8s6nzNhj(+08 violatescanonical18\u00a72.2tenanttimezone),P1editdeadlinePRRT_kwDOT-jF8s6nzNho(service/schemaignoreoverride+rescheduleboundaries),P2capacityPRRT_kwDOT-jF8s6nzNhr(existingPUT capacity<minsnapshotthrows23514/500). Rootconfirmedcanonical18\u00a72.2, NO MERGE; preliminarysource0findingclaimwithdrawn, same review42actorboundeddiagnosis pending. Oldac8LOCALpasses remainhistoricalpartialproof, cannotblessnewsource. Oldac8canonical36814238524stillmutatingTEST, retainsoleholderuntilterminal+cleanup; no callableworkflowcanceltool found.714sourceapprovednowPARKED noagent/push/poll, freesactualconstruction42repair.",
+    "Fresh713livethreadsP1timezonePRRT_kwDOT-jF8s6nzNhj(+08 violatescanonical18§2.2tenanttimezone),P1editdeadlinePRRT_kwDOT-jF8s6nzNho(service/schemaignoreoverride+rescheduleboundaries),P2capacityPRRT_kwDOT-jF8s6nzNhr(existingPUT capacity<minsnapshotthrows23514/500). Rootconfirmedcanonical18§2.2, NO MERGE; preliminarysource0findingclaimwithdrawn, same review42actorboundeddiagnosis pending. Oldac8LOCALpasses remainhistoricalpartialproof, cannotblessnewsource. Oldac8canonical36814238524stillmutatingTEST, retainsoleholderuntilterminal+cleanup; no callableworkflowcanceltool found.714sourceapprovednowPARKED noagent/push/poll, freesactualconstruction42repair.",
     "2026-10-01T04:42Z: review42 same-chain independently confirmed three new timezone/edit/capacity findings FIX_REQUIRED; PR713 and Issue42 CURRENT updated preserving old ac8 TEST holder. Builder private repair focused54/type/full285files3664/build PASS, then test-only addition focused55 PASS; freeze/browser/trueDB newhead remain pending. Scout reports old canonical integration-step success and E2E running, terminal logs/cleanup not yet observable. Issue47 CURRENT now accurately SOURCE_VERIFIED PR714 PARKED, not main/shipped. Live711 exact3184 already contains Owner OpenAI Sol6.1 builder/reviewer routing but remains unmerged with two governance findings; retain original owner, no duplicate governance work.",
     "2026-10-01T04:45:56Z oldcanonicallease safelyexitedafterterminalordinaryTESTfixtureteardown; newprivate5ef2122freeze12sourcepaths noDDL. ReenteredBUILD remoteac8 beforepublication. Newsource needsfresh exactheadLOCAL/canonical; firstsourcefull285/3664 plus testonly focused55 and exacttypecheckPASS accuratelyseparated.",
     "2026-10-01T04:48:21Z scout liveobserved newexactf1c4984 sourceCI36816705017check110223281587running/local36816705044job110223414714running/scorecard36816705072success; fullCiRuns6 actualsourceworkflow,noinvalidrerun. Review42 samechain5efsourceclearednew3findings=>unresolvedP1zero boundedsource; finalLOCAL/canonical/auditpending, nofalsefinalapproval. Newpublicationf1 includesRootRun/PB sourceblobsunchanged5ef; oldcapturedBUILDheadac8 retaineduntilstateexit for eventconsistency.",
-    "2026-10-01 #40\u2192#43freshcanonicaldependencychecked: notification ledger runtime missing/partial, historical localoverlay0038 notmaincanonical. #43 remains7/8; DEAD requiringtenantaction unavailable, category8DEPENDENCY_BLOCKED_BY_#40, restnotparked. Directspec17-NOTIFICATION-DELIVERY.md.",
+    "2026-10-01 #40→#43freshcanonicaldependencychecked: notification ledger runtime missing/partial, historical localoverlay0038 notmaincanonical. #43 remains7/8; DEAD requiringtenantaction unavailable, category8DEPENDENCY_BLOCKED_BY_#40, restnotparked. Directspec17-NOTIFICATION-DELIVERY.md.",
     "2026-10-01T05:00:26Z newf1 exactsourceCI36816705017/local36816705044/scorecard36816705072success: unit2853665, integration768pass3skip/new423pass/#3713pass, E2E23pass3skip; localstackcleanupverified. 05:02:43actualTESTreadmission afteremptyholderglobalinventory; noG3orProductionclaim.",
     "713repairedcanonicalTESTentered freesMAINconstruction. Rootselect43frozenreserve promotion; boundedremaining trueHTTP/rawDB acceptance scope dispatched beforeconstruction, notification8blockedonly. No secondqualifiedBUILD invented;713TEST and new43singleBUILD cancoexist.",
     "New ordinarycanonical36817947312 exactf1c4984 actualstarted2026-10-01T05:03:03Z observedscout=>fullCiRuns7. Only713sharedTESTholder. Rootpromotedfrozen43reserve tosingleMAIN BUILD andexistingSolbuilder47 taskedonlynewtests/integration/api/guide-action-inbox-lifecycle.43.test.ts trueGET/deadline/tenant/rejectRPC/rawDB/reload/cleanup; no runtime rewrite/provider/Production/TESTmutation. ExistingrequestedSol43buildtaskchain retained, no new actor/auditor; prePRconstructionnotinventedwipPR event.714remainsPARKEDsourceapproved.",
-    "Fresh f1 automatedP1threadPRRT_kwDOT-jF8s6nzwZ5/comment4151952664: reschedulepreservesexpiredcutoff. Previousreview42boundedcontractallowedelapsedpreservation; rootsentfreshcanonical18\u00a72.2independentVALID/INVALIDdisposition tosameordinaryreviewchain beforeanyresolve/sourcechange. CaptureunresolvedP1one pendingjudgment; nofinalapproval. Canonical36817947312stillsoleTEST running; anyvalidprivatefixmustnotpushuntilterminalcleanup.43MAIN continuesdistincttestscope.",
-    "Fresh f1elapsedreschedulethreadPRRT_kwDOT-jF8s6nzwZ5 independently INVALID_WITH_RATIONALE bysame review42actor: canonical18\u00a72.2 forbids silentlynewcomputedexpireddefault, notpreservinghistoricalabsoluteFORMED/REVIEW_REQUIREDsnapshot acrossreschedule; explicitenlargingrecruitmentmustfutureoverride. Rootreplied4151952664/ resolvedonlythisinvalidthread, sourceclearfinalHOLD unchanged; unresolvedP1zero sourcefindings, oldvalidthreads awaitfinalproofresolution. No newbusinessrule/CIrerun/sourcechange.",
+    "Fresh f1 automatedP1threadPRRT_kwDOT-jF8s6nzwZ5/comment4151952664: reschedulepreservesexpiredcutoff. Previousreview42boundedcontractallowedelapsedpreservation; rootsentfreshcanonical18§2.2independentVALID/INVALIDdisposition tosameordinaryreviewchain beforeanyresolve/sourcechange. CaptureunresolvedP1one pendingjudgment; nofinalapproval. Canonical36817947312stillsoleTEST running; anyvalidprivatefixmustnotpushuntilterminalcleanup.43MAIN continuesdistincttestscope.",
+    "Fresh f1elapsedreschedulethreadPRRT_kwDOT-jF8s6nzwZ5 independently INVALID_WITH_RATIONALE bysame review42actor: canonical18§2.2 forbids silentlynewcomputedexpireddefault, notpreservinghistoricalabsoluteFORMED/REVIEW_REQUIREDsnapshot acrossreschedule; explicitenlargingrecruitmentmustfutureoverride. Rootreplied4151952664/ resolvedonlythisinvalidthread, sourceclearfinalHOLD unchanged; unresolvedP1zero sourcefindings, oldvalidthreads awaitfinalproofresolution. No newbusinessrule/CIrerun/sourcechange.",
     "43 promotedsourcefreeze43bb36b9 actual05:11:14 cleanaggregate7files includesnew147line trueHTTP/inbox/deadline/tenant/rejectRPC/rawDB/reload/cleanup scenario. Typecheck/30focused/discoveryPASS, realDBnotrun. RootpreparingactualLOCALPR with latestownRun; earlydiffaudit43distinctreview47notfinalslot; nosecondfinalauditor.",
     "PR715actualcreated05:13:32 /headdec730f source43bb+RootRunonly, actualenvlocal-pr-715-a. Earlyreview43sourceclearfinalHOLD. InitialpreflightwrongSCHEMA_DEPENDENCY existing0111testbaseline triggeredstagedruntimegate; correctednonebecauseUIonlyrecoverynoAPIactivation/newDDL, beforePR/CI. NoinvalidCIrerun/schema-gatebypass. RootsharedRunonlywriter, runtimefilesdisjoint713/715.",
     "715sourceCI36818753669started05:13:36 actualterminalsuccess/local36818753681running/scorecard36818753667success => fullCiRuns8. MAIN715sourcefrozenwaiting, RootadmittedsoleRESERVE46read/specfirst; SourcePrepare necessaryclosurefirststepnotusercompletion/atomicoccupancypromise. NoIssue46sourceconstructyet pendingpreciseOwnercontract; nofakeReservePRWIPevent/qualifieddual.",
@@ -3319,29 +3414,29 @@
     "MAIN46source61f9435 freeze threeownedpaths, nativecompile/DBNOT_RUN. WholeLOCAL/G3fixedartifactadmission addednotfunctionexistskip; ordinary33POLICY_SKIP/NOT_RUN. Source-static26/type/integrityPASS only. Necessary followoncanonical0135selector+pendingcoveragewiring missing, noProduction ready/activation/atomicreservation. EARLY distinctreview46dispatchobserved beforepublication=>task18/SolTouches10; previousReserve46logicalbuilder reusedformalpromotion/nosecondactor.",
     "Actual719created06:46:44Z exact473050c source61f+RootlatestRun. EARLY review46 sourceclearfinalHOLD onthreepaths andindependentriskNONE onlyreadonlyPREPARE. Rootpreflightmissingpr-lifecycle caughtbeforepush/PR thenfixedheaderPASS, noinvalidCIrerun. SourceBody TEST_ENV_ID descriptiveissue46-local-a, runneractualexpectedlocal-pr-719-a; adjustbody truthfulspecificvalue onceactualpipelineobserved, notinventhealth.",
     "2026-10-01T06:55:21.626+00:00 PR719 native/source workflows NOT_REPORTED because live mergeable=false/dirty. merge-tree confirms conflicts only owning Run JSON/MD after governance718; Root normal merge currentmain4b and resolves using owning current raw ledger, regenerates MD. No source conflict, no no-op rerun, no CI success/counter inferred. Initial publication failed to detect this merge conflict; corrected before native acceptance. Exact new head needs fresh CI.",
-    "Actual719 freshhead955b109 source ci36827423772 started2026-10-01T06:55:50Z; source terminalFAILURE pending exactcause scout, LOCAL36827423779 inprogress samehead. FullCiRuns10\u219211 oneactualsource workflow; original473conflict had NOT_RUN and is not counted. No sourcegreen/nativePASS claimed.",
+    "Actual719 freshhead955b109 source ci36827423772 started2026-10-01T06:55:50Z; source terminalFAILURE pending exactcause scout, LOCAL36827423779 inprogress samehead. FullCiRuns10→11 oneactualsource workflow; original473conflict had NOT_RUN and is not counted. No sourcegreen/nativePASS claimed.",
     "719source CI36827423772 terminal missing0135 ledger classification; schema-bootstrap36827423735 terminal FRESH_INSTALL_BASELINE_BLOCKED canonical migration bytes changed before Docker. Samebuilder necessarytwofilealias/pinrepair admitted ownership inPRbody no guard weakening; early proposedmainHead4b rejected/corrected beforecommit because lacks0135. PB015 requires pin existingancestor61f/955 containing identicalSQL and nextmetadata-onlycommit. NativeLOCAL36827423779 remains running; no replayacceptance orinvalidrerun. SameScope46 followup currentmainallwriteratomicclosure enumeration accepted with no new actor/taskchain.",
     "Rootfreshread main713 ci36822913910 exactmerge9b push attempt1 completedSUCCESS updated06:58:04Z. Scoutterminallogs integration77filesPASS3skip/749testsPASS22skip; E2E23PASS3skip; service_rolefixturerestore+Nextglobalteardownverified. G3schema/apply/cleanuprawstepsSKIPPED intentionalno release. MainCIaftermerge blocker42 cleared; Production schema/auth remainpending. Govmain7184b queue successor mustlivecheck before715canonicalholderrestore; terminal713 doesnotaloneproveemptysharedmutex.",
     "MAIN46source repair frozen36f41fc includes necessaryalias/pin/exactcount test threefiles; typecheck64tests/ledger82+58/fresh89files7compatgeneration/integrityPASS. Original3source blobsunchanged; nativeDB notyetacceptance. Govmain718 ci36825550665 activecanonicalintegration so715 remainsPARKED. Publishing actualsourceclassification/pinrepair triggers freshhead CI; old955LOCAL ifcancelled isUNKNOWN notPASS and notblindrerun. Rootcapturespresent facts beforepush; finalreview mustincludeadded3necessarypaths.",
-    "Actual719 d7de123 sourceCI36828034389 and bootstrap36828034375 started2026-10-01T07:02:14Z; source fullCiRuns11\u219212. NewLOCAL36828034475 QUEUED notstarted; old955LOCAL36827423779 CANCELLED afternecessaryrealalias/pin/countsourcefix\u2192UNKNOWN no nativePASS. Scorecard36828034423 success notnativeDB. Main718 stillsharedTESTholder.",
+    "Actual719 d7de123 sourceCI36828034389 and bootstrap36828034375 started2026-10-01T07:02:14Z; source fullCiRuns11→12. NewLOCAL36828034475 QUEUED notstarted; old955LOCAL36827423779 CANCELLED afternecessaryrealalias/pin/countsourcefix→UNKNOWN no nativePASS. Scorecard36828034423 success notnativeDB. Main718 stillsharedTESTholder.",
     "2026-10-01T07:04:32.299+00:00 Rootremaining42 TRIAGEafter713+718sourcecloseoutcomplete: existingseasonalRLSsuite doesnotexerciseactualorderprice. MAIN46 d7frozenwaitnative, soleprivateRESERVE42 accepted builder47 onnewtestfile only, no MAINhotfiles/ledger/paymentprovider/sourceactivation. No newIssue/PR/buildcandidate orremoteDB. FreezeREADY_FOR_PROMOTION oneatomiccommit. Existing42alreadyissuesStarted4 distinctissues, Solissues4unchanged.",
-    "719d7 sourceCI36828034389 completedSUCCESS07:05:36Z; NativeLOCAL/bootstrapstillrunning/notacceptance. Rootfreshreviews found actualP2 comments4152599457 (unrelatedhistorical/futureDSTambiguous shifts/departures poison allrequests) and4152657882 (WEEKLY full_day dropped\u219225hdaylast-hourfalseavailable/23hdayoverflow). SameMAINbuilder activeIN_PROGRESS narrowSQL/nativecase repair authorized beforefinalaudit; pinmustfollowSQLcommitP. CurrentCIgreen notSOURCE_VERIFIED/activation. Reserve42 oneprivateacceptancetestdoesnotshareSQL/Run/hotfiles; nogreenclaim.",
+    "719d7 sourceCI36828034389 completedSUCCESS07:05:36Z; NativeLOCAL/bootstrapstillrunning/notacceptance. Rootfreshreviews found actualP2 comments4152599457 (unrelatedhistorical/futureDSTambiguous shifts/departures poison allrequests) and4152657882 (WEEKLY full_day dropped→25hdaylast-hourfalseavailable/23hdayoverflow). SameMAINbuilder activeIN_PROGRESS narrowSQL/nativecase repair authorized beforefinalaudit; pinmustfollowSQLcommitP. CurrentCIgreen notSOURCE_VERIFIED/activation. Reserve42 oneprivateacceptancetestdoesnotshareSQL/Run/hotfiles; nogreenclaim.",
     "2026-10-01T07:08:53.470+00:00 necessaryPlaybook factualpatch dispatch toexistingtriage scopedLunaDOCS; notProductOutcome/Govexpansion, merging willfollow Sourcecloseout normalchecks. Pendingnative/findings cannotbeclaimedfixed.",
     "MAIN46 twoactualP2 sourcefindings repaired frozen3074bbf: SQL/nativecasesP=d009399 followedmetadata-onlypinP3074 ensuresidenticalcanonicalbytes/ancestry. RelevantUTC envelope skips onlydefinitelyunrelatedambiguousshift/departure rows, relatedunknownfailsclosed/multidayretained; WEEKLYfull_day useslocalnextmidnight23/25h. Typecheck/source-policy26+ledgerfresh64PASS/baseline89/7/ledger82+58/integrityPASS. NativeNOT_RUN onnewrepair, oldd7green notsubstitute. Rootpublishactualsourcefix causesfreshCI/oldcancelUNKNOWN; noinvalidblindrerun. Task20Playbookpatchcompletedfacts-onlyPB015/034 awaitsnormalmainclosure; noProductOutcome.",
-    "Actual719 new7a05bbc sourceCI36829391701 started2026-10-01T07:16:38Z; fullCiRuns12\u219213. LOCAL36829391620/bootstrap36829391686 startedsameUTC. Prior d7LOCAL36828034475 terminalSUCCESS beforepush: native46 33PASS, integration801PASS3skip/E2E22PASS3skip,LOCAL_CLEANUP_VERIFIED stackstopped07:15:34Z; this is historical d7 proofonly and mustnotapprove repaired7a/newDSTcases/admission. Oldbootstrap36828034375 FAILED remainsrecorded. Newtests/currentNative/schemaSourceverifiedstillpending.",
+    "Actual719 new7a05bbc sourceCI36829391701 started2026-10-01T07:16:38Z; fullCiRuns12→13. LOCAL36829391620/bootstrap36829391686 startedsameUTC. Prior d7LOCAL36828034475 terminalSUCCESS beforepush: native46 33PASS, integration801PASS3skip/E2E22PASS3skip,LOCAL_CLEANUP_VERIFIED stackstopped07:15:34Z; this is historical d7 proofonly and mustnotapprove repaired7a/newDSTcases/admission. Oldbootstrap36828034375 FAILED remainsrecorded. Newtests/currentNative/schemaSourceverifiedstillpending.",
     "PrivateRESERVE42 Task19 frozene69257adbd67e65a6d25c6a40c517b2315af1ca7 from4b, one197lineownedintegrationfile10case/noDB discovery only/type PASS/nativeNOT_RUN, noPR/push/audit. PauseREADY_FOR_PROMOTION; nosecondprivateReserve. Task20PBpatchcompletedoutsideworktree pendinglegalsourcecloseout.",
-    "2026-10-01T07:24:22.762+00:00 NewactualautomatedP1comment4152711632 currentmainfreshreviewscan claims955notancestorof3e89fcc butactualPRheadd7\u21927a differs. Rootgitancestry955\u2192d7,d009\u21927a andSQLdiffnone PASS; RootexplicitfullSHAintegrity4b\u21927aPASS aftersymbolicrevisionrequestcorrectlyrejected (noSourcewrite). IndependentboundedDBpin DIAGNOSE actualP1pendingclassification, notself-dismiss orFinalapproval. Source7aCIgreen/localbootstrapnativepending.",
+    "2026-10-01T07:24:22.762+00:00 NewactualautomatedP1comment4152711632 currentmainfreshreviewscan claims955notancestorof3e89fcc butactualPRheadd7→7a differs. Rootgitancestry955→d7,d009→7a andSQLdiffnone PASS; RootexplicitfullSHAintegrity4b→7aPASS aftersymbolicrevisionrequestcorrectlyrejected (noSourcewrite). IndependentboundedDBpin DIAGNOSE actualP1pendingclassification, notself-dismiss orFinalapproval. Source7aCIgreen/localbootstrapnativepending.",
     "Independentreview42 Task21 DBpinDIAGNOSE complete current7a: P1comment4152711632 STALE/notcurrenthead; manifestd009ancestor7a/canonicalSQLzeroDiff/readonlybaselineplannerPASS verifiedindependently. ReviewerGitHubcommentRESTForbidden soRootsuppliedlivecommentargumenthonestly, nofakeproviderread. P2Sourcechangessemanticcoverage+bootstrapfixedidentityvalidated, FINAL_HOLD pendingfreshnative. Actual7aLOCALintegrationcompletedprogress E2Einstall/no terminallogs yet; RootP1clearonlybasedindependentdiagnosis notCIgreen.",
     "Fresh7a LOCALactual804/3skip/E2E23/3skip/#46 36PASS andcleanupverified at07:28:53Z; sourceCI36829391701success. Bootstrapcurrent36829391686 postcleanupnotyetterminal, ordinaryFinalreviewstillpending. Source6paths+RootRun2 nativeproofnowcurrenthead; nooldD7greenreuse.",
     "7a exactsourceCI36829391701+LOCAL36829391620+bootstrap36829391686 allterminalSUCCESS confirmed, bootstrapcompleted07:29:31Z. Rootfreshmain4b unchanged. SameordinaryAuditTask18 finalphase nowadmitted exact8filediff/36freshnative/cleanup/P2/P1diagnosis; nootherFinalAudit/merge active, noextraEARLY or premiumbudget, noSOURCE_VERIFIEDyet. BodyLOCAL health/isolationcleanup nowactualsuccess; canonicalG3NOT_RUN/sourcepreparephaseonly. BUILDstillfallback1 dueDUALfalse, nofakeTailFree.",
     "IndependentFINAL46 task18 sameauditlineage CLOSE_APPROVED onlyboundedreadonlyprep exact7a; StandardsSpec0/FinalRiskNONE, threefindingthreads factuallyrepliedandresolved. RootCOMMENTtranscript notselfAPPROVE. Sourceverifiedclaimnowcaptured; normalexpectedheadmergepending actualprotectedchecks. No newsource/auditSourcefix orpremiumbudget.",
-    "719normalprotectedmerge verified07:37:57Z\u2192701845e; allrequiredcheck latestsuccess/all3threadsresolved/distinctsourcefinalStandardsSpec0. NoSquash/rebase preservesd009baselinepin. CurrentmainSQL sourcecanonicalnowavailable but sharedmain718 running andbounded0135G3selector/coverage unavailable\u2192no remoteapply. SourcecloseoutIssue/PR/Playbookpending, nextsameIssueconstructionmustwaitPBmain. SourcePrepmerge notProductOutcome/shipped.",
+    "719normalprotectedmerge verified07:37:57Z→701845e; allrequiredcheck latestsuccess/all3threadsresolved/distinctsourcefinalStandardsSpec0. NoSquash/rebase preservesd009baselinepin. CurrentmainSQL sourcecanonicalnowavailable but sharedmain718 running andbounded0135G3selector/coverage unavailable→no remoteapply. SourcecloseoutIssue/PR/Playbookpending, nextsameIssueconstructionmustwaitPBmain. SourcePrepmerge notProductOutcome/shipped.",
     "Postmerge719 WIP event timestamp actual07:39:39.472UTC initiallyserialized+00:00 rejectedISO_Zformat, correctedsameinstanttoZ beforefurthermutation/PRpublication; pairedMDregenerated. Nohistory/backdate/CIrerun/sourcechange.",
-    "Observed719 main canonical push ci36831447495 exact701845e started2026-10-01T07:38:00Z in_progress; fullCiRuns13\u219214. SoleScout live110269717050 integration holder. No remote0135 G3/admission or Production acceptance; ordinary46suite POLICY_SKIP is notDBgreen.",
+    "Observed719 main canonical push ci36831447495 exact701845e started2026-10-01T07:38:00Z in_progress; fullCiRuns13→14. SoleScout live110269717050 integration holder. No remote0135 G3/admission or Production acceptance; ordinary46suite POLICY_SKIP is notDBgreen.",
     "Main718 docs-only merge4b canonical ci36825550665 terminalFAILURE07:39:35Z: integration749PASS22skip; E2E welcome-card upload timeout3attempts/1failed2flaky20pass3skip; G3stepsSKIPPED. This is observed mainCI failure, not inferredProductregression; exact713main9b succeeded historically and remains distinct. Rootupdated719terminalPR/Issue46currentBody MERGED_TO_MAIN/PLAYBOOK_PENDING; mandatoryPB015/PB034patchready. TESTpolicycolumnhistoricalpartial/RPC+0135ledgerabsent/Productionall3absent readonly observed, noDDL. Sharedmutex currently719 run, noblindrerun.",
     "2026-10-01T07:52:30.401Z RootMAIN42promotion authorized sameTask19 reserve e692 acceptance tail after713/718closeoutcomplete and719MAINexit;46sameIssue successor heldnecessaryPlaybook closeout. Onlynewownedtestfile trueHTTP/RPC seasonalorder snapshot, noSQL/runtime/provider orsharedTEST mutation. SingletonBUILDfallback1, noqualifieddualclaim. ExistingTask19 persists; actualPR/head/WIPevents notyetcreated untilRootpreflight/push. ExistingIssue42alreadycounted, noissuesStartedincrement.",
     "2026-10-01T07:56:18.548Z ActualPR723created exact6aac2777/currentbase701 andlocal-pr-723-a metadata synced; sameTask19MAIN acceptance tail, noextraissuesStarted/task/fullCI untilactualrunobserved. Sourcepreflight/collection10/type/integrityPASS notnativeDB. BGETorderreadside noTOUR_MODULE gate confirmedsource, noBseedmutationneeded. Necessarydocscloseout722head3246640 independentpureGov exactdiffPASS/currentrequiredCIpending. TESTstaffpolicy text/NOTNULL/defaultDEFAULT_AVAILABLE andvalidatedexactcheck matches0135precondition readonly; RPC/ledgerstillabsent noapply/readinessclaim.",
-    "Observedactual723 exact6aac source fullCI36833201119 started2026-10-01T07:55:42Z in_progress; fullCiRuns14\u219215. LOCAL36833201121 startedsameUTC/nativeNOT_RUNyet. Main719canonical active; docs722requiredsourcechecksall latestsuccess andnormalprotectedmergeREQUESTED263b0d8; freshCompletionTruth reread stillpending, noPBcloseoutcompleteyet.",
+    "Observedactual723 exact6aac source fullCI36833201119 started2026-10-01T07:55:42Z in_progress; fullCiRuns14→15. LOCAL36833201121 startedsameUTC/nativeNOT_RUNyet. Main719canonical active; docs722requiredsourcechecksall latestsuccess andnormalprotectedmergeREQUESTED263b0d8; freshCompletionTruth reread stillpending, noPBcloseoutcompleteyet.",
     "2026-10-01T07:59:15.579Z Necessarydocs722 merged263b0d8verifiedlivePRmetadata/merged_at07:56:59/fetch/reachability/all3docbytes/PB015+034readback;719PRterminal+Issuebody/checklist/authoritativecomment synced POST_MERGE_CLOSEOUTCOMPLETE PLAYBOOK_DELTAverifiedmain. Onlysourceprepcomplete/noG3/Prod/auth/shipped. Main719active/new263b docs-main unknown, notProductfullCIcounter. Sameexistingproduct_scope actor readonly0135G3wiring plan followupallowednow; actualBUILD723sole/no secondbuild untilqualified. 711modelrouting remains owned/unmerged/sessionoverrideonly.",
     "723sourceci36833201119 terminalSUCCESS07:59:12Z exact6aac type/unit/build; remoteintegration/E2E SOURCE_ONLYPOLICY_SKIP isnotTEST. NativeLOCAL36833201121 nowactualintegrationrunning notacceptance; soleScoutwatch main719pending no rerun. No newtask/counter fromterminalread.",
     "2026-10-01T08:03:17.827Z TRIAGE46 scopedENV successor privateReserve admitted; purecurrent0135classifierAUTHZ. Eight canonical prereqidentities willfailclosedifnotexactapplied. Ownershipfourrelease/ci modules+fourexistingunits nooverlap723soleownedtest; live699changed5docs/scopedG2module/test zerooverlap. Main723waitingnative/no source action, safetyfallbacksingleBUILD+privateReserve1; nofakeopenPR WIPevent/counter. FutureMAIN gatewiring riskGOVERNANCE_GATE planawareacceptance mustindependent freshFinalRisk/CI beforemerge; reserve noAudit. RootsoleRunwriter/predeclaredauditfacts exception unchanged.",
@@ -3359,7 +3454,7 @@
     "2026-10-01T09:11:24.548538Z NEW fullCI17 actualcanonical723 ci workflow_dispatch36840741621 started2026-10-01T09:08:04Z exact0d178dc8/branchreserve42 via trusted edited lane_transition; classify+Authenticate sharedTESTownerPASS/checkbuildactive, no actualintegrationphase yet. This is requestedplan/sourceacceptance ordinarycanonical notG3schemaapply. No duplicateTEST orblindrerun. Guardadmission verifiedsoleScout09:09:51Z.",
     "2026-10-01T09:16:06.759917Z Sol owningRoot TRIAGE: sole723 now TEST_VALIDATION releases MAIN; source0d nativegreen/early0 canonical36840741621 actualremotetests firstobserved09:11:26Z. SameTask22 Reserve46 formally promoted to MAIN pre-PR specification/verification phase onexisting0b/263b; noopenPRBUILD event yet/nosecondBUILD/Reserve. Necessary sameP1release dependency closure, notnewfeature/schema debt. Rootsource and readonlyProduction show7targetsAUTHZ/pending, foundationnames+legacy0099 present, requiredtablesmissingtargetexternal/seasons notfoundation shifts/tenantsettings. Mustverify exactobject/last-writer closure before Source changes/newscope, preserve strictsingle0135 scope and allolder selectors; no aliasSQL/G2duplication/DB/CI/push untilRootformalpublication. NewSourceGate riskGOVERNANCE_GATE requiresindependent freshFinalRisk later; no acceptance/approval/production permission claim.",
     "2026-10-01T09:30:02.273781+00:00 Same Task22 MAIN Source phase authorized: named ISSUE_46_0110_0135_CLOSURE exact7 dependency closure only in existing8 owned release/CI/unit files; preserve frozen0b ancestry, oldstrictsingle0135 and17/37/FULL. ReadonlyProduction confirms additional0001/0002/0067/0068/0107 exactnames present; this is ledger-only notshapeACL/G2. Required finalwriter0132 and literal0099alias failclosed; actualrefund/REQUEST/immutable case discovery beforemapping, absentcoverage explicitlyblocks. PR723 branchonly seasonaltest cannotbeclaimedcurrentmain untilmerged. Impactmanifest0128/0130/0132+0110routine gaps remain separate necessaryG2 followon; noSQL/alias/manifest/699 edit/DB/push/fullCI inthisphase. GOV_GATE independentFinalRisk later, norelease authorization orshipped claim.",
-    "2026-10-01T09:32:33.858932+00:00 SameTask22 necessarySourceownership expanded BEFORE construction to one new tests/integration/db/tour-refund-snapshot.46.test.ts beyond original8 (Product notpureGov). Freshsource exploration proves no refundimmutable realcase currentmain/tests; this blocks7closureG3. Root authorizes ownedunique trip/plan/departure/order fixture realHTTPpolicy save/reload/manualorder/RPC/rawsnapshot\u2192Trip+Plan changes\u2192oldfullrowunchanged/neworderupdated/tenantnegative+verifiedcleanup; no schema/runtime/sharedseed/provider/financial side effects. Closurecontract must require exact nativecase outcomes andmissing/pending reject. Noextra task/doublecount, native/CI/DB/push NOT_RUN. CandidateSource may include ownnewtest, prospective723mapping waitsparentmerge; new9files not8Governanceexception becausePRODUCT_MAINLINE releaseprecondition.",
+    "2026-10-01T09:32:33.858932+00:00 SameTask22 necessarySourceownership expanded BEFORE construction to one new tests/integration/db/tour-refund-snapshot.46.test.ts beyond original8 (Product notpureGov). Freshsource exploration proves no refundimmutable realcase currentmain/tests; this blocks7closureG3. Root authorizes ownedunique trip/plan/departure/order fixture realHTTPpolicy save/reload/manualorder/RPC/rawsnapshot→Trip+Plan changes→oldfullrowunchanged/neworderupdated/tenantnegative+verifiedcleanup; no schema/runtime/sharedseed/provider/financial side effects. Closurecontract must require exact nativecase outcomes andmissing/pending reject. Noextra task/doublecount, native/CI/DB/push NOT_RUN. CandidateSource may include ownnewtest, prospective723mapping waitsparentmerge; new9files not8Governanceexception becausePRODUCT_MAINLINE releaseprecondition.",
     "2026-10-01T09:37:18.187426+00:00 Source-contract probes (synthetic only/no DB): current7 plan+actualmanifest rejects MISSING_IMPACT_MANIFEST_ENTRY0128; in-memory prospective0130/0132 same canonicalroutine impacts rejects AMBIGUOUS_IMPACT_OWNERSHIP create_tour_order. Therefore adding entries alone cannotcompleteG2; existing consistency evidence needs explicit exact reviewed finalwriter closure handling, notgenericduplicate allowance or removalofSQLimpact truth. This is a separate necessaryboundedsource gap, no699 takeover/remote permission.",
     "2026-10-01T09:40:22.986802+00:00 Task22 frozen11d194e clean9sourcefiles cumulative263b461+/9-;92units/type/integrity/sourceplanexact7AUTHZ+mappingdiscoveryPASS nativeNOT_RUN. Task25 distinctreview42 EARLY review admitted before dispatch oncurrentfreeze; nootherordinaryFINAL inprogress. Run25tasks/full17/soltouch15; no newBUILDPR/CIcount. Root formalpublication follows head/base/materialparent723 proof and metadata preflight; missingmanifest/finalwriterG2 followon unresolved, no release readiness.",
     "2026-10-01T09:43:20.765129+00:00 Task25 EARLY current11d P2 FIX_REQUIRED: REQUEST required7 nativecases afterEach ignores resolvedDELETE error/nozero readback; selectedclosurecleanup lacks REQUEST ownedorderscope, thus residue can green. SameTask22 Source claim loweredIN_PROGRESS BEFORE repair, explicit10thownedfile tests/integration/api/tour-request-accept.46.test.ts added beforedispatch. Minimalorders tag prefix request-accept-46- pertest lifecycle,discover lostresponse children byownedtag,delete error+zero readback+retainprimarycleanupfailures; closure read-only tagScopezero withnegativeunit. Do notredo REQUEST business or alterSQL/runtime/G2. NativefullCI NOT_RUN; source11d no acceptance; sameEARLYchain supplement afterfreshfix notsecondEARLY/Final.",
@@ -3372,20 +3467,20 @@
     "2026-10-01T10:09:37.762185+00:00 Actualmain723mergepushCI36846439984 exacta30 started10:01:01Z/firstobserved10:05:19Z, integrationjob110318669365 actualremoteRun integrationtests at10:06:10Z currentsoleholder; checktype/unit/buildsuccess/G3releaseplanSKIP. fullCI19 capturedactualnotprediction, mainacceptancepending.",
     "2026-10-01T10:09:37.762185+00:00 Source725materialnormalmerge currentmaina30 required723canonicalcasefile completeddf861fcc89c69dbd3d83bd2ebaee0b10dca9c246, only parent2tests mainSource adopted noSQL/alias/G2/Source10changes; byteparityseasonalmainPASS. Roottypecheckfirstattemptmissingnode_modules/tsc NOT_RUN; unguardednpx attemptedvitestlatest fetch butno testPASS/dependencyfilechange claimed, noactiveprocessremains. Existingrepo dependency package+lockbyteparitycheckedthenownedsymlink restored canonicalcache; actualNode22.23.3 Vitest4.1.11/TS5.7.3 typecheck/93focusedPASS. SameTask22 builder receivesboundedactualmain-case discovery validation beforeformalpush/newCI, noDB/Source/Run/push; no newtask/touch. Oldb9LOCAL807/3historynotproofseasonal10; nextnewheadnative/CI mustfresh. NewlypublishedRunJSONupdatewillbeRootonlynoforce/cherry.",
     "2026-10-01T10:14:15.701210+00:00 SameTask22 actualmain collectiondf861 found genuineSourceFIX_REQUIRED beforepublish: seasonal all10 renderedfullNames quoted/truncated by pinnedVitest4.1.11, preparedrawscenario names allmismatch; refund3/REQUEST7 actualmatch/seasonmainBYTEparity/integrityPASS. SourceclaimremainsIN_PROGRESS. Rootauthorizesminimal same-ownedAUTHZcontract+meaningful existingG3unit actual-rendered fixture positive/rawunquoted negatives/pending/missing refuse, noParent723test/SQL/G2/SourceScopeexpansion. Actual10namesmustuniquebind, no fuzzylookup/genericACL/textprefixacceptance. CommitnecessaryfixthenRootfreshmetadata/CI; nofullCI20untilactualnewrun. Crossbranch728case inferredstrings bugcaughttrustedpreflight/discovery notremote interactivefailure.",
-    "2026-10-01T10:23:46.880466+00:00 Resumedgoal HARD_START fetchprune actualorigin/main a30acac04aad838d4b04da9c5464b5b6f33e06b6 FULLAGENTS/CLAUDE/EXEC read; RULES_MAIN_SHA a30. SameTask22 freeze cfefefe1cb150e461f62d6b96a97b7659c270513 rendered-namefix 2ownedfiles45+/10- noParentSQLG2aliaschange, actual20bindingsPASS30collected0nativeexecuted; 94focused/type/exactintegrityPASS builderreceipt, no push. Root accepts for sameTask25 EARLY supplement; old b9 native remains historical, newhead native NOT_RUN; no new task/touch/CI counter. Scout currentmain36846439984 remainsintegrationactive at10:19:51 sole sharedTEST. OwnerSESSION Sol6.1 build/audit distinctactors override currentmain stale \u00a74; #711 unmerged ownedother remainsnotpolicy.",
+    "2026-10-01T10:23:46.880466+00:00 Resumedgoal HARD_START fetchprune actualorigin/main a30acac04aad838d4b04da9c5464b5b6f33e06b6 FULLAGENTS/CLAUDE/EXEC read; RULES_MAIN_SHA a30. SameTask22 freeze cfefefe1cb150e461f62d6b96a97b7659c270513 rendered-namefix 2ownedfiles45+/10- noParentSQLG2aliaschange, actual20bindingsPASS30collected0nativeexecuted; 94focused/type/exactintegrityPASS builderreceipt, no push. Root accepts for sameTask25 EARLY supplement; old b9 native remains historical, newhead native NOT_RUN; no new task/touch/CI counter. Scout currentmain36846439984 remainsintegrationactive at10:19:51 sole sharedTEST. OwnerSESSION Sol6.1 build/audit distinctactors override currentmain stale §4; #711 unmerged ownedother remainsnotpolicy.",
     "2026-10-01T10:25:39.579363+00:00 SameTask25 supplementary EARLY cfefefe1 SOURCE_CLEAR_FINAL_HOLD independentactual30collection20exactbindings nofuzzy; prior0099/exact7/P2cleanup unchanged. Newnative/GOV_GATE FinalRisk/G2pending. PureGov PR72662b71b277b790734a988961db2d276db9f6810e1 onePB052docs7+/3- preflightPASS beforepush/create; noProducttask/CI/outcome counter. Issue42 authoritativecloseout5929466676 statesPlaybookPending and wholeOPEN, removedmerged723stalelane verifiedmutationresponse.",
     "2026-10-01T10:26:46.771785+00:00 Root publication25020ad25b532a474c4aab17ef2e3848d40c05b0 normalpush verifiedlive725head/currentbasea30. Metadata preflightPASS beforebodywrite/push; Sourcefixcfef independentlyreviewed and exactintegrityPASS there, Root2docs-onlypublication. Root mistaken integrity command scripts/agents/repo-integrity-guard.mjs failedMODULE_NOT_FOUND; shell continuedpush beforecorrect finalheadintegrity. Correct scripts/ci/repo-integrity-guard.mjs Node22 nowexecuted resultseeconsole; no fabricatedprepushcheck, noGitDataAPI/noSourcechange/noCIrerun. FreshSourceLOCAL start NOTyetcaptured counterstill19 pendingScoutactualobservation.",
     "2026-10-01T10:28:08.134053+00:00 Actualfresh725Source36849133849+LOCAL36849133794 exact25020ad25b532a474c4aab17ef2e3848d40c05b0 bothstarted10:26:23Z observedsoleScout10:27; fullCI20 captured actualonecycle notprojection. sourcechecknpmtest/LOCALfreshSupabaseapplycurrentlyactive, native/E2E/cleanupUNKNOWNpending. No canonicalTEST dispatch. PureGov726 mergedverified3f943654c90baa45d3f11b92e65717f821c053a1 at10:27:19Z livePRmergedtrue/freshfetchmain3f/reachable/PBblobbyteparity62b71b2 rereadPASS. RulesunchangedPBonly; no newProductCI/outcome fromGov. PB052delta mainverified Source723closeoutnowreadymetadata sync.",
     "2026-10-01T10:31:44.282854+00:00 FreshSource72525020ad CI36849133849 terminalSUCCESS soleScout10:30:41; Sourceonlyremoteintegration/G3skips notnative. LOCAL36849133794 realintegrationongoing, maina30shared36846439984ongoing. FinalRisk routing durablecomment5929558049 runtimeOPENAIcatalog/modelselectoravailable; live725/719/666/644 canonicalreviews+Issue46comments read, prior entiredispatchhistory unestablished; budgetunknownnotzero, HISTORY_UNAVAILABLE cheaperindependentgpt6.1sol route planned #552 no premium reservation/spawn and no fakeCURRENT_AGENT selectorunavailable. OPERATOR_ATTESTED dispatch isnotprovider-signedtelemetry percurrent MODEL-ROUTING. Freshnative prerequisite stillpending; no reviewtaskaccepted yet. Source723postmergeIssue42body/terminal723/comment5929526931 PB052main syncedCOMPLETE; wholeIssueOPEN. Gov726terminalbodypreflight actual1filePASS priorwrite.",
-    "2026-10-01T10:36:31.811645+00:00 Live725inlineP1 4154108424 originallyb9(created09:54:23) missingseasonalfile beforeapply; normalizedcurrentcommit25020adisnotoriginalproof. Exactcurrent25020adandmaina30 seasonalblobbotha247d53ec55e6772ee65499f95d922ae54a6d1c4; materialnormalmerge df861+actualnamescfef fixedbeforefreshCI. Rootrepliedhistorypreserved, sameTask25 independentnarrowstalecheckbeforethreadresolve. Actualphase10:35:30 maina30integrationPASS\u2192remoteE2E; LOCAL25020adintegrationPASS\u2192isolatedE2E; terminals/cleanupstillpending, noCIcounterchange/newmodeltask.",
+    "2026-10-01T10:36:31.811645+00:00 Live725inlineP1 4154108424 originallyb9(created09:54:23) missingseasonalfile beforeapply; normalizedcurrentcommit25020adisnotoriginalproof. Exactcurrent25020adandmaina30 seasonalblobbotha247d53ec55e6772ee65499f95d922ae54a6d1c4; materialnormalmerge df861+actualnamescfef fixedbeforefreshCI. Rootrepliedhistorypreserved, sameTask25 independentnarrowstalecheckbeforethreadresolve. Actualphase10:35:30 maina30integrationPASS→remoteE2E; LOCAL25020adintegrationPASS→isolatedE2E; terminals/cleanupstillpending, noCIcounterchange/newmodeltask.",
     "2026-10-01T10:38:30.302191+00:00 SameTask25 independentlyconfirmed live4154108424 oldoriginalb9 missingseasonal sourceP1 resolvedcurrent25020ad/mainseasonalbyteparity/20exactbindings. Rootthreadreply4154457945 thenresolvePRRT_kwDOT-jF8s6n5GSC freshlyreadresolvedtrue; historyretained/nofinalnativeorRiskapprovalfromthreadresolution. LOCAL10:37:31E2Estepcompleted/destroystack currentlyactive, terminalcounts/cleanupunknown. Maina30E2Eactive sharedholder, noTESTtransitionearly.",
     "2026-10-01T10:39:58.266110+00:00 Exact25020ad LOCAL36849133794 terminalSUCCESS10:37:40Z confirmedsoleScout:83files817PASS3SKIP REQUEST17interval36refund3seasonal10pricing4; E2E23PASS3SKIP; canonicalSQL0111/0130/0135appliedLOCALloopback(local-pr725a/projectvibeaico725a), destroyStackStopped/supabasestop--no-backup/cleanupverified. IsolatedproofonlynotremoteG3/canonical/Prod. Source36849133849SUCCESS. Rootupdatemetadata/preflightthenpreparesourceRisk withfreshnative baseline whileordinaryFinal/fullcanonicalseparatepending; noSourceVerified/releaseReady/Ownerblockedclaim.",
     "2026-10-01T10:42:01.933442+00:00 Exactmaina30 CI36846439984 terminalFAILURE10:39:03Z integration759PASS58skip/interval36policyNOTRUN; E2E21PASS3SKIP1FAILED1FLAKY(welcomeme authline88toMatchObjectall3attempttimeouts,addonsdetaildialogretryPASS). NoSource/providerrootcauseproved/noautoPostMergeRegressioncounter. SharedTESTreleasedterminal, no blindrerun. Fresh725SourceLOCAL25020adremainSUCCESS817/3/E2E23/3/cleanup notremoteG3. Root sameTask24diagnosis supplement onnewmainfailure beforeSourcefix; #42mainacceptanceFAILED/ProdAuthpending mustsync.",
     "2026-10-01T10:42:01.933442+00:00 Task27 FinalRisk AUDIT accepted before freshgpt6.1sol spawn; flowSoltouch16/newtasks27. Task24 prior42diagnosis continuesboundednewauthentication-stagefailure supplement no newDIAGNOSE/task/policy exception.",
-    "2026-10-01T10:48:16.008644+00:00 SameTask24 supplement CONFIRMED maina30 attempt0generic30stimeoutunlocated; retry1/2 HTTP200+success owneremail/OWNERcorrect buttenant3bdbfac1-8048-4c1d-9f87-b1d2d5bd405f legitimateothermembership. Confirmedfixtureprecondition assumesdefaultSHOP_Awithoutlegalswitch; notAuth\u8d8a\u6b0a/network. Primarytimeoutfixturepollution hypothesisnotproved. MinimalwelcomeSourcefix explicitSHOP_Alegalswitch +fullmeassertions, noAuthruntime/cleanupsecurity/timeoutrelax. #42bounded723closeoutCOMPLETE admitsremainingnecessaryacceptancefix now. MAIN725frozenwaitingRisk/canonicalblockedbyinheritedfixture, singleReserve allowed maxoneatomiclocalSource only whileRoleBUILDheld.",
-    "2026-10-01T10:50:50.920963+00:00 Task28 PRIVATE_RESERVE42 oneatomic7a4d76fb6b0493761a5e87d22da8b1df428befc3 base3f/sourcewelcome1file8+/1- SOURCE_ONLY READY_FOR_PROMOTION: emailcheck\u2192legalswitchSHOP_A\u2192fullmeassert, preservingownfixture/security/cleanup/30s. Node22type/Playwrightcollection/exactintegrity/diffcheckPASS/cleanlinkremoved. NativeDB/fullCI/push/PRNOTRUN; originalattempt0timeoutunlocated. MAIN725RiskTask27executing/Sourcefrozen; ReserveSourceonlyno secondactiveimplementation/BUILD. PromotionafterSource725legalexit/PARK awaitingmaterial42mainacceptancefix; no qualificationfake orparallelRunownership.",
+    "2026-10-01T10:48:16.008644+00:00 SameTask24 supplement CONFIRMED maina30 attempt0generic30stimeoutunlocated; retry1/2 HTTP200+success owneremail/OWNERcorrect buttenant3bdbfac1-8048-4c1d-9f87-b1d2d5bd405f legitimateothermembership. Confirmedfixtureprecondition assumesdefaultSHOP_Awithoutlegalswitch; notAuth越權/network. Primarytimeoutfixturepollution hypothesisnotproved. MinimalwelcomeSourcefix explicitSHOP_Alegalswitch +fullmeassertions, noAuthruntime/cleanupsecurity/timeoutrelax. #42bounded723closeoutCOMPLETE admitsremainingnecessaryacceptancefix now. MAIN725frozenwaitingRisk/canonicalblockedbyinheritedfixture, singleReserve allowed maxoneatomiclocalSource only whileRoleBUILDheld.",
+    "2026-10-01T10:50:50.920963+00:00 Task28 PRIVATE_RESERVE42 oneatomic7a4d76fb6b0493761a5e87d22da8b1df428befc3 base3f/sourcewelcome1file8+/1- SOURCE_ONLY READY_FOR_PROMOTION: emailcheck→legalswitchSHOP_A→fullmeassert, preservingownfixture/security/cleanup/30s. Node22type/Playwrightcollection/exactintegrity/diffcheckPASS/cleanlinkremoved. NativeDB/fullCI/push/PRNOTRUN; originalattempt0timeoutunlocated. MAIN725RiskTask27executing/Sourcefrozen; ReserveSourceonlyno secondactiveimplementation/BUILD. PromotionafterSource725legalexit/PARK awaitingmaterial42mainacceptancefix; no qualificationfake orparallelRunownership.",
     "2026-10-01T10:54:15.938792+00:00 RiskTask27 requested realselectedgpt6.1sol freshforknone SOURCEexecoperatorattested durable5929813085, providertelemetryunknown keptdistinct. RootsourceRiskpacket baselines synchronized exactcurrentPRbody ASTRA_TEST/SCHEMA fields READYsame44e84digest/AUDITHISTORY_UNAVAILABLE no Sourcechange. PrivateReserve42 body drafted+preflightPASS actual1file only; no newPR/push/SourceScope expansion/candidate/BUILD claim. AwaitMAIN725actuallegalexitafterRiskactorDONE thenSource42promotion; no remote/sharedTESTactive.",
-    "2026-10-01T10:58:43.653195+00:00 Task27 independentSourceRisk DONE PASS boundedunactivated25020ad/digest44e84f63 unresolvedSource0 report26lines/verdictJSON readRoot. Exact12blob/livebaselineparity,94unit/296adversarial checks/lossresponse-deleteerror-unknown-wrongIDharnessPASS plus2G2negativeprobes stillmissing0128/duplicatewriter refuse; sourceLOCALterminallogs independentlyread/maina30failurepreserved. Reviewerprovideractualunknown/identityUNKNOWN, actualselecteddispatchgpt6.1sol operator5929813085 separatelyrecorded. No SourceVerified/canonical/ordinaryFINAL/remote35/G3/Prod/wholeIssueacceptance fromRiskPASS. Rootwillpersistdurablesourcereport/attestationthenlegallyPARK725 awaitingnecessary42mainfixturefix; noagents/poll/PARKpush afteractorDONE. PrivateReserve42promotionfollowsactualPARK verified\u2014notfalsequalifieddualtail.",
+    "2026-10-01T10:58:43.653195+00:00 Task27 independentSourceRisk DONE PASS boundedunactivated25020ad/digest44e84f63 unresolvedSource0 report26lines/verdictJSON readRoot. Exact12blob/livebaselineparity,94unit/296adversarial checks/lossresponse-deleteerror-unknown-wrongIDharnessPASS plus2G2negativeprobes stillmissing0128/duplicatewriter refuse; sourceLOCALterminallogs independentlyread/maina30failurepreserved. Reviewerprovideractualunknown/identityUNKNOWN, actualselecteddispatchgpt6.1sol operator5929813085 separatelyrecorded. No SourceVerified/canonical/ordinaryFINAL/remote35/G3/Prod/wholeIssueacceptance fromRiskPASS. Rootwillpersistdurablesourcereport/attestationthenlegallyPARK725 awaitingnecessary42mainfixturefix; noagents/poll/PARKpush afteractorDONE. PrivateReserve42promotionfollowsactualPARK verified—notfalsequalifieddualtail.",
     "2026-10-01T11:00:46.191Z PR725preflightPARKEDPASS beforeactualbodymutation/livehead25020ad PARKED/candidatefalse verified; Task27RiskactorDONE/noAgentorSourcepush/rerun/poll whileparked. DurableSourceRiskreport5929964136/selecteddispatchOPATTEST5929813085/canonicalCOMMENTsubmittedactualindependentverdict; no selfAPPROVE/providertelemetry/canonical/Prodacceptance. MAIN725legalexit releases BUILD; promotealreadyREADYprivateReserve42Task28 next.",
     "2026-10-01T11:01:21.425690+00:00 Task28 PRIVATE_RESERVE42 promotedMAIN onlyafter725actualPARKverified/BUILD_EXITcaptured. Source7a4d76fb onefile8+/1- stillunchanged; Rootcopylatest28tasks/full20Rundocs predeclaredfactualexception, formalSource3filepublicationpreflight/integritybeforepush. NoReserve/secondBUILD/newtask/touch/CIuntilobservedactualdispatch. SameIssue42source723closeoutcomplete726main/necessaryacceptancefix scope notlisting/formation/wizardredo.",
     "2026-10-01T11:10:11.657Z Observed soleScout actual727 Source36852969928 and LOCAL36852969864 started11:03:33Z exactec1d55084. FullCI21 actualonecycle; Source terminalSUCCESS11:09:07 type/unit/build, remote integration/E2E POLICY_SKIP notcanonical. LOCALinprogress notPASS. RULES_MAIN_SHA726126f current717fixture-only merge; canonicalrules unchanged and fully reread. No blindrerun ornewtask.",
@@ -3407,7 +3502,7 @@
     "2026-10-01T12:27:47Z Scout observed exact new main d781ed0 after PR728 docs merge. Canonical #727 terminal FAILURE12:27:17Z. Captured stepper details in /workspace/issue42-welcome-precondition-native-summary.md; actual job110353487553 terminal log says welcome-card-upload test line28 timed out30s initial and retry1 and retry2; no action/response/assertion step surfaced in plain job log; trace/error-context artifact paths listed. No root-cause guess or retry. integration78files759PASS58SKIP; interval36 POLICY_SKIP/NOT_RUN; E2E22PASS3SKIP1FAIL; cleanup job success but no G3/zero residue proof. Shared TEST freed.",
     "2026-10-01T12:27:47Z Task31 d3d96dd current-main merge candidate (base d781) validation: Node22 typecheck PASS, 286 unit files/3701 pass, npm build PASS, repo-integrity exact d781..d3 PASS. Browser harness blocked by absent local Playwright Chromium. Fresh local Supabase attempt: unique project vibeaico-715-a could not pull images; public ECR/GHCR/Docker Hub all 403. `supabase stop --no-backup` success, config restored and19 generated migration overlays removed, no local DB container/changes left. Branch currently ready for independent source review; push/current-head CI/LOCAL acceptance pending; no canonical #43 TEST acquired.",
     "2026-10-01T12:27:17Z Root fetched terminal job110353487553 afterrun completion: precise failing Playwright line28 welcome-card-upload, 30.1s initial/30.4s retry1/30.0s retry2; Error Context attached separately but workflow-run artifacts list is empty, so no context artifact was downloadable. No exact UI action/API/assertion or causal root established. Therefore mark diagnosis UNKNOWN, no source edit/time increase/rerun authorized yet.",
-    "2026-10-01T12:34:27Z Product head f56cadf pushed to existing PR715 after preflight, fresh d781 main/reachability and independent source review. GitHub automatically moved PR base to d781/mergeabletrue. Actual ci workflow36862662300 and local-isolated-test36862662312 both entered running; fullCI incremented once on actual ci run. PR715 moved BUILD\u2192VERIFY on exact f56; private/local workflow does not take shared canonical TEST. Await terminal proof/cleanup.",
+    "2026-10-01T12:34:27Z Product head f56cadf pushed to existing PR715 after preflight, fresh d781 main/reachability and independent source review. GitHub automatically moved PR base to d781/mergeabletrue. Actual ci workflow36862662300 and local-isolated-test36862662312 both entered running; fullCI incremented once on actual ci run. PR715 moved BUILD→VERIFY on exact f56; private/local workflow does not take shared canonical TEST. Await terminal proof/cleanup.",
     "2026-10-01T12:48:10Z Root reactivated existing PR714 #47 after a live inventory: PR715 exact f56 SourceCI36862662300 SUCCESS and LOCAL36862662312 still IN_PROGRESS; PR727 canonical36857198490 terminal FAILURE and parked, shared TEST released. #714 merge-tree proves only root Run JSON/MD add/add conflicts; all five owned UI/helper/i18n/test/harness paths are unchanged from base58b to current main d781. Ordinary main merge is justified by actual conflict; no reset/rebase/cherry-pick/force push, no source rewrite, no canonical TEST request.",
     "2026-10-01T12:56:57Z #47 current-main local verification on d371347: Node v24.19.0 `npm run typecheck` PASS; full `npm test` PASS, 285 files/3706 tests; `npm run build` PASS, including /tenant/line-settings/onboarding; `git diff --check` PASS; repo-integrity exact d781ed0..d371347 PASS, 1412 tracked/0 deleted. Prior 390px actual-page stub and independent exact source review remain tied to unchanged code blobs; they do not prove LINE provider/in-app/authenticated Production acceptance. Exact current-head hosted checks pending; no shared TEST/DB mutation.",
     "2026-10-01T13:21:27.971Z Exact f56 hosted SourceCI 36862662300 terminal SUCCESS (completed 12:37:52Z) and isolated LOCAL 36862662312 terminal SUCCESS (completed 12:44:58Z): local project local-pr-715-a, integration83 files/815 pass/3 skip, E2E23 pass/3 skip; cleanup passed and Supabase stack stopped 12:44:54Z. These are historical f56 results, not proof for the responsive-fix head and not shared TEST/Production evidence.",
@@ -3418,15 +3513,16 @@
     "2026-10-03 RUN_CAPTURE_HANDOFF (Owner /goal message): ci.fullCiRuns +1 for canonical dispatch run 36951973057 (PR #715 exact 183f0208, workflow_dispatch, conclusion failure: #43 lifecycle integration test exceeded 30s; repaired in f9663d81 and re-run 36958243227 green).",
     "2026-10-03 RUN_CAPTURE_HANDOFF (Owner /goal message): two ACTUAL_PERMISSION_DENIED events around 2026-10-02T01:40Z in the prior Claude session (Self-Approval block on canonical review submission); exact commands not recoverable from live GitHub.",
     "2026-10-03 RUN_CAPTURE_HANDOFF (Owner /goal message): Owner chose option 2 on 2026-10-02 to open the blocked permissions; recorded as Owner decision from handoff text.",
-    "2026-10-03 PLAYBOOK_DELTA \u5019\u9078\uff1a#757 \u5728 Codex \u5be9\u67e5\u5b8c\u6210\u524d\uff08ready \u5f8c 1 \u5206\u9418\uff09\u5c31 merge\uff0cCodex P1/P2 \u65bc merge \u5f8c\u624d\u51fa\u73fe \u2192 \u5df2\u958b #758\uff1b\u9810\u9632\uff1aready \u5f8c\u7b49 Codex summary \u70ba Completed \u6216\u660e\u78ba\u7121 finding \u518d merge\u3002",
-    "2026-10-03 PLAYBOOK_DELTA\uff08#747 closeout\uff09\uff1a\u7b49 Codex \u5c0d exact head Completed \u624d merge\uff1bscout \u6539 ledger \u5f8c\u63a8\u9001\u524d\u5fc5\u8dd1 scorecard-readiness --strict-live \u8207 md \u91cd\u7522\u6bd4\u5c0d\uff08\u672c\u8f2a notes \u8986\u84cb\u3001md \u672a\u91cd\u7522\u3001luna \u8a08\u6578\u672a\u91cd\u7b97\u5404\u4e00\u6b21\uff09\uff1bTEST_VALIDATION lane \u4e0a\u7a0b\u5f0f\u8207 ledger \u4fee\u6b63\u5408\u4f75\u4e00\u6b21\u63a8\u9001\u3001\u5df2\u78ba\u5b9a\u88ab\u53d6\u4ee3\u7684 head \u53d6\u6d88 CI\uff1b#724 body \u6bcf\u6539\u4e00\u6b21 receipt \u5931\u6548\uff0c\u8f49 ready \u524d\u7b49\u65b0 PASS receipt\u3002",
-    "2026-10-03 PLAYBOOK_DELTA\uff08#762\uff09\uff1a\u95dc\u9589 Product Issue \u524d\u5fc5\u9808\u5148\u88dc Issue \u672c\u6587 WORKSTREAM\u3001final Sol CLOSE_APPROVED\uff08EXACT_HEAD=\u6700\u5f8c\u5408\u4f75 PR head\uff09\u8207 RUN_CAPTURE_HANDOFF ISSUE_CLOSE_READY\uff08current-main push CI\uff09\uff0c\u4e26\u5728 close-guard \u8dd1\u5b8c\u5f8c\u78ba\u8a8d Issue \u4ecd\u70ba closed \u624d\u5beb ledger\uff1b\u63a8\u9001\u5f8c\u8a08\u7b97 changeDigest \u524d\uff0c\u5148\u78ba\u8a8d PR files API \u7684 blob sha \u5df2\u8207\u672c\u5730 HEAD \u4e00\u81f4\uff1bscout ledger \u7684 task \u6642\u9593\u5012\u7f6e\u4e0d\u6703\u88ab validator \u64cb\u4e0b\uff0caudit \u9700\u9010\u6b04\u6aa2\u67e5\u3002",
+    "2026-10-03 PLAYBOOK_DELTA 候選：#757 在 Codex 審查完成前（ready 後 1 分鐘）就 merge，Codex P1/P2 於 merge 後才出現 → 已開 #758；預防：ready 後等 Codex summary 為 Completed 或明確無 finding 再 merge。",
+    "2026-10-03 PLAYBOOK_DELTA（#747 closeout）：等 Codex 對 exact head Completed 才 merge；scout 改 ledger 後推送前必跑 scorecard-readiness --strict-live 與 md 重產比對（本輪 notes 覆蓋、md 未重產、luna 計數未重算各一次）；TEST_VALIDATION lane 上程式與 ledger 修正合併一次推送、已確定被取代的 head 取消 CI；#724 body 每改一次 receipt 失效，轉 ready 前等新 PASS receipt。",
+    "2026-10-03 PLAYBOOK_DELTA（#762）：關閉 Product Issue 前必須先補 Issue 本文 WORKSTREAM、final Sol CLOSE_APPROVED（EXACT_HEAD=最後合併 PR head）與 RUN_CAPTURE_HANDOFF ISSUE_CLOSE_READY（current-main push CI），並在 close-guard 跑完後確認 Issue 仍為 closed 才寫 ledger；推送後計算 changeDigest 前，先確認 PR files API 的 blob sha 已與本地 HEAD 一致；scout ledger 的 task 時間倒置不會被 validator 擋下，audit 需逐欄檢查。",
     "2026-10-03T18:47Z #763: AUDIT astra-review submitted at ba4bca9a and PR marked ready; Codex P1 #4 (MAIL_FROM 422 hidden as recipient 200) verified and fixed at 59fe02a8 (build tier), audit diff review PASS after one comment fix; head to be re-validated by canonical shared TEST.",
     "2026-10-03T19:40Z #763: canonical TEST success on f3997cf0 (run 37145666175); AUDIT astra-review submitted and PR ready; Codex P2 (03-AUTH route example still unconditional sent:true) verified and fixed docs-only at f18aeb8a; audit PASS; first scout ledger attempt committed on a stale local branch and was rejected; head to be re-validated by canonical shared TEST.",
     "2026-10-03T21:35Z #763 merged (d5d88f1e) and Production-verified; #758 closed via guard (CLOSE_APPROVED 5973674211, handoff 5973675336, guard 37155347607); main CI needed one rerun after TEST Supabase ECONNRESET; TRIAGE selected #746 as MAIN (tests-only slice, RPC check deferred to migration lane).",
     "2026-10-03T21:45Z #765: Opus fresh review PASS with B1 split to #766 and N1-N6 fixed at 2c259a39; superseded CI 37155693289 cancelled; head to be validated by canonical shared TEST.",
     "2026-10-03T22:38Z #765: TEST success on 4701a7c4 (attempt 2 after GitHub API outage); Opus incremental review PASS; Codex P2 (time-based skipIf hid the positive control) fixed at 288c00c2 by dynamic shop timezone; head to be re-validated by canonical shared TEST.",
-    "2026-10-04T00:05Z #765 merged (e1bea667) and Production-verified; #746 closed via guard (CLOSE_APPROVED 5974794750, guard 37163462981); TRIAGE selected #753 as MAIN; builder ab7654c7 audit PASS."
+    "2026-10-04T00:05Z #765 merged (e1bea667) and Production-verified; #746 closed via guard (CLOSE_APPROVED 5974794750, guard 37163462981); TRIAGE selected #753 as MAIN; builder ab7654c7 audit PASS.",
+    "2026-10-04T00:15Z #767: Opus fresh review PASS with N1 (normalized URL could exceed length after percent-encoding) fixed at 4adf22c3; superseded CI 37164022531 cancelled; head to be validated by canonical shared TEST."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -3892,7 +3988,7 @@
         "issue": 43,
         "head": "f56cadf03dc90c4af91e19553b82787335c7f6d9",
         "workstream": "PRODUCT_MAINLINE",
-        "reason": "After exact f56 SourceCI 36862662300 and LOCAL 36862662312 reached terminal success, independent Standards review identified the new retry error body/touch target below current-main GUIDE \u00a71.1/\u00a711. Re-enter bounded #43 responsive fix at first source edit 13:10:13.363Z; no category rebuild, backend/schema change, or product completion claim."
+        "reason": "After exact f56 SourceCI 36862662300 and LOCAL 36862662312 reached terminal success, independent Standards review identified the new retry error body/touch target below current-main GUIDE §1.1/§11. Re-enter bounded #43 responsive fix at first source edit 13:10:13.363Z; no category rebuild, backend/schema change, or product completion claim."
       }
     ]
   }
