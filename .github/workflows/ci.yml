@@ -37,7 +37,7 @@ on:
         required: false
         default: FULL_PENDING_SET
         type: choice
-        options: [FULL_PENDING_SET, ISSUES_17_680, ISSUE_37_0131_0134, ISSUE_46_0135, ISSUE_46_0110_0135_CLOSURE]
+        options: [FULL_PENDING_SET, ISSUES_17_680, ISSUE_37_0131_0134, ISSUE_46_0135, ISSUE_46_0110_0136_CLOSURE]
 
 permissions:
   contents: read
@@ -229,7 +229,7 @@ jobs:
             test -n "$RELEASE_ID"
             test -n "$PLANNED_AT"
             test -n "$RELEASE_SCOPE"
-            case "$RELEASE_SCOPE" in FULL_PENDING_SET|ISSUES_17_680|ISSUE_37_0131_0134|ISSUE_46_0135|ISSUE_46_0110_0135_CLOSURE) ;; *) exit 1 ;; esac
+            case "$RELEASE_SCOPE" in FULL_PENDING_SET|ISSUES_17_680|ISSUE_37_0131_0134|ISSUE_46_0135|ISSUE_46_0110_0136_CLOSURE) ;; *) exit 1 ;; esac
             test "$GITHUB_REF" = 'refs/heads/main'
             test "$DISPATCH_REASON" = 'main_manual'
             test "$GITHUB_SHA" = "$EXPECTED_HEAD"

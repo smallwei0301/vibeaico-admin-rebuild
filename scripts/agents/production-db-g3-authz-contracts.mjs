@@ -1,8 +1,11 @@
-// The closure's final create_tour_order body must preserve these observed
-// REQUEST/seasonal contracts. The seasonal file is currently pending main merge;
+// The closure's create_tour_order body (last replaced by 0132) and its
+// SECURITY INVOKER setting (set last by 0136's ALTER, body untouched, #755) must
+// preserve these observed REQUEST/seasonal/refund-snapshot contracts. The 0136
+// role/tenant fragment contract below is reused, not duplicated.
+// The seasonal file is currently pending main merge;
 // no synthetic passing report proves execution of either native snapshot suite.
 export const ISSUE_46_CLOSURE_COVERAGE = Object.freeze({
-  scope: 'ISSUE_46_0110_0135_CLOSURE',
+  scope: 'ISSUE_46_0110_0136_CLOSURE',
 
   requiredAssertions: Object.freeze([
     Object.freeze({ file: 'tests/integration/db/tour-refund-snapshot.46.test.ts', fullName: '#46 refund policy stays immutable on real TourOrders persists STANDARD, preserves the old whole order and updates only new snapshots' }),
@@ -25,6 +28,9 @@ export const ISSUE_46_CLOSURE_COVERAGE = Object.freeze({
     Object.freeze({"file": "tests/integration/db/plan-seasonal-order-snapshot.42.test.ts", "fullName": "#42 persisted seasonal prices become immutable TourOrder snapshots 'equal span chooses smaller sortOrder'"}),
     Object.freeze({"file": "tests/integration/db/plan-seasonal-order-snapshot.42.test.ts", "fullName": "#42 persisted seasonal prices become immutable TourOrder snapshots 'zero override is a real free price, n…'"}),
     Object.freeze({"file": "tests/integration/db/plan-seasonal-order-snapshot.42.test.ts", "fullName": "#42 persisted seasonal prices become immutable TourOrder snapshots 'equal span and sortOrder uses stable …'"}),
+    Object.freeze({ file: 'tests/integration/api/create-tour-order-invoker.755.test.ts', fullName: '#755 / 0136 create_tour_order refund policy snapshot boundary service_role create_tour_order snapshots STANDARD/FLEXIBLE/STRICT equal to trips.refund_policy_type, then restores' }),
+    Object.freeze({ file: 'tests/integration/api/create-tour-order-invoker.755.test.ts', fullName: '#755 / 0136 create_tour_order refund policy snapshot boundary service_role create_tour_order rejects another tenant id for an existing departure without creating an order' }),
+    Object.freeze({ file: 'tests/integration/api/create-tour-order-invoker.755.test.ts', fullName: '#755 / 0136 create_tour_order refund policy snapshot boundary anon and authenticated roles cannot execute create_tour_order directly' }),
   ]),
 });
 

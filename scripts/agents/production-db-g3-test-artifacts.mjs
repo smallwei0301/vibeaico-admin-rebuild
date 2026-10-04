@@ -253,6 +253,7 @@ function cleanupScopes(plan) {
     scopes.push({migration:'0111_issue_46_guide_request_accept',table:'tour_orders',filterColumn:'note',filterOperator:'like',filterValue:'request-accept-46-%'});
     scopes.push({migration:'0130_issue_46_refund_policy_snapshot',table:'trips',filterColumn:'slug',filterOperator:'like',filterValue:'refund-snapshot-46-%'});
     scopes.push({migration:'0132_issue_42_seasonal_price_resolution',table:'trips',filterColumn:'slug',filterOperator:'like',filterValue:'snapshot-42-%'});
+    scopes.push({migration:'0136_issue_755_create_tour_order_invoker',table:'tour_orders',filterColumn:'note',filterOperator:'like',filterValue:'#755 probe%'});
   }
 
   if (plan.migrations.some((migration) => migration.repoFile === '0135_issue_46_guide_interval_availability')) {

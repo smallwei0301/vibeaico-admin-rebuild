@@ -670,16 +670,38 @@ it('#46 closure independently reads owned refund/seasonal parent prefixes and re
     });
     const run=captureProductionDbTestCleanupEvidence({plan:{...plan([{repoFile:'0130_issue_46_refund_policy_snapshot',riskTier:'AUTHZ',sha256:'f'.repeat(64)}]),migrationScope:ISSUE_46_CLOSURE_COVERAGE.scope},testSupabaseUrl:TEST_URL,serviceRoleKey:'mock',sourceRunId:'123',sourceRunAttempt:1,fetchImpl});
     if(residue)await expect(run).rejects.toThrow(/TEST_CLEANUP_RESIDUE/);
-    else {expect((await run).residueCount).toBe(0);expect(seen).toEqual(['like.request-accept-46-%','like.refund-snapshot-46-%','like.snapshot-42-%']);}
+    else {expect((await run).residueCount).toBe(0);expect(seen).toEqual(['like.request-accept-46-%','like.refund-snapshot-46-%','like.snapshot-42-%','like.#755 probe%']);}
   }
 });
 
+
+it('#46 closure requires exact #755/0136 native evidence and cleans its probe orders', () => {
+  const rows=ISSUE_46_CLOSURE_COVERAGE.requiredAssertions.filter(row=>row.file==='tests/integration/api/create-tour-order-invoker.755.test.ts');
+  expect(rows.map(row=>row.fullName.replace('#755 / 0136 create_tour_order refund policy snapshot boundary ',''))).toEqual([
+    'service_role create_tour_order snapshots STANDARD/FLEXIBLE/STRICT equal to trips.refund_policy_type, then restores',
+    'service_role create_tour_order rejects another tenant id for an existing departure without creating an order',
+    'anon and authenticated roles cannot execute create_tour_order directly',
+  ]);
+  const closurePlan={...plan([{repoFile:'0130_issue_46_refund_policy_snapshot',riskTier:'AUTHZ',sha256:'f'.repeat(64)}]),migrationScope:ISSUE_46_CLOSURE_COVERAGE.scope};
+  const all=ISSUE_46_CLOSURE_COVERAGE.requiredAssertions;
+  const aclContract=getProductionDbG3AuthzContract('0130_issue_46_refund_policy_snapshot');
+  const make=(skip:string|null)=>{
+    const list:Array<{file:string;fullName:string;status:string}>=all.filter(row=>row.fullName!==skip).map(row=>({file:row.file,fullName:row.fullName,status:'passed'}));
+    list.push(...[...aclContract.tenantBoundaryAssertions,...aclContract.negativeRoleAssertions].map((row:any)=>({file:'tests/integration/api/tour-order-authz.447.test.ts',fullName:row.fragment,status:'passed'})));
+    const files=[...new Set(list.map(row=>row.file))];
+    return report({numTotalTests:list.length,numPassedTests:list.length,testResults:files.map(file=>({name:file,assertionResults:list.filter(row=>row.file===file)}))});
+  };
+  const build=(raw:any)=>buildProductionDbTestCoverageEvidence({report:raw,plan:closurePlan,sourceRunId:'123',sourceRunAttempt:1});
+  expect(build(make(null)).reportSuccess).toBe(true);
+  for(const row of rows) expect(()=>build(make(row.fullName))).toThrow(/REQUIRED_SEMANTIC_TEST_MISSING/);
+});
 
 it('#46 closure REQUEST marker cleanup rejects residue and HTTP errors', async () => {
   for(const outcome of ['residue','error']) {
     const fetchImpl=vi.fn(async(url:any,init:any)=>{
       const parsed=new URL(url);expect(init.method).toBe('GET');
       if (parsed.pathname === '/rest/v1/tour_orders') {
+        if (parsed.searchParams.get('note') === 'like.#755 probe%') return new Response('[]',{status:200});
         expect(parsed.searchParams.get('note')).toBe('like.request-accept-46-%');
         return new Response(JSON.stringify(outcome==='residue'?[{id:'leftover'}]:[]),{status:outcome==='error'?500:200});
       }
