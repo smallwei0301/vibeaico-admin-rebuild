@@ -13,7 +13,7 @@ const bodySchema = z.object({
   tenantName: z.string().min(1, '請輸入店家名稱'),
   // 與公開店家頁共用同一個規則：註冊得出來的代碼，`/s/{shopCode}` 就一定打得開。
   shopCode: z.string().regex(SHOP_CODE_PATTERN, SHOP_CODE_MESSAGE),
-  // 業態：省略時沿用 DB 預設 LOCAL_SHOP；非法值由 zod 擋成 400。
+  // 業態：省略時寫入 LOCAL_SHOP（與 DB 預設一致）；非法值由 zod 擋成 400。
   businessType: z.enum(BUSINESS_TYPES).optional(),
 });
 

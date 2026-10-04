@@ -68,13 +68,20 @@ async function latestCode(email: string, purpose: 'REGISTER' | 'RESET_PASSWORD')
   return (data as { code: string }).code;
 }
 
-async function registerAccount(email: string, password: string): Promise<void> {
+async function registerAccount(
+  email: string,
+  password: string,
+  businessType?: 'LOCAL_SHOP' | 'GUIDE' | 'CLINIC',
+): Promise<string> {
   expect((await postJson('/api/auth/send-verification-code', { email, purpose: 'REGISTER' })).status).toBe(200);
   const code = await latestCode(email, 'REGISTER');
+  const shopCode = uniqueShopCode('otp');
   const res = await postJson('/api/auth/tenant/register', {
-    email, code, password, tenantName: 'OTP 矩陣測試店', shopCode: uniqueShopCode('otp'),
+    email, code, password, tenantName: 'OTP 矩陣測試店', shopCode,
+    ...(businessType ? { businessType } : {}),
   });
   expect(res.status).toBe(200);
+  return shopCode;
 }
 
 async function expectCodeInvalid(res: Response): Promise<void> {
@@ -228,7 +235,11 @@ describe('登出後 session 失效（#754）', () => {
   it('register → login → me 200；POST /api/auth/logout 後 me 401', async () => {
     const email = uniqueEmail('logout');
     const password = 'Passw0rd!logout1';
-    await registerAccount(email, password);
+    const shopCode = await registerAccount(email, password, 'GUIDE');
+    const { data: tenantRow, error: tenantErr } = await admin
+      .from('tenants').select('business_type').eq('shop_code', shopCode).single();
+    expect(tenantErr).toBeNull();
+    expect(tenantRow!.business_type).toBe('GUIDE');
 
     const api = await loginAs(email, password);
     const before = await api.get('/api/auth/me');
