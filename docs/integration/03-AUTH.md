@@ -184,12 +184,14 @@ export const POST = handle(async (req) => {
       .insert({ shop_code: b.shopCode, name: b.tenantName, business_type: b.businessType ?? 'LOCAL_SHOP' }).select('id').single();
     if (error) throw error;
     tenantId = t.id;
-    await admin.from('tenant_users').insert({ tenant_id: t.id, user_id: userId, role: 'OWNER' });
+    const { error: merr } = await admin.from('tenant_users').insert({ tenant_id: t.id, user_id: userId, role: 'OWNER' });
+    if (merr) throw merr;   // 每一步都要檢查錯誤，否則會帶著半成品店家回 200
     const s = DEFAULT_TENANT_SETTINGS(b.shopCode, b.tenantName);
-    await admin.from('tenant_settings').insert({
+    const { error: serr } = await admin.from('tenant_settings').insert({
       tenant_id: t.id, basic: s.basic, business: s.business, notify: s.notify,
       privacy: s.privacy, points: s.points, line: { ...s.line, channelSecret: undefined, channelAccessToken: undefined },
     });
+    if (serr) throw serr;
     // 依模式贈與功能（GUIDE → TOUR_MODULE；source='GRANTED'、永久）
     const granted = MODE_PRESETS[b.businessType ?? 'LOCAL_SHOP'].grantedFeatures;
     if (granted.length > 0) {
@@ -199,7 +201,14 @@ export const POST = handle(async (req) => {
       if (ferr) throw ferr;
     }
   } catch (e) {
-    if (tenantId) await admin.from('tenants').delete().eq('id', tenantId);   // 補償：刪店（cascade 清子表）
+    if (tenantId) {
+      const { error: derr } = await admin.from('tenants').delete().eq('id', tenantId);   // 補償：刪店（cascade 清子表）
+      if (derr) {
+        // 刪店失敗：保留 auth 帳號，店家仍有可登入的 owner，狀態可人工／重試復原；刪帳號會留下無主店家並佔住 shop_code
+        console.error('[register] 補償刪店失敗，保留 auth 帳號', { tenantId, shopCode: b.shopCode, error: derr });
+        throw e;
+      }
+    }
     await admin.auth.admin.deleteUser(userId);       // 補償：建店失敗就回滾帳號
     throw e;
   }
@@ -233,15 +242,20 @@ export const POST = handle(async (req) => {
 ```ts
 // /api/auth/logout/route.ts
 // （import：cookies from 'next/headers'；ApiHttpError, ERR, handle, ok from '@/server/http'；
-//   IMPERSONATION_COOKIE, endImpersonation from '@/server/platform-admin'）
+//   IMPERSONATION_COOKIE, endImpersonation from '@/server/platform-admin'；isMissingSessionError from '@/server/tenant'）
 export const POST = handle(async () => {
   const supabase = await createServerSupabase();
   // 代入中登出：先結束代入 session（admin_user_id 收窄、冪等）並清 cookie；結束失敗直接 500，不謊報已登出
   const jar = await cookies();
   const sessionId = jar.get(IMPERSONATION_COOKIE)?.value;
   if (sessionId) {
-    const { data } = await supabase.auth.getUser();
-    if (data.user) await endImpersonation(sessionId, data.user.id);
+    const { data, error: uerr } = await supabase.auth.getUser();
+    // Auth 服務故障 ≠ 沒登入：fail closed（503），保留 cookie 以便重試，不 signOut（同 requireUser）
+    if (uerr && !isMissingSessionError(uerr)) {
+      console.error('[auth] logout getUser failed; keeping impersonation cookie for retry', uerr);
+      throw new ApiHttpError(503, '暫時無法確認登入狀態，請稍後再試', ERR.INTERNAL);
+    }
+    if (data?.user) await endImpersonation(sessionId, data.user.id);
     jar.set(IMPERSONATION_COOKIE, '', { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 0 });
   }
   // 只結束目前裝置的 session；錯誤不得吞掉，否則 session 沒撤銷卻回 200

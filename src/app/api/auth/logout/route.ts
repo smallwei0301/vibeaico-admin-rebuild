@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { IMPERSONATION_COOKIE, endImpersonation } from '@/server/platform-admin';
 import { createServerSupabase } from '@/server/supabase';
+import { isMissingSessionError } from '@/server/tenant';
 
 export const POST = handle(async () => {
   const supabase = await createServerSupabase();
@@ -10,9 +11,15 @@ export const POST = handle(async () => {
   const jar = await cookies();
   const sessionId = jar.get(IMPERSONATION_COOKIE)?.value;
   if (sessionId) {
-    const { data } = await supabase.auth.getUser();
+    const { data, error: uerr } = await supabase.auth.getUser();
+    // Auth 服務故障（5xx／網路）≠ 沒登入：此時 cookie 是唯一能識別代入 session 的憑證，清掉就無法重試
+    // 結束，代入會一路作用到過期。比照 requireUser() fail closed：回 503、保留 cookie、不 signOut
+    if (uerr && !isMissingSessionError(uerr)) {
+      console.error('[auth] logout getUser failed; keeping impersonation cookie for retry', uerr);
+      throw new ApiHttpError(503, '暫時無法確認登入狀態，請稍後再試', ERR.INTERNAL);
+    }
     // 結束失敗就直接丟出（500）：其餘狀態都不動，使用者可重試，不謊報已登出
-    if (data.user) await endImpersonation(sessionId, data.user.id);
+    if (data?.user) await endImpersonation(sessionId, data.user.id);
     jar.set(IMPERSONATION_COOKIE, '', { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 0 });
   }
   // scope 'local'：預設 'global' 會撤銷該使用者所有裝置的 session；登出只應結束目前這個

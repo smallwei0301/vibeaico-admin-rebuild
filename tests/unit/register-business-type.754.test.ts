@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   createUser: vi.fn(), deleteUser: vi.fn(), consumeCode: vi.fn(), tenantInsert: vi.fn(),
   featureInsert: vi.fn(), tenantDelete: vi.fn(), featureError: { current: null as unknown },
+  errs: { tenantInsert: null as unknown, tenantUsers: null as unknown, settings: null as unknown, tenantDelete: null as unknown },
 }));
 
 vi.mock('@/server/supabase', () => ({
@@ -13,16 +14,18 @@ vi.mock('@/server/supabase', () => ({
       if (table === 'tenants') {
         return {
           select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null }) }) }),
-          delete: () => ({ eq: async (col: string, val: unknown) => { mocks.tenantDelete(col, val); return { error: null }; } }),
+          delete: () => ({ eq: async (col: string, val: unknown) => { mocks.tenantDelete(col, val); return { error: mocks.errs.tenantDelete }; } }),
           insert: (row: unknown) => {
             mocks.tenantInsert(row);
-            return { select: () => ({ single: async () => ({ data: { id: 'tenant-1' }, error: null }) }) };
+            return { select: () => ({ single: async () => ({ data: mocks.errs.tenantInsert ? null : { id: 'tenant-1' }, error: mocks.errs.tenantInsert }) }) };
           },
         };
       }
       if (table === 'feature_subscriptions') {
         return { insert: async (rows: unknown) => { mocks.featureInsert(rows); return { error: mocks.featureError.current }; } };
       }
+      if (table === 'tenant_users') return { insert: async () => ({ error: mocks.errs.tenantUsers }) };
+      if (table === 'tenant_settings') return { insert: async () => ({ error: mocks.errs.settings }) };
       return { insert: async () => ({ error: null }) };
     },
   }),
@@ -46,6 +49,7 @@ describe('#754 register 業態寫入 tenants.business_type', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.featureError.current = null;
+    Object.assign(mocks.errs, { tenantInsert: null, tenantUsers: null, settings: null, tenantDelete: null });
     mocks.consumeCode.mockResolvedValue(undefined);
     mocks.createUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
   });
@@ -90,6 +94,34 @@ describe('#754 register 業態寫入 tenants.business_type', () => {
     const res = await POST(req({ ...base, businessType: 'GUIDE' }), {});
     expect(res.status).toBe(500);
     expect(mocks.tenantDelete).toHaveBeenCalledWith('id', 'tenant-1');
+    expect(mocks.deleteUser).toHaveBeenCalledWith('user-1');
+  });
+
+  it.each([['tenantUsers'], ['settings']] as const)('%s insert 失敗 → 500，補償刪除租戶與 auth 帳號', async (k) => {
+    mocks.errs[k] = { message: 'boom' };
+    const res = await POST(req(base), {});
+    expect(res.status).toBe(500);
+    expect(mocks.tenantDelete).toHaveBeenCalledWith('id', 'tenant-1');
+    expect(mocks.deleteUser).toHaveBeenCalledWith('user-1');
+  });
+
+  it('後續步驟失敗且刪店也失敗 → 500，不刪 auth 帳號（店家保有可登入 owner）', async () => {
+    mocks.featureError.current = { message: 'boom' };
+    mocks.errs.tenantDelete = { message: 'delete failed' };
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const res = await POST(req({ ...base, businessType: 'GUIDE' }), {});
+    expect(res.status).toBe(500);
+    expect(mocks.tenantDelete).toHaveBeenCalledWith('id', 'tenant-1');
+    expect(mocks.deleteUser).not.toHaveBeenCalled();
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('補償刪店失敗'), expect.objectContaining({ tenantId: 'tenant-1', shopCode: 'example-shop' }));
+    spy.mockRestore();
+  });
+
+  it('tenants insert 失敗 → 500，沒有租戶可刪（不呼叫 delete），仍刪 auth 帳號', async () => {
+    mocks.errs.tenantInsert = { message: 'dup' };
+    const res = await POST(req(base), {});
+    expect(res.status).toBe(500);
+    expect(mocks.tenantDelete).not.toHaveBeenCalled();
     expect(mocks.deleteUser).toHaveBeenCalledWith('user-1');
   });
 

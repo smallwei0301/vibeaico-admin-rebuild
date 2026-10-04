@@ -466,6 +466,7 @@ describe('POST /api/auth/logout（代入期間登出一併結束代入）', () =
   type Opts = {
     cookie?: string;
     user?: { id: string } | null;
+    getUserError?: unknown;
     endImpersonation?: (sid: string, uid: string) => Promise<void>;
     signOut?: (opts?: unknown) => Promise<{ error: unknown }>;
   };
@@ -473,7 +474,7 @@ describe('POST /api/auth/logout（代入期間登出一併結束代入）', () =
     vi.resetModules();
     const order: string[] = [];
     const set = vi.fn();
-    const getUser = vi.fn(async () => ({ data: { user: o.user === undefined ? { id: 'admin-1' } : o.user } }));
+    const getUser = vi.fn(async () => ({ data: { user: o.user === undefined ? { id: 'admin-1' } : o.user }, error: o.getUserError ?? null }));
     const signOut = vi.fn(async (opts?: unknown) => { order.push('signOut'); return (o.signOut ?? (async () => ({ error: null })))(opts); });
     const end = vi.fn(async (sid: string, uid: string) => { order.push('end'); return (o.endImpersonation ?? (async () => undefined))(sid, uid); });
     vi.doMock('next/headers', () => ({
@@ -481,7 +482,10 @@ describe('POST /api/auth/logout（代入期間登出一併結束代入）', () =
     }));
     vi.doMock('@/server/supabase', () => ({ createServerSupabase: async () => ({ auth: { signOut, getUser } }) }));
     // handle() 在 cookie 存在時會做代入稽核：讓它解析不到有效代入，直接放行 handler
-    vi.doMock('@/server/tenant', () => ({ requireUser: async () => ({ user: { id: 'admin-1' } }) }));
+    vi.doMock('@/server/tenant', async (importActual) => ({
+      ...(await importActual<typeof import('@/server/tenant')>()),
+      requireUser: async () => ({ user: { id: 'admin-1' } }),
+    }));
     vi.doMock('@/server/platform-admin', () => ({
       IMPERSONATION_COOKIE: 'vibeai_impersonation',
       endImpersonation: end,
@@ -532,5 +536,28 @@ describe('POST /api/auth/logout（代入期間登出一併結束代入）', () =
     expect(r.res.status).toBe(200);
     expect(r.end).not.toHaveBeenCalled();
     expect(r.set).toHaveBeenCalledWith('vibeai_impersonation', '', expect.objectContaining({ maxAge: 0 }));
+  });
+
+  it('getUser 回服務錯誤（5xx／網路）→ 503，不結束代入、不清 cookie、不 signOut（可重試）', async () => {
+    const r = await load({ cookie: 'sess-1', user: null, getUserError: Object.assign(new Error('gotrue down'), { name: 'AuthApiError', status: 502 }) });
+    expect(r.res.status).toBe(503);
+    expect(r.end).not.toHaveBeenCalled();
+    expect(r.set).not.toHaveBeenCalled();
+    expect(r.signOut).not.toHaveBeenCalled();
+  });
+
+  it('getUser 回 AuthRetryableFetchError（無 status）→ 同樣 503 fail closed', async () => {
+    const r = await load({ cookie: 'sess-1', user: null, getUserError: Object.assign(new Error('fetch failed'), { name: 'AuthRetryableFetchError' }) });
+    expect(r.res.status).toBe(503);
+    expect(r.set).not.toHaveBeenCalled();
+    expect(r.signOut).not.toHaveBeenCalled();
+  });
+
+  it('getUser 回 missing-session 錯誤 → 視為已登出：清 cookie、signOut、200', async () => {
+    const r = await load({ cookie: 'sess-1', user: null, getUserError: Object.assign(new Error('no session'), { name: 'AuthSessionMissingError', status: 400 }) });
+    expect(r.res.status).toBe(200);
+    expect(r.end).not.toHaveBeenCalled();
+    expect(r.set).toHaveBeenCalledWith('vibeai_impersonation', '', expect.objectContaining({ maxAge: 0 }));
+    expect(r.signOut).toHaveBeenCalledWith({ scope: 'local' });
   });
 });

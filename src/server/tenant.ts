@@ -23,7 +23,7 @@ export const ACTIVE_TENANT_COOKIE = 'vibeai_active_tenant';
  *
  * 只有「真的沒有 session」才算 401；其餘一律 503，讓呼叫端 fail closed。
  */
-function isMissingSessionError(error: unknown): boolean {
+export function isMissingSessionError(error: unknown): boolean {
   const e = error as { name?: string; status?: number } | null;
   if (!e) return true;
   if (e.name === 'AuthSessionMissingError') return true;
