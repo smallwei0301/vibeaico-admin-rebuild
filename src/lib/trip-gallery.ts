@@ -1,3 +1,5 @@
+import { publicStringList, safePublicHttpsUrl } from '@/lib/public-url';
+
 /**
  * 行程圖庫張數上限。來源：後台行程編輯頁（src/app/tenant/trips/[id]/page.tsx）原本宣告的 GALLERY_MAX = 8，
  * 現在由該頁、公開詳情 loader 與寫入端 schema（#748）共用同一個值。
@@ -30,9 +32,24 @@ export function omitUnchangedGallery<T extends { galleryUrls?: string[] }>(
 }
 
 /**
- * 複製行程用：來源相簿超過寫入上限時截到上限，保留前面張數。
- * 公開詳情 loader 本來就只輸出前 MAX 張，所以被截掉的是旅客本來就看不到的部分。
+ * 公開詳情 loader 的相簿輸出：先濾掉非字串／非 https／含帳密／過長的 URL，再截到上限。
+ * 公開頁與「複製行程」共用這一個函式，兩邊的相簿才會逐張相同。
+ */
+export function publicGalleryUrls(value: unknown): string[] {
+  return publicStringList(value)
+    .map(safePublicHttpsUrl).filter(Boolean)
+    .slice(0, MAX_PUBLIC_GALLERY_IMAGES);
+}
+
+/**
+ * 複製行程用：保存「原始 trim 後字串」，只用 safePublicHttpsUrl 判斷是否保留，
+ * 順序同公開 loader（publicStringList → 過濾 → 截上限）。
+ * 不能存正規化後的 URL：非 ASCII 字元經 percent-encoding 會膨脹、可能超過長度上限，
+ * 複本公開頁輸出時再正規化就會被丟掉。複本保存原始字串、公開頁輸出時才正規化，
+ * 因此 publicGalleryUrls(複本) 與 publicGalleryUrls(原行程) 逐張相同，且輸出不超過寫入端 gallery max。
  */
 export function clampGalleryForCopy(urls: string[] | undefined): string[] | undefined {
-  return urls ? urls.slice(0, MAX_TRIP_GALLERY_IMAGES) : urls;
+  return urls
+    ? publicStringList(urls).filter((u) => safePublicHttpsUrl(u) !== '').slice(0, MAX_TRIP_GALLERY_IMAGES)
+    : urls;
 }
