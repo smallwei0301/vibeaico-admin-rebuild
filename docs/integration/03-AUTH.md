@@ -220,9 +220,21 @@ export const POST = handle(async (req) => {
 
 ```ts
 // /api/auth/logout/route.ts
+// （import：cookies from 'next/headers'；ApiHttpError, ERR, handle, ok from '@/server/http'；
+//   IMPERSONATION_COOKIE, endImpersonation from '@/server/platform-admin'）
 export const POST = handle(async () => {
   const supabase = await createServerSupabase();
-  await supabase.auth.signOut({ scope: 'local' }); // 只結束目前裝置的 session
+  // 代入中登出：先結束代入 session（admin_user_id 收窄、冪等）並清 cookie；結束失敗直接 500，不謊報已登出
+  const jar = await cookies();
+  const sessionId = jar.get(IMPERSONATION_COOKIE)?.value;
+  if (sessionId) {
+    const { data } = await supabase.auth.getUser();
+    if (data.user) await endImpersonation(sessionId, data.user.id);
+    jar.set(IMPERSONATION_COOKIE, '', { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 0 });
+  }
+  // 只結束目前裝置的 session；錯誤不得吞掉，否則 session 沒撤銷卻回 200
+  const { error } = await supabase.auth.signOut({ scope: 'local' });
+  if (error) throw new ApiHttpError(500, '登出失敗，請稍後再試', ERR.INTERNAL);
   return ok({ loggedOut: true });
 });
 ```
@@ -359,6 +371,7 @@ export const login = (email: string, password: string) =>
 export const logout = () => …            // POST /api/auth/logout；route 以 signOut({ scope: 'local' })，
                                          // 只結束目前裝置（預設 global 會踢掉所有裝置）；signOut 失敗要回錯，
                                          // Topbar 失敗時顯示錯誤、不導向（不假裝已登出）
+                                         // 代入期間登出會一併結束代入 session（ended_at）並清除 vibeai_impersonation cookie
 export const sendVerificationCode = (email: string, purpose: 'REGISTER'|'RESET_PASSWORD') => …
 export const registerTenant = (payload: {…}) => …
 export const forgotPassword = (email: string) => …
@@ -423,6 +436,7 @@ AppShell 在 `AUTH_REAL` 的殼層規則：
 - [ ] 平台管理者代登入期間，`GET /api/auth/my-tenants` 只回代入目標一筆（不回管理者自己的店）
 - [ ] 登入 `?next=//evil.com`、`/\evil.com`、`https://evil.com` → 一律導 `/tenant/dashboard`；`?next=/tenant/orders` → 導回該頁
 - [ ] 登出呼叫 `signOut({ scope: 'local' })`；signOut 失敗時顯示錯誤、不導向登入頁；其他裝置 session 不受影響
+- [ ] 平台管理者代入期間登出 → 一併結束代入 session（`impersonation_sessions.ended_at` 不為 null）並清除 `vibeai_impersonation` cookie；結束代入失敗回 500 且不 signOut
 - [ ] `AUTH_REAL` 下 my-tenants 未回前不掛載內容區；失敗／空清單各有提示；不讀 `MOCK_TENANTS`／`MOCK_USER`
 - [ ] 混合模式（`AUTH_REAL` + 業務 `USE_MOCK=true`）：真登入可用，AppShell 顯示示範資料提示
 - [ ] 第二個帳號看不到第一家店的任何資料（開兩店互測 RLS）

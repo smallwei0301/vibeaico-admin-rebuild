@@ -652,6 +652,32 @@ describe('驗收 4（續）—— 退出與失效', () => {
     await fresh.post('/api/platform/impersonation/end', {});
   });
 
+  it('#754：代入期間登出 → session 標記 ended_at，且回應清除 vibeai_impersonation cookie', async () => {
+    const fresh = await loginAs(ADMIN_EMAIL, PASSWORD);
+    const start = await fresh.post('/api/platform/impersonation/start', {
+      tenantId: SHOP_A.id,
+      reason: '驗證代入期間登出會一併結束代入',
+    });
+    expect(start.status).toBe(200);
+    const startedId = (await readJson<{ sessionId: string }>(start)).data!.sessionId;
+
+    const out = await fresh.post('/api/auth/logout', {});
+    expect(out.status).toBe(200);
+
+    const { data } = await admin
+      .from('impersonation_sessions')
+      .select('ended_at')
+      .eq('id', startedId)
+      .single();
+    expect(data!.ended_at, '登出後代入 session 仍顯示進行中，重新登入會無聲接回').not.toBeNull();
+
+    const cleared = out.headers
+      .getSetCookie()
+      .find((c) => c.startsWith('vibeai_impersonation='));
+    expect(cleared, '登出回應沒有清除 vibeai_impersonation cookie').toBeDefined();
+    expect(cleared!).toMatch(/Max-Age=0|Expires=Thu, 01 Jan 1970/i);
+  });
+
   it('權限被撤銷 → 既有 session 立刻失效（不必等逾時）', async () => {
     const fresh = await loginAs(ADMIN_EMAIL, PASSWORD);
     const start = await fresh.post('/api/platform/impersonation/start', {

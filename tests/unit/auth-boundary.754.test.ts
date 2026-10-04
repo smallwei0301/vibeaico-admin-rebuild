@@ -455,3 +455,82 @@ describe('shellContentReady — real 模式等店家清單 settled 才掛載頁�
     expect(src).toContain('data-testid="shell-tenants-loading"');
   });
 });
+
+describe('POST /api/auth/logout（代入期間登出一併結束代入）', () => {
+  afterEach(() => {
+    vi.doUnmock('@/server/supabase'); vi.doUnmock('next/headers');
+    vi.doUnmock('@/server/platform-admin'); vi.doUnmock('@/server/tenant');
+    vi.resetModules();
+  });
+
+  type Opts = {
+    cookie?: string;
+    user?: { id: string } | null;
+    endImpersonation?: (sid: string, uid: string) => Promise<void>;
+    signOut?: (opts?: unknown) => Promise<{ error: unknown }>;
+  };
+  const load = async (o: Opts = {}) => {
+    vi.resetModules();
+    const order: string[] = [];
+    const set = vi.fn();
+    const getUser = vi.fn(async () => ({ data: { user: o.user === undefined ? { id: 'admin-1' } : o.user } }));
+    const signOut = vi.fn(async (opts?: unknown) => { order.push('signOut'); return (o.signOut ?? (async () => ({ error: null })))(opts); });
+    const end = vi.fn(async (sid: string, uid: string) => { order.push('end'); return (o.endImpersonation ?? (async () => undefined))(sid, uid); });
+    vi.doMock('next/headers', () => ({
+      cookies: async () => ({ get: (n: string) => (n === 'vibeai_impersonation' && o.cookie ? { value: o.cookie } : undefined), getAll: () => [], set }),
+    }));
+    vi.doMock('@/server/supabase', () => ({ createServerSupabase: async () => ({ auth: { signOut, getUser } }) }));
+    // handle() 在 cookie 存在時會做代入稽核：讓它解析不到有效代入，直接放行 handler
+    vi.doMock('@/server/tenant', () => ({ requireUser: async () => ({ user: { id: 'admin-1' } }) }));
+    vi.doMock('@/server/platform-admin', () => ({
+      IMPERSONATION_COOKIE: 'vibeai_impersonation',
+      endImpersonation: end,
+      loadActiveImpersonation: async () => null,
+      recordImpersonatedAction: async () => 'a1',
+      finishImpersonatedAction: async () => undefined,
+    }));
+    const POST = (await import('@/app/api/auth/logout/route')).POST;
+    const res = await POST(new Request('http://localhost:3000/api/auth/logout', { method: 'POST' }), {});
+    return { res, set, getUser, signOut, end, order };
+  };
+
+  it('有 cookie＋有 user → endImpersonation(sessionId, user.id)、cookie 清除、signOut local、200', async () => {
+    const r = await load({ cookie: 'sess-1' });
+    expect(r.res.status).toBe(200);
+    expect(r.end).toHaveBeenCalledTimes(1);
+    expect(r.end).toHaveBeenCalledWith('sess-1', 'admin-1');
+    expect(r.set).toHaveBeenCalledWith('vibeai_impersonation', '', { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 0 });
+    expect(r.signOut).toHaveBeenCalledWith({ scope: 'local' });
+    expect(r.order).toEqual(['end', 'signOut']);
+  });
+
+  it('沒有 cookie → 不呼叫 getUser／endImpersonation，行為同舊版，200', async () => {
+    const r = await load({});
+    expect(r.res.status).toBe(200);
+    expect(r.getUser).not.toHaveBeenCalled();
+    expect(r.end).not.toHaveBeenCalled();
+    expect(r.set).not.toHaveBeenCalled();
+    expect(r.signOut).toHaveBeenCalledWith({ scope: 'local' });
+  });
+
+  it('endImpersonation 丟錯 → 500，signOut 不得被呼叫（可重試，不謊報已登出）', async () => {
+    const r = await load({ cookie: 'sess-1', endImpersonation: async () => { throw new Error('db down'); } });
+    expect(r.res.status).toBe(500);
+    expect(r.signOut).not.toHaveBeenCalled();
+    expect((await r.res.json()).data).toBeUndefined();
+  });
+
+  it('signOut 回 error → 500，但代入已結束、cookie 已清', async () => {
+    const r = await load({ cookie: 'sess-1', signOut: async () => ({ error: new Error('boom') }) });
+    expect(r.res.status).toBe(500);
+    expect(r.end).toHaveBeenCalledWith('sess-1', 'admin-1');
+    expect(r.set).toHaveBeenCalledWith('vibeai_impersonation', '', expect.objectContaining({ maxAge: 0 }));
+  });
+
+  it('有 cookie 但已無 user → 不呼叫 endImpersonation，仍清 cookie 並 signOut', async () => {
+    const r = await load({ cookie: 'sess-1', user: null });
+    expect(r.res.status).toBe(200);
+    expect(r.end).not.toHaveBeenCalled();
+    expect(r.set).toHaveBeenCalledWith('vibeai_impersonation', '', expect.objectContaining({ maxAge: 0 }));
+  });
+});
