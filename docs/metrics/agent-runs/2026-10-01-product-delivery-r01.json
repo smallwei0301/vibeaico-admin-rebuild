@@ -3365,7 +3365,7 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null,
-        "count": 1,
+        "count": 4,
         "accepted": true,
         "note": "Issue #754 TERRA_BUILD sequence: 01:54:18Z→25b670c3, 02:16:25Z→4e67a639, 02:24:54Z→bf2e3e82, 06:22:37Z→10662719."
       },
@@ -3384,7 +3384,7 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null,
-        "count": 1,
+        "count": 4,
         "accepted": true,
         "note": "#754 audit review rounds: 02:07:55Z FIX_REQUIRED N1–N6, 02:21:52Z N9/N10, 02:30:53Z PASS, 06:25:07Z PASS on 10662719."
       },
@@ -3403,7 +3403,7 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null,
-        "count": 1,
+        "count": 3,
         "accepted": true,
         "note": "Issue #755 TERRA_BUILD sequence: 06:23:09Z→5be34238, fix round 06:32:50Z→3c382167, fix round 06:40:43Z→bcfa55f4."
       },
@@ -3422,7 +3422,7 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null,
-        "count": 1,
+        "count": 3,
         "accepted": true,
         "note": "#755 audit review rounds: 06:29:00Z FIX_REQUIRED, 06:35:36Z FIX_REQUIRED, 06:42:29Z PASS."
       },
@@ -3436,14 +3436,15 @@
         "completedAt": null,
         "isProductRun": true,
         "requestedModel": "unknown",
-        "actualModel": "sol",
+        "actualModel": "unknown",
         "contextClass": "compact",
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "accepted": true,
-        "note": "Final Risk #754: fable dispatched 07:35:06Z, first tool_use 07:35:13Z served claude-fable-5-1, reservation https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/768#issuecomment-5977746342, PENDING. (actualModel recorded as sol per allowed schema; see run notes for claude-fable-5-1 specification)"
+        "accepted": false,
+        "note": "Final Risk PREMIUM requested claude-fable-5-1 (single reservation https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/768#issuecomment-5977746342); first tool_use observed 07:35:13Z; PENDING.",
+        "actualModelId": "claude-fable-5-1"
       },
       {
         "id": "20261004-audit-755-production-queries",
