@@ -34,14 +34,15 @@ describe('#755 create_tour_order SECURITY INVOKER successor', () => {
     expect(files.at(-2)!.slice(0, 4)).toBe('0135');
   });
 
-  it('only contains ALTER FUNCTION ... SECURITY INVOKER for the exact latest create_tour_order signature', () => {
+  it('only contains GRANT SELECT on trip_plan_seasons to service_role, then ALTER FUNCTION ... SECURITY INVOKER for the exact latest signature', () => {
     const latest = latestDefinitionBefore(SUCCESSOR);
     expect(latest?.file).toBe('0132_issue_42_seasonal_price_resolution.sql');
     expect(latest!.types).toHaveLength(10);
 
     const statements = code.split(';').map((s) => s.trim()).filter(Boolean);
-    expect(statements).toHaveLength(1);
-    const alter = /^alter\s+function\s+public\.create_tour_order\s*\(([\s\S]*?)\)\s+security\s+invoker$/i.exec(statements[0]);
+    expect(statements).toHaveLength(2);
+    expect(statements[0]).toMatch(/^grant\s+select\s+on\s+table\s+public\.trip_plan_seasons\s+to\s+service_role$/i);
+    const alter = /^alter\s+function\s+public\.create_tour_order\s*\(([\s\S]*?)\)\s+security\s+invoker$/i.exec(statements[1]);
     expect(alter).not.toBeNull();
     const types = alter![1].split(',').map((t) => t.trim().replace(/^public\./, '').toLowerCase());
     // 0132 的 int 與 ALTER 的 integer 是同一型別。
@@ -49,8 +50,10 @@ describe('#755 create_tour_order SECURITY INVOKER successor', () => {
     expect(normalise(types)).toEqual(normalise(latest!.types));
   });
 
-  it('does not touch the function body, grants or any other object', () => {
+  it('grants nothing to anon/authenticated/public and has no other statement kinds', () => {
+    expect(code).not.toMatch(/\b(anon|authenticated|public\s*;|to\s+public)\b/i);
+    expect(code.match(/\bgrant\b/gi)).toHaveLength(1);
     expect(code).not.toMatch(/create\s+(or\s+replace\s+)?function/i);
-    expect(code).not.toMatch(/\b(grant|revoke|drop|insert|update|delete|set\s+search_path|security\s+definer)\b/i);
+    expect(code).not.toMatch(/\b(revoke|drop|insert|update|delete|set\s+search_path|security\s+definer)\b/i);
   });
 });

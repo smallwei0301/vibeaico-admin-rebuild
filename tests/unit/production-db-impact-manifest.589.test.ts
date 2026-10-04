@@ -109,7 +109,7 @@ describe('#589 Stage 1 production impact manifest', () => {
     const normalized = normalizeProductionDbImpactManifest(manifest) as Manifest;
     const inventory = normalized.entries.filter((entry) => planFiles.includes(entry.repoFile));
     const inventoryDigest = createHash('sha256').update(JSON.stringify(inventory)).digest('hex');
-    expect(inventoryDigest).toBe('3b5b129ea1c4b2af321a6cc7ba82ceb4536e4744f7e3b0012957cfd4e219aa7a');
+    expect(inventoryDigest).toBe('8adf7a0c90cfad90e6c45c987a86bbb4148de13df708255f8c0935ea34ba140c');
 
     const functionAclKeys = inventory.flatMap((entry) => entry.impacts)
       .filter((impact) => impact.surface === 'acl' && impact.objectKey.startsWith('function:'))

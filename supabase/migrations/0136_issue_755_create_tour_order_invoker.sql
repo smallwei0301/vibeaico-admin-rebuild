@@ -16,6 +16,17 @@
 -- 既有的 PUBLIC/anon/authenticated revoke 與 service_role execute grant 都保留，不重複授權。
 -- 發布順序：本檔必須與 0128、0130、0132 同一個 release（FULL_PENDING_SET），或在它們之後套用；
 -- 簽名由 0132 定義，早於 0132 套用會因簽名不存在而失敗。
+-- 明確授權（Codex P1）：改為 SECURITY INVOKER 後，函式以呼叫者 service_role 的權限執行，
+-- 而 0132 會讀取 public.trip_plan_seasons。該表由 0128 新建且啟用 RLS，0128 並未明確授權，
+-- service_role 的權限完全仰賴 schema 預設 ACL（目前 Production 的 production_migration_owner
+-- 預設 ACL 有授予 service_role，但這個相依是隱性的；若表由沒有該預設 ACL 的角色建立就會壞）。
+-- 這裡只對「本函式會讀、且由 0128 新建」的這一張表，明確授予唯一被許可的呼叫者 service_role
+-- SELECT；不授予 anon／authenticated／PUBLIC，也不授予其他權限。
+-- 函式讀寫的其他表（trips／trip_departures／trip_plans 的 SELECT、tour_orders 的 INSERT）
+-- 皆為既有表，service_role 權限已於 2026-10-04 Owner catalog 讀取驗證，故不重複授權。
+-- 若 0128 尚未套用（表不存在）此語句會明確失敗，藉此強制套用順序。
+grant select on table public.trip_plan_seasons to service_role;
+
 alter function public.create_tour_order(
   uuid, text, uuid, integer, uuid, jsonb, public.tour_order_source, uuid, text, timestamptz
 ) security invoker;
