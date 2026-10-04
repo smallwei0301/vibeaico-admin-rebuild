@@ -1,9 +1,13 @@
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Bell, Building2, ChevronDown, LogOut, Menu, Settings, Smartphone } from 'lucide-react';
 import { common } from '@/i18n/zh-TW/common';
 import { cn } from '@/lib/utils';
+import { performLogout } from '@/lib/auth-boundary';
+import { logout } from '@/services/auth';
+import { useToast } from '@/components/ui/Toast';
 import type { TenantSummary } from '@/lib/types';
 
 /**
@@ -31,6 +35,25 @@ export function Topbar({
 }) {
   const [shopMenu, setShopMenu] = React.useState(false);
   const [userMenu, setUserMenu] = React.useState(false);
+  const [loggingOut, setLoggingOut] = React.useState(false);
+  const router = useRouter();
+  const toast = useToast();
+
+  /** 真正登出（POST /api/auth/logout）；失敗不導向（#754）。 */
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await performLogout({
+        logout,
+        replace: (href) => router.replace(href),
+        refresh: () => router.refresh(),
+        showError: (message) => toast.show(message, 'danger'),
+        fallbackMessage: common.topbar.logoutFailed,
+      });
+    } finally {
+      setLoggingOut(false);
+    }
+  };
 
   return (
     <header className="topbar">
@@ -118,10 +141,15 @@ export function Topbar({
                 {common.topbar.enablePush}
               </button>
               <hr className="my-1 border-neutral-200" />
-              <Link href="/tenant/login" className="flex items-center gap-2 px-3 py-2 text-base text-danger hover:bg-neutral-100">
+              <button
+                type="button"
+                disabled={loggingOut}
+                onClick={() => { void handleLogout(); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-base text-danger hover:bg-neutral-100 disabled:opacity-60"
+              >
                 <LogOut size={15} />
                 {common.topbar.logout}
-              </Link>
+              </button>
             </DropdownPanel>
           )}
         </div>

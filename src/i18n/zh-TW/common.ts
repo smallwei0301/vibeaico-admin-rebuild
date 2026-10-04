@@ -127,6 +127,8 @@ export const common = {
     userFallback: '使用者',
     setupProgress: '設定進度',
     toggleSidebar: '切換選單',
+    logoutFailed: '登出失敗，請稍後再試',
+    demoDataNotice: '目前頁面為示範資料，尚未連接正式資料',
   },
 
   /* ---- 回報問題（全站共用 modal）---- */

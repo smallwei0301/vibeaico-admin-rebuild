@@ -1,0 +1,280 @@
+/**
+ * #754 — 認證邊界獨立於業務 mock。
+ * 行為測試：resolveAuthMode、adaptAuth、middleware、performLogout、safeNextPath、shellDataSources。
+ * 接線測試（讀原始碼，本專案無 DOM 測試環境）：Topbar 登出為 button、AppShell 不在 AUTH_REAL 讀 MOCK_*。
+ */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { NextRequest } from 'next/server';
+
+import { resolveAuthMode } from '@/config/env';
+import { performLogout, safeNextPath, shellDataSources } from '@/lib/auth-boundary';
+
+const read = (relative: string) =>
+  readFileSync(fileURLToPath(new URL(`../../${relative}`, import.meta.url)), 'utf8');
+
+const code = (relative: string) =>
+  read(relative).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+/** 以指定 env 重新載入模組（env.ts 在 import 當下求值）。undefined = 完全不設定。 */
+async function withEnv<T>(
+  env: { useMock?: string; authMode?: string },
+  load: () => Promise<T>,
+): Promise<T> {
+  vi.resetModules();
+  vi.unstubAllEnvs();
+  delete process.env.NEXT_PUBLIC_USE_MOCK;
+  delete process.env.NEXT_PUBLIC_AUTH_MODE;
+  if (env.useMock !== undefined) vi.stubEnv('NEXT_PUBLIC_USE_MOCK', env.useMock);
+  if (env.authMode !== undefined) vi.stubEnv('NEXT_PUBLIC_AUTH_MODE', env.authMode);
+  return load();
+}
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+  vi.doUnmock('@supabase/ssr');
+  vi.resetModules();
+});
+
+describe('resolveAuthMode 3×3 全組合', () => {
+  const useMocks = [undefined, 'true', 'false'] as const;
+  const authModes = [undefined, 'real', 'mock'] as const;
+  const expected = (u: string | undefined, a: string | undefined) =>
+    a === 'real' || a === 'mock' ? a : u === 'true' ? 'mock' : 'real';
+
+  for (const u of useMocks) {
+    for (const a of authModes) {
+      it(`USE_MOCK=${String(u)} AUTH_MODE=${String(a)} → ${expected(u, a)}`, () => {
+        expect(resolveAuthMode(u, a)).toBe(expected(u, a));
+      });
+    }
+  }
+
+  it('未設定（Production 現況）→ real（fail-closed）', () => {
+    expect(resolveAuthMode(undefined, undefined)).toBe('real');
+  });
+  it('AUTH_MODE 非法值被忽略，改看 USE_MOCK', () => {
+    expect(resolveAuthMode('true', 'bogus')).toBe('mock');
+    expect(resolveAuthMode(undefined, 'bogus')).toBe('real');
+  });
+});
+
+describe('AUTH_REAL（模組層級，依實際 process.env）', () => {
+  it('不設定 NEXT_PUBLIC_USE_MOCK → AUTH_REAL=true，但業務 USE_MOCK 仍為 true', async () => {
+    const env = await withEnv({}, () => import('@/config/env'));
+    expect(env.AUTH_REAL).toBe(true);
+    expect(env.USE_MOCK).toBe(true);
+  });
+  it('USE_MOCK=true → AUTH_REAL=false；USE_MOCK=false → AUTH_REAL=true', async () => {
+    expect((await withEnv({ useMock: 'true' }, () => import('@/config/env'))).AUTH_REAL).toBe(false);
+    expect((await withEnv({ useMock: 'false' }, () => import('@/config/env'))).AUTH_REAL).toBe(true);
+  });
+  it('USE_MOCK=true + AUTH_MODE=real → AUTH_REAL=true 且 USE_MOCK 不變', async () => {
+    const env = await withEnv({ useMock: 'true', authMode: 'real' }, () => import('@/config/env'));
+    expect(env.AUTH_REAL).toBe(true);
+    expect(env.USE_MOCK).toBe(true);
+  });
+});
+
+describe('adaptAuth', () => {
+  it('AUTH_REAL 時只呼叫 real，不呼叫 mock、不 delay', async () => {
+    vi.useFakeTimers();
+    try {
+      const { adaptAuth } = await withEnv({}, () => import('@/lib/api'));
+      const mock = vi.fn(() => 'mock');
+      const real = vi.fn(async () => 'real');
+      // 不推進 fake timer：若有 delay 這個 await 永遠不會完成
+      await expect(adaptAuth(mock, real)).resolves.toBe('real');
+      expect(real).toHaveBeenCalledTimes(1);
+      expect(mock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('AUTH_REAL=false（USE_MOCK=true）時走 mock，不呼叫 real', async () => {
+    const { adaptAuth } = await withEnv({ useMock: 'true' }, () => import('@/lib/api'));
+    const mock = vi.fn(() => 'mock');
+    const real = vi.fn(async () => 'real');
+    await expect(adaptAuth(mock, real)).resolves.toBe('mock');
+    expect(mock).toHaveBeenCalledTimes(1);
+    expect(real).not.toHaveBeenCalled();
+  });
+
+  it('services/auth login 在 AUTH_REAL 時真的 POST /api/auth/login（USE_MOCK 缺值亦然）', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ success: true, data: { loggedIn: true } }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const { login } = await withEnv({}, () => import('@/services/auth'));
+    await login('a@b.c', 'pw');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toContain('/api/auth/login');
+  });
+
+  it('services/auth.ts 不再使用業務 adapt()', () => {
+    const src = code('src/services/auth.ts');
+    expect(src).not.toMatch(/\badapt\(/);
+    expect(src).not.toMatch(/\badapt</);
+  });
+});
+
+describe('middleware', () => {
+  const getUser = vi.fn();
+  async function load(env: { useMock?: string; authMode?: string }) {
+    getUser.mockReset();
+    vi.resetModules();
+    vi.doMock('@supabase/ssr', () => ({
+      createServerClient: () => ({ auth: { getUser } }),
+    }));
+    return withEnvKeepMocks(env, () => import('@/middleware'));
+  }
+  // withEnv 會 resetModules 而清掉 doMock 註冊；這裡只換 env，不 reset。
+  async function withEnvKeepMocks<T>(env: { useMock?: string; authMode?: string }, loadFn: () => Promise<T>) {
+    vi.unstubAllEnvs();
+    delete process.env.NEXT_PUBLIC_USE_MOCK;
+    delete process.env.NEXT_PUBLIC_AUTH_MODE;
+    if (env.useMock !== undefined) vi.stubEnv('NEXT_PUBLIC_USE_MOCK', env.useMock);
+    if (env.authMode !== undefined) vi.stubEnv('NEXT_PUBLIC_AUTH_MODE', env.authMode);
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'http://127.0.0.1:54321');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon');
+    return loadFn();
+  }
+  const req = (path: string) => new NextRequest(`http://localhost:3000${path}`);
+
+  it('real（USE_MOCK 未設定）：無 session → 導向 login 並保留 next', async () => {
+    const { middleware } = await load({});
+    getUser.mockResolvedValue({ data: { user: null } });
+    const res = await middleware(req('/tenant/dashboard'));
+    expect(res.status).toBe(307);
+    const loc = new URL(res.headers.get('location')!);
+    expect(loc.pathname).toBe('/tenant/login');
+    expect(loc.searchParams.get('next')).toBe('/tenant/dashboard');
+  });
+
+  it('real：有 session → 放行', async () => {
+    const { middleware } = await load({});
+    getUser.mockResolvedValue({ data: { user: { id: 'u1' } } });
+    const res = await middleware(req('/tenant/dashboard'));
+    expect(res.headers.get('location')).toBeNull();
+    expect(res.status).toBe(200);
+  });
+
+  it('real：四個公開 auth 路徑無 session 也放行，且不查 session', async () => {
+    const { middleware } = await load({});
+    for (const p of ['login', 'register', 'forgot-password', 'reset-password']) {
+      const res = await middleware(req(`/tenant/${p}`));
+      expect(res.headers.get('location')).toBeNull();
+    }
+    expect(getUser).not.toHaveBeenCalled();
+  });
+
+  it('mock（USE_MOCK=true）：無 session 也放行', async () => {
+    const { middleware } = await load({ useMock: 'true' });
+    const res = await middleware(req('/tenant/dashboard'));
+    expect(res.headers.get('location')).toBeNull();
+    expect(getUser).not.toHaveBeenCalled();
+  });
+
+  it('原始碼只用 AUTH_REAL，不再以 USE_MOCK 判斷', () => {
+    const src = code('src/middleware.ts');
+    expect(src).toMatch(/AUTH_REAL/);
+    expect(src).not.toMatch(/\bUSE_MOCK\b/);
+  });
+});
+
+describe('Topbar 登出', () => {
+  const mk = (logout: () => Promise<unknown>) => {
+    const calls = { replace: [] as string[], refresh: 0, errors: [] as string[] };
+    return {
+      calls,
+      deps: {
+        logout,
+        replace: (h: string) => calls.replace.push(h),
+        refresh: () => { calls.refresh += 1; },
+        showError: (m: string) => calls.errors.push(m),
+        fallbackMessage: '登出失敗',
+      },
+    };
+  };
+
+  it('成功：呼叫 logout、replace 到 login、refresh', async () => {
+    const logout = vi.fn(async () => undefined);
+    const { calls, deps } = mk(logout);
+    await expect(performLogout(deps)).resolves.toBe(true);
+    expect(logout).toHaveBeenCalledTimes(1);
+    expect(calls.replace).toEqual(['/tenant/login']);
+    expect(calls.refresh).toBe(1);
+    expect(calls.errors).toEqual([]);
+  });
+
+  it('失敗：不導向、不 refresh、toast 顯示 server message', async () => {
+    const { calls, deps } = mk(async () => { throw new Error('伺服器忙碌'); });
+    await expect(performLogout(deps)).resolves.toBe(false);
+    expect(calls.replace).toEqual([]);
+    expect(calls.refresh).toBe(0);
+    expect(calls.errors).toEqual(['伺服器忙碌']);
+  });
+
+  it('失敗且無 message：用 fallback', async () => {
+    const { calls, deps } = mk(async () => { throw 'x'; });
+    await performLogout(deps);
+    expect(calls.errors).toEqual(['登出失敗']);
+  });
+
+  it('接線：Topbar 登出是 <button> 呼叫 logout，不再是指向 login 的 Link', () => {
+    const src = read('src/components/layout/Topbar.tsx');
+    expect(src).not.toMatch(/<Link\s+href="\/tenant\/login"/);
+    expect(src).toMatch(/performLogout\(/);
+    expect(src).toMatch(/import \{ logout \} from '@\/services\/auth'/);
+    expect(src).toMatch(/onClick=\{\(\) => \{ void handleLogout\(\); \}\}/);
+    expect(src).toMatch(/common\.topbar\.logoutFailed/);
+  });
+});
+
+describe('AppShell 資料來源', () => {
+  it('shellDataSources：認證軸與業務軸互相獨立', () => {
+    expect(shellDataSources(true, true)).toEqual({
+      tenantContextFromApi: true, businessDataFromMock: true, showDemoDataNotice: true,
+    });
+    expect(shellDataSources(true, false)).toEqual({
+      tenantContextFromApi: true, businessDataFromMock: false, showDemoDataNotice: false,
+    });
+    expect(shellDataSources(false, true)).toEqual({
+      tenantContextFromApi: false, businessDataFromMock: true, showDemoDataNotice: false,
+    });
+    expect(shellDataSources(false, false).showDemoDataNotice).toBe(false);
+  });
+
+  it('接線：AppShell 以 AUTH_REAL 決定 tenant／user 來源，且示範提示用 i18n', () => {
+    const src = code('src/components/layout/AppShell.tsx');
+    expect(src).toMatch(/shellDataSources\(AUTH_REAL, USE_MOCK\)/);
+    expect(src).toMatch(/SRC\.tenantContextFromApi \? remoteTenants : MOCK_TENANTS/);
+    expect(src).toMatch(/SRC\.showDemoDataNotice/);
+    expect(src).toMatch(/common\.topbar\.demoDataNotice/);
+    // 不再直接以 USE_MOCK 判斷 tenant／user（USE_MOCK 只能出現在 shellDataSources 呼叫與 import）
+    const uses = src.split('\n').filter((l) => /\bUSE_MOCK\b/.test(l) && !/AUTH_REAL, USE_MOCK/.test(l));
+    expect(uses).toEqual([]);
+  });
+
+  it('i18n：示範資料提示文案固定', () => {
+    expect(read('src/i18n/zh-TW/common.ts')).toContain('目前頁面為示範資料，尚未連接正式資料');
+  });
+});
+
+describe('safeNextPath（防 open redirect）', () => {
+  it('站內相對路徑原樣通過（含 query）', () => {
+    expect(safeNextPath('/tenant/orders?x=1')).toBe('/tenant/orders?x=1');
+  });
+  it.each([null, undefined, '', 'https://evil.test', '//evil.test', '/\\evil.test', 'javascript:alert(1)', 'tenant/x', '/a\nb'])(
+    '拒絕 %s → dashboard',
+    (v) => {
+      expect(safeNextPath(v as string | null | undefined)).toBe('/tenant/dashboard');
+    },
+  );
+  it('登入頁使用 safeNextPath', () => {
+    expect(read('src/app/tenant/login/page.tsx')).toMatch(/router\.push\(safeNextPath\(next\)\)/);
+  });
+});

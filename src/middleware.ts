@@ -1,19 +1,16 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import { USE_MOCK } from '@/config/env';
+import { AUTH_REAL } from '@/config/env';
 
 const PUBLIC_PATHS = ['/tenant/login', '/tenant/register',
                       '/tenant/forgot-password', '/tenant/reset-password'];
 
 export async function middleware(req: NextRequest) {
-  // ⚠️ 修正：原本直接比對 `process.env.NEXT_PUBLIC_USE_MOCK === 'true'`，
-  // 未設定該變數時字面值是 undefined（不等於 'true'），middleware 會誤判為
-  // 「非 mock 模式」而要求真實 Supabase session；但 src/config/env.ts 的
-  // USE_MOCK 用 zod .default('true')，前端在同樣未設定的情況下判定為 mock
-  // 模式（login/register 走假動作、不呼叫真後端）。兩邊認定不一致，會讓
-  // 使用者在正式站「登入」後被 middleware 彈回登入頁（鐵則 10 要求
-  // mock 模式全站行為一致，這裡改成共用同一個判斷來源）。
-  if (USE_MOCK) return NextResponse.next();
+  // #754：session 保護只看認證模式 AUTH_REAL，與業務 USE_MOCK 無關。
+  // AUTH_REAL 由 resolveAuthMode() 以「原始 env」判斷：明確 mock（NEXT_PUBLIC_USE_MOCK=true
+  // 或 NEXT_PUBLIC_AUTH_MODE=mock）才放行；未設定或 false 一律 fail-closed 要求真 session，
+  // 避免 Production 缺值時前端走假登入、受保護頁卻形同公開。
+  if (!AUTH_REAL) return NextResponse.next();
   if (PUBLIC_PATHS.some((p) => req.nextUrl.pathname.startsWith(p))) return NextResponse.next();
 
   const res = NextResponse.next();

@@ -121,7 +121,30 @@ const clientSchema = z.object({
   NEXT_PUBLIC_GA_MEASUREMENT_ID: z.string().optional(),
   /** 骨架模式：true 時所有 API 走 src/mock 假資料，不需要任何後端 */
   NEXT_PUBLIC_USE_MOCK: z.enum(['true', 'false']).default('true'),
+  /**
+   * 認證邊界模式（#754）：獨立於業務 USE_MOCK。'real' 走真登入／真 session 保護，
+   * 'mock' 走假動作。未設定時由 resolveAuthMode() 依 NEXT_PUBLIC_USE_MOCK 的「原始值」決定。
+   */
+  NEXT_PUBLIC_AUTH_MODE: z.enum(['real', 'mock']).optional(),
 });
+
+export type AuthMode = 'real' | 'mock';
+
+/**
+ * 決定認證邊界走真或假（#754，fail-closed）。純函式，吃「原始」env 字串。
+ *   1. NEXT_PUBLIC_AUTH_MODE 明確為 real／mock → 以它為準；
+ *   2. 否則 NEXT_PUBLIC_USE_MOCK 明確為 'true'（本機示範、CI build）→ mock；
+ *   3. 'false' 或未設定（Production 現況）→ real。
+ * ⚠️ 不可餵經過 zod .default('true') 的值——缺值會被當成 'true'，等於又落回假登入。
+ */
+export function resolveAuthMode(
+  rawUseMock: string | undefined,
+  rawAuthMode: string | undefined,
+): AuthMode {
+  if (rawAuthMode === 'real' || rawAuthMode === 'mock') return rawAuthMode;
+  if (rawUseMock === 'true') return 'mock';
+  return 'real';
+}
 
 export const serverEnv = serverSchema.parse(process.env);
 
@@ -129,7 +152,15 @@ export const clientEnv = clientSchema.parse({
   NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
   NEXT_PUBLIC_GA_MEASUREMENT_ID: process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID,
   NEXT_PUBLIC_USE_MOCK: process.env.NEXT_PUBLIC_USE_MOCK,
+  NEXT_PUBLIC_AUTH_MODE: process.env.NEXT_PUBLIC_AUTH_MODE,
 });
 
+/** 業務資料是否走 mock。⚠️ 與認證無關——認證請看 AUTH_REAL。 */
 export const USE_MOCK = clientEnv.NEXT_PUBLIC_USE_MOCK === 'true';
+/**
+ * 認證邊界是否走真後端。Next 在 client bundle 只會 inline `process.env.NEXT_PUBLIC_*`
+ * 的字面存取，所以這裡必須直接寫字面，不能經 clientEnv（zod default 會把缺值變 'true'）。
+ */
+export const AUTH_REAL =
+  resolveAuthMode(process.env.NEXT_PUBLIC_USE_MOCK, process.env.NEXT_PUBLIC_AUTH_MODE) === 'real';
 export const APP_URL = clientEnv.NEXT_PUBLIC_APP_URL;
