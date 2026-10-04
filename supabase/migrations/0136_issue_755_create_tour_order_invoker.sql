@@ -14,6 +14,8 @@
 --
 -- ALTER FUNCTION 要求簽名與 0132 完全一致，簽名不存在時整個 migration 失敗（fail closed）。
 -- 既有的 PUBLIC/anon/authenticated revoke 與 service_role execute grant 都保留，不重複授權。
+-- 發布順序：本檔必須與 0128、0130、0132 同一個 release（FULL_PENDING_SET），或在它們之後套用；
+-- 簽名由 0132 定義，早於 0132 套用會因簽名不存在而失敗。
 alter function public.create_tour_order(
   uuid, text, uuid, integer, uuid, jsonb, public.tour_order_source, uuid, text, timestamptz
 ) security invoker;

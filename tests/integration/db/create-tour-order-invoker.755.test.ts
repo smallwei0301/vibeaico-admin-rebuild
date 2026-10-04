@@ -1,7 +1,7 @@
 /**
  * #755 R1 / 0136：Production 角色配置下 create_tour_order 的 refund_policy_snapshot。
  *
- * 只能在本機隔離 Supabase（TEST_PROFILE=LOCAL_ISOLATED 且 TEST_ENV_ID 為 local-pr-* 或 vibeaico-*）
+ * 只能在本機隔離 Supabase（TEST_PROFILE=LOCAL_ISOLATED，local-pr-* 專案或 CI 的 local-schema-<run_id> lane）
  * 執行；共享 canonical TEST 與 Production 一律 skip——此測試需要建立 role 並更改函式 owner，
  * 屬於 DB 層級變更，沒有授權在共享 TEST 做。
  *
@@ -10,8 +10,12 @@
  *      並把 create_tour_order 的 owner 改成它（trips 仍屬 postgres 並啟用 RLS）；
  *   2. 以 service_role（無 JWT）呼叫，量測 refund_policy_snapshot；
  *   3. 最後一律 ROLLBACK，role／owner／訂單全部不留痕跡。
- * 「修復前」＝函式維持 SECURITY DEFINER，預期 snapshot 為 NULL（重現 #755）；
- * 「修復後」＝套用 0136 的 ALTER ... SECURITY INVOKER，預期 snapshot 等於 trips.refund_policy_type。
+ * 本機 `supabase start` 已套用 0136，所以：
+ * 「修復前」＝在 transaction 內明確改回 SECURITY DEFINER，並把 trip_departures／trip_plans／
+ *   trip_plan_seasons 轉給測試 owner（Production 配置：只有 trips 仍屬 postgres 並受 RLS），
+ *   預期 snapshot 為 NULL（重現 #755）；
+ * 「修復後」＝不做任何 ALTER，先斷言 pg_proc.prosecdef = false（由 0136 產生），再驗證
+ *   snapshot 等於 trips.refund_policy_type——刪掉 0136 此案例就會失敗。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
@@ -24,9 +28,20 @@ const SIGNATURE =
   'public.create_tour_order(uuid, text, uuid, integer, uuid, jsonb, public.tour_order_source, uuid, text, timestamptz)';
 const POLICIES = ['STANDARD', 'FLEXIBLE', 'STRICT'] as const;
 
-const isLocalIsolated =
-  process.env.TEST_PROFILE === 'LOCAL_ISOLATED' &&
-  /^local-pr-|^vibeaico-/.test(String(process.env.TEST_ENV_ID ?? process.env.LOCAL_PROJECT_ID ?? ''));
+// 與 0135 的 admission 相同：local-pr-* 專案，或 agent-schema-bootstrap 的 local-schema-<run_id> lane。
+function isAdmittedLocalLane(env: NodeJS.ProcessEnv): boolean {
+  if (env.TEST_PROFILE !== 'LOCAL_ISOLATED') return false;
+  const prProject = /^local-pr-[0-9]+-[a-z]+$/.test(env.TEST_ENV_ID ?? '')
+    && /^vibeaico-[0-9]+-[a-z]+$/.test(env.LOCAL_PROJECT_ID ?? '')
+    && env.TEST_ENV_ID?.slice(9) === env.LOCAL_PROJECT_ID?.slice(9);
+  const schemaBootstrap = env.GITHUB_WORKFLOW === 'agent-schema-bootstrap'
+    && /^[1-9][0-9]*$/.test(env.GITHUB_RUN_ID ?? '')
+    && /^[1-9][0-9]*$/.test(env.GITHUB_RUN_ATTEMPT ?? '')
+    && env.TEST_ENV_ID === `local-schema-${env.GITHUB_RUN_ID}`
+    && env.LOCAL_PROJECT_ID === `schema-proof-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}`;
+  return prProject || schemaBootstrap;
+}
+const isLocalIsolated = isAdmittedLocalLane(process.env);
 const localDescribe = isLocalIsolated ? describe : describe.skip;
 
 class Rollback extends Error {}
@@ -43,7 +58,7 @@ localDescribe('#755 create_tour_order under the Production role layout (local is
 
   /** 在 transaction 內以 Production 角色配置執行 fn，結束後一律 rollback。 */
   async function inProductionLayout<T>(
-    invoker: boolean,
+    forceDefiner: boolean,
     fn: (tx: postgres.TransactionSql) => Promise<T>,
   ): Promise<T> {
     let result!: T;
@@ -55,8 +70,16 @@ localDescribe('#755 create_tour_order under the Production role layout (local is
         // 但 trips 的 RLS 仍會過濾掉它看得到的列。
         await tx.unsafe(`grant select on public.trips, public.trip_departures, public.trip_plans, public.trip_plan_seasons to ${OWNER}`);
         await tx.unsafe(`grant insert, select on public.tour_orders to ${OWNER}`);
+        // Production：departures／plans／seasons 由 migration owner 持有（owner 不受其 RLS 影響）。
+        for (const table of ['trip_departures', 'trip_plans', 'trip_plan_seasons']) {
+          await tx.unsafe(`alter table public.${table} owner to ${OWNER}`);
+        }
+        await tx.unsafe(`grant execute on function public.reserve_seats(uuid, integer) to ${OWNER}`);
         await tx.unsafe(`alter function ${SIGNATURE} owner to ${OWNER}`);
-        if (invoker) await tx.unsafe(`alter function ${SIGNATURE} security invoker`);
+        // 只有「修復前」案例才改回 definer；「修復後」案例完全依賴 0136 的結果。
+        if (forceDefiner) await tx.unsafe(`alter function ${SIGNATURE} security definer`);
+        const [{ prosecdef }] = await tx.unsafe(`select prosecdef from pg_proc where oid = '${SIGNATURE}'::regprocedure`);
+        expect(prosecdef).toBe(forceDefiner);
         result = await fn(tx);
         throw new Rollback();
       });
@@ -83,7 +106,7 @@ localDescribe('#755 create_tour_order under the Production role layout (local is
   }
 
   it('before R1 (SECURITY DEFINER, non-bypass owner) the snapshot is silently NULL', async () => {
-    const snapshots = await inProductionLayout(false, async (tx) => {
+    const snapshots = await inProductionLayout(true, async (tx) => {
       const out: Array<string | null> = [];
       for (const policy of POLICIES) {
         await tx.unsafe('reset role');
@@ -96,7 +119,7 @@ localDescribe('#755 create_tour_order under the Production role layout (local is
   });
 
   it('after R1 (SECURITY INVOKER) service_role without JWT snapshots STANDARD/FLEXIBLE/STRICT exactly', async () => {
-    const snapshots = await inProductionLayout(true, async (tx) => {
+    const snapshots = await inProductionLayout(false, async (tx) => {
       const out: Array<string | null> = [];
       for (const policy of POLICIES) {
         await tx.unsafe('reset role');
@@ -109,7 +132,7 @@ localDescribe('#755 create_tour_order under the Production role layout (local is
   });
 
   it('after R1 a cross-tenant call fails with DEPARTURE_NOT_FOUND and creates no order', async () => {
-    const outcome = await inProductionLayout(true, async (tx) => {
+    const outcome = await inProductionLayout(false, async (tx) => {
       await tx.unsafe('reset role');
       const [{ n: before }] = await tx.unsafe('select count(*)::int as n from public.tour_orders');
       let message = '';
