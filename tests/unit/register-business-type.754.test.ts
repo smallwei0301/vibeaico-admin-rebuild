@@ -117,6 +117,27 @@ describe('#754 register 業態寫入 tenants.business_type', () => {
     spy.mockRestore();
   });
 
+  it('tenant_users insert 失敗且刪店也失敗 → 500，仍刪 auth 帳號並記錄孤兒店家', async () => {
+    mocks.errs.tenantUsers = { message: 'boom' };
+    mocks.errs.tenantDelete = { message: 'delete failed' };
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const res = await POST(req(base), {});
+    expect(res.status).toBe(500);
+    expect(mocks.tenantDelete).toHaveBeenCalledWith('id', 'tenant-1');
+    expect(mocks.deleteUser).toHaveBeenCalledWith('user-1');
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('孤兒店家'), expect.objectContaining({ tenantId: 'tenant-1', shopCode: 'example-shop' }));
+    spy.mockRestore();
+  });
+
+  it('03-AUTH middleware 範例與實作一致：清 search、next 帶 pathname + search', () => {
+    const doc = readFileSync('docs/integration/03-AUTH.md', 'utf8');
+    const impl = readFileSync('src/middleware.ts', 'utf8');
+    for (const line of ["url.search = '';", "url.searchParams.set('next', req.nextUrl.pathname + req.nextUrl.search);"]) {
+      expect(impl).toContain(line);
+      expect(doc).toContain(line);
+    }
+  });
+
   it('tenants insert 失敗 → 500，沒有租戶可刪（不呼叫 delete），仍刪 auth 帳號', async () => {
     mocks.errs.tenantInsert = { message: 'dup' };
     const res = await POST(req(base), {});

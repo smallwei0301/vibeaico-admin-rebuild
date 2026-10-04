@@ -179,6 +179,7 @@ export const POST = handle(async (req) => {
   const userId = created.user.id;
 
   let tenantId: string | undefined;
+  let ownerLinked = false;   // 僅 tenant_users(OWNER) 寫入成功後為 true
   try {
     const { data: t, error } = await admin.from('tenants')
       .insert({ shop_code: b.shopCode, name: b.tenantName, business_type: b.businessType ?? 'LOCAL_SHOP' }).select('id').single();
@@ -186,6 +187,7 @@ export const POST = handle(async (req) => {
     tenantId = t.id;
     const { error: merr } = await admin.from('tenant_users').insert({ tenant_id: t.id, user_id: userId, role: 'OWNER' });
     if (merr) throw merr;   // 每一步都要檢查錯誤，否則會帶著半成品店家回 200
+    ownerLinked = true;
     const s = DEFAULT_TENANT_SETTINGS(b.shopCode, b.tenantName);
     const { error: serr } = await admin.from('tenant_settings').insert({
       tenant_id: t.id, basic: s.basic, business: s.business, notify: s.notify,
@@ -204,9 +206,14 @@ export const POST = handle(async (req) => {
     if (tenantId) {
       const { error: derr } = await admin.from('tenants').delete().eq('id', tenantId);   // 補償：刪店（cascade 清子表）
       if (derr) {
-        // 刪店失敗：保留 auth 帳號，店家仍有可登入的 owner，狀態可人工／重試復原；刪帳號會留下無主店家並佔住 shop_code
-        console.error('[register] 補償刪店失敗，保留 auth 帳號', { tenantId, shopCode: b.shopCode, error: derr });
-        throw e;
+        if (ownerLinked) {
+          // 刪店失敗但 owner membership 已建立：保留 auth 帳號，店家仍有可登入的 owner，可人工／重試復原；刪帳號會留下無主店家並佔住 shop_code
+          console.error('[register] 補償刪店失敗，保留 auth 帳號', { tenantId, shopCode: b.shopCode, error: derr });
+          throw e;
+        }
+        // 刪店失敗且尚無 owner membership（失敗點在 tenant_users insert）：租戶守門會回 403，保留帳號只會讓使用者
+        // 同時被 email 與 shop_code 鎖死；記錄孤兒店家供人工清理，仍刪 auth 帳號釋放 email
+        console.error('[register] 補償刪店失敗，孤兒店家（尚無 owner membership），仍刪除 auth 帳號', { tenantId, shopCode: b.shopCode, error: derr });
       }
     }
     await admin.auth.admin.deleteUser(userId);       // 補償：建店失敗就回滾帳號
@@ -375,7 +382,8 @@ export async function middleware(req: NextRequest) {
   if (!user) {
     const url = req.nextUrl.clone();
     url.pathname = '/tenant/login';
-    url.searchParams.set('next', req.nextUrl.pathname);   // 登入頁以 safeNextPath() 驗證後才導回
+    url.search = '';   // 清掉原請求的 query，避免與登入頁參數混用
+    url.searchParams.set('next', req.nextUrl.pathname + req.nextUrl.search);   // 保留完整 next；登入頁以 safeNextPath() 驗證後才導回
     return NextResponse.redirect(url);
   }
   return res;
