@@ -1,3 +1,5 @@
+import { publicStringList, safePublicHttpsUrl } from '@/lib/public-url';
+
 /**
  * 行程圖庫張數上限。來源：後台行程編輯頁（src/app/tenant/trips/[id]/page.tsx）原本宣告的 GALLERY_MAX = 8，
  * 現在由該頁、公開詳情 loader 與寫入端 schema（#748）共用同一個值。
@@ -30,9 +32,20 @@ export function omitUnchangedGallery<T extends { galleryUrls?: string[] }>(
 }
 
 /**
- * 複製行程用：來源相簿超過寫入上限時截到上限，保留前面張數。
- * 公開詳情 loader 本來就只輸出前 MAX 張，所以被截掉的是旅客本來就看不到的部分。
+ * 公開詳情 loader 的相簿輸出：先濾掉非字串／非 https／含帳密／過長的 URL，再截到上限。
+ * 公開頁與「複製行程」共用這一個函式，兩邊的相簿才會逐張相同。
+ */
+export function publicGalleryUrls(value: unknown): string[] {
+  return publicStringList(value)
+    .map(safePublicHttpsUrl).filter(Boolean)
+    .slice(0, MAX_PUBLIC_GALLERY_IMAGES);
+}
+
+/**
+ * 複製行程用：先套用公開頁相同的 URL 過濾，再截到寫入上限。
+ * 被濾掉的是旅客本來就看不到的無效項目，因此複本的公開相簿與原行程逐張相同；
+ * 同時保證輸出不超過寫入端 gallery max，POST 不會被擋成 400。
  */
 export function clampGalleryForCopy(urls: string[] | undefined): string[] | undefined {
-  return urls ? urls.slice(0, MAX_TRIP_GALLERY_IMAGES) : urls;
+  return urls ? publicGalleryUrls(urls).slice(0, MAX_TRIP_GALLERY_IMAGES) : urls;
 }

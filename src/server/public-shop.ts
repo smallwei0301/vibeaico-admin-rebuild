@@ -39,7 +39,8 @@ import { readPlanSeasons } from '@/server/public-plan-seasons';
 import { bookingCandidateSeatsLeft, createCandidateTracker } from '@/lib/public-departure-candidates';
 import { bookingCtaState, type BookingCtaState } from '@/lib/public-trip-client-state';
 import { hasStartedToday, resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
-import { MAX_PUBLIC_GALLERY_IMAGES } from '@/lib/trip-gallery';
+import { publicGalleryUrls } from '@/lib/trip-gallery';
+import { publicStringList, safePublicHttpsUrl } from '@/lib/public-url';
 import {
   MAX_PUBLIC_LIST_ITEM_CHARS,
   MAX_PUBLIC_LONG_TEXT_CHARS,
@@ -349,7 +350,6 @@ function limitPublicPlanText(plan: PublicPlan): PublicPlan {
   };
 }
 
-const MAX_PUBLIC_URL_CHARS = 2048;
 const MAX_PUBLIC_EMAIL_CHARS = 254;
 const MAX_PUBLIC_LINE_ID_CHARS = 64;
 
@@ -570,25 +570,6 @@ function queryTripDetailsFailed(stage: string, cause: unknown): Error {
   return new Error(`PUBLIC_TRIP_DETAILS_QUERY_FAILED:${stage}`, { cause });
 }
 
-function safePublicHttpsUrl(value: unknown): string {
-  if (typeof value !== 'string' || !value.trim()) return '';
-  // 超過 2048 字元的 URL 一律丟棄（不輸出）。
-  if (value.trim().length > MAX_PUBLIC_URL_CHARS) return '';
-  try {
-    const url = new URL(value.trim());
-    if (url.protocol !== 'https:' || url.username || url.password) return '';
-    return url.toString();
-  } catch {
-    return '';
-  }
-}
-
-function publicStringList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === 'string')
-    .map((item) => item.trim()).filter(Boolean);
-}
-
 function publicLines(value: unknown): string[] {
   if (typeof value !== 'string') return [];
   return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
@@ -662,10 +643,8 @@ async function loadPublicTripDetailsUncached(
   });
   const departuresByPlan = new Map(planDepartureResults);
 
-  // 先過濾非法 URL 再截到上限（與後台上限共用常數）；client 只渲染這份輸出。
-  const gallery = publicStringList(row.gallery)
-    .map(safePublicHttpsUrl).filter(Boolean)
-    .slice(0, MAX_PUBLIC_GALLERY_IMAGES);
+  // 先過濾非法 URL 再截到上限；與「複製行程」共用 publicGalleryUrls，client 只渲染這份輸出。
+  const gallery = publicGalleryUrls(row.gallery);
   return {
     shop: limitPublicShopText(shopData.shop),
     timeZone: shopData.timeZone,
