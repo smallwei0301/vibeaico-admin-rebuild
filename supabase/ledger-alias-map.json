@@ -662,6 +662,13 @@
       "classification": "NOT_APPLIED",
       "notAppliedReason": "PENDING_APPLY",
       "evidence": "#46 SOURCE_PREPARE：新增 GUIDE staff 的 DEFAULT_AVAILABLE／EXPLICIT_ONLY availability_policy 與 service_role-only、SECURITY INVOKER 的唯讀 interval predicate。尚未套用 canonical TEST 或 Production；沒有 writer／原子占用或 INSTANT 成交宣稱。native LOCAL 驗證與 canonical 0135 release selector／coverage 接線、受控 G0–G7 發布均仍需後續完成；本分類不授權遠端套用。"
+    },
+    {
+      "repoFile": "0136_issue_755_create_tour_order_invoker",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#755 R1：0130/0132 的 create_tour_order 為 SECURITY DEFINER 且 owner 是 production_migration_owner（nobypassrls），而 public.trips 受 RLS（is_tenant_member，依 auth.uid()）保護，唯一呼叫者 service_role 沒有終端使用者 JWT，導致 refund_policy_snapshot 被靜默寫成 NULL。此不可覆寫的後續 migration 對 0132 的完整簽名執行 ALTER FUNCTION ... SECURITY INVOKER（函式本體與既有 grant/revoke 不變，沿用 0134 作法）。尚未套用 canonical TEST 或 Production；須依 shared TEST serialization 與 Production G0-G7 另行驗證／發布。"
     }
   ]
 }

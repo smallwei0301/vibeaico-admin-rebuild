@@ -345,6 +345,24 @@ export const PRODUCTION_DB_G3_AUTHZ_CONTRACTS = Object.freeze({
       }),
     ]),
   }),
+  '0136_issue_755_create_tour_order_invoker': Object.freeze({
+    requiredFiles: Object.freeze([
+      'tests/unit/create-tour-order-invoker-migration.755.test.ts',
+      'tests/integration/db/create-tour-order-invoker.755.test.ts',
+    ]),
+    tenantBoundaryAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/db/create-tour-order-invoker.755.test.ts',
+        fragment: 'after R1 a cross-tenant call fails with DEPARTURE_NOT_FOUND and creates no order',
+      }),
+    ]),
+    negativeRoleAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/unit/create-tour-order-invoker-migration.755.test.ts',
+        fragment: 'does not touch the function body, grants or any other object',
+      }),
+    ]),
+  }),
   '0132_issue_42_seasonal_price_resolution': Object.freeze({
     requiredFiles: Object.freeze([
       'tests/integration/api/tour-order-authz.447.test.ts',
