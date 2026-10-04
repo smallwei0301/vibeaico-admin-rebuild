@@ -29,7 +29,8 @@ export async function middleware(req: NextRequest) {
   if (!user) {
     const url = req.nextUrl.clone();
     url.pathname = '/tenant/login';
-    url.searchParams.set('next', req.nextUrl.pathname);
+    url.search = '';
+    url.searchParams.set('next', req.nextUrl.pathname + req.nextUrl.search);
     return NextResponse.redirect(url);
   }
   return res;

@@ -124,6 +124,8 @@ const clientSchema = z.object({
   /**
    * 認證邊界模式（#754）：獨立於業務 USE_MOCK。'real' 走真登入／真 session 保護，
    * 'mock' 走假動作。未設定時由 resolveAuthMode() 依 NEXT_PUBLIC_USE_MOCK 的「原始值」決定。
+   * ⚠️ zod enum 遇到 real／mock 以外的非法值（例如拼錯成 'live'）會在模組載入時直接拋錯（fail-loud），
+   * 不會靜默落回某個預設值。
    */
   NEXT_PUBLIC_AUTH_MODE: z.enum(['real', 'mock']).optional(),
 });

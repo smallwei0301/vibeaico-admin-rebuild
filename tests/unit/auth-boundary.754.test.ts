@@ -9,7 +9,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 import { resolveAuthMode } from '@/config/env';
-import { performLogout, safeNextPath, shellDataSources } from '@/lib/auth-boundary';
+import {
+  initialShellIdentity, mockUserNameForMode, performLogout, safeNextPath, shellDataSources,
+} from '@/lib/auth-boundary';
 
 const read = (relative: string) =>
   readFileSync(fileURLToPath(new URL(`../../${relative}`, import.meta.url)), 'utf8');
@@ -178,6 +180,18 @@ describe('middleware', () => {
     expect(getUser).not.toHaveBeenCalled();
   });
 
+  it('real：next 保留 query string（/tenant/impersonate?guide=x）', async () => {
+    const { middleware } = await load({});
+    getUser.mockResolvedValue({ data: { user: null } });
+    const res = await middleware(req('/tenant/impersonate?guide=x'));
+    const loc = new URL(res.headers.get('location')!);
+    expect(loc.pathname).toBe('/tenant/login');
+    expect(loc.search).toBe('?next=%2Ftenant%2Fimpersonate%3Fguide%3Dx');
+    expect(loc.searchParams.get('next')).toBe('/tenant/impersonate?guide=x');
+    // login 頁導回時 safeNextPath 保留 query
+    expect(safeNextPath(loc.searchParams.get('next'))).toBe('/tenant/impersonate?guide=x');
+  });
+
   it('原始碼只用 AUTH_REAL，不再以 USE_MOCK 判斷', () => {
     const src = code('src/middleware.ts');
     expect(src).toMatch(/AUTH_REAL/);
@@ -259,6 +273,45 @@ describe('AppShell 資料來源', () => {
     expect(uses).toEqual([]);
   });
 
+  const MOCK_T = [{ id: 'a' }, { id: 'b', current: true }];
+  const MOCK_U = { name: '假使用者' };
+
+  it('initialShellIdentity：real 不論 useMock 都不取 MOCK_*', () => {
+    for (const useMock of [true, false]) {
+      expect(initialShellIdentity(true, useMock, MOCK_T, MOCK_U)).toEqual({ tenantId: '', userName: null });
+    }
+  });
+
+  it('initialShellIdentity：mock 認證取 current 店家與 MOCK_USER', () => {
+    for (const useMock of [true, false]) {
+      expect(initialShellIdentity(false, useMock, MOCK_T, MOCK_U)).toEqual({ tenantId: 'b', userName: '假使用者' });
+    }
+    expect(initialShellIdentity(false, true, [{ id: 'z' }], MOCK_U).tenantId).toBe('z');
+  });
+
+  it('mockUserNameForMode：real 回 null（不覆蓋），mock 回 MOCK_USER 名稱', () => {
+    expect(mockUserNameForMode(true, MOCK_U)).toBeNull();
+    expect(mockUserNameForMode(false, MOCK_U)).toBe('假使用者');
+  });
+
+  it('接線：AppShell 身分初值與業態切換覆蓋都經過純函式，不直接用 MOCK_USER／MOCK_TENANTS 初值', () => {
+    const src = code('src/components/layout/AppShell.tsx');
+    expect(src).toMatch(/initialShellIdentity\(AUTH_REAL, USE_MOCK, MOCK_TENANTS, MOCK_USER\)\.tenantId/);
+    expect(src).toMatch(/initialShellIdentity\(AUTH_REAL, USE_MOCK, MOCK_TENANTS, MOCK_USER\)\.userName/);
+    expect(src).toMatch(/mockUserNameForMode\(AUTH_REAL, MOCK_USER\)/);
+    expect(src).not.toMatch(/setUserName\(MOCK_USER/);
+    expect(src).not.toMatch(/useState\([^)]*MOCK_TENANTS/);
+  });
+
+  it('接線：my-tenants 載入失敗不吞錯，AUTH_REAL 時顯示 danger Alert（文案在 i18n）', () => {
+    const src = code('src/components/layout/AppShell.tsx');
+    expect(src).not.toMatch(/myTenants\(\)[\s\S]*?\.catch\(\(\) => \{\}\)/);
+    expect(src).toMatch(/\.catch\(\(\) => setTenantsLoadFailed\(true\)\)/);
+    expect(src).toMatch(/SRC\.tenantContextFromApi && tenantsLoadFailed/);
+    expect(src).toMatch(/tone="danger"[\s\S]*?common\.topbar\.tenantsLoadFailed/);
+    expect(read('src/i18n/zh-TW/common.ts')).toContain('tenantsLoadFailed:');
+  });
+
   it('i18n：示範資料提示文案固定', () => {
     expect(read('src/i18n/zh-TW/common.ts')).toContain('目前頁面為示範資料，尚未連接正式資料');
   });
@@ -276,5 +329,35 @@ describe('safeNextPath（防 open redirect）', () => {
   );
   it('登入頁使用 safeNextPath', () => {
     expect(read('src/app/tenant/login/page.tsx')).toMatch(/router\.push\(safeNextPath\(next\)\)/);
+  });
+});
+
+describe('POST /api/auth/logout（signOut 錯誤不得被吞）', () => {
+  afterEach(() => { vi.doUnmock('@/server/supabase'); vi.doUnmock('next/headers'); vi.resetModules(); });
+  const loadRoute = async (signOut: () => Promise<{ error: unknown }>) => {
+    vi.resetModules();
+    // handle() 對寫入請求會讀 cookie（代登入稽核）；單元環境無 request scope，給空 cookie
+    vi.doMock('next/headers', () => ({ cookies: async () => ({ get: () => undefined, getAll: () => [] }) }));
+    vi.doMock('@/server/supabase', () => ({ createServerSupabase: async () => ({ auth: { signOut } }) }));
+    return (await import('@/app/api/auth/logout/route')).POST;
+  };
+  const call = (POST: (req: Request, ctx: any) => Promise<Response>) =>
+    POST(new Request('http://localhost:3000/api/auth/logout', { method: 'POST' }), {});
+
+  it('signOut 成功 → 200 loggedOut', async () => {
+    const POST = await loadRoute(async () => ({ error: null }));
+    const res = await call(POST);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ success: true, data: { loggedOut: true } });
+  });
+
+  it('signOut 回 error → 500 SYS_001，不回 loggedOut', async () => {
+    const POST = await loadRoute(async () => ({ error: new Error('boom') }));
+    const res = await call(POST);
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.success).toBe(false);
+    expect(body.code).toBe('SYS_001');
+    expect(body.data).toBeUndefined();
   });
 });

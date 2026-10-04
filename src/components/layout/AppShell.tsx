@@ -13,7 +13,7 @@ import { MOCK_TENANTS, MOCK_SIDEBAR_COUNTS, MOCK_SETUP_STATUS, MOCK_USER, applyM
 import { AUTH_REAL, USE_MOCK } from '@/config/env';
 import { Alert } from '@/components/ui/Alert';
 import { common } from '@/i18n/zh-TW/common';
-import { shellDataSources } from '@/lib/auth-boundary';
+import { shellDataSources, initialShellIdentity, mockUserNameForMode } from '@/lib/auth-boundary';
 import { cn } from '@/lib/utils';
 import { myTenants, switchTenant as switchTenantApi, sidebarCounts, currentUserName, getSetupStatus } from '@/services';
 import type { SidebarCounts } from '@/services/shell';
@@ -60,8 +60,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
    * 存進 localStorage 讓重新整理／直接開網址時仍保持（真實後端對應
    * switch-tenant 的 cookie，見 03 分冊 §5）。
    */
-  const [tenantId, setTenantId] = React.useState(() =>
-    SRC.tenantContextFromApi ? '' : (MOCK_TENANTS.find((t) => t.current) ?? MOCK_TENANTS[0]).id,
+  const [tenantId, setTenantId] = React.useState(
+    () => initialShellIdentity(AUTH_REAL, USE_MOCK, MOCK_TENANTS, MOCK_USER).tenantId,
   );
 
   React.useEffect(() => {
@@ -78,7 +78,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       setRemoteTenants(list);
       const cur = list.find((tt) => tt.current) ?? list[0];
       if (cur) setTenantId(cur.id);
-    }).catch(() => {});
+    }).catch(() => setTenantsLoadFailed(true));
   }, []);
 
   const tenants = SRC.tenantContextFromApi ? remoteTenants : MOCK_TENANTS;
@@ -98,7 +98,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [setupPercent, setSetupPercent] = React.useState<number | null>(
     () => (SRC.businessDataFromMock ? MOCK_SETUP_STATUS.percent : null),
   );
-  const [userName, setUserName] = React.useState<string | null>(() => (SRC.tenantContextFromApi ? null : MOCK_USER.name));
+  const [userName, setUserName] = React.useState<string | null>(
+    () => initialShellIdentity(AUTH_REAL, USE_MOCK, MOCK_TENANTS, MOCK_USER).userName,
+  );
+  const [tenantsLoadFailed, setTenantsLoadFailed] = React.useState(false);
 
   React.useEffect(() => {
     if (!SRC.businessDataFromMock) return;
@@ -107,7 +110,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setCounts(MOCK_SIDEBAR_COUNTS);
     setSetupPercent(MOCK_SETUP_STATUS.percent);
     // 使用者名稱屬認證 context：AUTH_REAL 時不得用 MOCK_USER 覆蓋
-    if (!SRC.tenantContextFromApi) setUserName(MOCK_USER.name);
+    const mockName = mockUserNameForMode(AUTH_REAL, MOCK_USER);
+    if (mockName !== null) setUserName(mockName);
   }, [businessType]);
 
   React.useEffect(() => {
@@ -153,6 +157,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           />
           {/* 代入中必須每一頁都看得到——見 ImpersonationBanner 檔頭。 */}
           <ImpersonationBanner />
+          {SRC.tenantContextFromApi && tenantsLoadFailed && (
+            <Alert tone="danger" role="alert" className="mx-4 mt-3" data-testid="tenants-load-failed">
+              {common.topbar.tenantsLoadFailed}
+            </Alert>
+          )}
           {SRC.showDemoDataNotice && (
             <Alert tone="warning" role="status" className="mx-4 mt-3" data-testid="demo-data-notice">
               {common.topbar.demoDataNotice}

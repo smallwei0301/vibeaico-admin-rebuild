@@ -22,6 +22,29 @@ export function shellDataSources(authReal: boolean, useMock: boolean) {
 }
 
 /**
+ * AppShell 身分欄位（目前店家 id、使用者名稱）的初值。
+ * authReal 時一律為「尚未知道」（空字串／null），絕不取 mock 資料；只有 mock 認證才用 MOCK_*。
+ * useMock 參數保留給呼叫端對齊簽名，身分初值只看 authReal（認證軸與業務軸互相獨立）。
+ */
+export function initialShellIdentity(
+  authReal: boolean,
+  _useMock: boolean,
+  mockTenants: ReadonlyArray<{ id: string; current?: boolean }>,
+  mockUser: { name: string },
+): { tenantId: string; userName: string | null } {
+  if (authReal) return { tenantId: '', userName: null };
+  return {
+    tenantId: (mockTenants.find((t) => t.current) ?? mockTenants[0])?.id ?? '',
+    userName: mockUser.name,
+  };
+}
+
+/** 業務資料切換 mock 業態時，使用者名稱是否可被 MOCK_USER 覆蓋：只有 mock 認證才可，real 時回 null＝不覆蓋。 */
+export function mockUserNameForMode(authReal: boolean, mockUser: { name: string }): string | null {
+  return authReal ? null : mockUser.name;
+}
+
+/**
  * `?next=` 只允許站內相對路徑（防 open redirect）。
  * 必須以單一「/」開頭；拒絕 `//host`、`/\host`、含 scheme、含控制字元的值。
  * 不合法一律回 fallback。

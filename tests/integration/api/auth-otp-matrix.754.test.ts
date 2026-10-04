@@ -86,7 +86,9 @@ describe('OTP 錯誤矩陣（#754）', () => {
       email: regEmail, code: '123456', password: 'Passw0rd!exp1', tenantName: '過期店', shopCode: uniqueShopCode('exp'),
     }));
 
+    // reset 用「已註冊帳號」，使 400 只可能來自過期檢查（而非帳號不存在）
     const resetEmail = uniqueEmail('expired-reset');
+    await registerAccount(resetEmail, 'Passw0rd!exp0');
     await insertCode(resetEmail, '654321', 'RESET_PASSWORD', { expiresInMs: -60_000 });
     await expectCodeInvalid(await postJson('/api/auth/reset-password', {
       email: resetEmail, code: '654321', newPassword: 'Passw0rd!exp2',
@@ -138,11 +140,17 @@ describe('登出後 session 失效（#754）', () => {
     expect(before.status).toBe(200);
     expect((await readJson<{ email: string }>(before)).data!.email).toBe(email);
 
+    const cookieBeforeLogout = api.cookieHeader();
+    expect(cookieBeforeLogout).not.toBe('');
     const out = await api.post('/api/auth/logout');
     expect(out.status).toBe(200);
     expect((await readJson<{ loggedOut: boolean }>(out)).data!.loggedOut).toBe(true);
 
     const after = await api.get('/api/auth/me');
     expect(after.status).toBe(401);
+
+    // 原樣重放登出前保存的 cookie：401 才證明 server 端 session 已失效，而非只是沒帶 cookie
+    const replay = await fetch(`${BASE}/api/auth/me`, { headers: { Cookie: cookieBeforeLogout } });
+    expect(replay.status).toBe(401);
   });
 });
