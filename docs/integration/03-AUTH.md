@@ -144,6 +144,7 @@ import { handle, ok, fail, ERR } from '@/server/http';
 import { createAdminSupabase } from '@/server/supabase';
 import { consumeCode } from '@/server/verify-code';
 import { DEFAULT_TENANT_SETTINGS } from '@/config/tenant-settings';
+import { MODE_PRESETS } from '@/config/modes';
 
 const bodySchema = z.object({
   email: z.string().email(),
@@ -151,6 +152,7 @@ const bodySchema = z.object({
   password: z.string().min(8, '密碼至少 8 碼'),
   tenantName: z.string().min(1, '請輸入店家名稱'),
   shopCode: z.string().regex(/^[a-z0-9-]+$/, '僅限小寫英文、數字、連字號'),
+  businessType: z.enum(['LOCAL_SHOP', 'GUIDE', 'CLINIC']).optional(),   // 預設 LOCAL_SHOP，寫入 tenants.business_type
 });
 
 function isDuplicateEmailError(error: unknown): boolean {
@@ -176,17 +178,44 @@ export const POST = handle(async (req) => {
   }
   const userId = created.user.id;
 
+  let tenantId: string | undefined;
+  let ownerLinked = false;   // 僅 tenant_users(OWNER) 寫入成功後為 true
   try {
     const { data: t, error } = await admin.from('tenants')
-      .insert({ shop_code: b.shopCode, name: b.tenantName }).select('id').single();
+      .insert({ shop_code: b.shopCode, name: b.tenantName, business_type: b.businessType ?? 'LOCAL_SHOP' }).select('id').single();
     if (error) throw error;
-    await admin.from('tenant_users').insert({ tenant_id: t.id, user_id: userId, role: 'OWNER' });
+    tenantId = t.id;
+    const { error: merr } = await admin.from('tenant_users').insert({ tenant_id: t.id, user_id: userId, role: 'OWNER' });
+    if (merr) throw merr;   // 每一步都要檢查錯誤，否則會帶著半成品店家回 200
+    ownerLinked = true;
     const s = DEFAULT_TENANT_SETTINGS(b.shopCode, b.tenantName);
-    await admin.from('tenant_settings').insert({
+    const { error: serr } = await admin.from('tenant_settings').insert({
       tenant_id: t.id, basic: s.basic, business: s.business, notify: s.notify,
       privacy: s.privacy, points: s.points, line: { ...s.line, channelSecret: undefined, channelAccessToken: undefined },
     });
+    if (serr) throw serr;
+    // 依模式贈與功能（GUIDE → TOUR_MODULE；source='GRANTED'、永久）
+    const granted = MODE_PRESETS[b.businessType ?? 'LOCAL_SHOP'].grantedFeatures;
+    if (granted.length > 0) {
+      const { error: ferr } = await admin.from('feature_subscriptions').insert(
+        granted.map((code) => ({ tenant_id: t.id, code, active: true, expires_at: null, source: 'GRANTED' })),
+      );
+      if (ferr) throw ferr;
+    }
   } catch (e) {
+    if (tenantId) {
+      const { error: derr } = await admin.from('tenants').delete().eq('id', tenantId);   // 補償：刪店（cascade 清子表）
+      if (derr) {
+        if (ownerLinked) {
+          // 刪店失敗但 owner membership 已建立：保留 auth 帳號，店家仍有可登入的 owner，可人工／重試復原；刪帳號會留下無主店家並佔住 shop_code
+          console.error('[register] 補償刪店失敗，保留 auth 帳號', { tenantId, shopCode: b.shopCode, error: derr });
+          throw e;
+        }
+        // 刪店失敗且尚無 owner membership（失敗點在 tenant_users insert）：租戶守門會回 403，保留帳號只會讓使用者
+        // 同時被 email 與 shop_code 鎖死；記錄孤兒店家供人工清理，仍刪 auth 帳號釋放 email
+        console.error('[register] 補償刪店失敗，孤兒店家（尚無 owner membership），仍刪除 auth 帳號', { tenantId, shopCode: b.shopCode, error: derr });
+      }
+    }
     await admin.auth.admin.deleteUser(userId);       // 補償：建店失敗就回滾帳號
     throw e;
   }
@@ -219,9 +248,26 @@ export const POST = handle(async (req) => {
 
 ```ts
 // /api/auth/logout/route.ts
+// （import：cookies from 'next/headers'；ApiHttpError, ERR, handle, ok from '@/server/http'；
+//   IMPERSONATION_COOKIE, endImpersonation from '@/server/platform-admin'；isMissingSessionError from '@/server/tenant'）
 export const POST = handle(async () => {
   const supabase = await createServerSupabase();
-  await supabase.auth.signOut();
+  // 代入中登出：先結束代入 session（admin_user_id 收窄、冪等）並清 cookie；結束失敗直接 500，不謊報已登出
+  const jar = await cookies();
+  const sessionId = jar.get(IMPERSONATION_COOKIE)?.value;
+  if (sessionId) {
+    const { data, error: uerr } = await supabase.auth.getUser();
+    // Auth 服務故障 ≠ 沒登入：fail closed（503），保留 cookie 以便重試，不 signOut（同 requireUser）
+    if (uerr && !isMissingSessionError(uerr)) {
+      console.error('[auth] logout getUser failed; keeping impersonation cookie for retry', uerr);
+      throw new ApiHttpError(503, '暫時無法確認登入狀態，請稍後再試', ERR.INTERNAL);
+    }
+    if (data?.user) await endImpersonation(sessionId, data.user.id);
+    jar.set(IMPERSONATION_COOKIE, '', { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 0 });
+  }
+  // 只結束目前裝置的 session；錯誤不得吞掉，否則 session 沒撤銷卻回 200
+  const { error } = await supabase.auth.signOut({ scope: 'local' });
+  if (error) throw new ApiHttpError(500, '登出失敗，請稍後再試', ERR.INTERNAL);
   return ok({ loggedOut: true });
 });
 ```
@@ -281,6 +327,11 @@ export const GET = handle(async () => {
 
 // GET /api/auth/my-tenants  →  TenantSummary[]（見 src/lib/types.ts）
 // current = 與 requireTenant() 解析結果相同者為 true
+// select 含 tenants.business_type（AppShell 在 AUTH_REAL 下以此決定業態外框）。
+// ⚠️ 平台管理者代登入期間（t.impersonation 有值）：只回代入目標一筆
+//    { id: t.tenantId, shopCode, name, role: t.role, current: true, businessType }，
+//    資料取自 requireTenant() 已載入的 tenants 列、不查 tenant_users，
+//    目標只能來自 session row，絕不由 request 輸入推導；殼層因此只有一個選項，無從切走。
 
 // POST /api/auth/switch-tenant  body: { tenantId }
 // 驗證是成員 → cookies().set(ACTIVE_TENANT_COOKIE, tenantId, { httpOnly:true, path:'/', sameSite:'lax' })
@@ -290,17 +341,32 @@ export const GET = handle(async () => {
 
 ## 6. 頁面保護與接線
 
+### 6.0 認證模式 `resolveAuthMode()`（#754）
+
+認證邊界（登入、session 保護、店家脈絡）獨立於業務資料開關 `NEXT_PUBLIC_USE_MOCK`，
+由 `src/config/env.ts` 的 `resolveAuthMode(rawUseMock, rawAuthMode)` 吃**原始 env 字串**決定
+（不可餵經 zod `.default('true')` 的值，缺值會被誤當 `'true'`）：
+
+1. `NEXT_PUBLIC_AUTH_MODE` 明確為 `real`／`mock` → 以它為準（其他值載入時直接拋錯）；
+2. 否則 `NEXT_PUBLIC_USE_MOCK === 'true'` → `mock`（本機示範、CI build）；
+3. `'false'` 或未設定 → `real`（fail-closed：Production 缺值也要求真 session）。
+
+匯出常數 `AUTH_REAL`；以下 middleware、service、頁面接線全部只看 `AUTH_REAL`。
+**混合模式**（`AUTH_REAL` + 業務 `USE_MOCK=true`）：認證與店家清單走真 API，其餘業務資料仍是 mock，
+AppShell 須顯示 `common.topbar.demoDataNotice` 提示，且 AUTH_REAL 分支絕不讀 `MOCK_TENANTS`／`MOCK_USER`。
+
 ### 6.1 `src/middleware.ts`（新檔，repo 根層 src/）
 
 ```ts
 import { NextResponse, type NextRequest } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { AUTH_REAL } from '@/config/env';
 
 const PUBLIC_PATHS = ['/tenant/login', '/tenant/register',
                       '/tenant/forgot-password', '/tenant/reset-password'];
 
 export async function middleware(req: NextRequest) {
-  if (process.env.NEXT_PUBLIC_USE_MOCK === 'true') return NextResponse.next(); // 鐵則 10
+  if (!AUTH_REAL) return NextResponse.next(); // 只有「明確 mock 認證」才放行；缺值／false 一律往下驗 session
   if (PUBLIC_PATHS.some((p) => req.nextUrl.pathname.startsWith(p))) return NextResponse.next();
 
   const res = NextResponse.next();
@@ -308,14 +374,16 @@ export async function middleware(req: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     { cookies: {
         getAll: () => req.cookies.getAll(),
-        setAll: (all) => all.forEach(({ name, value, options }) => res.cookies.set(name, value, options)),
+        setAll: (all: { name: string; value: string; options: CookieOptions }[]) =>
+          all.forEach(({ name, value, options }) => res.cookies.set(name, value, options)),
     } },
   );
   const { data: { user } } = await supabase.auth.getUser();  // 同時完成 token 續期
   if (!user) {
     const url = req.nextUrl.clone();
     url.pathname = '/tenant/login';
-    url.searchParams.set('next', req.nextUrl.pathname);
+    url.search = '';   // 清掉原請求的 query，避免與登入頁參數混用
+    url.searchParams.set('next', req.nextUrl.pathname + req.nextUrl.search);   // 保留完整 next；登入頁以 safeNextPath() 驗證後才導回
     return NextResponse.redirect(url);
   }
   return res;
@@ -326,19 +394,24 @@ export const config = { matcher: ['/tenant/:path*'] };
 
 ### 6.2 `src/services/auth.ts`（新檔）
 
-比照既有 service 寫法，全部走 `adapt(mock, real)`：
+認證專用 service 一律走 `adaptAuth(mock, real)`（`src/lib/api.ts`）：只看 `AUTH_REAL`，
+與業務 `USE_MOCK` 無關；`AUTH_REAL` 時直接打真 API（不 delay），否則才走 mock。
+**不得**用 `adapt()`——它綁業務 `USE_MOCK`，會讓「業務 mock＋真登入」的混合模式誤走假登入。
 
 ```ts
 export const login = (email: string, password: string) =>
-  adapt(() => undefined,
+  adaptAuth(() => undefined,
         () => request<void>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }));
-export const logout = () => …            // POST /api/auth/logout
+export const logout = () => …            // POST /api/auth/logout；route 以 signOut({ scope: 'local' })，
+                                         // 只結束目前裝置（預設 global 會踢掉所有裝置）；signOut 失敗要回錯，
+                                         // Topbar 失敗時顯示錯誤、不導向（不假裝已登出）
+                                         // 代入期間登出會一併結束代入 session（ended_at）並清除 vibeai_impersonation cookie
 export const sendVerificationCode = (email: string, purpose: 'REGISTER'|'RESET_PASSWORD') => …
 export const registerTenant = (payload: {…}) => …
 export const forgotPassword = (email: string) => …
 export const resetPassword = (payload: {…}) => …
 export const changePassword = (payload: {…}) => …
-export const myTenants = () => adapt<TenantSummary[]>(() => MOCK_TENANTS, () => request('/api/auth/my-tenants'));
+export const myTenants = () => adaptAuth<TenantSummary[]>(() => MOCK_TENANTS, () => request('/api/auth/my-tenants'));
 export const switchTenant = (tenantId: string) => …
 ```
 
@@ -348,7 +421,7 @@ export const switchTenant = (tenantId: string) => …
 
 | 頁 | 改法 |
 |---|---|
-| `/tenant/login/page.tsx` | submit handler 改呼叫 `login()`，成功後 `router.push(searchParams.next ?? '/tenant/dashboard')`；`ApiError` 時顯示 `err.message` |
+| `/tenant/login/page.tsx` | submit handler 改呼叫 `login()`，成功後 `router.push(safeNextPath(next))`（`src/lib/auth-boundary.ts`：只接受單一 `/` 開頭的站內路徑，拒絕 `//host`、`/\host`、含 scheme／控制字元者，不合法回 `/tenant/dashboard`；防 open redirect。**不得**直接使用未驗證的 `next`）；`ApiError` 時顯示 `err.message` |
 | `/tenant/register/page.tsx` | 「發送驗證碼」→ `sendVerificationCode(email,'REGISTER')`；送出 → `registerTenant()`，成功導 login |
 | `/tenant/forgot-password/page.tsx` | 送出 → `forgotPassword(email)`，成功顯示既有成功提示 |
 | `/tenant/reset-password/page.tsx` | 送出 → `resetPassword()`，成功導 login |
@@ -356,6 +429,14 @@ export const switchTenant = (tenantId: string) => …
 只改事件處理與 loading/error state，不動版面與文案（文案在 `src/i18n/zh-TW/pages/*`）。
 Topbar 的店家切換選單已存在，資料源改 `myTenants()`＋`switchTenant()`（該元件屬
 layout，若需接線視為本節例外之延伸，僅改資料呼叫）。
+
+AppShell 在 `AUTH_REAL` 的殼層規則：
+
+- 店家清單與業態來自 `myTenants()`；清單 **settled（成功或失敗）前不掛載內容區**
+  （`shellContentReady`），避免業態變動使 `key={businessType}` 整頁重掛、丟失狀態。
+- 載入失敗顯示錯誤提示、清單為空顯示「無店家」提示（`tenantContextNotice`），不得退回 `MOCK_TENANTS`。
+- 使用者名稱走真端點（未知時為 `null`，不顯示假名字）。
+- 代登入期間清單只有代入目標一筆（見 §5）。
 
 ---
 
@@ -379,10 +460,18 @@ layout，若需接線視為本節例外之延伸，僅改資料呼叫）。
 
 ## 本冊驗收
 
-- [ ] 未登入開 `/tenant/dashboard`（USE_MOCK=false）→ 302 到 `/tenant/login`
+- [ ] 未登入開 `/tenant/dashboard`（`AUTH_REAL`：`USE_MOCK=false`、未設定，或 `AUTH_MODE=real`）→ 302 到 `/tenant/login`
+- [ ] 同上但 `NEXT_PUBLIC_USE_MOCK` **未設定** → 仍 302（fail-closed，不得放行）
+- [ ] `NEXT_PUBLIC_AUTH_MODE` 填 `real`／`mock` 以外的值 → 載入時直接拋錯
 - [ ] 註冊全流程可走通：寄碼 → 收信 → 註冊 → 登入 → dashboard
 - [ ] 錯誤密碼登入回 `{success:false, code:'AUTH_002'}`，頁面顯示錯誤訊息
 - [ ] 忘記密碼 → 重設 → 用新密碼登入成功
-- [ ] `GET /api/auth/my-tenants` 回自己那間店且 `current: true`
+- [ ] `GET /api/auth/my-tenants` 回自己那間店且 `current: true`，並含 `businessType`
+- [ ] 平台管理者代登入期間，`GET /api/auth/my-tenants` 只回代入目標一筆（不回管理者自己的店）
+- [ ] 登入 `?next=//evil.com`、`/\evil.com`、`https://evil.com` → 一律導 `/tenant/dashboard`；`?next=/tenant/orders` → 導回該頁
+- [ ] 登出呼叫 `signOut({ scope: 'local' })`；signOut 失敗時顯示錯誤、不導向登入頁；其他裝置 session 不受影響
+- [ ] 平台管理者代入期間登出 → 一併結束代入 session（`impersonation_sessions.ended_at` 不為 null）並清除 `vibeai_impersonation` cookie；結束代入失敗回 500 且不 signOut
+- [ ] `AUTH_REAL` 下 my-tenants 未回前不掛載內容區；失敗／空清單各有提示；不讀 `MOCK_TENANTS`／`MOCK_USER`
+- [ ] 混合模式（`AUTH_REAL` + 業務 `USE_MOCK=true`）：真登入可用，AppShell 顯示示範資料提示
 - [ ] 第二個帳號看不到第一家店的任何資料（開兩店互測 RLS）
-- [ ] `NEXT_PUBLIC_USE_MOCK=true` 時登入頁行為與串接前完全相同
+- [ ] 認證模式為 `mock`（`NEXT_PUBLIC_USE_MOCK=true` 且未設 `AUTH_MODE`，或 `AUTH_MODE=mock`）時，登入頁與 middleware 行為與串接前完全相同（假登入、不擋頁）

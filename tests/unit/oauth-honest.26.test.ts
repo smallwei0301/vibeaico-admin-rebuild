@@ -137,9 +137,9 @@ describe('#26 login page: honest note switches between the two real states', () 
   });
 });
 
-describe('#26 service: getOAuthStatus() goes through adapt(mock, real)', () => {
+describe('#26 service: getOAuthStatus() goes through adaptAuth(mock, real)', () => {
   it('mock branch reports both providers unconfigured — mock must never claim readiness', () => {
-    expect(service).toMatch(/getOAuthStatus[\s\S]*?adapt</);
+    expect(service).toMatch(/getOAuthStatus[\s\S]*?adaptAuth</);
     expect(service).toContain("google: { configured: false }, line: { configured: false }");
   });
 

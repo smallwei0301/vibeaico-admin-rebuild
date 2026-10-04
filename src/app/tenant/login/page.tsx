@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/Toast';
 import { common } from '@/i18n/zh-TW/common';
 import { loginPage as t } from '@/i18n/zh-TW/pages/login';
 import { ApiError } from '@/lib/api';
+import { safeNextPath } from '@/lib/auth-boundary';
 import { getOAuthStatus, login } from '@/services';
 import type { OAuthStatus } from '@/lib/types';
 
@@ -81,8 +82,9 @@ export default function LoginPage() {
       // ?next= 在 submit 當下從 location 讀（同 reset-password 頁的手法），
       // 不用 useSearchParams()——那個 hook 在 Next 15 要求整頁包 Suspense
       // 邊界，否則空 env 靜態預渲染直接失敗（鐵則 10 回歸實測抓到）。
+      // safeNextPath：只允許站內相對路徑，防 open redirect（#754）。
       const next = new URLSearchParams(window.location.search).get('next');
-      router.push(next ?? '/tenant/dashboard');
+      router.push(safeNextPath(next));
     } catch (err) {
       toast.show(
         err instanceof ApiError ? err.message : t.messages.loginFailed,

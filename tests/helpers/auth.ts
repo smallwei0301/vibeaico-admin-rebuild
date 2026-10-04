@@ -40,6 +40,8 @@ export interface AuthedApi {
   patch(path: string, body?: unknown, init?: RequestInit): Promise<Response>;
   put(path: string, body?: unknown, init?: RequestInit): Promise<Response>;
   delete(path: string, init?: RequestInit): Promise<Response>;
+  /** 目前 cookie jar 的 Cookie header 快照（測試「原樣重放舊 cookie」用） */
+  cookieHeader(): string;
 }
 
 function resolveUrl(path: string): string {
@@ -128,6 +130,7 @@ export async function loginAs(email: string, password: string): Promise<AuthedAp
     patch: (path, body, init) => authedFetch(path, { ...withJsonBody(init, body), method: 'PATCH' }),
     put: (path, body, init) => authedFetch(path, { ...withJsonBody(init, body), method: 'PUT' }),
     delete: (path, init) => authedFetch(path, { ...init, method: 'DELETE' }),
+    cookieHeader,
   };
 }
 

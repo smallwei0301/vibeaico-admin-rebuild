@@ -1,4 +1,4 @@
-import { adapt, request } from '@/lib/api';
+import { adapt, adaptAuth, request } from '@/lib/api';
 import { MOCK_SIDEBAR_COUNTS, MOCK_USER } from '@/mock';
 import { listBookings } from './bookings';
 import { listConversations } from './chat';
@@ -69,7 +69,8 @@ export function sidebarCounts(): Promise<SidebarCounts> {
  * 沒有顯示名稱欄位 —— 顯示 email，不生一個假的顯示名稱（不是 MOCK_USER.name「小威」）。
  */
 export function currentUserName(): Promise<string> {
-  return adapt<string>(
+  // 認證資料（me）只看 AUTH_REAL，與業務 USE_MOCK 無關（#754）。
+  return adaptAuth<string>(
     () => MOCK_USER.name,
     async () => {
       const me = await request<{ email: string }>('/api/auth/me');
