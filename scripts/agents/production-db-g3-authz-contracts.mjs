@@ -1,3 +1,5 @@
+import { ISSUE_46_0110_0136_CLOSURE } from './production-db-release-plan.mjs';
+
 // The closure's create_tour_order body (last replaced by 0132) and its
 // SECURITY INVOKER setting (set last by 0136's ALTER, body untouched, #755) must
 // preserve these observed REQUEST/seasonal/refund-snapshot contracts. The 0136
@@ -5,7 +7,7 @@
 // The seasonal file is currently pending main merge;
 // no synthetic passing report proves execution of either native snapshot suite.
 export const ISSUE_46_CLOSURE_COVERAGE = Object.freeze({
-  scope: 'ISSUE_46_0110_0136_CLOSURE',
+  scope: ISSUE_46_0110_0136_CLOSURE,
 
   requiredAssertions: Object.freeze([
     Object.freeze({ file: 'tests/integration/db/tour-refund-snapshot.46.test.ts', fullName: '#46 refund policy stays immutable on real TourOrders persists STANDARD, preserves the old whole order and updates only new snapshots' }),

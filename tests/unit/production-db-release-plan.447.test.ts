@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { ISSUE_46_CLOSURE_COVERAGE } from '../../scripts/agents/production-db-g3-authz-contracts.mjs';
 
 import { describe, expect, it } from 'vitest';
 
@@ -605,6 +606,10 @@ describe('#46/#755 reviewed eight-migration closure', () => {
       {repoFile:'0099_drop_legacy_create_tour_order_overload',classification:'ALIAS',ledgerNames:['drop_legacy_create_tour_order_overload']},
       {repoFile:'0133_unrelated',classification:'NOT_APPLIED',notAppliedReason:'PENDING_APPLY',ledgerNames:[]}]};
   }
+  it('closure coverage scope is bound to the admitted release-plan scope (N1: no silent skip on rename)', () => {
+    expect(ISSUE_46_CLOSURE_COVERAGE.scope).toBe(scope);
+    expect(selectedProductionMigrations(fixture(), ISSUE_46_CLOSURE_COVERAGE.scope).migrationScope).toBe(ISSUE_46_CLOSURE_COVERAGE.scope);
+  });
   it('locks exactly eight ordered AUTHZ migrations: 0132 the last create_tour_order body writer, 0136 the final security invoker setter', () => {
     const map=fixture();expect(selectedProductionMigrations(map,scope)).toEqual({migrationScope:scope,migrations:targets});
     const read=(path:string)=>readFileSync(path,'utf8');
