@@ -42,10 +42,14 @@ export function publicGalleryUrls(value: unknown): string[] {
 }
 
 /**
- * 複製行程用：先套用公開頁相同的 URL 過濾，再截到寫入上限。
- * 被濾掉的是旅客本來就看不到的無效項目，因此複本的公開相簿與原行程逐張相同；
- * 同時保證輸出不超過寫入端 gallery max，POST 不會被擋成 400。
+ * 複製行程用：保存「原始 trim 後字串」，只用 safePublicHttpsUrl 判斷是否保留，
+ * 順序同公開 loader（publicStringList → 過濾 → 截上限）。
+ * 不能存正規化後的 URL：非 ASCII 字元經 percent-encoding 會膨脹、可能超過長度上限，
+ * 複本公開頁輸出時再正規化就會被丟掉。複本保存原始字串、公開頁輸出時才正規化，
+ * 因此 publicGalleryUrls(複本) 與 publicGalleryUrls(原行程) 逐張相同，且輸出不超過寫入端 gallery max。
  */
 export function clampGalleryForCopy(urls: string[] | undefined): string[] | undefined {
-  return urls ? publicGalleryUrls(urls).slice(0, MAX_TRIP_GALLERY_IMAGES) : urls;
+  return urls
+    ? publicStringList(urls).filter((u) => safePublicHttpsUrl(u) !== '').slice(0, MAX_TRIP_GALLERY_IMAGES)
+    : urls;
 }

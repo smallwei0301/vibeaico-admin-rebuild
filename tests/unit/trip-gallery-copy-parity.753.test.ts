@@ -45,9 +45,25 @@ describe('複製行程相簿與公開頁逐張相同', () => {
   it('來源 > 8 張且前 8 筆含無效項：複本 = 公開 loader 對原行程輸出', () => {
     const publicView = publicGalleryUrls(tenWithInvalidHead);
     const copied = clampGalleryForCopy(tenWithInvalidHead as string[]);
-    expect(copied).toEqual(publicView);
+    expect(publicGalleryUrls(copied)).toEqual(publicView);
     expect(copied).toHaveLength(MAX_PUBLIC_GALLERY_IMAGES);
     expect(copied![0]).toBe(ok(1));
+    // 複本元素皆為來源中通過過濾的原始 trim 字串，順序保持
+    expect(copied).toEqual(
+      publicStringList(tenWithInvalidHead).filter((u) => safePublicHttpsUrl(u) !== '').slice(0, 8),
+    );
+  });
+
+  it('非 ASCII 長 URL：原始 trim 後 ≤2048、正規化後 >2048，複本保留原字串且公開輸出逐張相同', () => {
+    const wide = `https://example.com/${'中'.repeat(600)}`;
+    expect(wide.length).toBeLessThanOrEqual(MAX_PUBLIC_URL_CHARS);
+    expect(safePublicHttpsUrl(wide)).not.toBe('');
+    expect(new URL(wide).toString().length).toBeGreaterThan(MAX_PUBLIC_URL_CHARS);
+    const src = [ok(1), `  ${wide}  `, ok(2)];
+    const copied = clampGalleryForCopy(src)!;
+    expect(copied).toEqual([ok(1), wide, ok(2)]);
+    expect(publicGalleryUrls(copied)).toEqual(publicGalleryUrls(src));
+    expect(publicGalleryUrls(copied)).toHaveLength(3);
   });
 
   it('≤ 8 張全有效：原樣；undefined：undefined', () => {
