@@ -13,7 +13,7 @@ import { MOCK_TENANTS, MOCK_SIDEBAR_COUNTS, MOCK_SETUP_STATUS, MOCK_USER, applyM
 import { AUTH_REAL, USE_MOCK } from '@/config/env';
 import { Alert } from '@/components/ui/Alert';
 import { common } from '@/i18n/zh-TW/common';
-import { shellDataSources, initialShellIdentity, mockUserNameForMode, performSwitchTenant, tenantContextNotice } from '@/lib/auth-boundary';
+import { shellDataSources, initialShellIdentity, mockUserNameForMode, performSwitchTenant, tenantContextNotice, shellContentReady } from '@/lib/auth-boundary';
 import { cn } from '@/lib/utils';
 import { myTenants, switchTenant as switchTenantApi, sidebarCounts, currentUserName, getSetupStatus } from '@/services';
 import type { SidebarCounts } from '@/services/shell';
@@ -133,6 +133,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     count: remoteTenants.length,
   });
 
+  // #754：real 模式等店家清單 settled 才掛載頁面，避免業態變動造成 key={businessType} 整頁重掛
+  const contentReady = shellContentReady({
+    tenantContextFromApi: SRC.tenantContextFromApi,
+    loaded: tenantsLoaded,
+    loadFailed: tenantsLoadFailed,
+  });
+
   const handleSwitchTenant = (id: string, showError: (message: string) => void) => {
     if (!SRC.tenantContextFromApi) {
       localStorage.setItem('vibeai.tenant.id', id);
@@ -194,7 +201,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             className={cn('content-area', businessType === 'GUIDE' && 'pb-20 lg:pb-0')}
             key={businessType}
           >
-            {children}
+            {contentReady ? children : (
+              <div className="py-5 text-center text-muted" role="status" data-testid="shell-tenants-loading">
+                {common.loading}
+              </div>
+            )}
           </main>
           <Footer />
         </div>

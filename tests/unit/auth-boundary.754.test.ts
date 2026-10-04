@@ -10,7 +10,7 @@ import { NextRequest } from 'next/server';
 
 import { resolveAuthMode } from '@/config/env';
 import {
-  initialShellIdentity, mockUserNameForMode, performLogout, performSwitchTenant, tenantContextNotice, safeNextPath, shellDataSources,
+  initialShellIdentity, mockUserNameForMode, performLogout, performSwitchTenant, tenantContextNotice, shellContentReady, safeNextPath, shellDataSources,
 } from '@/lib/auth-boundary';
 
 const read = (relative: string) =>
@@ -434,5 +434,24 @@ describe('#754 review N10：tenantContextNotice', () => {
     expect(tenantContextNotice({ ...base, count: 2 })).toBeNull();
     expect(tenantContextNotice({ ...base, loaded: false })).toBeNull();
     expect(tenantContextNotice({ ...base, authReal: false })).toBeNull();
+  });
+});
+
+describe('shellContentReady — real 模式等店家清單 settled 才掛載頁面（避免 key={businessType} 整頁重掛）', () => {
+  it('real：清單未載入完成前不可掛載 children', () => {
+    expect(shellContentReady({ tenantContextFromApi: true, loaded: false, loadFailed: false })).toBe(false);
+  });
+  it('real：載入成功或失敗後即可掛載（失敗維持既有誠實提示與 LOCAL_SHOP fallback）', () => {
+    expect(shellContentReady({ tenantContextFromApi: true, loaded: true, loadFailed: false })).toBe(true);
+    expect(shellContentReady({ tenantContextFromApi: true, loaded: false, loadFailed: true })).toBe(true);
+  });
+  it('mock 認證：同步，立即掛載、不設 loading gate', () => {
+    expect(shellContentReady({ tenantContextFromApi: false, loaded: false, loadFailed: false })).toBe(true);
+  });
+  it('接線（本專案無 DOM 測試環境，沿用原始碼斷言）：AppShell 以 contentReady 決定是否渲染 children，且 mock 路徑以 SRC.tenantContextFromApi 判斷', () => {
+    const src = read('src/components/layout/AppShell.tsx');
+    expect(src).toMatch(/shellContentReady\(\{\s*tenantContextFromApi: SRC\.tenantContextFromApi,\s*loaded: tenantsLoaded,\s*loadFailed: tenantsLoadFailed,/);
+    expect(src).toMatch(/\{contentReady \? children : \(/);
+    expect(src).toContain('data-testid="shell-tenants-loading"');
   });
 });

@@ -115,3 +115,18 @@ export function tenantContextNotice(state: {
   if (state.loaded && state.count === 0) return 'empty';
   return null;
 }
+
+/**
+ * 內容區（children）是否可以掛載（#754）。
+ * AUTH_REAL 時業態由 /api/auth/my-tenants 決定；清單未定案前就掛頁面，清單回來後
+ * businessType 改變會讓 `key={businessType}` 整頁重掛，丟失頁面狀態與進行中的操作。
+ * 故 real 模式等清單 settled（載入成功或失敗）才掛載；mock 認證同步，立即掛載。
+ */
+export function shellContentReady(state: {
+  tenantContextFromApi: boolean;
+  loaded: boolean;
+  loadFailed: boolean;
+}): boolean {
+  if (!state.tenantContextFromApi) return true;
+  return state.loaded || state.loadFailed;
+}
