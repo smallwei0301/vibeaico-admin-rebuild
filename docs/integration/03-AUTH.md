@@ -144,6 +144,7 @@ import { handle, ok, fail, ERR } from '@/server/http';
 import { createAdminSupabase } from '@/server/supabase';
 import { consumeCode } from '@/server/verify-code';
 import { DEFAULT_TENANT_SETTINGS } from '@/config/tenant-settings';
+import { MODE_PRESETS } from '@/config/modes';
 
 const bodySchema = z.object({
   email: z.string().email(),
@@ -177,17 +178,28 @@ export const POST = handle(async (req) => {
   }
   const userId = created.user.id;
 
+  let tenantId: string | undefined;
   try {
     const { data: t, error } = await admin.from('tenants')
       .insert({ shop_code: b.shopCode, name: b.tenantName, business_type: b.businessType ?? 'LOCAL_SHOP' }).select('id').single();
     if (error) throw error;
+    tenantId = t.id;
     await admin.from('tenant_users').insert({ tenant_id: t.id, user_id: userId, role: 'OWNER' });
     const s = DEFAULT_TENANT_SETTINGS(b.shopCode, b.tenantName);
     await admin.from('tenant_settings').insert({
       tenant_id: t.id, basic: s.basic, business: s.business, notify: s.notify,
       privacy: s.privacy, points: s.points, line: { ...s.line, channelSecret: undefined, channelAccessToken: undefined },
     });
+    // 依模式贈與功能（GUIDE → TOUR_MODULE；source='GRANTED'、永久）
+    const granted = MODE_PRESETS[b.businessType ?? 'LOCAL_SHOP'].grantedFeatures;
+    if (granted.length > 0) {
+      const { error: ferr } = await admin.from('feature_subscriptions').insert(
+        granted.map((code) => ({ tenant_id: t.id, code, active: true, expires_at: null, source: 'GRANTED' })),
+      );
+      if (ferr) throw ferr;
+    }
   } catch (e) {
+    if (tenantId) await admin.from('tenants').delete().eq('id', tenantId);   // 補償：刪店（cascade 清子表）
     await admin.auth.admin.deleteUser(userId);       // 補償：建店失敗就回滾帳號
     throw e;
   }

@@ -241,6 +241,13 @@ describe('登出後 session 失效（#754）', () => {
     expect(tenantErr).toBeNull();
     expect(tenantRow!.business_type).toBe('GUIDE');
 
+    // GUIDE 開店即贈與 TOUR_MODULE（GRANTED、永久）
+    const { data: tenantIdRow } = await admin!.from('tenants').select('id').eq('shop_code', shopCode).single();
+    const { data: feats, error: featErr } = await admin!
+      .from('feature_subscriptions').select('code, active, expires_at, source').eq('tenant_id', tenantIdRow!.id);
+    expect(featErr).toBeNull();
+    expect(feats).toEqual([{ code: 'TOUR_MODULE', active: true, expires_at: null, source: 'GRANTED' }]);
+
     const api = await loginAs(email, password);
     const before = await api.get('/api/auth/me');
     expect(before.status).toBe(200);

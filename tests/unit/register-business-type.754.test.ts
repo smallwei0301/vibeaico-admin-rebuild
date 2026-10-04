@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   createUser: vi.fn(), deleteUser: vi.fn(), consumeCode: vi.fn(), tenantInsert: vi.fn(),
+  featureInsert: vi.fn(), tenantDelete: vi.fn(), featureError: { current: null as unknown },
 }));
 
 vi.mock('@/server/supabase', () => ({
@@ -12,11 +13,15 @@ vi.mock('@/server/supabase', () => ({
       if (table === 'tenants') {
         return {
           select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null }) }) }),
+          delete: () => ({ eq: async (col: string, val: unknown) => { mocks.tenantDelete(col, val); return { error: null }; } }),
           insert: (row: unknown) => {
             mocks.tenantInsert(row);
             return { select: () => ({ single: async () => ({ data: { id: 'tenant-1' }, error: null }) }) };
           },
         };
+      }
+      if (table === 'feature_subscriptions') {
+        return { insert: async (rows: unknown) => { mocks.featureInsert(rows); return { error: mocks.featureError.current }; } };
       }
       return { insert: async () => ({ error: null }) };
     },
@@ -40,6 +45,7 @@ const req = (body: Record<string, unknown>) =>
 describe('#754 register 業態寫入 tenants.business_type', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.featureError.current = null;
     mocks.consumeCode.mockResolvedValue(undefined);
     mocks.createUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
   });
@@ -62,6 +68,29 @@ describe('#754 register 業態寫入 tenants.business_type', () => {
     expect(mocks.createUser).not.toHaveBeenCalled();
     expect(mocks.tenantInsert).not.toHaveBeenCalled();
     expect(mocks.consumeCode).not.toHaveBeenCalled();
+  });
+
+  it('GUIDE → feature_subscriptions 贈與 TOUR_MODULE（GRANTED、永久）', async () => {
+    const res = await POST(req({ ...base, businessType: 'GUIDE' }), {});
+    expect(res.status).toBe(200);
+    expect(mocks.featureInsert).toHaveBeenCalledTimes(1);
+    expect(mocks.featureInsert).toHaveBeenCalledWith([
+      { tenant_id: 'tenant-1', code: 'TOUR_MODULE', active: true, expires_at: null, source: 'GRANTED' },
+    ]);
+  });
+
+  it.each([['LOCAL_SHOP'], ['CLINIC'], [undefined]])('%s 不贈與任何功能', async (bt) => {
+    const res = await POST(req(bt ? { ...base, businessType: bt } : base), {});
+    expect(res.status).toBe(200);
+    expect(mocks.featureInsert).not.toHaveBeenCalled();
+  });
+
+  it('贈與失敗 → 500，補償刪除租戶與 auth 帳號', async () => {
+    mocks.featureError.current = { message: 'boom' };
+    const res = await POST(req({ ...base, businessType: 'GUIDE' }), {});
+    expect(res.status).toBe(500);
+    expect(mocks.tenantDelete).toHaveBeenCalledWith('id', 'tenant-1');
+    expect(mocks.deleteUser).toHaveBeenCalledWith('user-1');
   });
 
   it('前端：register 頁把 businessType 傳給 registerTenant，service payload 型別含 businessType', () => {
