@@ -151,6 +151,7 @@ const bodySchema = z.object({
   password: z.string().min(8, '密碼至少 8 碼'),
   tenantName: z.string().min(1, '請輸入店家名稱'),
   shopCode: z.string().regex(/^[a-z0-9-]+$/, '僅限小寫英文、數字、連字號'),
+  businessType: z.enum(['LOCAL_SHOP', 'GUIDE', 'CLINIC']).optional(),   // 預設 LOCAL_SHOP，寫入 tenants.business_type
 });
 
 function isDuplicateEmailError(error: unknown): boolean {
@@ -178,7 +179,7 @@ export const POST = handle(async (req) => {
 
   try {
     const { data: t, error } = await admin.from('tenants')
-      .insert({ shop_code: b.shopCode, name: b.tenantName }).select('id').single();
+      .insert({ shop_code: b.shopCode, name: b.tenantName, business_type: b.businessType ?? 'LOCAL_SHOP' }).select('id').single();
     if (error) throw error;
     await admin.from('tenant_users').insert({ tenant_id: t.id, user_id: userId, role: 'OWNER' });
     const s = DEFAULT_TENANT_SETTINGS(b.shopCode, b.tenantName);

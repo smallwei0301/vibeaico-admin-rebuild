@@ -1,5 +1,6 @@
 import { adaptAuth, request } from '@/lib/api';
 import type { OAuthStatus, TenantSummary } from '@/lib/types';
+import type { BusinessType } from '@/config/modes';
 import { MOCK_TENANTS } from '@/mock';
 
 /**
@@ -48,6 +49,7 @@ export const registerTenant = (payload: {
   password: string;
   tenantName: string;
   shopCode: string;
+  businessType?: BusinessType;
 }) =>
   adaptAuth(
     () => undefined,
