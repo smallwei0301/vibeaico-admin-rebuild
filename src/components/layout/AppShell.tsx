@@ -10,11 +10,22 @@ import { SupportChatWidget } from './SupportChatWidget';
 import { ToastProvider } from '@/components/ui/Toast';
 import { BusinessTypeProvider, CurrentTenantProvider } from './BusinessTypeContext';
 import { MOCK_TENANTS, MOCK_SIDEBAR_COUNTS, MOCK_SETUP_STATUS, MOCK_USER, applyMockMode } from '@/mock';
-import { USE_MOCK } from '@/config/env';
+import { AUTH_REAL, USE_MOCK } from '@/config/env';
+import { Alert } from '@/components/ui/Alert';
+import { common } from '@/i18n/zh-TW/common';
+import { shellDataSources, initialShellIdentity, mockUserNameForMode, performSwitchTenant, tenantContextNotice, shellContentReady } from '@/lib/auth-boundary';
 import { cn } from '@/lib/utils';
 import { myTenants, switchTenant as switchTenantApi, sidebarCounts, currentUserName, getSetupStatus } from '@/services';
 import type { SidebarCounts } from '@/services/shell';
 import type { TenantSummary } from '@/lib/types';
+
+/**
+ * 資料來源分兩條互不影響的軸（#754）：
+ *  - 認證／租戶 context（使用者、店家清單、目前店家、切換）→ AUTH_REAL；
+ *  - 業務資料（側欄徽章、開店進度）→ USE_MOCK。
+ * AUTH_REAL 時絕不讀 MOCK_TENANTS／MOCK_USER，即使業務資料仍是 mock。
+ */
+const SRC = shellDataSources(AUTH_REAL, USE_MOCK);
 
 /** real 模式下清單尚未從 /api/auth/my-tenants 載入完成時的暫用值，避免 current 為 undefined */
 const EMPTY_TENANT: TenantSummary = {
@@ -50,27 +61,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
    * switch-tenant 的 cookie，見 03 分冊 §5）。
    */
   const [tenantId, setTenantId] = React.useState(
-    (MOCK_TENANTS.find((t) => t.current) ?? MOCK_TENANTS[0]).id,
+    () => initialShellIdentity(AUTH_REAL, USE_MOCK, MOCK_TENANTS, MOCK_USER).tenantId,
   );
 
   React.useEffect(() => {
-    if (!USE_MOCK) return;
+    if (SRC.tenantContextFromApi) return; // 認證／租戶 context：real 時只信 API
     const saved = localStorage.getItem('vibeai.tenant.id');
     if (saved && MOCK_TENANTS.some((t) => t.id === saved)) setTenantId(saved);
   }, []);
 
-  /** real 模式：店家清單改打 GET /api/auth/my-tenants（mock 模式沿用 MOCK_TENANTS，行為不變） */
+  /** AUTH_REAL：店家清單改打 GET /api/auth/my-tenants（mock 認證模式沿用 MOCK_TENANTS，行為不變） */
   const [remoteTenants, setRemoteTenants] = React.useState<TenantSummary[]>([]);
   React.useEffect(() => {
-    if (USE_MOCK) return;
+    if (!SRC.tenantContextFromApi) return;
     myTenants().then((list) => {
       setRemoteTenants(list);
+      setTenantsLoaded(true);
       const cur = list.find((tt) => tt.current) ?? list[0];
       if (cur) setTenantId(cur.id);
-    }).catch(() => {});
+    }).catch(() => setTenantsLoadFailed(true));
   }, []);
 
-  const tenants = USE_MOCK ? MOCK_TENANTS : remoteTenants;
+  const tenants = SRC.tenantContextFromApi ? remoteTenants : MOCK_TENANTS;
   const current = tenants.find((tt) => tt.id === tenantId) ?? tenants[0] ?? EMPTY_TENANT;
   const businessType = current.businessType ?? 'LOCAL_SHOP';
 
@@ -83,34 +95,62 @@ export function AppShell({ children }: { children: React.ReactNode }) {
    *     一個失敗不拖垮其他兩個（見 src/services/shell.ts）。
    * counts/setupPercent/userName 為 null／{} 代表「尚未知道」，不是 0 或假名字。
    */
-  const [counts, setCounts] = React.useState<SidebarCounts>(() => (USE_MOCK ? MOCK_SIDEBAR_COUNTS : {}));
+  const [counts, setCounts] = React.useState<SidebarCounts>(() => (SRC.businessDataFromMock ? MOCK_SIDEBAR_COUNTS : {}));
   const [setupPercent, setSetupPercent] = React.useState<number | null>(
-    () => (USE_MOCK ? MOCK_SETUP_STATUS.percent : null),
+    () => (SRC.businessDataFromMock ? MOCK_SETUP_STATUS.percent : null),
   );
-  const [userName, setUserName] = React.useState<string | null>(() => (USE_MOCK ? MOCK_USER.name : null));
+  const [userName, setUserName] = React.useState<string | null>(
+    () => initialShellIdentity(AUTH_REAL, USE_MOCK, MOCK_TENANTS, MOCK_USER).userName,
+  );
+  const [tenantsLoadFailed, setTenantsLoadFailed] = React.useState(false);
+  const [tenantsLoaded, setTenantsLoaded] = React.useState(false);
 
   React.useEffect(() => {
-    if (!USE_MOCK) return;
-    // 骨架模式：切換店家時整份假資料換成該業態的版本（見 src/mock/index.ts）
+    if (!SRC.businessDataFromMock) return;
+    // 業務資料為 mock：切換店家時整份假資料換成該業態的版本（見 src/mock/index.ts）
     applyMockMode(businessType);
     setCounts(MOCK_SIDEBAR_COUNTS);
     setSetupPercent(MOCK_SETUP_STATUS.percent);
-    setUserName(MOCK_USER.name);
+    // 使用者名稱屬認證 context：AUTH_REAL 時不得用 MOCK_USER 覆蓋
+    const mockName = mockUserNameForMode(AUTH_REAL, MOCK_USER);
+    if (mockName !== null) setUserName(mockName);
   }, [businessType]);
 
   React.useEffect(() => {
-    if (USE_MOCK) return;
-    sidebarCounts().then(setCounts).catch(() => setCounts({}));
-    getSetupStatus().then((s) => setSetupPercent(s.percent)).catch(() => setSetupPercent(null));
-    currentUserName().then(setUserName).catch(() => setUserName(null));
+    if (!SRC.businessDataFromMock) {
+      sidebarCounts().then(setCounts).catch(() => setCounts({}));
+      getSetupStatus().then((s) => setSetupPercent(s.percent)).catch(() => setSetupPercent(null));
+    }
+    if (SRC.tenantContextFromApi) {
+      currentUserName().then(setUserName).catch(() => setUserName(null));
+    }
   }, []);
 
-  const handleSwitchTenant = (id: string) => {
-    if (USE_MOCK) {
+  const tenantNotice = tenantContextNotice({
+    authReal: SRC.tenantContextFromApi,
+    loadFailed: tenantsLoadFailed,
+    loaded: tenantsLoaded,
+    count: remoteTenants.length,
+  });
+
+  // #754：real 模式等店家清單 settled 才掛載頁面，避免業態變動造成 key={businessType} 整頁重掛
+  const contentReady = shellContentReady({
+    tenantContextFromApi: SRC.tenantContextFromApi,
+    loaded: tenantsLoaded,
+    loadFailed: tenantsLoadFailed,
+  });
+
+  const handleSwitchTenant = (id: string, showError: (message: string) => void) => {
+    if (!SRC.tenantContextFromApi) {
       localStorage.setItem('vibeai.tenant.id', id);
       setTenantId(id);
     } else {
-      void switchTenantApi(id).then(() => window.location.reload());
+      void performSwitchTenant({
+        switchTenant: () => switchTenantApi(id),
+        reload: () => window.location.reload(),
+        showError,
+        fallbackMessage: common.topbar.switchTenantFailed,
+      });
     }
   };
 
@@ -138,6 +178,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           />
           {/* 代入中必須每一頁都看得到——見 ImpersonationBanner 檔頭。 */}
           <ImpersonationBanner />
+          {tenantNotice === 'failed' && (
+            <Alert tone="danger" role="alert" className="mx-4 mt-3" data-testid="tenants-load-failed">
+              {common.topbar.tenantsLoadFailed}
+            </Alert>
+          )}
+          {tenantNotice === 'empty' && (
+            <Alert tone="warning" role="status" className="mx-4 mt-3" data-testid="tenants-empty">
+              {common.topbar.noTenants}
+            </Alert>
+          )}
+          {SRC.showDemoDataNotice && (
+            <Alert tone="warning" role="status" className="mx-4 mt-3" data-testid="demo-data-notice">
+              {common.topbar.demoDataNotice}
+            </Alert>
+          )}
           {/*
             businessType === 'GUIDE' 時手機底部固定五大入口導航（20 分冊 §2、#66 gap-audit
             「mobile bottom nav 是否真正在 runtime 掛載」）；額外留出底部安全高度避免內容被蓋住。
@@ -146,7 +201,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             className={cn('content-area', businessType === 'GUIDE' && 'pb-20 lg:pb-0')}
             key={businessType}
           >
-            {children}
+            {contentReady ? children : (
+              <div className="py-5 text-center text-muted" role="status" data-testid="shell-tenants-loading">
+                {common.loading}
+              </div>
+            )}
           </main>
           <Footer />
         </div>

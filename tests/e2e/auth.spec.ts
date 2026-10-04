@@ -46,34 +46,37 @@ test.describe('登入保護與旅程（12 分冊 §4 Phase 2）', () => {
     await expect(page).toHaveURL(new RegExp(DASHBOARD_PATH.replace(/\//g, '\\/')), { timeout: 15_000 });
   });
 
-  test('登出後再訪 dashboard 被擋', async ({ page, context }) => {
+  test('登入後 reload 仍登入（session 由 cookie 保持，不是前端假狀態）', async ({ page }) => {
     await login(page);
     await expect(page).toHaveURL(new RegExp(DASHBOARD_PATH.replace(/\//g, '\\/')), { timeout: 15_000 });
 
-    // 透過 Topbar 實際 UI 走一次登出（見 src/components/layout/Topbar.tsx）。
-    // 使用者選單觸發鈕沒有穩定的 accessible name（頭像縮寫 + userName，userName
-    // 現在是 AppShell 裡的 MOCK_USER.name，03 §6.3 沒有明確規定 Phase 2 要不要把
-    // 它換成真實登入者資料，換掉的話用文字定位會失準）——改用結構定位：
+    await page.reload();
+    await expect(page).toHaveURL(new RegExp(DASHBOARD_PATH.replace(/\//g, '\\/')), { timeout: 15_000 });
+    await expect(page).not.toHaveURL(/\/tenant\/login/);
+  });
+
+  test('點 Topbar 登出（真 POST /api/auth/logout）後再訪 dashboard 被擋', async ({ page }) => {
+    await login(page);
+    await expect(page).toHaveURL(new RegExp(DASHBOARD_PATH.replace(/\//g, '\\/')), { timeout: 15_000 });
+
+    // 使用者選單觸發鈕沒有穩定的 accessible name，沿用結構定位：
     // .topbar-right 底下第二個 .relative 觸發鈕（第一個是店家切換選單）。
     await page.locator('.topbar-right > .relative > button').nth(1).click();
-    await page.getByRole('link', { name: '登出' }).click();
 
-    // ⚠️ Topbar 目前的登出項目只是一個導去 /tenant/login 的 <Link>，並沒有呼叫
-    // POST /api/auth/logout 讓後端把 httpOnly session cookie 失效（見 Topbar.tsx：
-    // `<Link href="/tenant/login">…{common.topbar.logout}</Link>`，03 分冊也沒有把
-    // Topbar 登出接線列進 §6.3 的四頁例外清單）。光是換頁不會讓已登入的 session
-    // 失效，直接再訪 dashboard 不會被擋，會是假陰性。因此這裡額外用
-    // context.clearCookies() 補上「登出後 session 已失效」這個狀態——這是任務
-    // 指示明確認可的替代驗法。等 Topbar 真的接上 POST /api/auth/logout，這行
-    // 也不會讓測試變弱：驗的是「登出後」這個最終狀態，不是登出當下呼叫了什麼。
-    await context.clearCookies();
+    // 登出是 <button>（#754），點下去必須真的打 POST /api/auth/logout 並成功；
+    // 不再以 context.clearCookies() 代替——那會掩蓋「登出沒有讓後端 session 失效」。
+    const [logoutRes] = await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes('/api/auth/logout') && r.request().method() === 'POST',
+        { timeout: 15_000 },
+      ),
+      page.getByRole('button', { name: '登出', exact: true }).click(),
+    ]);
+    expect(logoutRes.status()).toBe(200);
+    await expect(page).toHaveURL(/\/tenant\/login/, { timeout: 15_000 });
 
-    // waitUntil:'commit' 而非預設 'load'：實測（拋棄式 debug spec）證實此導航的
-    // redirect 與渲染完全正常——middleware 8 秒內已把人導到
-    // /tenant/login?next=%2Ftenant%2Fdashboard 且表單齊全——卡住的只是 window
-    // 'load' 事件（Next dev 串流回應在重導後偶發不關閉）。等 'load' 不是本測試
-    // 要驗的行為；下面兩個斷言（URL 已導向 + 登入表單可見）才是，且比原版多了
-    // 表單可見這條，是收緊不是放寬。
+    // waitUntil:'commit'：Next dev 串流回應在重導後偶發不關閉 window 'load'，
+    // 要驗的是「URL 已導向 + 登入表單可見」。
     await page.goto(DASHBOARD_PATH, { waitUntil: 'commit' });
     await expect(page).toHaveURL(/\/tenant\/login/, { timeout: 15_000 });
     await expect(page.locator('#username')).toBeVisible({ timeout: 15_000 });

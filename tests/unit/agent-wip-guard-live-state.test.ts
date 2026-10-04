@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 
 const workflow = readFileSync(
   resolve(process.cwd(), '.github/workflows/agent-wip-guard.yml'),
@@ -10,21 +11,23 @@ const workflow = readFileSync(
 
 describe('agent WIP Guard live-state dispatch', () => {
   it('re-reads the current PR before parsing metadata or deciding a TEST transition', () => {
-    const payloadIndex = workflow.indexOf(
-      'const payloadCurrent = context.payload.pull_request ?? { number: context.payload.issue.number };',
+    // Another job may also read a PR. Verify this ordering within the actual guard script.
+    const guard = parse(workflow).jobs.guard.steps.find((step: any) => step.with?.script).with.script;
+    const payloadIndex = guard.indexOf(
+      'const payloadCurrent = reviewWakeup',
     );
-    const liveReadIndex = workflow.indexOf(
+    const liveReadIndex = guard.indexOf(
       'const { data: current } = await github.rest.pulls.get({',
     );
-    const metadataIndex = workflow.indexOf(
+    const metadataIndex = guard.indexOf(
       'const metadata = policy.parseLaneMetadata(current);',
     );
 
     expect(payloadIndex).toBeGreaterThan(-1);
     expect(liveReadIndex).toBeGreaterThan(payloadIndex);
     expect(metadataIndex).toBeGreaterThan(liveReadIndex);
-    expect(workflow).toContain('pull_number: payloadCurrent.number');
-    expect(workflow).not.toContain(
+    expect(guard).toContain('pull_number: payloadCurrent.number');
+    expect(guard).not.toContain(
       'const current = context.payload.pull_request;',
     );
   });
@@ -34,7 +37,7 @@ describe('agent WIP Guard live-state dispatch', () => {
       'const liveExisting = (current.labels ?? [])',
     );
     const labelWriteIndex = workflow.indexOf(
-      'if (additions.length) await github.rest.issues.addLabels({',
+      'if (!reviewWakeup && additions.length) await github.rest.issues.addLabels({',
     );
     const dispatchDecisionIndex = workflow.indexOf(
       "!liveExisting.includes('lane:test-validation')",
@@ -62,6 +65,7 @@ describe('agent WIP Guard live-state dispatch', () => {
     );
     const evaluationIndex = workflow.indexOf(
       'await astra.evaluateGithubAstra({ github, owner, repo, current })',
+      gateIndex,
     );
 
     expect(metadataIndex).toBeGreaterThan(-1);
@@ -93,7 +97,7 @@ describe('agent WIP Guard live-state dispatch', () => {
 
   it('serializes only the same PR and cancels stale in-flight guard runs', () => {
     expect(workflow).toContain(
-      'group: agent-wip-guard-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}',
+      'group: agent-wip-guard-${{ github.repository }}-${{ matrix.pr_number }}',
     );
     expect(workflow).toContain('cancel-in-progress: true');
     expect(workflow).not.toMatch(/^concurrency:/m);
@@ -306,8 +310,11 @@ describe('Astra risk review contract', () => {
   it('純換底沿用：commit 換了但變更內容指紋相同 → 仍然有效', () => {
     // rebase 只換 parent，檔案內容一個字都沒改：blob sha 逐一相同 ⇒ 指紋不變。
     // 這正是 PR #292 連跑四輪、其中兩輪只是換底的那個情形。
-    const rebased = makeReview({}, { commit_id: 'c'.repeat(40) });
-    expect(evaluateAstra(candidate([rebased])).status).toBe('ASTRA_APPROVED');
+    const original = makeReview(); // canonical review/attested head remain original b
+    const rebased = candidate([original], { context: { ...context, headSha: 'c'.repeat(40) } });
+    expect(evaluateAstra(rebased).status).toBe('ASTRA_APPROVED');
+    const mismatched = makeReview({}, { commit_id: 'c'.repeat(40) });
+    expect(evaluateAstra(candidate([mismatched])).status).toBe('ASTRA_PENDING');
   });
 
   it('換底時若有任何檔案被夾帶修改 → 指紋改變 → 不得沿用', () => {

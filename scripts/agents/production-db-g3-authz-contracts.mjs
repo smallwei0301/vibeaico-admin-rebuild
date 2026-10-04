@@ -429,6 +429,27 @@ export const PRODUCTION_DB_G3_AUTHZ_CONTRACTS = Object.freeze({
       }),
     ]),
   }),
+  '0136_issue_755_create_tour_order_invoker': Object.freeze({
+    requiredFiles: Object.freeze([
+      'tests/integration/api/create-tour-order-invoker.755.test.ts',
+    ]),
+    tenantBoundaryAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/api/create-tour-order-invoker.755.test.ts',
+        fragment: 'service_role create_tour_order rejects another tenant id for an existing departure without creating an order',
+      }),
+      Object.freeze({
+        file: 'tests/integration/api/create-tour-order-invoker.755.test.ts',
+        fragment: 'service_role create_tour_order snapshots STANDARD/FLEXIBLE/STRICT equal to trips.refund_policy_type, then restores',
+      }),
+    ]),
+    negativeRoleAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/api/create-tour-order-invoker.755.test.ts',
+        fragment: 'anon and authenticated roles cannot execute create_tour_order directly',
+      }),
+    ]),
+  }),
   '0132_issue_42_seasonal_price_resolution': Object.freeze({
     requiredFiles: Object.freeze([
       'tests/integration/api/tour-order-authz.447.test.ts',

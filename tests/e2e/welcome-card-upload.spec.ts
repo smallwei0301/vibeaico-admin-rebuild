@@ -26,6 +26,8 @@ function storagePath(url: string): string {
 }
 
 test('歡迎卡片圖片上傳後會保存，重整仍存在，移除也會保存', async ({ page, context }, testInfo) => {
+  // multi-step real TEST flow; default 30s too tight on shared canonical TEST, see runs 36962463305 / 36965230556
+  test.setTimeout(120_000);
   expect(process.env.TEST_SUPABASE_URL).toBeTruthy();
   expect(process.env.TEST_SUPABASE_SERVICE_ROLE_KEY).toBeTruthy();
   assertTestSupabaseTarget(projectRefFromSupabaseUrl(process.env.TEST_SUPABASE_URL), 'welcome fixture admin');

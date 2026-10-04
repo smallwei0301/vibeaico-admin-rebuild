@@ -1,9 +1,13 @@
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Bell, Building2, ChevronDown, LogOut, Menu, Settings, Smartphone } from 'lucide-react';
 import { common } from '@/i18n/zh-TW/common';
 import { cn } from '@/lib/utils';
+import { performLogout } from '@/lib/auth-boundary';
+import { logout } from '@/services/auth';
+import { useToast } from '@/components/ui/Toast';
 import type { TenantSummary } from '@/lib/types';
 
 /**
@@ -23,7 +27,7 @@ export function Topbar({
   tenants: TenantSummary[];
   currentTenant: TenantSummary;
   /** 切換目前操作的店家（真實後端對應 POST /api/auth/switch-tenant） */
-  onSwitchTenant?: (tenantId: string) => void;
+  onSwitchTenant?: (tenantId: string, showError: (message: string) => void) => void;
   /** null = 尚未知道（loading 或該次讀取失敗）— 不可用假名字頂替，顯示 common.topbar.userFallback */
   userName: string | null;
   /** null = 尚未知道（loading 或該次讀取失敗）— 顯示「--」，不可用假百分比頂替 */
@@ -31,6 +35,25 @@ export function Topbar({
 }) {
   const [shopMenu, setShopMenu] = React.useState(false);
   const [userMenu, setUserMenu] = React.useState(false);
+  const [loggingOut, setLoggingOut] = React.useState(false);
+  const router = useRouter();
+  const toast = useToast();
+
+  /** 真正登出（POST /api/auth/logout）；失敗不導向（#754）。 */
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await performLogout({
+        logout,
+        replace: (href) => router.replace(href),
+        refresh: () => router.refresh(),
+        showError: (message) => toast.show(message, 'danger'),
+        fallbackMessage: common.topbar.logoutFailed,
+      });
+    } finally {
+      setLoggingOut(false);
+    }
+  };
 
   return (
     <header className="topbar">
@@ -75,7 +98,7 @@ export function Topbar({
               {tenants.map((t) => (
                 <button
                   key={t.id}
-                  onClick={() => { onSwitchTenant?.(t.id); setShopMenu(false); }}
+                  onClick={() => { onSwitchTenant?.(t.id, (message) => toast.show(message, 'danger')); setShopMenu(false); }}
                   className={cn(
                     'flex w-full items-center gap-2 px-3 py-2 text-left text-base hover:bg-neutral-100',
                     t.id === currentTenant.id && 'font-semibold text-primary',
@@ -118,10 +141,15 @@ export function Topbar({
                 {common.topbar.enablePush}
               </button>
               <hr className="my-1 border-neutral-200" />
-              <Link href="/tenant/login" className="flex items-center gap-2 px-3 py-2 text-base text-danger hover:bg-neutral-100">
+              <button
+                type="button"
+                disabled={loggingOut}
+                onClick={() => { void handleLogout(); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-base text-danger hover:bg-neutral-100 disabled:opacity-60"
+              >
                 <LogOut size={15} />
                 {common.topbar.logout}
-              </Link>
+              </button>
             </DropdownPanel>
           )}
         </div>

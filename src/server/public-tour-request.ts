@@ -36,6 +36,9 @@
  *    但 API 端點本身不能只靠「畫面沒有連結」當作唯一防線（連結可以被猜到／分享）。
  */
 import { z } from 'zod';
+import { bookingCandidateSeatsLeft, MAX_BOOKING_CANDIDATE_DEPARTURES } from '@/lib/public-departure-candidates';
+import { resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
+import { hasSeasonalPricing, loadPlanSeasons, seasonUnitPriceFor } from '@/server/public-plan-seasons';
 import { createAdminSupabase } from '@/server/supabase';
 import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
 import { hydrateTourOrders } from '@/server/tour-orders';
@@ -74,6 +77,8 @@ export type PublicRequestDeparture = {
   departsOn: string;
   startTime: string;
   seatsLeft: number;
+  /** 依出發日套用季節定價後的單價（與 create_tour_order 同規則）；方案沒有（完整的）季節時不輸出。 */
+  unitPrice?: number;
 };
 
 export type PublicRequestPlan = {
@@ -86,6 +91,8 @@ export type PublicRequestPlan = {
   planDescription: string;
   pricePerPerson: number;
   priceType: 'PER_PERSON' | 'PER_GROUP';
+  /** 方案有啟用的季節定價：基本價只是參考，實際價格依各團次（unitPrice）。 */
+  seasonalPricing?: boolean;
   minParty: number;
   maxParty: number;
   /** #46：導遊接受此申請後的預設付款保留時數（`trip_plans.request_hold_hours`）。 */
@@ -95,7 +102,7 @@ export type PublicRequestPlan = {
   departures: PublicRequestDeparture[];
 };
 
-const MAX_DEPARTURES = 12;
+const MAX_DEPARTURES = MAX_BOOKING_CANDIDATE_DEPARTURES;
 
 /**
  * 讀一個 REQUEST 方案的申請頁資料。找不到、非 REQUEST、未上架、或所屬行程未發布
@@ -104,6 +111,8 @@ const MAX_DEPARTURES = 12;
  */
 export async function loadPublicRequestPlan(
   shopCode: string, planId: string,
+  /** 送出流程不需要季節價（金額由 RPC 計算），傳 false 可略過季節查詢。 */
+  options: { withSeasonPrices?: boolean } = {},
 ): Promise<PublicRequestPlan | null> {
   if (!SHOP_CODE_PATTERN.test(shopCode)) return null;
   if (!UUID_RE.test(planId)) return null;
@@ -134,27 +143,36 @@ export async function loadPublicRequestPlan(
   if (tripError) throw queryFailed('trips', tripError);
   if (!trip || trip.status !== 'PUBLISHED') return null;
 
-  const today = taipeiToday();
+  // 店家時區（basic.timezone，缺值或無效回退台北）：「今天」與已開始判斷與詳情頁一致。
+  const now = tenantNowParts(resolvePublicTimeZone(settings?.basic?.timezone));
   const { data: departureRows, error: departureError } = await admin
     .from('trip_departures')
     .select('id, departs_on, start_time, capacity, seats_booked')
     .eq('tenant_id', tenantId).eq('plan_id', planId).eq('status', 'OPEN')
-    .gte('departs_on', today)
+    .gte('departs_on', now.today)
     .order('departs_on', { ascending: true })
-    .order('start_time', { ascending: true, nullsFirst: true });
+    .order('start_time', { ascending: true, nullsFirst: true })
+    // #761：與詳情頁／首頁（loadPlanDepartureWindow）同一個 tie-break，同日同時間的候選集合才會一致。
+    .order('id', { ascending: true });
   if (departureError) throw queryFailed('trip_departures', departureError);
 
+  const seasons = options.withSeasonPrices === false
+    ? { seasons: [], incomplete: false }
+    : await loadPlanSeasons(admin, tenantId, planId);
+  const basePrice = Number(plan.price_per_person ?? 0);
   const departures: PublicRequestDeparture[] = [];
   for (const row of departureRows ?? []) {
-    const capacity = Number(row.capacity ?? 0);
-    const seatsBooked = Number(row.seats_booked ?? 0);
-    if (seatsBooked >= capacity) continue;
+    // #761：候選規則（未開始、未客滿）與詳情頁／首頁入口共用 public-departure-candidates。
+    const seatsLeft = bookingCandidateSeatsLeft(row, now);
+    if (seatsLeft === null) continue;
     if (departures.length >= MAX_DEPARTURES) break;
+    const unitPrice = seasonUnitPriceFor(seasons, row.departs_on as string, basePrice);
     departures.push({
       id: row.id as string,
       departsOn: row.departs_on as string,
       startTime: row.start_time == null ? '' : String(row.start_time).slice(0, 5),
-      seatsLeft: capacity - seatsBooked,
+      seatsLeft,
+      ...(unitPrice !== undefined ? { unitPrice } : {}),
     });
   }
 
@@ -168,6 +186,7 @@ export async function loadPublicRequestPlan(
     planDescription: (plan.description as string) ?? '',
     pricePerPerson: Number(plan.price_per_person ?? 0),
     priceType: plan.price_type === 'PER_GROUP' ? 'PER_GROUP' : 'PER_PERSON',
+    ...(hasSeasonalPricing(seasons) ? { seasonalPricing: true } : {}),
     minParty: Number(plan.min_party ?? 1),
     maxParty: Number(plan.max_party ?? 1),
     requestHoldHours: Number(plan.request_hold_hours ?? 12),
@@ -221,7 +240,7 @@ export async function submitPublicTourRequest(
 ): Promise<{ orderId: string; orderNo: string }> {
   const admin = createAdminSupabase();
 
-  const plan = await loadPublicRequestPlan(input.shopCode, input.planId);
+  const plan = await loadPublicRequestPlan(input.shopCode, input.planId, { withSeasonPrices: false });
   if (!plan) throw new PublicTourRequestError('PLAN_NOT_FOUND', '找不到此方案，或此方案目前未開放線上申請');
 
   if (input.partySize < plan.minParty || input.partySize > plan.maxParty) {

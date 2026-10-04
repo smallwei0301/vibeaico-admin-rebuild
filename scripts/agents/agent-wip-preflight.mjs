@@ -17,7 +17,7 @@ import {
 import { parseGovernanceScopeException } from './governance-scope-budget.mjs';
 import { decideLocalIsolatedTest } from '../ci/local-isolated-test-policy.mjs';
 
-import { changeDigestOf, classifyAstra, evaluateAstra, routing } from './astra-review-policy.mjs';
+import { changeDigestOf, classifyAstra, evaluateAstra, routing, shouldEnforceFinalRisk } from './astra-review-policy.mjs';
 
 import { validateDeliveryUnitBoundary, validateBookkeepingWorkstream } from './governance-workstream-boundary.mjs';
 export { validateDeliveryUnitBoundary } from './governance-workstream-boundary.mjs';
@@ -61,6 +61,51 @@ function missingAstraBaselines(body, changedFiles) {
     },
   });
   return (result.errors ?? []).filter((error) => /^Missing concrete (testBaseline|schemaBaseline)$/.test(error));
+}
+
+/** Local shape only; raw snapshots/locators never establish trusted canonical read-back. */
+function ordinaryLocalContract(input, body, changedFiles) {
+  const classification = classifyAstra({ body, changedFiles });
+  const result = { ordinaryReviewRequired: false, ordinaryReviewStatus: 'NOT_REQUIRED', canonicalReadbackVerified: false, errors: [] };
+  if (classification.required || classification.isModelGovernance || classification.workstream !== 'PRODUCT_MAINLINE') return result;
+  const current = input.currentPr;
+  if (!current && input.prospectiveFinal !== true) return { ...result, ordinaryReviewStatus: 'LOCAL_NOT_VERIFIABLE' };
+  if (current && (current.body !== body || typeof current.draft !== 'boolean' || !['open', 'closed'].includes(current.state))) {
+    return { ...result, ordinaryReviewStatus: 'LOCAL_NOT_VERIFIABLE', errors: ['Current PR snapshot must include exact body, state and boolean draft'] };
+  }
+  if (current && !shouldEnforceFinalRisk({ pullRequestState: current.state, draft: current.draft, laneState: readField(body, 'LANE_STATE') })) return result;
+  result.ordinaryReviewRequired = true;
+  result.ordinaryReviewStatus = 'LOCAL_CONTRACT_PENDING';
+  const packet = input.ordinaryEvidence;
+  if (!packet || typeof packet !== 'object') { result.errors.push('Ordinary final review requires local scope and receipt snapshots'); return result; }
+  const { repository, headSha, changeDigest, builder, reviewer, review, reviewSourceRef } = packet;
+  const concrete = value => typeof value === 'string' && value.trim().length >= 8 && !/^(unknown|none|pending|tbd|<.*>)$/i.test(value.trim());
+  const time = value => typeof value === 'string' && /^\d{4}-\d\d-\d\dT.*Z$/.test(value) ? Date.parse(value) : NaN;
+  const roleSource = value => typeof value === 'string' && value.startsWith(`https://github.com/${repository}/`)
+    && /^https:\/\/github\.com\/[^/]+\/[^/]+\/(issues|pull)\/\d+#issuecomment-\d+$/.test(value);
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repository ?? '') || !/^[a-f0-9]{40}$/i.test(headSha ?? '') || /^0+$/.test(headSha ?? '')
+    || !/^[a-f0-9]{64}$/i.test(changeDigest ?? '') || /^0+$/.test(changeDigest ?? '') || (current && current.head?.sha !== headSha)) result.errors.push('Ordinary local scope needs concrete repository/current head/change digest');
+  if (!roleSource(readField(body, 'BUILDER_EXECUTION_RECEIPT')) || builder?.sourceRef !== readField(body, 'BUILDER_EXECUTION_RECEIPT')
+    || !roleSource(reviewer?.sourceRef) || review?.reviewerExecutionReceipt !== reviewer?.sourceRef) result.errors.push('Ordinary builder/reviewer locators must reference canonical repository comments');
+  for (const [record, role] of [[builder, 'BUILD'], [reviewer, 'REVIEW']]) {
+    if (!record || record.role !== role || record.repository !== repository || record.headSha !== headSha || record.changeDigest !== changeDigest
+      || !['actorId', 'sessionId', 'executionRef'].every(key => concrete(record[key])) || record.executionEvidence !== 'OPERATOR_ATTESTED'
+      || !Number.isFinite(time(record.startedAt)) || !Number.isFinite(time(record.completedAt)) || time(record.completedAt) < time(record.startedAt)) result.errors.push(`Invalid local ${role} role receipt shape`);
+  }
+  if (builder && reviewer && (builder.actorId === reviewer.actorId || builder.sessionId === reviewer.sessionId
+    || builder.executionRef === reviewer.executionRef || builder.sourceRef === reviewer.sourceRef || reviewer.freshContext !== true
+    || time(reviewer.startedAt) < time(builder.completedAt))) result.errors.push('Ordinary local review requires different actor/session/execution and fresh context');
+  const model = reviewer?.provider === 'OPENAI' ? routing.models?.audit : reviewer?.provider === 'ANTHROPIC' ? routing.anthropicEquivalents?.audit : null;
+  if (!model || !concrete(reviewer?.providerEvidenceRef) || reviewer?.requestedModel !== model || review?.requestedModel !== model) result.errors.push('Ordinary local reviewer needs provider-local Sol/Opus request');
+  if (!review || review.repository !== repository || review.headSha !== headSha || review.changeDigest !== changeDigest || review.policyVersion !== routing.version
+    || review.verdict !== 'PASS' || review.executionRef !== reviewer?.executionRef || !concrete(review.findings) || !concrete(review.report)
+    || !review.report.startsWith(`https://github.com/${repository}/`) || typeof reviewSourceRef !== 'string'
+    || !reviewSourceRef.startsWith(`https://github.com/${repository}/pull/`) || !/#pullrequestreview-\d+$/.test(reviewSourceRef)) result.errors.push('Invalid local canonical sol-review packet shape');
+  if (review && ((review.servedVerified !== undefined && typeof review.servedVerified !== 'boolean')
+    || (review.actualModel === 'unknown' ? review.identityEvidence !== 'UNKNOWN' || review.servedVerified === true
+      : review.actualModel !== model || review.identityEvidence !== 'OPERATOR_ATTESTED'))) result.errors.push('Invalid local actual identity/served verification claim');
+  if (!result.errors.length) result.ordinaryReviewStatus = 'NEEDS_CANONICAL_READBACK';
+  return result;
 }
 
 function parseArgs(argv) {
@@ -129,14 +174,47 @@ export function discoverChangedFiles({
 /**
  * @param {{
  *   body?: string,
+ *   currentPr?: any,
+ *   prospectiveFinal?: boolean,
+ *   ordinaryEvidence?: any,
  *   requireAstraClassification?: boolean,
  *   changedFiles?: string[] | null,
  *   prNumber?: number | string,
+ *   headSha?: string,
+ *   createdAt?: string,
  *   action?: string,
  *   repositoryRoot?: string,
  *   fileExists?: (path: import('node:fs').PathLike) => boolean,
  * }} [input]
  */
+export function validatePublicationMetadata(input = {}) {
+  const body = String(input.body ?? '');
+  const changedFiles = Array.isArray(input.changedFiles) ? input.changedFiles : [];
+  const pr = { number: Number(input.prNumber) || 1, state: 'open', body, head: { sha: String(input.headSha ?? '') } };
+  const metadata = parseLaneMetadata(pr);
+  const errors = [];
+  const origin = upper(readField(body, 'WORK_ORIGIN'));
+
+  if (input.requireAstraClassification !== false) {
+    errors.push(...classifyAstra({ body, changedFiles, createdAt: input.createdAt }).errors);
+  }
+  errors.push(...missingAstraBaselines(body, changedFiles));
+  if (!ORIGINS.has(origin)) errors.push('WORK_ORIGIN must be OWNER, AGENT, or UNKNOWN');
+  if (isPlaceholder(readField(body, 'REQUESTED_MODEL / ACTUAL_MODEL'))) {
+    errors.push('REQUESTED_MODEL / ACTUAL_MODEL is required');
+  }
+  errors.push(...validateLaneMetadata(metadata, { action: input.action ?? 'opened' }));
+  errors.push(...validateActualFileOwnership(metadata, changedFiles));
+  errors.push(...validateDeliveryUnitBoundary(body, metadata));
+  errors.push(...validateBookkeepingWorkstream({ body, changedFiles }));
+  if (metadata.origin === 'AGENT' && metadata.state === 'ACTIVE' && metadata.lane === 'GOVERNANCE') {
+    const exception = parseGovernanceScopeException(readField(body, 'GOVERNANCE_SCOPE_EXCEPTION'));
+    if (!exception.valid) errors.push(exception.error);
+  }
+  errors.push(...(decideLocalIsolatedTest({ body }).errors ?? []));
+  return { valid: errors.length === 0, errors: [...new Set(errors)], metadata };
+}
+
 export function validateWipPreflight(input = {}) {
   const {
     body = '',
@@ -148,6 +226,8 @@ export function validateWipPreflight(input = {}) {
   } = input;
   const text = String(body ?? '');
   const errors = [];
+  const ordinary = ordinaryLocalContract(input, text, changedFiles);
+  errors.push(...ordinary.errors);
   let headSha = '';
   if (upper(readField(text, 'COMPLETION_CLAIM')) === 'AUDIT_READY'
     && upper(readField(text, 'AGENT_LANE')) === 'TERRA_BUILD') {
@@ -233,6 +313,9 @@ export function validateWipPreflight(input = {}) {
     errors: [...new Set(errors)],
     metadata,
     rawCaptureChecked: Array.isArray(changedFiles),
+    ordinaryReviewRequired: ordinary.ordinaryReviewRequired,
+    ordinaryReviewStatus: ordinary.ordinaryReviewStatus,
+    canonicalReadbackVerified: false,
   };
 }
 
@@ -255,6 +338,9 @@ function runCli(argv = process.argv.slice(2)) {
   const result = validateWipPreflight({
     body,
     changedFiles,
+    currentPr: args['current-pr-json'] ? JSON.parse(readFileSync(args['current-pr-json'], 'utf8')) : undefined,
+    prospectiveFinal: args['prospective-final'] === 'true',
+    ordinaryEvidence: args['ordinary-evidence'] ? JSON.parse(readFileSync(args['ordinary-evidence'], 'utf8')) : undefined,
     requireAstraClassification: true,
     prNumber: args.number ?? 1,
     action: args.action ?? 'opened',
@@ -262,7 +348,7 @@ function runCli(argv = process.argv.slice(2)) {
   });
 
   if (result.valid) {
-    console.log(`WIP_PREFLIGHT_PASS issue=${result.metadata.issueNumber ?? 'none'} lane=${result.metadata.lane || 'none'}`);
+    console.log(`WIP_PREFLIGHT_PASS issue=${result.metadata.issueNumber ?? 'none'} lane=${result.metadata.lane || 'none'} ordinary=${result.ordinaryReviewStatus} canonicalReadbackVerified=false`);
     return;
   }
   console.error('WIP_PREFLIGHT_FAILED');

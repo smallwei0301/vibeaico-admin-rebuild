@@ -1,10 +1,11 @@
-import { adapt, request } from '@/lib/api';
+import { adaptAuth, request } from '@/lib/api';
 import type { OAuthStatus, TenantSummary } from '@/lib/types';
+import type { BusinessType } from '@/config/modes';
 import { MOCK_TENANTS } from '@/mock';
 
 /**
  * 認證 service —— 頁面（login/register/forgot-password/reset-password）與
- * Topbar 店家切換的唯一資料入口。骨架階段（mock）全部回 undefined／假資料，
+ * Topbar 店家切換的唯一資料入口。mock 認證模式（AUTH_REAL=false）全部回 undefined／假資料，
  * 端點與 payload 形狀對照 03 分冊 §6.2 與 04 分冊 §A-0。
  */
 
@@ -13,13 +14,13 @@ import { MOCK_TENANTS } from '@/mock';
  * mock 模式不該假裝平台已經設定了真的第三方登入。
  */
 export const getOAuthStatus = () =>
-  adapt<OAuthStatus>(
+  adaptAuth<OAuthStatus>(
     () => ({ google: { configured: false }, line: { configured: false } }),
     () => request<OAuthStatus>('/api/auth/oauth/status'),
   );
 
 export const login = (email: string, password: string) =>
-  adapt(
+  adaptAuth(
     () => undefined,
     () => request<void>('/api/auth/login', {
       method: 'POST',
@@ -28,13 +29,13 @@ export const login = (email: string, password: string) =>
   );
 
 export const logout = () =>
-  adapt(
+  adaptAuth(
     () => undefined,
     () => request<void>('/api/auth/logout', { method: 'POST' }),
   );
 
 export const sendVerificationCode = (email: string, purpose: 'REGISTER' | 'RESET_PASSWORD') =>
-  adapt(
+  adaptAuth(
     () => undefined,
     () => request<void>('/api/auth/send-verification-code', {
       method: 'POST',
@@ -48,8 +49,9 @@ export const registerTenant = (payload: {
   password: string;
   tenantName: string;
   shopCode: string;
+  businessType?: BusinessType;
 }) =>
-  adapt(
+  adaptAuth(
     () => undefined,
     () => request<void>('/api/auth/tenant/register', {
       method: 'POST',
@@ -58,7 +60,7 @@ export const registerTenant = (payload: {
   );
 
 export const forgotPassword = (email: string) =>
-  adapt(
+  adaptAuth(
     () => undefined,
     () => request<void>('/api/auth/forgot-password', {
       method: 'POST',
@@ -67,7 +69,7 @@ export const forgotPassword = (email: string) =>
   );
 
 export const resetPassword = (payload: { email: string; code: string; newPassword: string }) =>
-  adapt(
+  adaptAuth(
     () => undefined,
     () => request<void>('/api/auth/reset-password', {
       method: 'POST',
@@ -76,7 +78,7 @@ export const resetPassword = (payload: { email: string; code: string; newPasswor
   );
 
 export const changePassword = (payload: { currentPassword: string; newPassword: string }) =>
-  adapt(
+  adaptAuth(
     () => undefined,
     () => request<void>('/api/auth/change-password', {
       method: 'POST',
@@ -85,13 +87,13 @@ export const changePassword = (payload: { currentPassword: string; newPassword: 
   );
 
 export const myTenants = () =>
-  adapt<TenantSummary[]>(
+  adaptAuth<TenantSummary[]>(
     () => MOCK_TENANTS,
     () => request<TenantSummary[]>('/api/auth/my-tenants'),
   );
 
 export const switchTenant = (tenantId: string) =>
-  adapt(
+  adaptAuth(
     () => undefined,
     () => request<void>('/api/auth/switch-tenant', {
       method: 'POST',

@@ -13,10 +13,11 @@
  * 測試資料一律用獨立產生的 `@test.local` email／shopCode（不共用同一個字面值），
  * 避免多個案例互踩；全域重置只在 globalSetup 跑一次，本檔不再呼叫 reset-db。
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SHOP_A } from '../../fixtures';
 import { loginAs } from '../../helpers/auth';
+import { ResendMockServer } from '../../helpers/resend-mock';
 
 const BASE = process.env.INTEGRATION_BASE_URL ?? 'http://localhost:3100';
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const;
@@ -115,13 +116,25 @@ async function registerFullFlow(
 }
 
 let admin: SupabaseClient;
+// #754：send-verification-code 寄信失敗現在回 503。CI 的 RESEND_API_KEY 是假 key、
+// RESEND_BASE_URL=http://localhost:4124，沒有 mock 在聽就會變成「寄信失敗」。
+// 監聽 port 由 resendMockPort() 從 RESEND_BASE_URL 解析（預設 4124，與 CI 一致）。
+const resendMock = new ResendMockServer();
 
-beforeAll(() => {
+beforeAll(async () => {
+  if (!process.env.RESEND_BASE_URL || !process.env.RESEND_API_KEY) {
+    throw new Error('缺少 RESEND_BASE_URL / RESEND_API_KEY：需設 RESEND_BASE_URL=http://localhost:4124 與假 key，否則寄碼會是 503（#754）。');
+  }
+  await resendMock.start();
   expect(process.env.TEST_SUPABASE_URL).toBeTruthy();
   expect(process.env.TEST_SUPABASE_SERVICE_ROLE_KEY).toBeTruthy();
   admin = createClient(process.env.TEST_SUPABASE_URL!, process.env.TEST_SUPABASE_SERVICE_ROLE_KEY!, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+});
+
+afterAll(async () => {
+  await resendMock.stop();
 });
 
 describe('寄碼 → 註冊 → 登入 → me 全流程（03 §2-§5）', () => {
@@ -381,4 +394,52 @@ describe('POST /api/auth/change-password 需先驗證舊密碼（03 §4）', () 
     expect(meRes.status).toBe(200);
     expect((await readJson<{ email: string }>(meRes)).data!.email).toBe(email);
   });
+});
+
+// ⚠️ 必須放在檔案最後：provider 失敗會在 Next server 的 instance 記憶體開 parity 視窗
+// （#754／#763 枚舉防護），視窗內「所有」寄碼請求（含已註冊 email）都短路回 503、不呼叫 provider，
+// 且只由 TTL 結束（SENT 不會提前清除）。為避免拖累後續檔案，這裡用服務層級失敗（500 → 60 秒視窗）
+// 並實際等視窗過期；若用 401（設定類）視窗長達 10 分鐘，無法在測試中清除。
+describe('POST /api/auth/send-verification-code 寄信失敗誠實回報（#754／#763）', () => {
+  it('Resend 500 → 503 MAIL_001、DB 無殘留驗證碼；視窗內已註冊／未註冊 email 都 503 且不呼叫 provider；視窗過期後可再寄', async () => {
+    resendMock.reset();
+    const email = uniqueEmail('mailfail');
+
+    resendMock.failNext(500);
+    const failed = await postJson('/api/auth/send-verification-code', { email, purpose: 'REGISTER' });
+    expect(failed.status).toBe(503);
+    const failedBody = await readJson(failed);
+    expect(failedBody.success).toBe(false);
+    expect(failedBody.code).toBe('MAIL_001');
+    expect(failedBody.data).toBeUndefined();
+
+    const { data: leftover, error } = await admin
+      .from('auth_verification_codes').select('code').eq('email', email).eq('purpose', 'REGISTER');
+    expect(error).toBeNull();
+    expect(leftover).toEqual([]);
+
+    // 枚舉防護：視窗內，已註冊 email 與（provider 已恢復的）未註冊 email 都回同樣 503，provider 不被呼叫
+    const sentBefore = resendMock.emails.length;
+    const existing = await postJson('/api/auth/send-verification-code', {
+      email: SHOP_A.owner.email, purpose: 'REGISTER',
+    });
+    expect(existing.status).toBe(503);
+    expect((await readJson(existing)).code).toBe('MAIL_001');
+    const unregistered = await postJson('/api/auth/send-verification-code', { email, purpose: 'REGISTER' });
+    expect(unregistered.status).toBe(503);
+    expect((await readJson(unregistered)).code).toBe('MAIL_001');
+    expect(resendMock.emails.length).toBe(sentBefore);
+
+    // 等 60 秒視窗過期後，恢復寄信（失敗那筆已刪除，不留 60 秒冷卻）
+    await new Promise((r) => setTimeout(r, 61_000));
+    const retry = await postJson('/api/auth/send-verification-code', { email, purpose: 'REGISTER' });
+    expect(retry.status).toBe(200);
+    expect((await readJson<{ sent: boolean }>(retry)).data!.sent).toBe(true);
+    expect(resendMock.emails.length).toBeGreaterThan(sentBefore);
+
+    const existingAfter = await postJson('/api/auth/send-verification-code', {
+      email: SHOP_A.owner.email, purpose: 'REGISTER',
+    });
+    expect(existingAfter.status).toBe(200);
+  }, 120_000);
 });

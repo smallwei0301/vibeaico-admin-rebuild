@@ -66,6 +66,25 @@ export function checkRateLimit(
 }
 
 /**
+ * 不建立也不修改 bucket 的檢查：回傳「若現在呼叫 checkRateLimit 是否會被允許」。
+ * 沒有 bucket 或視窗已過期 → true；否則 count < max。
+ * 用來在真正計數前先擋掉會被拒絕的請求，避免被拒絕的請求仍建立新 bucket（記憶體無上限成長）。
+ */
+export function peekRateLimit(
+  key: string,
+  { max, windowMs }: { max: number; windowMs: number },
+): boolean {
+  const existing = buckets.get(key);
+  if (!existing || Date.now() - existing.windowStartMs >= windowMs) return true;
+  return existing.count < max;
+}
+
+/** 僅供測試：目前 bucket 數量。 */
+export function __rateLimitBucketCountForTest(): number {
+  return buckets.size;
+}
+
+/**
  * 從請求標頭取用戶端 IP。Vercel／大多數反向代理會設定 `x-forwarded-for`
  * （可能是逗號分隔的多層代理鏈，第一個是原始客戶端）；本機開發或代理沒有
  * 設定時退回固定字串——這種情況下所有請求共用同一個節流額度，是刻意的保守

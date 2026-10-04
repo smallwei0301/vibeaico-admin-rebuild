@@ -202,6 +202,8 @@ PR body、`TEST_PROFILE`、lane、candidate、Closure、Final Risk metadata 等 
 - metadata 到 CI 才第一次被擋，優先視為 **preflight coverage gap**；補 shared validator／parser，而不是再教每個 Agent 背一段 prose exception。
 - metadata 修正不靠 blind rerun；workflow 若不監聽 `edited`，使用既有 `workflow_dispatch` 或下一個**真實內容變更**觸發，不堆 no-op commit。
 - 同一 deterministic error 不用多輪 CI 猜合法值；先讀 validator 或讓 preflight 直接呼叫與 CI 相同的判定函式。
+- **Agent PR publication receipt（#724）**：#736 實際 merge 時間是不可變的 rollout 邊界；該時間以前建立的 PR 永久 grandfather，即使 live base 前進也不追討歷史 Draft receipt。新建立的 Agent-origin PR 先以 Draft 作 staging；OWNER／UNKNOWN 與 grandfathered PR 不套用新 publication validator。trusted-main guard 用 `agent-wip-preflight.mjs` 的共用 deterministic validator 驗 exact body + GitHub actual changed-file inventory；PASS 才由 `github-actions[bot]` 留 immutable `PUBLICATION_PREFLIGHT_RECEIPT`，其 digest 綁 exact body、files、base SHA、head SHA。轉 ready／ACTIVE 時 receipt 必須仍精確匹配；body edit、source synchronize、base/head/file inventory 改變都會讓舊 receipt 失效，必須回 Draft 取得新 receipt。main push 會喚醒以 main 為 base 的開放 Agent PR，重新驗證 base-bound receipt 並更新當前 head 的 required status；定時 recovery 仍保留。若 push 喚醒無法取得 PR 清單，該 run 失敗，但先前 head 的成功 status 不會自動失效；合併者必須核對最新 base、receipt 與本次有效 guard，不能將失敗 run 當成 PASS。純 MODEL_GOVERNANCE 仍只驗自己的治理 metadata，不借 Product Run。
+- receipt 不是 Final Risk、CI、TEST 或 merge approval，也不能由 PR body 自稱 PASS 取代；remote WIP/Final Risk/TEST/schema/branch-protection 規則照常執行。no-op commit 只會改 head 並使 receipt 失效，不是修 metadata 的手段。
 
 ### 2.0.2 Final Risk blocker 判讀：審查、提交證據、Owner action 必須分開
 
@@ -637,6 +639,12 @@ CI 失敗由 Luna 先壓縮：exact head、job／step、suite／case、錯誤碼
 留言或 GitHub 的 merged badge 讓接手者自行猜。若工具／權限／併發使本文當回合無法更新，必須留下
 `STATE_SYNC_PENDING`，精確列出 PR、已驗證 terminal state、尚未同步欄位、失敗 action／error 與下一個合法
 寫入路徑；在清掉這個 pending 前不得宣稱 `POST_MERGE_CLOSEOUT=COMPLETE`。
+
+### 9.0.1.1 Product Issue close admission：先證明可關，再送 close
+Product Issue 的 GitHub `closed` 事件由 trusted `product-issue-close-guard` 機械驗證。關閉前同回合留下 `RUN_CAPTURE_HANDOFF`，至少含 `RUN_ID`、`EVENT: ISSUE_CLOSE_READY`、current-main canonical CI `EVIDENCE_REF`、同 Issue trusted final Sol `CLOSE_APPROVED_REF`、`REVIEWED_HEAD`、`OBSERVED_AT`、`WRITER_BLOCKER`、`NEXT_SAFE_WRITE_PATH`。
+close guard 重新讀 live Issue、current main、owning v4 Product Run、open/merged PR、canonical CI 與 final Sol approval。handoff 必須在 close 前建立/最後編輯且不超過 6 小時；Run 必須 OPEN 且 sources 含本 Issue；final Sol approval 必須同 Issue／同 RUN_ID／本次 close generation，`EXACT_HEAD=REVIEWED_HEAD` 且等於本 Issue 最後一張已 merge Product PR 的 source head。Squash merge 的 ancestry 以該 PR `merge_commit_sha` 對 current main 驗證，不拿 source head 冒充 merge ancestry。
+CI 必須是 `.github/workflows/ci.yml` 的 current-main exact SHA `push` success，且不能有同 Issue open PR。trusted reviewer 沿用既有 immutable Agent-bot allowlist或 GitHub live write/maintain/admin permission；不得另造信任名單。任一條不成立即 reopen 並標 `governance:premature-close`，label 建立須併發冪等。
+合法 close 後 workflow 留下 `ISSUE_CLOSED_OBSERVED` handoff；owning Product session 仍須 reconcile `ISSUE_CLOSED` Completion Truth 與 `delivery.issuesClosed`、重跑 readiness，再完成 `POST_MERGE_CLOSEOUT`。只有正文與 managed label 一致為 `MODEL_GOVERNANCE` 且無 Product label 才豁免；缺失、歧義或衝突一律 fail closed。
 
 ### 9.0.2 STAGE_TRUTH_SYNC：環境階段一變，就更新，不等 closeout／複盤
 

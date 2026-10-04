@@ -1,4 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { routing } from '../../scripts/agents/astra-review-policy.mjs';
 import {
   discoverChangedFiles,
   parseGitNameStatus,
@@ -349,5 +351,63 @@ describe('#370 preflight 必須涵蓋 local-isolated-test-policy 的欄位', () 
     const result = validateWipPreflight({ body: withProfile('REMOTE_BRANCH_REQUIRED') });
     expect(result.valid).toBe(false);
     expect(result.errors.join(' ')).toMatch(/retired/i);
+  });
+});
+
+describe('ordinary final review local contract (synthetic, never canonical approval)', () => {
+  const body = productBody + '\nWORKSTREAM: PRODUCT_MAINLINE\nASTRA_RISK: NONE\nASTRA_RATIONALE: Synthetic bounded runtime change\n';
+  const live = { state: 'open', draft: false, body, head: { sha: 'b'.repeat(40) } };
+  it('rejects missing ordinary final proof for an explicit current Product stage', () => {
+    const result = validateWipPreflight({ body, currentPr: live, fileExists: () => true } as any);
+    expect(result.valid).toBe(false);
+    expect(result.ordinaryReviewRequired).toBe(true);
+    expect(result.errors).toContain('Ordinary final review requires local scope and receipt snapshots');
+  });
+  const repository = 'synthetic/contract', headSha = 'b'.repeat(40), changeDigest = 'c'.repeat(64);
+  const source = (id: number) => `https://github.com/${repository}/pull/150#issuecomment-${id}`;
+  const role = (kind: string) => ({ role: kind, repository, headSha, changeDigest, sourceRef: source(kind === 'BUILD' ? 101 : 102),
+    actorId: `synthetic-${kind}-actor`, sessionId: `synthetic-${kind}-session`, executionRef: `synthetic-${kind}-execution`,
+    startedAt: '2026-10-01T00:01:00Z', completedAt: '2026-10-01T00:01:00Z', executionEvidence: 'OPERATOR_ATTESTED',
+    freshContext: kind === 'REVIEW', provider: 'OPENAI', providerEvidenceRef: source(104), requestedModel: routing.models.audit });
+  const packet = () => ({ repository, headSha, changeDigest, builder: role('BUILD'), reviewer: role('REVIEW'),
+    reviewSourceRef: `https://github.com/${repository}/pull/150#pullrequestreview-105`,
+    review: { repository, headSha, changeDigest, policyVersion: routing.version, executionRef: 'synthetic-REVIEW-execution',
+      requestedModel: routing.models.audit, actualModel: 'unknown', identityEvidence: 'UNKNOWN', servedVerified: false,
+      reviewerExecutionReceipt: source(102), verdict: 'PASS', report: source(103), findings: 'Synthetic counterexamples only; not a dispatched actor' } });
+  const finalBody = body + `BUILDER_EXECUTION_RECEIPT: ${source(101)}\n`;
+  const check = (ordinaryEvidence: any, extra = {}) => validateWipPreflight({ body: finalBody, prospectiveFinal: true, ordinaryEvidence, fileExists: () => true, ...extra } as any);
+  it('validates a concrete synthetic local shape but never claims canonical role approval', () => {
+    const result = check(packet()); expect(result.valid).toBe(true); expect(result.ordinaryReviewStatus).toBe('NEEDS_CANONICAL_READBACK'); expect(result.canonicalReadbackVerified).toBe(false);
+  });
+  it.each(['self-actor', 'self-session', 'stale-head', 'foreign-source', 'unknown-served', 'string-served', 'wrong-model', 'unknown-actor'])('rejects %s without trusting packet flags', mode => {
+    const p = packet() as any; p.trusted = true;
+    if (mode === 'self-actor') p.reviewer.actorId = p.builder.actorId;
+    if (mode === 'self-session') p.reviewer.sessionId = p.builder.sessionId;
+    if (mode === 'stale-head') p.reviewer.headSha = 'd'.repeat(40);
+    if (mode === 'foreign-source') p.reviewer.sourceRef = 'https://github.com/foreign/repo/pull/1#issuecomment-2';
+    if (mode === 'unknown-served') p.review.servedVerified = true;
+    if (mode === 'string-served') p.review.servedVerified = 'true';
+    if (mode === 'wrong-model') p.review.requestedModel = 'gpt-6-astra';
+    if (mode === 'unknown-actor') p.reviewer.actorId = 'unknown';
+    expect(check(p).valid).toBe(false); expect(check(p).canonicalReadbackVerified).toBe(false);
+  });
+  it('current snapshot head/body cannot disagree with a prospective packet', () => {
+    expect(check(packet(), { currentPr: { ...live, body: finalBody, head: { sha: 'd'.repeat(40) } } }).valid).toBe(false);
+    expect(check(packet(), { currentPr: live }).ordinaryReviewStatus).toBe('LOCAL_NOT_VERIFIABLE');
+  });
+  it('Draft BUILD, governance and high-risk baseline do not acquire ordinary proof requirements', () => {
+    expect(validateWipPreflight({ body, currentPr: { ...live, draft: true }, fileExists: () => true } as any).ordinaryReviewRequired).toBe(false);
+    expect(validateWipPreflight({ body: governanceBody, prospectiveFinal: true } as any).ordinaryReviewRequired).toBe(false);
+    expect(validateWipPreflight({ body: body.replace('ASTRA_RISK: NONE', 'ASTRA_RISK: PAYMENT_CONSISTENCY'), prospectiveFinal: true, fileExists: () => true } as any).ordinaryReviewRequired).toBe(false);
+  });
+  it('canonical template documents non-executable schemas without trusted proof flags', () => {
+    const template = readFileSync('.github/pull_request_template.md', 'utf8');
+    expect(template).toContain('NON_EXECUTABLE_EXAMPLE'); expect(template).toContain('BUILDER_EXECUTION_RECEIPT:');
+    expect(template).toContain('reviewerExecutionReceipt'); expect(template).toContain('LOCAL_NOT_VERIFIABLE'); expect(template).not.toContain('"trusted": true');
+  });
+  it('reports absent stage as locally unverifiable, never remote role PASS', () => {
+    const result = validateWipPreflight({ body, fileExists: () => true });
+    expect(result.ordinaryReviewStatus).toBe('LOCAL_NOT_VERIFIABLE');
+    expect(result.canonicalReadbackVerified).toBe(false);
   });
 });

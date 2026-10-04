@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { combineSidebarCounts, currentUserName, sidebarCounts } from '@/services/shell';
 import { getSetupStatus } from '@/services/settings';
@@ -14,8 +14,17 @@ describe('src/services/shell.ts — mock 分支（NEXT_PUBLIC_USE_MOCK 預設 tr
     expect(await sidebarCounts()).toEqual(MOCK_SIDEBAR_COUNTS);
   });
 
-  it('currentUserName() 回 MOCK_USER.name（不是 email）——mock demo 維持原行為', async () => {
-    expect(await currentUserName()).toBe(MOCK_USER.name);
+  it('currentUserName() 回 MOCK_USER.name（不是 email）——僅在 mock 認證模式（#754：USE_MOCK=true 明確設定）', async () => {
+    // currentUserName 屬認證資料，改走 adaptAuth；未設定 USE_MOCK 時是 real，故此處明確設為 true 重載。
+    vi.resetModules();
+    vi.stubEnv('NEXT_PUBLIC_USE_MOCK', 'true');
+    try {
+      const mod = await import('@/services/shell');
+      expect(await mod.currentUserName()).toBe(MOCK_USER.name);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
   });
 
   it('mock 的 setup 進度沿用既有 getSetupStatus()，非本次改動範圍', async () => {
@@ -160,11 +169,11 @@ describe('src/components/layout/AppShell.tsx — Sidebar/Topbar 的外框值分 
     expect(src).toContain('getSetupStatus().then(');
   });
 
-  it('applyMockMode 只在 if (USE_MOCK) 區塊內呼叫（real 模式不會踩到 GUIDE 預設資料集）', () => {
+  it('applyMockMode 只在業務資料為 mock 的區塊內呼叫（#754：SRC.businessDataFromMock）（real 模式不會踩到 GUIDE 預設資料集）', () => {
     const idx = src.indexOf('applyMockMode(businessType)');
     expect(idx).toBeGreaterThan(-1);
     const before = src.slice(0, idx);
-    const guardIdx = before.lastIndexOf('if (!USE_MOCK) return;');
+    const guardIdx = before.lastIndexOf('if (!SRC.businessDataFromMock) return;');
     expect(guardIdx).toBeGreaterThan(-1);
     // 確認這個 guard 距離呼叫處不遠（同一個 effect 裡），不是別處無關的 guard。
     expect(idx - guardIdx).toBeLessThan(400);

@@ -3,6 +3,7 @@ import type {
   DepartureConflict, Trip, TripAddon, TripDeparture, TripPlan, TripPlanSeason,
   TourOrder, TourOrderStatus, TourPaymentStatus, Paged,
 } from '@/lib/types';
+import { clampGalleryForCopy } from '@/lib/trip-gallery';
 import { canTransitionTourOrder, shouldReleaseSeats } from '@/server/tour-domain';
 import {
   MOCK_TOUR_ORDERS, MOCK_TRIPS, MOCK_TRIP_ADDONS,
@@ -571,7 +572,12 @@ export async function duplicateTripFully(
     createTrip, listTripPlans, listTripAddons, saveTripPlan, saveTripPlanSeason, saveTripAddon, deleteTrip,
   },
 ): Promise<Trip> {
-  const created = await deps.createTrip(tripPayload);
+  // 來源相簿若是超過寫入上限的歷史資料，複本只取前 MAX 張，否則 POST 會被 gallery max 驗證擋成 400。
+  const created = await deps.createTrip(
+    tripPayload.galleryUrls
+      ? { ...tripPayload, galleryUrls: clampGalleryForCopy(tripPayload.galleryUrls) }
+      : tripPayload,
+  );
   if (!created?.id) {
     throw new ApiError('複製行程失敗：伺服器未回傳新行程編號', undefined, 500);
   }

@@ -22,8 +22,8 @@ import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { lineSetupWizardPage as t } from '@/i18n/zh-TW/line-setup-wizard';
 import {
-  WIZARD_STEP_KEYS, allVerifiableChecksPassed, canAdvanceFromStep, credentialsConfigured,
-  deriveStartingStep, stepStatus,
+  WIZARD_STEP_KEYS, VERIFIABLE_CHECK_KEYS, allVerifiableChecksPassed, canAdvanceFromStep, credentialsConfigured,
+  deriveStartingStep, stepStatus, createWizardRequestGate,
   type VerifyCheck, type WizardStepKey,
 } from '@/lib/line-setup-wizard';
 
@@ -62,7 +62,12 @@ function StepStatusBadge({ status }: { status: 'NOT_CHECKED' | 'PASS' | 'FAIL' |
 export default function LineSetupWizardPage() {
   const toast = useToast();
 
-  const [loading, setLoading] = React.useState(true);
+  const [loadState, setLoadState] = React.useState<'loading' | 'error' | 'ready'>('loading');
+  const [loadError, setLoadError] = React.useState('');
+  const [verifyError, setVerifyError] = React.useState('');
+  const mounted = React.useRef(false);
+  const loadGate = React.useRef(createWizardRequestGate());
+  const verifyGate = React.useRef(createWizardRequestGate());
   const [settings, setSettings] = React.useState<TenantSettings | null>(null);
   const [step, setStep] = React.useState<WizardStepKey>('CREDENTIALS_INPUT');
 
@@ -98,58 +103,71 @@ export default function LineSetupWizardPage() {
   );
 
   const runVerify = React.useCallback(async (): Promise<VerifyCheck[] | null> => {
+    if (!mounted.current) return null;
+    const request = verifyGate.current.begin();
+    const current = () => mounted.current && verifyGate.current.isCurrent(request);
+    setChecks(null);
+    setVerifyError('');
     setVerifying(true);
     try {
       const res = await verifyLineSetup();
+      if (!current()) return null;
       setChecks(res.checks);
       return res.checks;
     } catch (e) {
-      toast.show(
-        `${t.messages.verifyFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
-        'danger',
-      );
+      if (!current()) return null;
+      setVerifyError(`${t.messages.verifyFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`);
       return null;
     } finally {
-      setVerifying(false);
+      if (current()) setVerifying(false);
     }
-  }, [toast]);
-
-  /* ------------------------------------------------------------------ 載入 */
-  React.useEffect(() => {
-    void (async () => {
-      try {
-        const s = await getTenantSettings();
-        setSettings(s);
-        setChannelId(s.line.channelId);
-        setAutoReplyAck(readAckFromStorage());
-
-        const configured = credentialsConfigured({
-          channelId: !!s.line.channelId,
-          channelSecret: !!s.line.channelSecret,
-          channelAccessToken: !!s.line.channelAccessToken,
-        });
-
-        if (configured) {
-          // 🔑 用真實 provider 狀態重建進度，不是只讀 React state 或猜測。
-          const realChecks = await runVerify();
-          setStep(deriveStartingStep(
-            { channelId: true, channelSecret: true, channelAccessToken: true },
-            realChecks,
-          ));
-        } else {
-          setStep('CREDENTIALS_INPUT');
-        }
-      } catch (e) {
-        toast.show(
-          `${t.messages.loadFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
-          'danger',
-        );
-      } finally {
-        setLoading(false);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const loadSettings = React.useCallback(async () => {
+    const request = loadGate.current.begin();
+    // A reload supersedes verification started against the previous settings.
+    verifyGate.current.invalidate();
+    const current = () => mounted.current && loadGate.current.isCurrent(request);
+    setLoadState('loading');
+    setLoadError('');
+    setChecks(null);
+    setVerifyError('');
+    setVerifying(false);
+    try {
+      const s = await getTenantSettings();
+      if (!current()) return;
+      setSettings(s);
+      setChannelId(s.line.channelId);
+      setAutoReplyAck(readAckFromStorage());
+      setLoadState('ready');
+      const configured = credentialsConfigured({
+        channelId: !!s.line.channelId,
+        channelSecret: !!s.line.channelSecret,
+        channelAccessToken: !!s.line.channelAccessToken,
+      });
+      setStep(configured ? 'CONNECTION' : 'CREDENTIALS_INPUT');
+      if (configured) {
+        const realChecks = await runVerify();
+        if (current() && realChecks) setStep(deriveStartingStep(
+          { channelId: true, channelSecret: true, channelAccessToken: true }, realChecks,
+        ));
+      }
+    } catch (e) {
+      if (!current()) return;
+      setLoadError(`${t.messages.loadFailed}${e instanceof Error ? e.message : t.messages.unknownError}`);
+      setLoadState('error');
+    }
+  }, [runVerify]);
+
+  React.useEffect(() => {
+    mounted.current = true;
+    void loadSettings();
+    return () => {
+      mounted.current = false;
+      loadGate.current.invalidate();
+      verifyGate.current.invalidate();
+    };
+  }, [loadSettings]);
 
   /* -------------------------------------------------------------- 衍生值 */
   const channelIdWarning = (() => {
@@ -196,6 +214,7 @@ export default function LineSetupWizardPage() {
         channelSecret: secretEditing ? secretInput.trim() : '',
         channelAccessToken: tokenEditing ? tokenInput.trim() : '',
       });
+      if (!mounted.current) return;
       setSettings((s) => (s ? {
         ...s,
         line: {
@@ -213,17 +232,18 @@ export default function LineSetupWizardPage() {
       setTokenVisible(false);
       toast.show(t.credentials.saved);
       const realChecks = await runVerify();
-      setStep(deriveStartingStep(
+      if (mounted.current && realChecks) setStep(deriveStartingStep(
         { channelId: true, channelSecret: true, channelAccessToken: true },
         realChecks,
       ));
     } catch (e) {
+      if (!mounted.current) return;
       toast.show(
         `${t.messages.saveFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
         'danger',
       );
     } finally {
-      setSavingCredentials(false);
+      if (mounted.current) setSavingCredentials(false);
     }
   };
 
@@ -231,6 +251,7 @@ export default function LineSetupWizardPage() {
     setSyncingWebhook(true);
     try {
       const res = await syncLineWebhook();
+      if (!mounted.current) return;
       if (res.synced) {
         toast.show(t.botWebhook.fixSucceeded);
         await runVerify();
@@ -238,16 +259,19 @@ export default function LineSetupWizardPage() {
         toast.show(`${t.botWebhook.fixFailedPrefix}${res.message}`, 'danger');
       }
     } catch (e) {
+      if (!mounted.current) return;
       toast.show(
         `${t.botWebhook.fixFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
         'danger',
       );
     } finally {
-      setSyncingWebhook(false);
+      if (mounted.current) setSyncingWebhook(false);
     }
   };
 
   const goNext = () => {
+    if (verifying || verifyError || !canAdvanceFromStep(step, checks)) return;
+    if (step === 'CAPABILITIES' && !allVerifiableChecksPassed(checks)) return;
     const idx = WIZARD_STEP_KEYS.indexOf(step);
     if (idx < WIZARD_STEP_KEYS.length - 1) setStep(WIZARD_STEP_KEYS[idx + 1]);
   };
@@ -262,12 +286,17 @@ export default function LineSetupWizardPage() {
   };
 
   /* -------------------------------------------------------------- render */
-  if (loading || !settings) {
+  if (loadState !== 'ready' || !settings) {
     return (
       <>
         <PageHeader eyebrow={nav.navSystem} title={t.title} />
         <Card>
-          <CardBody className="py-10 text-center text-muted">{common.loading}</CardBody>
+          <CardBody className="py-10 text-center text-muted">
+            {loadState === 'error' ? <>
+              <Alert tone="danger">{loadError}</Alert>
+              <Button className="mt-3" onClick={() => void loadSettings()}>{t.messages.retryLoad}</Button>
+            </> : common.loading}
+          </CardBody>
         </Card>
       </>
     );
@@ -288,6 +317,10 @@ export default function LineSetupWizardPage() {
       />
 
       <p className="mb-4 text-base text-neutral-700">{t.subtitle}</p>
+      {verifyError ? <Alert tone="danger" className="mb-4">
+        <p>{verifyError}</p><p>{t.messages.verifyRetryHint}</p>
+        <Button variant="outline" className="mt-2" onClick={() => void runVerify()}>{t.nav.retryCheck}</Button>
+      </Alert> : null}
 
       {/* ---------------------------------------------------------- 進度條 */}
       <div className="mb-4 flex flex-wrap gap-2 overflow-x-auto">
@@ -297,7 +330,7 @@ export default function LineSetupWizardPage() {
             data-active={key === step}
             className="flex items-center gap-1 whitespace-nowrap rounded-pill border border-neutral-250 px-3 py-1 text-2xs text-secondary data-[active=true]:border-primary data-[active=true]:bg-primary-50 data-[active=true]:text-primary data-[active=true]:font-semibold"
           >
-            {i < currentIndex ? <CheckCircle2 size={12} className="text-success" /> : null}
+            {i < currentIndex && (!['CONNECTION', 'BOT_MODE_WEBHOOK', 'WEBHOOK_TEST'].includes(key) || canAdvanceFromStep(key, checks)) ? <CheckCircle2 size={12} className="text-success" /> : null}
             {t.steps[key]}
           </div>
         ))}
@@ -484,7 +517,7 @@ export default function LineSetupWizardPage() {
                 <ArrowLeft size={14} />
                 {t.nav.prev}
               </Button>
-              <Button disabled={!canAdvanceFromStep('CONNECTION', checks)} onClick={goNext}>
+              <Button disabled={verifying || !!verifyError || !canAdvanceFromStep('CONNECTION', checks)} onClick={goNext}>
                 {t.nav.next}
                 <ArrowRight size={14} />
               </Button>
@@ -560,7 +593,7 @@ export default function LineSetupWizardPage() {
                 <ArrowLeft size={14} />
                 {t.nav.prev}
               </Button>
-              <Button disabled={!canAdvanceFromStep('BOT_MODE_WEBHOOK', checks)} onClick={goNext}>
+              <Button disabled={verifying || !!verifyError || !canAdvanceFromStep('BOT_MODE_WEBHOOK', checks)} onClick={goNext}>
                 {t.nav.next}
                 <ArrowRight size={14} />
               </Button>
@@ -613,7 +646,7 @@ export default function LineSetupWizardPage() {
                 <ArrowLeft size={14} />
                 {t.nav.prev}
               </Button>
-              <Button disabled={!canAdvanceFromStep('WEBHOOK_TEST', checks)} onClick={goNext}>
+              <Button disabled={verifying || !!verifyError || !canAdvanceFromStep('WEBHOOK_TEST', checks)} onClick={goNext}>
                 {t.nav.next}
                 <ArrowRight size={14} />
               </Button>
@@ -665,7 +698,7 @@ export default function LineSetupWizardPage() {
                 <ArrowLeft size={14} />
                 {t.nav.prev}
               </Button>
-              <Button onClick={goNext}>
+              <Button disabled={verifying || !!verifyError || !allVerifiableChecksPassed(checks)} onClick={goNext}>
                 {t.nav.goToCapabilities}
                 <ArrowRight size={14} />
               </Button>
@@ -739,7 +772,7 @@ export default function LineSetupWizardPage() {
                 <ArrowLeft size={14} />
                 {t.nav.prev}
               </Button>
-              <Button onClick={goNext}>
+              <Button disabled={verifying || !!verifyError || !allVerifiableChecksPassed(checks)} onClick={goNext}>
                 {t.nav.next}
                 <ArrowRight size={14} />
               </Button>
@@ -753,23 +786,23 @@ export default function LineSetupWizardPage() {
         <Card className="mb-4">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <CheckCircle2 size={16} className="text-success" />
-              {t.done.title}
+              {allVerifiableChecksPassed(checks) ? <CheckCircle2 size={16} className="text-success" /> : <AlertTriangle size={16} className="text-warning" />}
+              {allVerifiableChecksPassed(checks) ? t.done.title : t.done.unverifiedTitle}
             </CardTitle>
           </CardHeader>
           <CardBody>
-            <p className="mb-3 text-base text-neutral-700">{t.done.intro}</p>
+            <p className="mb-3 text-base text-neutral-700">{allVerifiableChecksPassed(checks) ? t.done.intro : t.done.unverifiedBody}</p>
 
             <div className="mb-3">
               <div className="mb-1 text-base font-semibold text-dark">{t.done.workingTitle}</div>
               <ul className="ml-4 list-disc text-base text-neutral-700">
                 {(checks ?? [])
-                  .filter((c) => c.status === 'PASS')
+                  .filter((c) => c.status === 'PASS' && VERIFIABLE_CHECK_KEYS.some((key) => key === c.key))
                   .map((c) => <li key={c.key}>{c.message}</li>)}
               </ul>
               {!allVerifiableChecksPassed(checks) ? (
                 <Alert tone="warning" className="mt-2 text-xs">
-                  {(checks ?? []).filter((c) => c.status === 'FAIL').map((c) => c.message).join('；')}
+                  {(checks ?? []).filter((c) => c.status === 'FAIL').map((c) => c.message).join('；') || t.done.unverifiedBody}
                 </Alert>
               ) : null}
             </div>
