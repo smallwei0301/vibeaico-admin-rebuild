@@ -372,6 +372,37 @@ describe('POST /api/auth/logout（signOut 錯誤不得被吞）', () => {
   });
 });
 
+describe('GET /api/auth/my-tenants（business_type 必須回傳，Codex P1）', () => {
+  afterEach(() => { vi.doUnmock('@/server/tenant'); vi.doUnmock('next/headers'); vi.resetModules(); });
+  const load = async (rows: unknown[]) => {
+    vi.resetModules();
+    vi.doMock('next/headers', () => ({ cookies: async () => ({ get: () => undefined, getAll: () => [] }) }));
+    const select = vi.fn((_cols: string) => ({ eq: async () => ({ data: rows, error: null }) }));
+    vi.doMock('@/server/tenant', () => ({
+      requireTenant: async () => ({ tenantId: 't1', user: { id: 'u1' }, supabase: { from: () => ({ select }) } }),
+    }));
+    const { GET } = await import('@/app/api/auth/my-tenants/route');
+    return { GET, select };
+  };
+
+  it('select 含 tenants.business_type，且回應帶 businessType（GUIDE 不被吞成預設）', async () => {
+    const { GET, select } = await load([
+      { tenant_id: 't1', role: 'OWNER', tenants: { shop_code: 'g', name: 'G', business_type: 'GUIDE' } },
+    ]);
+    const res = await (GET as any)(new Request('http://localhost:3000/api/auth/my-tenants'), {});
+    const body = await res.json();
+    expect(select.mock.calls[0][0]).toMatch(/tenants\([^)]*business_type[^)]*\)/);
+    expect(body.data[0].businessType).toBe('GUIDE');
+    expect(body.data[0].current).toBe(true);
+  });
+
+  it('接線：AppShell 的 businessType 來自 current 店家（remoteTenants）', () => {
+    const src = code('src/components/layout/AppShell.tsx');
+    expect(src).toMatch(/SRC\.tenantContextFromApi \? remoteTenants : MOCK_TENANTS/);
+    expect(src).toMatch(/const businessType = current\.businessType \?\? 'LOCAL_SHOP'/);
+  });
+});
+
 describe('#754 review N9：performSwitchTenant', () => {
   it('成功：reload，不顯示錯誤', async () => {
     const reload = vi.fn(); const showError = vi.fn();

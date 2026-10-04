@@ -60,6 +60,11 @@ describe('GET /api/auth/my-tenants（03 §5）', () => {
     expect(body.data![0].id).toBe(SHOP_A.id);
     expect(body.data![0].shopCode).toBe(SHOP_A.shopCode);
     expect(body.data![0].current).toBe(true);
+    // Codex P1：businessType 必須回傳且等於 DB 內該店 business_type（AppShell 業態外框依此）
+    const { data: row, error } = await admin.from('tenants').select('business_type').eq('id', SHOP_A.id).single();
+    expect(error).toBeNull();
+    expect(row!.business_type).toBeTruthy();
+    expect(body.data![0].businessType).toBe(row!.business_type);
   });
 });
 
@@ -92,6 +97,10 @@ describe('POST /api/auth/switch-tenant 後 me 變更（03 §5）', () => {
     const ids = listBody.data!.map((t) => t.id);
     expect(ids).toContain(SHOP_A.id);
     expect(ids).toContain(SHOP_B.id);
+    for (const item of listBody.data!) {
+      const { data: row } = await admin.from('tenants').select('business_type').eq('id', item.id).single();
+      expect(item.businessType).toBe(row!.business_type);
+    }
 
     const switchRes = await api.post('/api/auth/switch-tenant', { tenantId: SHOP_B.id });
     expect(switchRes.status).toBe(200);
