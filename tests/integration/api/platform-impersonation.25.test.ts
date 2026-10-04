@@ -392,6 +392,15 @@ describe('驗收 2＋4 —— 進入後可查看且可修改，全程留紀錄',
     expect(body.data!.tenantId).toBe(SHOP_A.id);
   });
 
+  it('#754：代入中 GET /api/auth/my-tenants 只回代入目標 A 店一筆（不回管理者自己的店）', async () => {
+    const res = await api.get('/api/auth/my-tenants');
+    expect(res.status).toBe(200);
+    const body = await readJson<Array<{ id: string; current: boolean; businessType?: string }>>(res);
+    expect(body.data!.map((t) => t.id)).toEqual([SHOP_A.id]);
+    expect(body.data![0].current).toBe(true);
+    expect(body.data![0].businessType).toBeTruthy();
+  });
+
   it('**可查看**：以代入身分讀得到 A 店的服務', async () => {
     const res = await api.get('/api/services');
     expect(res.status).toBe(200);
