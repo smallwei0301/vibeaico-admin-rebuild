@@ -13,7 +13,7 @@ import { MOCK_TENANTS, MOCK_SIDEBAR_COUNTS, MOCK_SETUP_STATUS, MOCK_USER, applyM
 import { AUTH_REAL, USE_MOCK } from '@/config/env';
 import { Alert } from '@/components/ui/Alert';
 import { common } from '@/i18n/zh-TW/common';
-import { shellDataSources, initialShellIdentity, mockUserNameForMode } from '@/lib/auth-boundary';
+import { shellDataSources, initialShellIdentity, mockUserNameForMode, performSwitchTenant, tenantContextNotice } from '@/lib/auth-boundary';
 import { cn } from '@/lib/utils';
 import { myTenants, switchTenant as switchTenantApi, sidebarCounts, currentUserName, getSetupStatus } from '@/services';
 import type { SidebarCounts } from '@/services/shell';
@@ -76,6 +76,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (!SRC.tenantContextFromApi) return;
     myTenants().then((list) => {
       setRemoteTenants(list);
+      setTenantsLoaded(true);
       const cur = list.find((tt) => tt.current) ?? list[0];
       if (cur) setTenantId(cur.id);
     }).catch(() => setTenantsLoadFailed(true));
@@ -102,6 +103,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     () => initialShellIdentity(AUTH_REAL, USE_MOCK, MOCK_TENANTS, MOCK_USER).userName,
   );
   const [tenantsLoadFailed, setTenantsLoadFailed] = React.useState(false);
+  const [tenantsLoaded, setTenantsLoaded] = React.useState(false);
 
   React.useEffect(() => {
     if (!SRC.businessDataFromMock) return;
@@ -124,12 +126,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const handleSwitchTenant = (id: string) => {
+  const tenantNotice = tenantContextNotice({
+    authReal: SRC.tenantContextFromApi,
+    loadFailed: tenantsLoadFailed,
+    loaded: tenantsLoaded,
+    count: remoteTenants.length,
+  });
+
+  const handleSwitchTenant = (id: string, showError: (message: string) => void) => {
     if (!SRC.tenantContextFromApi) {
       localStorage.setItem('vibeai.tenant.id', id);
       setTenantId(id);
     } else {
-      void switchTenantApi(id).then(() => window.location.reload());
+      void performSwitchTenant({
+        switchTenant: () => switchTenantApi(id),
+        reload: () => window.location.reload(),
+        showError,
+        fallbackMessage: common.topbar.switchTenantFailed,
+      });
     }
   };
 
@@ -157,9 +171,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           />
           {/* 代入中必須每一頁都看得到——見 ImpersonationBanner 檔頭。 */}
           <ImpersonationBanner />
-          {SRC.tenantContextFromApi && tenantsLoadFailed && (
+          {tenantNotice === 'failed' && (
             <Alert tone="danger" role="alert" className="mx-4 mt-3" data-testid="tenants-load-failed">
               {common.topbar.tenantsLoadFailed}
+            </Alert>
+          )}
+          {tenantNotice === 'empty' && (
+            <Alert tone="warning" role="status" className="mx-4 mt-3" data-testid="tenants-empty">
+              {common.topbar.noTenants}
             </Alert>
           )}
           {SRC.showDemoDataNotice && (

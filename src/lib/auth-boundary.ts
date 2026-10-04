@@ -79,3 +79,39 @@ export async function performLogout(deps: {
   deps.refresh();
   return true;
 }
+
+/**
+ * AUTH_REAL 切換店家：真的呼叫 switchTenant()，成功才 reload；
+ * 失敗只顯示錯誤（優先 server message，否則 fallback），不 reload、維持目前店家。
+ */
+export async function performSwitchTenant(deps: {
+  switchTenant: () => Promise<unknown>;
+  reload: () => void;
+  showError: (message: string) => void;
+  fallbackMessage: string;
+}): Promise<boolean> {
+  try {
+    await deps.switchTenant();
+  } catch (err) {
+    deps.showError(err instanceof Error && err.message ? err.message : deps.fallbackMessage);
+    return false;
+  }
+  deps.reload();
+  return true;
+}
+
+/**
+ * AUTH_REAL 店家清單狀態提示：載入失敗 -> 'failed'；載入成功但 0 間 -> 'empty'；其餘 null。
+ * 兩者互斥（failed 優先）；mock 認證永不提示。
+ */
+export function tenantContextNotice(state: {
+  authReal: boolean;
+  loadFailed: boolean;
+  loaded: boolean;
+  count: number;
+}): 'failed' | 'empty' | null {
+  if (!state.authReal) return null;
+  if (state.loadFailed) return 'failed';
+  if (state.loaded && state.count === 0) return 'empty';
+  return null;
+}

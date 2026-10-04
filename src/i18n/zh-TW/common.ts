@@ -128,6 +128,8 @@ export const common = {
     setupProgress: '設定進度',
     toggleSidebar: '切換選單',
     logoutFailed: '登出失敗，請稍後再試',
+    switchTenantFailed: '切換店家失敗，請稍後再試',
+    noTenants: '此帳號目前沒有可管理的店家',
     tenantsLoadFailed: '無法載入店家清單，請重新整理頁面或稍後再試',
     demoDataNotice: '目前頁面為示範資料，尚未連接正式資料',
   },

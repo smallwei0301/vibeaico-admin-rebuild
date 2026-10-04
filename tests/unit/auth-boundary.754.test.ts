@@ -10,7 +10,7 @@ import { NextRequest } from 'next/server';
 
 import { resolveAuthMode } from '@/config/env';
 import {
-  initialShellIdentity, mockUserNameForMode, performLogout, safeNextPath, shellDataSources,
+  initialShellIdentity, mockUserNameForMode, performLogout, performSwitchTenant, tenantContextNotice, safeNextPath, shellDataSources,
 } from '@/lib/auth-boundary';
 
 const read = (relative: string) =>
@@ -307,7 +307,9 @@ describe('AppShell 資料來源', () => {
     const src = code('src/components/layout/AppShell.tsx');
     expect(src).not.toMatch(/myTenants\(\)[\s\S]*?\.catch\(\(\) => \{\}\)/);
     expect(src).toMatch(/\.catch\(\(\) => setTenantsLoadFailed\(true\)\)/);
-    expect(src).toMatch(/SRC\.tenantContextFromApi && tenantsLoadFailed/);
+    expect(src).toMatch(/tenantContextNotice\(\{[\s\S]*?authReal: SRC\.tenantContextFromApi[\s\S]*?loadFailed: tenantsLoadFailed/);
+    expect(src).toMatch(/tenantNotice === .empty.[\s\S]*?common\.topbar\.noTenants/);
+    expect(src).toMatch(/performSwitchTenant\(/);
     expect(src).toMatch(/tone="danger"[\s\S]*?common\.topbar\.tenantsLoadFailed/);
     expect(read('src/i18n/zh-TW/common.ts')).toContain('tenantsLoadFailed:');
   });
@@ -359,5 +361,39 @@ describe('POST /api/auth/logout（signOut 錯誤不得被吞）', () => {
     expect(body.success).toBe(false);
     expect(body.code).toBe('SYS_001');
     expect(body.data).toBeUndefined();
+  });
+});
+
+describe('#754 review N9：performSwitchTenant', () => {
+  it('成功：reload，不顯示錯誤', async () => {
+    const reload = vi.fn(); const showError = vi.fn();
+    expect(await performSwitchTenant({ switchTenant: async () => ({}), reload, showError, fallbackMessage: 'fb' })).toBe(true);
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(showError).not.toHaveBeenCalled();
+  });
+  it('失敗：不 reload，優先顯示 server message', async () => {
+    const reload = vi.fn(); const showError = vi.fn();
+    const ok = await performSwitchTenant({ switchTenant: async () => { throw new Error('無權限'); }, reload, showError, fallbackMessage: 'fb' });
+    expect(ok).toBe(false);
+    expect(reload).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith('無權限');
+  });
+  it('失敗且無 message：用 fallback', async () => {
+    const showError = vi.fn();
+    await performSwitchTenant({ switchTenant: async () => { throw new Error(''); }, reload: vi.fn(), showError, fallbackMessage: 'fb' });
+    expect(showError).toHaveBeenCalledWith('fb');
+  });
+});
+
+describe('#754 review N10：tenantContextNotice', () => {
+  const base = { authReal: true, loadFailed: false, loaded: true, count: 0 };
+  it('成功但空陣列 -> empty', () => expect(tenantContextNotice(base)).toBe('empty'));
+  it('載入失敗 -> failed（與 empty 互斥）', () =>
+    expect(tenantContextNotice({ ...base, loadFailed: true, loaded: false })).toBe('failed'));
+  it('failed 優先於 empty', () => expect(tenantContextNotice({ ...base, loadFailed: true })).toBe('failed'));
+  it('有店家 / 尚未載入 / mock 認證 -> null', () => {
+    expect(tenantContextNotice({ ...base, count: 2 })).toBeNull();
+    expect(tenantContextNotice({ ...base, loaded: false })).toBeNull();
+    expect(tenantContextNotice({ ...base, authReal: false })).toBeNull();
   });
 });

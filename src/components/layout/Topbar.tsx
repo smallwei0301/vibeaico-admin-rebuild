@@ -27,7 +27,7 @@ export function Topbar({
   tenants: TenantSummary[];
   currentTenant: TenantSummary;
   /** 切換目前操作的店家（真實後端對應 POST /api/auth/switch-tenant） */
-  onSwitchTenant?: (tenantId: string) => void;
+  onSwitchTenant?: (tenantId: string, showError: (message: string) => void) => void;
   /** null = 尚未知道（loading 或該次讀取失敗）— 不可用假名字頂替，顯示 common.topbar.userFallback */
   userName: string | null;
   /** null = 尚未知道（loading 或該次讀取失敗）— 顯示「--」，不可用假百分比頂替 */
@@ -98,7 +98,7 @@ export function Topbar({
               {tenants.map((t) => (
                 <button
                   key={t.id}
-                  onClick={() => { onSwitchTenant?.(t.id); setShopMenu(false); }}
+                  onClick={() => { onSwitchTenant?.(t.id, (message) => toast.show(message, 'danger')); setShopMenu(false); }}
                   className={cn(
                     'flex w-full items-center gap-2 px-3 py-2 text-left text-base hover:bg-neutral-100',
                     t.id === currentTenant.id && 'font-semibold text-primary',
