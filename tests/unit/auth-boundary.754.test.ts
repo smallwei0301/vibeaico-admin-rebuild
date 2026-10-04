@@ -336,7 +336,7 @@ describe('safeNextPath（防 open redirect）', () => {
 
 describe('POST /api/auth/logout（signOut 錯誤不得被吞）', () => {
   afterEach(() => { vi.doUnmock('@/server/supabase'); vi.doUnmock('next/headers'); vi.resetModules(); });
-  const loadRoute = async (signOut: () => Promise<{ error: unknown }>) => {
+  const loadRoute = async (signOut: (opts?: unknown) => Promise<{ error: unknown }>) => {
     vi.resetModules();
     // handle() 對寫入請求會讀 cookie（代登入稽核）；單元環境無 request scope，給空 cookie
     vi.doMock('next/headers', () => ({ cookies: async () => ({ get: () => undefined, getAll: () => [] }) }));
@@ -351,6 +351,14 @@ describe('POST /api/auth/logout（signOut 錯誤不得被吞）', () => {
     const res = await call(POST);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ success: true, data: { loggedOut: true } });
+  });
+
+  it("signOut 以 scope 'local' 呼叫（不得撤銷其他裝置 session）", async () => {
+    const signOut = vi.fn(async (_opts?: unknown) => ({ error: null }));
+    const POST = await loadRoute(signOut);
+    await call(POST);
+    expect(signOut).toHaveBeenCalledTimes(1);
+    expect(signOut).toHaveBeenCalledWith({ scope: 'local' });
   });
 
   it('signOut 回 error → 500 SYS_001，不回 loggedOut', async () => {

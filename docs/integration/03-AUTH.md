@@ -221,7 +221,7 @@ export const POST = handle(async (req) => {
 // /api/auth/logout/route.ts
 export const POST = handle(async () => {
   const supabase = await createServerSupabase();
-  await supabase.auth.signOut();
+  await supabase.auth.signOut({ scope: 'local' }); // 只結束目前裝置的 session
   return ok({ loggedOut: true });
 });
 ```
