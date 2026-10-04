@@ -3433,7 +3433,7 @@
         "issue": 754,
         "description": "Final Risk claude-fable-5-1",
         "startedAt": "2026-10-04T07:35:06Z",
-        "completedAt": null,
+        "completedAt": "2026-10-04T07:39:53Z",
         "isProductRun": true,
         "requestedModel": "unknown",
         "actualModel": "unknown",
@@ -3442,9 +3442,10 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "accepted": false,
-        "note": "Final Risk PREMIUM requested claude-fable-5-1 (single reservation https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/768#issuecomment-5977746342); first tool_use observed 07:35:13Z; PENDING.",
-        "actualModelId": "claude-fable-5-1"
+        "accepted": true,
+        "note": "PASS 0 blocking on 10662719; superseded by head 6a78c6ff",
+        "actualModelId": "claude-fable-5-1",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/768#issuecomment-5977786445"
       },
       {
         "id": "20261004-audit-755-production-queries",
@@ -3452,8 +3453,8 @@
         "tier": "sol",
         "issue": 755,
         "description": "Owner-authorized Production read-only queries Q1–Q3",
-        "startedAt": "2026-10-04T05:00:00Z",
-        "completedAt": "2026-10-04T07:30:00Z",
+        "startedAt": null,
+        "completedAt": null,
         "isProductRun": true,
         "requestedModel": "sol",
         "actualModel": "unknown",
@@ -3463,7 +3464,59 @@
         "cachedTokens": null,
         "count": 1,
         "accepted": true,
-        "note": "audit-tier Production read-only queries for #755 (Owner-authorized): Q1–Q3 ~2026-10-04T05:00Z and tour_orders query ~07:30Z; declared exception."
+        "note": "approximate window ~05:00Z–07:30Z (Q1–Q3 catalog read, tour_orders read); exact timestamps not captured"
+      },
+      {
+        "id": "20261004-build-754-logout-scope",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "issue": 754,
+        "startedAt": "2026-10-04T07:45:30Z",
+        "completedAt": "2026-10-04T07:46:30Z",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "6a78c6ff",
+        "note": "Codex P2: signOut scope local + unit test + 03-AUTH doc",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact"
+      },
+      {
+        "id": "20261004-audit-754-finalrisk-downgrade",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 754,
+        "startedAt": "2026-10-04T07:47:44Z",
+        "completedAt": "2026-10-04T07:50:04Z",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/768#issuecomment-5977850150",
+        "note": "Downgraded Final Risk (premium already used in lineage) PASS 0 blocking on 6a78c6ff; canonical TEST on 6a78c6ff pending",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact"
+      },
+      {
+        "id": "20261004-premium-755-finalrisk",
+        "role": "audit",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "actualModelId": "claude-fable-5-1",
+        "issue": 755,
+        "startedAt": "2026-10-04T07:51:31Z",
+        "completedAt": "2026-10-04T07:55:30Z",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/770#issuecomment-5977852540",
+        "note": "Final Risk PREMIUM PASS 0 blocking on ba6f41bd (reservation link); head changes after this ledger correction",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact"
       }
     ],
     "fullContextReplays": 0,
@@ -3484,7 +3537,7 @@
     "invalidReruns": 5,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0,
-    "note": "37007212982 因 head 被取代 cancelled，37083653366 在 classify 被拒，37082211071 為 #714 source CI，三者不計入；先前 5 個 dispatch run 是否已計入原 30 仍待查證。本輪新增 3 個完整 canonical TEST run：37008702923、37083761493、37090025615 #757: 37105978199 failure（mock 形狀不擬真，已修）、37108030479 success；main push 37112300377 監看中。 #762：37121399537、37124644493 success；37120725291、37124319682 因 head 被取代而取消（不計）。 #763：37128355259 success（cce85365）。 37133703835 success（39748ec3）。 37137459820 success（ae6cabfe）。 #763 收尾：PR 37148553012 success；main push 37151361102 attempt 1 failure（TEST Supabase ECONNRESET，18 無關檔案）、attempt 2 rerun success。 #765：37155693289 因 review 修正被取代而取消（不計）；37156263191 attempt 1 因 GitHub API 503 於 classify 失敗、attempt 2 success。 #765：PR 37159197639 success；main push 37161655288 success。"
+    "note": "37007212982 因 head 被取代 cancelled，37083653366 在 classify 被拒，37082211071 為 #714 source CI，三者不計入；先前 5 個 dispatch run 是否已計入原 30 仍待查證。本輪新增 3 個完整 canonical TEST run：37008702923、37083761493、37090025615 #757: 37105978199 failure（mock 形狀不擬真，已修）、37108030479 success；main push 37112300377 監看中。 #762：37121399537、37124644493 success；37120725291、37124319682 因 head 被取代而取消（不計）。 #763：37128355259 success（cce85365）。 37133703835 success（39748ec3）。 37137459820 success（ae6cabfe）。 #763 收尾：PR 37148553012 success；main push 37151361102 attempt 1 failure（TEST Supabase ECONNRESET，18 無關檔案）、attempt 2 rerun success。 #765：37155693289 因 review 修正被取代而取消（不計）；37156263191 attempt 1 因 GitHub API 503 於 classify 失敗、attempt 2 success。 #765：PR 37159197639 success；main push 37161655288 success。; +1 2026-10-04 PR #768 canonical shared TEST run 37182834760 (head 10662719, success)"
   },
   "quality": {
     "acceptanceEvidenceCoveragePercent": null,
@@ -3695,10 +3748,12 @@
     "2026-10-04T06:40:43Z build(terra) #755 fix round commit bcfa55f4.",
     "2026-10-04T06:42:29Z audit(sol) #755 review PASS.",
     "2026-10-04T07:30Z audit(sol) #755 Production read-only query execution (Owner-authorized).",
-    "2026-10-04T07:35:06Z Final Risk #754 fable dispatched; first tool_use 07:35:13Z served claude-fable-5-1; PENDING.",
-    "#768 Draft PR created 03:53Z with #754 canonical TEST shared TEST; Owner approvals 2026-10-04 04:58:49Z (reset/seed); PR merged after Final Risk PASS; canonical TEST 37182834760 success on head 10662719.",
+    "2026-10-04T07:35:06Z Final Risk #754 (PR #768) premium claude-fable-5-1 dispatched; first tool_use 07:35:13Z; completed 07:39:53Z PASS 0 blocking on head 10662719 (report https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/768#issuecomment-5977786445). Head later changed to 6a78c6ff (Codex P2 logout scope local), so this verdict does not cover the new head.",
+    "#768 Draft PR created 2026-10-04T03:53Z. Owner approvals 2026-10-04: 03:49:14Z (TEST validation for login/register/reset/logout, push, Draft PR) and 04:58:49Z (canonical TEST reset/seed); later Owner approved merge after Final Risk PASS and Production acceptance limited to login/reload/logout — NOT yet executed. Canonical TEST run 37182834760 success on head 10662719 only; superseded by head 6a78c6ff whose canonical TEST is pending. As of 2026-10-04T07:54Z PR #768 is OPEN, Draft, merged=false; Production acceptance NOT_RUN.",
     "#769 created (Agent-discovered during #755 investigation); #770 Draft PR for #755 R1.",
-    "#755 branch merged to main after CI green; Production acceptance: login/logout verified only."
+    "#770 (Issue #755 R1) Draft PR on branch claude/issue755-r1-invoker. Owner approved merge after CI green (not yet executed). As of 2026-10-04T07:54Z PR #770 is OPEN, Draft, merged=false. Source CI run 37186572275 success; agent-schema-bootstrap run 37186572265 success (local isolated Supabase with 0136: integration 829 passed, create-tour-order-invoker.755 3/3). No canonical TEST schema apply, no Production apply, no Production acceptance.",
+    "2026-10-04T08:00Z correction: notes 182/184 previously (commit 289a1016) misstated #768/#770 as merged and Production acceptance as verified; corrected to live GitHub state (both OPEN Draft, merged=false, acceptance NOT_RUN). Cause: approvals were written as completions.",
+    "2026-10-04T08:02Z: task 20261004-audit-755-production-queries times were approximate and are now null."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
