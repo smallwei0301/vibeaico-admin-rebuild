@@ -236,7 +236,7 @@ describe('登出後 session 失效（#754）', () => {
     const email = uniqueEmail('logout');
     const password = 'Passw0rd!logout1';
     const shopCode = await registerAccount(email, password, 'GUIDE');
-    const { data: tenantRow, error: tenantErr } = await admin
+    const { data: tenantRow, error: tenantErr } = await admin!
       .from('tenants').select('business_type').eq('shop_code', shopCode).single();
     expect(tenantErr).toBeNull();
     expect(tenantRow!.business_type).toBe('GUIDE');
