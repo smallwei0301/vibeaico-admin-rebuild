@@ -3,6 +3,15 @@
  * auth.03 已涵蓋：register→login→me、錯碼 AUTH_004、forgot→reset→舊密碼失敗新密碼成功、MAIL_001。
  * 本檔補：過期碼、已使用碼、purpose 不符（REGISTER 碼用於 RESET、反向）、logout 後 me 401。
  * 需 shared TEST 環境，只在授權的 integration lane 執行。
+ *
+ * 清理責任（afterAll，只動本檔自己造的 fixture）：
+ * - 範圍：uniqueEmail / uniqueShopCode 產生當下即登記進 createdEmails / createdShopCodes（早於 HTTP 呼叫，
+ *   註冊中途失敗也不漏）；只以「精確相等」刪除這些值，不使用 LIKE、不做整表或 @test.local 批次刪除。
+ * - 順序：auth_verification_codes(email) → tenants(shop_code，tenant_users / tenant_settings 由 FK cascade)
+ *   → auth.users(email 精確比對，listUsers 分頁 + deleteUser)。
+ * - 失敗路徑：每一步獨立 try/catch，任何一步失敗都不阻斷後續步驟；刪完後逐表讀回，殘留也記為失敗；
+ *   最後彙總成單一 Error 拋出（不吞錯）。resendMock.stop() 以 finally 保證執行；
+ *   admin 未建立（beforeAll 失敗）時略過 DB 清理但仍停止 mock。
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
@@ -15,12 +24,23 @@ const CODE_INVALID = 'AUTH_004';
 type Envelope<T = unknown> = { success: boolean; data?: T; message?: string; code?: string };
 const readJson = async <T = unknown>(res: Response): Promise<Envelope<T>> => (await res.json()) as Envelope<T>;
 const suffix = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-const uniqueEmail = (p: string) => `${p}-${suffix()}@test.local`;
-const uniqueShopCode = (p: string) => `${p}-${suffix()}`;
+// 本檔產生的 fixture 識別值：在產生當下登記，供 afterAll 精確清理。
+const createdEmails: string[] = [];
+const createdShopCodes: string[] = [];
+const uniqueEmail = (p: string) => {
+  const email = `${p}-${suffix()}@test.local`;
+  createdEmails.push(email);
+  return email;
+};
+const uniqueShopCode = (p: string) => {
+  const code = `${p}-${suffix()}`;
+  createdShopCodes.push(code);
+  return code;
+};
 const postJson = (path: string, body: unknown) =>
   fetch(`${BASE}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
-let admin: SupabaseClient;
+let admin: SupabaseClient | undefined;
 const resendMock = new ResendMockServer();
 
 async function insertCode(
@@ -29,7 +49,7 @@ async function insertCode(
   purpose: 'REGISTER' | 'RESET_PASSWORD',
   opts: { expiresInMs?: number; consumed?: boolean } = {},
 ): Promise<void> {
-  const { error } = await admin.from('auth_verification_codes').insert({
+  const { error } = await admin!.from('auth_verification_codes').insert({
     email,
     code,
     purpose,
@@ -40,7 +60,7 @@ async function insertCode(
 }
 
 async function latestCode(email: string, purpose: 'REGISTER' | 'RESET_PASSWORD'): Promise<string> {
-  const { data, error } = await admin
+  const { data, error } = await admin!
     .from('auth_verification_codes').select('code').eq('email', email).eq('purpose', purpose)
     .order('created_at', { ascending: false }).limit(1).maybeSingle();
   expect(error).toBeNull();
@@ -74,8 +94,83 @@ beforeAll(async () => {
   });
 });
 
+/** auth.users 以精確 email 比對（小寫），分頁掃描；回傳符合本檔登記 email 的使用者 id。 */
+async function findTrackedAuthUsers(client: SupabaseClient): Promise<{ id: string; email: string }[]> {
+  const wanted = new Set(createdEmails.map((e) => e.toLowerCase()));
+  const found: { id: string; email: string }[] = [];
+  const perPage = 200;
+  for (let page = 1; ; page += 1) {
+    const { data, error } = await client.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+    for (const u of data.users) {
+      if (u.email && wanted.has(u.email.toLowerCase())) found.push({ id: u.id, email: u.email });
+    }
+    if (data.users.length < perPage) break;
+  }
+  return found;
+}
+
+async function cleanupOwnFixtures(client: SupabaseClient): Promise<void> {
+  const failures: string[] = [];
+  const step = async (label: string, action: () => PromiseLike<{ error: unknown } | void>) => {
+    try {
+      const res = await action();
+      if (res && res.error) failures.push(`${label} 失敗：${JSON.stringify(res.error)}`);
+    } catch (error) {
+      failures.push(`${label} 拋錯：${String(error)}`);
+    }
+  };
+  const emails = [...createdEmails];
+  const shopCodes = [...createdShopCodes];
+
+  if (emails.length > 0) {
+    await step('auth_verification_codes delete', () =>
+      client.from('auth_verification_codes').delete().in('email', emails));
+  }
+  if (shopCodes.length > 0) {
+    // tenant_users / tenant_settings 對 tenants 為 on delete cascade（0003_tenants_and_accounts.sql）
+    await step('tenants delete', () => client.from('tenants').delete().in('shop_code', shopCodes));
+  }
+  if (emails.length > 0) {
+    await step('auth.users delete', async () => {
+      for (const u of await findTrackedAuthUsers(client)) {
+        const { error } = await client.auth.admin.deleteUser(u.id);
+        if (error) failures.push(`auth.users deleteUser(${u.email}) 失敗：${JSON.stringify(error)}`);
+      }
+    });
+  }
+
+  // 讀回：確認本檔登記的 fixture 已全數消失。
+  if (emails.length > 0) {
+    await step('auth_verification_codes 讀回', async () => {
+      const r = await client.from('auth_verification_codes').select('id').in('email', emails);
+      if (r.error) return { error: r.error };
+      if ((r.data ?? []).length > 0) failures.push(`auth_verification_codes 殘留 ${(r.data ?? []).length} 筆`);
+    });
+    await step('auth.users 讀回', async () => {
+      const left = await findTrackedAuthUsers(client);
+      if (left.length > 0) failures.push(`auth.users 殘留 ${left.length} 筆`);
+    });
+  }
+  if (shopCodes.length > 0) {
+    await step('tenants 讀回', async () => {
+      const r = await client.from('tenants').select('id').in('shop_code', shopCodes);
+      if (r.error) return { error: r.error };
+      if ((r.data ?? []).length > 0) failures.push(`tenants 殘留 ${(r.data ?? []).length} 筆`);
+    });
+  }
+
+  if (failures.length > 0) {
+    throw new Error(`auth-otp-matrix.754 fixture 清理未完成：\n- ${failures.join('\n- ')}`);
+  }
+}
+
 afterAll(async () => {
-  await resendMock.stop();
+  try {
+    if (admin) await cleanupOwnFixtures(admin);
+  } finally {
+    await resendMock.stop();
+  }
 });
 
 describe('OTP 錯誤矩陣（#754）', () => {
