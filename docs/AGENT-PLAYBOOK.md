@@ -98,7 +98,7 @@
 | PB-035 | 從欄位定義推斷 insert 會失敗，卻沒查參與寫入的 trigger | `NOT NULL` 且無 default、而 insert 沒列該欄，**不足以**推出「一定 23502」——`BEFORE INSERT` trigger 會在約束檢查之前改寫 NEW，本例該欄早就被 trigger 填好。宣稱任何寫入會成功或失敗之前，先用 `pg_trigger` 列出該表上所有參與寫入的物件，或直接在那個資料庫上跑一次。 | 本檔 PB-032、PB-035 |
 | PB-036 | `TERRA_BUILD` 的施工跑在 audit 層模型上 | CLAUDE.md 寫得很直白：Terra 一律用 Sonnet，把施工放在 Opus 上是 over-spec，不是 diligence——它燒掉 audit 層的成本，還讓 audit 層變成在審自己的產出。已發生四次（#370、#396，以及 2026-09-14 同一輪內的兩次：兩張 TERRA_BUILD 都跑在 Opus 上，以及 audit 層直接改 `0108` 的 enum 斷言），每一次的理由都是「我人已經在跑了，順手做完比較快」。第四次特別值得記：當時 Final Risk 剛回報 BLOCK，修一行是「顯然正確且很小」的事——**正是那個「很小」讓分層被跳過**。判準是動到什麼檔案，不是改了幾行。**開工前先判斷這一輪是不是施工**：新增／修改 migration、route、server 模組或測試就是 `TERRA_BUILD`，必須委派給 build 層模型；不是委派不了，是沒有先問。已發生就如實記為違規，不得寫成中性註記。 | `CLAUDE.md`「Lane → model tier」；`docs/MODEL-ROUTING.md` |
 | PB-037 | 把「欄位集合」當成「欄位順序」，並用一次找不到的搜尋證明「它不存在」 | **已發生三次。** (1)(2) 同一支 migration（`0105`）同一輪內：先 grep `id, tenant_id` 漏掉既有的 `unique (tenant_id, id)`，據此斷定「沒有等價約束」而自建一條重複的，害 schema proof 在 drop 既有約束時被依賴擋下；修正時又把 `conkey`（**保留宣告順序**，`{2,1}`）拿去比排序過的 `{1,2}`，讓保護性斷言必定誤報。(3) 同日稍晚換領域再犯：closure sweep 用 `grep '^- LANE_STATE:'` 取 PR 欄位，漏掉格式沒有項目符號的 #312 而誤報「無 lane metadata」，錯誤寫進兩份 PR，最後由委派出去的 scout agent 訂正——**結論碰巧仍正確，所以沒有任何紅燈會提醒我**。**判定「是否已存在」一律查系統目錄並兩邊排序比欄位集合；從半結構化文字取欄位不得綁定單一拼法；任何證明「X 不存在」的搜尋，送出結論前先餵一個已知存在的正向對照。** 「我沒找到」是關於搜尋的陳述，不是關於世界的陳述。 | `supabase/migrations/0105_issue_44_traveler_risk_policies.sql`、`0104:138`、`0067`、PR #312／#418／#428 |
-| PB-038 | 用 `;` 把退出碼吃掉，然後在測試是紅的情況下推上去 | 已發生三次。`npm run … \| tail`、`npx vitest run … \| grep`、以及 `npx vitest … > file 2>&1; echo "EXIT=$?"; git add && git commit && git push`——最後這個 `;` 讓 `git push` 完全不受測試結果影響，於是我在 1 failed / 2109 passed 的情況下推了上去。管線取的是最後一段的退出碼，`;` 根本不看前一段。**驗證與推送永遠用 `&&` 串成一條；要保留輸出就先重導向到檔案，再讓 `&&` 接下去，不要用 `;` 分隔。** 推送前最後一個動作必須是一個「紅了就會擋住推送」的指令。 | PR #416（`57de3b9`）、PR #77 早期 |
+| PB-038 | 用 `;` 把退出碼吃掉，然後在測試是紅的情況下推上去 | 已發生四次。`npm run … \| tail`、`npx vitest run … \| grep`、以及 `npx vitest … > file 2>&1; echo "EXIT=$?"; git add && git commit && git push`——最後這個 `;` 讓 `git push` 完全不受測試結果影響，於是我在 1 failed / 2109 passed 的情況下推了上去。管線取的是最後一段的退出碼，`;` 根本不看前一段。**驗證與推送永遠用 `&&` 串成一條；要保留輸出就先重導向到檔案，再讓 `&&` 接下去，不要用 `;` 分隔。** 推送前最後一個動作必須是一個「紅了就會擋住推送」的指令。2026-10-05 第四次：`;` 讓 fetch 失敗後的 `git merge` 照跑（PR #784），見下方小節。 | PR #416（`57de3b9`）、PR #77 早期 |
 | PB-039 | 一個從來沒有受測對象的 guard，永遠不會失敗 | `governance-scoreboard.test.ts` 的「每一本 post-policy terminal Run 都要有 durable review evidence」寫得很嚴格，但在 2026-09-14 之前，repo 裡沒有任何一本 Run 同時是 terminal 且晚於 policy 生效日——**迴圈跑零次**。它從寫下的那天起就一直是綠的，不是因為受檢查的東西是對的，而是因為它沒有東西可檢查。#412 給了它第一個對象，潛伏的範圍錯誤才連同 main 紅燈一起爆出來。**任何「對所有符合條件的 X 都斷言 Y」的 guard，必須同時斷言符合條件的 X 至少有一個**；並在寫完當下故意讓條件落空一次，確認那個反空轉斷言真的會擋。 | `tests/unit/governance-scoreboard.test.ts`、PR #412／#416、Issue #415 |
 | PB-040 | 把埋點欄位建好，然後沒有埋 | 2026-09-14 我在 #411 結案時親自判定「前九本 Run 不可評分的原因是全程沒埋點」，並宣告「從現在起的 Run 即時埋點」。接著開了 `2026-09-14-product-delivery-r01`，寫了三段說明它會怎麼埋——然後 `modelUsage.tasks: 0`、`ci.fullCiRuns: 0`、`closureSweeps: 0`、`delivery: {}`。同一輪還完整違反了模型分層（兩張 TERRA_BUILD 都跑在 Opus 上，PB-036 第三次）、`lunaTasks: 0`、`solTouches: 0`。**記帳的架子搭好卻不記帳，比誠實地說「沒埋點」更糟——它看起來像有在做。** 與 PB-039 是同一種病：看起來在守，實際上沒有。**每完成一個可觀察事件（委派、CI run、closure sweep、開/關 Issue）就當場寫進 ledger，不留到收尾**；收尾時只准填當下仍可觀察的量，其餘維持 null。 | `docs/metrics/agent-runs/2026-09-14-product-delivery-r01.json`、#411、PB-036、PB-039 |
 | PB-041 | 一條**永遠失敗**的斷言，比恆真的斷言更糟 | PB-039 講的是「從來沒有受測對象的 guard」——恆真，沒用。它有個反面：**恆假**。`0108` 的 enum 值域後置斷言寫成 `array_agg(e.enumlabel::text order by e.enumlabel) is distinct from array['PAID','PARTIAL','REFUND_PENDING','REFUNDED','UNPAID']`，看起來嚴謹（「不多不少」），實際上永遠不相等：`pg_enum.enumlabel` 的型別是 `name`，排序走 C collation，共同前綴 `REFUND` 之後比 `E`(0x45) 與 `_`(0x5F)，所以實際順序是 `REFUNDED` 在 `REFUND_PENDING` **之前**，而手寫的期望陣列把兩者寫反。結果不是「驗得寬鬆」，是**這支 migration 在任何環境都套不上去**。本機 unit 測試沒抓到，因為它只對 migration 做字串比對；抓到它的是 CI 的 fresh-install replay，以及 Final Risk 覆核（`claude-fable-5-1`）在本機 PG16 上的實際重現。**預防**：(1) 斷言「集合相等」就用集合運算（不在預期集合內的值 + 數量），不要比對有序陣列——排序規則是環境變數，不是常數；(2) 對 catalog 欄位排序前先確認它的型別，`name` 與 `text` 的 collation 不同；(3) 新增或修改後置斷言時，至少跑一次**真的資料庫**，字串比對的 unit 測試證明不了斷言會通過。 | `supabase/migrations/0108_issue_41_payment_state_model.sql`、PB-039、PB-026 |
@@ -1278,7 +1278,7 @@ make」）。時間真的不夠，正確做法是**不做**、留給下一輪。
 - 發生次數：**4**
 - Issue／PR／CI：PR #77（早期兩次）、PR #416（`57de3b937c8a18b90f484c9d7bec2f7502a9de25`）、PR #784（Issue #748）
 - 分類：驗證方法／工具使用
-- 事件：三次都是同一個機制——**我以為自己在檢查，實際上那個檢查的結果沒有進到任何判斷**。
+- 事件：四次都是同一個機制——**我以為自己在檢查，實際上那個檢查的結果沒有進到任何判斷**。（前三次如下；第四次見下方「2026-10-05 第四次」小節）
 
   1. `npm run … | tail`：拿到的是 `tail` 的退出碼，永遠是 0。
   2. `npx vitest run tests/unit | grep …`：拿到的是 `grep` 的退出碼，後面的 `&&`
@@ -1321,9 +1321,7 @@ make」）。時間真的不夠，正確做法是**不做**、留給下一輪。
 - 預防：任何會改變 git 狀態的步驟（merge／commit／push）一律用 `&&` 串在其前置檢查之後，不夾 `;` 或管線；使用 `origin/<branch>` 前先 `git fetch --prune` 並以 `git ls-remote origin <branch>` 確認遠端分支存在。
 - 證據：PR #784（https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/784）、commit `e12b1c17`。
 
-- 狀態：監看中。第 4 次再發生時，改為：任何 push 之前必須先執行一個專用的
-  verify 腳本，由該腳本自己 `set -euo pipefail` 並在失敗時非零退出，不再允許
-  在對話中臨時拼裝驗證鏈。
+- 狀態：**未解決——升級門檻已成立**。原訂「第 4 次再發生時，任何 push 之前必須先執行專用的 `set -euo pipefail` verify 腳本」的條件已於 2026-10-05 達成，但腳本尚未建立，追蹤於 Issue #787（https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/787）。在腳本落地前，臨時規則：會改變 git 狀態的步驟（merge／commit／push）只能以 `&&` 接在前置驗證之後，或包在 `bash -euo pipefail -c '…'` 內執行；禁止以 `;` 或管線分隔驗證與寫入。
 
 ### PB-039 — 一個從來沒有受測對象的 guard，永遠不會失敗
 
