@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { ISSUE_46_CLOSURE_COVERAGE } from '../../scripts/agents/production-db-g3-authz-contracts.mjs';
 
 import { describe, expect, it } from 'vitest';
 
@@ -556,5 +557,110 @@ describe('Production DB release plan #447', () => {
       releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
       aliasMap: mixed, readCanonicalSql: (path: string) => mixedSql[path],
     })).toThrow(/MIXED_RISK_RELEASE_NOT_ADMITTED/);
+  });
+});
+
+describe('#46 bounded 0135 selector', () => {
+  const prerequisites = ['0003_tenants_and_accounts', '0004_core_business_tables', '0005_line_marketing_other',
+    '0066_issue_8_tour_domain_core', '0074_block_times_recurrence_fields', '0092_trip_departure_staff',
+    '0110_issue_42_plan_duration_pricetype_yearround', '0115_issue_21_external_calendars'];
+  const target = '0135_issue_46_guide_interval_availability';
+  function fixture() {
+    return { schemaVersion: 1, entries: [...prerequisites.map(repoFile => ({ repoFile, classification: 'EXACT', ledgerNames: [repoFile] })),
+      { repoFile: target, classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', ledgerNames: [] },
+      { repoFile: '0133_unrelated', classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', ledgerNames: [] }] };
+  }
+  it('selects only exact 0135 and verifies its current SQL classifier', () => {
+    expect(selectedProductionMigrations(fixture(), 'ISSUE_46_0135')).toEqual({migrationScope:'ISSUE_46_0135',migrations:[target]});
+    expect(inferMigrationRiskTier(readFileSync(`supabase/migrations/${target}.sql`, 'utf8'), target)).toBe('AUTHZ');
+  });
+  it('rejects each missing, aliased, duplicated or empty-ledger prerequisite without expanding closure', () => {
+    for (const name of prerequisites) {
+      for (const variant of ['missing', 'alias', 'duplicate', 'empty', 'wrongIdentity']) {
+        const map = fixture(); const row = map.entries.find(entry => entry.repoFile === name)!;
+        if (variant === 'missing') map.entries = map.entries.filter(entry => entry !== row);
+        if (variant === 'alias') row.classification = 'ALIAS';
+        if (variant === 'duplicate') map.entries.push({...row});
+        if (variant === 'empty') row.ledgerNames = [];
+        if (variant === 'wrongIdentity') row.ledgerNames = ['other'];
+        expect(() => selectedProductionMigrations(map, 'ISSUE_46_0135')).toThrow(/MIGRATION_SCOPE_APPLIED_PREREQUISITE_MISSING/);
+      }
+    }
+    const map = fixture(); map.entries = map.entries.filter(entry => entry.repoFile !== target);
+    expect(() => selectedProductionMigrations(map, 'ISSUE_46_0135')).toThrow(/MIGRATION_SCOPE_DEPENDENCY_NOT_PENDING/);
+    expect(() => selectedProductionMigrations(fixture(), 'ISSUE_46_ANY')).toThrow(/UNSUPPORTED_MIGRATION_SCOPE/);
+  });
+});
+
+describe('#46/#755 reviewed eight-migration closure', () => {
+  const scope = 'ISSUE_46_0110_0136_CLOSURE';
+  const targets = ['0110_issue_42_plan_duration_pricetype_yearround','0111_issue_46_guide_request_accept','0115_issue_21_external_calendars',
+    '0128_issue_42_plan_seasonal_pricing','0130_issue_46_refund_policy_snapshot','0132_issue_42_seasonal_price_resolution','0135_issue_46_guide_interval_availability','0136_issue_755_create_tour_order_invoker'];
+  const prerequisites = ['0001_extensions_and_functions','0002_enums','0003_tenants_and_accounts','0004_core_business_tables',
+    '0005_line_marketing_other','0066_issue_8_tour_domain_core','0067_issue_8_tour_integrity','0068_issue_8_tour_rest_dml_acl',
+    '0074_block_times_recurrence_fields','0087_issue_8b_tour_orders','0088_issue_8b_tour_order_rpc_acl','0089_trip_display_fields',
+    '0092_trip_departure_staff','0107_issue_41_formation_state_model'];
+  function fixture() {
+    return {schemaVersion:1,entries:[...prerequisites.map(repoFile=>({repoFile,classification:'EXACT',ledgerNames:[repoFile]})),
+      ...targets.map(repoFile=>({repoFile,classification:'NOT_APPLIED',notAppliedReason:'PENDING_APPLY',ledgerNames:[]})),
+      {repoFile:'0099_drop_legacy_create_tour_order_overload',classification:'ALIAS',ledgerNames:['drop_legacy_create_tour_order_overload']},
+      {repoFile:'0133_unrelated',classification:'NOT_APPLIED',notAppliedReason:'PENDING_APPLY',ledgerNames:[]}]};
+  }
+  it('closure coverage scope is bound to the admitted release-plan scope (N1: no silent skip on rename)', () => {
+    expect(ISSUE_46_CLOSURE_COVERAGE.scope).toBe(scope);
+    expect(selectedProductionMigrations(fixture(), ISSUE_46_CLOSURE_COVERAGE.scope).migrationScope).toBe(ISSUE_46_CLOSURE_COVERAGE.scope);
+  });
+  it('locks exactly eight ordered AUTHZ migrations: 0132 the last create_tour_order body writer, 0136 the final security invoker setter', () => {
+    const map=fixture();expect(selectedProductionMigrations(map,scope)).toEqual({migrationScope:scope,migrations:targets});
+    const read=(path:string)=>readFileSync(path,'utf8');
+    const built=buildProductionDbReleasePlan({releaseId:'release-46-closure',mainSha:MAIN,plannedAt:PLANNED_AT,migrationScope:scope,aliasMap:map,readCanonicalSql:read});
+    expect(built.riskTier).toBe('AUTHZ');expect(built.migrations.map(row=>row.repoFile)).toEqual(targets);
+    const writers=built.migrations.filter(row=>/create or replace function public\.create_tour_order\(/i.test(read(row.path)));
+    expect(writers.at(-1)!.repoFile).toBe('0132_issue_42_seasonal_price_resolution');
+    // 0136 replaces no body: it ALTERs the 0132 signature to SECURITY INVOKER and is the last migration.
+    const invoker=read(built.migrations.at(-1)!.path);
+    expect(built.migrations.at(-1)!.repoFile).toBe('0136_issue_755_create_tour_order_invoker');
+    expect(invoker).not.toMatch(/create or replace function/i);
+    expect(invoker).toMatch(/alter function public\.create_tour_order\([\s\S]*\) security invoker;/i);
+    expect(invoker).toMatch(/grant select on table public\.trip_plan_seasons to service_role;/i);
+    const final=read(writers.at(-1)!.path);
+    for(const marker of ['seats_reserved','refund_policy_snapshot','trip_plan_seasons','v_should_reserve','PER_GROUP'])expect(final).toContain(marker);
+    expect(verifyProductionDbReleasePlan({plan:built,aliasMap:map,readCanonicalSql:read}).planDigest).toBe(built.planDigest);
+    // Existing single-0135 remains strict and cannot silently absorb its pending dependencies.
+    expect(()=>selectedProductionMigrations(map,'ISSUE_46_0135')).toThrow(/APPLIED_PREREQUISITE_MISSING/);
+    const reversed={...built,migrations:[...built.migrations].reverse()};reversed.planDigest=releasePlanDigestOf(reversed);
+    expect(()=>verifyProductionDbReleasePlan({plan:reversed,aliasMap:map,readCanonicalSql:read})).toThrow();
+  });
+  it('orders 0136 after 0132 and never selects 0136 without 0128/0132; old scope name is unsupported', () => {
+    const shuffled=fixture();shuffled.entries.reverse();
+    expect(selectedProductionMigrations(shuffled,scope).migrations.slice(-3)).toEqual(['0132_issue_42_seasonal_price_resolution','0135_issue_46_guide_interval_availability','0136_issue_755_create_tour_order_invoker']);
+    expect(orderPendingProductionMigrations(['0136_issue_755_create_tour_order_invoker','0132_issue_42_seasonal_price_resolution']))
+      .toEqual(['0132_issue_42_seasonal_price_resolution','0136_issue_755_create_tour_order_invoker']);
+    for(const dependency of ['0128_issue_42_plan_seasonal_pricing','0132_issue_42_seasonal_price_resolution']){
+      const map=fixture();map.entries=map.entries.filter(row=>row.repoFile!==dependency);
+      expect(()=>selectedProductionMigrations(map,scope)).toThrow(/DEPENDENCY_NOT_PENDING/);
+    }
+    expect(()=>selectedProductionMigrations(fixture(),'ISSUE_46_0110_0135_CLOSURE')).toThrow(/UNSUPPORTED_MIGRATION_SCOPE/);
+    expect(()=>selectedProductionMigrations(fixture(),'ISSUE_46_0135')).toThrow(/APPLIED_PREREQUISITE_MISSING/);
+  });
+  it('rejects incomplete targets/preconditions and every unreviewed legacy alias', () => {
+    for(const target of targets){
+      const map=fixture();map.entries=map.entries.filter(row=>row.repoFile!==target);
+      expect(()=>selectedProductionMigrations(map,scope)).toThrow(/DEPENDENCY_NOT_PENDING/);
+      const nonpending=fixture();(nonpending.entries.find(row=>row.repoFile===target)! as {notAppliedReason?:string}).notAppliedReason='VERIFIED_NOT_APPLIED';
+      expect(()=>selectedProductionMigrations(nonpending,scope)).toThrow(/DEPENDENCY_NOT_PENDING/);
+    }
+    for(const prerequisite of prerequisites){
+      const map=fixture();map.entries=map.entries.filter(row=>row.repoFile!==prerequisite);
+      expect(()=>selectedProductionMigrations(map,scope)).toThrow(/APPLIED_PREREQUISITE_MISSING/);
+    }
+    for(const mutate of ['missing','wrongAlias','wrongClassification','duplicate']){
+      const map=fixture();const row=map.entries.find(row=>row.repoFile.startsWith('0099'))!;
+      if(mutate==='missing')map.entries=map.entries.filter(entry=>entry!==row);
+      if(mutate==='wrongAlias')row.ledgerNames=['other_alias'];
+      if(mutate==='wrongClassification')row.classification='EXACT';
+      if(mutate==='duplicate')map.entries.push({...row});
+      expect(()=>selectedProductionMigrations(map,scope)).toThrow(/APPLIED_PREREQUISITE_MISSING/);
+    }
   });
 });

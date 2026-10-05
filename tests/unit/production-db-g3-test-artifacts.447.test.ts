@@ -1,3 +1,4 @@
+import { getProductionDbG3AuthzContract, ISSUE_46_CLOSURE_COVERAGE } from '../../scripts/agents/production-db-g3-authz-contracts.mjs';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -581,4 +582,168 @@ describe('Production DB G3 TEST artifact builders #447', () => {
       checkedScopes: [],
     });
   });
+});
+
+describe('#46 exact semantic coverage and fixture cleanup', () => {
+  const file = 'tests/integration/db/guide-interval-availability.46.test.ts';
+  const target = '0135_issue_46_guide_interval_availability';
+  const targetPlan = () => plan([{repoFile:target,riskTier:'AUTHZ',sha256:'d'.repeat(64)}]);
+  function semanticReport() {
+    const contract = getProductionDbG3AuthzContract(target)!;
+    const passed = contract.requiredAssertions.map((row: any) => ({status:'passed',fullName:row.fullName}));
+    return report({numTotalTests:36,numPassedTests:35,numPendingTests:1,testResults:[{name:file,assertionResults:[...passed,{status:'pending',fullName:contract.localOnlyPending.fullName}]}]});
+  }
+  const coverage = (raw: any, selected = targetPlan()) => buildProductionDbTestCoverageEvidence({report:raw,plan:selected,sourceRunId:'123',sourceRunAttempt:1});
+  it('requires 35 exact passed semantic cases, labels the sole isolated catalog case NOT_RUN', () => {
+    const result = coverage(semanticReport());
+    expect(result.executedTests).toBe(35); expect(result.localOnlyNotRun).toHaveLength(1);
+    expect(result.migrations[target]).toMatchObject({tenantBoundaryVerified:true,negativeRoleTestsPassed:true});
+  });
+  it('rejects altered names/files, semantic pending, blanket pending and absent executed cases', () => {
+    for (const mutation of ['name','file','semanticPending','allPending','missing']) {
+      const raw = semanticReport(); const rows = raw.testResults[0].assertionResults;
+      if (mutation === 'name') rows[35].fullName += '!';
+      if (mutation === 'file') raw.testResults[0].name += '.wrong';
+      if (mutation === 'semanticPending') { rows[0].status='pending';raw.numPassedTests=34;raw.numPendingTests=2; }
+      if (mutation === 'allPending') { rows.forEach((row:any)=>{row.status='pending';});raw.numPassedTests=0;raw.numPendingTests=36; }
+      if (mutation === 'missing') { rows.shift();raw.numTotalTests=35;raw.numPassedTests=34; }
+      expect(()=>coverage(raw)).toThrow();
+    }
+  });
+  it('permits only exact POLICY_SKIP names when 0135 is absent from the plan', () => {
+    const raw = semanticReport();const rows=raw.testResults[0].assertionResults;
+    rows.forEach((row:any)=>{row.status='pending';row.fullName=row.fullName.replace('Issue #46 admitted native availability contract ', '#46 POLICY_SKIP/NOT_RUN: SOURCE_PREPARE not admitted; no hooks/fixtures/auth ');});
+    const other = report();raw.testResults.push(...other.testResults);raw.numTotalTests=39;raw.numPassedTests=3;raw.numPendingTests=36;
+    expect(coverage(raw,plan()).allowedPendingTests).toBe(36);
+    expect(()=>coverage(raw)).toThrow(/UNAPPROVED_VITEST_PENDING/);
+    rows[0].fullName += '!';expect(()=>coverage(raw,plan())).toThrow(/UNAPPROVED_VITEST_PENDING/);
+  });
+  it('checks g46 tenant fixtures using read-only GET and rejects residue/errors', async () => {
+    for (const outcome of ['clean','residue','error']) {
+      const fetchImpl=vi.fn(async (url:any,init:any)=>{
+        expect(init.method).toBe('GET');const parsed=new URL(url);
+        expect(parsed.pathname).toBe('/rest/v1/tenants');expect(parsed.searchParams.get('shop_code')).toBe('like.g46-%');
+        return new Response(JSON.stringify(outcome==='residue'?[{id:'leftover'}]:[]),{status:outcome==='error'?500:200});
+      });
+      const run=captureProductionDbTestCleanupEvidence({plan:targetPlan(),testSupabaseUrl:TEST_URL,serviceRoleKey:'mock',sourceRunId:'123',sourceRunAttempt:1,fetchImpl});
+      if(outcome==='clean') expect(await run).toMatchObject({scopeKind:'PRODUCTION_DB_RELEASE_MIGRATION_FIXTURES',residueCount:0});
+      else await expect(run).rejects.toThrow(outcome==='residue'?'TEST_CLEANUP_RESIDUE':'TEST_CLEANUP_READ_FAILED');
+    }
+  });
+});
+
+
+describe('#46 closure requires exact native snapshot evidence', () => {
+  const closurePlan=()=>({...plan([{repoFile:'0130_issue_46_refund_policy_snapshot',riskTier:'AUTHZ',sha256:'f'.repeat(64)}]),migrationScope:ISSUE_46_CLOSURE_COVERAGE.scope});
+  const build=(raw:any)=>buildProductionDbTestCoverageEvidence({report:raw,plan:closurePlan(),sourceRunId:'123',sourceRunAttempt:1});
+  it('fails closed for generic ACL green and missing REQUEST/seasonal exact cases', () => {
+    expect(()=>build(report())).toThrow(/REQUIRED_SEMANTIC_TEST_MISSING/);
+    expect(ISSUE_46_CLOSURE_COVERAGE.requiredAssertions.some(row=>row.file==='tests/integration/db/plan-seasonal-order-snapshot.42.test.ts')).toBe(true);
+    expect(ISSUE_46_CLOSURE_COVERAGE.requiredAssertions.some(row=>row.fullName.includes('409 TOUR_001'))).toBe(true);
+  });
+  it('rejects missing/pending refund cases even if all other synthetic cases claim passed', () => {
+    const rows=ISSUE_46_CLOSURE_COVERAGE.requiredAssertions;
+    const files=[...new Set(rows.map(row=>row.file))];
+    const raw=report({numTotalTests:rows.length,numPassedTests:rows.length,testResults:files.map(file=>({name:file,assertionResults:rows.filter(row=>row.file===file).map(row=>({status:'passed',fullName:row.fullName}))}))});
+    // This synthetic report only exercises the exact-name gate; add current ACL
+    // proof to distinguish missing behavior evidence from generic authz failure.
+    const aclFile='tests/integration/api/tour-order-authz.447.test.ts';
+    const contract=getProductionDbG3AuthzContract('0130_issue_46_refund_policy_snapshot');
+    const acl=[...contract.tenantBoundaryAssertions,...contract.negativeRoleAssertions].map((row:any)=>({status:'passed',fullName:row.fragment}));
+    raw.testResults.push({name:aclFile,assertionResults:acl});raw.numTotalTests+=acl.length;raw.numPassedTests+=acl.length;
+    expect(build(raw).reportSuccess).toBe(true);
+    const incomplete=structuredClone(raw);incomplete.testResults[0].assertionResults[0].fullName+='!';
+    expect(()=>build(incomplete)).toThrow(/REQUIRED_SEMANTIC_TEST_MISSING/);
+    const pending=structuredClone(raw);pending.testResults[0].assertionResults[0].status='pending';pending.numPassedTests--;pending.numPendingTests++;
+    expect(()=>build(pending)).toThrow(/UNAPPROVED_VITEST_PENDING/);
+  });
+});
+
+
+it('#46 closure independently reads owned refund/seasonal parent prefixes and rejects residue', async () => {
+  for(const residue of [false,true]) {
+    const seen:string[]=[];
+    const fetchImpl=vi.fn(async(url:any,init:any)=>{
+      const parsed=new URL(url);expect(init.method).toBe('GET');expect(['/rest/v1/trips','/rest/v1/tour_orders']).toContain(parsed.pathname);
+      const filter=parsed.searchParams.get('slug') ?? parsed.searchParams.get('note')!;seen.push(filter);
+      return new Response(JSON.stringify(residue&&filter==='like.refund-snapshot-46-%'?[{id:'leftover'}]:[]),{status:200});
+    });
+    const run=captureProductionDbTestCleanupEvidence({plan:{...plan([{repoFile:'0130_issue_46_refund_policy_snapshot',riskTier:'AUTHZ',sha256:'f'.repeat(64)}]),migrationScope:ISSUE_46_CLOSURE_COVERAGE.scope},testSupabaseUrl:TEST_URL,serviceRoleKey:'mock',sourceRunId:'123',sourceRunAttempt:1,fetchImpl});
+    if(residue)await expect(run).rejects.toThrow(/TEST_CLEANUP_RESIDUE/);
+    else {expect((await run).residueCount).toBe(0);expect(seen).toEqual(['like.request-accept-46-%','like.refund-snapshot-46-%','like.snapshot-42-%','like.#755 probe%']);}
+  }
+});
+
+
+it('#46 closure requires exact #755/0136 native evidence and cleans its probe orders', () => {
+  const rows=ISSUE_46_CLOSURE_COVERAGE.requiredAssertions.filter(row=>row.file==='tests/integration/api/create-tour-order-invoker.755.test.ts');
+  expect(rows.map(row=>row.fullName.replace('#755 / 0136 create_tour_order refund policy snapshot boundary ',''))).toEqual([
+    'service_role create_tour_order snapshots STANDARD/FLEXIBLE/STRICT equal to trips.refund_policy_type, then restores',
+    'service_role create_tour_order rejects another tenant id for an existing departure without creating an order',
+    'anon and authenticated roles cannot execute create_tour_order directly',
+  ]);
+  const closurePlan={...plan([{repoFile:'0130_issue_46_refund_policy_snapshot',riskTier:'AUTHZ',sha256:'f'.repeat(64)}]),migrationScope:ISSUE_46_CLOSURE_COVERAGE.scope};
+  const all=ISSUE_46_CLOSURE_COVERAGE.requiredAssertions;
+  const aclContract=getProductionDbG3AuthzContract('0130_issue_46_refund_policy_snapshot');
+  const make=(skip:string|null)=>{
+    const list:Array<{file:string;fullName:string;status:string}>=all.filter(row=>row.fullName!==skip).map(row=>({file:row.file,fullName:row.fullName,status:'passed'}));
+    list.push(...[...aclContract.tenantBoundaryAssertions,...aclContract.negativeRoleAssertions].map((row:any)=>({file:'tests/integration/api/tour-order-authz.447.test.ts',fullName:row.fragment,status:'passed'})));
+    const files=[...new Set(list.map(row=>row.file))];
+    return report({numTotalTests:list.length,numPassedTests:list.length,testResults:files.map(file=>({name:file,assertionResults:list.filter(row=>row.file===file)}))});
+  };
+  const build=(raw:any)=>buildProductionDbTestCoverageEvidence({report:raw,plan:closurePlan,sourceRunId:'123',sourceRunAttempt:1});
+  expect(build(make(null)).reportSuccess).toBe(true);
+  for(const row of rows) expect(()=>build(make(row.fullName))).toThrow(/REQUIRED_SEMANTIC_TEST_MISSING/);
+});
+
+it('#46 closure REQUEST marker cleanup rejects residue and HTTP errors', async () => {
+  for(const outcome of ['residue','error']) {
+    const fetchImpl=vi.fn(async(url:any,init:any)=>{
+      const parsed=new URL(url);expect(init.method).toBe('GET');
+      if (parsed.pathname === '/rest/v1/tour_orders') {
+        if (parsed.searchParams.get('note') === 'like.#755 probe%') return new Response('[]',{status:200});
+        expect(parsed.searchParams.get('note')).toBe('like.request-accept-46-%');
+        return new Response(JSON.stringify(outcome==='residue'?[{id:'leftover'}]:[]),{status:outcome==='error'?500:200});
+      }
+      expect(parsed.pathname).toBe('/rest/v1/trips');
+      expect(['like.refund-snapshot-46-%','like.snapshot-42-%']).toContain(parsed.searchParams.get('slug'));
+      return new Response('[]',{status:200});
+    });
+    await expect(captureProductionDbTestCleanupEvidence({plan:{...plan([{repoFile:'0111_issue_46_guide_request_accept',riskTier:'AUTHZ',sha256:'f'.repeat(64)}]),migrationScope:ISSUE_46_CLOSURE_COVERAGE.scope},testSupabaseUrl:TEST_URL,serviceRoleKey:'mock',sourceRunId:'123',sourceRunAttempt:1,fetchImpl})).rejects.toThrow(outcome==='residue'?'TEST_CLEANUP_RESIDUE':'TEST_CLEANUP_READ_FAILED');
+  }
+});
+
+
+// Captured from actual main a30acac native collection with lock-pinned
+// Vitest 4.1.11; these are formatter outputs, not reconstructed scenario names.
+const actualSeasonalRendered46 = [
+  "#42 persisted seasonal prices become immutable TourOrder snapshots 'normal PER_PERSON × 3'",
+  "#42 persisted seasonal prices become immutable TourOrder snapshots 'normal PER_GROUP ignores party multip…'",
+  "#42 persisted seasonal prices become immutable TourOrder snapshots 'cross-year January inclusive endpoint'",
+  "#42 persisted seasonal prices become immutable TourOrder snapshots 'cross-year December inclusive endpoint'",
+  "#42 persisted seasonal prices become immutable TourOrder snapshots 'cross-year outside range uses base'",
+  "#42 persisted seasonal prices become immutable TourOrder snapshots 'winning null override uses base, not …'",
+  "#42 persisted seasonal prices become immutable TourOrder snapshots 'shortest span beats earlier sortOrder…'",
+  "#42 persisted seasonal prices become immutable TourOrder snapshots 'equal span chooses smaller sortOrder'",
+  "#42 persisted seasonal prices become immutable TourOrder snapshots 'zero override is a real free price, n…'",
+  "#42 persisted seasonal prices become immutable TourOrder snapshots 'equal span and sortOrder uses stable …'"
+];
+it('#46 binds actual rendered seasonal titles and rejects the old raw names', () => {
+  const seasonal='tests/integration/db/plan-seasonal-order-snapshot.42.test.ts';
+  const requirements=ISSUE_46_CLOSURE_COVERAGE.requiredAssertions;
+  const rows: Array<{file:string;fullName:string;status:string}>=requirements.filter(row=>row.file!==seasonal).map(row=>({...row,status:'passed'}));
+  rows.push(...actualSeasonalRendered46.map(fullName=>({file:seasonal,fullName,status:'passed'})));
+  const aclFile='tests/integration/api/tour-order-authz.447.test.ts';
+  const acl=getProductionDbG3AuthzContract('0130_issue_46_refund_policy_snapshot');
+  rows.push(...[...acl.tenantBoundaryAssertions,...acl.negativeRoleAssertions].map((row:any)=>({file:aclFile,fullName:row.fragment,status:'passed'})));
+  const files=[...new Set(rows.map(row=>row.file))];
+  const raw=report({numTotalTests:rows.length,numPassedTests:rows.length,testResults:files.map(file=>({name:file,assertionResults:rows.filter(row=>row.file===file)}))});
+  const selected={...plan([{repoFile:'0130_issue_46_refund_policy_snapshot',riskTier:'AUTHZ',sha256:'f'.repeat(64)}]),migrationScope:ISSUE_46_CLOSURE_COVERAGE.scope};
+  const build=(value:any)=>buildProductionDbTestCoverageEvidence({report:value,plan:selected,sourceRunId:'123',sourceRunAttempt:1});
+  expect(build(raw).reportSuccess).toBe(true);
+  const wrong=structuredClone(raw);
+  wrong.testResults.find((file:any)=>file.name===seasonal)!.assertionResults[0].fullName='#42 persisted seasonal prices become immutable TourOrder snapshots normal PER_PERSON × 3';
+  expect(()=>build(wrong)).toThrow(/REQUIRED_SEMANTIC_TEST_MISSING/);
+  const pending=structuredClone(raw);pending.testResults.find((file:any)=>file.name===seasonal)!.assertionResults[0].status='pending';pending.numPassedTests--;pending.numPendingTests++;
+  expect(()=>build(pending)).toThrow(/UNAPPROVED_VITEST_PENDING/);
 });

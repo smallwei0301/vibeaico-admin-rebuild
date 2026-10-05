@@ -10,11 +10,25 @@ const RISK_ORDER = Object.freeze({ ADDITIVE: 1, SCHEMA_REPAIR: 2, AUTHZ: 3, BACK
 const FULL_PENDING_SET = 'FULL_PENDING_SET';
 const ISSUES_17_680 = 'ISSUES_17_680';
 const ISSUE_37_0131_0134 = 'ISSUE_37_0131_0134';
+const ISSUE_46_0135 = 'ISSUE_46_0135';
+export const ISSUE_46_0110_0136_CLOSURE = 'ISSUE_46_0110_0136_CLOSURE';
 
 // A Production release may select only this reviewed, bounded closure.  Keep
 // dependencies as canonical migration identities so a pending migration cannot
 // become selectable merely by sharing an issue number or filename prefix.
 const BOUNDED_RELEASE_SCOPE_ROOTS = Object.freeze({
+  [ISSUE_46_0110_0136_CLOSURE]: Object.freeze([
+    '0110_issue_42_plan_duration_pricetype_yearround',
+    '0111_issue_46_guide_request_accept',
+    '0115_issue_21_external_calendars',
+    '0128_issue_42_plan_seasonal_pricing',
+    '0130_issue_46_refund_policy_snapshot',
+    '0132_issue_42_seasonal_price_resolution',
+    '0135_issue_46_guide_interval_availability',
+    // #755: security-invoker fix for the create_tour_order body shipped by 0130/0132.
+    '0136_issue_755_create_tour_order_invoker',
+  ]),
+  [ISSUE_46_0135]: Object.freeze(['0135_issue_46_guide_interval_availability']),
   [ISSUES_17_680]: Object.freeze([
     '0121_issue_17_booking_addons_hardening',
     '0133_issue_680_booking_addons_composite_fk_expand',
@@ -24,6 +38,12 @@ const BOUNDED_RELEASE_SCOPE_ROOTS = Object.freeze({
   ]),
 });
 const BOUNDED_RELEASE_DEPENDENCIES = Object.freeze({
+  // 0136 only ALTERs the signature created by 0132 (which needs 0128's tables);
+  // it must never be selectable without them.
+  '0136_issue_755_create_tour_order_invoker': Object.freeze([
+    '0128_issue_42_plan_seasonal_pricing',
+    '0132_issue_42_seasonal_price_resolution',
+  ]),
   '0121_issue_17_booking_addons_hardening': Object.freeze(['0125_issue_17_booking_addons_legacy_enum']),
   '0133_issue_680_booking_addons_composite_fk_expand': Object.freeze(['0121_issue_17_booking_addons_hardening']),
   // 0131's tour/staff tables must already be applied. They are checked below;
@@ -32,6 +52,32 @@ const BOUNDED_RELEASE_DEPENDENCIES = Object.freeze({
   '0134_issue_37_rpc_invoker_owner_compat': Object.freeze(['0131_issue_37_atomic_departure_staff']),
 });
 const BOUNDED_APPLIED_PREREQUISITES = Object.freeze({
+  [ISSUE_46_0110_0136_CLOSURE]: Object.freeze([
+    '0001_extensions_and_functions',
+    '0002_enums',
+    '0003_tenants_and_accounts',
+    '0004_core_business_tables',
+    '0005_line_marketing_other',
+    '0066_issue_8_tour_domain_core',
+    '0067_issue_8_tour_integrity',
+    '0068_issue_8_tour_rest_dml_acl',
+    '0074_block_times_recurrence_fields',
+    '0087_issue_8b_tour_orders',
+    '0088_issue_8b_tour_order_rpc_acl',
+    '0089_trip_display_fields',
+    '0092_trip_departure_staff',
+    '0107_issue_41_formation_state_model',
+  ]),
+  [ISSUE_46_0135]: Object.freeze([
+    '0003_tenants_and_accounts',
+    '0004_core_business_tables',
+    '0005_line_marketing_other',
+    '0066_issue_8_tour_domain_core',
+    '0074_block_times_recurrence_fields',
+    '0092_trip_departure_staff',
+    '0110_issue_42_plan_duration_pricetype_yearround',
+    '0115_issue_21_external_calendars',
+  ]),
   [ISSUE_37_0131_0134]: Object.freeze([
     '0066_issue_8_tour_domain_core',
     '0092_trip_departure_staff',
@@ -44,6 +90,8 @@ const BOUNDED_APPLIED_PREREQUISITES = Object.freeze({
 const PENDING_MIGRATION_PRECEDENCE = Object.freeze([
   Object.freeze({ before: '0124_issue_18_owner_notify_legacy_shape', after: '0116_issue_18_owner_notify' }),
   Object.freeze({ before: '0125_issue_17_booking_addons_legacy_enum', after: '0121_issue_17_booking_addons_hardening' }),
+  // 0136 ALTERs the signature defined by 0132; apply it strictly afterwards.
+  Object.freeze({ before: '0132_issue_42_seasonal_price_resolution', after: '0136_issue_755_create_tour_order_invoker' }),
 ]);
 
 // This one bounded legacy-shape precondition contains a type rewrite and an
@@ -154,9 +202,22 @@ export function selectedProductionMigrations(aliasMap = {}, migrationScope = FUL
   for (const repoFile of BOUNDED_APPLIED_PREREQUISITES[scope] ?? []) {
     const matches = aliasMap.entries.filter((entry) => entry?.repoFile === repoFile);
     if (matches.length !== 1 || matches[0].classification !== 'EXACT' ||
-        !Array.isArray(matches[0].ledgerNames) || matches[0].ledgerNames.length === 0) {
+        !Array.isArray(matches[0].ledgerNames) || matches[0].ledgerNames.length === 0 ||
+        ([ISSUE_46_0135, ISSUE_46_0110_0136_CLOSURE].includes(scope) && (matches[0].ledgerNames.length !== 1 || matches[0].ledgerNames[0] !== repoFile))) {
       fail('MIGRATION_SCOPE_APPLIED_PREREQUISITE_MISSING', `${scope} requires an exact applied prerequisite: ${repoFile}`);
     }
+  }
+
+  if (scope === ISSUE_46_0110_0136_CLOSURE) {
+    // This sole historical alias is reviewed, not a generic ALIAS escape.
+    const legacy = aliasMap.entries.filter((entry) => entry?.repoFile === '0099_drop_legacy_create_tour_order_overload');
+    if (legacy.length !== 1 || legacy[0].classification !== 'ALIAS'
+      || !Array.isArray(legacy[0].ledgerNames) || legacy[0].ledgerNames.length !== 1
+      || legacy[0].ledgerNames[0] !== 'drop_legacy_create_tour_order_overload') {
+      fail('MIGRATION_SCOPE_APPLIED_PREREQUISITE_MISSING', `${scope} requires the exact reviewed 0099 alias`);
+    }
+    // Unique ten-argument routine identity/body/ACL remain fresh G2/postcheck
+    // obligations; this source-only ledger check does not certify live shape.
   }
 
   const closure = new Set();
