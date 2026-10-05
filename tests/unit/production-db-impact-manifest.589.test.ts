@@ -109,7 +109,8 @@ describe('#589 Stage 1 production impact manifest', () => {
     const normalized = normalizeProductionDbImpactManifest(manifest) as Manifest;
     const inventory = normalized.entries.filter((entry) => planFiles.includes(entry.repoFile));
     const inventoryDigest = createHash('sha256').update(JSON.stringify(inventory)).digest('hex');
-    expect(inventoryDigest).toBe('8506dc5c88114f2cc38fcc2d3171b9c8ee9cc2d41e91fe9802b67c56589979a1');
+    // #773: re-pinned because 0116 (policy p_owner_notify_recipients_all), 0121 (booking_addons_performance_staff_id_fkey) and 0133 (acl table:public.booking_addons) no longer co-own keys whose final writer is 0127/0133/0127.
+    expect(inventoryDigest).toBe('06e52b7364fa4b7545e070e00123dc43969a09003e06c1d91c7ba733749cd0a6');
 
     const functionAclKeys = inventory.flatMap((entry) => entry.impacts)
       .filter((impact) => impact.surface === 'acl' && impact.objectKey.startsWith('function:'))
