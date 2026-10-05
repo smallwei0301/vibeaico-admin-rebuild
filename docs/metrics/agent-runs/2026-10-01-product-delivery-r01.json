@@ -3785,7 +3785,7 @@
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 116,
+    "solTouches": 50,
     "solIssues": 5
   },
   "auditability": {
