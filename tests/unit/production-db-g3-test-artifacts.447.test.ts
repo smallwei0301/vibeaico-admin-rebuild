@@ -980,6 +980,25 @@ language sql security definer as $$ select 1 $$;
       expect(u('-- execute v_sql;\n/* execute x */ select 1;')).toBe(false);
     });
 
+    it('E-string escapes, function/procedure variable names and dollar delimiters fail closed (#777)', () => {
+      const u=(sql:string)=>scanCreateTourOrderDdl(sql).unresolvedExecute;
+      expect(u("do $$ begin execute E'alter function public.create\\x5ftour_order(int) security definer'; end $$;")).toBe(true);
+      expect(u("do $$ begin execute e'alter function public.create\\137tour_order(int) security definer'; end $$;")).toBe(true);
+      expect(u("do $$ begin execute E'alter function public.create\\u005ftour_order(int) security definer'; end $$;")).toBe(true);
+      expect(u("do $$ begin execute U&'alter function public.create\\005ftour_order(int) security definer'; end $$;")).toBe(true);
+      expect(u("do $$ declare function text := 'alter function public.create_' || 'tour_order(int) security definer'; begin execute function; end $$;")).toBe(true);
+      expect(u("do $$ declare procedure text := 'x'; begin execute procedure; end $$;")).toBe(true);
+      expect(u("do $$ declare function text := 'x'; begin execute function(1); end $$;")).toBe(true);
+      expect(u('select $x$a$x$execute v;')).toBe(true);
+      expect(u("execute'select 1';")).toBe(false);
+      expect(u('create trigger t before update on public.x for each row execute function public.f();')).toBe(false);
+      expect(u('create constraint trigger t after insert on x deferrable for each row when (true) execute procedure "public"."f"(1);')).toBe(false);
+      expect(u('create or replace trigger t before update on x for each row execute function f();')).toBe(false);
+      expect(u('create event trigger e on ddl_command_start execute function public.f();')).toBe(false);
+      expect(u('select 1; create trigger t before update on x for each statement execute function f();')).toBe(false);
+      expect(u('grant execute on function x() to y;')).toBe(false);
+    });
+
     it('unresolved EXECUTE scan is linear-time', () => {
       const t0=performance.now();
       scanCreateTourOrderDdl("execute 'select 1'"+" || 'x'".repeat(5000)+';');

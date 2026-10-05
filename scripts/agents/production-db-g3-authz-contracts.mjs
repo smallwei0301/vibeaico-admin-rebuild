@@ -124,23 +124,38 @@ function dollarTagAt(sql, i) {
   return /^\$(?:[\p{L}_][\p{L}\p{N}_]*)?\$/u.exec(sql.slice(i, i + 130))?.[0] ?? '';
 }
 const skipSpace = (sql, i) => { while (i < sql.length && /\s/.test(sql[i])) i += 1; return i; };
-const wordAt = (sql, i) => { let j = i; while (j < sql.length && WORD_CHAR.test(sql[j])) j += 1; return sql.slice(i, j).toLowerCase(); };
+// 單字邊界：$ 一律視為邊界（dollar-quote 結尾 delimiter 後緊接 execute 也要看得到；a$execute 這類罕見識別字多報屬 fail closed）。
+const ID_CHAR = /[\p{L}\p{N}_]/u;
+const wordAt = (sql, i) => { let j = i; while (j < sql.length && ID_CHAR.test(sql[j])) j += 1; return sql.slice(i, j).toLowerCase(); };
+const TRIGGER_STATEMENT_RE = /create\s+(?:or\s+replace\s+)?(?:constraint\s+|event\s+)?trigger\b/iyu;
+const TRIGGER_EXECUTE_TARGET_RE = new RegExp(`(?:function|procedure)\\s+(?:${SQL_IDENT}\\s*\\.\\s*){0,2}${SQL_IDENT}\\s*\\(`, 'iyu');
+// execute function|procedure 只在 create [constraint|event] trigger 語句內（且後接限定函式名與 "("）才是 trigger 語法；
+// function／procedure 是非保留字，PL/pgSQL 變數也可以叫這個名字，不能無條件略過。
+function isTriggerExecute(sql, stmtStart, after) {
+  TRIGGER_STATEMENT_RE.lastIndex = skipSpace(sql, stmtStart);
+  if (!TRIGGER_STATEMENT_RE.test(sql)) return false;
+  TRIGGER_EXECUTE_TARGET_RE.lastIndex = skipSpace(sql, after);
+  return TRIGGER_EXECUTE_TARGET_RE.test(sql);
+}
 export function firstUnresolvedExecute(sql) {
   let i = 0;
+  let stmtStart = 0;
   while (i < sql.length) {
     const c = sql[i];
     if (c === "'" || c === '"') { i = skipQuoted(sql, i, c); continue; }
-    if (!WORD_CHAR.test(c) || WORD_CHAR.test(sql[i - 1] ?? '')) { i += 1; continue; }
+    if (c === ';') { stmtStart = i + 1; i += 1; continue; }
+    if (!ID_CHAR.test(c) || ID_CHAR.test(sql[i - 1] ?? '')) { i += 1; continue; }
     const word = wordAt(sql, i);
     const after = i + word.length;
     if (word !== 'execute') { i = after; continue; }
     const argStart = skipSpace(sql, after);
     const next = wordAt(sql, argStart);
-    // 權限字（grant/revoke … execute on、execute,）與 trigger 的 execute function|procedure 不是 EXECUTE 命令。
-    if (sql[argStart] === ',' || next === 'on' || next === 'function' || next === 'procedure') { i = after; continue; }
+    // 權限字（grant/revoke/alter default privileges … execute on、execute,）不是 EXECUTE 命令；on 是保留字，不會是變數名。
+    if (sql[argStart] === ',' || next === 'on') { i = after; continue; }
+    if ((next === 'function' || next === 'procedure') && isTriggerExecute(sql, stmtStart, argStart)) { i = after; continue; }
+    // 只有純 '...'（'' 倍增）與 dollar-quote 常值算已解析；E'..'（\x5f、八進位跳脫）與 U&'..' 的內容無法靜態還原，一律未解析。
     let end = -1;
     if (sql[argStart] === "'") end = skipQuoted(sql, argStart, "'");
-    else if ((sql[argStart] === 'e' || sql[argStart] === 'E') && sql[argStart + 1] === "'") end = skipQuoted(sql, argStart + 1, "'");
     else {
       const tag = dollarTagAt(sql, argStart);
       if (tag) {
