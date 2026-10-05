@@ -1,4 +1,4 @@
-import { ISSUE_46_0110_0136_CLOSURE, splitSqlStatements, stripSqlComments } from './production-db-release-plan.mjs';
+import { ISSUE_46_0110_0136_CLOSURE, PG_IDENT_CONT_CLASS, PG_IDENT_START_CLASS, splitSqlStatements, stripSqlComments } from './production-db-release-plan.mjs';
 
 // G3 closure 原生驗收契約：REQUEST／refund snapshot／seasonal snapshot／#755 invoker 四個家族。
 // 觸發規則見 ISSUE_46_CLOSURE_FAMILIES 與 CREATE_TOUR_ORDER_WRITER_PREFIXES：
@@ -118,9 +118,7 @@ export { stripSqlComments };
 // 單一識別字 token：引號識別字不跨行並支援 "" 跳脫；未引號識別字支援非 ASCII。
 // schema 限定詞不限 public，最多兩段（catalog.schema.name），因為任何 schema 的 create_tour_order 都可能被 set schema／rename 搬進 public，一律 fail closed。
 // 識別字字元對齊 PostgreSQL scan.l（任何非 ASCII 皆為識別字字元）；與 release-plan 的 PG_IDENT_CONT_RE 同一定義。
-const PG_IDENT_START = 'A-Za-z_\\u0080-\\u{10FFFF}';
-const PG_IDENT_CONT_CLASS = 'A-Za-z0-9_$\\u0080-\\u{10FFFF}';
-const SQL_IDENT = `(?:"(?:[^"\\n]|"")+"|[${PG_IDENT_START}][${PG_IDENT_CONT_CLASS}]*)`;
+const SQL_IDENT = `(?:"(?:[^"\\n]|"")+"|[${PG_IDENT_START_CLASS}][${PG_IDENT_CONT_CLASS}]*)`;
 // SQL gap：關鍵字之間可出現空白、區塊註解、行註解（PostgreSQL 皆視為空白）。
 // 區塊註解長度設上限（1000）（非巢狀、lazy），避免未結束的 /* 對每個關鍵字掃到檔尾造成二次方；
 // 超長註解由「剝註解後文字」那一側負責（註解被換成空白，\s 可無限重複）。

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { inferMigrationRiskTier, stripSqlComments } from '../../scripts/agents/production-db-release-plan.mjs';
+import { buildProductionDbReleasePlan, inferMigrationRiskTier, releasePlanDigestOf, sha256, stripSqlComments } from '../../scripts/agents/production-db-release-plan.mjs';
+import { buildAtomicProductionApplySql } from '../../scripts/db/controlled-production-db-release.mjs';
 import { scanCreateTourOrderDdl } from '../../scripts/agents/production-db-g3-authz-contracts.mjs';
 
 describe('SQL lexer 對齊 PostgreSQL 識別字／dollar tag 規則（#780）', () => {
@@ -105,5 +106,49 @@ describe('E 字串續段與 G3 分句／識別字（Opus review B1-B3）', () =>
     expect(scanCreateTourOrderDdl('create function €s.create_tour_order() returns int language sql as $$select 1$$;').writer).toBe(true);
     expect(scanCreateTourOrderDdl('alter function €s.create_tour_order() set schema public;').writer).toBe(true);
     expect(scanCreateTourOrderDdl('alter function public.create_tour_order€(int) set schema public;').writer).toBe(false);
+  });
+});
+
+describe('E 字串續段的水平空白對齊 PG17（含 \\v，B4）', () => {
+  const aliasMap = {
+    schemaVersion: 1,
+    entries: [
+      { repoFile: '0001_base', ledgerNames: ['0001_base'], classification: 'EXACT', evidence: 'x' },
+      { repoFile: '0083_source', ledgerNames: ['0082_source'], classification: 'ALIAS', evidence: 'x' },
+      { repoFile: '0109_assertions', ledgerNames: [], classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', evidence: 'x' },
+    ],
+  };
+  const baseSql = 'create table if not exists public.guard_447(id uuid primary key);';
+  const rows = [{ version: '1', name: '0001_base' }, { version: '2', name: '0082_source' }];
+  // 與 controlled-production-db-release.447 相同的 stale-plan 手法：計畫以安全 SQL 建立，再換成候選 SQL 的 sha，
+  // 使 buildAtomicProductionApplySql 內部的 assertAtomicCompatibleSql 針對候選 SQL 執行。
+  function applyWith(candidate: string) {
+    const plan: any = buildProductionDbReleasePlan({
+      releaseId: 'release-20260914-447', mainSha: 'a'.repeat(40), plannedAt: '2026-09-14T12:30:00Z',
+      aliasMap, readCanonicalSql: () => baseSql,
+    });
+    plan.migrations[0].sha256 = sha256(Buffer.from(candidate));
+    plan.planDigest = releasePlanDigestOf(plan);
+    return buildAtomicProductionApplySql({ plan, aliasMap, liveLedgerRows: rows, readCanonicalSql: () => candidate } as any);
+  }
+  const cont = "select E'a'\v\n'\\' -- ';";
+
+  it('\\v 在續段換行前：drop 不得被剝除，風險分級拒絕', () => {
+    const sql = `${cont} drop table x;`;
+    expect(stripSqlComments(sql)).toContain('drop table x');
+    expect(() => inferMigrationRiskTier(sql)).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
+  });
+  it('隱藏的 commit; 被真實 atomic 路徑（buildAtomicProductionApplySql）拒絕', () => {
+    expect(() => applyWith(`${cont} commit;`)).toThrow(/TRANSACTION_CONTROL_NOT_ADMITTED/);
+  });
+  it('隱藏的 set role postgres; 被真實 atomic 路徑拒絕', () => {
+    expect(() => applyWith(`${cont} set role postgres;`)).toThrow(/WRITER_CONFIGURATION_NOT_ADMITTED|MIGRATION_RISK_MISMATCH|UNSUPPORTED_AUTHZ_SQL_NOT_ADMITTED/);
+  });
+  it('G3：超長區塊註解 + 續段 \\v，writer=true 且風險分級為 AUTHZ 或被拒絕', () => {
+    const sql = `${cont} alter /* ${'x'.repeat(1500)} */ function public.create_tour_order(int) security invoker;`;
+    expect(scanCreateTourOrderDdl(sql).writer).toBe(true);
+    let tier = '';
+    try { tier = inferMigrationRiskTier(sql); } catch { tier = 'REJECTED'; }
+    expect(['AUTHZ', 'REJECTED']).toContain(tier);
   });
 });

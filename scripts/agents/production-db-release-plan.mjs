@@ -249,19 +249,22 @@ export function orderPendingProductionMigrations(names = []) {
 }
 
 // PostgreSQL scan.l：ident_cont = [A-Za-z\200-\377_0-9$]；任何非 ASCII 字元都算識別字字元。
-export const PG_IDENT_CONT_RE = /[A-Za-z0-9_$\u0080-\u{10FFFF}]/u;
+export const PG_IDENT_START_CLASS = 'A-Za-z_\\u0080-\\u{10FFFF}';
+export const PG_IDENT_CONT_CLASS = 'A-Za-z0-9_$\\u0080-\\u{10FFFF}';
+export const PG_IDENT_CONT_RE = new RegExp(`[${PG_IDENT_CONT_CLASS}]`, 'u');
 // dolq_start = [A-Za-z\200-\377_]；dolq_cont = [A-Za-z\200-\377_0-9]
 const PG_DOLLAR_TAG_RE = /\$(?:[A-Za-z_\u0080-\u{10FFFF}][A-Za-z0-9_\u0080-\u{10FFFF}]*)?\$/uy;
 
 // PostgreSQL scan.l quotecontinue：字串結尾引號之後若接「水平空白／-- 註解 + 至少一個換行 + (空白 | -- 註解換行)* + '」，
 // 則是同一個字串字面量的續段，且沿用相同模式（E 字串的反斜線跳脫在續段仍有效）。注意 scan.l 只認 -- 行註解，不認 /* */。
+// 水平空白取 PG17 的 [ \t\f\v]（PG16 沒有 \v；超集對兩個版本都安全，PG16 本來就不接受 \v 出現在字串外）。
 // 回傳續段開頭引號「之後」的位置；不是續段回傳 -1。手寫掃描以避免正規表示式的巢狀量詞回溯。
 function stringContinuationEnd(input, from) {
   const n = input.length;
   let j = from;
   while (j < n) {
     const c = input[j];
-    if (c === ' ' || c === '\t' || c === '\f') { j += 1; continue; }
+    if (c === ' ' || c === '\t' || c === '\f' || c === '\v') { j += 1; continue; }
     if (c === '-' && input[j + 1] === '-') {
       j += 2;
       while (j < n && input[j] !== '\n' && input[j] !== '\r') j += 1;
