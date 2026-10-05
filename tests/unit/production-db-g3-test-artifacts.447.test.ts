@@ -961,51 +961,36 @@ language sql security definer as $$ select 1 $$;
       expect(time('select '+'"'+'a'.repeat(20000)+'"')).toBeLessThan(50);
     });
 
-    it('EXECUTE whose target cannot be resolved statically fails closed (#777 Codex P2)', () => {
+    it('any non-privilege EXECUTE keyword fails closed by plain text rule (#777)', () => {
       const u=(sql:string)=>scanCreateTourOrderDdl(sql).unresolvedExecute;
       expect(u("EXECUTE 'alter function public.create_' || 'tour_order(int) security definer';")).toBe(true);
       expect(u("execute format('alter function %I.%I() security definer', 'public','create_tour_order');")).toBe(true);
       expect(u('execute v_sql;')).toBe(true);
-      expect(u("execute 'select 1' || v_x;")).toBe(true);
-      expect(u("do $$ begin execute pg_catalog.format('select %s', x) into y; end $$;")).toBe(true);
-      expect(u("execute 'select 1';")).toBe(false);
-      expect(u("execute 'select $1' using a;")).toBe(false);
-      expect(u("execute $q$select 1$q$ into x;")).toBe(false);
-      expect(u("execute 'it''s fine';")).toBe(false);
+      expect(u("execute 'select 1';")).toBe(true);
+      expect(u("do $$ begin perform $m$'$m$; execute 'alter function public.create_' || 'tour_order(int) security definer'; perform $m$'$m$; end $$;")).toBe(true);
+      expect(u("do $$ begin /* it's */ execute 'alter function public.create_' || 'tour_order(int) security definer'; /* ' */ end $$;")).toBe(true);
+      expect(u("do $$ begin -- it's\n execute 'alter function public.create_' || 'tour_order(int) security definer'; -- '\n end $$;")).toBe(true);
+      expect(u("do $$ begin execute E'alter function public.create\\x5ftour_order(int) security definer'; end $$;")).toBe(true);
+      expect(u("do $$ begin execute U&'alter function public.create\\005ftour_order(int) security definer'; end $$;")).toBe(true);
+      expect(u("do $$ declare function text := 'x'; begin execute function; end $$;")).toBe(true);
+      expect(u('select $x$a$x$execute v;')).toBe(true);
+      expect(u("select 'x';execute v;")).toBe(true);
+      expect(u('create trigger t before insert on x for each row execute function f();')).toBe(true);
       expect(u('grant execute on function x() to y;')).toBe(false);
       expect(u('revoke execute on all functions in schema public from anon;')).toBe(false);
-      expect(u('alter default privileges grant execute on functions to anon;')).toBe(false);
-      expect(u('create trigger t before update on x for each row execute function public.f();')).toBe(false);
-      expect(u("select 'execute v_sql;'; select \"execute\";")).toBe(false);
+      expect(u('alter default privileges in schema public grant execute on functions to anon;')).toBe(false);
+      expect(u('grant select, execute\n  on function x() to y;')).toBe(false);
+      expect(u('select executed, execute_x, my_execute from t;')).toBe(false);
       expect(u('-- execute v_sql;\n/* execute x */ select 1;')).toBe(false);
     });
 
-    it('E-string escapes, function/procedure variable names and dollar delimiters fail closed (#777)', () => {
-      const u=(sql:string)=>scanCreateTourOrderDdl(sql).unresolvedExecute;
-      expect(u("do $$ begin execute E'alter function public.create\\x5ftour_order(int) security definer'; end $$;")).toBe(true);
-      expect(u("do $$ begin execute e'alter function public.create\\137tour_order(int) security definer'; end $$;")).toBe(true);
-      expect(u("do $$ begin execute E'alter function public.create\\u005ftour_order(int) security definer'; end $$;")).toBe(true);
-      expect(u("do $$ begin execute U&'alter function public.create\\005ftour_order(int) security definer'; end $$;")).toBe(true);
-      expect(u("do $$ declare function text := 'alter function public.create_' || 'tour_order(int) security definer'; begin execute function; end $$;")).toBe(true);
-      expect(u("do $$ declare procedure text := 'x'; begin execute procedure; end $$;")).toBe(true);
-      expect(u("do $$ declare function text := 'x'; begin execute function(1); end $$;")).toBe(true);
-      expect(u('select $x$a$x$execute v;')).toBe(true);
-      expect(u("execute'select 1';")).toBe(false);
-      expect(u('create trigger t before update on public.x for each row execute function public.f();')).toBe(false);
-      expect(u('create constraint trigger t after insert on x deferrable for each row when (true) execute procedure "public"."f"(1);')).toBe(false);
-      expect(u('create or replace trigger t before update on x for each row execute function f();')).toBe(false);
-      expect(u('create event trigger e on ddl_command_start execute function public.f();')).toBe(false);
-      expect(u('select 1; create trigger t before update on x for each statement execute function f();')).toBe(false);
-      expect(u('grant execute on function x() to y;')).toBe(false);
-    });
-
-    it('unresolved EXECUTE scan is linear-time', () => {
+    it('EXECUTE keyword scan is linear-time on 200k input', () => {
       const t0=performance.now();
-      scanCreateTourOrderDdl("execute 'select 1'"+" || 'x'".repeat(5000)+';');
-      scanCreateTourOrderDdl("execute 'a';".repeat(5000));
-      scanCreateTourOrderDdl('execute '+'$'.repeat(20000));
-      scanCreateTourOrderDdl("execute "+"'"+'a'.repeat(20000)+"'");
-      expect(performance.now()-t0).toBeLessThan(200);
+      scanCreateTourOrderDdl("execute 'select 1'"+" || 'x'".repeat(30000)+';');
+      scanCreateTourOrderDdl("grant execute on function f() to y;".repeat(6000));
+      scanCreateTourOrderDdl('execute'+' '.repeat(200000)+'on');
+      scanCreateTourOrderDdl('executeexecute'.repeat(14000));
+      expect(performance.now()-t0).toBeLessThan(500);
     });
 
     it('nested block comments are stripped as one comment', () => {

@@ -66,19 +66,33 @@ export const CREATE_TOUR_ORDER_SCHEMA_WIDE_ACL_EXCLUSIONS = Object.freeze({});
 export const CREATE_TOUR_ORDER_DYNAMIC_SQL_EXCLUSIONS = Object.freeze({});
 // Unicode 跳脫識別字（U&"publ\0069c"."create_tour_ord\0065r"）可拼出任何函式名而躲過字面比對，一律 fail closed：
 // 命中 U&" 或 U&' 的 migration 必須在此逐檔附理由。目前 supabase/migrations 沒有任何命中。
-// 逐檔核對每一句 EXECUTE（#777）：格式字串模板皆為固定字面，只對 table／constraint／index／policy／type 做 DDL 或對 table 做 DML，
-// 模板內沒有 function／procedure／routine 關鍵字，%I／%s 代入的只有 pg_constraint／pg_policy／pg_class 查出的物件名或白名單 table 名，
-// 不可能組出 create_tour_order 的 DDL（create/alter/grant/revoke/rename function）。
+// EXECUTE 關鍵字（文字規則）命中的 migration 逐檔核對（#777）：每個命中檔案的每一處 execute 都已讀過，
+// 皆為 trigger 語法、固定字面 DDL、固定模板的 table／constraint／index／policy／type 操作，或只是訊息字串，
+// 沒有任何一處能對 create_tour_order 做 create/alter/grant/revoke/rename。0087 已是 writer。
 export const CREATE_TOUR_ORDER_UNRESOLVED_EXECUTE_EXCLUSIONS = Object.freeze({
-  '0006': 'execute format 只對迴圈內固定 table 清單做 alter table enable row level security 與 create policy，模板無 function DDL',
-  '0066': 'execute format 只對 item.table_name／item.policy_name 做 alter table enable RLS 與 create policy（table 清單固定）；其餘 EXECUTE 皆為單一字面（alter type add value／update trips|trip_plans）',
+  '0003': '兩處 execute 皆為 create trigger … execute function set_updated_at()（trigger 語法），無動態 SQL',
+  '0006': 'execute format 只對固定 table 清單做 alter table enable RLS 與 create policy，模板無 function DDL',
+  '0065': '兩句 execute $fn$ 是 dollar-quote 字面量，建立 public.reserve_catalog_positions／reorder_catalog_items；檔內完全沒有 create_tour_order',
+  '0066': 'execute 皆為：字面 alter type add value、字面 update trips|trip_plans、字面 create index／create trigger（含 execute function 子句）、dollar-quote 建立 sync_tour_*_legacy_fields_0015、format 對四張固定 table 做 enable RLS／create policy，另有 trigger 語法 execute function public.set_updated_at()；檔內沒有 create_tour_order',
   '0067': 'execute format 模板皆為 alter table public.trip_plans|trip_addons|trip_departures drop／validate constraint %I，%I 為 pg_constraint.conname，與 function 無關',
-  '0084': 'execute pg_catalog.format 模板為 insert/select/update catalog_position_counters 與 services|products|portfolios；%s 代入 public.quote_ident(p_resource)，p_resource 已先過 (services,products,portfolios) 白名單，col 亦為白名單欄名，全是 DML，沒有 function DDL',
-  '0095': 'execute format 只對 impersonation_sessions／impersonation_actions 兩張 table 做 enable／force RLS、drop／create policy、revoke／grant on table（皆為 on table，非 on function）',
+  '0070': 'trigger 語法 execute function public.prevent_retired_welcome_card_image()，無動態 SQL；檔內沒有 create_tour_order',
+  '0080': 'trigger 語法 execute function public.set_membership_level_default()，無動態 SQL；檔內沒有 create_tour_order',
+  '0084': 'execute pg_catalog.format 模板為 insert/select/update catalog_position_counters 與 services|products|portfolios；%s 代入 quote_ident(p_resource)，p_resource 已先過 (services,products,portfolios) 白名單，欄名亦為白名單，全是 DML，沒有 function DDL',
+  '0087': '已是 CREATE_TOUR_ORDER_WRITER_PREFIXES 成員；execute 皆為字面 alter type tour_order_status|tour_payment_status|tour_order_source add value，與函式無關',
+  '0093': '「execute」只出現在 raise exception 訊息與 coalesce 預設字串（描述 PUBLIC EXECUTE 權限），不是 EXECUTE 命令；檔內沒有 create_tour_order',
+  '0095': 'execute format 只對 impersonation_sessions／impersonation_actions 兩張 table 做 enable／force RLS、drop／create policy、revoke／grant on table（皆 on table，非 on function）；另有 trigger 語法 execute function guard_tenants_midao_guide_id()',
+  '0097': '「execute」只出現在 raise exception 訊息字串（PUBLIC 仍持有 EXECUTE），不是 EXECUTE 命令',
+  '0100': '「execute」只出現在 raise exception 訊息字串（PUBLIC 仍持有 EXECUTE），不是 EXECUTE 命令；檔內沒有 create_tour_order',
+  '0101': '「execute」只出現在 raise exception 訊息字串，不是 EXECUTE 命令',
   '0102': 'execute format 模板為 alter table public.trip_departure_staff|%I（parent_table 來自固定 spec）add／validate／drop constraint，無 function DDL',
-  '0104': 'execute format 模板為 alter table public.tour_orders|%I（spec.parent_table 固定）add／validate／drop constraint，%s 為 quote_ident 的欄名清單，無 function DDL',
+  '0104': 'execute format 模板為 alter table public.tour_orders|%I（spec.parent_table 固定）add／validate／drop constraint，%s 為 quote_ident 的欄名清單；create_tour_order 只出現在註解（已剝除），無 function DDL',
   '0106': 'execute format 模板為 lock table only public.%I 與 drop index public.%I restrict，%I 為固定清單的 table／index 名，無 function DDL',
+  '0107': 'execute 皆為字面 alter type departure_formation_status add value，與函式無關',
+  '0108': 'execute 皆為字面 alter type tour_payment_status add value，與函式無關',
   '0109': 'execute format 模板為 alter table public.tour_orders drop constraint %I，%I 為 pg_constraint 查出的 check 約束名，無 function DDL',
+  '0118': 'trigger 語法 execute function set_updated_at()，無動態 SQL',
+  '0123': 'trigger 語法 execute function public.prevent_retired_richmenu_asset()，無動態 SQL；檔內沒有 create_tour_order',
+  '0128': 'trigger 語法 execute function public.set_updated_at()，無動態 SQL；檔內沒有 create_tour_order',
 });
 export const CREATE_TOUR_ORDER_UNICODE_IDENTIFIER_EXCLUSIONS = Object.freeze({});
 
@@ -102,76 +116,13 @@ const DROP_RE = new RegExp(`\\bdrop\\s+${ROUTINE_KIND}\\s+(?:if\\s+exists\\s+)?$
 const SCHEMA_WIDE_ACL_RE = /\b(?:(?:grant|revoke)\b[^;]*?\bon\s+all\s+(?:functions|routines|procedures)\s+in\s+schema\b|alter\s+default\s+privileges\b[^;]*?\b(?:functions|routines|procedures)\b)/i;
 // execute（排除 grant/revoke … execute on）語句內出現 create_tour_order；以 ; 為語句界線，保守 fail closed。
 const UNICODE_IDENTIFIER_RE = /\bu&['"]/i;
-// 無法靜態判定目標的 EXECUTE（#777 Codex P2）：只要 EXECUTE 命令的參數不是「單一純字串常值（或 dollar-quote 常值）後接 ; / using / into」，
-// 就無法證明它不會組出 create_tour_order DDL（|| 串接、format()、變數、prepared statement 皆然），一律 fail closed。
-// 手寫線性掃描器（不用 regex 回溯）；字串／引號識別字內的 execute 字樣不算命令，dollar-quote 本體內的 PL/pgSQL 則照常掃描。
-const WORD_CHAR = /[\p{L}\p{N}_$]/u;
-function skipQuoted(sql, start, quote) {
-  const backslash = quote === "'" && /[eE]/.test(sql[start - 1] ?? '') && !WORD_CHAR.test(sql[start - 2] ?? '');
-  let i = start + 1;
-  while (i < sql.length) {
-    if (backslash && sql[i] === '\\') { i += 2; continue; }
-    if (sql[i] === quote) {
-      if (sql[i + 1] === quote) { i += 2; continue; }
-      return i + 1;
-    }
-    i += 1;
-  }
-  return sql.length;
-}
-function dollarTagAt(sql, i) {
-  if (WORD_CHAR.test(sql[i - 1] ?? '')) return '';
-  return /^\$(?:[\p{L}_][\p{L}\p{N}_]*)?\$/u.exec(sql.slice(i, i + 130))?.[0] ?? '';
-}
-const skipSpace = (sql, i) => { while (i < sql.length && /\s/.test(sql[i])) i += 1; return i; };
-// 單字邊界：$ 一律視為邊界（dollar-quote 結尾 delimiter 後緊接 execute 也要看得到；a$execute 這類罕見識別字多報屬 fail closed）。
-const ID_CHAR = /[\p{L}\p{N}_]/u;
-const wordAt = (sql, i) => { let j = i; while (j < sql.length && ID_CHAR.test(sql[j])) j += 1; return sql.slice(i, j).toLowerCase(); };
-const TRIGGER_STATEMENT_RE = /create\s+(?:or\s+replace\s+)?(?:constraint\s+|event\s+)?trigger\b/iyu;
-const TRIGGER_EXECUTE_TARGET_RE = new RegExp(`(?:function|procedure)\\s+(?:${SQL_IDENT}\\s*\\.\\s*){0,2}${SQL_IDENT}\\s*\\(`, 'iyu');
-// execute function|procedure 只在 create [constraint|event] trigger 語句內（且後接限定函式名與 "("）才是 trigger 語法；
-// function／procedure 是非保留字，PL/pgSQL 變數也可以叫這個名字，不能無條件略過。
-function isTriggerExecute(sql, stmtStart, after) {
-  TRIGGER_STATEMENT_RE.lastIndex = skipSpace(sql, stmtStart);
-  if (!TRIGGER_STATEMENT_RE.test(sql)) return false;
-  TRIGGER_EXECUTE_TARGET_RE.lastIndex = skipSpace(sql, after);
-  return TRIGGER_EXECUTE_TARGET_RE.test(sql);
-}
-export function firstUnresolvedExecute(sql) {
-  let i = 0;
-  let stmtStart = 0;
-  while (i < sql.length) {
-    const c = sql[i];
-    if (c === "'" || c === '"') { i = skipQuoted(sql, i, c); continue; }
-    if (c === ';') { stmtStart = i + 1; i += 1; continue; }
-    if (!ID_CHAR.test(c) || ID_CHAR.test(sql[i - 1] ?? '')) { i += 1; continue; }
-    const word = wordAt(sql, i);
-    const after = i + word.length;
-    if (word !== 'execute') { i = after; continue; }
-    const argStart = skipSpace(sql, after);
-    const next = wordAt(sql, argStart);
-    // 權限字（grant/revoke/alter default privileges … execute on、execute,）不是 EXECUTE 命令；on 是保留字，不會是變數名。
-    if (sql[argStart] === ',' || next === 'on') { i = after; continue; }
-    if ((next === 'function' || next === 'procedure') && isTriggerExecute(sql, stmtStart, argStart)) { i = after; continue; }
-    // 只有純 '...'（'' 倍增）與 dollar-quote 常值算已解析；E'..'（\x5f、八進位跳脫）與 U&'..' 的內容無法靜態還原，一律未解析。
-    let end = -1;
-    if (sql[argStart] === "'") end = skipQuoted(sql, argStart, "'");
-    else {
-      const tag = dollarTagAt(sql, argStart);
-      if (tag) {
-        const close = sql.indexOf(tag, argStart + tag.length);
-        end = close < 0 ? -1 : close + tag.length;
-      }
-    }
-    if (end < 0) return i;
-    const tail = skipSpace(sql, end);
-    const tailWord = wordAt(sql, tail);
-    if (sql[tail] !== ';' && tailWord !== 'using' && tailWord !== 'into') return i;
-    i = end;
-  }
-  return -1;
-}
-export const hasUnresolvedExecute = (sql) => firstUnresolvedExecute(sql) >= 0;
+// EXECUTE 關鍵字一律 fail closed（#777；文字規則，刻意不解析引號、dollar-quote、trigger 語境）：
+// lexer 輸出的註解已剝除、字串與 dollar-quote 本體原樣保留，只要出現 execute 這個字（兩側不是 [A-Za-z0-9_]），
+// 且後面不是 `on`（grant/revoke/alter default privileges … execute on；on 是保留字，不可能是動態執行），就視為
+// 無法證明不會組出 create_tour_order DDL。包含 trigger 的 execute function|procedure、單一字面量 EXECUTE 在內都會命中，
+// 屬已知且文件化的多報；每個命中檔案必須在 CREATE_TOUR_ORDER_UNRESOLVED_EXECUTE_EXCLUSIONS 逐檔附理由。
+// 欄位名稱 unresolvedExecute 沿用，語意為「有非權限語法的 execute 關鍵字」。線性時間、無法被引號失同步繞過。
+const EXECUTE_KEYWORD_RE = /(?<![A-Za-z0-9_])execute(?![A-Za-z0-9_])(?!\s+on\b)/i;
 const DYNAMIC_SQL_RE = /\bexecute\b(?!\s+on\b)[^;]*?create_tour_order/i;
 
 export function scanCreateTourOrderDdl(sqlText) {
@@ -182,7 +133,7 @@ export function scanCreateTourOrderDdl(sqlText) {
     schemaWideAcl: SCHEMA_WIDE_ACL_RE.test(sql),
     dynamicSql: DYNAMIC_SQL_RE.test(sql),
     unicodeIdentifier: UNICODE_IDENTIFIER_RE.test(sql),
-    unresolvedExecute: hasUnresolvedExecute(sql),
+    unresolvedExecute: EXECUTE_KEYWORD_RE.test(sql),
   };
 }
 
