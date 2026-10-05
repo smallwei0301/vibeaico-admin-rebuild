@@ -920,6 +920,25 @@ language sql security definer as $$ select 1 $$;
       expect(scanCreateTourOrderDdl('-- U&"x"\n/* u&"y" */ select 1;').unicodeIdentifier).toBe(false);
     });
 
+    it('Unicode string constants fail closed (#777 NB1)', () => {
+      expect(scanCreateTourOrderDdl("execute U&'alter function public.create_tour_ord\\0065r() security definer';").unicodeIdentifier).toBe(true);
+      expect(scanCreateTourOrderDdl("execute u&'x';").unicodeIdentifier).toBe(true);
+      expect(scanCreateTourOrderDdl("select 'plain string', menu&'x';").unicodeIdentifier).toBe(false);
+    });
+
+    it('any schema qualifier and set schema count as writer (#777 NB2)', () => {
+      const created='create function staging.create_tour_order() returns void as $$ $$ language sql;';
+      expect(scanCreateTourOrderDdl(created).writer).toBe(true);
+      expect(scanCreateTourOrderDdl('create function "my schema"."create_tour_order"() returns void as $$ $$ language sql;').writer).toBe(true);
+      expect(scanCreateTourOrderDdl('alter function staging.create_tour_order() set schema public;').writer).toBe(true);
+      expect(scanCreateTourOrderDdl('ALTER ROUTINE "staging" . "create_tour_order"(int) SET SCHEMA public;').writer).toBe(true);
+      expect(scanCreateTourOrderDdl('alter procedure create_tour_order() set schema public;').writer).toBe(true);
+      expect(scanCreateTourOrderDdl('alter function staging.tmp(int) rename to create_tour_order;').writer).toBe(true);
+      expect(scanCreateTourOrderDdl('grant execute on function staging.create_tour_order(int) to anon;').writer).toBe(true);
+      expect(scanCreateTourOrderDdl('revoke all on routine "s"."create_tour_order" from public;').writer).toBe(true);
+      expect(scanCreateTourOrderDdl('create function staging.create_tour_order_v2() returns void as $$ $$ language sql;').writer).toBe(false);
+    });
+
     it('nested block comments are stripped as one comment', () => {
       expect(scanCreateTourOrderDdl('/* outer /* inner */ '+W+' */ select 1;').writer).toBe(false);
       expect(scanCreateTourOrderDdl('/* outer /* inner */ x */ '+W).writer).toBe(true);

@@ -65,7 +65,7 @@ export const CREATE_TOUR_ORDER_EXCLUDED_DDL = Object.freeze({
 export const CREATE_TOUR_ORDER_SCHEMA_WIDE_ACL_EXCLUSIONS = Object.freeze({});
 export const CREATE_TOUR_ORDER_DYNAMIC_SQL_EXCLUSIONS = Object.freeze({});
 // Unicode 跳脫識別字（U&"publ\0069c"."create_tour_ord\0065r"）可拼出任何函式名而躲過字面比對，一律 fail closed：
-// 命中 U&" 的 migration 必須在此逐檔附理由。目前 supabase/migrations 沒有任何命中。
+// 命中 U&" 或 U&' 的 migration 必須在此逐檔附理由。目前 supabase/migrations 沒有任何命中。
 export const CREATE_TOUR_ORDER_UNICODE_IDENTIFIER_EXCLUSIONS = Object.freeze({});
 
 // 單一來源：create_tour_order DDL 掃描（#777）。純函式，同時供真實 migration 與合成 mutation 字串使用。
@@ -73,7 +73,8 @@ export const CREATE_TOUR_ORDER_UNICODE_IDENTIFIER_EXCLUSIONS = Object.freeze({})
 // 識別字容許引號與點號兩側空白：public.create_tour_order／"public"."create_tour_order"／public . create_tour_order。
 // 註解剝除一律使用 release-plan 認得字串／引號識別字／dollar-quote／巢狀區塊註解的 lexer；畸形輸入會丟 UNSUPPORTED_SQL_LEXICAL_FORM（fail closed，不得吞掉）。
 export { stripSqlComments };
-const TOUR_ORDER_IDENT = '(?:"?public"?\\s*\\.\\s*)?"?create_tour_order"?(?![\\w"])';
+// schema 限定詞不限 public（任何 schema 的 create_tour_order 都可能被 set schema／rename 搬進 public），一律 fail closed。
+const TOUR_ORDER_IDENT = '(?:(?:"[^"]+"|[A-Za-z_][\\w$]*)\\s*\\.\\s*)?"?create_tour_order"?(?![\\w"])';
 const ROUTINE_KIND = '(?:function|procedure|routine)';
 const WRITER_RE = new RegExp(
   `\\b(?:create\\s+(?:or\\s+replace\\s+)?${ROUTINE_KIND}\\s+${TOUR_ORDER_IDENT}\\s*\\(`
@@ -83,7 +84,7 @@ const WRITER_RE = new RegExp(
 const DROP_RE = new RegExp(`\\bdrop\\s+${ROUTINE_KIND}\\s+(?:if\\s+exists\\s+)?${TOUR_ORDER_IDENT}`, 'i');
 const SCHEMA_WIDE_ACL_RE = /\b(?:(?:grant|revoke)\b[^;]*?\bon\s+all\s+(?:functions|routines|procedures)\s+in\s+schema\b|alter\s+default\s+privileges\b[^;]*?\b(?:functions|routines|procedures)\b)/i;
 // execute（排除 grant/revoke … execute on）語句內出現 create_tour_order；以 ; 為語句界線，保守 fail closed。
-const UNICODE_IDENTIFIER_RE = /\bu&"/i;
+const UNICODE_IDENTIFIER_RE = /\bu&['"]/i;
 const DYNAMIC_SQL_RE = /\bexecute\b(?!\s+on\b)[^;]*?create_tour_order/i;
 
 export function scanCreateTourOrderDdl(sqlText) {
