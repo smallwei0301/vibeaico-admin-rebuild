@@ -3680,7 +3680,11 @@
         "outputTokens": null,
         "cachedTokens": null,
         "note": "Build rework rounds for #777 G3 lexer fix (04:06:20Z–05:29:33Z, commits 1cc570ac..711fc0a5)",
-        "count": 1
+        "count": 9,
+        "issue": 777,
+        "startedAt": "2026-10-05T04:06:20Z",
+        "completedAt": "2026-10-05T05:29:33Z",
+        "evidenceRef": "commits 1cc570ac, 0ee0a810, 9ab6cf70, ce8f281c, 1d706bb3, 39561814, 8142d292, bd85aaf9, 711fc0a5"
       },
       {
         "id": "20261005-build-780-lexer",
@@ -3693,7 +3697,11 @@
         "outputTokens": null,
         "cachedTokens": null,
         "note": "Build #780 lexer implementation (05:36Z–07:27:22Z, commits f111f202..196e1e26)",
-        "count": 1
+        "count": 5,
+        "issue": 780,
+        "startedAt": "2026-10-05T05:36:00Z",
+        "completedAt": "2026-10-05T07:27:22Z",
+        "evidenceRef": "commits f111f202, d37e4bbf, 8daf8feb, 61469863, 196e1e26"
       },
       {
         "id": "20261005-audit-merge-779",
@@ -3706,7 +3714,11 @@
         "outputTokens": null,
         "cachedTokens": null,
         "note": "Opus audit approval for merge #779 (07:38:04Z)",
-        "count": 1
+        "count": 1,
+        "issue": 777,
+        "startedAt": "2026-10-05T07:38:04Z",
+        "completedAt": "2026-10-05T07:38:20Z",
+        "evidenceRef": "squash 24841f1d (#779)"
       },
       {
         "id": "20261005-audit-closure-773-774-777",
@@ -3719,7 +3731,11 @@
         "outputTokens": null,
         "cachedTokens": null,
         "note": "Audit closure verification for #773/#774/#777 ISSUE_CLOSED (08:36:58Z–08:38Z)",
-        "count": 1
+        "count": 3,
+        "issue": 777,
+        "startedAt": "2026-10-05T08:36:58Z",
+        "completedAt": "2026-10-05T08:38:30Z",
+        "evidenceRef": "issuecomments 5991000002, 5991000226, 5991000488 (Sol CLOSE_APPROVED)"
       },
       {
         "id": "20261005-scout-reconcile",
@@ -3732,7 +3748,11 @@
         "outputTokens": null,
         "cachedTokens": null,
         "note": "Scout reconciliation of ISSUE_CLOSED claims for #773/#774/#777 and addition of #780/#781 sources",
-        "count": 1
+        "count": 1,
+        "issue": 780,
+        "startedAt": "2026-10-05T10:04:18Z",
+        "completedAt": "2026-10-05T10:24:17Z",
+        "evidenceRef": "commits ed9792f6, 73e8832c"
       },
       {
         "id": "20261005-audit-779-r1",
@@ -4004,6 +4024,23 @@
         "cachedTokens": null,
         "count": 1,
         "note": "Scout Codex P2 fixes: replaced aggregated audit task with 12 individual #779 review rounds, added 3 #775/#776 Opus reviews, updated issuesStarted (15→16 for #780), re-synced solTouches (50→128)"
+      },
+      {
+        "id": "20261005-scout-structure-fix",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "issue": 780,
+        "startedAt": "2026-10-05T10:24:17Z",
+        "completedAt": null,
+        "evidenceRef": null,
+        "count": 1,
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "Scout: added structured fields (issue, startedAt, completedAt, evidenceRef) to build/audit tasks"
       }
     ],
     "fullContextReplays": 0,
@@ -4037,13 +4074,13 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 51,
-    "lunaAccepted": 46,
+    "lunaTasks": 52,
+    "lunaAccepted": 47,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 128,
+    "solTouches": 130,
     "solIssues": 5
   },
   "auditability": {
