@@ -4097,8 +4097,8 @@
         "note": "Scout layer: Codex 4183298324/4183298329 fixes audit correction — issue field supplementation (solIssues 14→17), ci.fullCiRuns audited reconciliation (51→98, 47 counted runs), exclude PR#782 MODEL_GOVERNANCE runs",
         "count": 1,
         "startedAt": "2026-10-05T11:07:00Z",
-        "completedAt": "2026-10-05T11:12:34Z",
-        "evidenceRef": "github:pullcomment#4183298324,4183298329; audit correction pending commit"
+        "completedAt": "2026-10-05T11:12:56Z",
+        "evidenceRef": "commit 87b71d05; github:pullcomment#4183298324,4183298329"
       }
     ],
     "fullContextReplays": 0,
