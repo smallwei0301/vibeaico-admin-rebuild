@@ -145,11 +145,22 @@ describe('#589 Stage 1 production impact manifest', () => {
     expect(owners('acl:function:public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)')).toEqual(['0136_issue_755_create_tour_order_invoker']);
     expect(owners('routines:public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)')).toEqual(['0136_issue_755_create_tour_order_invoker']);
 
+    // Minimal plan containing the final owner 0136 so the injected duplicate is the only ambiguity reached
+    // (the 14-file plan also has an unrelated pre-existing 0116/0127 policy overlap that must not mask this).
+    const ctoKey = 'public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)';
+    const minimalPlan = {
+      ...plan,
+      migrations: ['0110_issue_42_plan_duration_pricetype_yearround', '0136_issue_755_create_tour_order_invoker']
+        .map((repoFile) => ({ repoFile, path: `supabase/migrations/${repoFile}.sql` })),
+    };
+    const runMinimal = (impactManifest: Manifest) => buildProductionConsistencyEvidence({
+      report: report(), plan: minimalPlan, impactManifest, mainSha: plan.mainSha, planDigest: plan.planDigest,
+    });
+    expect(() => runMinimal(manifest)).not.toThrow();
     const duplicate: Manifest = structuredClone(manifest);
     duplicate.entries.find((entry) => entry.repoFile === '0110_issue_42_plan_duration_pricetype_yearround')!.impacts.push({
-      surface: 'routines', objectKey: 'public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)',
+      surface: 'routines', objectKey: ctoKey,
     });
-    expect(() => buildProductionConsistencyEvidence({ report: report(), plan, impactManifest: duplicate, mainSha: plan.mainSha, planDigest: plan.planDigest }))
-      .toThrow(/AMBIGUOUS_IMPACT_OWNERSHIP/);
+    expect(() => runMinimal(duplicate)).toThrow(/AMBIGUOUS_IMPACT_OWNERSHIP.*routines:public\.create_tour_order\(/);
   });
 });

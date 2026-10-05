@@ -103,3 +103,32 @@ describe('#755/#46 G2 source check accepts ISSUE_46_0110_0136_CLOSURE', () => {
     expect(() => run(m)).toThrow(/UNPLANNED_PRODUCTION_DIFF/);
   });
 });
+
+const sortedImpacts = (prefix: string) => entry(manifest, prefix).impacts.map((i: any) => `${i.surface}:${i.objectKey}`).sort();
+const T = 'public.trip_plan_seasons';
+
+describe('#755/#46 exact impact lists for 0128 / 0130 / 0132', () => {
+  it('0128 declares every column, constraint, index, policy and trigger of trip_plan_seasons', () => {
+    const expected = [
+      ...['id', 'tenant_id', 'plan_id', 'name', 'start_month', 'start_day', 'end_month', 'end_day', 'price_override', 'active', 'sort_order', 'created_at', 'updated_at']
+        .map((c) => `columns:${T}.${c}`),
+      ...['trip_plan_seasons_pkey', 'trip_plan_seasons_tenant_fkey', 'trip_plan_seasons_tenant_plan_fkey', 'trip_plan_seasons_name_nonblank_check',
+        'trip_plan_seasons_start_date_valid_check', 'trip_plan_seasons_end_date_valid_check', 'trip_plan_seasons_price_override_nonnegative_check']
+        .map((c) => `constraints:${T}.${c}`),
+      `indexes:${T}.trip_plan_seasons_pkey`, `indexes:${T}.trip_plan_seasons_tenant_plan_sort_idx`,
+      `policies:${T}.p_trip_plan_seasons_select`, `triggers:${T}.t_trip_plan_seasons_u`,
+    ].sort();
+    expect(sortedImpacts('0128')).toEqual(expected);
+  });
+
+  it('0130 declares exactly the refund_policy_snapshot column and its check constraint', () => {
+    expect(sortedImpacts('0130')).toEqual([
+      'columns:public.tour_orders.refund_policy_snapshot',
+      'constraints:public.tour_orders.tour_orders_refund_policy_snapshot_check',
+    ]);
+  });
+
+  it('0132 stays empty', () => {
+    expect(sortedImpacts('0132')).toEqual([]);
+  });
+});
