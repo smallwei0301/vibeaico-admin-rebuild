@@ -107,6 +107,8 @@
 | PB-054 | 截斷讀取不可當完整檔案覆寫 | 全檔更新必須從完整原文生成；提交前後比對差異與刪除量 | PR #615 文件收尾分支；本檔事件紀錄 |
 | PB-055 | 公開 Server Component 共用 loader 先清理回傳欄位；slug 依租戶解析 | RSC 診斷可序列化原始 loader props；`unique (tenant_id, slug)` 允許不同店家同 slug，測試須驗證各自資料而非預設 404 | Issue #11／PR #731；`src/server/public-shop.ts`；`tests/integration/api/public-trip-details.11.test.ts` |
 | PB-043 | 在乾淨的最小 schema 上驗 migration，驗不出「既有資料」類的缺陷 | 2026-09-14 的 `0108` 覆核：build 端**確實**起了一個真的 PostgreSQL 16、跑了 9 次 INSERT 探測與突變測試——方法是對的，比字串比對強得多。但它是在一個**自己現建的最小 schema** 上跑的，那張表裡沒有任何既有列。於是它沒測出：`refunded_amount` 是本檔**新增**的欄位（`not null default 0`），而 M1 的 `check (payment_status::text <> 'REFUNDED' or (paid_amount > 0 and refunded_amount > 0))` 會在 `add constraint` 當下驗證既有資料——任何既有的 REFUNDED 訂單加完欄位後都是 `refunded_amount = 0`，於是整支 migration 以 23514 失敗。同一支檔案裡的 M2 有既有資料前置 guard，M1 沒有，兩個等價風險處理方式不對稱。**預防**：(1) 新增 CHECK 時先問「這條約束會不會對既有列失敗」，特別是當約束引用的欄位是**本檔新增**的（新欄位的 default 幾乎必然不滿足誠實性約束）；(2) 本機探測除了空表，至少要塞一列「本檔之前就合法、加上新約束後會違規」的既有資料；(3) 這類 migration 要嘛附既有資料前置 guard 並明確中止，要嘛說明為何既有資料不可能違規——不得靠「目前那張表是空的」，空表是當下的偶然不是保證。 | `supabase/migrations/0108_issue_41_payment_state_model.sql`、PB-026 |
+| PB-071 | 只讀原始碼的獨立審查會漏掉 UI runtime 回歸；使用者可見流程必須在真實瀏覽器實測 | context provider value 物件每次 render 都新建時，會造成依賴它的 `useCallback`／`useEffect` 被迫重建。頁面層實測必須使用真實瀏覽器且涵蓋表單保存、阻擋、草稿保留等關鍵路徑。repo 缺乏 jsdom／testing-library，原始碼斷言無法抓住執行期行為迴歸。 | PR #784；`src/components/ui/Toast.tsx` |
+| PB-072 | 機器驗證的 attestation／receipt JSON 不可用 shell 字串內插組裝；送出前先本機模擬 guard | shell 字串內插可能對特殊字元轉義不當，導致 JSON 結構破損。收據、attestation 一律用 JSON serializer 寫入檔案後以檔案送出，並於轉 ready 前本機呼叫 `evaluateGithubAstra()` 驗證無錯誤；ordinary review 的 REVIEW 收據必須來自 fresh-context 子代理。 | PR #783、#784；`scripts/agents/astra-review-policy.mjs` |
 
 ## 事件紀錄
 
@@ -1272,9 +1274,9 @@ make」）。時間真的不夠，正確做法是**不做**、留給下一輪。
 
 ### PB-038 — 用 `;` 把退出碼吃掉，然後在測試是紅的情況下推上去
 
-- 首次／最近：2026-09-13／2026-09-14
-- 發生次數：**3**
-- Issue／PR／CI：PR #77（早期兩次）、PR #416（`57de3b937c8a18b90f484c9d7bec2f7502a9de25`）
+- 首次／最近：2026-09-13／2026-10-05
+- 發生次數：**4**
+- Issue／PR／CI：PR #77（早期兩次）、PR #416（`57de3b937c8a18b90f484c9d7bec2f7502a9de25`）、PR #784（Issue #748）
 - 分類：驗證方法／工具使用
 - 事件：三次都是同一個機制——**我以為自己在檢查，實際上那個檢查的結果沒有進到任何判斷**。
 
@@ -1311,6 +1313,14 @@ make」）。時間真的不夠，正確做法是**不做**、留給下一輪。
      若中間插入了 `echo`、`grep`、`tail` 之類，那條鏈就已經斷了。
   3. 需要看摘要時，順序是「先 `&&` 跑完驗證，再單獨讀檔」，不是「邊跑邊過濾」。
   4. 推送後若才發現紅燈，**立刻修，不等 CI 告訴我**；本次 CI 也確實在下一輪擋下了。
+
+#### 2026-10-05 第四次：`;` 讓 fetch 失敗後的 `git merge` 照跑
+
+- 事件：PR #784（Issue #748）推送前，指令 `git fetch origin <branch> && T0=... && git diff ... | tail -1; echo ...; git merge -s ours --no-edit origin/<branch> ...`。遠端分支已在 #783 合併時被自動刪除，fetch 失敗；但 `;` 之後的 `git merge` 仍執行，且使用本地殘留的 stale remote-tracking ref（`040205dc`）建立了 merge commit `e12b1c17`，隨後被推上 PR #784。tree 與前一個 commit 相同、merge-base 不變、squash 後不影響 main，但 PR commit 清單多出 4 個已 squash 的舊 commit；因 Owner 禁止 force push 而保留並於 PR 揭露。
+- 根因：同 PB-038——`;` 不看前一段退出碼；外加 stale remote-tracking ref 在遠端分支刪除後仍存在。
+- 預防：任何會改變 git 狀態的步驟（merge／commit／push）一律用 `&&` 串在其前置檢查之後，不夾 `;` 或管線；使用 `origin/<branch>` 前先 `git fetch --prune` 並以 `git ls-remote origin <branch>` 確認遠端分支存在。
+- 證據：PR #784（https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/784）、commit `e12b1c17`。
+
 - 狀態：監看中。第 4 次再發生時，改為：任何 push 之前必須先執行一個專用的
   verify 腳本，由該腳本自己 `set -euo pipefail` 並在失敗時非零退出，不再允許
   在對話中臨時拼裝驗證鏈。
@@ -2143,3 +2153,33 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 預防：Production schema 變更的 checklist 應包含「deploy 前唯讀查詢驗收」；PR template 應提醒涉及容量／配額的變更需提前查詢。部署後的 Production acceptance 應包含實際寫入測試（非提前做，而是 merge 確認後在 prod 執行已知安全的操作）。
 - 驗證：PR #751 merge 前的唯讀 SELECT 已執行；Production trips 0 筆、超量 0 筆；merge 後 Production acceptance 標記為 NOT_RUN（待後續驗收步驟）。
 - 狀態：已防止；Production checklist 與審查流程應內化此項。
+
+### PB-071 — 只讀原始碼的獨立審查會漏掉 UI runtime 回歸；使用者可見流程必須在真實瀏覽器實測
+
+- 首次／最近：2026-10-05／2026-10-05
+- 發生次數：1
+- Issue／PR／CI：#748、PR #784
+- 分類：審查方法／UI 回歸
+- 事件：#748（PR #784）第一輪 fresh-context Opus 原始碼審查判 PASS-in-scope，但 audit 層以 Playwright 在 mock 模式（`NEXT_PUBLIC_USE_MOCK=true`）實測編輯頁時發現 BLOCKING：預檢擋下儲存後，5001 字草稿被還原為原值。
+- 根因：`src/components/ui/Toast.tsx` 的 `ToastProvider` 每次 render 傳新的 `value={{ show }}`；顯示 toast 使 `useToast()` 身份改變，頁面 `load` 的 `useCallback` 依賴 `toast` 而重建，`useEffect([load])` 重跑 `setForm(...)` 蓋掉草稿。這也讓 main 上既有「儲存失敗時不清掉 draft」規則一直失效（clinic-queue、ai-settings 有同類覆寫）。repo 沒有 jsdom／testing-library，頁面層測試只能用原始碼斷言，抓不到此類行為。
+- 影響：審查層未能抓住使用者可見的功能迴歸；產品行為不符規格（保存失敗時應保留草稿）。
+- 修正：以 `React.useMemo(() => ({ show }), [show])` 記憶化 provider value（commit `4de2c8fe`）；fresh 審查掃過 30 頁 61 處 `toast` 依賴，無頁面依賴「toast 觸發重讀」。
+- 預防：① 有使用者可見互動（表單保存、阻擋、草稿保留、modal 流程）的 Product slice，審查 PASS 前必須在真實瀏覽器（mock 模式或 Preview）實測關鍵路徑，並記錄觀察值（例如 code point 數、請求數）；② context provider 的 value 物件一律記憶化；③ 依賴 context 物件身份的 `useCallback`／`useEffect` 視為審查重點。
+- 驗證：Playwright 套件重測保存流程全 PASS；超過 5000 字的草稿儲存失敗時確實保留。
+- 證據：PR #784、https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/784#issuecomment-5996443004、Issue #748 status https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/748#issuecomment-5997774187。
+- 狀態：已防止
+
+### PB-072 — 機器驗證的 attestation／receipt JSON 不可用 shell 字串內插組裝；送出前先本機模擬 guard
+
+- 首次／最近：2026-10-05／2026-10-05
+- 發生次數：1
+- Issue／PR／CI：#710、PR #783
+- 分類：工具使用／verification
+- 事件：PR #783（Issue #710）的 `sol-review` attestation 在 bash 內以 node -e 單行字串組 JSON，`reviewerExecutionReceipt` 被注入兩個反引號（"``https://…"），guard 讀回 reviewer 收據失敗：`Missing independently read-back builder/reviewer role evidence` 與連帶的 `Ordinary reviewer needs attested provider-local Sol/Opus request`，Agent WIP Policy failure。
+- 根因：shell 環境的字串內插可能對特殊字元轉義不當，導致組 out 的 JSON 結構破損；接收 endpoint 的簽名驗證與內容驗證分離，收據格式錯誤在實際業務檢查前不被攔截。
+- 影響：PR 無法通過 CI guard，無法進 merge-ready 狀態；需要回到代理層補修並重新驗證。
+- 修正：改以 Python 從檔案組 JSON（json.dumps）重送新的 review（取代 5415161468，舊者保留）；以 `scripts/agents/astra-review-policy.mjs` 的 `evaluateGithubAstra()` 搭配 gh 讀回本機模擬（collaborator permission 端點被 proxy 擋時以已知權限替代、草稿 PR 需以 `draft:false` 模擬），得到 `SOL_REVIEW_APPROVED` 後 guard 才通過。PR #784 沿用此流程一次通過。
+- 預防：① 收據、attestation、review JSON 一律用 JSON serializer 寫入檔案，再以 `-F body=@file`／`--input file` 送出，並 assert 關鍵欄位是乾淨 URL；② 轉 ready 前先本機呼叫 `evaluateGithubAstra()`（非 draft 模擬）確認無錯誤；③ ordinary review 的 REVIEW 收據必須來自 fresh-context 子代理（`freshContext: true`），主 session 自己的審查不能充當。
+- 驗證：review 5415247686（corrected）通過 guard；PR #784 一次通過 CI without retry。
+- 證據：PR #783（https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/783），review 5415161468（malformed）與 5415247686（corrected）。
+- 狀態：已防止
