@@ -20,6 +20,8 @@
 #   4. `git ls-remote` 確認遠端分支狀態；遠端已存在時，本機 HEAD 必須包含遠端 head（fast-forward）
 #   5. typecheck
 #   6. unit tests
+#   7. 分支、HEAD 與工作樹在驗證期間都沒有改變；push 的是一開始鎖定的那個 SHA
+#      （`git push <remote> <sha>:refs/heads/<branch>`），不是驗證結束時才讀到的 HEAD
 #
 # 測試用的覆寫（只供 tests/unit/verify-before-push.787.test.ts 使用）：
 #   VBP_TYPECHECK_CMD、VBP_TEST_CMD 取代預設的 typecheck／test 指令。
@@ -63,12 +65,19 @@ fail() {
 
 branch="$(git symbolic-ref --quiet --short HEAD)" || fail "目前是 detached HEAD，請切到要推送的分支"
 
-if ! git diff --quiet || ! git diff --cached --quiet; then
-  fail "工作樹或暫存區有未 commit 的變更；先 commit（或移除）再驗證"
-fi
-if [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
-  fail "有未追蹤的檔案；先 commit、移除或加入 .gitignore 再驗證"
-fi
+assert_clean_tree() {
+  if ! git diff --quiet || ! git diff --cached --quiet; then
+    fail "工作樹或暫存區有未 commit 的變更$1；先 commit（或移除）再驗證"
+  fi
+  if [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
+    fail "有未追蹤的檔案$1；先 commit、移除或加入 .gitignore 再驗證"
+  fi
+}
+assert_clean_tree ""
+
+# 鎖定本次要驗證、也是唯一會被推送的 commit；驗證期間 HEAD 若改變就拒絕推送。
+head_sha="$(git rev-parse HEAD)"
+echo "VERIFY_HEAD: ${branch} @ ${head_sha}"
 
 echo "STEP: git fetch --prune ${remote}"
 git fetch --prune "$remote" || fail "git fetch --prune ${remote} 失敗；不得以舊的 remote-tracking ref 繼續"
@@ -77,7 +86,7 @@ echo "STEP: git ls-remote ${remote} refs/heads/${branch}"
 remote_line="$(git ls-remote --exit-code --heads "$remote" "refs/heads/${branch}")" && remote_status=0 || remote_status=$?
 if ((remote_status == 0)); then
   remote_sha="${remote_line%%[[:space:]]*}"
-  git merge-base --is-ancestor "$remote_sha" HEAD \
+  git merge-base --is-ancestor "$remote_sha" "$head_sha" \
     || fail "遠端 ${remote}/${branch}（${remote_sha}）不是本機 HEAD 的祖先；推送會是非 fast-forward，請先整合遠端變更"
   echo "REMOTE_BRANCH: ${branch} @ ${remote_sha}（本機 HEAD 已包含）"
 elif ((remote_status == 2)); then
@@ -102,11 +111,16 @@ else
   npm test || fail "unit tests 失敗"
 fi
 
-head_sha="$(git rev-parse HEAD)"
+# 驗證期間不得改變分支、HEAD 或工作樹：推送的必須正是上面驗證過的 commit。
+now_branch="$(git symbolic-ref --quiet --short HEAD)" || fail "驗證期間 HEAD 變成 detached；拒絕推送"
+[[ "$now_branch" == "$branch" ]] || fail "驗證期間分支由 ${branch} 變成 ${now_branch}；拒絕推送"
+now_sha="$(git rev-parse HEAD)"
+[[ "$now_sha" == "$head_sha" ]] || fail "驗證期間 HEAD 由 ${head_sha} 變成 ${now_sha}；新 commit 未經驗證，拒絕推送"
+assert_clean_tree "（驗證期間產生）"
 echo "VERIFY_PASS: ${branch} @ ${head_sha}"
 
 if [[ "$do_push" == true ]]; then
-  echo "STEP: git push -u ${remote} ${branch}"
-  git push -u "$remote" "$branch" || fail "git push 失敗"
+  echo "STEP: git push -u ${remote} ${head_sha}:refs/heads/${branch}"
+  git push -u "$remote" "${head_sha}:refs/heads/${branch}" || fail "git push 失敗"
   echo "PUSHED: ${branch} @ ${head_sha}"
 fi

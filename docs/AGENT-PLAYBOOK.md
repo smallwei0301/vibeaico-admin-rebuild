@@ -1323,7 +1323,7 @@ make」）。時間真的不夠，正確做法是**不做**、留給下一輪。
 - 預防：任何會改變 git 狀態的步驟（merge／commit／push）一律用 `&&` 串在其前置檢查之後，不夾 `;` 或管線；使用 `origin/<branch>` 前先 `git fetch --prune` 並以 `git ls-remote origin <branch>` 確認遠端分支存在。
 - 證據：PR #784（https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/784）、commit `e12b1c17`。
 
-- 狀態：**已防止（機械入口）——Issue #787**。升級門檻（第 4 次）成立後，新增專用推送前驗證入口 `scripts/agents/verify-before-push.sh`：整支腳本 `set -euo pipefail`，依序檢查具名分支、工作樹與暫存區乾淨、`git fetch --prune` 成功、`git ls-remote` 確認遠端分支狀態（已存在時本機 HEAD 必須包含遠端 head，否則拒絕非 fast-forward）、typecheck、unit tests；**push 只在全部通過後由腳本自己執行**（`--push`），任何一步失敗都非零退出且不推送。自測 `tests/unit/verify-before-push.787.test.ts` 以真實 bare remote 驗證 typecheck／測試／管線中段／未 commit／未追蹤／fetch 失敗／非 fast-forward／detached HEAD 各情境皆非零退出且遠端 ref 不變；並以反向驗證確認（把測試步驟的失敗判定改成 `|| true` 後 2 項自測轉紅）。
+- 狀態：**已防止（機械入口）——Issue #787**。升級門檻（第 4 次）成立後，新增專用推送前驗證入口 `scripts/agents/verify-before-push.sh`：整支腳本 `set -euo pipefail`，依序檢查具名分支、工作樹與暫存區乾淨、`git fetch --prune` 成功、`git ls-remote` 確認遠端分支狀態（已存在時本機 HEAD 必須包含遠端 head，否則拒絕非 fast-forward）、typecheck、unit tests；**push 只在全部通過後由腳本自己執行，且只推驗證開始時鎖定的 SHA**（`--push`；驗證期間分支、HEAD 或工作樹若改變即拒絕，Codex P1 on PR #789），任何一步失敗都非零退出且不推送。自測 `tests/unit/verify-before-push.787.test.ts` 以真實 bare remote 驗證 typecheck／測試／管線中段／未 commit／未追蹤／fetch 失敗／非 fast-forward／detached HEAD 各情境皆非零退出且遠端 ref 不變；並以反向驗證確認（把測試步驟的失敗判定改成 `|| true` 後 2 項自測轉紅）。
 - 用法：`scripts/agents/verify-before-push.sh --push -- <vitest 目標…>`（不指定目標時跑 `npm test`）。**不再允許在對話中臨時拼裝「驗證 ; git push」鏈**；需要推送時一律經過此入口。merge／commit 等其他會改變 git 狀態的步驟，仍只能以 `&&` 接在前置檢查之後。
 
 ### PB-039 — 一個從來沒有受測對象的 guard，永遠不會失敗

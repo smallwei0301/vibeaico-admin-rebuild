@@ -155,6 +155,33 @@ describe('verify-before-push.sh（#787）', () => {
     expect(remoteHead(remote)).toBe(git(work, 'rev-parse', 'HEAD'));
   });
 
+  it('驗證期間產生新 commit：拒絕推送（只推鎖定的 SHA）', () => {
+    const { remote, work } = setup();
+    const r = run(work, ['--push'], {
+      VBP_TEST_CMD: 'echo late > late.txt && git add late.txt && git commit -q -m late',
+    });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain('新 commit 未經驗證');
+    expect(remoteHead(remote)).toBe('');
+  });
+
+  it('驗證期間工作樹被改動：拒絕推送', () => {
+    const { remote, work } = setup();
+    const r = run(work, ['--push'], { VBP_TYPECHECK_CMD: 'echo x >> a.txt' });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain('驗證期間產生');
+    expect(remoteHead(remote)).toBe('');
+  });
+
+  it('推送的是驗證開始時鎖定的 SHA', () => {
+    const { remote, work } = setup();
+    const locked = git(work, 'rev-parse', 'HEAD');
+    const r = run(work, ['--push']);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain(`VERIFY_HEAD: ${BRANCH} @ ${locked}`);
+    expect(remoteHead(remote)).toBe(locked);
+  });
+
   it('detached HEAD：非零退出', () => {
     const { work } = setup();
     git(work, 'checkout', '-q', '--detach');
