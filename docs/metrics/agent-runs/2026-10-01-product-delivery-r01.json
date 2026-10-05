@@ -3641,8 +3641,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 46,
-    "lunaAccepted": 41,
+    "lunaTasks": 48,
+    "lunaAccepted": 43,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
