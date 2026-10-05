@@ -3758,23 +3758,6 @@
         "evidenceRef": "issuecomments 5991000002, 5991000226, 5991000488 (Sol CLOSE_APPROVED)"
       },
       {
-        "id": "20261005-scout-reconcile",
-        "role": "scout",
-        "requestedModel": "luna",
-        "actualModel": "unknown",
-        "contextClass": "compact",
-        "accepted": true,
-        "inputTokens": null,
-        "outputTokens": null,
-        "cachedTokens": null,
-        "note": "Scout reconciliation of ISSUE_CLOSED claims for #773/#774/#777 and addition of #780/#781 sources",
-        "count": 1,
-        "issue": 780,
-        "startedAt": "2026-10-05T10:04:18Z",
-        "completedAt": "2026-10-05T10:24:17Z",
-        "evidenceRef": "commits ed9792f6, 73e8832c"
-      },
-      {
         "id": "20261005-audit-779-r1",
         "role": "audit",
         "requestedModel": "sol",
@@ -4064,8 +4047,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 50,
-    "lunaAccepted": 45,
+    "lunaTasks": 49,
+    "lunaAccepted": 44,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -4273,7 +4256,7 @@
     "solTouches re-synced to the recorded audit/triage task events (definition: scorecard-readiness.mjs:281); it had not been incremented since 216d2a73 (stale at 50).",
     "solIssues re-synced 5→14 = distinct issue values of the audit/triage task events counted in solTouches (23 such tasks carry no issue field and are not counted); score-run-current.mjs uses solTouches/solIssues.",
     "solIssues 14→18: structured issue added to 20 audit/triage tasks whose id names exactly one Issue (#42/#43/#46/#47/#11); 3 ambiguous tasks (727-welcome-precondition, retriage46-select11-775, claude-sol-triage-r01) stay null; audit-779 r10–r12 attributed to #780 instead of #777.",
-    "PR #782 (MODEL_GOVERNANCE, RUN_ID none) review-fix rounds are governance work and are intentionally not recorded as Product Run tasks or counters (CLAUDE.md §B+ / AGENT-EXECUTION §1.2); their evidence lives on PR #782 (Codex threads 4182937558/63/73, 4183154674/83, 4183298324/29, 4183450822/33)."
+    "PR #782 (MODEL_GOVERNANCE, RUN_ID none) review-fix rounds are governance work and are intentionally not recorded as Product Run tasks or counters (CLAUDE.md §B+ / AGENT-EXECUTION §1.2); their evidence lives on PR #782 (Codex threads 4182937558/63/73, 4183154674/83, 4183298324/29, 4183450822/33). [Thread 4183750234: ISSUE_CLOSED reconcile commits ed9792f6/73e8832c are likewise governance bookkeeping and not recorded as Product tasks.]"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
