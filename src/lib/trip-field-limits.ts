@@ -1,6 +1,7 @@
 import {
   MAX_PUBLIC_LIST_ITEM_CHARS, MAX_PUBLIC_LIST_ITEMS,
   MAX_PUBLIC_LONG_TEXT_CHARS, MAX_PUBLIC_SHORT_TEXT_CHARS,
+  MAX_TRIP_INCLUDES_RAW_CHARS, MAX_TRIP_LIST_ITEM_RAW_CHARS, MAX_TRIP_LIST_RAW_ITEMS,
 } from '@/lib/public-trip-limits';
 
 /** Match public text clipping's Unicode code-point count, without changing the submitted text. */
@@ -12,32 +13,57 @@ export function withinTripTextLimit(value: string, maxCodePoints: number): boole
   return true;
 }
 
-export type TripListViolation = 'tooManyItems' | 'itemTooLong';
+export type TripListViolation = 'tooManyItems' | 'itemTooLong' | 'tooManyRawItems' | 'itemRawTooLong';
+/** includes 另有整體原始字數上限。 */
+export type TripIncludesViolation = TripListViolation | 'includesRawTooLarge';
+
+/** 違規種類 → 對應上限數字（UI 文案用）。 */
+export function tripViolationLimit(kind: TripIncludesViolation): number {
+  switch (kind) {
+    case 'tooManyItems': return MAX_PUBLIC_LIST_ITEMS;
+    case 'itemTooLong': return MAX_PUBLIC_LIST_ITEM_CHARS;
+    case 'tooManyRawItems': return MAX_TRIP_LIST_RAW_ITEMS;
+    case 'itemRawTooLong': return MAX_TRIP_LIST_ITEM_RAW_CHARS;
+    case 'includesRawTooLarge': return MAX_TRIP_INCLUDES_RAW_CHARS;
+  }
+}
 
 /**
- * Public list semantics: ignore blank items and count each trimmed item's code points.
- * 回傳違規種類（項數優先於單項過長），沒有違規回傳 null；伺服器與後台 UI 共用這一份判斷。
+ * 清單規則（兩層）：
+ * 1. 原始天花板（#785）：原始項數 ≤ 200（含空白項）、每項原始未 trim ≤ 3000 code points；超過即 early-exit，
+ *    不會對超大輸入先建大陣列再數。
+ * 2. 可見上限：忽略空白項、每項 trim 後 ≤ 300 code points，最多 20 項。
+ * 回傳違規種類（原始項數 > 可見項數 > 可見過長 > 原始過長），沒有違規回傳 null；伺服器與後台 UI 共用。
  */
 export function tripListViolation(items: readonly string[]): TripListViolation | null {
+  if (items.length > MAX_TRIP_LIST_RAW_ITEMS) return 'tooManyRawItems';
   let count = 0;
   let itemTooLong = false;
+  let itemRawTooLong = false;
   for (const item of items) {
+    if (!withinTripTextLimit(item, MAX_TRIP_LIST_ITEM_RAW_CHARS)) { itemRawTooLong = true; continue; }
     const text = item.trim();
     if (!text) continue;
     count += 1;
     if (!withinTripTextLimit(text, MAX_PUBLIC_LIST_ITEM_CHARS)) itemTooLong = true;
   }
   if (count > MAX_PUBLIC_LIST_ITEMS) return 'tooManyItems';
-  return itemTooLong ? 'itemTooLong' : null;
+  if (itemTooLong) return 'itemTooLong';
+  return itemRawTooLong ? 'itemRawTooLong' : null;
 }
 
 export function withinTripListLimits(items: readonly string[]): boolean {
   return tripListViolation(items) === null;
 }
 
-/** `includes` is the newline-delimited transport for the UI's `inclusions` list. */
+/** `includes` 是 UI `inclusions` 清單的換行傳輸形式；先檢查整體原始長度，再 split。 */
+export function tripIncludesViolation(value: string): TripIncludesViolation | null {
+  if (!withinTripTextLimit(value, MAX_TRIP_INCLUDES_RAW_CHARS)) return 'includesRawTooLarge';
+  return tripListViolation(value.split(/\r?\n/));
+}
+
 export function withinTripIncludesLimits(value: string): boolean {
-  return withinTripListLimits(value.split(/\r?\n/));
+  return tripIncludesViolation(value) === null;
 }
 
 /* ------------------------------------------------------------------------- 後台 UI 共用（client-safe） */
@@ -62,7 +88,7 @@ export const TRIP_TEXT_FIELDS: readonly TripTextField[] = [
 
 export type TripTextFieldError =
   | { field: 'description' | 'safetyNotice'; kind: 'tooLong'; limit: number }
-  | { field: 'inclusions' | 'exclusions' | 'notices'; kind: 'tooManyItems' | 'itemTooLong'; limit: number };
+  | { field: 'inclusions' | 'exclusions' | 'notices'; kind: TripIncludesViolation; limit: number };
 
 export type TripTextFields = {
   description?: string;
@@ -75,8 +101,9 @@ export type TripTextFields = {
 /**
  * 只檢查「有出現」的欄位（undefined 視為沒送，不檢查）。規則與伺服器寫入邊界相同：
  * description 5000、safetyNotice（server 的 notes）2000 code points；
- * 三個清單最多 20 個非空白項、每項 trim 後最多 300 code points。
- * inclusions 以 `join('\n')` 經 withinTripIncludesLimits 判斷，等同伺服器收到的 `includes`。
+ * 三個清單最多 20 個非空白項、每項 trim 後最多 300 code points；
+ * 另有原始天花板（#785）：原始項數 200、每項原始 3000、includes 整體 20000 code points。
+ * inclusions 以 `join('\n')` 經 tripIncludesViolation 判斷，等同伺服器收到的 `includes`。
  */
 export function tripTextFieldErrors(fields: TripTextFields): TripTextFieldError[] {
   const errors: TripTextFieldError[] = [];
@@ -86,15 +113,15 @@ export function tripTextFieldErrors(fields: TripTextFields): TripTextFieldError[
   if (typeof fields.safetyNotice === 'string' && !withinTripTextLimit(fields.safetyNotice, MAX_PUBLIC_SHORT_TEXT_CHARS)) {
     errors.push({ field: 'safetyNotice', kind: 'tooLong', limit: MAX_PUBLIC_SHORT_TEXT_CHARS });
   }
-  if (Array.isArray(fields.inclusions) && !withinTripIncludesLimits(fields.inclusions.join('\n'))) {
-    const kind = tripListViolation(fields.inclusions.join('\n').split(/\r?\n/));
-    if (kind) errors.push({ field: 'inclusions', kind, limit: kind === 'tooManyItems' ? MAX_PUBLIC_LIST_ITEMS : MAX_PUBLIC_LIST_ITEM_CHARS });
+  if (Array.isArray(fields.inclusions)) {
+    const kind = tripIncludesViolation(fields.inclusions.join('\n'));
+    if (kind) errors.push({ field: 'inclusions', kind, limit: tripViolationLimit(kind) });
   }
   for (const field of ['exclusions', 'notices'] as const) {
     const items = fields[field];
     if (!Array.isArray(items)) continue;
     const kind = tripListViolation(items);
-    if (kind) errors.push({ field, kind, limit: kind === 'tooManyItems' ? MAX_PUBLIC_LIST_ITEMS : MAX_PUBLIC_LIST_ITEM_CHARS });
+    if (kind) errors.push({ field, kind, limit: tripViolationLimit(kind) });
   }
   return errors;
 }

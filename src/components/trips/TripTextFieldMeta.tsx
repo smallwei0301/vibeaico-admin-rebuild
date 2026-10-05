@@ -46,7 +46,7 @@ export function TripTextFieldMeta({
     over = count > limit;
   } else {
     counter = t.limits.listCounter(countVisibleItems(value as readonly string[]), MAX_PUBLIC_LIST_ITEMS, MAX_PUBLIC_LIST_ITEM_CHARS);
-    over = tripListViolation(value as readonly string[]) !== null;
+    over = error != null || tripListViolation(value as readonly string[]) !== null;
   }
   return (
     <>

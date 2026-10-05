@@ -57,6 +57,11 @@ const OVERSIZED = [
   ['exclusions 21 項', { exclusions: items(21) }],
   ['notices 單項 301 字', { notices: ['a'.repeat(301)] }],
   ['includes 21 項', { includes: items(21).join('\n') }],
+  /* #785 原始上限 */
+  ['exclusions 單項 100 萬空白', { exclusions: [' '.repeat(1_000_000)] }],
+  ['notices 10 萬個空字串', { notices: Array(100_000).fill('') }],
+  ['includes 100 萬換行', { includes: '\n'.repeat(1_000_000) }],
+  ['exclusions x + 50 萬空白', { exclusions: ['x' + ' '.repeat(500_000)] }],
 ] as const;
 
 beforeEach(() => {
