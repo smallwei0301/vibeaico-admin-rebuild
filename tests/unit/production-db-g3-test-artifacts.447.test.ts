@@ -1,4 +1,4 @@
-import { getProductionDbG3AuthzContract, ISSUE_46_CLOSURE_COVERAGE } from '../../scripts/agents/production-db-g3-authz-contracts.mjs';
+import { getProductionDbG3AuthzContract, ISSUE_46_CLOSURE_COVERAGE, ISSUE_46_CLOSURE_FAMILIES, ISSUE_46_CLOSURE_FILE_MIGRATIONS } from '../../scripts/agents/production-db-g3-authz-contracts.mjs';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -770,7 +770,7 @@ describe('#725 N2 closure evidence follows plan migration content, not scope nam
     for(const m of planValue.migrations){
       const c=getProductionDbG3AuthzContract(m.repoFile);
       for(const f of c.requiredFiles) list.push({file:f,fullName:`dummy ${f}`,status:'passed'});
-      list.push(...[...c.tenantBoundaryAssertions,...c.negativeRoleAssertions].map((r:any)=>({file:'tests/integration/api/tour-order-authz.447.test.ts',fullName:r.fragment,status:'passed'})));
+      list.push(...[...c.tenantBoundaryAssertions,...c.negativeRoleAssertions].map((r:any)=>({file:r.file??'tests/integration/api/tour-order-authz.447.test.ts',fullName:r.fragment,status:'passed'})));
       list.push(...(c.requiredAssertions??[]).map((r:any)=>({file:r.file,fullName:r.fullName,status:'passed'})));
     }
     list.push(...ISSUE_46_CLOSURE_COVERAGE.requiredAssertions.filter(r=>files.includes(r.file)&&r.fullName!==skip).map(r=>({file:r.file,fullName:r.fullName,status:'passed'})));
@@ -815,6 +815,23 @@ describe('#725 N2 closure evidence follows plan migration content, not scope nam
     seen.length=0;
     await captureProductionDbTestCleanupEvidence({plan:q,testSupabaseUrl:TEST_URL,serviceRoleKey:'mock',sourceRunId:'1',sourceRunAttempt:1,fetchImpl});
     expect(seen).toEqual(['like.request-accept-46-%','like.snapshot-42-%']);
+  });
+
+  it('0128 alone (non-closure plan) requires every seasonal snapshot assertion (#771 NB1)', () => {
+    const p=fullPlan(['0128_issue_42_plan_seasonal_pricing']);
+    expect(exact(F_SEASONAL).length).toBeGreaterThan(0);
+    expect(build(p,rowsFor(p,[F_SEASONAL])).reportSuccess).toBe(true);
+    for(const row of exact(F_SEASONAL)) expect(()=>build(p,rowsFor(p,[F_SEASONAL],row.fullName))).toThrow(/REQUIRED_SEMANTIC_TEST_MISSING/);
+  });
+
+  it('coverage and cleanup share one mapping and cover every closure coverage file (#771 NB4)', () => {
+    const coverageFiles=new Set(ISSUE_46_CLOSURE_COVERAGE.requiredAssertions.map(r=>r.file));
+    expect(new Set(ISSUE_46_CLOSURE_FAMILIES.map(f=>f.file))).toEqual(coverageFiles);
+    expect(new Set(Object.keys(ISSUE_46_CLOSURE_FILE_MIGRATIONS))).toEqual(coverageFiles);
+    for(const family of ISSUE_46_CLOSURE_FAMILIES){
+      expect(ISSUE_46_CLOSURE_FILE_MIGRATIONS[family.file]).toEqual(family.migrations);
+      expect(family.cleanup.migration.split('_')[0]).toSatisfy((x:string)=>family.migrations.includes(x));
+    }
   });
 
   it('closure scope still requires every assertion and all four cleanup scopes', () => {

@@ -5,6 +5,7 @@ import process from 'node:process';
 import {
   getProductionDbG3AuthzContract,
   ISSUE_46_CLOSURE_COVERAGE,
+  ISSUE_46_CLOSURE_FAMILIES,
   closureRequiredAssertionsForPlan,
   planHasClosureMigration,
   PRODUCTION_DB_G3_AUTHZ_CONTRACTS,
@@ -250,14 +251,8 @@ function canonicalTestUrl(value) {
 function cleanupScopes(plan) {
   const scopes = [];
   const closureAll = plan.migrationScope === ISSUE_46_CLOSURE_COVERAGE.scope;
-  const closureScopes = [
-    [['0111'], {migration:'0111_issue_46_guide_request_accept',table:'tour_orders',filterColumn:'note',filterOperator:'like',filterValue:'request-accept-46-%'}],
-    [['0130'], {migration:'0130_issue_46_refund_policy_snapshot',table:'trips',filterColumn:'slug',filterOperator:'like',filterValue:'refund-snapshot-46-%'}],
-    [['0128', '0132'], {migration:'0132_issue_42_seasonal_price_resolution',table:'trips',filterColumn:'slug',filterOperator:'like',filterValue:'snapshot-42-%'}],
-    [['0136'], {migration:'0136_issue_755_create_tour_order_invoker',table:'tour_orders',filterColumn:'note',filterOperator:'like',filterValue:'#755 probe%'}],
-  ];
-  for (const [prefixes, scope] of closureScopes) {
-    if (closureAll || planHasClosureMigration(plan, prefixes)) scopes.push(scope);
+  for (const { migrations: prefixes, cleanup } of ISSUE_46_CLOSURE_FAMILIES) {
+    if (closureAll || planHasClosureMigration(plan, prefixes)) scopes.push({ ...cleanup });
   }
 
   if (plan.migrations.some((migration) => migration.repoFile === '0135_issue_46_guide_interval_availability')) {
