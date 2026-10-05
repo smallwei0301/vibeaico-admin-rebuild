@@ -218,3 +218,33 @@ describe('>200 項／行時可見項優先回報（Codex P2）', () => {
     if (!r.success) expect(r.error.issues[0].message).toContain('最多 20 項，每項最多 300 字');
   });
 });
+
+describe('>200 項／行快速路徑也要回報 itemTooLong（Sol r2 B-1）', () => {
+  it('200 空項 + 1 個 301 字 → itemTooLong', () => {
+    expect(tripListViolation([...Array(200).fill(''), 'x'.repeat(301)])).toBe('itemTooLong');
+  });
+  it('195 空白 + 6 個 301 字（201 項）→ itemTooLong；195 + 5（200 項）同樣 itemTooLong', () => {
+    expect(tripListViolation([...Array(195).fill(' '), ...Array(6).fill('x'.repeat(301))])).toBe('itemTooLong');
+    expect(tripListViolation([...Array(195).fill(' '), ...Array(5).fill('x'.repeat(301))])).toBe('itemTooLong');
+  });
+  it('>200 項且可見 > 20 時 tooManyItems 仍優先於 itemTooLong', () => {
+    expect(tripListViolation([...Array(180).fill(''), 'x'.repeat(301), ...Array(25).fill('x')])).toBe('tooManyItems');
+  });
+  it('includes：201 行含 301 字行 → itemTooLong；整體過大時亦然', () => {
+    expect(tripIncludesViolation('\n'.repeat(200) + 'x'.repeat(301))).toBe('itemTooLong');
+    expect(tripIncludesViolation('\n'.repeat(200) + 'x'.repeat(301) + ' '.repeat(25000))).toBe('itemTooLong');
+    expect(tripIncludesViolation('\n'.repeat(195) + (' \n').repeat(5) + ('x'.repeat(301) + '\n').repeat(6))).toBe('itemTooLong');
+  });
+  it('includes：>200 行且可見 > 20 → tooManyItems 優先；僅空白整體過大仍是 includesRawTooLarge', () => {
+    expect(tripIncludesViolation('x'.repeat(301) + '\n' + Array(30).fill('y').join('\n') + '\n'.repeat(200))).toBe('tooManyItems');
+    expect(tripIncludesViolation('\n'.repeat(250) + ' '.repeat(30000))).toBe('includesRawTooLarge');
+  });
+  it('攻擊 payload 仍然快', () => {
+    const started = Date.now();
+    tripListViolation(Array(100_000).fill('x'.repeat(301)));
+    tripListViolation(Array(100_000).fill(''));
+    tripIncludesViolation('\n'.repeat(1_000_000));
+    tripIncludesViolation(' \n'.repeat(1_000_000));
+    expect(Date.now() - started).toBeLessThan(1500);
+  });
+});

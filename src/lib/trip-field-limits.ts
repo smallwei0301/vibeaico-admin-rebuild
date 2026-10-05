@@ -39,14 +39,26 @@ export function tripViolationLimit(kind: TripIncludesViolation): number {
  */
 const NON_BLANK = /\S/;
 
+/**
+ * >200 項／行的有界掃描：每項先用 /\S/ 判斷是否可見（與 trim 的空白定義一致，遇第一個非空白字元即停），
+ * 可見項才 trim 並以 withinTripTextLimit（超過 300 即停）記錄 itemTooLong；add() 在第 21 個可見項時回 true。
+ */
+class VisibleScan {
+  visible = 0;
+  itemTooLong = false;
+  add(raw: string): boolean {
+    if (!NON_BLANK.test(raw)) return false;
+    if (!this.itemTooLong && !withinTripTextLimit(raw.trim(), MAX_PUBLIC_LIST_ITEM_CHARS)) this.itemTooLong = true;
+    return ++this.visible > MAX_PUBLIC_LIST_ITEMS;
+  }
+}
+
 export function tripListViolation(items: readonly string[]): TripListViolation | null {
   if (items.length > MAX_TRIP_LIST_RAW_ITEMS) {
-    // 不 trim 整串、不配置陣列：每項只找第一個非空白字元（/\S/ 與 trim 的空白定義一致），找到第 21 個可見項就停。
-    let visible = 0;
-    for (const item of items) {
-      if (NON_BLANK.test(item) && ++visible > MAX_PUBLIC_LIST_ITEMS) return 'tooManyItems';
-    }
-    return 'tooManyRawItems';
+    // 快速路徑（不配置陣列）：只數可見項並記錄 itemTooLong，找到第 21 個可見項就回 tooManyItems。
+    const scan = new VisibleScan();
+    for (const item of items) if (scan.add(item)) return 'tooManyItems';
+    return scan.itemTooLong ? 'itemTooLong' : 'tooManyRawItems';
   }
   let count = 0;
   let itemTooLong = false;
@@ -81,31 +93,31 @@ export function hasMoreLinesThan(value: string, maxLines: number): boolean {
   return true;
 }
 
-/** > 200 行時以游標逐行掃描（不 split）：找到第 21 個含非空白字元的行就回 true。 */
-function hasMoreVisibleLinesThan(value: string, maxVisible: number): boolean {
-  let visible = 0;
+/** > 200 行時以游標逐行掃描（不 split）：回 'tooManyItems'（第 21 個可見行）、'itemTooLong' 或 null。 */
+function scanVisibleLines(value: string): 'tooManyItems' | 'itemTooLong' | null {
+  const scan = new VisibleScan();
   let from = 0;
-  while (from <= value.length) {
+  for (;;) {
     const at = value.indexOf('\n', from);
-    const end = at < 0 ? value.length : at;
-    if (NON_BLANK.test(value.slice(from, end)) && ++visible > maxVisible) return true;
+    if (scan.add(value.slice(from, at < 0 ? value.length : at))) return 'tooManyItems';
     if (at < 0) break;
     from = at + 1;
   }
-  return false;
+  return scan.itemTooLong ? 'itemTooLong' : null;
 }
 
 /**
  * `includes` 是 UI `inclusions` 清單的換行傳輸形式。
  * 先用有界掃描判斷行數：> 200 行就不 split（避免對巨大字串建大陣列），改以游標逐行數可見行：
- * 第 21 個可見行 → tooManyItems（可見優先）；否則整體 > 20000 回 includesRawTooLarge，否則 tooManyRawItems。
+ * 第 21 個可見行 → tooManyItems、有可見行 > 300 字 → itemTooLong（可見優先）；否則整體 > 20000 回 includesRawTooLarge，否則 tooManyRawItems。
  * ≤ 200 行才 split（最多 200 個元素），可見違規優先；可見規則全過時，
  * 整體 > 20000 回 includesRawTooLarge，其餘回該清單的 raw 種類。
  */
 export function tripIncludesViolation(value: string): TripIncludesViolation | null {
   const wholeTooLarge = !withinTripTextLimit(value, MAX_TRIP_INCLUDES_RAW_CHARS);
   if (hasMoreLinesThan(value, MAX_TRIP_LIST_RAW_ITEMS)) {
-    if (hasMoreVisibleLinesThan(value, MAX_PUBLIC_LIST_ITEMS)) return 'tooManyItems';
+    const visibleKind = scanVisibleLines(value);
+    if (visibleKind) return visibleKind;
     return wholeTooLarge ? 'includesRawTooLarge' : 'tooManyRawItems';
   }
   const kind = tripListViolation(value.split(/\r?\n/));
