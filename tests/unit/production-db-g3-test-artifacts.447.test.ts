@@ -1,4 +1,4 @@
-import { getProductionDbG3AuthzContract, ISSUE_46_CLOSURE_COVERAGE, ISSUE_46_CLOSURE_FAMILIES, ISSUE_46_CLOSURE_FILE_MIGRATIONS, CREATE_TOUR_ORDER_WRITER_PREFIXES } from '../../scripts/agents/production-db-g3-authz-contracts.mjs';
+import { getProductionDbG3AuthzContract, ISSUE_46_CLOSURE_COVERAGE, ISSUE_46_CLOSURE_FAMILIES, ISSUE_46_CLOSURE_FILE_MIGRATIONS, CREATE_TOUR_ORDER_WRITER_PREFIXES, CREATE_TOUR_ORDER_EXCLUDED_DDL } from '../../scripts/agents/production-db-g3-authz-contracts.mjs';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -816,7 +816,7 @@ describe('#725 N2 closure evidence follows plan migration content, not scope nam
   it('every create_tour_order writer alone (even out of order) requires all four families (#774)', () => {
     const all=[F_REQUEST,F_REFUND,F_SEASONAL,F_INVOKER];
     const names:Record<string,string>={
-      '0087':'0087_issue_8b_tour_orders','0110':'0110_issue_42_plan_duration_pricetype_yearround',
+      '0087':'0087_issue_8b_tour_orders','0088':'0088_issue_8b_tour_order_rpc_acl','0110':'0110_issue_42_plan_duration_pricetype_yearround',
       '0111':'0111_issue_46_guide_request_accept','0130':'0130_issue_46_refund_policy_snapshot',
       '0132':'0132_issue_42_seasonal_price_resolution','0136':'0136_issue_755_create_tour_order_invoker'};
     expect(Object.keys(names).sort()).toEqual([...CREATE_TOUR_ORDER_WRITER_PREFIXES].sort());
@@ -860,15 +860,23 @@ describe('#725 N2 closure evidence follows plan migration content, not scope nam
     expect(text).not.toContain('0132_issue_42_seasonal_price_resolution');
   });
 
-  it('every SQL migration that writes create_tour_order is in CREATE_TOUR_ORDER_WRITER_PREFIXES (#774)', () => {
+  it('every SQL migration that writes create_tour_order body/security/ACL is in CREATE_TOUR_ORDER_WRITER_PREFIXES (#774)', () => {
     const dir=join(process.cwd(),'supabase/migrations');
-    const writers=readdirSync(dir).filter(f=>f.endsWith('.sql')).filter(f=>{
-      const sql=readFileSync(join(dir,f),'utf8').replace(/--[^\n]*/g,'');
-      return /\b(create\s+(or\s+replace\s+)?function|alter\s+function)\s+(public\.)?create_tour_order\s*\(/i.test(sql);
-    }).map(f=>f.split('_')[0]);
+    const fn='(public\\.)?create_tour_order\\s*\\(';
+    const writerRe=new RegExp(`\\b(create\\s+(or\\s+replace\\s+)?function|alter\\s+function|(grant|revoke)\\b[^;]*?\\bon\\s+function)\\s+${fn}`,'i');
+    const dropRe=new RegExp(`\\bdrop\\s+function\\s+(if\\s+exists\\s+)?${fn}`,'i');
+    const strip=(f:string)=>readFileSync(join(dir,f),'utf8').replace(/--[^\n]*/g,'');
+    const files=readdirSync(dir).filter(f=>f.endsWith('.sql'));
+    const writers=files.filter(f=>writerRe.test(strip(f))).map(f=>f.split('_')[0]);
     expect(writers.length).toBeGreaterThan(0);
     for(const prefix of writers) expect(CREATE_TOUR_ORDER_WRITER_PREFIXES).toContain(prefix);
     for(const prefix of CREATE_TOUR_ORDER_WRITER_PREFIXES) expect(writers).toContain(prefix);
+    // 唯一被排除的 create_tour_order DDL 是 0099（drop 舊 overload），且必須附理由。
+    const excluded=files.filter(f=>dropRe.test(strip(f))&&!writers.includes(f.split('_')[0])).map(f=>f.split('_')[0]);
+    expect(excluded).toEqual(['0099']);
+    expect(Object.keys(CREATE_TOUR_ORDER_EXCLUDED_DDL)).toEqual(['0099']);
+    expect(CREATE_TOUR_ORDER_EXCLUDED_DDL['0099']).toMatch(/overload/);
+    expect(CREATE_TOUR_ORDER_WRITER_PREFIXES).not.toContain('0099');
   });
 
   it('0128 alone (non-closure plan) requires every seasonal snapshot assertion (#771 NB1)', () => {

@@ -45,11 +45,17 @@ export const ISSUE_46_CLOSURE_COVERAGE = Object.freeze({
 // 逐檔核對（supabase/migrations）：create_tour_order 的 create or replace＝0110／0111／0130／0132，alter＝0136（SECURITY INVOKER）；
 // accept／reject／cancel／expire_tour_* 的最後改寫者為 0111（0130 之後沒有任何 migration 再動）；
 // 0136 另外明確 grant select on trip_plan_seasons（0128 新表），故 seasonal 也由 0136 觸發。
-// 單一來源：所有寫入（create or replace）或變更（alter）public.create_tour_order 的 migration 編號。
-// 無論次序，任何一個仍 pending 的 writer 重放都可能覆寫較新的函式本體或 SECURITY INVOKER 設定，
+// 單一來源：所有改寫 public.create_tour_order「本體／SECURITY 屬性／EXECUTE ACL」的 migration 編號
+// （create or replace function、alter function、grant／revoke … on function public.create_tour_order）。
+// 無論次序，任何一個仍 pending 的 writer 重放都可能覆寫較新的函式本體、SECURITY INVOKER 或 EXECUTE grants（#755 invoker 家族驗證），
 // 因此都觸發全部四個家族。tests/unit 會掃描 supabase/migrations，新增 writer 卻漏列於此會使測試失敗。
-// 證據：0087:160／0110:81／0111:124／0130:46／0132:45 為 create or replace，0136:30 為 alter function … security invoker。
-export const CREATE_TOUR_ORDER_WRITER_PREFIXES = Object.freeze(['0087', '0110', '0111', '0130', '0132', '0136']);
+// 證據：0087:160／0110:81／0111:124／0130:46／0132:45 為 create or replace，0136:30 為 alter function … security invoker，
+// 0087:262／0088:16,28,40／0110:152 為 revoke／grant on function。
+// 明確排除 0099：它 drop 的是另一個「舊簽章」overload（#37/#41 時期），不改現行函式的本體、安全屬性或 ACL。
+export const CREATE_TOUR_ORDER_WRITER_PREFIXES = Object.freeze(['0087', '0088', '0110', '0111', '0130', '0132', '0136']);
+export const CREATE_TOUR_ORDER_EXCLUDED_DDL = Object.freeze({
+  '0099': 'drop function if exists 只移除舊簽章 overload，不改現行 create_tour_order 的本體／安全屬性／ACL',
+});
 
 const ISSUE_46_CLOSURE_FAMILY_TABLE = Object.freeze([
   Object.freeze({
