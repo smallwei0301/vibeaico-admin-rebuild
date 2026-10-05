@@ -64,7 +64,7 @@ describe('#773 G2 source check has no duplicate impact owners', () => {
   it('ISSUES_17_680 (0121, 0125, 0133) registers the fkey only under 0133 and does not own the booking_addons table ACL', () => {
     const files: string[] = planFor('ISSUES_17_680').selection.migrations;
     expect(ownersOf(manifest, 'constraints:public.booking_addons.booking_addons_performance_staff_id_fkey', files)).toEqual(['0133']);
-    // 0133 only grants on create/delete_booking_addon functions; the table ACL is 0127's (not in this scope).
+    // 0133 has no grant/revoke statements; create/delete_booking_addon function ACLs live in 0121 (0121:264-339) and the table ACL is 0127's (0127:59-61), not in this scope.
     expect(ownersOf(manifest, 'acl:table:public.booking_addons', files)).toEqual([]);
   });
 
