@@ -1,4 +1,4 @@
-import { getProductionDbG3AuthzContract, ISSUE_46_CLOSURE_COVERAGE, ISSUE_46_CLOSURE_FAMILIES, ISSUE_46_CLOSURE_FILE_MIGRATIONS, CREATE_TOUR_ORDER_WRITER_PREFIXES, CREATE_TOUR_ORDER_EXCLUDED_DDL, CREATE_TOUR_ORDER_SCHEMA_WIDE_ACL_EXCLUSIONS, CREATE_TOUR_ORDER_DYNAMIC_SQL_EXCLUSIONS, scanCreateTourOrderDdl } from '../../scripts/agents/production-db-g3-authz-contracts.mjs';
+import { getProductionDbG3AuthzContract, ISSUE_46_CLOSURE_COVERAGE, ISSUE_46_CLOSURE_FAMILIES, ISSUE_46_CLOSURE_FILE_MIGRATIONS, CREATE_TOUR_ORDER_WRITER_PREFIXES, CREATE_TOUR_ORDER_EXCLUDED_DDL, CREATE_TOUR_ORDER_SCHEMA_WIDE_ACL_EXCLUSIONS, CREATE_TOUR_ORDER_DYNAMIC_SQL_EXCLUSIONS, CREATE_TOUR_ORDER_UNICODE_IDENTIFIER_EXCLUSIONS, scanCreateTourOrderDdl } from '../../scripts/agents/production-db-g3-authz-contracts.mjs';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -876,6 +876,7 @@ describe('#725 N2 closure evidence follows plan migration content, not scope nam
     expect(CREATE_TOUR_ORDER_WRITER_PREFIXES).not.toContain('0099');
     // schema 層級 ACL／動態 SQL fail closed：命中者必須逐檔列入 exclusion map（含理由）。
     for(const x of scans.filter(x=>x.scan.schemaWideAcl)) expect((CREATE_TOUR_ORDER_SCHEMA_WIDE_ACL_EXCLUSIONS as Record<string,string>)[x.prefix]).toMatch(/\S/);
+    for(const x of scans.filter(x=>x.scan.unicodeIdentifier)) expect((CREATE_TOUR_ORDER_UNICODE_IDENTIFIER_EXCLUSIONS as Record<string,string>)[x.prefix]).toMatch(/\S/);
     for(const x of scans.filter(x=>x.scan.dynamicSql)) expect(CREATE_TOUR_ORDER_WRITER_PREFIXES.includes(x.prefix)||!!(CREATE_TOUR_ORDER_DYNAMIC_SQL_EXCLUSIONS as Record<string,string>)[x.prefix]).toBe(true);
   });
 
@@ -909,6 +910,14 @@ language sql security definer as $$ select 1 $$;
       expect(scanCreateTourOrderDdl("select '--'; create or replace function public.create_tour_order(a int) returns void as $$ $$;").writer).toBe(true);
       expect(scanCreateTourOrderDdl('select $t$ -- $t$; create or replace function public.create_tour_order(a int) returns void as $$ $$;').writer).toBe(true);
       expect(scanCreateTourOrderDdl("execute 'select 1 -- x' || 'create_tour_order';").dynamicSql).toBe(true);
+    });
+
+    it('Unicode-escaped quoted identifiers fail closed (#777 Codex P2)', () => {
+      expect(scanCreateTourOrderDdl('CREATE FUNCTION U&"publ\\0069c".U&"create_tour_ord\\0065r"() returns void as $$ $$ language sql;').unicodeIdentifier).toBe(true);
+      expect(scanCreateTourOrderDdl('create function public.u&"create_tour_ord\\+000065r"() returns void as $$ $$ language sql;').unicodeIdentifier).toBe(true);
+      expect(scanCreateTourOrderDdl('alter function u&"x!0061" uescape \'!\' rename to y;').unicodeIdentifier).toBe(true);
+      expect(scanCreateTourOrderDdl('create function public."create_tour_order"() returns void as $$ $$ language sql;').unicodeIdentifier).toBe(false);
+      expect(scanCreateTourOrderDdl('-- U&"x"\n/* u&"y" */ select 1;').unicodeIdentifier).toBe(false);
     });
 
     it('nested block comments are stripped as one comment', () => {

@@ -64,6 +64,9 @@ export const CREATE_TOUR_ORDER_EXCLUDED_DDL = Object.freeze({
 // 目前 supabase/migrations 沒有任何命中（0095／0101／0105 的 default privileges 字樣皆在註解內，已剝除）。
 export const CREATE_TOUR_ORDER_SCHEMA_WIDE_ACL_EXCLUSIONS = Object.freeze({});
 export const CREATE_TOUR_ORDER_DYNAMIC_SQL_EXCLUSIONS = Object.freeze({});
+// Unicode 跳脫識別字（U&"publ\0069c"."create_tour_ord\0065r"）可拼出任何函式名而躲過字面比對，一律 fail closed：
+// 命中 U&" 的 migration 必須在此逐檔附理由。目前 supabase/migrations 沒有任何命中。
+export const CREATE_TOUR_ORDER_UNICODE_IDENTIFIER_EXCLUSIONS = Object.freeze({});
 
 // 單一來源：create_tour_order DDL 掃描（#777）。純函式，同時供真實 migration 與合成 mutation 字串使用。
 // 先以 lexer 剝除註解（註解內程式碼不會執行；字串內的 -- 或 /* 不當成註解），再以大小寫不敏感、跨行 regex 比對。
@@ -80,6 +83,7 @@ const WRITER_RE = new RegExp(
 const DROP_RE = new RegExp(`\\bdrop\\s+${ROUTINE_KIND}\\s+(?:if\\s+exists\\s+)?${TOUR_ORDER_IDENT}`, 'i');
 const SCHEMA_WIDE_ACL_RE = /\b(?:(?:grant|revoke)\b[^;]*?\bon\s+all\s+(?:functions|routines|procedures)\s+in\s+schema\b|alter\s+default\s+privileges\b[^;]*?\b(?:functions|routines|procedures)\b)/i;
 // execute（排除 grant/revoke … execute on）語句內出現 create_tour_order；以 ; 為語句界線，保守 fail closed。
+const UNICODE_IDENTIFIER_RE = /\bu&"/i;
 const DYNAMIC_SQL_RE = /\bexecute\b(?!\s+on\b)[^;]*?create_tour_order/i;
 
 export function scanCreateTourOrderDdl(sqlText) {
@@ -89,6 +93,7 @@ export function scanCreateTourOrderDdl(sqlText) {
     drop: DROP_RE.test(sql),
     schemaWideAcl: SCHEMA_WIDE_ACL_RE.test(sql),
     dynamicSql: DYNAMIC_SQL_RE.test(sql),
+    unicodeIdentifier: UNICODE_IDENTIFIER_RE.test(sql),
   };
 }
 
