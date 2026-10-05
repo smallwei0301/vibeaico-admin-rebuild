@@ -595,10 +595,6 @@
           "objectKey": "public.owner_notify_bind_requests.p_owner_notify_bind_requests_all"
         },
         {
-          "surface": "policies",
-          "objectKey": "public.owner_notify_recipients.p_owner_notify_recipients_all"
-        },
-        {
           "surface": "acl",
           "objectKey": "table:public.owner_notify_bind_requests"
         }
@@ -907,10 +903,6 @@
           "objectKey": "public.booking_addons.booking_addons_performance_consistency_check"
         },
         {
-          "surface": "constraints",
-          "objectKey": "public.booking_addons.booking_addons_performance_staff_id_fkey"
-        },
-        {
           "surface": "indexes",
           "objectKey": "public.booking_addons.ux_booking_addons_tenant_idempotency"
         },
@@ -1212,10 +1204,6 @@
         {
           "surface": "constraints",
           "objectKey": "public.booking_addons.booking_addons_tenant_id_performance_staff_id_fkey"
-        },
-        {
-          "surface": "acl",
-          "objectKey": "table:public.booking_addons"
         }
       ]
     },
