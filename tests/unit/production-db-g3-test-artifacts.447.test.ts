@@ -939,6 +939,24 @@ language sql security definer as $$ select 1 $$;
       expect(scanCreateTourOrderDdl('create function staging.create_tour_order_v2() returns void as $$ $$ language sql;').writer).toBe(false);
     });
 
+    it('identifier token handles "" escapes, three-part names and non-ASCII schemas (#777)', () => {
+      const mk=(q:string)=>`create function ${q}() returns void as $$ $$ language sql;`;
+      expect(scanCreateTourOrderDdl(mk('"a""b".create_tour_order')).writer).toBe(true);
+      expect(scanCreateTourOrderDdl(mk('postgres.public.create_tour_order')).writer).toBe(true);
+      expect(scanCreateTourOrderDdl(mk('éschema.create_tour_order')).writer).toBe(true);
+      expect(scanCreateTourOrderDdl(mk('public.create_tour_order_v2')).writer).toBe(false);
+      expect(scanCreateTourOrderDdl(mk('public.create_tour_orders')).writer).toBe(false);
+      expect(scanCreateTourOrderDdl(mk('public.create_tour_orderé')).writer).toBe(false);
+    });
+
+    it('pathological inputs scan in bounded time (no catastrophic backtracking, #777)', () => {
+      const time=(sql:string)=>{const t=performance.now();scanCreateTourOrderDdl(sql);return performance.now()-t;};
+      expect(time('grant x on function '+'"'+'a'.repeat(20000)+'"')).toBeLessThan(200);
+      expect(time('grant x on function '+'"aaa" '.repeat(3400))).toBeLessThan(200);
+      expect(time('grant x on function '+'a.'.repeat(10000))).toBeLessThan(200);
+      expect(time('select '+'"'+'a'.repeat(20000)+'"')).toBeLessThan(50);
+    });
+
     it('nested block comments are stripped as one comment', () => {
       expect(scanCreateTourOrderDdl('/* outer /* inner */ '+W+' */ select 1;').writer).toBe(false);
       expect(scanCreateTourOrderDdl('/* outer /* inner */ x */ '+W).writer).toBe(true);

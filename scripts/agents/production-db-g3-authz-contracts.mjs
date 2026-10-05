@@ -73,15 +73,18 @@ export const CREATE_TOUR_ORDER_UNICODE_IDENTIFIER_EXCLUSIONS = Object.freeze({})
 // 識別字容許引號與點號兩側空白：public.create_tour_order／"public"."create_tour_order"／public . create_tour_order。
 // 註解剝除一律使用 release-plan 認得字串／引號識別字／dollar-quote／巢狀區塊註解的 lexer；畸形輸入會丟 UNSUPPORTED_SQL_LEXICAL_FORM（fail closed，不得吞掉）。
 export { stripSqlComments };
-// schema 限定詞不限 public（任何 schema 的 create_tour_order 都可能被 set schema／rename 搬進 public），一律 fail closed。
-const TOUR_ORDER_IDENT = '(?:(?:"[^"]+"|[A-Za-z_][\\w$]*)\\s*\\.\\s*)?"?create_tour_order"?(?![\\w"])';
+// 單一識別字 token：引號識別字不跨行並支援 "" 跳脫；未引號識別字支援非 ASCII。
+// schema 限定詞不限 public，最多兩段（catalog.schema.name），因為任何 schema 的 create_tour_order 都可能被 set schema／rename 搬進 public，一律 fail closed。
+const SQL_IDENT = '(?:"(?:[^"\\n]|"")+"|[\\p{L}_][\\p{L}\\p{N}_$]*)';
+// 起點 lookbehind：只在 token 邊界起算，避免對長單字的每個位置重試造成二次方回溯。
+const TOUR_ORDER_IDENT = `(?<![\\p{L}\\p{N}_$])(?:${SQL_IDENT}\\s*\\.\\s*){0,2}"?create_tour_order"?(?![\\p{L}\\p{N}_$"])`;
 const ROUTINE_KIND = '(?:function|procedure|routine)';
 const WRITER_RE = new RegExp(
   `\\b(?:create\\s+(?:or\\s+replace\\s+)?${ROUTINE_KIND}\\s+${TOUR_ORDER_IDENT}\\s*\\(`
   + `|alter\\s+${ROUTINE_KIND}\\s+${TOUR_ORDER_IDENT}`
   + `|alter\\s+${ROUTINE_KIND}\\b[^;]*?\\brename\\s+to\\s+${TOUR_ORDER_IDENT}`
-  + `|(?:grant|revoke)\\b[^;]*?\\bon\\s+${ROUTINE_KIND}\\b[^;]*?${TOUR_ORDER_IDENT})`, 'i');
-const DROP_RE = new RegExp(`\\bdrop\\s+${ROUTINE_KIND}\\s+(?:if\\s+exists\\s+)?${TOUR_ORDER_IDENT}`, 'i');
+  + `|(?:grant|revoke)\\b[^;]*?\\bon\\s+${ROUTINE_KIND}\\b[^;]*?${TOUR_ORDER_IDENT})`, 'iu');
+const DROP_RE = new RegExp(`\\bdrop\\s+${ROUTINE_KIND}\\s+(?:if\\s+exists\\s+)?${TOUR_ORDER_IDENT}`, 'iu');
 const SCHEMA_WIDE_ACL_RE = /\b(?:(?:grant|revoke)\b[^;]*?\bon\s+all\s+(?:functions|routines|procedures)\s+in\s+schema\b|alter\s+default\s+privileges\b[^;]*?\b(?:functions|routines|procedures)\b)/i;
 // execute（排除 grant/revoke … execute on）語句內出現 create_tour_order；以 ; 為語句界線，保守 fail closed。
 const UNICODE_IDENTIFIER_RE = /\bu&['"]/i;
