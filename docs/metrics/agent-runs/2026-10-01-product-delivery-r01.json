@@ -58,6 +58,12 @@
     },
     {
       "ref": "issue/753"
+    },
+    {
+      "ref": "issue/773"
+    },
+    {
+      "ref": "issue/774"
     }
   ],
   "main": {
@@ -3517,6 +3523,91 @@
         "outputTokens": null,
         "cachedTokens": null,
         "contextClass": "compact"
+      },
+      {
+        "id": "20261005-qa-754-production-login-acceptance",
+        "role": "audit",
+        "requestedModel": "luna",
+        "actualModel": "sol",
+        "issue": 754,
+        "startedAt": "2026-10-05T01:49:32Z",
+        "completedAt": "2026-10-05T01:50:45Z",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/754#issuecomment-5986748644",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "ROUTING VIOLATION (PB-036 class): audit layer performed QA (scout-tier) Production login→reload→logout acceptance with Owner-provided test account; PASS. Not pre-declared as an exception."
+      },
+      {
+        "id": "20261005-build-773-manifest-final-owner",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "issue": 773,
+        "startedAt": "2026-10-05T01:51:30Z",
+        "completedAt": "2026-10-05T01:53:56Z",
+        "count": 2,
+        "accepted": true,
+        "evidenceRef": "commits a3565479, 7e6dfd8f",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "Sonnet builder: manifest duplicate owners moved to final writers (0127 policy, 0133 fkey, 0127 table ACL); #589 digest re-pin; second commit removed vacuous ISSUE_46 test case after audit"
+      },
+      {
+        "id": "20261005-audit-773-builder-review",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 773,
+        "startedAt": "2026-10-05T01:53:20Z",
+        "completedAt": "2026-10-05T01:53:40Z",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "commit 7e6dfd8f",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "Opus review of a3565479: SQL final-owner evidence confirmed; returned 1 finding (vacuous early-return test)"
+      },
+      {
+        "id": "20261005-build-774-g3-all-writers",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "issue": 774,
+        "startedAt": "2026-10-05T01:51:30Z",
+        "completedAt": "2026-10-05T01:54:34Z",
+        "count": 1,
+        "accepted": false,
+        "evidenceRef": "commit a0782d19 (branch reserve/issue774-g3-all-families)",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "Sonnet builder first pass; audit returned: include function-ACL writer 0088 in trigger set (rework in progress)"
+      },
+      {
+        "id": "20261005-scout-ledger-773-774",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "issue": 773,
+        "startedAt": "2026-10-05T01:55:57.760Z",
+        "completedAt": "2026-10-05T01:55:57.760Z",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "docs/metrics/agent-runs/2026-10-01-product-delivery-r01.json",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "Haiku scout: added issue/773, issue/774 sources and r01 task events for 2026-10-05"
       }
     ],
     "fullContextReplays": 0,
