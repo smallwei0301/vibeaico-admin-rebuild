@@ -4050,7 +4050,7 @@
         "id": "20261005-scout-782-codex-r2",
         "role": "scout",
         "requestedModel": "luna",
-        "actualModel": "luna",
+        "actualModel": "unknown",
         "contextClass": "compact",
         "issue": 780,
         "accepted": true,
@@ -4058,7 +4058,10 @@
         "outputTokens": null,
         "cachedTokens": null,
         "note": "Fix Codex P2 findings on PR #782: re-sync solIssues to 14 (distinct audit/triage issue values), update completionTruth.checkedAt after verifying #773/#774/#777 closed",
-        "count": 1
+        "count": 1,
+        "startedAt": "2026-10-05T10:50:10Z",
+        "completedAt": "2026-10-05T10:54:17Z",
+        "evidenceRef": "commit 46ff9bba; github:pullcomment#4183154674,4183154683"
       }
     ],
     "fullContextReplays": 0,
