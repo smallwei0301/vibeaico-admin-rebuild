@@ -43,15 +43,11 @@ const ownersOf = (m: any, key: string, repoFiles: string[]) => m.entries
   .map((e: any) => e.repoFile.slice(0, 4));
 
 describe('#773 G2 source check has no duplicate impact owners', () => {
-  for (const scope of ['FULL_PENDING_SET', 'ISSUES_17_680', 'ISSUE_46_0110_0136_CLOSURE']) {
+  // ISSUE_46_0110_0136_CLOSURE is covered by production-db-impact-manifest.755.test.ts.
+  for (const scope of ['FULL_PENDING_SET', 'ISSUES_17_680']) {
     it(`${scope} does not throw AMBIGUOUS_IMPACT_OWNERSHIP with the real alias map and manifest`, () => {
-      let planInfo;
-      try { planInfo = planFor(scope); } catch (error) {
-        // ISSUE_46 closure needs its reviewed applied prerequisites; its own fixture lives in the #755 test.
-        if (scope === 'ISSUE_46_0110_0136_CLOSURE') return;
-        throw error;
-      }
-      try { run(planInfo.plan); } catch (error) {
+      const { plan } = planFor(scope);
+      try { run(plan); } catch (error) {
         expect(String((error as Error).message)).not.toMatch(/AMBIGUOUS_IMPACT_OWNERSHIP/);
         throw error;
       }
