@@ -64,6 +64,9 @@
     },
     {
       "ref": "issue/774"
+    },
+    {
+      "ref": "issue/777"
     }
   ],
   "main": {
@@ -3608,13 +3611,64 @@
         "cachedTokens": null,
         "contextClass": "compact",
         "note": "Haiku scout: added issue/773, issue/774 sources and r01 task events for 2026-10-05"
+      },
+      {
+        "id": "20261005-build-777-g3-scan-hardening",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "issue": 777,
+        "startedAt": "2026-10-05T04:06:20Z",
+        "completedAt": "2026-10-05T04:09:59Z",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "commit 194b828e",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "Sonnet builder: scanCreateTourOrderDdl (quoted/routine/schema-wide ACL/dynamic SQL/block comments), header comment, shared migration identity module, ownMigrations removed"
+      },
+      {
+        "id": "20261005-merge-775-776",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 773,
+        "startedAt": "2026-10-05T02:14:05Z",
+        "completedAt": "2026-10-05T02:23:40Z",
+        "count": 2,
+        "accepted": true,
+        "evidenceRef": "squash f1818d6d (#776), 8d3ab999 (#775)",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "Merged #776 then #775 after Final Risk PASS, CI green, Codex +1, Agent WIP Policy success; lifecycle metadata CAS closeout per Owner authorization"
+      },
+      {
+        "id": "20261005-scout-777-ledger",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "issue": 777,
+        "startedAt": "2026-10-05T04:10:58.493Z",
+        "completedAt": "2026-10-05T04:10:58.493Z",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "docs/metrics/agent-runs/2026-10-01-product-delivery-r01.json",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "Haiku scout: added issue/777 source, build task, merge audit, and ledger entry"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 14,
+    "issuesStarted": 15,
     "issuesClosed": 3,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -3641,8 +3695,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 48,
-    "lunaAccepted": 43,
+    "lunaTasks": 49,
+    "lunaAccepted": 44,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
