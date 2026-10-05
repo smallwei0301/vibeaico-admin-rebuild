@@ -151,7 +151,6 @@ function scanText(sql) {
     unresolvedExecute: EXECUTE_KEYWORD_RE.test(sql),
   };
 }
-const FLAG_NAMES = Object.freeze(['writer', 'drop', 'schemaWideAcl', 'dynamicSql', 'unicodeIdentifier', 'unresolvedExecute']);
 
 // 與 lexer 無關的 fail-closed 掃描：每個旗標同時在「原始文字」與「剝註解後文字」計算並取聯集。
 // 原始文字不會因 lexer 誤判（例如非 ASCII dollar-quote tag）而漏掉真正的程式碼；註解只會多出 false positive。
@@ -166,7 +165,14 @@ export function scanCreateTourOrderDdlParts(sqlText) {
   } catch (error) {
     lexerError = String(error?.message ?? error);
   }
-  const combined = Object.fromEntries(FLAG_NAMES.map((name) => [name, raw[name] || Boolean(stripped?.[name])]));
+  const combined = {
+    writer: raw.writer || Boolean(stripped?.writer),
+    drop: raw.drop || Boolean(stripped?.drop),
+    schemaWideAcl: raw.schemaWideAcl || Boolean(stripped?.schemaWideAcl),
+    dynamicSql: raw.dynamicSql || Boolean(stripped?.dynamicSql),
+    unicodeIdentifier: raw.unicodeIdentifier || Boolean(stripped?.unicodeIdentifier),
+    unresolvedExecute: raw.unresolvedExecute || Boolean(stripped?.unresolvedExecute),
+  };
   return { raw, stripped, combined, lexerError };
 }
 
