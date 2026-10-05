@@ -4045,6 +4045,20 @@
         "cachedTokens": null,
         "contextClass": "compact",
         "note": "Scout: added structured fields (issue, startedAt, completedAt, evidenceRef) to build/audit tasks; fields completed in follow-up commit"
+      },
+      {
+        "id": "20261005-scout-782-codex-r2",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "luna",
+        "contextClass": "compact",
+        "issue": 780,
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Fix Codex P2 findings on PR #782: re-sync solIssues to 14 (distinct audit/triage issue values), update completionTruth.checkedAt after verifying #773/#774/#777 closed",
+        "count": 1
       }
     ],
     "fullContextReplays": 0,
@@ -4078,14 +4092,14 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 52,
-    "lunaAccepted": 47,
+    "lunaTasks": 53,
+    "lunaAccepted": 48,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
     "solTouches": 130,
-    "solIssues": 5
+    "solIssues": 14
   },
   "auditability": {
     "evidenceFieldsCompletePercent": null,
@@ -4284,7 +4298,8 @@
     "Correction (commit bca1cfde): task 20261004-audit-755-production-queries times were approximate and are now null.",
     "Correction (this commit): notes 185/186 earlier carried timestamps 08:00Z/08:02Z later than their own commit (07:58:43Z) and are now commit-referenced; note 180 marked approximate; logout-scope task times set to dispatch 07:45:10Z and commit 07:46:44Z.",
     "2026-10-05 Scout reconciliation: Added ISSUE_CLOSED claims for #773/#774/#777 based on trusted close-observed handoff comments; added sources issue/780 and issue/781; updated delivery.issuesClosed from 3 to 6; main CI run 37278860517 (commit 24841f1d) concluded success at 2026-10-05T08:19:48Z.",
-    "solTouches re-synced to the recorded audit/triage task events (definition: scorecard-readiness.mjs:281); it had not been incremented since 216d2a73 (stale at 50)."
+    "solTouches re-synced to the recorded audit/triage task events (definition: scorecard-readiness.mjs:281); it had not been incremented since 216d2a73 (stale at 50).",
+    "solIssues re-synced 5→14 = distinct issue values of the audit/triage task events counted in solTouches (23 such tasks carry no issue field and are not counted); score-run-current.mjs uses solTouches/solIssues."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -4297,7 +4312,7 @@
   },
   "completionTruth": {
     "status": "VERIFIED",
-    "checkedAt": "2026-10-04T00:05:56Z",
+    "checkedAt": "2026-10-05T10:50:47Z",
     "claims": [
       {
         "type": "LOCAL_TEST_GREEN",
