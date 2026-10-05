@@ -249,11 +249,44 @@ export function orderPendingProductionMigrations(names = []) {
 }
 
 // PostgreSQL scan.l：ident_cont = [A-Za-z\200-\377_0-9$]；任何非 ASCII 字元都算識別字字元。
-const PG_IDENT_CONT_RE = /[A-Za-z0-9_$\u0080-\u{10FFFF}]/u;
+export const PG_IDENT_CONT_RE = /[A-Za-z0-9_$\u0080-\u{10FFFF}]/u;
 // dolq_start = [A-Za-z\200-\377_]；dolq_cont = [A-Za-z\200-\377_0-9]
 const PG_DOLLAR_TAG_RE = /\$(?:[A-Za-z_\u0080-\u{10FFFF}][A-Za-z0-9_\u0080-\u{10FFFF}]*)?\$/uy;
 
-function quotedTokenEnd(input, start, quote) {
+// PostgreSQL scan.l quotecontinue：字串結尾引號之後若接「水平空白／-- 註解 + 至少一個換行 + (空白 | -- 註解換行)* + '」，
+// 則是同一個字串字面量的續段，且沿用相同模式（E 字串的反斜線跳脫在續段仍有效）。注意 scan.l 只認 -- 行註解，不認 /* */。
+// 回傳續段開頭引號「之後」的位置；不是續段回傳 -1。手寫掃描以避免正規表示式的巢狀量詞回溯。
+function stringContinuationEnd(input, from) {
+  const n = input.length;
+  let j = from;
+  while (j < n) {
+    const c = input[j];
+    if (c === ' ' || c === '\t' || c === '\f') { j += 1; continue; }
+    if (c === '-' && input[j + 1] === '-') {
+      j += 2;
+      while (j < n && input[j] !== '\n' && input[j] !== '\r') j += 1;
+      continue;
+    }
+    break;
+  }
+  if (input[j] !== '\n' && input[j] !== '\r') return -1;
+  j += 1;
+  while (j < n) {
+    const c = input[j];
+    if (c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f' || c === '\v') { j += 1; continue; }
+    if (c === '-' && input[j + 1] === '-') {
+      j += 2;
+      while (j < n && input[j] !== '\n' && input[j] !== '\r') j += 1;
+      if (j >= n) return -1;
+      j += 1;
+      continue;
+    }
+    break;
+  }
+  return input[j] === "'" ? j + 1 : -1;
+}
+
+function quotedTokenEnd(input, start, quote, rejectContinuationCode = '') {
   const backslashEscapes = quote === "'"
     && /[eE]/.test(input[start - 1] ?? '')
     && !PG_IDENT_CONT_RE.test(input[start - 2] ?? '');
@@ -267,6 +300,16 @@ function quotedTokenEnd(input, start, quote) {
       if (input[index + 1] === quote) {
         index += 2;
         continue;
+      }
+      if (quote === "'") {
+        const continued = stringContinuationEnd(input, index + 1);
+        if (continued >= 0) {
+          if (rejectContinuationCode) {
+            fail(rejectContinuationCode, 'adjacent string literal continuation is not admitted in routine bodies or dynamic SQL templates');
+          }
+          index = continued;
+          continue;
+        }
       }
       return index + 1;
     }
@@ -723,7 +766,7 @@ function immediateProceduralBody(statement) {
   const extended = /[eE]/.test(input[index] ?? '') && input[index + 1] === "'";
   const quoteIndex = extended ? index + 1 : index;
   if (input[quoteIndex] === "'") {
-    const end = quotedTokenEnd(input, quoteIndex, "'");
+    const end = quotedTokenEnd(input, quoteIndex, "'", 'UNSUPPORTED_SQL_LEXICAL_FORM');
     if (input.slice(end).trim()) {
       fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'procedural body has unconsumed trailing syntax');
     }
@@ -816,7 +859,7 @@ function isSimpleFormatArgument(value) {
   const extended = /[eE]/.test(input[0] ?? '') && input[1] === "'";
   const quoteIndex = extended ? 1 : 0;
   if (input[quoteIndex] === "'") {
-    const end = quotedTokenEnd(input, quoteIndex, "'");
+    const end = quotedTokenEnd(input, quoteIndex, "'", 'UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED');
     return input.slice(end).trim() === '';
   }
 
@@ -890,7 +933,7 @@ function firstDynamicSqlTemplate(fragment) {
     const extended = /[eE]/.test(input[index] ?? '') && input[index + 1] === "'";
     const quoteIndex = extended ? index + 1 : index;
     if (input[quoteIndex] === "'") {
-      const end = quotedTokenEnd(input, quoteIndex, "'");
+      const end = quotedTokenEnd(input, quoteIndex, "'", 'UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED');
       const formatEnd = matchingParenthesisEnd(input, formatOpenIndex);
       const rawTemplate = input.slice(quoteIndex + 1, end - 1);
       assertFormatArgumentsBounded(input, end, formatEnd, rawTemplate);
@@ -921,7 +964,7 @@ function firstDynamicSqlTemplate(fragment) {
   const extended = /[eE]/.test(input[index] ?? '') && input[index + 1] === "'";
   const quoteIndex = extended ? index + 1 : index;
   if (input[quoteIndex] === "'") {
-    const end = quotedTokenEnd(input, quoteIndex, "'");
+    const end = quotedTokenEnd(input, quoteIndex, "'", 'UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED');
     if (input.slice(end).trim()) {
       fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL expression has unconsumed trailing syntax');
     }
