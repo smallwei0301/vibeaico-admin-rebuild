@@ -6,8 +6,8 @@ import { Alert } from '@/components/ui/Alert';
 import { FormGroup, FormText, Label, Textarea } from '@/components/ui/Form';
 import { TripTextFieldMeta } from '@/components/trips/TripTextFieldMeta';
 import {
-  confirmTripCopyDraft, resolveTripCopyFields, textToTripLines,
-  tripTextFieldErrors, type TripCopyDraft, type TripTextFields,
+  confirmTripCopyDraft, tripCopyDraftMeta,
+  type TripCopyDraft, type TripTextFields,
   type TripTextField, type TripTextFieldError,
 } from '@/lib/trip-field-limits';
 import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
@@ -31,8 +31,8 @@ export function TripCopyDraftModal<P extends TripTextFields>({
   const [draft, setDraft] = React.useState<TripCopyDraft>(initial);
   React.useEffect(() => { if (open) setDraft(initial); }, [open, initial]);
 
-  const fields = resolveTripCopyFields(source, initial, draft);
-  const errors = tripTextFieldErrors(fields);
+  // 計數與錯誤都來自與送出相同的 resolved 值，畫面顯示的就是實際會送出的內容。
+  const { errors, display } = tripCopyDraftMeta(source, initial, draft);
   const errorOf = (field: TripTextField): TripTextFieldError | null =>
     errors.find((e) => e.field === field) ?? null;
   const set = (p: Partial<TripCopyDraft>) => setDraft((d) => ({ ...d, ...p }));
@@ -64,30 +64,30 @@ export function TripCopyDraftModal<P extends TripTextFields>({
         <FormGroup>
           <Label>{t.form.descriptionLabel}</Label>
           <Textarea rows={8} value={draft.description} disabled={busy} onChange={(e) => set({ description: e.target.value })} />
-          <TripTextFieldMeta field="description" value={draft.description} error={errorOf('description')} />
+          <TripTextFieldMeta field="description" value={display.description} error={errorOf('description')} />
         </FormGroup>
         <FormGroup>
           <Label>{t.form.inclusionsLabel}</Label>
           <Textarea rows={5} value={draft.inclusionsText} disabled={busy} onChange={(e) => set({ inclusionsText: e.target.value })} />
           <FormText>{t.form.listHelp}</FormText>
-          <TripTextFieldMeta field="inclusions" value={textToTripLines(draft.inclusionsText)} error={errorOf('inclusions')} />
+          <TripTextFieldMeta field="inclusions" value={display.inclusions} error={errorOf('inclusions')} />
         </FormGroup>
         <FormGroup>
           <Label>{t.form.exclusionsLabel}</Label>
           <Textarea rows={5} value={draft.exclusionsText} disabled={busy} onChange={(e) => set({ exclusionsText: e.target.value })} />
           <FormText>{t.form.listHelp}</FormText>
-          <TripTextFieldMeta field="exclusions" value={textToTripLines(draft.exclusionsText)} error={errorOf('exclusions')} />
+          <TripTextFieldMeta field="exclusions" value={display.exclusions} error={errorOf('exclusions')} />
         </FormGroup>
         <FormGroup>
           <Label>{t.form.noticesLabel}</Label>
           <Textarea rows={4} value={draft.noticesText} disabled={busy} onChange={(e) => set({ noticesText: e.target.value })} />
           <FormText>{t.form.listHelp}</FormText>
-          <TripTextFieldMeta field="notices" value={textToTripLines(draft.noticesText)} error={errorOf('notices')} />
+          <TripTextFieldMeta field="notices" value={display.notices} error={errorOf('notices')} />
         </FormGroup>
         <FormGroup>
           <Label>{t.form.safetyLabel}</Label>
           <Textarea rows={3} value={draft.safetyNotice} disabled={busy} onChange={(e) => set({ safetyNotice: e.target.value })} />
-          <TripTextFieldMeta field="safetyNotice" value={draft.safetyNotice} error={errorOf('safetyNotice')} />
+          <TripTextFieldMeta field="safetyNotice" value={display.safetyNotice} error={errorOf('safetyNotice')} />
         </FormGroup>
       </div>
     </Modal>

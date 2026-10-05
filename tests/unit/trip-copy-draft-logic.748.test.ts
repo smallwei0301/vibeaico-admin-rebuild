@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
-  confirmTripCopyDraft, decideTripCopy, resolveTripCopyFields, tripCopyDraftFromFields,
+  confirmTripCopyDraft, decideTripCopy, resolveTripCopyFields, tripCopyDraftFromFields, tripCopyDraftMeta,
 } from '@/lib/trip-field-limits';
 
 const items = (n: number) => Array.from({ length: n }, () => 'item');
@@ -110,5 +110,46 @@ describe('ToastProvider context value 必須穩定（B1 回歸）', () => {
     expect(toast).toContain('React.useMemo(() => ({ show }), [show])');
     expect(toast).toContain('<ToastContext.Provider value={value}>');
     expect(toast).not.toContain('value={{ show }}');
+  });
+});
+
+describe('tripCopyDraftMeta（NB-4：計數與驗證同一份 resolved 值）', () => {
+  const src = {
+    ...base, description: 'd'.repeat(6000), safetyNotice: '',
+    inclusions: [] as string[], notices: [] as string[],
+    exclusions: Array.from({ length: 12 }, () => 'x\ny'),
+  };
+  const d0 = tripCopyDraftFromFields(src);
+
+  it('未動過的清單：計數是來源 12 項、沒有錯誤（不是 join 後拆出的 24）', () => {
+    const m = tripCopyDraftMeta(src, d0, d0);
+    expect(m.display.exclusions).toHaveLength(12);
+    expect(m.errors.map((e) => e.field)).toEqual(['description']);
+  });
+
+  it('編輯該清單後：顯示值是正規化後的項目，並可能出現錯誤', () => {
+    const edited = { ...d0, exclusionsText: Array.from({ length: 24 }, () => 'x').join('\n') };
+    const m = tripCopyDraftMeta(src, d0, edited);
+    expect(m.display.exclusions).toHaveLength(24);
+    expect(m.errors.map((e) => e.field).sort()).toEqual(['description', 'exclusions']);
+  });
+
+  it('顯示值與 confirm 實際送出的欄位一致', () => {
+    const edited = { ...d0, description: 'ok' };
+    const m = tripCopyDraftMeta(src, d0, edited);
+    const r = confirmTripCopyDraft(src, d0, edited);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.payload.exclusions).toEqual(m.fields.exclusions);
+  });
+});
+
+describe('Modal 草稿重設 effect 的依賴陣列（NB-1 guard）', () => {
+  /*
+   * 沒有 jsdom 可 render。這裡以原始碼斷言：重設草稿的 effect 必須帶 [open, initial] 依賴，
+   * 不能是沒有依賴陣列的 setDraft(initial)，否則每次 render 都會把使用者正在編輯的草稿重設。
+   */
+  const modal = readFileSync(resolve(process.cwd(), 'src/components/trips/TripCopyDraftModal.tsx'), 'utf8');
+  it('useEffect(() => { if (open) setDraft(initial); }, [open, initial])', () => {
+    expect(modal).toMatch(/React\.useEffect\(\(\) => \{ if \(open\) setDraft\(initial\); \}, \[open, initial\]\);/);
   });
 });

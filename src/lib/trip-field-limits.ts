@@ -214,3 +214,24 @@ export function planTripCopy(source: TripTextFields) {
   const d = decideTripCopy(source);
   return d.kind === 'direct' ? ({ kind: 'direct' } as const) : d;
 }
+
+/**
+ * 複製草稿每個欄位的「顯示值＋錯誤」，與實際送出／驗證用同一份 resolveTripCopyFields。
+ * 顯示值：文字欄位是字串；清單欄位是計入上限的項目（inclusions 以伺服器看到的換行傳輸形式拆開）。
+ */
+export function tripCopyDraftMeta(
+  source: TripTextFields, initial: TripCopyDraft, draft: TripCopyDraft,
+): { fields: Required<TripTextFields>; errors: TripTextFieldError[]; display: Record<TripTextField, string | string[]> } {
+  const fields = resolveTripCopyFields(source, initial, draft);
+  return {
+    fields,
+    errors: tripTextFieldErrors(fields),
+    display: {
+      description: fields.description,
+      safetyNotice: fields.safetyNotice,
+      inclusions: fields.inclusions.join('\n').split(/\r?\n/),
+      exclusions: fields.exclusions,
+      notices: fields.notices,
+    },
+  };
+}
