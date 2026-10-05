@@ -94,6 +94,20 @@ export const CREATE_TOUR_ORDER_UNRESOLVED_EXECUTE_EXCLUSIONS = Object.freeze({
   '0123': 'trigger 語法 execute function public.prevent_retired_richmenu_asset()，無動態 SQL；檔內沒有 create_tour_order',
   '0128': 'trigger 語法 execute function public.set_updated_at()，無動態 SQL；檔內沒有 create_tour_order',
 });
+// 原始文字掃描（不剝註解）比剝註解後多出的命中：每筆都必須是「只出現在註解」，測試會驗證該旗標在剝註解後確實消失，
+// 且此表與實際差集精確相等，因此無法用來隱藏真正的程式碼。key 為 migration 編號。
+export const CREATE_TOUR_ORDER_COMMENT_ONLY_HITS = Object.freeze({
+  '0088': Object.freeze({ flags: Object.freeze(['unresolvedExecute']), reason: '第 1 行檔頭註解 "-- ... RPC execute privileges."，只是英文說明' }),
+  '0090': Object.freeze({ flags: Object.freeze(['unresolvedExecute']), reason: '第 99 行註解 "-- EXECUTE 給 PUBLIC"，描述預設權限' }),
+  '0091': Object.freeze({ flags: Object.freeze(['unresolvedExecute']), reason: '第 257 行註解 "-- 函式預設給 PUBLIC 的 EXECUTE"' }),
+  '0111': Object.freeze({ flags: Object.freeze(['unresolvedExecute']), reason: '第 382 行註解 "-- GRANT EXECUTE TO PUBLIC，只 revoke ..."（0111 已是 writer）' }),
+  '0115': Object.freeze({ flags: Object.freeze(['unresolvedExecute']), reason: '第 223 行註解 "-- ... GRANT EXECUTE TO PUBLIC"' }),
+  '0119': Object.freeze({ flags: Object.freeze(['unresolvedExecute']), reason: '第 107 行註解 "-- ... 把 EXECUTE 授權給 PUBLIC"' }),
+  '0127': Object.freeze({ flags: Object.freeze(['unresolvedExecute']), reason: '第 2 行英文註解 "The CLI may execute this file ..."' }),
+  '0131': Object.freeze({ flags: Object.freeze(['unresolvedExecute']), reason: '第 129 行註解 "-- ... 把 EXECUTE 授權給 PUBLIC"' }),
+  '0134': Object.freeze({ flags: Object.freeze(['unresolvedExecute']), reason: '第 6 行英文註解 "-- ... execute the unchanged, tenant-checking ..."' }),
+  '0136': Object.freeze({ flags: Object.freeze(['unresolvedExecute']), reason: '第 16 行註解 "-- ... service_role execute grant 都保留"（0136 已是 writer）' }),
+});
 export const CREATE_TOUR_ORDER_UNICODE_IDENTIFIER_EXCLUSIONS = Object.freeze({});
 
 // 單一來源：create_tour_order DDL 掃描（#777）。純函式，同時供真實 migration 與合成 mutation 字串使用。
@@ -122,11 +136,12 @@ const UNICODE_IDENTIFIER_RE = /\bu&['"]/i;
 // 無法證明不會組出 create_tour_order DDL。包含 trigger 的 execute function|procedure、單一字面量 EXECUTE 在內都會命中，
 // 屬已知且文件化的多報；每個命中檔案必須在 CREATE_TOUR_ORDER_UNRESOLVED_EXECUTE_EXCLUSIONS 逐檔附理由。
 // 欄位名稱 unresolvedExecute 沿用，語意為「有非權限語法的 execute 關鍵字」。線性時間、無法被引號失同步繞過。
-const EXECUTE_KEYWORD_RE = /(?<![A-Za-z0-9_])execute(?![A-Za-z0-9_])(?!\s+on\b)/i;
-const DYNAMIC_SQL_RE = /\bexecute\b(?!\s+on\b)[^;]*?create_tour_order/i;
+// 權限語法例外必須是 ASCII 空白後接「完整的」on：on$x、onä、NBSP+on 在 PostgreSQL 都是識別字（$ 與非 ASCII 皆為識別字字元），不是權限語法。
+const PRIVILEGE_ON = String.raw`(?![ \t\n\r\f\v]+on(?![A-Za-z0-9_$]|[^\x00-\x7F]))`;
+const EXECUTE_KEYWORD_RE = new RegExp(String.raw`(?<![A-Za-z0-9_])execute(?![A-Za-z0-9_])${PRIVILEGE_ON}`, 'iu');
+const DYNAMIC_SQL_RE = new RegExp(String.raw`(?<![A-Za-z0-9_])execute(?![A-Za-z0-9_])${PRIVILEGE_ON}[^;]*?create_tour_order`, 'iu');
 
-export function scanCreateTourOrderDdl(sqlText) {
-  const sql = stripSqlComments(sqlText);
+function scanText(sql) {
   return {
     writer: WRITER_RE.test(sql),
     drop: DROP_RE.test(sql),
@@ -135,6 +150,29 @@ export function scanCreateTourOrderDdl(sqlText) {
     unicodeIdentifier: UNICODE_IDENTIFIER_RE.test(sql),
     unresolvedExecute: EXECUTE_KEYWORD_RE.test(sql),
   };
+}
+const FLAG_NAMES = Object.freeze(['writer', 'drop', 'schemaWideAcl', 'dynamicSql', 'unicodeIdentifier', 'unresolvedExecute']);
+
+// 與 lexer 無關的 fail-closed 掃描：每個旗標同時在「原始文字」與「剝註解後文字」計算並取聯集。
+// 原始文字不會因 lexer 誤判（例如非 ASCII dollar-quote tag）而漏掉真正的程式碼；註解只會多出 false positive。
+// lexer 丟錯（畸形 SQL）時不吞掉：改用原始文字結果，並以 lexerError 回報（真實 migration 測試要求為 null）。
+// raw／stripped 分開回傳，讓測試能證明「只在註解中命中」的檔案確實是註解造成的（CREATE_TOUR_ORDER_COMMENT_ONLY_HITS）。
+export function scanCreateTourOrderDdlParts(sqlText) {
+  const raw = scanText(String(sqlText ?? ''));
+  let stripped = null;
+  let lexerError = null;
+  try {
+    stripped = scanText(stripSqlComments(sqlText));
+  } catch (error) {
+    lexerError = String(error?.message ?? error);
+  }
+  const combined = Object.fromEntries(FLAG_NAMES.map((name) => [name, raw[name] || Boolean(stripped?.[name])]));
+  return { raw, stripped, combined, lexerError };
+}
+
+export function scanCreateTourOrderDdl(sqlText) {
+  const { combined, lexerError } = scanCreateTourOrderDdlParts(sqlText);
+  return { ...combined, lexerError };
 }
 
 const ISSUE_46_CLOSURE_FAMILY_TABLE = Object.freeze([

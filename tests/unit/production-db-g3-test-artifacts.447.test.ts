@@ -1,4 +1,4 @@
-import { getProductionDbG3AuthzContract, ISSUE_46_CLOSURE_COVERAGE, ISSUE_46_CLOSURE_FAMILIES, ISSUE_46_CLOSURE_FILE_MIGRATIONS, CREATE_TOUR_ORDER_WRITER_PREFIXES, CREATE_TOUR_ORDER_EXCLUDED_DDL, CREATE_TOUR_ORDER_SCHEMA_WIDE_ACL_EXCLUSIONS, CREATE_TOUR_ORDER_DYNAMIC_SQL_EXCLUSIONS, CREATE_TOUR_ORDER_UNICODE_IDENTIFIER_EXCLUSIONS, CREATE_TOUR_ORDER_UNRESOLVED_EXECUTE_EXCLUSIONS, scanCreateTourOrderDdl } from '../../scripts/agents/production-db-g3-authz-contracts.mjs';
+import { getProductionDbG3AuthzContract, ISSUE_46_CLOSURE_COVERAGE, ISSUE_46_CLOSURE_FAMILIES, ISSUE_46_CLOSURE_FILE_MIGRATIONS, CREATE_TOUR_ORDER_WRITER_PREFIXES, CREATE_TOUR_ORDER_EXCLUDED_DDL, CREATE_TOUR_ORDER_SCHEMA_WIDE_ACL_EXCLUSIONS, CREATE_TOUR_ORDER_DYNAMIC_SQL_EXCLUSIONS, CREATE_TOUR_ORDER_UNICODE_IDENTIFIER_EXCLUSIONS, CREATE_TOUR_ORDER_UNRESOLVED_EXECUTE_EXCLUSIONS, CREATE_TOUR_ORDER_COMMENT_ONLY_HITS, scanCreateTourOrderDdlParts, scanCreateTourOrderDdl } from '../../scripts/agents/production-db-g3-authz-contracts.mjs';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -863,7 +863,18 @@ describe('#725 N2 closure evidence follows plan migration content, not scope nam
   it('every SQL migration that writes create_tour_order body/security/ACL is in CREATE_TOUR_ORDER_WRITER_PREFIXES (#774/#777)', () => {
     const dir=join(process.cwd(),'supabase/migrations');
     const files=readdirSync(dir).filter(f=>f.endsWith('.sql'));
-    const scans=files.map(f=>({prefix:f.split('_')[0],scan:scanCreateTourOrderDdl(readFileSync(join(dir,f),'utf8'))}));
+    const parts=files.map(f=>({prefix:f.split('_')[0],...scanCreateTourOrderDdlParts(readFileSync(join(dir,f),'utf8'))}));
+    // lexer 不得對任何真實 migration 失敗。
+    expect(parts.filter(x=>x.lexerError)).toEqual([]);
+    // 原始文字掃描多出的命中必須與 CREATE_TOUR_ORDER_COMMENT_ONLY_HITS 精確相等（剝註解後該旗標確實消失，無法藏真程式碼）。
+    const commentOnly:Record<string,string[]>={};
+    for(const x of parts){
+      const extra=(Object.keys(x.raw) as string[]).filter(k=>(x.raw as any)[k]&&!(x.stripped as any)[k]);
+      if(extra.length) commentOnly[x.prefix]=extra;
+    }
+    expect(Object.fromEntries(Object.entries(CREATE_TOUR_ORDER_COMMENT_ONLY_HITS).map(([k,v]:any)=>[k,[...v.flags]]))).toEqual(commentOnly);
+    for(const v of Object.values(CREATE_TOUR_ORDER_COMMENT_ONLY_HITS) as any[]) expect(v.reason).toMatch(/註解/);
+    const scans=parts.map(x=>({prefix:x.prefix,scan:Object.fromEntries(Object.entries(x.combined).map(([k,val])=>[k,val&&!((CREATE_TOUR_ORDER_COMMENT_ONLY_HITS as any)[x.prefix]?.flags.includes(k))])) as any}));
     const writers=scans.filter(x=>x.scan.writer).map(x=>x.prefix);
     expect(writers.length).toBeGreaterThan(0);
     for(const prefix of writers) expect(CREATE_TOUR_ORDER_WRITER_PREFIXES).toContain(prefix);
@@ -885,6 +896,8 @@ describe('#725 N2 closure evidence follows plan migration content, not scope nam
   });
 
   describe('scanCreateTourOrderDdl mutation cases (#777)', () => {
+    // 註解剝除語意（只看 lexer 剝註解後的結果）；scanCreateTourOrderDdl 本身是原始文字與剝註解結果的聯集。
+    const strippedScan=(sql:string)=>scanCreateTourOrderDdlParts(sql).stripped as any;
     const W='create or replace function public.create_tour_order(a int) returns void as $$ select 1 $$ language sql;';
     it.each([
       ['plain create or replace function', W],
@@ -917,11 +930,11 @@ language sql security definer as $$ select 1 $$;
     });
 
     it('Unicode-escaped quoted identifiers fail closed (#777 Codex P2)', () => {
-      expect(scanCreateTourOrderDdl('CREATE FUNCTION U&"publ\\0069c".U&"create_tour_ord\\0065r"() returns void as $$ $$ language sql;').unicodeIdentifier).toBe(true);
-      expect(scanCreateTourOrderDdl('create function public.u&"create_tour_ord\\+000065r"() returns void as $$ $$ language sql;').unicodeIdentifier).toBe(true);
-      expect(scanCreateTourOrderDdl('alter function u&"x!0061" uescape \'!\' rename to y;').unicodeIdentifier).toBe(true);
-      expect(scanCreateTourOrderDdl('create function public."create_tour_order"() returns void as $$ $$ language sql;').unicodeIdentifier).toBe(false);
-      expect(scanCreateTourOrderDdl('-- U&"x"\n/* u&"y" */ select 1;').unicodeIdentifier).toBe(false);
+      expect(strippedScan('CREATE FUNCTION U&"publ\\0069c".U&"create_tour_ord\\0065r"() returns void as $$ $$ language sql;').unicodeIdentifier).toBe(true);
+      expect(strippedScan('create function public.u&"create_tour_ord\\+000065r"() returns void as $$ $$ language sql;').unicodeIdentifier).toBe(true);
+      expect(strippedScan('alter function u&"x!0061" uescape \'!\' rename to y;').unicodeIdentifier).toBe(true);
+      expect(strippedScan('create function public."create_tour_order"() returns void as $$ $$ language sql;').unicodeIdentifier).toBe(false);
+      expect(strippedScan('-- U&"x"\n/* u&"y" */ select 1;').unicodeIdentifier).toBe(false);
     });
 
     it('Unicode string constants fail closed (#777 NB1)', () => {
@@ -962,7 +975,7 @@ language sql security definer as $$ select 1 $$;
     });
 
     it('any non-privilege EXECUTE keyword fails closed by plain text rule (#777)', () => {
-      const u=(sql:string)=>scanCreateTourOrderDdl(sql).unresolvedExecute;
+      const u=(sql:string)=>strippedScan(sql).unresolvedExecute;
       expect(u("EXECUTE 'alter function public.create_' || 'tour_order(int) security definer';")).toBe(true);
       expect(u("execute format('alter function %I.%I() security definer', 'public','create_tour_order');")).toBe(true);
       expect(u('execute v_sql;')).toBe(true);
@@ -984,6 +997,27 @@ language sql security definer as $$ select 1 $$;
       expect(u('-- execute v_sql;\n/* execute x */ select 1;')).toBe(false);
     });
 
+    it('execute-on exception requires ASCII whitespace and a complete on (#777 B1)', () => {
+      const u=(sql:string)=>scanCreateTourOrderDdl(sql).unresolvedExecute;
+      expect(u('do $$ begin execute on$x; end $$;')).toBe(true);
+      expect(u('do $$ begin execute onä; end $$;')).toBe(true);
+      expect(u('do $$ begin execute on; end $$;')).toBe(true);
+      expect(u('do $$ begin execute on x; end $$;')).toBe(true);
+      expect(u('execute /* c */ on x;')).toBe(true);
+      expect(u('grant execute on function f() to x;')).toBe(false);
+      expect(u('revoke execute\n\ton function f() from x;')).toBe(false);
+      expect(u('revoke execute on all functions in schema public from anon;')).toBe(false);
+    });
+
+    it('lexer-independent union scan catches code a mis-lexed dollar tag would hide (#777 B2)', () => {
+      const w=(sql:string)=>{const r=scanCreateTourOrderDdl(sql);return r.writer||r.unresolvedExecute;};
+      expect(w('select $€$ -- $€$; alter function public.create_tour_order(int) security definer;')).toBe(true);
+      expect(w("do $€$ begin perform $₤$ -- $₤$; execute 'alter function public.create_' || 'tour_order(int) security definer'; end $€$;")).toBe(true);
+      expect(w('select 1 as €$$, $$ -- $$; alter function public.create_tour_order(int) security invoker;')).toBe(true);
+      expect(scanCreateTourOrderDdl('select $€$ -- $€$; alter function public.create_tour_order(int) security definer;').writer).toBe(true);
+      expect(scanCreateTourOrderDdl('select 1 as €$$, $$ -- $$; alter function public.create_tour_order(int) security invoker;').writer).toBe(true);
+    });
+
     it('EXECUTE keyword scan is linear-time on 200k input', () => {
       const t0=performance.now();
       scanCreateTourOrderDdl("execute 'select 1'"+" || 'x'".repeat(30000)+';');
@@ -994,8 +1028,8 @@ language sql security definer as $$ select 1 $$;
     });
 
     it('nested block comments are stripped as one comment', () => {
-      expect(scanCreateTourOrderDdl('/* outer /* inner */ '+W+' */ select 1;').writer).toBe(false);
-      expect(scanCreateTourOrderDdl('/* outer /* inner */ x */ '+W).writer).toBe(true);
+      expect(strippedScan('/* outer /* inner */ '+W+' */ select 1;').writer).toBe(false);
+      expect(strippedScan('/* outer /* inner */ x */ '+W).writer).toBe(true);
     });
 
     it.each([
@@ -1006,15 +1040,20 @@ language sql security definer as $$ select 1 $$;
       expect(scanCreateTourOrderDdl(sql).writer).toBe(true);
     });
 
-    it('malformed lexical forms throw instead of being skipped (fail closed)', () => {
-      expect(() => scanCreateTourOrderDdl("select 'unterminated; "+W)).toThrow(/UNSUPPORTED_SQL_LEXICAL_FORM/);
-      expect(() => scanCreateTourOrderDdl('select $$ unterminated; '+W)).toThrow(/UNSUPPORTED_SQL_LEXICAL_FORM/);
+    it('malformed lexical forms are reported via lexerError and still scanned on raw text (fail closed)', () => {
+      const bad=scanCreateTourOrderDdl("select 'unterminated; "+W);
+      expect(bad.lexerError).toMatch(/UNSUPPORTED_SQL_LEXICAL_FORM/);
+      expect(bad.writer).toBe(true);
+      const bad2=scanCreateTourOrderDdl('select $$ unterminated; '+W);
+      expect(bad2.lexerError).toMatch(/UNSUPPORTED_SQL_LEXICAL_FORM/);
+      expect(bad2.writer).toBe(true);
+      expect(scanCreateTourOrderDdl('select 1;').lexerError).toBeNull();
     });
 
     it('does not flag commented-out code (line and block comments)', () => {
-      expect(scanCreateTourOrderDdl('-- '+W).writer).toBe(false);
-      expect(scanCreateTourOrderDdl('/* '+W+'\n -- nested */ select 1;').writer).toBe(false);
-      expect(scanCreateTourOrderDdl('/* a */ '+W+' /* b */').writer).toBe(true);
+      expect(strippedScan('-- '+W).writer).toBe(false);
+      expect(strippedScan('/* '+W+'\n -- nested */ select 1;').writer).toBe(false);
+      expect(strippedScan('/* a */ '+W+' /* b */').writer).toBe(true);
     });
 
     it('does not flag other functions or drop-only overload cleanup as a writer', () => {
@@ -1036,9 +1075,9 @@ language sql security definer as $$ select 1 $$;
     });
 
     it('ignores schema-wide ACL text inside comments and table-only default privileges', () => {
-      expect(scanCreateTourOrderDdl('-- alter default privileges grant all on functions\n/* grant execute on all functions in schema public */').schemaWideAcl).toBe(false);
-      expect(scanCreateTourOrderDdl('alter default privileges in schema public grant select on tables to anon;').schemaWideAcl).toBe(false);
-      expect(scanCreateTourOrderDdl('grant select on all tables in schema public to anon;').schemaWideAcl).toBe(false);
+      expect(strippedScan('-- alter default privileges grant all on functions\n/* grant execute on all functions in schema public */').schemaWideAcl).toBe(false);
+      expect(strippedScan('alter default privileges in schema public grant select on tables to anon;').schemaWideAcl).toBe(false);
+      expect(strippedScan('grant select on all tables in schema public to anon;').schemaWideAcl).toBe(false);
     });
 
     it.each([
@@ -1050,9 +1089,9 @@ language sql security definer as $$ select 1 $$;
     });
 
     it('plain grant/revoke execute and unrelated execute are not dynamic SQL', () => {
-      expect(scanCreateTourOrderDdl('revoke execute on function public.create_tour_order(int) from public;').dynamicSql).toBe(false);
-      expect(scanCreateTourOrderDdl("execute format('select 1 from %I', 'trips'); select create_tour_order(1);").dynamicSql).toBe(false);
-      expect(scanCreateTourOrderDdl("-- execute format('x', 'create_tour_order');").dynamicSql).toBe(false);
+      expect(strippedScan('revoke execute on function public.create_tour_order(int) from public;').dynamicSql).toBe(false);
+      expect(strippedScan("execute format('select 1 from %I', 'trips'); select create_tour_order(1);").dynamicSql).toBe(false);
+      expect(strippedScan("-- execute format('x', 'create_tour_order');").dynamicSql).toBe(false);
     });
   });
 
