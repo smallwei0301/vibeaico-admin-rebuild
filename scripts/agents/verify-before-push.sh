@@ -10,7 +10,7 @@
 #   scripts/agents/verify-before-push.sh [--remote <name>] [--push] [--] [vitest 目標…]
 #
 #   --remote <name>  遠端名稱（預設 origin）
-#   --push           全部通過後執行 `git push -u <remote> <branch>`；不帶時只驗證
+#   --push           全部通過後推送鎖定的 SHA 並設定 upstream；不帶時只驗證
 #   vitest 目標      指定時只跑這些測試（`npx vitest run <目標…>`）；未指定時跑 `npm test`
 #
 # 檢查順序（任一失敗即停止，不 push）：
@@ -120,7 +120,10 @@ assert_clean_tree "（驗證期間產生）"
 echo "VERIFY_PASS: ${branch} @ ${head_sha}"
 
 if [[ "$do_push" == true ]]; then
-  echo "STEP: git push -u ${remote} ${head_sha}:refs/heads/${branch}"
-  git push -u "$remote" "${head_sha}:refs/heads/${branch}" || fail "git push 失敗"
-  echo "PUSHED: ${branch} @ ${head_sha}"
+  echo "STEP: git push ${remote} ${head_sha}:refs/heads/${branch}"
+  git push "$remote" "${head_sha}:refs/heads/${branch}" || fail "git push 失敗"
+  # 以 SHA 為來源的 refspec 不會被 -u 設成追蹤分支；推送成功後明確寫入 upstream 設定。
+  git config "branch.${branch}.remote" "$remote" || fail "設定 upstream 失敗"
+  git config "branch.${branch}.merge" "refs/heads/${branch}" || fail "設定 upstream 失敗"
+  echo "PUSHED: ${branch} @ ${head_sha}（upstream: ${remote}/${branch}）"
 fi

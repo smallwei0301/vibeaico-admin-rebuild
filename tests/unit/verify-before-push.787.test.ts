@@ -182,6 +182,14 @@ describe('verify-before-push.sh（#787）', () => {
     expect(remoteHead(remote)).toBe(locked);
   });
 
+  it('新分支推送後設定 upstream（branch.<b>.remote／merge）', () => {
+    const { work } = setup();
+    const r = run(work, ['--push']);
+    expect(r.status, r.stderr).toBe(0);
+    expect(git(work, 'config', `branch.${BRANCH}.remote`)).toBe('origin');
+    expect(git(work, 'config', `branch.${BRANCH}.merge`)).toBe(`refs/heads/${BRANCH}`);
+  });
+
   it('detached HEAD：非零退出', () => {
     const { work } = setup();
     git(work, 'checkout', '-q', '--detach');
