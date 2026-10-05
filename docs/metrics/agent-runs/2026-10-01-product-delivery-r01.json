@@ -67,6 +67,12 @@
     },
     {
       "ref": "issue/777"
+    },
+    {
+      "ref": "issue/780"
+    },
+    {
+      "ref": "issue/781"
     }
   ],
   "main": {
@@ -125,7 +131,8 @@
         "outputTokens": null,
         "cachedTokens": null,
         "note": "Owner-accepted Sol scope dispatch for #42; actual model unverified.",
-        "count": 1
+        "count": 1,
+        "issue": 42
       },
       {
         "id": "20261001-builder-42",
@@ -151,7 +158,8 @@
         "outputTokens": null,
         "cachedTokens": null,
         "note": "Accepted follow-up scope admission for #46, pending design because atomic availability support and existing INSTANT RPC path are absent; no build started.",
-        "count": 1
+        "count": 1,
+        "issue": 46
       },
       {
         "id": "20261001-sol-scope-47",
@@ -164,7 +172,8 @@
         "outputTokens": null,
         "cachedTokens": null,
         "note": "Owner-accepted Sol selector follow-up for #47; actual model unverified; no provider test or LINE notification.",
-        "count": 1
+        "count": 1,
+        "issue": 47
       },
       {
         "id": "20261001-sol-review-42",
@@ -177,7 +186,8 @@
         "outputTokens": null,
         "cachedTokens": null,
         "note": "Independent source review dispatched to /root/review42 on source090113420ff5b2e9de511a25d0fd183df52c4639; outcome pending; requested gpt-6.1-sol actual unknown; distinct actor from /root/build42.",
-        "count": 1
+        "count": 1,
+        "issue": 42
       },
       {
         "id": "20261001-builder-47",
@@ -203,7 +213,8 @@
         "outputTokens": null,
         "cachedTokens": null,
         "note": "Independent ordinary review47 dispatched after review42 finished FIX_REQUIRED; reviewer distinct from builder47. Pin sourcec3aae685773b18f3e611d8013ebb4866fee40299, requestedgpt6.1-sol actualunknown; no parallel ordinary final audit.",
-        "count": 1
+        "count": 1,
+        "issue": 47
       },
       {
         "id": "20261001-luna-closure-playbook",
@@ -242,7 +253,8 @@
         "outputTokens": null,
         "cachedTokens": null,
         "note": "Distinct Issue43 bounded acceptance triage by same product_scope actor; found falseempty onAPIerror, acceptedreserve scope. requestedgpt6.1-sol actualunknown; source0andnoDBwrites.",
-        "count": 1
+        "count": 1,
+        "issue": 43
       },
       {
         "id": "20261001-luna-ci42",
@@ -294,7 +306,8 @@
         "outputTokens": null,
         "cachedTokens": null,
         "note": "Actual product_scope followup after713newTESTenter to select43frozenreserve promotion/trueHTTPrawDB remainingdeadline/reload/tenant acceptance minimalcase; no runtime/DBwrites. requestedgpt6.1-sol actualunknown.",
-        "count": 1
+        "count": 1,
+        "issue": 43
       },
       {
         "id": "20261001-sol-review43-early",
@@ -307,7 +320,8 @@
         "outputTokens": null,
         "cachedTokens": null,
         "note": "Distinct actor /root/review47 dispatched EARLY_DIFF_AUDIT43 on source43bb36b9, independent builder47. OnlySOURCE_CLEAR_FINAL_HOLD/FIX_REQUIRED, notordinaryFINAL approval while713finalslotpending. No DB/source/Runwrites. Requestedgpt6.1-sol actualunknown.",
-        "count": 1
+        "count": 1,
+        "issue": 43
       },
       {
         "id": "20261001-sol-reserve46-prepare",
@@ -333,7 +347,8 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "note": "Distinct review42 EARLY46 on frozen61f9435 schemaSOURCE_PREPARE afterformalMAINpromotion; builder42differentactor. NativeNOT_RUN, nofinalapproval. IndependentStandards/Spec+risk/admission/ACL/tenant/DST scope only, noRun/sourcewrites orCIpoll. Requestedgpt6.1-sol OwnerSESSIONoverride actualunknown."
+        "note": "Distinct review42 EARLY46 on frozen61f9435 schemaSOURCE_PREPARE afterformalMAINpromotion; builder42differentactor. NativeNOT_RUN, nofinalapproval. IndependentStandards/Spec+risk/admission/ACL/tenant/DST scope only, noRun/sourcewrites orCIpoll. Requestedgpt6.1-sol OwnerSESSIONoverride actualunknown.",
+        "issue": 46
       },
       {
         "id": "20261001-sol-reserve42-seasonal-acceptance",
@@ -372,7 +387,8 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "note": "Distinctreview42 bounded DB/ambiguousreview DIAGNOSE permitted once percanonical7: automatedP1comment4152711632 claims nonexistentancestry onsynthetic3e89fcc. Checkactuald7/7a ancestry+SQLbytes/sourcepin+freshbaseline, currentP2sourceclosure; noFinalapproval whileNativepending. ModelSol6.1Owneroverride unknown; builder42differentactor."
+        "note": "Distinctreview42 bounded DB/ambiguousreview DIAGNOSE permitted once percanonical7: automatedP1comment4152711632 claims nonexistentancestry onsynthetic3e89fcc. Checkactuald7/7a ancestry+SQLbytes/sourcepin+freshbaseline, currentP2sourceclosure; noFinalapproval whileNativepending. ModelSol6.1Owneroverride unknown; builder42differentactor.",
+        "issue": 46
       },
       {
         "id": "20261001-sol-reserve46-bounded-g3-wiring",
@@ -398,7 +414,8 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "note": "Distinctreview47 versusbuilder47 acceptsEARLY42 seasonaltestonly197diff exact6aac afterLOCAL10freshnative814/E2E23/cleanup. Standard+Spec/existingcontract/tenant/fixturecleanup sourceaudit; canonicalTESTrequiredstillpendingsoEARLYcannotCLOSE_APPROVE. Futurefinalsamechainafterfreshcanonicalgates, nootherordinaryFinalinflight. Requestedgpt6.1solactualunknownOwnerSESSION."
+        "note": "Distinctreview47 versusbuilder47 acceptsEARLY42 seasonaltestonly197diff exact6aac afterLOCAL10freshnative814/E2E23/cleanup. Standard+Spec/existingcontract/tenant/fixturecleanup sourceaudit; canonicalTESTrequiredstillpendingsoEARLYcannotCLOSE_APPROVE. Futurefinalsamechainafterfreshcanonicalgates, nootherordinaryFinalinflight. Requestedgpt6.1solactualunknownOwnerSESSION.",
+        "issue": 42
       },
       {
         "id": "20261001-sol-diagnose42-canonical-welcome-e2e",
@@ -424,7 +441,8 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "note": "Distinctreview42 vsbuilder42 EARLY exact11d194e source9releaseCIunit+refundnativepreconditionfiles on263b. Two-axis currentselectors/exactclosure/prereqs/0099literalalias/35+1pending/requiredexactcases/fixturecleanup; sourceplan92units notnative. GOV_GATE independentFinalRisk separatepending. NoCLOSE_APPROVE beforefreshnative/CI/canonical/requiredRisk. Main723 branchonlyseasonalrequiredfile mapping barrier; manifest+lastwriterG2technicalgapexplicit notOwnerpermission. Requestedgpt6.1sol OwnerSESSION actualunknown."
+        "note": "Distinctreview42 vsbuilder42 EARLY exact11d194e source9releaseCIunit+refundnativepreconditionfiles on263b. Two-axis currentselectors/exactclosure/prereqs/0099literalalias/35+1pending/requiredexactcases/fixturecleanup; sourceplan92units notnative. GOV_GATE independentFinalRisk separatepending. NoCLOSE_APPROVE beforefreshnative/CI/canonical/requiredRisk. Main723 branchonlyseasonalrequiredfile mapping barrier; manifest+lastwriterG2technicalgapexplicit notOwnerpermission. Requestedgpt6.1sol OwnerSESSION actualunknown.",
+        "issue": 46
       },
       {
         "id": "20261001-luna-closeout42-seasonal-lessons",
@@ -450,7 +468,8 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "note": "AcceptedfreshdistinctSol6.1Riskactorbeforedispatch perREADY44e84f63 FULL exact25020ad12files. HISTORY_UNAVAILABLE #552 priorwholeIssuepremiumhistoryunverified (notzero), callableOPENAIcatalog/modelselector durable5929558049; no premiumreservation/dispatch. SourceRisk unactivatedreleasegate+coverage/cleanup only; freshSourceLOCAL817/3E2E23/3 ownedcleanup, maina30 E2Efailureauthme preserved. CanonicalordinaryFinal/G3/Productionpending. Builder42 distinctfreshRiskactor/session; actualprovideridentityunknown, realselecteddispatch maytrustedOPERATOR_ATTEST notprovidertelemetry. NoSource/DB/push/CIpoll/Runwrites; counterexamples+priorfindings/currentdigest required."
+        "note": "AcceptedfreshdistinctSol6.1Riskactorbeforedispatch perREADY44e84f63 FULL exact25020ad12files. HISTORY_UNAVAILABLE #552 priorwholeIssuepremiumhistoryunverified (notzero), callableOPENAIcatalog/modelselector durable5929558049; no premiumreservation/dispatch. SourceRisk unactivatedreleasegate+coverage/cleanup only; freshSourceLOCAL817/3E2E23/3 ownedcleanup, maina30 E2Efailureauthme preserved. CanonicalordinaryFinal/G3/Productionpending. Builder42 distinctfreshRiskactor/session; actualprovideridentityunknown, realselecteddispatch maytrustedOPERATOR_ATTEST notprovidertelemetry. NoSource/DB/push/CIpoll/Runwrites; counterexamples+priorfindings/currentdigest required.",
+        "issue": 46
       },
       {
         "id": "20261001-sol-reserve42-welcome-tenant-precondition",
@@ -528,7 +547,8 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "note": "Independent GUIDE responsive Standards review on exact f56 against current-main docs/integration/20 §1.1/§11 found the new retry error body at 14px and the default retry button below 44px. Requested gpt-6.1-sol under Owner OpenAI-session override; actual model unverified. Distinct from builder."
+        "note": "Independent GUIDE responsive Standards review on exact f56 against current-main docs/integration/20 §1.1/§11 found the new retry error body at 14px and the default retry button below 44px. Requested gpt-6.1-sol under Owner OpenAI-session override; actual model unverified. Distinct from builder.",
+        "issue": 43
       },
       {
         "id": "20261001-sol-spec-review43-f56",
@@ -541,7 +561,8 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "note": "Independent #43 acceptance review on exact f56: disclosed remaining gaps are 360px, guide-count/long-content/card-category CTA coverage and real browser action→reload against trusted Preview. These remain Issue acceptance pending, not missing category 1–7 source. Requested gpt-6.1-sol, actual model unverified, distinct from builder."
+        "note": "Independent #43 acceptance review on exact f56: disclosed remaining gaps are 360px, guide-count/long-content/card-category CTA coverage and real browser action→reload against trusted Preview. These remain Issue acceptance pending, not missing category 1–7 source. Requested gpt-6.1-sol, actual model unverified, distinct from builder.",
+        "issue": 43
       },
       {
         "id": "20261001-sol-builder43-responsive-fix",
@@ -1273,7 +1294,8 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "note": "Opus review of commit 1338d510; dispatched via Agent model=opus; self-reported claude-opus-5-5; served identity unverified."
+        "note": "Opus review of commit 1338d510; dispatched via Agent model=opus; self-reported claude-opus-5-5; served identity unverified.",
+        "issue": 11
       },
       {
         "id": "20261001-audit-11-399f49d4",
@@ -1286,7 +1308,8 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "note": "Opus review of commit 399f49d4 (r01 ledger); dispatched via Agent model=opus; self-reported claude-opus-5-5; served identity unverified."
+        "note": "Opus review of commit 399f49d4 (r01 ledger); dispatched via Agent model=opus; self-reported claude-opus-5-5; served identity unverified.",
+        "issue": 11
       },
       {
         "id": "20261002-builder-11-30223032",
@@ -1325,7 +1348,8 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "note": "Incremental review of commit dd681ac3; conclusion: PASS. Standards/Spec: 0, Final Risk: NONE."
+        "note": "Incremental review of commit dd681ac3; conclusion: PASS. Standards/Spec: 0, Final Risk: NONE.",
+        "issue": 11
       },
       {
         "id": "20261002-audit-11-30223032",
@@ -1338,7 +1362,8 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "note": "Incremental review of commit 30223032; conclusion: PASS. Standards/Spec: 0, Final Risk: NONE."
+        "note": "Incremental review of commit 30223032; conclusion: PASS. Standards/Spec: 0, Final Risk: NONE.",
+        "issue": 11
       },
       {
         "id": "20261002-audit-11-2568a153",
@@ -1351,7 +1376,8 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "note": "Incremental review of commit 2568a153; conclusion: null (review in progress). Standards/Spec: pending, Final Risk: pending."
+        "note": "Incremental review of commit 2568a153; conclusion: null (review in progress). Standards/Spec: pending, Final Risk: pending.",
+        "issue": 11
       },
       {
         "id": "20261002-scout-ledger-fix-1ad47308",
@@ -3662,14 +3688,340 @@
         "cachedTokens": null,
         "contextClass": "compact",
         "note": "Haiku scout: added issue/777 source, build task, merge audit, and ledger entry"
+      },
+      {
+        "id": "20261005-build-777-rework",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Build rework rounds for #777 G3 lexer fix (04:06:20Z–05:29:33Z, commits 1cc570ac..711fc0a5)",
+        "count": 9,
+        "issue": 777,
+        "startedAt": "2026-10-05T04:06:20Z",
+        "completedAt": "2026-10-05T05:29:33Z",
+        "evidenceRef": "commits 1cc570ac, 0ee0a810, 9ab6cf70, ce8f281c, 1d706bb3, 39561814, 8142d292, bd85aaf9, 711fc0a5"
+      },
+      {
+        "id": "20261005-build-780-lexer",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Build #780 lexer implementation (05:36Z–07:27:22Z, commits f111f202..196e1e26)",
+        "count": 5,
+        "issue": 780,
+        "startedAt": "2026-10-05T05:36:00Z",
+        "completedAt": "2026-10-05T07:27:22Z",
+        "evidenceRef": "commits f111f202, d37e4bbf, 8daf8feb, 61469863, 196e1e26"
+      },
+      {
+        "id": "20261005-audit-merge-779",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Opus audit approval for merge #779 (07:38:04Z)",
+        "count": 1,
+        "issue": 777,
+        "startedAt": "2026-10-05T07:38:04Z",
+        "completedAt": "2026-10-05T07:38:20Z",
+        "evidenceRef": "squash 24841f1d (#779)"
+      },
+      {
+        "id": "20261005-audit-closure-773-774-777",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Audit closure verification for #773/#774/#777 ISSUE_CLOSED (08:36:58Z–08:38Z)",
+        "count": 3,
+        "issue": 777,
+        "startedAt": "2026-10-05T08:36:58Z",
+        "completedAt": "2026-10-05T08:38:30Z",
+        "evidenceRef": "issuecomments 5991000002, 5991000226, 5991000488 (Sol CLOSE_APPROVED)"
+      },
+      {
+        "id": "20261005-audit-779-r1",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 777,
+        "startedAt": "2026-10-05T04:12:25Z",
+        "completedAt": "2026-10-05T04:16:39Z",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "7cf5adcb",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "Round 1: FAIL (B1 comment stripping)"
+      },
+      {
+        "id": "20261005-audit-779-r2",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 777,
+        "startedAt": "2026-10-05T04:19:48Z",
+        "completedAt": "2026-10-05T04:22:09Z",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "1cc570ac",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "Round 2: PASS"
+      },
+      {
+        "id": "20261005-audit-779-r3",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 777,
+        "startedAt": "2026-10-05T04:33:33Z",
+        "completedAt": "2026-10-05T04:36:45Z",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "0ee0a810",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "Round 3: PASS"
+      },
+      {
+        "id": "20261005-audit-779-r4",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 777,
+        "startedAt": "2026-10-05T04:39:23Z",
+        "completedAt": "2026-10-05T04:48:14Z",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "9ab6cf70",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "Round 4: PASS (backtracking regression noted)"
+      },
+      {
+        "id": "20261005-audit-779-r5",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 777,
+        "startedAt": "2026-10-05T04:51:29Z",
+        "completedAt": "2026-10-05T04:54:19Z",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "ce8f281c",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "Round 5: PASS"
+      },
+      {
+        "id": "20261005-audit-779-r6",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 777,
+        "startedAt": "2026-10-05T05:02:25Z",
+        "completedAt": "2026-10-05T05:06:30Z",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "1d706bb3",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "Round 6: NOT_PASS (E-string, function var)"
+      },
+      {
+        "id": "20261005-audit-779-r7",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 777,
+        "startedAt": "2026-10-05T05:09:51Z",
+        "completedAt": "2026-10-05T05:13:07Z",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "39561814",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "Round 7: NOT_PASS (quote desync B3)"
+      },
+      {
+        "id": "20261005-audit-779-r8",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 777,
+        "startedAt": "2026-10-05T05:17:38Z",
+        "completedAt": "2026-10-05T05:23:55Z",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "8142d292",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "Round 8: BLOCKING (on$x, non-ASCII dollar tag)"
+      },
+      {
+        "id": "20261005-audit-779-r9",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 777,
+        "startedAt": "2026-10-05T05:30:13Z",
+        "completedAt": "2026-10-05T05:35:44Z",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "711fc0a5",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "Round 9: BLOCKING (lexer + comment gap)"
+      },
+      {
+        "id": "20261005-audit-779-r10",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 780,
+        "startedAt": "2026-10-05T06:52:03Z",
+        "completedAt": "2026-10-05T07:00:23Z",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "d37e4bbf",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "Round 10: BLOCKING (E-string continuation, ; split, ident class)"
+      },
+      {
+        "id": "20261005-audit-779-r11",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 780,
+        "startedAt": "2026-10-05T07:10:59Z",
+        "completedAt": "2026-10-05T07:23:53Z",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "61469863",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "Round 11: BLOCKING (PG17 \\v continuation)"
+      },
+      {
+        "id": "20261005-audit-779-r12",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 780,
+        "startedAt": "2026-10-05T07:27:53Z",
+        "completedAt": "2026-10-05T07:31:34Z",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "196e1e26",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "Round 12: PASS"
+      },
+      {
+        "id": "20261005-audit-775-opus-cc00fb2d",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 773,
+        "startedAt": "2026-10-05T02:04:50Z",
+        "completedAt": "2026-10-05T02:07:22Z",
+        "sha": "cc00fb2d",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "cc00fb2d",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "Opus review #775: PASS"
+      },
+      {
+        "id": "20261005-audit-775-opus-d47f53c8",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 773,
+        "startedAt": "2026-10-05T02:13:53Z",
+        "completedAt": "2026-10-05T02:15:39Z",
+        "sha": "d47f53c8",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "d47f53c8",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "Opus review #775: PASS"
+      },
+      {
+        "id": "20261005-audit-776-opus-5df08c7b",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "issue": 774,
+        "startedAt": "2026-10-05T02:04:51Z",
+        "completedAt": "2026-10-05T02:09:14Z",
+        "sha": "5df08c7b",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "5df08c7b",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "note": "Opus review #776: PASS"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 15,
-    "issuesClosed": 3,
+    "issuesStarted": 16,
+    "issuesClosed": 6,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
     "exactHeadCiOnly": 0,
@@ -3678,11 +4030,11 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 51,
+    "fullCiRuns": 148,
     "invalidReruns": 5,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0,
-    "note": "37007212982 因 head 被取代 cancelled，37083653366 在 classify 被拒，37082211071 為 #714 source CI，三者不計入；先前 5 個 dispatch run 是否已計入原 30 仍待查證。本輪新增 3 個完整 canonical TEST run：37008702923、37083761493、37090025615 #757: 37105978199 failure（mock 形狀不擬真，已修）、37108030479 success；main push 37112300377 監看中。 #762：37121399537、37124644493 success；37120725291、37124319682 因 head 被取代而取消（不計）。 #763：37128355259 success（cce85365）。 37133703835 success（39748ec3）。 37137459820 success（ae6cabfe）。 #763 收尾：PR 37148553012 success；main push 37151361102 attempt 1 failure（TEST Supabase ECONNRESET，18 無關檔案）、attempt 2 rerun success。 #765：37155693289 因 review 修正被取代而取消（不計）；37156263191 attempt 1 因 GitHub API 503 於 classify 失敗、attempt 2 success。 #765：PR 37159197639 success；main push 37161655288 success。; +1 2026-10-04 PR #768 canonical shared TEST run 37182834760 (head 10662719, success)"
+    "note": "37007212982 因 head 被取代 cancelled，37083653366 在 classify 被拒，37082211071 為 #714 source CI，三者不計入；先前 5 個 dispatch run 是否已計入原 30 仍待查證。本輪新增 3 個完整 canonical TEST run：37008702923、37083761493、37090025615 #757: 37105978199 failure（mock 形狀不擬真，已修）、37108030479 success；main push 37112300377 監看中。 #762：37121399537、37124644493 success；37120725291、37124319682 因 head 被取代而取消（不計）。 #763：37128355259 success（cce85365）。 37133703835 success（39748ec3）。 37137459820 success（ae6cabfe）。 #763 收尾：PR 37148553012 success；main push 37151361102 attempt 1 failure（TEST Supabase ECONNRESET，18 無關檔案）、attempt 2 rerun success。 #765：37155693289 因 review 修正被取代而取消（不計）；37156263191 attempt 1 因 GitHub API 503 於 classify 失敗、attempt 2 success。 #765：PR 37159197639 success；main push 37161655288 success。; +1 2026-10-04 PR #768 canonical shared TEST run 37182834760 (head 10662719, success); LIVE REBUILD 2026-10-05T11:46:05Z: ci.fullCiRuns = completed (success|failure), non-cancelled .github/workflows/ci.yml runs, deduped by run id (a rerun attempt counts once), created after Run start 2026-10-01T03:14:56Z, whose head_sha is a commit of a PR whose body declares RUN_ID: 2026-10-01-product-delivery-r01 (30 PRs: 713 714 715 719 723 725 727 731 733 734 737 738 740 743 744 751 752 757 759 762 763 765 767 768 770 771 772 775 776 779) or is the main push of such a PR's merge commit; plus 1 canonical TEST dispatch this ledger explicitly recorded as this Run's (37083761493, PR #709 branch, success). Result 148 = 123 PR runs (111 pull_request + 12 workflow_dispatch) + 24 main push + 1 noted dispatch; 133+1 success, 14 failure; 51 cancelled runs excluded; PR #782 (MODEL_GOVERNANCE, RUN_ID none) excluded. This supersedes the previous hand-count baseline (51, which carried the unresolved '5 dispatch runs' question). invalidReruns left unchanged (5). Counted run ids: 36810577850(PR#713 c14f01ef success) 36810825537(PR#713 4a7c8a0a success) 36813096694(PR#713 ac8d5654 success) 36814238524(PR#713 ac8d5654 success) 36814288438(PR#714 adf0608d success) 36816705017(PR#713 f1c4984c success) 36817947312(PR#713 f1c4984c success) 36818753669(PR#715 dec730fd success) 36822913910(MAIN#713 9b291ebb success) 36823196438(PR#715 f1c0438a success) 36827423772(PR#719 955b109d failure) 36828034389(PR#719 d7de123f success) 36829391701(PR#719 7a05bbcd success) 36831447495(MAIN#719 701845e4 failure) 36833201119(PR#723 6aac2777 success) 36838286092(PR#723 0d178dc8 success) 36840741621(PR#723 0d178dc8 success) 36845329688(PR#725 b9ca2203 success) 36846439984(MAIN#723 a30acac0 failure) 36849133849(PR#725 25020ad2 success) 36852969928(PR#727 ec1d5508 success) 36857198490(PR#727 ec1d5508 failure) 36862662300(PR#715 f56cadf0 success) 36868657767(PR#715 6676255c success) 36885071854(PR#731 af8a7a10 success) 36885380677(PR#731 228a8c10 success) 36892824792(PR#731 b11968df success) 36895313359(PR#731 14349367 success) 36898637650(PR#731 bcb83b03 failure) 36899284560(PR#731 0b75a42c success) 36902978320(PR#731 3c3dfb58 failure) 36903802975(PR#731 aaf47167 success) 36905935644(PR#731 a0ce9f42 success) 36908468233(PR#731 f945d79a success) 36920180015(PR#733 7c1bd4a7 success) 36923218094(PR#734 145026b5 success) 36951894823(PR#715 183f0208 success) 36951973057(PR#715 183f0208 failure) 36955149036(MAIN#733 075024a7 success) 36955865561(PR#737 c1ed8cb9 success) 36956315234(PR#737 a1a193ab success) 36956761738(MAIN#737 9c1bc969 success) 36957346271(PR#738 6becae71 success) 36958243227(PR#715 f9663d81 success) 36961719387(PR#740 fd16d2ea success) 36962089855(PR#740 5e053401 success) 36962463305(MAIN#740 3b5d34d3 failure) 36963823970(PR#731 fb2bda2b success) 36964242040(PR#731 52b8fa75 success) 36965230556(PR#731 14eb3391 failure) 36969709720(PR#743 057f09ed success) 36970350113(PR#744 c65615c6 success) 36971026374(PR#744 131e6d19 success) 36971391119(PR#731 1928d5ab success) 36975242874(MAIN#744 42f7605d success) 36979639697(PR#731 7364ed2b success) 36983421242(PR#731 63a62259 failure) 36989409527(PR#731 dab21ac9 failure) 36992333574(PR#731 13d53452 failure) 36996678336(PR#731 11aff4c7 success) 37000046696(PR#731 193216c5 success) 37002533186(PR#731 1ad47308 success) 37005494827(PR#731 441650db success) 37008702923(PR#731 83b3fbfb success) 37014341831(MAIN#731 3cd1187f success) 37082211071(PR#714 593731b7 success) 37082958249(MAIN#714 05aa8aa2 success) 37090025615(PR#771 4d29a358 success) 37095867124(MAIN#751 9c2809c1 success) 37097111271(PR#771 607471c1 success) 37097601299(PR#771 f54745b4 failure) 37097716344(PR#771 bac57747 success) 37097767318(PR#771 1cea0239 success) 37097836132(PR#771 38659afd success) 37098159273(MAIN#752 e379ab03 success) 37105978199(PR#771 f7947106 failure) 37108030479(PR#771 25018212 success) 37112300377(MAIN#757 216d2a73 success) 37113139827(PR#771 3fbb4a30 success) 37113422845(PR#771 18f5b600 success) 37113665874(PR#771 2fda1a21 success) 37117779334(PR#771 cef9570e success) 37119723468(MAIN#759 71c0079e success) 37121399537(PR#771 b56f2521 success) 37124644493(PR#771 bfa400dd success) 37127272367(MAIN#762 6d02420d success) 37128355259(PR#771 cce85365 success) 37133703835(PR#771 39748ec3 success) 37137459820(PR#771 ae6cabfe success) 37141237881(PR#771 ba4bca9a success) 37145666175(PR#771 f3997cf0 success) 37148553012(PR#771 236c17bf success) 37151361102(MAIN#763 d5d88f1e success) 37156263191(PR#771 4701a7c4 success) 37159197639(PR#771 4ed6c1f9 success) 37161655288(MAIN#765 e1bea667 success) 37164494467(PR#771 3a92f47e success) 37166817549(MAIN#767 6f308e44 success) 37175382476(PR#771 bf2e3e82 success) 37182834760(PR#771 10662719 success) 37186179275(PR#770 bcfa55f4 success) 37186572275(PR#770 ba6f41bd success) 37186848453(PR#771 6a78c6ff success) 37187451510(PR#770 bca1cfde success) 37187677180(PR#770 c42c6b80 success) 37187879935(PR#770 3d213691 success) 37189191278(PR#770 ed521777 success) 37189447800(PR#771 22b87fc6 success) 37189881128(PR#770 c1b08e2d success) 37191996884(PR#771 dbed2273 success) 37192702511(MAIN#770 170ab413 success) 37194433395(PR#771 d030e966 success) 37198623764(PR#771 e6ea4e3d success) 37201156344(PR#771 ea3cf8ee success) 37204816564(PR#771 46976022 success) 37207921226(PR#771 660c625e success) 37211245451(PR#771 131569bf success) 37214261053(MAIN#768 6e0e51b8 success) 37243405906(PR#725 38a20fbd success) 37243847571(PR#725 8b52d33f success) 37246108140(MAIN#725 287774bb success) 37249301919(PR#771 c48c6aad success) 37249340987(PR#772 ff056e6c success) 37249878632(PR#772 13aa3859 success) 37249953929(PR#771 ce1cf48c success) 37250598438(PR#771 c6f3a32f success) 37251432103(PR#771 1c6e0812 success) 37251833995(MAIN#772 7a0ee537 success) 37252313022(MAIN#771 ee08eb58 success) 37253546716(PR#775 09ee4227 success) 37253663770(PR#775 cc00fb2d success) 37253673963(PR#776 5df08c7b success) 37254552727(PR#775 d47f53c8 success) 37255221330(MAIN#775 8d3ab999 success) 37262467849(PR#779 7cf5adcb success) 37263023517(PR#779 1cc570ac success) 37264029372(PR#779 0ee0a810 success) 37264467232(PR#779 9ab6cf70 success) 37265295419(PR#779 ce8f281c success) 37266031516(PR#779 1d706bb3 success) 37266550631(PR#779 39561814 success) 37267129647(PR#779 8142d292 success) 37268061683(PR#779 711fc0a5 success) 37274572283(PR#779 d37e4bbf success) 37276303188(PR#779 61469863 success) 37277882694(PR#779 196e1e26 success) 37278860517(MAIN#779 24841f1d success) 37083761493(PR#709-dispatch 1e4c7f69 success)"
   },
   "quality": {
     "acceptanceEvidenceCoveragePercent": null,
@@ -3701,8 +4053,8 @@
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 50,
-    "solIssues": 5
+    "solTouches": 130,
+    "solIssues": 18
   },
   "auditability": {
     "evidenceFieldsCompletePercent": null,
@@ -3899,7 +4251,12 @@
     "#770 (Issue #755 R1) Draft PR on branch claude/issue755-r1-invoker. Owner approved merge after CI green (not yet executed). As of 2026-10-04T07:54Z PR #770 is OPEN, Draft, merged=false. Source CI run 37186572275 success; agent-schema-bootstrap run 37186572265 success (local isolated Supabase with 0136: integration 829 passed, create-tour-order-invoker.755 3/3). No canonical TEST schema apply, no Production apply, no Production acceptance.",
     "Correction (commit bca1cfde): notes 182/184 previously (commit 289a1016) misstated #768/#770 as merged and Production acceptance as verified; corrected to live GitHub state (both OPEN Draft, merged=false, acceptance NOT_RUN). Cause: approvals were written as completions.",
     "Correction (commit bca1cfde): task 20261004-audit-755-production-queries times were approximate and are now null.",
-    "Correction (this commit): notes 185/186 earlier carried timestamps 08:00Z/08:02Z later than their own commit (07:58:43Z) and are now commit-referenced; note 180 marked approximate; logout-scope task times set to dispatch 07:45:10Z and commit 07:46:44Z."
+    "Correction (this commit): notes 185/186 earlier carried timestamps 08:00Z/08:02Z later than their own commit (07:58:43Z) and are now commit-referenced; note 180 marked approximate; logout-scope task times set to dispatch 07:45:10Z and commit 07:46:44Z.",
+    "2026-10-05 Scout reconciliation: Added ISSUE_CLOSED claims for #773/#774/#777 based on trusted close-observed handoff comments; added sources issue/780 and issue/781; updated delivery.issuesClosed from 3 to 6; main CI run 37278860517 (commit 24841f1d) concluded success at 2026-10-05T08:19:48Z.",
+    "solTouches re-synced to the recorded audit/triage task events (definition: scorecard-readiness.mjs:281); it had not been incremented since 216d2a73 (stale at 50).",
+    "solIssues re-synced 5→14 = distinct issue values of the audit/triage task events counted in solTouches (23 such tasks carry no issue field and are not counted); score-run-current.mjs uses solTouches/solIssues.",
+    "solIssues 14→18: structured issue added to 20 audit/triage tasks whose id names exactly one Issue (#42/#43/#46/#47/#11); 3 ambiguous tasks (727-welcome-precondition, retriage46-select11-775, claude-sol-triage-r01) stay null; audit-779 r10–r12 attributed to #780 instead of #777.",
+    "PR #782 (MODEL_GOVERNANCE, RUN_ID none) review-fix rounds are governance work and are intentionally not recorded as Product Run tasks or counters (CLAUDE.md §B+ / AGENT-EXECUTION §1.2); their evidence lives on PR #782 (Codex threads 4182937558/63/73, 4183154674/83, 4183298324/29, 4183450822/33). [Thread 4183750234: ISSUE_CLOSED reconcile commits ed9792f6/73e8832c are likewise governance bookkeeping and not recorded as Product tasks.]"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -3912,7 +4269,7 @@
   },
   "completionTruth": {
     "status": "VERIFIED",
-    "checkedAt": "2026-10-04T00:05:56Z",
+    "checkedAt": "2026-10-05T10:50:47Z",
     "claims": [
       {
         "type": "LOCAL_TEST_GREEN",
@@ -4041,6 +4398,30 @@
         "observedState": "closed",
         "verification": "VERIFIED",
         "evidenceRef": "github:issue#746; github:issuecomment#5974797423 (ISSUE_CLOSED_OBSERVED after guard-accepted close 2026-10-03T23:58:42Z; product-issue-close-guard run 37163462981 success)"
+      },
+      {
+        "type": "ISSUE_CLOSED",
+        "subject": "issue#774",
+        "claimedState": "closed",
+        "observedState": "closed",
+        "verification": "VERIFIED",
+        "evidenceRef": "github:smallwei0301/vibeaico-admin-rebuild/issues/774/comments/5991011333"
+      },
+      {
+        "type": "ISSUE_CLOSED",
+        "subject": "issue#777",
+        "claimedState": "closed",
+        "observedState": "closed",
+        "verification": "VERIFIED",
+        "evidenceRef": "github:smallwei0301/vibeaico-admin-rebuild/issues/777/comments/5991011402"
+      },
+      {
+        "type": "ISSUE_CLOSED",
+        "subject": "issue#773",
+        "claimedState": "closed",
+        "observedState": "closed",
+        "verification": "VERIFIED",
+        "evidenceRef": "github:smallwei0301/vibeaico-admin-rebuild/issues/773/comments/5991010844"
       }
     ]
   },
@@ -4366,6 +4747,22 @@
         "head": "f56cadf03dc90c4af91e19553b82787335c7f6d9",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "After exact f56 SourceCI 36862662300 and LOCAL 36862662312 reached terminal success, independent Standards review identified the new retry error body/touch target below current-main GUIDE §1.1/§11. Re-enter bounded #43 responsive fix at first source edit 13:10:13.363Z; no category rebuild, backend/schema change, or product completion claim."
+      }
+    ]
+  },
+  "reconciliation": {
+    "schemaVersion": 1,
+    "identities": [
+      {
+        "identity": "5af44c9bbe8a9c393a2f61b291c3b43fea8926763b78e2bd0ac9cac8ac161248",
+        "observedMainSha": "24841f1dd57382a726458bef85c2495d719b868d",
+        "evidenceDigest": "4caac1c45a5427900deccb831aac277b431289fc05687a1fefb9c8e86c14ca5a",
+        "operationCount": 3,
+        "evidenceRefs": [
+          "github:smallwei0301/vibeaico-admin-rebuild/issues/773/comments/5991010844",
+          "github:smallwei0301/vibeaico-admin-rebuild/issues/774/comments/5991011333",
+          "github:smallwei0301/vibeaico-admin-rebuild/issues/777/comments/5991011402"
+        ]
       }
     ]
   }
