@@ -55,7 +55,8 @@ describe('編輯頁儲存：相簿未變更不送 gallery', () => {
 
   it('頁面 saveBasic 確實使用 omitUnchangedGallery', () => {
     const page = readFileSync(resolve(process.cwd(), 'src/app/tenant/trips/[id]/page.tsx'), 'utf8');
-    expect(page).toContain('updateTrip(tripId, omitUnchangedGallery(form, trip))');
+    expect(page).toContain('omitUnchangedTripTextFields(omitUnchangedGallery(form, trip), trip)');
+    expect(page).toContain('updateTrip(tripId, payload)');
   });
 });
 

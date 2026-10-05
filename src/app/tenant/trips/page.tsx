@@ -15,6 +15,8 @@ import {
 } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmModal } from '@/components/ui/Modal';
+import { TripCopyDraftModal } from '@/components/trips/TripCopyDraftModal';
+import { planTripCopy, type TripCopyDraft, type TripTextFields } from '@/lib/trip-field-limits';
 import { Input, Select } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
@@ -61,6 +63,8 @@ export default function TripsPage() {
   const [midaoTarget, setMidaoTarget] = React.useState<Trip | null>(null);
   /** 端點進行中：避免連點造成重複請求，也讓對話框的確認鈕停用 */
   const [busy, setBusy] = React.useState(false);
+  /** #748：複製草稿（來源有超量欄位時才會開）。null = 沒有在複製草稿。 */
+  const [copyDraft, setCopyDraft] = React.useState<{ trip: Trip; initial: TripCopyDraft } | null>(null);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -165,7 +169,7 @@ export default function TripsPage() {
    * 明確不複製 TripDeparture／TourOrder／人員指派等營運資料——`duplicateTripFully()`
    * 完全不碰那幾張表。複本一律是 DRAFT／未申請 Midao，不會被旅客看到。
    */
-  const duplicate = (trip: Trip) => runAction(() => duplicateTripFully(trip.id, {
+  const buildCopyPayload = (trip: Trip): Partial<Trip> => ({
     title: `${trip.title}${t.messages.duplicateTitleSuffix}`,
     slug: `${trip.slug}-copy-${Date.now().toString(36)}`,
     tagline: trip.tagline,
@@ -181,7 +185,31 @@ export default function TripsPage() {
     notices: trip.notices,
     safetyNotice: trip.safetyNotice,
     refundPolicyType: trip.refundPolicyType,
-  }), t.messages.duplicated);
+  });
+
+  /**
+   * #748：複製永遠帶完整來源內容，不截斷五個文字欄位（圖庫仍由 duplicateTripFully 夾到上限）。
+   * 來源有欄位超過寫入上限（歷史超量資料）時，不呼叫 createTrip，改開「複製草稿」讓店家修正；
+   * 草稿合規後才呼叫 duplicateTripFully。取消不建立任何東西，來源行程不會被修改。
+   */
+  const duplicate = async (trip: Trip) => {
+    const plan = planTripCopy(trip as TripTextFields);
+    if (plan.kind === 'draft') {
+      setCopyDraft({ trip, initial: plan.draft });
+      return;
+    }
+    await runAction(() => duplicateTripFully(trip.id, buildCopyPayload(trip)), t.messages.duplicated);
+  };
+
+  const confirmCopyDraft = async (fields: Partial<Trip>) => {
+    if (!copyDraft) return;
+    const ok = await runAction(
+      () => duplicateTripFully(copyDraft.trip.id, { ...buildCopyPayload(copyDraft.trip), ...fields }),
+      t.messages.duplicated,
+    );
+    // 失敗時保持 Modal 開啟、草稿不動，店家可以重試。
+    if (ok) setCopyDraft(null);
+  };
 
   const columns: Column<Trip>[] = [
     {
@@ -395,6 +423,15 @@ export default function TripsPage() {
         />
       </DataTableContainer>
 
+      {copyDraft ? (
+        <TripCopyDraftModal
+          open
+          initial={copyDraft.initial}
+          busy={busy}
+          onCancel={() => setCopyDraft(null)}
+          onConfirm={(fields) => void confirmCopyDraft(fields)}
+        />
+      ) : null}
       <ConfirmModal
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
