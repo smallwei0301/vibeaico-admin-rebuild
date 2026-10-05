@@ -42,7 +42,8 @@ export const ISSUE_46_CLOSURE_COVERAGE = Object.freeze({
 // coverage（closureRequiredAssertionsForPlan）與 cleanup（test-artifacts cleanupScopes）都由此推導，無法各自漂移。
 // 規則（#771 Codex P1）：任何後續 create_tour_order 的改寫者（create or replace）或變更者（alter）
 // 都會承接並可能破壞先前所有 create_tour_order 契約，因此必須觸發其測試所經過的全部家族。
-// 逐檔核對（supabase/migrations）：create_tour_order 的 create or replace＝0110／0111／0130／0132，alter＝0136（SECURITY INVOKER）；
+// 下表各家族 migrations 欄位只是「該家族自己的」觸發編號（逐檔核對 supabase/migrations）；
+// 完整的 create_tour_order 改寫者集合（本體／SECURITY／ACL）以下方 CREATE_TOUR_ORDER_WRITER_PREFIXES 為準，會再併入每個家族。
 // accept／reject／cancel／expire_tour_* 的最後改寫者為 0111（0130 之後沒有任何 migration 再動）；
 // 0136 另外明確 grant select on trip_plan_seasons（0128 新表），故 seasonal 也由 0136 觸發。
 // 單一來源：所有改寫 public.create_tour_order「本體／SECURITY 屬性／EXECUTE ACL」的 migration 編號
