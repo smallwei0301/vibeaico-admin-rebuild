@@ -30,8 +30,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => setItems((s) => s.filter((t) => t.id !== id)), 3500);
   }, []);
 
+  /* value 必須穩定：每次 render 都換新物件會讓 useToast() 的使用者（例如以 toast 為依賴的 load）重跑。 */
+  const value = React.useMemo(() => ({ show }), [show]);
+
   return (
-    <ToastContext.Provider value={{ show }}>
+    <ToastContext.Provider value={value}>
       {children}
       {mounted &&
         createPortal(

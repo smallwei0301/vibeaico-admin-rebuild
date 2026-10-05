@@ -161,14 +161,56 @@ export function tripCopyDraftToFields(draft: TripCopyDraft): Required<TripTextFi
   };
 }
 
+const DRAFT_KEY: Record<TripTextField, keyof TripCopyDraft> = {
+  description: 'description', safetyNotice: 'safetyNotice',
+  inclusions: 'inclusionsText', exclusions: 'exclusionsText', notices: 'noticesText',
+};
+
 /**
- * 複製流程的決策：來源五個文字欄位全部合規 → 直接複製；否則需要先開草稿修正。
- * 來源行程永遠不會被修改，來源內容也不會被截斷。
+ * 草稿 → 要送出的五個欄位。使用者沒動過的欄位（草稿文字與初始草稿相同）原樣沿用來源值，
+ * 不經過 join／split／trim 重新整理（與直接複製路徑一致）；只有被編輯的欄位才解析與正規化。
  */
-export function planTripCopy(
-  source: TripTextFields,
-): { kind: 'direct' } | { kind: 'draft'; draft: TripCopyDraft; errors: TripTextFieldError[] } {
-  const errors = tripTextFieldErrors(source);
-  if (errors.length === 0) return { kind: 'direct' };
-  return { kind: 'draft', draft: tripCopyDraftFromFields(source), errors };
+export function resolveTripCopyFields(
+  source: TripTextFields, initial: TripCopyDraft, draft: TripCopyDraft,
+): Required<TripTextFields> {
+  const edited = tripCopyDraftToFields(draft);
+  const pick = <K extends TripTextField>(key: K, fallback: Required<TripTextFields>[K]) =>
+    (draft[DRAFT_KEY[key]] === initial[DRAFT_KEY[key]] ? (source[key] ?? fallback) : edited[key]) as Required<TripTextFields>[K];
+  return {
+    description: pick('description', ''),
+    safetyNotice: pick('safetyNotice', ''),
+    inclusions: pick('inclusions', []),
+    exclusions: pick('exclusions', []),
+    notices: pick('notices', []),
+  };
+}
+
+/**
+ * 複製流程的決策：來源五個文字欄位全部合規 → 直接複製（payload 原樣）；
+ * 否則需要先開草稿修正。來源行程永遠不會被修改，來源內容也不會被截斷。
+ */
+export function decideTripCopy<T extends TripTextFields>(
+  payload: T,
+): { kind: 'direct'; payload: T } | { kind: 'draft'; draft: TripCopyDraft; errors: TripTextFieldError[] } {
+  const errors = tripTextFieldErrors(payload);
+  if (errors.length === 0) return { kind: 'direct', payload };
+  return { kind: 'draft', draft: tripCopyDraftFromFields(payload), errors };
+}
+
+/**
+ * 草稿確認：以「目前草稿」解析五個欄位，仍有錯誤就不能送；通過時編輯後的欄位覆蓋來源 payload。
+ */
+export function confirmTripCopyDraft<T extends TripTextFields>(
+  payload: T, initial: TripCopyDraft, draft: TripCopyDraft,
+): { ok: true; payload: T } | { ok: false; errors: TripTextFieldError[] } {
+  const fields = resolveTripCopyFields(payload, initial, draft);
+  const errors = tripTextFieldErrors(fields);
+  if (errors.length > 0) return { ok: false, errors };
+  return { ok: true, payload: { ...payload, ...fields } };
+}
+
+/** 相容舊名稱（測試與既有呼叫端）。 */
+export function planTripCopy(source: TripTextFields) {
+  const d = decideTripCopy(source);
+  return d.kind === 'direct' ? ({ kind: 'direct' } as const) : d;
 }

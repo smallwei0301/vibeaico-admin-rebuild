@@ -131,21 +131,23 @@ describe('列表頁複製行程', () => {
 
   it('原始碼：duplicate 先 planTripCopy，draft 分支 return 前不呼叫 duplicateTripFully', () => {
     const dup = body(listPage, 'duplicate');
-    expect(dup).toContain('planTripCopy(');
-    expect(dup).toContain("plan.kind === 'draft'");
+    expect(dup).toContain('decideTripCopy(buildCopyPayload(trip))');
+    expect(dup).toContain("decision.kind === 'draft'");
+    expect(dup).toContain('duplicateTripFully(trip.id, decision.payload)');
     expect(dup.indexOf('setCopyDraft(')).toBeLessThan(dup.indexOf('duplicateTripFully('));
     expect(dup.indexOf('return;')).toBeLessThan(dup.indexOf('duplicateTripFully('));
   });
 
   it('原始碼：確認時合併編輯值、成功才關閉、失敗保持開啟；取消只關閉 Modal', () => {
     const confirm = body(listPage, 'confirmCopyDraft');
-    expect(confirm).toContain('...fields');
-    expect(confirm).toContain('duplicateTripFully(copyDraft.trip.id');
+    expect(confirm).toContain('duplicateTripFully(copyDraft.trip.id, payload)');
     expect(confirm).toContain('if (ok) setCopyDraft(null)');
     expect(listPage).toContain('onCancel={() => setCopyDraft(null)}');
     const modal = read('src/components/trips/TripCopyDraftModal.tsx');
     expect(modal).toContain('disabled={errors.length > 0}');
-    expect(modal).toContain('tripTextFieldErrors(fields).length === 0');
+    expect(modal).toContain('confirmTripCopyDraft(source, initial, draft)');
+    expect(modal).toContain('onConfirm(result.payload)');
+    expect(modal.match(/disabled=\{busy\}/g)?.length).toBeGreaterThanOrEqual(6);
   });
 
   it('來源合規：直接複製，payload 為完整來源內容', async () => {

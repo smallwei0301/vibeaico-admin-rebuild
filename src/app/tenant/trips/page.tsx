@@ -16,7 +16,7 @@ import {
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmModal } from '@/components/ui/Modal';
 import { TripCopyDraftModal } from '@/components/trips/TripCopyDraftModal';
-import { planTripCopy, type TripCopyDraft, type TripTextFields } from '@/lib/trip-field-limits';
+import { decideTripCopy, type TripCopyDraft } from '@/lib/trip-field-limits';
 import { Input, Select } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
@@ -64,7 +64,7 @@ export default function TripsPage() {
   /** 端點進行中：避免連點造成重複請求，也讓對話框的確認鈕停用 */
   const [busy, setBusy] = React.useState(false);
   /** #748：複製草稿（來源有超量欄位時才會開）。null = 沒有在複製草稿。 */
-  const [copyDraft, setCopyDraft] = React.useState<{ trip: Trip; initial: TripCopyDraft } | null>(null);
+  const [copyDraft, setCopyDraft] = React.useState<{ trip: Trip; payload: Partial<Trip>; initial: TripCopyDraft } | null>(null);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -193,20 +193,17 @@ export default function TripsPage() {
    * 草稿合規後才呼叫 duplicateTripFully。取消不建立任何東西，來源行程不會被修改。
    */
   const duplicate = async (trip: Trip) => {
-    const plan = planTripCopy(trip as TripTextFields);
-    if (plan.kind === 'draft') {
-      setCopyDraft({ trip, initial: plan.draft });
+    const decision = decideTripCopy(buildCopyPayload(trip));
+    if (decision.kind === 'draft') {
+      setCopyDraft({ trip, payload: buildCopyPayload(trip), initial: decision.draft });
       return;
     }
-    await runAction(() => duplicateTripFully(trip.id, buildCopyPayload(trip)), t.messages.duplicated);
+    await runAction(() => duplicateTripFully(trip.id, decision.payload), t.messages.duplicated);
   };
 
-  const confirmCopyDraft = async (fields: Partial<Trip>) => {
+  const confirmCopyDraft = async (payload: Partial<Trip>) => {
     if (!copyDraft) return;
-    const ok = await runAction(
-      () => duplicateTripFully(copyDraft.trip.id, { ...buildCopyPayload(copyDraft.trip), ...fields }),
-      t.messages.duplicated,
-    );
+    const ok = await runAction(() => duplicateTripFully(copyDraft.trip.id, payload), t.messages.duplicated);
     // 失敗時保持 Modal 開啟、草稿不動，店家可以重試。
     if (ok) setCopyDraft(null);
   };
@@ -426,10 +423,11 @@ export default function TripsPage() {
       {copyDraft ? (
         <TripCopyDraftModal
           open
+          source={copyDraft.payload}
           initial={copyDraft.initial}
           busy={busy}
           onCancel={() => setCopyDraft(null)}
-          onConfirm={(fields) => void confirmCopyDraft(fields)}
+          onConfirm={(payload) => void confirmCopyDraft(payload)}
         />
       ) : null}
       <ConfirmModal
