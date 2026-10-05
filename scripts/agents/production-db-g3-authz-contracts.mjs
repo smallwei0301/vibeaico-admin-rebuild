@@ -1,11 +1,11 @@
 import { ISSUE_46_0110_0136_CLOSURE } from './production-db-release-plan.mjs';
 
-// The closure's create_tour_order body (last replaced by 0132) and its
-// SECURITY INVOKER setting (set last by 0136's ALTER, body untouched, #755) must
-// preserve these observed REQUEST/seasonal/refund-snapshot contracts. The 0136
-// role/tenant fragment contract below is reused, not duplicated.
-// The seasonal file is currently pending main merge;
-// no synthetic passing report proves execution of either native snapshot suite.
+// G3 closure 原生驗收契約：REQUEST／refund snapshot／seasonal snapshot／#755 invoker 四個家族。
+// 觸發規則見 ISSUE_46_CLOSURE_FAMILIES 與 CREATE_TOUR_ORDER_WRITER_PREFIXES：
+// plan 含任一 create_tour_order 寫入者（0087／0110／0111／0130／0132／0136）即必須通過全部四個家族，
+// 其餘 migration 只觸發各家族自己宣告的編號。coverage 與 cleanup 皆由同一份家族表推導。
+// 0136 的 role/tenant fragment 契約在下方重用，不重複定義。
+// 沒有任何合成的通過報告可以證明原生 snapshot 套件曾執行；缺任一 exact assertion 即 fail closed。
 export const ISSUE_46_CLOSURE_COVERAGE = Object.freeze({
   scope: ISSUE_46_0110_0136_CLOSURE,
 
@@ -42,10 +42,23 @@ export const ISSUE_46_CLOSURE_COVERAGE = Object.freeze({
 // coverage（closureRequiredAssertionsForPlan）與 cleanup（test-artifacts cleanupScopes）都由此推導，無法各自漂移。
 // 規則（#771 Codex P1）：任何後續 create_tour_order 的改寫者（create or replace）或變更者（alter）
 // 都會承接並可能破壞先前所有 create_tour_order 契約，因此必須觸發其測試所經過的全部家族。
-// 逐檔核對（supabase/migrations）：create_tour_order 的 create or replace＝0110／0111／0130／0132，alter＝0136（SECURITY INVOKER）；
+// 下表各家族 migrations 欄位只是「該家族自己的」觸發編號（逐檔核對 supabase/migrations）；
+// 完整的 create_tour_order 改寫者集合（本體／SECURITY／ACL）以下方 CREATE_TOUR_ORDER_WRITER_PREFIXES 為準，會再併入每個家族。
 // accept／reject／cancel／expire_tour_* 的最後改寫者為 0111（0130 之後沒有任何 migration 再動）；
 // 0136 另外明確 grant select on trip_plan_seasons（0128 新表），故 seasonal 也由 0136 觸發。
-export const ISSUE_46_CLOSURE_FAMILIES = Object.freeze([
+// 單一來源：所有改寫 public.create_tour_order「本體／SECURITY 屬性／EXECUTE ACL」的 migration 編號
+// （create or replace function、alter function、grant／revoke … on function public.create_tour_order）。
+// 無論次序，任何一個仍 pending 的 writer 重放都可能覆寫較新的函式本體、SECURITY INVOKER 或 EXECUTE grants（#755 invoker 家族驗證），
+// 因此都觸發全部四個家族。tests/unit 會掃描 supabase/migrations，新增 writer 卻漏列於此會使測試失敗。
+// 證據：0087:160／0110:81／0111:124／0130:46／0132:45 為 create or replace，0136:30 為 alter function … security invoker，
+// 0087:262／0088:16,28,40／0110:152 為 revoke／grant on function。
+// 明確排除 0099：它 drop 的是另一個「舊簽章」overload（#37/#41 時期），不改現行函式的本體、安全屬性或 ACL。
+export const CREATE_TOUR_ORDER_WRITER_PREFIXES = Object.freeze(['0087', '0088', '0110', '0111', '0130', '0132', '0136']);
+export const CREATE_TOUR_ORDER_EXCLUDED_DDL = Object.freeze({
+  '0099': 'drop function if exists 只移除舊簽章 overload，不改現行 create_tour_order 的本體／安全屬性／ACL',
+});
+
+const ISSUE_46_CLOSURE_FAMILY_TABLE = Object.freeze([
   Object.freeze({
     file: 'tests/integration/api/tour-request-accept.46.test.ts',
     migrations: Object.freeze(['0111', '0130', '0132', '0136']),
@@ -67,6 +80,15 @@ export const ISSUE_46_CLOSURE_FAMILIES = Object.freeze([
     cleanup: Object.freeze({migration:'0136_issue_755_create_tour_order_invoker',table:'tour_orders',filterColumn:'note',filterOperator:'like',filterValue:'#755 probe%'}),
   }),
 ]);
+
+// 家族實際觸發編號＝自身宣告編號 ∪ 全部 create_tour_order writer。
+export const ISSUE_46_CLOSURE_FAMILIES = Object.freeze(ISSUE_46_CLOSURE_FAMILY_TABLE.map((family) => Object.freeze({
+  ...family,
+  migrations: Object.freeze([...new Set([...family.migrations, ...CREATE_TOUR_ORDER_WRITER_PREFIXES])].sort()),
+  ownMigrations: family.migrations,
+})));
+
+export const closureFamilyPrefixes = (family) => family.migrations;
 
 export const ISSUE_46_CLOSURE_FILE_MIGRATIONS = Object.freeze(
   Object.fromEntries(ISSUE_46_CLOSURE_FAMILIES.map((family) => [family.file, family.migrations])));

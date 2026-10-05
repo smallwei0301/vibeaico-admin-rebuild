@@ -2,10 +2,12 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
+import { isCanonicalMigrationIdentity } from './production-db-release-plan.mjs';
 import {
   getProductionDbG3AuthzContract,
   ISSUE_46_CLOSURE_COVERAGE,
   ISSUE_46_CLOSURE_FAMILIES,
+  closureFamilyPrefixes,
   closureRequiredAssertionsForPlan,
   planHasClosureMigration,
   PRODUCTION_DB_G3_AUTHZ_CONTRACTS,
@@ -83,7 +85,7 @@ function assertPlan(plan) {
   for (const migration of plan.migrations) {
     const repoFile = migration?.repoFile;
     if (!migration || typeof migration !== 'object' || Array.isArray(migration)
-      || typeof repoFile !== 'string' || !/^\d{4}_[a-z0-9_]+$/.test(repoFile) || identities.has(repoFile)) {
+      || typeof repoFile !== 'string' || !isCanonicalMigrationIdentity(repoFile) || identities.has(repoFile)) {
       fail('PLAN_MIGRATION_IDENTITY_INVALID', 'release plan requires unique canonical migration identities');
     }
     identities.add(repoFile);
@@ -261,8 +263,15 @@ function canonicalTestUrl(value) {
 function cleanupScopes(plan) {
   const scopes = [];
   const closureAll = plan.migrationScope === ISSUE_46_CLOSURE_COVERAGE.scope;
-  for (const { migrations: prefixes, cleanup } of ISSUE_46_CLOSURE_FAMILIES) {
-    if (closureAll || planHasClosureMigration(plan, prefixes)) scopes.push({ ...cleanup });
+  for (const family of ISSUE_46_CLOSURE_FAMILIES) {
+    const { cleanup } = family;
+    if (!closureAll && !planHasClosureMigration(plan, family.migrations)) continue;
+    // 標籤如實反映 plan 內實際觸發的 migration（例如只有 0128 時不能標成 0132）。
+    const present = plan.migrations.map((migration) => String(migration?.repoFile ?? ''));
+    const label = present.includes(cleanup.migration)
+      ? cleanup.migration
+      : (present.find((name) => closureFamilyPrefixes(family).includes(name.split('_')[0])) ?? cleanup.migration);
+    scopes.push({ ...cleanup, migration: label });
   }
 
   if (plan.migrations.some((migration) => migration.repoFile === '0135_issue_46_guide_interval_availability')) {
