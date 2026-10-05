@@ -3614,7 +3614,7 @@
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 12,
+    "issuesStarted": 14,
     "issuesClosed": 3,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
