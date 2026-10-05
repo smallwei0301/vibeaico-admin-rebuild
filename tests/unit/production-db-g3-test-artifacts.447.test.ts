@@ -1,5 +1,9 @@
-import { getProductionDbG3AuthzContract, ISSUE_46_CLOSURE_COVERAGE, ISSUE_46_CLOSURE_FAMILIES, ISSUE_46_CLOSURE_FILE_MIGRATIONS } from '../../scripts/agents/production-db-g3-authz-contracts.mjs';
+import { getProductionDbG3AuthzContract, ISSUE_46_CLOSURE_COVERAGE, ISSUE_46_CLOSURE_FAMILIES, ISSUE_46_CLOSURE_FILE_MIGRATIONS, CREATE_TOUR_ORDER_WRITER_PREFIXES } from '../../scripts/agents/production-db-g3-authz-contracts.mjs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+
+import { CANONICAL_MIGRATION_IDENTITY, normalizedRepoFile } from '../../scripts/agents/production-db-release-plan.mjs';
 
 import {
   buildProductionDbTestCoverageEvidence,
@@ -219,7 +223,7 @@ describe('Production DB G3 TEST artifact builders #447', () => {
   it('fails closed for an unknown AUTHZ migration', () => {
     expect(() => buildProductionDbTestCoverageEvidence({
       report: report(),
-      plan: plan([{ repoFile: '0110_unknown_authz', riskTier: 'AUTHZ', sha256: '3'.repeat(64) }]),
+      plan: plan([{ repoFile: '0141_unknown_authz', riskTier: 'AUTHZ', sha256: '3'.repeat(64) }]),
       sourceRunId: '1',
       sourceRunAttempt: 1,
     })).toThrow(/AUTHZ_TEST_MAPPING_REQUIRED/);
@@ -426,7 +430,7 @@ describe('Production DB G3 TEST artifact builders #447', () => {
             { status: 'passed', fullName: '未登入與已登入使用者都不得直接呼叫 create_booking_addon／delete_booking_addon rpc' },
           ] },
         ],
-      }), ['tests/integration/db/plan-seasonal-order-snapshot.42.test.ts', 'tests/integration/db/tour-refund-snapshot.46.test.ts', 'tests/integration/api/tour-request-accept.46.test.ts']),
+      }), ['tests/integration/db/plan-seasonal-order-snapshot.42.test.ts', 'tests/integration/db/tour-refund-snapshot.46.test.ts', 'tests/integration/api/tour-request-accept.46.test.ts', 'tests/integration/api/create-tour-order-invoker.755.test.ts']),
       sourceRunId: '1', sourceRunAttempt: 1,
     });
 
@@ -769,6 +773,7 @@ describe('#725 N2 closure evidence follows plan migration content, not scope nam
     const list:Array<{file:string;fullName:string;status:string}>=[];
     for(const m of planValue.migrations){
       const c=getProductionDbG3AuthzContract(m.repoFile);
+      if(!c) continue; // 例如 0087 無 AUTHZ 契約，只受 closure 家族規則約束
       for(const f of c.requiredFiles) list.push({file:f,fullName:`dummy ${f}`,status:'passed'});
       list.push(...[...c.tenantBoundaryAssertions,...c.negativeRoleAssertions].map((r:any)=>({file:r.file??'tests/integration/api/tour-order-authz.447.test.ts',fullName:r.fragment,status:'passed'})));
       list.push(...(c.requiredAssertions??[]).map((r:any)=>({file:r.file,fullName:r.fullName,status:'passed'})));
@@ -793,24 +798,37 @@ describe('#725 N2 closure evidence follows plan migration content, not scope nam
   const requires=(p:any,expected:string[])=>{
     const all=[F_REQUEST,F_REFUND,F_SEASONAL,F_INVOKER];
     expect(build(p,rowsFor(p,expected)).reportSuccess).toBe(true);
-    for(const f of all){
-      for(const row of exact(f)){
-        const call=()=>build(p,rowsFor(p,expected,row.fullName));
-        if(expected.includes(f)) expect(call).toThrow(/REQUIRED_SEMANTIC_TEST_MISSING/);
-        else expect(call).not.toThrow();
-      }
+    // 只對「預期要求」的家族逐列缺漏必須 fail closed；未預期的家族不在報告內且仍通過（上一行 reportSuccess），
+    // 這正是「不被觸發」的實際斷言，不另設空轉分支。
+    for(const f of expected){
+      for(const row of exact(f)) expect(()=>build(p,rowsFor(p,expected,row.fullName))).toThrow(/REQUIRED_SEMANTIC_TEST_MISSING/);
+    }
+    for(const f of all.filter(x=>!expected.includes(x))){
+      expect(rowsFor(p,expected).testResults.some((file:any)=>file.name===f)).toBe(false);
     }
   };
   it('later create_tour_order writers inherit earlier contracts (#771 Codex P1)', () => {
-    requires(fullPlan(['0132_issue_42_seasonal_price_resolution']),[F_REQUEST,F_REFUND,F_SEASONAL]);
-    requires(fullPlan(['0136_issue_755_create_tour_order_invoker']),[F_REQUEST,F_REFUND,F_SEASONAL,F_INVOKER]);
-    requires(fullPlan(['0130_issue_46_refund_policy_snapshot']),[F_REQUEST,F_REFUND]);
+    // #774：任何 writer（含較早的 0110／0130）重放都可能重置 0136 的 SECURITY INVOKER，故一律四家族。
+    for(const name of ['0132_issue_42_seasonal_price_resolution','0136_issue_755_create_tour_order_invoker','0130_issue_46_refund_policy_snapshot','0110_issue_42_plan_duration_pricetype_yearround'])
+      requires(fullPlan([name]),[F_REQUEST,F_REFUND,F_SEASONAL,F_INVOKER]);
   });
 
-  it('0111 alone requires only REQUEST assertions', () => {
-    const p=fullPlan(['0111_issue_46_guide_request_accept']);
-    expect(build(p,rowsFor(p,[F_REQUEST])).reportSuccess).toBe(true);
-    for(const row of exact(F_REQUEST)) expect(()=>build(p,rowsFor(p,[F_REQUEST],row.fullName))).toThrow(/REQUIRED_SEMANTIC_TEST_MISSING/);
+  it('every create_tour_order writer alone (even out of order) requires all four families (#774)', () => {
+    const all=[F_REQUEST,F_REFUND,F_SEASONAL,F_INVOKER];
+    const names:Record<string,string>={
+      '0087':'0087_issue_8b_tour_orders','0110':'0110_issue_42_plan_duration_pricetype_yearround',
+      '0111':'0111_issue_46_guide_request_accept','0130':'0130_issue_46_refund_policy_snapshot',
+      '0132':'0132_issue_42_seasonal_price_resolution','0136':'0136_issue_755_create_tour_order_invoker'};
+    expect(Object.keys(names).sort()).toEqual([...CREATE_TOUR_ORDER_WRITER_PREFIXES].sort());
+    for(const name of Object.values(names)){
+      const p=fullPlan([name]);
+      if(!getProductionDbG3AuthzContract(name)) p.migrations=p.migrations.map((m:any)=>({...m,riskTier:'SCHEMA_REPAIR'}));
+      requires(p,all);
+    }
+  });
+
+  it('0128 (not a create_tour_order writer) still triggers only the seasonal family', () => {
+    requires(fullPlan(['0128_issue_42_plan_seasonal_pricing']),[F_SEASONAL]);
   });
 
   it('a plan with no closure member requires no closure assertions or cleanup scopes', async () => {
@@ -828,10 +846,29 @@ describe('#725 N2 closure evidence follows plan migration content, not scope nam
     const fetchImpl=vi.fn(async(url:any)=>{const u=new URL(url);const v=u.searchParams.get('slug')??u.searchParams.get('note');if(v)seen.push(v);return new Response('[]',{status:200});});
     await captureProductionDbTestCleanupEvidence({plan:p,testSupabaseUrl:TEST_URL,serviceRoleKey:'mock',sourceRunId:'1',sourceRunAttempt:1,fetchImpl});
     expect(seen).toEqual(['like.request-accept-46-%','like.refund-snapshot-46-%','like.snapshot-42-%','like.#755 probe%']);
-    const q=fullPlan(['0128_issue_42_plan_seasonal_pricing','0111_issue_46_guide_request_accept']);
+    const q=fullPlan(['0128_issue_42_plan_seasonal_pricing']);
     seen.length=0;
     await captureProductionDbTestCleanupEvidence({plan:q,testSupabaseUrl:TEST_URL,serviceRoleKey:'mock',sourceRunId:'1',sourceRunAttempt:1,fetchImpl});
-    expect(seen).toEqual(['like.request-accept-46-%','like.snapshot-42-%']);
+    expect(seen).toEqual(['like.snapshot-42-%']);
+  });
+
+  it('0128-only plan labels the snapshot-42 cleanup scope with the triggering migration, not 0132 (#774)', async () => {
+    const q=fullPlan(['0128_issue_42_plan_seasonal_pricing']);
+    const r:any=await captureProductionDbTestCleanupEvidence({plan:q,testSupabaseUrl:TEST_URL,serviceRoleKey:'mock',sourceRunId:'1',sourceRunAttempt:1,fetchImpl:vi.fn(async()=>new Response('[]',{status:200})) as any});
+    const text=JSON.stringify(r);
+    expect(text).toContain('0128_issue_42_plan_seasonal_pricing');
+    expect(text).not.toContain('0132_issue_42_seasonal_price_resolution');
+  });
+
+  it('every SQL migration that writes create_tour_order is in CREATE_TOUR_ORDER_WRITER_PREFIXES (#774)', () => {
+    const dir=join(process.cwd(),'supabase/migrations');
+    const writers=readdirSync(dir).filter(f=>f.endsWith('.sql')).filter(f=>{
+      const sql=readFileSync(join(dir,f),'utf8').replace(/--[^\n]*/g,'');
+      return /\b(create\s+(or\s+replace\s+)?function|alter\s+function)\s+(public\.)?create_tour_order\s*\(/i.test(sql);
+    }).map(f=>f.split('_')[0]);
+    expect(writers.length).toBeGreaterThan(0);
+    for(const prefix of writers) expect(CREATE_TOUR_ORDER_WRITER_PREFIXES).toContain(prefix);
+    for(const prefix of CREATE_TOUR_ORDER_WRITER_PREFIXES) expect(writers).toContain(prefix);
   });
 
   it('0128 alone (non-closure plan) requires every seasonal snapshot assertion (#771 NB1)', () => {
@@ -892,5 +929,19 @@ describe('plan migration identity fail-closed (#771 collaborator counterexample)
     const fetchSpy = vi.fn(async () => new Response('[]', { status: 200 }));
     const r = await captureProductionDbTestCleanupEvidence({ plan: ok, testSupabaseUrl: TEST_URL, serviceRoleKey: 'key', sourceRunId: '1', sourceRunAttempt: 1, fetchImpl: fetchSpy as unknown as typeof fetch });
     expect(r.status).toBe('TEST_CLEANUP_VERIFIED');
+  });
+});
+
+describe('producer and consumer share one migration identity validator (#774)', () => {
+  it('normalizedRepoFile accepts exactly what the consumer regex accepts', () => {
+    const samples=['0136_issue_755_create_tour_order_invoker','0105_x','Abc_1','0136','0136_Upper','0136-x','0136_a.b','_0136_x','0136_x.sql',' 0136_x','','a1234_x','0136_ä'];
+    for(const v of samples){
+      const consumer=CANONICAL_MIGRATION_IDENTITY.test(v);
+      let producer=true;
+      try{normalizedRepoFile(v);}catch{producer=false;}
+      // producer 會 trim 前後空白，故以 trim 後的值比較一致性
+      expect(producer).toBe(CANONICAL_MIGRATION_IDENTITY.test(v.trim()));
+      if(v===v.trim()) expect(producer).toBe(consumer);
+    }
   });
 });

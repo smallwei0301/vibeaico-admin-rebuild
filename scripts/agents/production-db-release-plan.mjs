@@ -161,9 +161,17 @@ export function releasePlanDigestOf(plan = {}) {
   return sha256(JSON.stringify(canonicalize(copy)));
 }
 
-function normalizedRepoFile(value) {
+/**
+ * 唯一的 migration 身分格式（producer normalizedRepoFile 與 G3 consumer assertPlan 共用）：
+ * 與 supabase/migrations 實際檔名（去掉 .sql）一致，四位編號＋小寫底線 slug。
+ */
+export const CANONICAL_MIGRATION_IDENTITY = /^\d{4}_[a-z0-9_]+$/;
+export const isCanonicalMigrationIdentity = (value) =>
+  typeof value === 'string' && CANONICAL_MIGRATION_IDENTITY.test(value);
+
+export function normalizedRepoFile(value) {
   const name = String(value ?? '').trim();
-  if (!/^[0-9A-Za-z][0-9A-Za-z._-]*$/.test(name) || name.endsWith('.sql')) {
+  if (!isCanonicalMigrationIdentity(name)) {
     fail('INVALID_REPO_MIGRATION_NAME', `invalid repoFile: ${name || '<empty>'}`);
   }
   return name;

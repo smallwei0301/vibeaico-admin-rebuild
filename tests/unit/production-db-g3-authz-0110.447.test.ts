@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { ISSUE_46_CLOSURE_COVERAGE } from '../../scripts/agents/production-db-g3-authz-contracts.mjs';
 import { buildProductionDbTestCoverageEvidence } from '../../scripts/agents/production-db-g3-test-artifacts.mjs';
 
 const MAIN = 'a'.repeat(40);
@@ -46,6 +47,10 @@ function report() {
       '建單佔名額，且名額由 DB 原子扣減 別家店的團次 → 404，且不扣名額',
     ]),
   ];
+  // #774：0110 是 create_tour_order 的 writer，任何 writer 都觸發全部 closure 家族，需附其 exact assertions。
+  for (const file of new Set(ISSUE_46_CLOSURE_COVERAGE.requiredAssertions.map((row) => row.file))) {
+    testResults.push(testResult(file, ISSUE_46_CLOSURE_COVERAGE.requiredAssertions.filter((row) => row.file === file).map((row) => row.fullName)));
+  }
   const total = testResults.reduce((sum, item) => sum + item.assertionResults.length, 0);
   return {
     numTotalTests: total,
@@ -76,7 +81,8 @@ describe('Production DB G3 AUTHZ contract for current-main 0110 #447', () => {
       tenantBoundaryVerified: true,
       negativeRoleTestsPassed: true,
     });
-    expect(result.executedFiles).toEqual([AUTHZ_FILE, SETTINGS_FILE, ORDERS_FILE].sort());
+    const closureFiles = [...new Set(ISSUE_46_CLOSURE_COVERAGE.requiredAssertions.map((row) => row.file))];
+    expect(result.executedFiles).toEqual([AUTHZ_FILE, SETTINGS_FILE, ORDERS_FILE, ...closureFiles].sort());
   });
 
   it.each([AUTHZ_FILE, SETTINGS_FILE, ORDERS_FILE])('fails closed when required file %s did not execute', (missing) => {
