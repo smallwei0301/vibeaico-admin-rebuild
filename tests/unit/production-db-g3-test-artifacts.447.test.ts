@@ -1,4 +1,4 @@
-import { getProductionDbG3AuthzContract, ISSUE_46_CLOSURE_COVERAGE, ISSUE_46_CLOSURE_FAMILIES, ISSUE_46_CLOSURE_FILE_MIGRATIONS, CREATE_TOUR_ORDER_WRITER_PREFIXES, CREATE_TOUR_ORDER_EXCLUDED_DDL, CREATE_TOUR_ORDER_SCHEMA_WIDE_ACL_EXCLUSIONS, CREATE_TOUR_ORDER_DYNAMIC_SQL_EXCLUSIONS, CREATE_TOUR_ORDER_UNICODE_IDENTIFIER_EXCLUSIONS, scanCreateTourOrderDdl } from '../../scripts/agents/production-db-g3-authz-contracts.mjs';
+import { getProductionDbG3AuthzContract, ISSUE_46_CLOSURE_COVERAGE, ISSUE_46_CLOSURE_FAMILIES, ISSUE_46_CLOSURE_FILE_MIGRATIONS, CREATE_TOUR_ORDER_WRITER_PREFIXES, CREATE_TOUR_ORDER_EXCLUDED_DDL, CREATE_TOUR_ORDER_SCHEMA_WIDE_ACL_EXCLUSIONS, CREATE_TOUR_ORDER_DYNAMIC_SQL_EXCLUSIONS, CREATE_TOUR_ORDER_UNICODE_IDENTIFIER_EXCLUSIONS, CREATE_TOUR_ORDER_UNRESOLVED_EXECUTE_EXCLUSIONS, scanCreateTourOrderDdl } from '../../scripts/agents/production-db-g3-authz-contracts.mjs';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -877,6 +877,10 @@ describe('#725 N2 closure evidence follows plan migration content, not scope nam
     // schema 層級 ACL／動態 SQL fail closed：命中者必須逐檔列入 exclusion map（含理由）。
     for(const x of scans.filter(x=>x.scan.schemaWideAcl)) expect((CREATE_TOUR_ORDER_SCHEMA_WIDE_ACL_EXCLUSIONS as Record<string,string>)[x.prefix]).toMatch(/\S/);
     for(const x of scans.filter(x=>x.scan.unicodeIdentifier)) expect((CREATE_TOUR_ORDER_UNICODE_IDENTIFIER_EXCLUSIONS as Record<string,string>)[x.prefix]).toMatch(/\S/);
+    const unresolved=scans.filter(x=>x.scan.unresolvedExecute).map(x=>x.prefix);
+    for(const prefix of unresolved) expect((CREATE_TOUR_ORDER_UNRESOLVED_EXECUTE_EXCLUSIONS as Record<string,string>)[prefix]).toMatch(/\S/);
+    // 排除表不得有已不再命中的陳舊項目。
+    expect(Object.keys(CREATE_TOUR_ORDER_UNRESOLVED_EXECUTE_EXCLUSIONS).sort()).toEqual([...unresolved].sort());
     for(const x of scans.filter(x=>x.scan.dynamicSql)) expect(CREATE_TOUR_ORDER_WRITER_PREFIXES.includes(x.prefix)||!!(CREATE_TOUR_ORDER_DYNAMIC_SQL_EXCLUSIONS as Record<string,string>)[x.prefix]).toBe(true);
   });
 
@@ -955,6 +959,34 @@ language sql security definer as $$ select 1 $$;
       expect(time('grant x on function '+'"aaa" '.repeat(3400))).toBeLessThan(200);
       expect(time('grant x on function '+'a.'.repeat(10000))).toBeLessThan(200);
       expect(time('select '+'"'+'a'.repeat(20000)+'"')).toBeLessThan(50);
+    });
+
+    it('EXECUTE whose target cannot be resolved statically fails closed (#777 Codex P2)', () => {
+      const u=(sql:string)=>scanCreateTourOrderDdl(sql).unresolvedExecute;
+      expect(u("EXECUTE 'alter function public.create_' || 'tour_order(int) security definer';")).toBe(true);
+      expect(u("execute format('alter function %I.%I() security definer', 'public','create_tour_order');")).toBe(true);
+      expect(u('execute v_sql;')).toBe(true);
+      expect(u("execute 'select 1' || v_x;")).toBe(true);
+      expect(u("do $$ begin execute pg_catalog.format('select %s', x) into y; end $$;")).toBe(true);
+      expect(u("execute 'select 1';")).toBe(false);
+      expect(u("execute 'select $1' using a;")).toBe(false);
+      expect(u("execute $q$select 1$q$ into x;")).toBe(false);
+      expect(u("execute 'it''s fine';")).toBe(false);
+      expect(u('grant execute on function x() to y;')).toBe(false);
+      expect(u('revoke execute on all functions in schema public from anon;')).toBe(false);
+      expect(u('alter default privileges grant execute on functions to anon;')).toBe(false);
+      expect(u('create trigger t before update on x for each row execute function public.f();')).toBe(false);
+      expect(u("select 'execute v_sql;'; select \"execute\";")).toBe(false);
+      expect(u('-- execute v_sql;\n/* execute x */ select 1;')).toBe(false);
+    });
+
+    it('unresolved EXECUTE scan is linear-time', () => {
+      const t0=performance.now();
+      scanCreateTourOrderDdl("execute 'select 1'"+" || 'x'".repeat(5000)+';');
+      scanCreateTourOrderDdl("execute 'a';".repeat(5000));
+      scanCreateTourOrderDdl('execute '+'$'.repeat(20000));
+      scanCreateTourOrderDdl("execute "+"'"+'a'.repeat(20000)+"'");
+      expect(performance.now()-t0).toBeLessThan(200);
     });
 
     it('nested block comments are stripped as one comment', () => {

@@ -66,6 +66,20 @@ export const CREATE_TOUR_ORDER_SCHEMA_WIDE_ACL_EXCLUSIONS = Object.freeze({});
 export const CREATE_TOUR_ORDER_DYNAMIC_SQL_EXCLUSIONS = Object.freeze({});
 // Unicode 跳脫識別字（U&"publ\0069c"."create_tour_ord\0065r"）可拼出任何函式名而躲過字面比對，一律 fail closed：
 // 命中 U&" 或 U&' 的 migration 必須在此逐檔附理由。目前 supabase/migrations 沒有任何命中。
+// 逐檔核對每一句 EXECUTE（#777）：格式字串模板皆為固定字面，只對 table／constraint／index／policy／type 做 DDL 或對 table 做 DML，
+// 模板內沒有 function／procedure／routine 關鍵字，%I／%s 代入的只有 pg_constraint／pg_policy／pg_class 查出的物件名或白名單 table 名，
+// 不可能組出 create_tour_order 的 DDL（create/alter/grant/revoke/rename function）。
+export const CREATE_TOUR_ORDER_UNRESOLVED_EXECUTE_EXCLUSIONS = Object.freeze({
+  '0006': 'execute format 只對迴圈內固定 table 清單做 alter table enable row level security 與 create policy，模板無 function DDL',
+  '0066': 'execute format 只對 item.table_name／item.policy_name 做 alter table enable RLS 與 create policy（table 清單固定）；其餘 EXECUTE 皆為單一字面（alter type add value／update trips|trip_plans）',
+  '0067': 'execute format 模板皆為 alter table public.trip_plans|trip_addons|trip_departures drop／validate constraint %I，%I 為 pg_constraint.conname，與 function 無關',
+  '0084': 'execute pg_catalog.format 模板為 insert/select/update catalog_position_counters 與 services|products|portfolios；%s 代入 public.quote_ident(p_resource)，p_resource 已先過 (services,products,portfolios) 白名單，col 亦為白名單欄名，全是 DML，沒有 function DDL',
+  '0095': 'execute format 只對 impersonation_sessions／impersonation_actions 兩張 table 做 enable／force RLS、drop／create policy、revoke／grant on table（皆為 on table，非 on function）',
+  '0102': 'execute format 模板為 alter table public.trip_departure_staff|%I（parent_table 來自固定 spec）add／validate／drop constraint，無 function DDL',
+  '0104': 'execute format 模板為 alter table public.tour_orders|%I（spec.parent_table 固定）add／validate／drop constraint，%s 為 quote_ident 的欄名清單，無 function DDL',
+  '0106': 'execute format 模板為 lock table only public.%I 與 drop index public.%I restrict，%I 為固定清單的 table／index 名，無 function DDL',
+  '0109': 'execute format 模板為 alter table public.tour_orders drop constraint %I，%I 為 pg_constraint 查出的 check 約束名，無 function DDL',
+});
 export const CREATE_TOUR_ORDER_UNICODE_IDENTIFIER_EXCLUSIONS = Object.freeze({});
 
 // 單一來源：create_tour_order DDL 掃描（#777）。純函式，同時供真實 migration 與合成 mutation 字串使用。
@@ -88,6 +102,61 @@ const DROP_RE = new RegExp(`\\bdrop\\s+${ROUTINE_KIND}\\s+(?:if\\s+exists\\s+)?$
 const SCHEMA_WIDE_ACL_RE = /\b(?:(?:grant|revoke)\b[^;]*?\bon\s+all\s+(?:functions|routines|procedures)\s+in\s+schema\b|alter\s+default\s+privileges\b[^;]*?\b(?:functions|routines|procedures)\b)/i;
 // execute（排除 grant/revoke … execute on）語句內出現 create_tour_order；以 ; 為語句界線，保守 fail closed。
 const UNICODE_IDENTIFIER_RE = /\bu&['"]/i;
+// 無法靜態判定目標的 EXECUTE（#777 Codex P2）：只要 EXECUTE 命令的參數不是「單一純字串常值（或 dollar-quote 常值）後接 ; / using / into」，
+// 就無法證明它不會組出 create_tour_order DDL（|| 串接、format()、變數、prepared statement 皆然），一律 fail closed。
+// 手寫線性掃描器（不用 regex 回溯）；字串／引號識別字內的 execute 字樣不算命令，dollar-quote 本體內的 PL/pgSQL 則照常掃描。
+const WORD_CHAR = /[\p{L}\p{N}_$]/u;
+function skipQuoted(sql, start, quote) {
+  const backslash = quote === "'" && /[eE]/.test(sql[start - 1] ?? '') && !WORD_CHAR.test(sql[start - 2] ?? '');
+  let i = start + 1;
+  while (i < sql.length) {
+    if (backslash && sql[i] === '\\') { i += 2; continue; }
+    if (sql[i] === quote) {
+      if (sql[i + 1] === quote) { i += 2; continue; }
+      return i + 1;
+    }
+    i += 1;
+  }
+  return sql.length;
+}
+function dollarTagAt(sql, i) {
+  if (WORD_CHAR.test(sql[i - 1] ?? '')) return '';
+  return /^\$(?:[\p{L}_][\p{L}\p{N}_]*)?\$/u.exec(sql.slice(i, i + 130))?.[0] ?? '';
+}
+const skipSpace = (sql, i) => { while (i < sql.length && /\s/.test(sql[i])) i += 1; return i; };
+const wordAt = (sql, i) => { let j = i; while (j < sql.length && WORD_CHAR.test(sql[j])) j += 1; return sql.slice(i, j).toLowerCase(); };
+export function firstUnresolvedExecute(sql) {
+  let i = 0;
+  while (i < sql.length) {
+    const c = sql[i];
+    if (c === "'" || c === '"') { i = skipQuoted(sql, i, c); continue; }
+    if (!WORD_CHAR.test(c) || WORD_CHAR.test(sql[i - 1] ?? '')) { i += 1; continue; }
+    const word = wordAt(sql, i);
+    const after = i + word.length;
+    if (word !== 'execute') { i = after; continue; }
+    const argStart = skipSpace(sql, after);
+    const next = wordAt(sql, argStart);
+    // 權限字（grant/revoke … execute on、execute,）與 trigger 的 execute function|procedure 不是 EXECUTE 命令。
+    if (sql[argStart] === ',' || next === 'on' || next === 'function' || next === 'procedure') { i = after; continue; }
+    let end = -1;
+    if (sql[argStart] === "'") end = skipQuoted(sql, argStart, "'");
+    else if ((sql[argStart] === 'e' || sql[argStart] === 'E') && sql[argStart + 1] === "'") end = skipQuoted(sql, argStart + 1, "'");
+    else {
+      const tag = dollarTagAt(sql, argStart);
+      if (tag) {
+        const close = sql.indexOf(tag, argStart + tag.length);
+        end = close < 0 ? -1 : close + tag.length;
+      }
+    }
+    if (end < 0) return i;
+    const tail = skipSpace(sql, end);
+    const tailWord = wordAt(sql, tail);
+    if (sql[tail] !== ';' && tailWord !== 'using' && tailWord !== 'into') return i;
+    i = end;
+  }
+  return -1;
+}
+export const hasUnresolvedExecute = (sql) => firstUnresolvedExecute(sql) >= 0;
 const DYNAMIC_SQL_RE = /\bexecute\b(?!\s+on\b)[^;]*?create_tour_order/i;
 
 export function scanCreateTourOrderDdl(sqlText) {
@@ -98,6 +167,7 @@ export function scanCreateTourOrderDdl(sqlText) {
     schemaWideAcl: SCHEMA_WIDE_ACL_RE.test(sql),
     dynamicSql: DYNAMIC_SQL_RE.test(sql),
     unicodeIdentifier: UNICODE_IDENTIFIER_RE.test(sql),
+    unresolvedExecute: hasUnresolvedExecute(sql),
   };
 }
 
