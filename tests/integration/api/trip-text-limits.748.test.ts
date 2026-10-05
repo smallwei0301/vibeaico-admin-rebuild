@@ -135,6 +135,26 @@ describe('歷史超量資料不擋其他欄位的儲存', () => {
   });
 });
 
+describe('#785 歷史資料：原始項數超過 200 的清單不擋其他欄位', () => {
+  it.each(['exclusions', 'notices'] as const)('%s 已是 300 個空白項（直接寫 DB）→ PUT 只改 title → 200，清單原樣保留', async (field) => {
+    const { id } = await createTrip();
+    const legacy = Array(300).fill(' ');
+    const { error } = await admin.from('trips').update({ [field]: legacy }).eq('id', id).eq('tenant_id', SHOP_A.id);
+    expect(error).toBeNull();
+
+    const newTitle = `limits-legacy-raw-${randomUUID()}`;
+    const res = await ownerA.put(`/api/trips/${id}`, { title: newTitle });
+    expect(res.status).toBe(200);
+    expect((await getTrip(id)).title).toBe(newTitle);
+
+    const { data, error: readError } = await admin.from('trips').select(field).eq('id', id).eq('tenant_id', SHOP_A.id).single();
+    expect(readError).toBeNull();
+    const stored = (data as Record<string, unknown>)[field] as string[];
+    expect(stored, `${field} 不得被截斷或正規化`).toHaveLength(300);
+    expect(stored).toEqual(legacy);
+  });
+});
+
 describe('合法邊界逐字存住', () => {
   it('description 剛好 5000、三個清單各 20 項每項 300 字 → 200 且讀回逐字相同', async () => {
     const { id } = await createTrip();

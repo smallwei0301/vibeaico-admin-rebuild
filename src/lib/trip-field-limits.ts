@@ -30,10 +30,12 @@ export function tripViolationLimit(kind: TripIncludesViolation): number {
 
 /**
  * 清單規則（兩層）：
- * 1. 原始天花板（#785）：原始項數 ≤ 200（含空白項）、每項原始未 trim ≤ 3000 code points；超過即 early-exit，
- *    不會對超大輸入先建大陣列再數。
- * 2. 可見上限：忽略空白項、每項 trim 後 ≤ 300 code points，最多 20 項。
- * 回傳違規種類（原始項數 > 可見項數 > 可見過長 > 原始過長），沒有違規回傳 null；伺服器與後台 UI 共用。
+ * 1. 可見上限：忽略空白項、每項 trim 後 ≤ 300 code points，最多 20 項。
+ * 2. 原始天花板（#785）：原始項數 ≤ 200（含空白項）、每項原始未 trim ≤ 3000 code points。
+ * 回報優先序：**可見違規一旦存在就優先回報**（tooManyItems > itemTooLong），raw 種類只在可見規則全過時才回報，
+ * 這樣 UI 的提示指向使用者真正該改的地方。pass/fail 與回報順序無關：任一違規即失敗。
+ * 效能：原始項數 > 200 直接 early-exit 回 tooManyRawItems（此時不數可見項）；
+ * 逐項只做 early-exit 的 code point 計數與一次 trim（線性），不建立額外大陣列。
  */
 export function tripListViolation(items: readonly string[]): TripListViolation | null {
   if (items.length > MAX_TRIP_LIST_RAW_ITEMS) return 'tooManyRawItems';
@@ -41,11 +43,11 @@ export function tripListViolation(items: readonly string[]): TripListViolation |
   let itemTooLong = false;
   let itemRawTooLong = false;
   for (const item of items) {
-    if (!withinTripTextLimit(item, MAX_TRIP_LIST_ITEM_RAW_CHARS)) { itemRawTooLong = true; continue; }
+    if (!withinTripTextLimit(item, MAX_TRIP_LIST_ITEM_RAW_CHARS)) itemRawTooLong = true;
     const text = item.trim();
     if (!text) continue;
     count += 1;
-    if (!withinTripTextLimit(text, MAX_PUBLIC_LIST_ITEM_CHARS)) itemTooLong = true;
+    if (!itemTooLong && !withinTripTextLimit(text, MAX_PUBLIC_LIST_ITEM_CHARS)) itemTooLong = true;
   }
   if (count > MAX_PUBLIC_LIST_ITEMS) return 'tooManyItems';
   if (itemTooLong) return 'itemTooLong';
@@ -56,10 +58,33 @@ export function withinTripListLimits(items: readonly string[]): boolean {
   return tripListViolation(items) === null;
 }
 
-/** `includes` 是 UI `inclusions` 清單的換行傳輸形式；先檢查整體原始長度，再 split。 */
+/** 是否超過 maxLines 行（以 '\n' 計；'\r\n' 也含 '\n'）；最多掃 maxLines 個換行就停，不 split。 */
+function hasMoreLinesThan(value: string, maxLines: number): boolean {
+  let from = 0;
+  for (let i = 0; i < maxLines; i += 1) {
+    const at = value.indexOf('\n', from);
+    if (at < 0) return false;
+    from = at + 1;
+  }
+  return value.indexOf('\n', from) >= 0;
+}
+
+/**
+ * `includes` 是 UI `inclusions` 清單的換行傳輸形式。
+ * 先用有界掃描判斷行數：> 200 行就不 split（避免對巨大字串建大陣列），
+ * 此時整體 > 20000 回 includesRawTooLarge，否則回 tooManyRawItems。
+ * ≤ 200 行才 split（最多 200 個元素），可見違規優先；可見規則全過時，
+ * 整體 > 20000 回 includesRawTooLarge，其餘回該清單的 raw 種類。
+ */
 export function tripIncludesViolation(value: string): TripIncludesViolation | null {
-  if (!withinTripTextLimit(value, MAX_TRIP_INCLUDES_RAW_CHARS)) return 'includesRawTooLarge';
-  return tripListViolation(value.split(/\r?\n/));
+  const wholeTooLarge = !withinTripTextLimit(value, MAX_TRIP_INCLUDES_RAW_CHARS);
+  if (hasMoreLinesThan(value, MAX_TRIP_LIST_RAW_ITEMS)) {
+    return wholeTooLarge ? 'includesRawTooLarge' : 'tooManyRawItems';
+  }
+  const kind = tripListViolation(value.split(/\r?\n/));
+  if (kind === 'tooManyItems' || kind === 'itemTooLong') return kind;
+  if (wholeTooLarge) return 'includesRawTooLarge';
+  return kind;
 }
 
 export function withinTripIncludesLimits(value: string): boolean {

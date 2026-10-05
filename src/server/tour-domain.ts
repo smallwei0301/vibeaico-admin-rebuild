@@ -4,7 +4,13 @@ import {
   MAX_PUBLIC_LONG_TEXT_CHARS, MAX_PUBLIC_SHORT_TEXT_CHARS,
   MAX_PUBLIC_LIST_ITEMS, MAX_PUBLIC_LIST_ITEM_CHARS,
 } from '@/lib/public-trip-limits';
-import { withinTripTextLimit, withinTripListLimits, withinTripIncludesLimits } from '@/lib/trip-field-limits';
+import {
+  MAX_TRIP_INCLUDES_RAW_CHARS, MAX_TRIP_LIST_ITEM_RAW_CHARS, MAX_TRIP_LIST_RAW_ITEMS,
+} from '@/lib/public-trip-limits';
+import {
+  withinTripTextLimit, tripListViolation, tripIncludesViolation,
+  type TripIncludesViolation,
+} from '@/lib/trip-field-limits';
 
 const tripListLimitMessage = `最多 ${MAX_PUBLIC_LIST_ITEMS} 項，每項最多 ${MAX_PUBLIC_LIST_ITEM_CHARS} 字`;
 const tripDescription = z.string().refine(
@@ -15,9 +21,25 @@ const tripNotes = z.string().refine(
   (value) => withinTripTextLimit(value, MAX_PUBLIC_SHORT_TEXT_CHARS),
   `安全提醒最多 ${MAX_PUBLIC_SHORT_TEXT_CHARS} 字`,
 ).optional();
-const tripIncludes = z.string().refine(withinTripIncludesLimits, `費用包含${tripListLimitMessage}`).optional();
-const tripExclusions = z.array(z.string()).refine(withinTripListLimits, `費用不包含${tripListLimitMessage}`).optional();
-const tripNotices = z.array(z.string()).refine(withinTripListLimits, `注意事項${tripListLimitMessage}`).optional();
+/** 依違規種類給對應訊息：可見種類沿用「最多 20 項，每項最多 300 字」，raw 種類指出真正的原因。 */
+function tripListViolationMessage(label: string, kind: TripIncludesViolation): string {
+  switch (kind) {
+    case 'tooManyRawItems': return `${label}列數（含空白列）最多 ${MAX_TRIP_LIST_RAW_ITEMS} 列`;
+    case 'itemRawTooLong': return `${label}每項（含前後空白）最多 ${MAX_TRIP_LIST_ITEM_RAW_CHARS} 字`;
+    case 'includesRawTooLarge': return `${label}整體（含空白與換行）最多 ${MAX_TRIP_INCLUDES_RAW_CHARS} 字`;
+    default: return `${label}${tripListLimitMessage}`;
+  }
+}
+const tripIncludes = z.string().superRefine((value, ctx) => {
+  const kind = tripIncludesViolation(value);
+  if (kind) ctx.addIssue({ code: 'custom', message: tripListViolationMessage('費用包含', kind) });
+}).optional();
+const tripListField = (label: string) => z.array(z.string()).superRefine((items, ctx) => {
+  const kind = tripListViolation(items);
+  if (kind) ctx.addIssue({ code: 'custom', message: tripListViolationMessage(label, kind) });
+}).optional();
+const tripExclusions = tripListField('費用不包含');
+const tripNotices = tripListField('注意事項');
 
 export const tripStatus = ['DRAFT', 'PUBLISHED', 'ARCHIVED'] as const;
 export const departureStatus = ['OPEN', 'CLOSED', 'CANCELLED'] as const;

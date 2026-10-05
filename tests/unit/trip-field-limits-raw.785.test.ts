@@ -147,3 +147,33 @@ describe('client tripTextFieldErrors 與 server 一致', () => {
     }
   });
 });
+
+describe('回報優先序：可見違規優先，raw 只在可見規則全過時才回報', () => {
+  it('25 項 × 900 字的 inclusions 回報 tooManyItems（不是 includesRawTooLarge）', () => {
+    const value = Array.from({ length: 25 }, () => 'x'.repeat(900)).join('\n');
+    expect(Array.from(value).length).toBeGreaterThan(MAX_TRIP_INCLUDES_RAW_CHARS);
+    expect(tripIncludesViolation(value)).toBe('tooManyItems');
+    expect(tripTextFieldErrors({ inclusions: value.split('\n') })[0]).toMatchObject({ kind: 'tooManyItems', limit: 20 });
+  });
+  it('10 項 × 2500 字（整體 > 20000、單項可見過長）回報 itemTooLong', () => {
+    const value = Array.from({ length: 10 }, () => 'x'.repeat(2500)).join('\n');
+    expect(tripIncludesViolation(value)).toBe('itemTooLong');
+  });
+  it("['a'.repeat(3001)] 回報 itemTooLong（300），縮到 300 後才看到 raw 種類", () => {
+    expect(tripListViolation(['a'.repeat(3001)])).toBe('itemTooLong');
+    expect(tripListViolation(['a' + ' '.repeat(3000)])).toBe('itemRawTooLong');
+    expect(tripListViolation(['a'.repeat(300)])).toBeNull();
+  });
+  it('可見規則全過的 includes：整體過大回 includesRawTooLarge，行數過多回 tooManyRawItems', () => {
+    expect(tripIncludesViolation(includesOfLength(MAX_TRIP_INCLUDES_RAW_CHARS + 1))).toBe('includesRawTooLarge');
+    expect(tripIncludesViolation('\n'.repeat(500))).toBe('tooManyRawItems');
+  });
+  it('四個攻擊 payload 仍被擋且耗時合理，kind 如預期', () => {
+    const started = Date.now();
+    expect(tripListViolation([' '.repeat(1_000_000)])).toBe('itemRawTooLong');
+    expect(tripListViolation(Array(100_000).fill(''))).toBe('tooManyRawItems');
+    expect(tripIncludesViolation('\n'.repeat(1_000_000))).toBe('includesRawTooLarge');
+    expect(tripListViolation(['x' + ' '.repeat(500_000)])).toBe('itemRawTooLong');
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+});
