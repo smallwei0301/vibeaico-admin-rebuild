@@ -4023,7 +4023,11 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
-        "note": "Scout Codex P2 fixes: replaced aggregated audit task with 12 individual #779 review rounds, added 3 #775/#776 Opus reviews, updated issuesStarted (15→16 for #780), re-synced solTouches (50→128)"
+        "note": "Scout Codex P2 fixes: replaced aggregated audit task with 12 individual #779 review rounds, added 3 #775/#776 Opus reviews, updated issuesStarted (15→16 for #780), re-synced solTouches (50→128)",
+        "issue": 780,
+        "startedAt": "2026-10-05T10:24:17Z",
+        "completedAt": "2026-10-05T10:24:17Z",
+        "evidenceRef": "commit 50c32e6d"
       },
       {
         "id": "20261005-scout-structure-fix",
@@ -4032,15 +4036,15 @@
         "actualModel": "unknown",
         "issue": 780,
         "startedAt": "2026-10-05T10:24:17Z",
-        "completedAt": null,
-        "evidenceRef": null,
+        "completedAt": "2026-10-05T10:26:14Z",
+        "evidenceRef": "commit 84354067",
         "count": 1,
         "accepted": true,
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null,
         "contextClass": "compact",
-        "note": "Scout: added structured fields (issue, startedAt, completedAt, evidenceRef) to build/audit tasks"
+        "note": "Scout: added structured fields (issue, startedAt, completedAt, evidenceRef) to build/audit tasks; fields completed in follow-up commit"
       }
     ],
     "fullContextReplays": 0,
