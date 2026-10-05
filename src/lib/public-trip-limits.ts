@@ -1,8 +1,9 @@
 /**
- * 公開行程詳情的輸出上限。寫入端 schema 沒有長度上限（另案追蹤，併入 #748），後台 UI 也沒有對應的
- * maxLength 可沿用，所以公開 loader 在輸出邊界套用這些上限（與圖庫張數上限
- * MAX_PUBLIC_GALLERY_IMAGES 同一個處理方式）。獨立成檔而不改名 trip-gallery.ts：避免動到後台行程頁
- * 已共用的圖庫常數匯入，影響範圍最小。
+ * 公開行程詳情的輸出上限，同時也是行程寫入端 schema 的上限（#748）：
+ * tripCreateSchema／tripUpdateSchema 以相同的可見上限擋下新的超量寫入（description、notes、includes、
+ * exclusions、notices），歷史超量資料不清理、不遷移。公開 loader 仍在輸出邊界套用這些上限，
+ * 作為對歷史資料的第二道防線（與圖庫張數上限 MAX_PUBLIC_GALLERY_IMAGES 同一個處理方式）。
+ * 獨立成檔而不改名 trip-gallery.ts：避免動到後台行程頁已共用的圖庫常數匯入，影響範圍最小。
  */
 /** 長文字欄位（description）。 */
 export const MAX_PUBLIC_LONG_TEXT_CHARS = 5000;
