@@ -440,6 +440,26 @@ export const tripsPage = {
     unlimited: '不限量',
   },
 
+  /* ------------------------------------------------ 文字欄位長度上限（#748） */
+  limits: {
+    textCounter: (count: number, max: number) => `${count} / ${max}`,
+    listCounter: (count: number, maxItems: number, maxChars: number) =>
+      `項目 ${count} / ${maxItems}，每項最多 ${maxChars} 字`,
+    errors: {
+      tooLong: (limit: number) => `內容超過 ${limit} 字，請縮短後再儲存。`,
+      tooManyItems: (limit: number) => `項目超過 ${limit} 項，請刪減後再儲存。`,
+      itemTooLong: (limit: number) => `有項目超過 ${limit} 字，請縮短後再儲存。`,
+    },
+    saveBlocked: (labels: string[]) => `無法儲存：${labels.join('、')}超過長度上限，請修正後再儲存。`,
+  },
+  /** 複製行程：來源內容超過上限時，先開草稿讓店家修正，來源行程不會被修改。 */
+  copyDraft: {
+    title: '複製行程：請先調整超量內容',
+    intro: '來源行程有欄位超過目前的長度上限，無法原樣複製。請在下方調整後建立複本；來源行程不會被修改。',
+    confirm: '建立複本',
+    cancel: '取消',
+  },
+
   /* ------------------------------------------------------------ 確認 / 訊息 */
   confirm: {
     deleteTitle: '刪除行程',

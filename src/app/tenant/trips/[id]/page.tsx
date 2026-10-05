@@ -39,6 +39,11 @@ import { ApiError } from '@/lib/api';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import { MAX_PUBLIC_GALLERY_IMAGES, omitUnchangedGallery } from '@/lib/trip-gallery';
 import {
+  omitUnchangedTripTextFields, tripTextFieldErrors,
+  type TripTextField, type TripTextFieldError,
+} from '@/lib/trip-field-limits';
+import { TRIP_TEXT_FIELD_LABEL, TripTextFieldMeta } from '@/components/trips/TripTextFieldMeta';
+import {
   reorderPlans, toAdvancedPlanPayload, toQuickPlanPayload, validateAdvancedPlan, validateQuickPlan,
 } from '@/lib/trip-plan-quick-edit';
 import type {
@@ -258,7 +263,18 @@ export default function TripDetailPage() {
 
   React.useEffect(() => { void load(); }, [load]);
 
-  const patch = (p: Partial<Trip>) => setForm((f) => (f ? { ...f, ...p } : f));
+  /* #748：儲存被長度上限擋下時的行內錯誤；欄位一被修改就清掉該欄位的錯誤。 */
+  const [textErrors, setTextErrors] = React.useState<Partial<Record<TripTextField, TripTextFieldError>>>({});
+  const patch = (p: Partial<Trip>) => {
+    setForm((f) => (f ? { ...f, ...p } : f));
+    setTextErrors((prev) => {
+      const touched = (Object.keys(p) as string[]).filter((k) => k in prev);
+      if (touched.length === 0) return prev;
+      const next = { ...prev };
+      for (const k of touched) delete next[k as TripTextField];
+      return next;
+    });
+  };
   const lines = (arr: string[]) => arr.join('\n');
   const toLines = (v: string) => v.split('\n').map((s) => s.trim()).filter(Boolean);
 
@@ -296,8 +312,17 @@ export default function TripDetailPage() {
 
   const saveBasic = async () => {
     if (!form) return;
-    // 相簿未變更就不送 gallery：舊資料超過寫入上限時，只改其他欄位仍可儲存。
-    await runAction(() => updateTrip(tripId, omitUnchangedGallery(form, trip)), t.messages.updated);
+    // 相簿與五個文字欄位未變更就不送：舊資料超過寫入上限時，只改其他欄位仍可儲存。
+    const payload = omitUnchangedTripTextFields(omitUnchangedGallery(form, trip), trip);
+    // #748：只檢查仍在 payload 內（有變更）的欄位；有錯就不打 API、保留表單，並標出欄位。
+    const errors = tripTextFieldErrors(payload);
+    if (errors.length > 0) {
+      setTextErrors(Object.fromEntries(errors.map((e) => [e.field, e])));
+      toast.show(t.limits.saveBlocked(errors.map((e) => TRIP_TEXT_FIELD_LABEL[e.field])), 'danger');
+      return;
+    }
+    setTextErrors({});
+    await runAction(() => updateTrip(tripId, payload), t.messages.updated);
   };
 
   /* ------------------------------------------------------------- 方案 */
@@ -1070,6 +1095,7 @@ export default function TripDetailPage() {
                     onChange={(e) => patch({ description: e.target.value })}
                   />
                   <FormText>{t.form.descriptionHelp}</FormText>
+                  <TripTextFieldMeta field="description" value={form.description} error={textErrors.description} />
                 </FormGroup>
               </CardBody>
             </Card>
@@ -1086,6 +1112,7 @@ export default function TripDetailPage() {
                       onChange={(e) => patch({ inclusions: toLines(e.target.value) })}
                     />
                     <FormText>{t.form.listHelp}</FormText>
+                    <TripTextFieldMeta field="inclusions" value={form.inclusions} error={textErrors.inclusions} />
                   </FormGroup>
                   <FormGroup>
                     <Label>{t.form.exclusionsLabel}</Label>
@@ -1095,6 +1122,7 @@ export default function TripDetailPage() {
                       onChange={(e) => patch({ exclusions: toLines(e.target.value) })}
                     />
                     <FormText>{t.form.listHelp}</FormText>
+                    <TripTextFieldMeta field="exclusions" value={form.exclusions} error={textErrors.exclusions} />
                   </FormGroup>
                 </div>
                 <FormGroup>
@@ -1105,6 +1133,7 @@ export default function TripDetailPage() {
                     onChange={(e) => patch({ notices: toLines(e.target.value) })}
                   />
                   <FormText>{t.form.listHelp}</FormText>
+                  <TripTextFieldMeta field="notices" value={form.notices} error={textErrors.notices} />
                 </FormGroup>
                 <FormGroup>
                   <Label>{t.form.safetyLabel}</Label>
@@ -1113,6 +1142,7 @@ export default function TripDetailPage() {
                     value={form.safetyNotice}
                     onChange={(e) => patch({ safetyNotice: e.target.value })}
                   />
+                  <TripTextFieldMeta field="safetyNotice" value={form.safetyNotice} error={textErrors.safetyNotice} />
                 </FormGroup>
               </CardBody>
             </Card>

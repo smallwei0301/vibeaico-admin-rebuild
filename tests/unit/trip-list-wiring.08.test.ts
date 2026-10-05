@@ -82,7 +82,8 @@ describe('五個寫入操作都真的打端點（不是只改 state）', () => {
   });
 
   it('duplicate 複製行程本身的內容欄位，且複本標題帶有可辨識的後綴', () => {
-    const body = handlerBody('duplicate');
+    // #748：payload 由 buildCopyPayload 組出，duplicate／confirmCopyDraft 共用同一份。
+    const body = handlerBody('buildCopyPayload');
     for (const field of [
       'title:', 'slug:', 'summary:', 'description:', 'region:', 'meetingPoint:',
       'inclusions:', 'exclusions:', 'notices:', 'safetyNotice:', 'refundPolicyType:',

@@ -1,5 +1,23 @@
 import { z } from 'zod';
 import { MAX_TRIP_GALLERY_IMAGES } from '@/lib/trip-gallery';
+import {
+  MAX_PUBLIC_LONG_TEXT_CHARS, MAX_PUBLIC_SHORT_TEXT_CHARS,
+  MAX_PUBLIC_LIST_ITEMS, MAX_PUBLIC_LIST_ITEM_CHARS,
+} from '@/lib/public-trip-limits';
+import { withinTripTextLimit, withinTripListLimits, withinTripIncludesLimits } from '@/lib/trip-field-limits';
+
+const tripListLimitMessage = `最多 ${MAX_PUBLIC_LIST_ITEMS} 項，每項最多 ${MAX_PUBLIC_LIST_ITEM_CHARS} 字`;
+const tripDescription = z.string().refine(
+  (value) => withinTripTextLimit(value, MAX_PUBLIC_LONG_TEXT_CHARS),
+  `行程介紹最多 ${MAX_PUBLIC_LONG_TEXT_CHARS} 字`,
+).optional();
+const tripNotes = z.string().refine(
+  (value) => withinTripTextLimit(value, MAX_PUBLIC_SHORT_TEXT_CHARS),
+  `安全提醒最多 ${MAX_PUBLIC_SHORT_TEXT_CHARS} 字`,
+).optional();
+const tripIncludes = z.string().refine(withinTripIncludesLimits, `費用包含${tripListLimitMessage}`).optional();
+const tripExclusions = z.array(z.string()).refine(withinTripListLimits, `費用不包含${tripListLimitMessage}`).optional();
+const tripNotices = z.array(z.string()).refine(withinTripListLimits, `注意事項${tripListLimitMessage}`).optional();
 
 export const tripStatus = ['DRAFT', 'PUBLISHED', 'ARCHIVED'] as const;
 export const departureStatus = ['OPEN', 'CLOSED', 'CANCELLED'] as const;
@@ -26,7 +44,7 @@ export const tripCreateSchema = z.object({
   title: z.string().trim().min(1, '請輸入行程名稱'),
   slug: z.string().trim().min(1).max(160).optional(),
   summary: optionalText,
-  description: optionalText,
+  description: tripDescription,
   coverImageUrl: optionalText,
   gallery: z
     .array(z.unknown())
@@ -35,13 +53,13 @@ export const tripCreateSchema = z.object({
   location: optionalText,
   durationHours: z.number().finite().nonnegative().nullable().optional(),
   meetingPoint: optionalText,
-  includes: optionalText,
-  notes: optionalText,
+  includes: tripIncludes,
+  notes: tripNotes,
   /* ---- issue #259：`0089` 補上欄位後才收得下的五個顯示欄位 ---- */
   tagline: optionalText,
   meetingPointMapUrl: optionalText,
-  exclusions: z.array(z.string()).optional(),
-  notices: z.array(z.string()).optional(),
+  exclusions: tripExclusions,
+  notices: tripNotices,
   refundPolicyType: z.enum(['STANDARD', 'FLEXIBLE', 'STRICT']).optional(),
 });
 
