@@ -1,4 +1,4 @@
-import { getProductionDbG3AuthzContract, ISSUE_46_CLOSURE_COVERAGE, ISSUE_46_CLOSURE_FAMILIES, ISSUE_46_CLOSURE_FILE_MIGRATIONS, CREATE_TOUR_ORDER_WRITER_PREFIXES, CREATE_TOUR_ORDER_EXCLUDED_DDL } from '../../scripts/agents/production-db-g3-authz-contracts.mjs';
+import { getProductionDbG3AuthzContract, ISSUE_46_CLOSURE_COVERAGE, ISSUE_46_CLOSURE_FAMILIES, ISSUE_46_CLOSURE_FILE_MIGRATIONS, CREATE_TOUR_ORDER_WRITER_PREFIXES, CREATE_TOUR_ORDER_EXCLUDED_DDL, CREATE_TOUR_ORDER_SCHEMA_WIDE_ACL_EXCLUSIONS, CREATE_TOUR_ORDER_DYNAMIC_SQL_EXCLUSIONS, scanCreateTourOrderDdl } from '../../scripts/agents/production-db-g3-authz-contracts.mjs';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -860,23 +860,89 @@ describe('#725 N2 closure evidence follows plan migration content, not scope nam
     expect(text).not.toContain('0132_issue_42_seasonal_price_resolution');
   });
 
-  it('every SQL migration that writes create_tour_order body/security/ACL is in CREATE_TOUR_ORDER_WRITER_PREFIXES (#774)', () => {
+  it('every SQL migration that writes create_tour_order body/security/ACL is in CREATE_TOUR_ORDER_WRITER_PREFIXES (#774/#777)', () => {
     const dir=join(process.cwd(),'supabase/migrations');
-    const fn='(public\\.)?create_tour_order\\s*\\(';
-    const writerRe=new RegExp(`\\b(create\\s+(or\\s+replace\\s+)?function|alter\\s+function|(grant|revoke)\\b[^;]*?\\bon\\s+function)\\s+${fn}`,'i');
-    const dropRe=new RegExp(`\\bdrop\\s+function\\s+(if\\s+exists\\s+)?${fn}`,'i');
-    const strip=(f:string)=>readFileSync(join(dir,f),'utf8').replace(/--[^\n]*/g,'');
     const files=readdirSync(dir).filter(f=>f.endsWith('.sql'));
-    const writers=files.filter(f=>writerRe.test(strip(f))).map(f=>f.split('_')[0]);
+    const scans=files.map(f=>({prefix:f.split('_')[0],scan:scanCreateTourOrderDdl(readFileSync(join(dir,f),'utf8'))}));
+    const writers=scans.filter(x=>x.scan.writer).map(x=>x.prefix);
     expect(writers.length).toBeGreaterThan(0);
     for(const prefix of writers) expect(CREATE_TOUR_ORDER_WRITER_PREFIXES).toContain(prefix);
     for(const prefix of CREATE_TOUR_ORDER_WRITER_PREFIXES) expect(writers).toContain(prefix);
     // 唯一被排除的 create_tour_order DDL 是 0099（drop 舊 overload），且必須附理由。
-    const excluded=files.filter(f=>dropRe.test(strip(f))&&!writers.includes(f.split('_')[0])).map(f=>f.split('_')[0]);
+    const excluded=scans.filter(x=>x.scan.drop&&!x.scan.writer).map(x=>x.prefix);
     expect(excluded).toEqual(['0099']);
     expect(Object.keys(CREATE_TOUR_ORDER_EXCLUDED_DDL)).toEqual(['0099']);
     expect(CREATE_TOUR_ORDER_EXCLUDED_DDL['0099']).toMatch(/overload/);
     expect(CREATE_TOUR_ORDER_WRITER_PREFIXES).not.toContain('0099');
+    // schema 層級 ACL／動態 SQL fail closed：命中者必須逐檔列入 exclusion map（含理由）。
+    for(const x of scans.filter(x=>x.scan.schemaWideAcl)) expect((CREATE_TOUR_ORDER_SCHEMA_WIDE_ACL_EXCLUSIONS as Record<string,string>)[x.prefix]).toMatch(/\S/);
+    for(const x of scans.filter(x=>x.scan.dynamicSql)) expect(CREATE_TOUR_ORDER_WRITER_PREFIXES.includes(x.prefix)||!!(CREATE_TOUR_ORDER_DYNAMIC_SQL_EXCLUSIONS as Record<string,string>)[x.prefix]).toBe(true);
+  });
+
+  describe('scanCreateTourOrderDdl mutation cases (#777)', () => {
+    const W='create or replace function public.create_tour_order(a int) returns void as $$ select 1 $$ language sql;';
+    it.each([
+      ['plain create or replace function', W],
+      ['quoted schema and name', 'CREATE OR REPLACE FUNCTION "public"."create_tour_order"(a int) returns void as $$ select 1 $$ language sql;'],
+      ['quoted name only', 'create function "create_tour_order"(a int) returns void as $$ select 1 $$ language sql;'],
+      ['whitespace around the dot', 'create or replace function public . create_tour_order (a int) returns void as $$ select 1 $$ language sql;'],
+      ['multi-line identifier', 'create or replace function\n  public\n  .\n  create_tour_order\n(a int) returns void as $$ select 1 $$ language sql;'],
+      ['create or replace procedure', 'create or replace procedure public.create_tour_order(a int) as $$ select 1 $$ language sql;'],
+      ['create or replace routine', 'create or replace routine public.create_tour_order(a int) as $$ select 1 $$ language sql;'],
+      ['alter function', 'alter function public.create_tour_order(int) security invoker;'],
+      ['alter routine', 'alter routine public.create_tour_order(int) security definer;'],
+      ['alter routine quoted, no args', 'ALTER ROUTINE "public" . "create_tour_order" owner to postgres;'],
+      ['revoke on function', 'revoke execute on function public.create_tour_order(int) from public;'],
+      ['grant on routine quoted', 'grant execute on routine "public"."create_tour_order"(int) to service_role;'],
+      ['grant on multiple functions', 'grant execute on function public.other(), public.create_tour_order(int) to service_role;'],
+      ['write after a block comment', '/* header */ ' + W],
+    ])('flags writer: %s', (_n, sql) => {
+      expect(scanCreateTourOrderDdl(sql).writer).toBe(true);
+    });
+
+    it('does not flag commented-out code (line and block comments)', () => {
+      expect(scanCreateTourOrderDdl('-- '+W).writer).toBe(false);
+      expect(scanCreateTourOrderDdl('/* '+W+'\n -- nested */ select 1;').writer).toBe(false);
+      expect(scanCreateTourOrderDdl('/* a */ '+W+' /* b */').writer).toBe(true);
+    });
+
+    it('does not flag other functions or drop-only overload cleanup as a writer', () => {
+      expect(scanCreateTourOrderDdl('create function public.create_tour_order_v2(a int) returns void as $$ select 1 $$ language sql;').writer).toBe(false);
+      const drop=scanCreateTourOrderDdl('drop function if exists public.create_tour_order(uuid, int);');
+      expect(drop.writer).toBe(false);
+      expect(drop.drop).toBe(true);
+      expect(scanCreateTourOrderDdl('DROP FUNCTION IF EXISTS "public"."create_tour_order"(uuid);').drop).toBe(true);
+    });
+
+    it.each([
+      'grant execute on all functions in schema public to service_role;',
+      'REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM anon;',
+      'grant execute on all routines in schema "public" to authenticated;',
+      'alter default privileges in schema public grant execute on functions to anon;',
+      'ALTER DEFAULT PRIVILEGES\n  FOR ROLE postgres\n  REVOKE EXECUTE ON ROUTINES FROM public;',
+    ])('flags schema-wide ACL fail closed: %s', (sql) => {
+      expect(scanCreateTourOrderDdl(sql).schemaWideAcl).toBe(true);
+    });
+
+    it('ignores schema-wide ACL text inside comments and table-only default privileges', () => {
+      expect(scanCreateTourOrderDdl('-- alter default privileges grant all on functions\n/* grant execute on all functions in schema public */').schemaWideAcl).toBe(false);
+      expect(scanCreateTourOrderDdl('alter default privileges in schema public grant select on tables to anon;').schemaWideAcl).toBe(false);
+      expect(scanCreateTourOrderDdl('grant select on all tables in schema public to anon;').schemaWideAcl).toBe(false);
+    });
+
+    it.each([
+      "execute format('alter function public.%I(int) security definer', 'create_tour_order');",
+      "do $$ begin execute 'revoke all on function public.' || 'create_tour_order' || '(int) from public'; end $$;",
+      "EXECUTE\n  format('grant execute on function %s to anon', 'public.create_tour_order(int)');",
+    ])('flags dynamic SQL mentioning create_tour_order: %#', (sql) => {
+      expect(scanCreateTourOrderDdl(sql).dynamicSql).toBe(true);
+    });
+
+    it('plain grant/revoke execute and unrelated execute are not dynamic SQL', () => {
+      expect(scanCreateTourOrderDdl('revoke execute on function public.create_tour_order(int) from public;').dynamicSql).toBe(false);
+      expect(scanCreateTourOrderDdl("execute format('select 1 from %I', 'trips'); select create_tour_order(1);").dynamicSql).toBe(false);
+      expect(scanCreateTourOrderDdl("-- execute format('x', 'create_tour_order');").dynamicSql).toBe(false);
+    });
   });
 
   it('0128 alone (non-closure plan) requires every seasonal snapshot assertion (#771 NB1)', () => {

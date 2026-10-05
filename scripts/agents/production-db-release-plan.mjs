@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 
+import { CANONICAL_MIGRATION_IDENTITY, isCanonicalMigrationIdentity } from './production-db-migration-identity.mjs';
 import { PRODUCTION_DB_POLICY } from './production-db-release-preflight.mjs';
 
 const SHA = /^[0-9a-f]{40}$/;
@@ -161,13 +162,7 @@ export function releasePlanDigestOf(plan = {}) {
   return sha256(JSON.stringify(canonicalize(copy)));
 }
 
-/**
- * 唯一的 migration 身分格式（producer normalizedRepoFile 與 G3 consumer assertPlan 共用）：
- * 與 supabase/migrations 實際檔名（去掉 .sql）一致，四位編號＋小寫底線 slug。
- */
-export const CANONICAL_MIGRATION_IDENTITY = /^\d{4}_[a-z0-9_]+$/;
-export const isCanonicalMigrationIdentity = (value) =>
-  typeof value === 'string' && CANONICAL_MIGRATION_IDENTITY.test(value);
+export { CANONICAL_MIGRATION_IDENTITY, isCanonicalMigrationIdentity };
 
 export function normalizedRepoFile(value) {
   const name = String(value ?? '').trim();

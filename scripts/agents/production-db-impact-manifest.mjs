@@ -1,3 +1,5 @@
+import { isCanonicalMigrationIdentity } from './production-db-migration-identity.mjs';
+
 export const PRODUCTION_DB_IMPACT_MANIFEST_SCHEMA_VERSION = 1;
 
 const SURFACES = new Set([
@@ -17,7 +19,7 @@ export function normalizeProductionDbImpactManifest(manifest = {}) {
   const seenFiles = new Set();
   const entries = manifest.entries.map((entry, index) => {
     const repoFile = String(entry?.repoFile ?? '').trim();
-    if (!/^[0-9A-Za-z][0-9A-Za-z._-]*$/.test(repoFile) || repoFile.endsWith('.sql')) {
+    if (!isCanonicalMigrationIdentity(repoFile)) {
       fail('INVALID_IMPACT_REPO_FILE', `entries[${index}].repoFile is invalid`);
     }
     if (seenFiles.has(repoFile)) fail('DUPLICATE_IMPACT_MIGRATION', `${repoFile} is duplicated`);
