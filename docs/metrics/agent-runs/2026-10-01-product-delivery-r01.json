@@ -4038,8 +4038,8 @@
         "requestedModel": "sol",
         "actualModel": "unknown",
         "issue": 710,
-        "startedAt": "2026-10-05T13:15:00Z",
-        "completedAt": "2026-10-05T13:20:00Z",
+        "startedAt": "2026-10-05T13:14:01Z",
+        "completedAt": null,
         "count": 1,
         "accepted": true,
         "evidenceRef": "commit d2cdea07",
@@ -4047,7 +4047,7 @@
         "outputTokens": null,
         "cachedTokens": null,
         "contextClass": "compact",
-        "note": "Independent Opus review of #710 slice: diff == handoff patch; rerun 9/9; extra mutations M4 (code contains 'exists') and M5 (createUser retry) fail new tests, old tests 6/6 pass. PASS."
+        "note": "Independent Opus review of #710 slice: diff == handoff patch; rerun 9/9; extra mutations M4 (code contains 'exists') and M5 (createUser retry) fail new tests, old tests 6/6 pass. PASS. Review completion time not captured precisely; it finished before scout dispatch (scout commit 189a14c9 at 13:18:02Z)."
       },
       {
         "id": "20261005-scout-710-ledger",
@@ -4055,7 +4055,7 @@
         "requestedModel": "luna",
         "actualModel": "unknown",
         "issue": 710,
-        "startedAt": "2026-10-05T13:11:00Z",
+        "startedAt": null,
         "completedAt": "2026-10-05T13:18:02Z",
         "count": 1,
         "accepted": true,
@@ -4064,7 +4064,7 @@
         "outputTokens": null,
         "cachedTokens": null,
         "contextClass": "compact",
-        "note": "Scout: recorded #710 build/audit events in r01 ledger"
+        "note": "Scout: recorded #710 build/audit events in r01 ledger Dispatch time not captured precisely."
       }
     ],
     "fullContextReplays": 0,
