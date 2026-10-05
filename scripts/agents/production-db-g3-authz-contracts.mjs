@@ -118,16 +118,54 @@ export { stripSqlComments };
 // 單一識別字 token：引號識別字不跨行並支援 "" 跳脫；未引號識別字支援非 ASCII。
 // schema 限定詞不限 public，最多兩段（catalog.schema.name），因為任何 schema 的 create_tour_order 都可能被 set schema／rename 搬進 public，一律 fail closed。
 const SQL_IDENT = '(?:"(?:[^"\\n]|"")+"|[\\p{L}_][\\p{L}\\p{N}_$]*)';
-// 起點 lookbehind：只在 token 邊界起算，避免對長單字的每個位置重試造成二次方回溯。
-const TOUR_ORDER_IDENT = `(?<![\\p{L}\\p{N}_$])(?:${SQL_IDENT}\\s*\\.\\s*){0,2}"?create_tour_order"?(?![\\p{L}\\p{N}_$"])`;
+// SQL gap：關鍵字之間可出現空白、區塊註解、行註解（PostgreSQL 皆視為空白）。
+// 區塊註解長度設上限（非巢狀、lazy），避免未結束的 /* 對每個關鍵字掃到檔尾造成二次方；
+// 超長註解由「剝註解後文字」那一側負責（註解被換成空白，\s 可無限重複）。
+const SQL_GAP_ONE = String.raw`(?:\s|/\*[\s\S]{0,2000}?\*/|--[^\n]*(?:\n|$))`;
+const G1 = `${SQL_GAP_ONE}+`;
+const G0 = `${SQL_GAP_ONE}*`;
+const TOUR_ORDER_IDENT = `(?<![\\p{L}\\p{N}_$])(?:${SQL_IDENT}${G0}\\.${G0}){0,2}"?create_tour_order"?(?![\\p{L}\\p{N}_$"])`;
 const ROUTINE_KIND = '(?:function|procedure|routine)';
-const WRITER_RE = new RegExp(
-  `\\b(?:create\\s+(?:or\\s+replace\\s+)?${ROUTINE_KIND}\\s+${TOUR_ORDER_IDENT}\\s*\\(`
-  + `|alter\\s+${ROUTINE_KIND}\\s+${TOUR_ORDER_IDENT}`
-  + `|alter\\s+${ROUTINE_KIND}\\b[^;]*?\\brename\\s+to\\s+${TOUR_ORDER_IDENT}`
-  + `|(?:grant|revoke)\\b[^;]*?\\bon\\s+${ROUTINE_KIND}\\b[^;]*?${TOUR_ORDER_IDENT})`, 'iu');
-const DROP_RE = new RegExp(`\\bdrop\\s+${ROUTINE_KIND}\\s+(?:if\\s+exists\\s+)?${TOUR_ORDER_IDENT}`, 'iu');
-const SCHEMA_WIDE_ACL_RE = /\b(?:(?:grant|revoke)\b[^;]*?\bon\s+all\s+(?:functions|routines|procedures)\s+in\s+schema\b|alter\s+default\s+privileges\b[^;]*?\b(?:functions|routines|procedures)\b)/i;
+const WRITER_CREATE_RE = new RegExp(
+  `\\bcreate${G1}(?:or${G1}replace${G1})?${ROUTINE_KIND}${G1}${TOUR_ORDER_IDENT}${G0}\\(`, 'iu');
+const WRITER_ALTER_RE = new RegExp(`\\balter${G1}${ROUTINE_KIND}${G1}${TOUR_ORDER_IDENT}`, 'iu');
+// 需要「前一段之後出現下一段」的語句內序列（取代 `[^;]*?` lazy 跨度；以 ; 分語句後逐段貪婪找最早出現，線性時間）。
+const ALTER_KIND_STEP = new RegExp(`\\balter${G1}${ROUTINE_KIND}\\b`, 'giu');
+const RENAME_TO_STEP = new RegExp(`\\brename${G1}to${G1}${TOUR_ORDER_IDENT}`, 'giu');
+const GRANT_REVOKE_STEP = /\b(?:grant|revoke)\b/giu;
+const ON_KIND_STEP = new RegExp(`\\bon${G1}${ROUTINE_KIND}\\b`, 'giu');
+const TOUR_ORDER_STEP = new RegExp(TOUR_ORDER_IDENT, 'giu');
+const DROP_RE = new RegExp(`\\bdrop${G1}${ROUTINE_KIND}${G1}(?:if${G1}exists${G1})?${TOUR_ORDER_IDENT}`, 'iu');
+const ON_ALL_STEP = new RegExp(`\\bon${G1}all${G1}(?:functions|routines|procedures)${G1}in${G1}schema\\b`, 'giu');
+const ALTER_DEFAULT_PRIV_STEP = new RegExp(`\\balter${G1}default${G1}privileges\\b`, 'giu');
+const ROUTINE_PLURAL_STEP = /\b(?:functions|routines|procedures)\b/giu;
+
+function hasOrderedSteps(statement, steps) {
+  let position = 0;
+  for (const step of steps) {
+    step.lastIndex = position;
+    const match = step.exec(statement);
+    if (!match) return false;
+    position = match.index + Math.max(match[0].length, 1);
+  }
+  return true;
+}
+function anyStatement(sql, predicate) {
+  for (const statement of sql.split(';')) {
+    if (predicate(statement)) return true;
+  }
+  return false;
+}
+function writerScan(sql) {
+  return WRITER_CREATE_RE.test(sql)
+    || WRITER_ALTER_RE.test(sql)
+    || anyStatement(sql, (statement) => hasOrderedSteps(statement, [ALTER_KIND_STEP, RENAME_TO_STEP])
+      || hasOrderedSteps(statement, [GRANT_REVOKE_STEP, ON_KIND_STEP, TOUR_ORDER_STEP]));
+}
+function schemaWideAclScan(sql) {
+  return anyStatement(sql, (statement) => hasOrderedSteps(statement, [GRANT_REVOKE_STEP, ON_ALL_STEP])
+    || hasOrderedSteps(statement, [ALTER_DEFAULT_PRIV_STEP, ROUTINE_PLURAL_STEP]));
+}
 // execute（排除 grant/revoke … execute on）語句內出現 create_tour_order；以 ; 為語句界線，保守 fail closed。
 const UNICODE_IDENTIFIER_RE = /\bu&['"]/i;
 // EXECUTE 關鍵字一律 fail closed（#777；文字規則，刻意不解析引號、dollar-quote、trigger 語境）：
@@ -139,14 +177,18 @@ const UNICODE_IDENTIFIER_RE = /\bu&['"]/i;
 // 權限語法例外必須是 ASCII 空白後接「完整的」on：on$x、onä、NBSP+on 在 PostgreSQL 都是識別字（$ 與非 ASCII 皆為識別字字元），不是權限語法。
 const PRIVILEGE_ON = String.raw`(?![ \t\n\r\f\v]+on(?![A-Za-z0-9_$]|[^\x00-\x7F]))`;
 const EXECUTE_KEYWORD_RE = new RegExp(String.raw`(?<![A-Za-z0-9_])execute(?![A-Za-z0-9_])${PRIVILEGE_ON}`, 'iu');
-const DYNAMIC_SQL_RE = new RegExp(String.raw`(?<![A-Za-z0-9_])execute(?![A-Za-z0-9_])${PRIVILEGE_ON}[^;]*?create_tour_order`, 'iu');
+const EXECUTE_STEP = new RegExp(String.raw`(?<![A-Za-z0-9_])execute(?![A-Za-z0-9_])${PRIVILEGE_ON}`, 'giu');
+const CREATE_TOUR_ORDER_STEP = /create_tour_order/giu;
+function dynamicSqlScan(sql) {
+  return anyStatement(sql, (statement) => hasOrderedSteps(statement, [EXECUTE_STEP, CREATE_TOUR_ORDER_STEP]));
+}
 
 function scanText(sql) {
   return {
-    writer: WRITER_RE.test(sql),
+    writer: writerScan(sql),
     drop: DROP_RE.test(sql),
-    schemaWideAcl: SCHEMA_WIDE_ACL_RE.test(sql),
-    dynamicSql: DYNAMIC_SQL_RE.test(sql),
+    schemaWideAcl: schemaWideAclScan(sql),
+    dynamicSql: dynamicSqlScan(sql),
     unicodeIdentifier: UNICODE_IDENTIFIER_RE.test(sql),
     unresolvedExecute: EXECUTE_KEYWORD_RE.test(sql),
   };
