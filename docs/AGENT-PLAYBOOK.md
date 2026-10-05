@@ -98,7 +98,7 @@
 | PB-035 | 從欄位定義推斷 insert 會失敗，卻沒查參與寫入的 trigger | `NOT NULL` 且無 default、而 insert 沒列該欄，**不足以**推出「一定 23502」——`BEFORE INSERT` trigger 會在約束檢查之前改寫 NEW，本例該欄早就被 trigger 填好。宣稱任何寫入會成功或失敗之前，先用 `pg_trigger` 列出該表上所有參與寫入的物件，或直接在那個資料庫上跑一次。 | 本檔 PB-032、PB-035 |
 | PB-036 | `TERRA_BUILD` 的施工跑在 audit 層模型上 | CLAUDE.md 寫得很直白：Terra 一律用 Sonnet，把施工放在 Opus 上是 over-spec，不是 diligence——它燒掉 audit 層的成本，還讓 audit 層變成在審自己的產出。已發生四次（#370、#396，以及 2026-09-14 同一輪內的兩次：兩張 TERRA_BUILD 都跑在 Opus 上，以及 audit 層直接改 `0108` 的 enum 斷言），每一次的理由都是「我人已經在跑了，順手做完比較快」。第四次特別值得記：當時 Final Risk 剛回報 BLOCK，修一行是「顯然正確且很小」的事——**正是那個「很小」讓分層被跳過**。判準是動到什麼檔案，不是改了幾行。**開工前先判斷這一輪是不是施工**：新增／修改 migration、route、server 模組或測試就是 `TERRA_BUILD`，必須委派給 build 層模型；不是委派不了，是沒有先問。已發生就如實記為違規，不得寫成中性註記。 | `CLAUDE.md`「Lane → model tier」；`docs/MODEL-ROUTING.md` |
 | PB-037 | 把「欄位集合」當成「欄位順序」，並用一次找不到的搜尋證明「它不存在」 | **已發生三次。** (1)(2) 同一支 migration（`0105`）同一輪內：先 grep `id, tenant_id` 漏掉既有的 `unique (tenant_id, id)`，據此斷定「沒有等價約束」而自建一條重複的，害 schema proof 在 drop 既有約束時被依賴擋下；修正時又把 `conkey`（**保留宣告順序**，`{2,1}`）拿去比排序過的 `{1,2}`，讓保護性斷言必定誤報。(3) 同日稍晚換領域再犯：closure sweep 用 `grep '^- LANE_STATE:'` 取 PR 欄位，漏掉格式沒有項目符號的 #312 而誤報「無 lane metadata」，錯誤寫進兩份 PR，最後由委派出去的 scout agent 訂正——**結論碰巧仍正確，所以沒有任何紅燈會提醒我**。**判定「是否已存在」一律查系統目錄並兩邊排序比欄位集合；從半結構化文字取欄位不得綁定單一拼法；任何證明「X 不存在」的搜尋，送出結論前先餵一個已知存在的正向對照。** 「我沒找到」是關於搜尋的陳述，不是關於世界的陳述。 | `supabase/migrations/0105_issue_44_traveler_risk_policies.sql`、`0104:138`、`0067`、PR #312／#418／#428 |
-| PB-038 | 用 `;` 把退出碼吃掉，然後在測試是紅的情況下推上去 | 已發生三次。`npm run … \| tail`、`npx vitest run … \| grep`、以及 `npx vitest … > file 2>&1; echo "EXIT=$?"; git add && git commit && git push`——最後這個 `;` 讓 `git push` 完全不受測試結果影響，於是我在 1 failed / 2109 passed 的情況下推了上去。管線取的是最後一段的退出碼，`;` 根本不看前一段。**驗證與推送永遠用 `&&` 串成一條；要保留輸出就先重導向到檔案，再讓 `&&` 接下去，不要用 `;` 分隔。** 推送前最後一個動作必須是一個「紅了就會擋住推送」的指令。 | PR #416（`57de3b9`）、PR #77 早期 |
+| PB-038 | 用 `;` 把退出碼吃掉，然後在測試是紅的情況下推上去 | 已發生四次。`npm run … \| tail`、`npx vitest run … \| grep`、以及 `npx vitest … > file 2>&1; echo "EXIT=$?"; git add && git commit && git push`——最後這個 `;` 讓 `git push` 完全不受測試結果影響，於是我在 1 failed / 2109 passed 的情況下推了上去。管線取的是最後一段的退出碼，`;` 根本不看前一段。**驗證與推送永遠用 `&&` 串成一條；要保留輸出就先重導向到檔案，再讓 `&&` 接下去，不要用 `;` 分隔。** 推送前最後一個動作必須是一個「紅了就會擋住推送」的指令。2026-10-05 第四次：`;` 讓 fetch 失敗後的 `git merge` 照跑（PR #784），見下方小節。 | PR #416（`57de3b9`）、PR #77 早期 |
 | PB-039 | 一個從來沒有受測對象的 guard，永遠不會失敗 | `governance-scoreboard.test.ts` 的「每一本 post-policy terminal Run 都要有 durable review evidence」寫得很嚴格，但在 2026-09-14 之前，repo 裡沒有任何一本 Run 同時是 terminal 且晚於 policy 生效日——**迴圈跑零次**。它從寫下的那天起就一直是綠的，不是因為受檢查的東西是對的，而是因為它沒有東西可檢查。#412 給了它第一個對象，潛伏的範圍錯誤才連同 main 紅燈一起爆出來。**任何「對所有符合條件的 X 都斷言 Y」的 guard，必須同時斷言符合條件的 X 至少有一個**；並在寫完當下故意讓條件落空一次，確認那個反空轉斷言真的會擋。 | `tests/unit/governance-scoreboard.test.ts`、PR #412／#416、Issue #415 |
 | PB-040 | 把埋點欄位建好，然後沒有埋 | 2026-09-14 我在 #411 結案時親自判定「前九本 Run 不可評分的原因是全程沒埋點」，並宣告「從現在起的 Run 即時埋點」。接著開了 `2026-09-14-product-delivery-r01`，寫了三段說明它會怎麼埋——然後 `modelUsage.tasks: 0`、`ci.fullCiRuns: 0`、`closureSweeps: 0`、`delivery: {}`。同一輪還完整違反了模型分層（兩張 TERRA_BUILD 都跑在 Opus 上，PB-036 第三次）、`lunaTasks: 0`、`solTouches: 0`。**記帳的架子搭好卻不記帳，比誠實地說「沒埋點」更糟——它看起來像有在做。** 與 PB-039 是同一種病：看起來在守，實際上沒有。**每完成一個可觀察事件（委派、CI run、closure sweep、開/關 Issue）就當場寫進 ledger，不留到收尾**；收尾時只准填當下仍可觀察的量，其餘維持 null。 | `docs/metrics/agent-runs/2026-09-14-product-delivery-r01.json`、#411、PB-036、PB-039 |
 | PB-041 | 一條**永遠失敗**的斷言，比恆真的斷言更糟 | PB-039 講的是「從來沒有受測對象的 guard」——恆真，沒用。它有個反面：**恆假**。`0108` 的 enum 值域後置斷言寫成 `array_agg(e.enumlabel::text order by e.enumlabel) is distinct from array['PAID','PARTIAL','REFUND_PENDING','REFUNDED','UNPAID']`，看起來嚴謹（「不多不少」），實際上永遠不相等：`pg_enum.enumlabel` 的型別是 `name`，排序走 C collation，共同前綴 `REFUND` 之後比 `E`(0x45) 與 `_`(0x5F)，所以實際順序是 `REFUNDED` 在 `REFUND_PENDING` **之前**，而手寫的期望陣列把兩者寫反。結果不是「驗得寬鬆」，是**這支 migration 在任何環境都套不上去**。本機 unit 測試沒抓到，因為它只對 migration 做字串比對；抓到它的是 CI 的 fresh-install replay，以及 Final Risk 覆核（`claude-fable-5-1`）在本機 PG16 上的實際重現。**預防**：(1) 斷言「集合相等」就用集合運算（不在預期集合內的值 + 數量），不要比對有序陣列——排序規則是環境變數，不是常數；(2) 對 catalog 欄位排序前先確認它的型別，`name` 與 `text` 的 collation 不同；(3) 新增或修改後置斷言時，至少跑一次**真的資料庫**，字串比對的 unit 測試證明不了斷言會通過。 | `supabase/migrations/0108_issue_41_payment_state_model.sql`、PB-039、PB-026 |
@@ -107,6 +107,8 @@
 | PB-054 | 截斷讀取不可當完整檔案覆寫 | 全檔更新必須從完整原文生成；提交前後比對差異與刪除量 | PR #615 文件收尾分支；本檔事件紀錄 |
 | PB-055 | 公開 Server Component 共用 loader 先清理回傳欄位；slug 依租戶解析 | RSC 診斷可序列化原始 loader props；`unique (tenant_id, slug)` 允許不同店家同 slug，測試須驗證各自資料而非預設 404 | Issue #11／PR #731；`src/server/public-shop.ts`；`tests/integration/api/public-trip-details.11.test.ts` |
 | PB-043 | 在乾淨的最小 schema 上驗 migration，驗不出「既有資料」類的缺陷 | 2026-09-14 的 `0108` 覆核：build 端**確實**起了一個真的 PostgreSQL 16、跑了 9 次 INSERT 探測與突變測試——方法是對的，比字串比對強得多。但它是在一個**自己現建的最小 schema** 上跑的，那張表裡沒有任何既有列。於是它沒測出：`refunded_amount` 是本檔**新增**的欄位（`not null default 0`），而 M1 的 `check (payment_status::text <> 'REFUNDED' or (paid_amount > 0 and refunded_amount > 0))` 會在 `add constraint` 當下驗證既有資料——任何既有的 REFUNDED 訂單加完欄位後都是 `refunded_amount = 0`，於是整支 migration 以 23514 失敗。同一支檔案裡的 M2 有既有資料前置 guard，M1 沒有，兩個等價風險處理方式不對稱。**預防**：(1) 新增 CHECK 時先問「這條約束會不會對既有列失敗」，特別是當約束引用的欄位是**本檔新增**的（新欄位的 default 幾乎必然不滿足誠實性約束）；(2) 本機探測除了空表，至少要塞一列「本檔之前就合法、加上新約束後會違規」的既有資料；(3) 這類 migration 要嘛附既有資料前置 guard 並明確中止，要嘛說明為何既有資料不可能違規——不得靠「目前那張表是空的」，空表是當下的偶然不是保證。 | `supabase/migrations/0108_issue_41_payment_state_model.sql`、PB-026 |
+| PB-071 | 只讀原始碼的獨立審查會漏掉 UI runtime 回歸；使用者可見流程必須在真實瀏覽器實測 | context provider value 物件每次 render 都新建時，會造成依賴它的 `useCallback`／`useEffect` 被迫重建。頁面層實測必須使用真實瀏覽器且涵蓋表單保存、阻擋、草稿保留等關鍵路徑。repo 缺乏 jsdom／testing-library，原始碼斷言無法抓住執行期行為迴歸。 | PR #784；`src/components/ui/Toast.tsx` |
+| PB-072 | 機器驗證的 attestation／receipt JSON 不可用 shell 字串內插組裝；送出前先本機模擬 guard | shell 字串內插可能對特殊字元轉義不當，導致 JSON 結構破損。收據、attestation 一律用 JSON serializer 寫入檔案後以檔案送出，並於轉 ready 前本機呼叫 `evaluateGithubAstra()` 驗證無錯誤；ordinary review 的 REVIEW 收據必須來自 fresh-context 子代理。 | PR #783、#784；`scripts/agents/astra-review-policy.mjs` |
 
 ## 事件紀錄
 
@@ -1272,11 +1274,11 @@ make」）。時間真的不夠，正確做法是**不做**、留給下一輪。
 
 ### PB-038 — 用 `;` 把退出碼吃掉，然後在測試是紅的情況下推上去
 
-- 首次／最近：2026-09-13／2026-09-14
-- 發生次數：**3**
-- Issue／PR／CI：PR #77（早期兩次）、PR #416（`57de3b937c8a18b90f484c9d7bec2f7502a9de25`）
+- 首次／最近：2026-09-13／2026-10-05
+- 發生次數：**4**
+- Issue／PR／CI：PR #77（早期兩次）、PR #416（`57de3b937c8a18b90f484c9d7bec2f7502a9de25`）、PR #784（Issue #748）
 - 分類：驗證方法／工具使用
-- 事件：三次都是同一個機制——**我以為自己在檢查，實際上那個檢查的結果沒有進到任何判斷**。
+- 事件：四次都是同一個機制——**我以為自己在檢查，實際上那個檢查的結果沒有進到任何判斷**。（前三次如下；第四次見下方「2026-10-05 第四次」小節）
 
   1. `npm run … | tail`：拿到的是 `tail` 的退出碼，永遠是 0。
   2. `npx vitest run tests/unit | grep …`：拿到的是 `grep` 的退出碼，後面的 `&&`
@@ -1311,9 +1313,15 @@ make」）。時間真的不夠，正確做法是**不做**、留給下一輪。
      若中間插入了 `echo`、`grep`、`tail` 之類，那條鏈就已經斷了。
   3. 需要看摘要時，順序是「先 `&&` 跑完驗證，再單獨讀檔」，不是「邊跑邊過濾」。
   4. 推送後若才發現紅燈，**立刻修，不等 CI 告訴我**；本次 CI 也確實在下一輪擋下了。
-- 狀態：監看中。第 4 次再發生時，改為：任何 push 之前必須先執行一個專用的
-  verify 腳本，由該腳本自己 `set -euo pipefail` 並在失敗時非零退出，不再允許
-  在對話中臨時拼裝驗證鏈。
+
+#### 2026-10-05 第四次：`;` 讓 fetch 失敗後的 `git merge` 照跑
+
+- 事件：PR #784（Issue #748）推送前，指令 `git fetch origin <branch> && T0=... && git diff ... | tail -1; echo ...; git merge -s ours --no-edit origin/<branch> ...`。遠端分支已在 #783 合併時被自動刪除，fetch 失敗；但 `;` 之後的 `git merge` 仍執行，且使用本地殘留的 stale remote-tracking ref（`040205dc`）建立了 merge commit `e12b1c17`，隨後被推上 PR #784。tree 與前一個 commit 相同、merge-base 不變、squash 後不影響 main，但 PR commit 清單多出 4 個已 squash 的舊 commit；因 Owner 禁止 force push 而保留並於 PR 揭露。
+- 根因：同 PB-038——`;` 不看前一段退出碼；外加 stale remote-tracking ref 在遠端分支刪除後仍存在。
+- 預防：任何會改變 git 狀態的步驟（merge／commit／push）一律用 `&&` 串在其前置檢查之後，不夾 `;` 或管線；使用 `origin/<branch>` 前先 `git fetch --prune` 並以 `git ls-remote origin <branch>` 確認遠端分支存在。
+- 證據：PR #784（https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/784）、commit `e12b1c17`。
+
+- 狀態：**未解決——升級門檻已成立**。原訂「第 4 次再發生時，任何 push 之前必須先執行專用的 `set -euo pipefail` verify 腳本」的條件已於 2026-10-05 達成，但腳本尚未建立，追蹤於 Issue #787（https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/787）。在腳本落地前，臨時規則：會改變 git 狀態的步驟（merge／commit／push）只能以 `&&` 接在前置驗證之後，或包在 `bash -euo pipefail -c '…'` 內執行；禁止以 `;` 或管線分隔驗證與寫入。
 
 ### PB-039 — 一個從來沒有受測對象的 guard，永遠不會失敗
 
@@ -2143,3 +2151,33 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 預防：Production schema 變更的 checklist 應包含「deploy 前唯讀查詢驗收」；PR template 應提醒涉及容量／配額的變更需提前查詢。部署後的 Production acceptance 應包含實際寫入測試（非提前做，而是 merge 確認後在 prod 執行已知安全的操作）。
 - 驗證：PR #751 merge 前的唯讀 SELECT 已執行；Production trips 0 筆、超量 0 筆；merge 後 Production acceptance 標記為 NOT_RUN（待後續驗收步驟）。
 - 狀態：已防止；Production checklist 與審查流程應內化此項。
+
+### PB-071 — 只讀原始碼的獨立審查會漏掉 UI runtime 回歸；使用者可見流程必須在真實瀏覽器實測
+
+- 首次／最近：2026-10-05／2026-10-05
+- 發生次數：1
+- Issue／PR／CI：#748、PR #784
+- 分類：審查方法／UI 回歸
+- 事件：#748（PR #784）第一輪 fresh-context Opus 原始碼審查判 PASS-in-scope，但 audit 層以 Playwright 在 mock 模式（`NEXT_PUBLIC_USE_MOCK=true`）實測編輯頁時發現 BLOCKING：預檢擋下儲存後，5001 字草稿被還原為原值。
+- 根因：`src/components/ui/Toast.tsx` 的 `ToastProvider` 每次 render 傳新的 `value={{ show }}`；顯示 toast 使 `useToast()` 身份改變，頁面 `load` 的 `useCallback` 依賴 `toast` 而重建，`useEffect([load])` 重跑 `setForm(...)` 蓋掉草稿。這也讓 main 上既有「儲存失敗時不清掉 draft」規則一直失效（clinic-queue、ai-settings 有同類覆寫）。repo 沒有 jsdom／testing-library，頁面層測試只能用原始碼斷言，抓不到此類行為。
+- 影響：審查層未能抓住使用者可見的功能迴歸；產品行為不符規格（保存失敗時應保留草稿）。
+- 修正：以 `React.useMemo(() => ({ show }), [show])` 記憶化 provider value（commit `4de2c8fe`）；fresh 審查掃過 30 頁 61 處 `toast` 依賴，無頁面依賴「toast 觸發重讀」。
+- 預防：① 有使用者可見互動（表單保存、阻擋、草稿保留、modal 流程）的 Product slice，審查 PASS 前必須在真實瀏覽器（mock 模式或 Preview）實測關鍵路徑，並記錄觀察值（例如 code point 數、請求數）；② context provider 的 value 物件一律記憶化；③ 依賴 context 物件身份的 `useCallback`／`useEffect` 視為審查重點。
+- 驗證：Playwright 套件重測保存流程全 PASS；超過 5000 字的草稿儲存失敗時確實保留。
+- 證據：PR #784、https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/784#issuecomment-5996443004、Issue #748 status https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/748#issuecomment-5997774187。
+- 狀態：已防止
+
+### PB-072 — 機器驗證的 attestation／receipt JSON 不可用 shell 字串內插組裝；送出前先本機模擬 guard
+
+- 首次／最近：2026-10-05／2026-10-05
+- 發生次數：1
+- Issue／PR／CI：#710、PR #783
+- 分類：工具使用／verification
+- 事件：PR #783（Issue #710）的 `sol-review` attestation 在 bash 內以 node -e 單行字串組 JSON，`reviewerExecutionReceipt` 被注入兩個反引號（"``https://…"），guard 讀回 reviewer 收據失敗：`Missing independently read-back builder/reviewer role evidence` 與連帶的 `Ordinary reviewer needs attested provider-local Sol/Opus request`，Agent WIP Policy failure。
+- 根因：shell 環境的字串內插可能對特殊字元轉義不當，導致組 out 的 JSON 結構破損；接收 endpoint 的簽名驗證與內容驗證分離，收據格式錯誤在實際業務檢查前不被攔截。
+- 影響：PR 無法通過 CI guard，無法進 merge-ready 狀態；需要回到代理層補修並重新驗證。
+- 修正：改以 Python 從檔案組 JSON（json.dumps）重送新的 review（取代 5415161468，舊者保留）；以 `scripts/agents/astra-review-policy.mjs` 的 `evaluateGithubAstra()` 搭配 gh 讀回本機模擬（collaborator permission 端點被 proxy 擋時以已知權限替代、草稿 PR 需以 `draft:false` 模擬），得到 `SOL_REVIEW_APPROVED` 後 guard 才通過。PR #784 沿用此流程一次通過。
+- 預防：① 收據、attestation、review JSON 一律用 JSON serializer 寫入檔案，再以 `-F body=@file`／`--input file` 送出，並 assert 關鍵欄位是乾淨 URL；② 轉 ready 前先本機呼叫 `evaluateGithubAstra()`（非 draft 模擬）確認無錯誤；③ ordinary review 的 REVIEW 收據必須來自 fresh-context 子代理（`freshContext: true`），主 session 自己的審查不能充當。
+- 驗證：review 5415247686（corrected）通過 guard；PR #784 一次通過 CI without retry。
+- 證據：PR #783（https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/783），review 5415161468（malformed）與 5415247686（corrected）。
+- 狀態：已防止
