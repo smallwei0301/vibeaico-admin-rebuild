@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { tripCreateSchema, tripUpdateSchema } from '@/server/tour-domain';
 import {
-  tripIncludesViolation, tripListViolation, tripTextFieldErrors, withinTripIncludesLimits,
+  hasMoreLinesThan, tripIncludesViolation, tripListViolation, tripTextFieldErrors, withinTripIncludesLimits,
 } from '@/lib/trip-field-limits';
 import {
   MAX_TRIP_INCLUDES_RAW_CHARS, MAX_TRIP_LIST_ITEM_RAW_CHARS, MAX_TRIP_LIST_RAW_ITEMS,
@@ -175,5 +175,46 @@ describe('回報優先序：可見違規優先，raw 只在可見規則全過時
     expect(tripIncludesViolation('\n'.repeat(1_000_000))).toBe('includesRawTooLarge');
     expect(tripListViolation(['x' + ' '.repeat(500_000)])).toBe('itemRawTooLong');
     expect(Date.now() - started).toBeLessThan(1000);
+  });
+});
+
+describe('>200 項／行時可見項優先回報（Codex P2）', () => {
+  it('(a) 201 個可見項 → tooManyItems', () => {
+    expect(tripListViolation(Array(201).fill('x'))).toBe('tooManyItems');
+    expect(tripListViolation(Array(100_000).fill('x'))).toBe('tooManyItems');
+  });
+  it('(b) 180 空白 + 25 可見（共 205）→ tooManyItems', () => {
+    expect(tripListViolation([...Array(180).fill(' '), ...Array(25).fill('x')])).toBe('tooManyItems');
+  });
+  it('(c) 205 空白 → tooManyRawItems；205 項含 20 可見 → tooManyRawItems', () => {
+    expect(tripListViolation(Array(205).fill(' '))).toBe('tooManyRawItems');
+    expect(tripListViolation([...Array(185).fill(''), ...Array(20).fill('x')])).toBe('tooManyRawItems');
+  });
+  it('(d) includes 201 行全可見 → tooManyItems；201 空行 → tooManyRawItems', () => {
+    expect(tripIncludesViolation(Array(201).fill('x').join('\n'))).toBe('tooManyItems');
+    expect(tripIncludesViolation('\n'.repeat(200))).toBe('tooManyRawItems');
+    expect(tripIncludesViolation(Array(205).fill('  ').join('\r\n'))).toBe('tooManyRawItems');
+  });
+  it('includes > 200 行且整體過大：可見 > 20 → tooManyItems，否則 includesRawTooLarge', () => {
+    expect(tripIncludesViolation(Array(250).fill('x'.repeat(100)).join('\n'))).toBe('tooManyItems');
+    expect(tripIncludesViolation('\n'.repeat(250) + ' '.repeat(30000))).toBe('includesRawTooLarge');
+  });
+  it('(e) hasMoreLinesThan：200 個換行 → true、199 個 → false', () => {
+    expect(hasMoreLinesThan('\n'.repeat(200), 200)).toBe(true);
+    expect(hasMoreLinesThan('\n'.repeat(199), 200)).toBe(false);
+    expect(hasMoreLinesThan('', 200)).toBe(false);
+    const started = Date.now();
+    expect(tripIncludesViolation('\n'.repeat(200) + ' '.repeat(1_000_000))).toBe('includesRawTooLarge');
+    expect(tripIncludesViolation('\n'.repeat(200) + ' '.repeat(10_000))).toBe('tooManyRawItems');
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+  it('pass/fail 不變：200 項／199 個換行仍可通過', () => {
+    expect(tripListViolation(Array(200).fill(''))).toBeNull();
+    expect(tripIncludesViolation('\n'.repeat(199))).toBeNull();
+  });
+  it('(f) server：201 個可見項的 exclusions 被拒，訊息是可見項數', () => {
+    const r = tripCreateSchema.safeParse({ title: 't', exclusions: Array(201).fill('x') });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues[0].message).toContain('最多 20 項，每項最多 300 字');
   });
 });
