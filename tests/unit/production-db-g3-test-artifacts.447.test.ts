@@ -900,6 +900,35 @@ describe('#725 N2 closure evidence follows plan migration content, not scope nam
       expect(scanCreateTourOrderDdl(sql).writer).toBe(true);
     });
 
+    it('string literals containing comment openers do not hide a real writer (#777 B1)', () => {
+      const repro=`create table public.assets(path text check (path not like 'tmp/*'));
+create or replace function public.create_tour_order(a int) returns void
+language sql security definer as $$ select 1 $$;
+/* 備註：上面改了安全屬性 */`;
+      expect(scanCreateTourOrderDdl(repro).writer).toBe(true);
+      expect(scanCreateTourOrderDdl("select '--'; create or replace function public.create_tour_order(a int) returns void as $$ $$;").writer).toBe(true);
+      expect(scanCreateTourOrderDdl('select $t$ -- $t$; create or replace function public.create_tour_order(a int) returns void as $$ $$;').writer).toBe(true);
+      expect(scanCreateTourOrderDdl("execute 'select 1 -- x' || 'create_tour_order';").dynamicSql).toBe(true);
+    });
+
+    it('nested block comments are stripped as one comment', () => {
+      expect(scanCreateTourOrderDdl('/* outer /* inner */ '+W+' */ select 1;').writer).toBe(false);
+      expect(scanCreateTourOrderDdl('/* outer /* inner */ x */ '+W).writer).toBe(true);
+    });
+
+    it.each([
+      'alter function public.tmp(int) rename to create_tour_order;',
+      'ALTER ROUTINE public.tmp(int) RENAME TO "create_tour_order";',
+      'alter procedure public.tmp(int)\n  rename\n  to create_tour_order;',
+    ])('flags rename to create_tour_order as writer: %#', (sql) => {
+      expect(scanCreateTourOrderDdl(sql).writer).toBe(true);
+    });
+
+    it('malformed lexical forms throw instead of being skipped (fail closed)', () => {
+      expect(() => scanCreateTourOrderDdl("select 'unterminated; "+W)).toThrow(/UNSUPPORTED_SQL_LEXICAL_FORM/);
+      expect(() => scanCreateTourOrderDdl('select $$ unterminated; '+W)).toThrow(/UNSUPPORTED_SQL_LEXICAL_FORM/);
+    });
+
     it('does not flag commented-out code (line and block comments)', () => {
       expect(scanCreateTourOrderDdl('-- '+W).writer).toBe(false);
       expect(scanCreateTourOrderDdl('/* '+W+'\n -- nested */ select 1;').writer).toBe(false);

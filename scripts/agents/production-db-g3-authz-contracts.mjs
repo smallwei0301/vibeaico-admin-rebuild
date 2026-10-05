@@ -1,4 +1,4 @@
-import { ISSUE_46_0110_0136_CLOSURE } from './production-db-release-plan.mjs';
+import { ISSUE_46_0110_0136_CLOSURE, stripSqlComments } from './production-db-release-plan.mjs';
 
 // G3 closure 原生驗收契約：REQUEST／refund snapshot／seasonal snapshot／#755 invoker 四個家族。
 // 觸發規則見 ISSUE_46_CLOSURE_FAMILIES 與 CREATE_TOUR_ORDER_WRITER_PREFIXES：
@@ -66,16 +66,16 @@ export const CREATE_TOUR_ORDER_SCHEMA_WIDE_ACL_EXCLUSIONS = Object.freeze({});
 export const CREATE_TOUR_ORDER_DYNAMIC_SQL_EXCLUSIONS = Object.freeze({});
 
 // 單一來源：create_tour_order DDL 掃描（#777）。純函式，同時供真實 migration 與合成 mutation 字串使用。
-// 先剝除 -- 行註解與 /* */ 區塊註解（註解內程式碼不會執行），再以大小寫不敏感、跨行 regex 比對。
+// 先以 lexer 剝除註解（註解內程式碼不會執行；字串內的 -- 或 /* 不當成註解），再以大小寫不敏感、跨行 regex 比對。
 // 識別字容許引號與點號兩側空白：public.create_tour_order／"public"."create_tour_order"／public . create_tour_order。
-export function stripSqlComments(sqlText) {
-  return String(sqlText ?? '').replace(/\/\*[\s\S]*?\*\/|--[^\n]*/g, ' ');
-}
+// 註解剝除一律使用 release-plan 認得字串／引號識別字／dollar-quote／巢狀區塊註解的 lexer；畸形輸入會丟 UNSUPPORTED_SQL_LEXICAL_FORM（fail closed，不得吞掉）。
+export { stripSqlComments };
 const TOUR_ORDER_IDENT = '(?:"?public"?\\s*\\.\\s*)?"?create_tour_order"?(?![\\w"])';
 const ROUTINE_KIND = '(?:function|procedure|routine)';
 const WRITER_RE = new RegExp(
   `\\b(?:create\\s+(?:or\\s+replace\\s+)?${ROUTINE_KIND}\\s+${TOUR_ORDER_IDENT}\\s*\\(`
   + `|alter\\s+${ROUTINE_KIND}\\s+${TOUR_ORDER_IDENT}`
+  + `|alter\\s+${ROUTINE_KIND}\\b[^;]*?\\brename\\s+to\\s+${TOUR_ORDER_IDENT}`
   + `|(?:grant|revoke)\\b[^;]*?\\bon\\s+${ROUTINE_KIND}\\b[^;]*?${TOUR_ORDER_IDENT})`, 'i');
 const DROP_RE = new RegExp(`\\bdrop\\s+${ROUTINE_KIND}\\s+(?:if\\s+exists\\s+)?${TOUR_ORDER_IDENT}`, 'i');
 const SCHEMA_WIDE_ACL_RE = /\b(?:(?:grant|revoke)\b[^;]*?\bon\s+all\s+(?:functions|routines|procedures)\s+in\s+schema\b|alter\s+default\s+privileges\b[^;]*?\b(?:functions|routines|procedures)\b)/i;
