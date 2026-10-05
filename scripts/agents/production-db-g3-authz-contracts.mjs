@@ -36,6 +36,29 @@ export const ISSUE_46_CLOSURE_COVERAGE = Object.freeze({
   ]),
 });
 
+// 依 plan 實際 migration 內容觸發 closure 驗收（#725 Final Risk N2）：
+// 每個 closure 原生測試檔由哪些 migration 編號保護；plan 含任一者即必須通過該檔的 exact assertions。
+export const ISSUE_46_CLOSURE_FILE_MIGRATIONS = Object.freeze({
+  'tests/integration/api/tour-request-accept.46.test.ts': Object.freeze(['0111']),
+  'tests/integration/db/tour-refund-snapshot.46.test.ts': Object.freeze(['0130']),
+  'tests/integration/db/plan-seasonal-order-snapshot.42.test.ts': Object.freeze(['0128', '0132']),
+  'tests/integration/api/create-tour-order-invoker.755.test.ts': Object.freeze(['0136']),
+});
+
+const migrationPrefix = (migration) => String(migration?.repoFile ?? '').split('_')[0];
+
+export function planHasClosureMigration(plan, prefixes) {
+  const present = new Set((plan?.migrations ?? []).map(migrationPrefix));
+  return prefixes.some((prefix) => present.has(prefix));
+}
+
+/** closure 專用 scope 一律全要；其他 scope（如 FULL_PENDING_SET）依 plan 內容逐檔觸發。 */
+export function closureRequiredAssertionsForPlan(plan) {
+  const all = plan?.migrationScope === ISSUE_46_CLOSURE_COVERAGE.scope;
+  return ISSUE_46_CLOSURE_COVERAGE.requiredAssertions.filter((row) =>
+    all || planHasClosureMigration(plan, ISSUE_46_CLOSURE_FILE_MIGRATIONS[row.file] ?? []));
+}
+
 export const PRODUCTION_DB_G3_AUTHZ_CONTRACTS = Object.freeze({
   // Remote G3 requires every semantic case; the isolated raw catalog case
   // remains explicitly NOT_RUN remotely and cannot establish catalog evidence.

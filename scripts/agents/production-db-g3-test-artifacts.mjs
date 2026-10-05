@@ -5,6 +5,8 @@ import process from 'node:process';
 import {
   getProductionDbG3AuthzContract,
   ISSUE_46_CLOSURE_COVERAGE,
+  closureRequiredAssertionsForPlan,
+  planHasClosureMigration,
   PRODUCTION_DB_G3_AUTHZ_CONTRACTS,
 } from './production-db-g3-authz-contracts.mjs';
 
@@ -167,11 +169,9 @@ export function buildProductionDbTestCoverageEvidence({ report, plan, sourceRunI
   }
 
   const assertions = passedAssertions(report);
-  if (plan.migrationScope === ISSUE_46_CLOSURE_COVERAGE.scope) {
-    for (const required of ISSUE_46_CLOSURE_COVERAGE.requiredAssertions) {
-      if (!assertions.some((row) => row.file === required.file && row.name === required.fullName)) {
-        fail('REQUIRED_SEMANTIC_TEST_MISSING', `closure lacks a passed exact assertion: ${required.fullName}`);
-      }
+  for (const required of closureRequiredAssertionsForPlan(plan)) {
+    if (!assertions.some((row) => row.file === required.file && row.name === required.fullName)) {
+      fail('REQUIRED_SEMANTIC_TEST_MISSING', `closure lacks a passed exact assertion: ${required.fullName}`);
     }
   }
 
@@ -249,11 +249,15 @@ function canonicalTestUrl(value) {
 
 function cleanupScopes(plan) {
   const scopes = [];
-  if (plan.migrationScope === ISSUE_46_CLOSURE_COVERAGE.scope) {
-    scopes.push({migration:'0111_issue_46_guide_request_accept',table:'tour_orders',filterColumn:'note',filterOperator:'like',filterValue:'request-accept-46-%'});
-    scopes.push({migration:'0130_issue_46_refund_policy_snapshot',table:'trips',filterColumn:'slug',filterOperator:'like',filterValue:'refund-snapshot-46-%'});
-    scopes.push({migration:'0132_issue_42_seasonal_price_resolution',table:'trips',filterColumn:'slug',filterOperator:'like',filterValue:'snapshot-42-%'});
-    scopes.push({migration:'0136_issue_755_create_tour_order_invoker',table:'tour_orders',filterColumn:'note',filterOperator:'like',filterValue:'#755 probe%'});
+  const closureAll = plan.migrationScope === ISSUE_46_CLOSURE_COVERAGE.scope;
+  const closureScopes = [
+    [['0111'], {migration:'0111_issue_46_guide_request_accept',table:'tour_orders',filterColumn:'note',filterOperator:'like',filterValue:'request-accept-46-%'}],
+    [['0130'], {migration:'0130_issue_46_refund_policy_snapshot',table:'trips',filterColumn:'slug',filterOperator:'like',filterValue:'refund-snapshot-46-%'}],
+    [['0128', '0132'], {migration:'0132_issue_42_seasonal_price_resolution',table:'trips',filterColumn:'slug',filterOperator:'like',filterValue:'snapshot-42-%'}],
+    [['0136'], {migration:'0136_issue_755_create_tour_order_invoker',table:'tour_orders',filterColumn:'note',filterOperator:'like',filterValue:'#755 probe%'}],
+  ];
+  for (const [prefixes, scope] of closureScopes) {
+    if (closureAll || planHasClosureMigration(plan, prefixes)) scopes.push(scope);
   }
 
   if (plan.migrations.some((migration) => migration.repoFile === '0135_issue_46_guide_interval_availability')) {
