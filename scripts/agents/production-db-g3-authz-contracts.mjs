@@ -39,7 +39,7 @@ export const ISSUE_46_CLOSURE_COVERAGE = Object.freeze({
 // 依 plan 實際 migration 內容觸發 closure 驗收（#725 Final Risk N2）：
 // 每個 closure 原生測試檔由哪些 migration 編號保護；plan 含任一者即必須通過該檔的 exact assertions。
 // 單一來源（#771 review NB1／NB4）：每個 closure 家族同時宣告「哪些 migration 編號觸發」與「對應 TEST cleanup 掃描範圍」，
-// coverage（closureRequiredAssertionsForPlan）與 cleanup（test-artifacts closureScopes）都由此推導，無法各自漂移。
+// coverage（closureRequiredAssertionsForPlan）與 cleanup（test-artifacts cleanupScopes）都由此推導，無法各自漂移。
 export const ISSUE_46_CLOSURE_FAMILIES = Object.freeze([
   Object.freeze({
     file: 'tests/integration/api/tour-request-accept.46.test.ts',

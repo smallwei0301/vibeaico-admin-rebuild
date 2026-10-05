@@ -840,3 +840,40 @@ describe('#725 N2 closure evidence follows plan migration content, not scope nam
     expect(build(p,rowsFor(p,[F_REFUND,F_SEASONAL,F_INVOKER,F_REQUEST])).reportSuccess).toBe(true);
   });
 });
+
+describe('plan migration identity fail-closed (#771 collaborator counterexample)', () => {
+  const REAL = '0136_issue_755_create_tour_order_invoker';
+  const row = (repoFile: unknown) => ({ repoFile, riskTier: 'SCHEMA_REPAIR', sha256: '2'.repeat(64) });
+  const malformed: Record<string, any[]> = {
+    'empty object row': [{}],
+    'array row': [[REAL]],
+    'null row': [null],
+    'repoFile null': [row(null)],
+    'repoFile number': [row(136)],
+    'repoFile empty': [row('')],
+    'repoFile leading space': [row(` ${REAL}`)],
+    'repoFile path': [row(`supabase/migrations/${REAL}`)],
+    'repoFile with .sql': [row(`${REAL}.sql`)],
+    'duplicate identity': [row(REAL), row(REAL)],
+    'valid row followed by null': [row(REAL), null],
+  };
+  for (const [label, migrations] of Object.entries(malformed)) {
+    it(`coverage and cleanup reject ${label} with zero reads`, async () => {
+      const bad = { ...plan(), migrations };
+      expect(() => buildProductionDbTestCoverageEvidence({ report: report(), plan: bad, sourceRunId: '1', sourceRunAttempt: 1 }))
+        .toThrow(/PLAN_MIGRATION_IDENTITY_INVALID/);
+      const fetchSpy = vi.fn(async () => new Response('[]', { status: 200 }));
+      await expect(captureProductionDbTestCleanupEvidence({ plan: bad, testSupabaseUrl: TEST_URL, serviceRoleKey: 'key', sourceRunId: '1', sourceRunAttempt: 1, fetchImpl: fetchSpy as unknown as typeof fetch }))
+        .rejects.toThrow(/PLAN_MIGRATION_IDENTITY_INVALID/);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+  }
+
+  it('a valid canonical plan still passes both entrypoints', async () => {
+    const ok = plan();
+    expect(buildProductionDbTestCoverageEvidence({ report: report(), plan: ok, sourceRunId: '1', sourceRunAttempt: 1 }).status).toBe('TEST_COVERAGE_VERIFIED');
+    const fetchSpy = vi.fn(async () => new Response('[]', { status: 200 }));
+    const r = await captureProductionDbTestCleanupEvidence({ plan: ok, testSupabaseUrl: TEST_URL, serviceRoleKey: 'key', sourceRunId: '1', sourceRunAttempt: 1, fetchImpl: fetchSpy as unknown as typeof fetch });
+    expect(r.status).toBe('TEST_CLEANUP_VERIFIED');
+  });
+});

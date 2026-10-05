@@ -78,6 +78,16 @@ function assertPlan(plan) {
   const planDigest = exactDigest(plan.planDigest, 'plan.planDigest');
   if (!String(plan.releaseId ?? '').trim()) fail('RELEASE_ID_REQUIRED', 'releaseId is required');
   if (!Array.isArray(plan.migrations) || !plan.migrations.length) fail('PLAN_MIGRATIONS_REQUIRED', 'release plan has no migrations');
+  // migration 身分必須是唯一的 canonical repoFile（不含 .sql／路徑／空白），否則 closure 編號解析會悄悄略過成員而假通過。
+  const identities = new Set();
+  for (const migration of plan.migrations) {
+    const repoFile = migration?.repoFile;
+    if (!migration || typeof migration !== 'object' || Array.isArray(migration)
+      || typeof repoFile !== 'string' || !/^\d{4}_[a-z0-9_]+$/.test(repoFile) || identities.has(repoFile)) {
+      fail('PLAN_MIGRATION_IDENTITY_INVALID', 'release plan requires unique canonical migration identities');
+    }
+    identities.add(repoFile);
+  }
   return { mainSha, planDigest };
 }
 
