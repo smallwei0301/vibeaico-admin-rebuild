@@ -67,6 +67,12 @@
     },
     {
       "ref": "issue/777"
+    },
+    {
+      "ref": "issue/780"
+    },
+    {
+      "ref": "issue/781"
     }
   ],
   "main": {
@@ -3662,6 +3668,84 @@
         "cachedTokens": null,
         "contextClass": "compact",
         "note": "Haiku scout: added issue/777 source, build task, merge audit, and ledger entry"
+      },
+      {
+        "id": "20261005-build-777-rework",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Build rework rounds for #777 G3 lexer fix (04:06:20Z–05:29:33Z, commits 1cc570ac..711fc0a5)",
+        "count": 1
+      },
+      {
+        "id": "20261005-build-780-lexer",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Build #780 lexer implementation (05:36Z–07:27:22Z, commits f111f202..196e1e26)",
+        "count": 1
+      },
+      {
+        "id": "20261005-audit-779-reviews",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Opus audit reviews of #779 (04:12:25Z–07:31:34Z, multiple rounds)",
+        "count": 1
+      },
+      {
+        "id": "20261005-audit-merge-779",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Opus audit approval for merge #779 (07:38:04Z)",
+        "count": 1
+      },
+      {
+        "id": "20261005-audit-closure-773-774-777",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Audit closure verification for #773/#774/#777 ISSUE_CLOSED (08:36:58Z–08:38Z)",
+        "count": 1
+      },
+      {
+        "id": "20261005-scout-reconcile",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Scout reconciliation of ISSUE_CLOSED claims for #773/#774/#777 and addition of #780/#781 sources",
+        "count": 1
       }
     ],
     "fullContextReplays": 0,
@@ -3669,7 +3753,7 @@
   },
   "delivery": {
     "issuesStarted": 15,
-    "issuesClosed": 3,
+    "issuesClosed": 6,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
     "exactHeadCiOnly": 0,
@@ -3695,13 +3779,13 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 49,
-    "lunaAccepted": 44,
+    "lunaTasks": 50,
+    "lunaAccepted": 45,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 50,
+    "solTouches": 116,
     "solIssues": 5
   },
   "auditability": {
@@ -3899,7 +3983,8 @@
     "#770 (Issue #755 R1) Draft PR on branch claude/issue755-r1-invoker. Owner approved merge after CI green (not yet executed). As of 2026-10-04T07:54Z PR #770 is OPEN, Draft, merged=false. Source CI run 37186572275 success; agent-schema-bootstrap run 37186572265 success (local isolated Supabase with 0136: integration 829 passed, create-tour-order-invoker.755 3/3). No canonical TEST schema apply, no Production apply, no Production acceptance.",
     "Correction (commit bca1cfde): notes 182/184 previously (commit 289a1016) misstated #768/#770 as merged and Production acceptance as verified; corrected to live GitHub state (both OPEN Draft, merged=false, acceptance NOT_RUN). Cause: approvals were written as completions.",
     "Correction (commit bca1cfde): task 20261004-audit-755-production-queries times were approximate and are now null.",
-    "Correction (this commit): notes 185/186 earlier carried timestamps 08:00Z/08:02Z later than their own commit (07:58:43Z) and are now commit-referenced; note 180 marked approximate; logout-scope task times set to dispatch 07:45:10Z and commit 07:46:44Z."
+    "Correction (this commit): notes 185/186 earlier carried timestamps 08:00Z/08:02Z later than their own commit (07:58:43Z) and are now commit-referenced; note 180 marked approximate; logout-scope task times set to dispatch 07:45:10Z and commit 07:46:44Z.",
+    "2026-10-05 Scout reconciliation: Added ISSUE_CLOSED claims for #773/#774/#777 based on trusted close-observed handoff comments; added sources issue/780 and issue/781; updated delivery.issuesClosed from 3 to 6; main CI run 37278860517 (commit 24841f1d) concluded success at 2026-10-05T08:19:48Z."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -4041,6 +4126,30 @@
         "observedState": "closed",
         "verification": "VERIFIED",
         "evidenceRef": "github:issue#746; github:issuecomment#5974797423 (ISSUE_CLOSED_OBSERVED after guard-accepted close 2026-10-03T23:58:42Z; product-issue-close-guard run 37163462981 success)"
+      },
+      {
+        "type": "ISSUE_CLOSED",
+        "subject": "issue#774",
+        "claimedState": "closed",
+        "observedState": "closed",
+        "verification": "VERIFIED",
+        "evidenceRef": "github:smallwei0301/vibeaico-admin-rebuild/issues/774/comments/5991011333"
+      },
+      {
+        "type": "ISSUE_CLOSED",
+        "subject": "issue#777",
+        "claimedState": "closed",
+        "observedState": "closed",
+        "verification": "VERIFIED",
+        "evidenceRef": "github:smallwei0301/vibeaico-admin-rebuild/issues/777/comments/5991011402"
+      },
+      {
+        "type": "ISSUE_CLOSED",
+        "subject": "issue#773",
+        "claimedState": "closed",
+        "observedState": "closed",
+        "verification": "VERIFIED",
+        "evidenceRef": "github:smallwei0301/vibeaico-admin-rebuild/issues/773/comments/5991010844"
       }
     ]
   },
@@ -4366,6 +4475,22 @@
         "head": "f56cadf03dc90c4af91e19553b82787335c7f6d9",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "After exact f56 SourceCI 36862662300 and LOCAL 36862662312 reached terminal success, independent Standards review identified the new retry error body/touch target below current-main GUIDE §1.1/§11. Re-enter bounded #43 responsive fix at first source edit 13:10:13.363Z; no category rebuild, backend/schema change, or product completion claim."
+      }
+    ]
+  },
+  "reconciliation": {
+    "schemaVersion": 1,
+    "identities": [
+      {
+        "identity": "5af44c9bbe8a9c393a2f61b291c3b43fea8926763b78e2bd0ac9cac8ac161248",
+        "observedMainSha": "24841f1dd57382a726458bef85c2495d719b868d",
+        "evidenceDigest": "4caac1c45a5427900deccb831aac277b431289fc05687a1fefb9c8e86c14ca5a",
+        "operationCount": 3,
+        "evidenceRefs": [
+          "github:smallwei0301/vibeaico-admin-rebuild/issues/773/comments/5991010844",
+          "github:smallwei0301/vibeaico-admin-rebuild/issues/774/comments/5991011333",
+          "github:smallwei0301/vibeaico-admin-rebuild/issues/777/comments/5991011402"
+        ]
       }
     ]
   }
