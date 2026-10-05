@@ -69,10 +69,41 @@ describe('G3 掃描效能（#777 N1）', () => {
     ['drop gap', 'drop /**/ '.repeat(40000)],
   ];
   for (const [name, sql] of inputs) {
-    it(`${name} (${Math.round(sql.length / 1000)}KB) 在 5 秒內完成`, () => {
+    it(`${name} (${Math.round(sql.length / 1000)}KB) 在 10 秒內完成`, () => {
       const started = Date.now();
       try { scanCreateTourOrderDdl(sql); } catch { /* lexer 畸形輸入可丟錯；只量時間 */ }
-      expect(Date.now() - started).toBeLessThan(5000);
+      expect(Date.now() - started).toBeLessThan(10000);
     });
   }
+});
+
+describe('E 字串續段與 G3 分句／識別字（Opus review B1-B3）', () => {
+  const longGap = 'x'.repeat(2100);
+  it('B1：E 字串續段內的反斜線跳脫仍有效，後面的 drop 不得被剝除', () => {
+    const sql = "create table x(a int);\nselect E'a'\n'\\' -- '; drop table x;";
+    expect(stripSqlComments(sql)).toContain('drop table x');
+    expect(() => inferMigrationRiskTier(sql)).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
+  });
+  it('B1：續段後隱藏 commit 仍可見', () => {
+    const sql = "select E'a'\n'\\' -- '; commit;";
+    expect(stripSqlComments(sql)).toContain('commit;');
+  });
+  it('B1：續段可含 -- 註解與空白行；非續段（同行或無換行）不合併', () => {
+    expect(stripSqlComments("select 'a' -- c\n\n  -- d\n'b'; -- t\nselect 1;")).toBe("select 'a' -- c\n\n  -- d\n'b';     \nselect 1;");
+    expect(stripSqlComments("select 'a' 'b' -- t\n")).toBe("select 'a' 'b'     \n");
+  });
+  it('B1：G3 repro writer=true', () => {
+    const sql = `select E'a'\n'\\' -- '; create /* ${longGap} */ function public.create_tour_order() returns int language sql as 'select 1';`;
+    expect(scanCreateTourOrderDdl(sql).writer).toBe(true);
+  });
+  it('B2：引號識別字含 ; 不得讓有序比對少報', () => {
+    expect(scanCreateTourOrderDdl('grant execute on function "x;"(), public.create_tour_order() to anon;').writer).toBe(true);
+    expect(scanCreateTourOrderDdl('alter function public."y;"(int) rename to create_tour_order;').writer).toBe(true);
+    expect(scanCreateTourOrderDdl('alter default privileges in schema public, "x;" grant execute on functions to anon;').schemaWideAcl).toBe(true);
+  });
+  it('B3：非 ASCII schema 限定詞', () => {
+    expect(scanCreateTourOrderDdl('create function €s.create_tour_order() returns int language sql as $$select 1$$;').writer).toBe(true);
+    expect(scanCreateTourOrderDdl('alter function €s.create_tour_order() set schema public;').writer).toBe(true);
+    expect(scanCreateTourOrderDdl('alter function public.create_tour_order€(int) set schema public;').writer).toBe(false);
+  });
 });

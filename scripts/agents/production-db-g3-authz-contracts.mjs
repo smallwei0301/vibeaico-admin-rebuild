@@ -1,4 +1,4 @@
-import { ISSUE_46_0110_0136_CLOSURE, stripSqlComments } from './production-db-release-plan.mjs';
+import { ISSUE_46_0110_0136_CLOSURE, splitSqlStatements, stripSqlComments } from './production-db-release-plan.mjs';
 
 // G3 closure 原生驗收契約：REQUEST／refund snapshot／seasonal snapshot／#755 invoker 四個家族。
 // 觸發規則見 ISSUE_46_CLOSURE_FAMILIES 與 CREATE_TOUR_ORDER_WRITER_PREFIXES：
@@ -117,14 +117,17 @@ export const CREATE_TOUR_ORDER_UNICODE_IDENTIFIER_EXCLUSIONS = Object.freeze({})
 export { stripSqlComments };
 // 單一識別字 token：引號識別字不跨行並支援 "" 跳脫；未引號識別字支援非 ASCII。
 // schema 限定詞不限 public，最多兩段（catalog.schema.name），因為任何 schema 的 create_tour_order 都可能被 set schema／rename 搬進 public，一律 fail closed。
-const SQL_IDENT = '(?:"(?:[^"\\n]|"")+"|[\\p{L}_][\\p{L}\\p{N}_$]*)';
+// 識別字字元對齊 PostgreSQL scan.l（任何非 ASCII 皆為識別字字元）；與 release-plan 的 PG_IDENT_CONT_RE 同一定義。
+const PG_IDENT_START = 'A-Za-z_\\u0080-\\u{10FFFF}';
+const PG_IDENT_CONT_CLASS = 'A-Za-z0-9_$\\u0080-\\u{10FFFF}';
+const SQL_IDENT = `(?:"(?:[^"\\n]|"")+"|[${PG_IDENT_START}][${PG_IDENT_CONT_CLASS}]*)`;
 // SQL gap：關鍵字之間可出現空白、區塊註解、行註解（PostgreSQL 皆視為空白）。
-// 區塊註解長度設上限（非巢狀、lazy），避免未結束的 /* 對每個關鍵字掃到檔尾造成二次方；
+// 區塊註解長度設上限（1000）（非巢狀、lazy），避免未結束的 /* 對每個關鍵字掃到檔尾造成二次方；
 // 超長註解由「剝註解後文字」那一側負責（註解被換成空白，\s 可無限重複）。
-const SQL_GAP_ONE = String.raw`(?:\s|/\*[\s\S]{0,2000}?\*/|--[^\n]*(?:\n|$))`;
+const SQL_GAP_ONE = String.raw`(?:\s|/\*[\s\S]{0,1000}?\*/|--[^\n]*(?:\n|$))`;
 const G1 = `${SQL_GAP_ONE}+`;
 const G0 = `${SQL_GAP_ONE}*`;
-const TOUR_ORDER_IDENT = `(?<![\\p{L}\\p{N}_$])(?:${SQL_IDENT}${G0}\\.${G0}){0,2}"?create_tour_order"?(?![\\p{L}\\p{N}_$"])`;
+const TOUR_ORDER_IDENT = `(?<![${PG_IDENT_CONT_CLASS}])(?:${SQL_IDENT}${G0}\\.${G0}){0,2}"?create_tour_order"?(?![${PG_IDENT_CONT_CLASS}"])`;
 const ROUTINE_KIND = '(?:function|procedure|routine)';
 const WRITER_CREATE_RE = new RegExp(
   `\\bcreate${G1}(?:or${G1}replace${G1})?${ROUTINE_KIND}${G1}${TOUR_ORDER_IDENT}${G0}\\(`, 'iu');
@@ -150,21 +153,48 @@ function hasOrderedSteps(statement, steps) {
   }
   return true;
 }
-function anyStatement(sql, predicate) {
-  for (const statement of sql.split(';')) {
-    if (predicate(statement)) return true;
+// 語句切分（只會「多報」不會少報）：同一份文字以三種切法取聯集：
+//  1. 純 ';'（不認引號；防止 lexer／引號失同步）
+//  2. 認雙引號識別字內的 ';'（"x;" 不切）
+//  3. 認單雙引號
+// 剝註解後的文字另外加上 lexer 感知的 splitSqlStatements。皆為線性時間。
+function splitQuoteAware(sql, quoteChars) {
+  const chunks = [];
+  let start = 0;
+  let open = '';
+  for (let index = 0; index < sql.length; index += 1) {
+    const char = sql[index];
+    if (open) {
+      if (char === open) open = '';
+    } else if (quoteChars.includes(char)) {
+      open = char;
+    } else if (char === ';') {
+      chunks.push(sql.slice(start, index));
+      start = index + 1;
+    }
   }
-  return false;
+  chunks.push(sql.slice(start));
+  return chunks;
 }
-function writerScan(sql) {
+function anyStatement(sql, predicate, lexerAware = false) {
+  const splits = [sql.split(';')];
+  // 沒有對應引號字元時，引號感知切法與純 ';' 完全相同，省略以維持線性且低常數。
+  if (sql.includes('"')) splits.push(splitQuoteAware(sql, '"'));
+  if (sql.includes("'")) splits.push(splitQuoteAware(sql, '"\''));
+  if (lexerAware) {
+    try { splits.push(splitSqlStatements(sql)); } catch { /* 畸形輸入：保留其他切法 */ }
+  }
+  return splits.some((chunks) => chunks.some(predicate));
+}
+function writerScan(sql, lexerAware) {
   return WRITER_CREATE_RE.test(sql)
     || WRITER_ALTER_RE.test(sql)
     || anyStatement(sql, (statement) => hasOrderedSteps(statement, [ALTER_KIND_STEP, RENAME_TO_STEP])
-      || hasOrderedSteps(statement, [GRANT_REVOKE_STEP, ON_KIND_STEP, TOUR_ORDER_STEP]));
+      || hasOrderedSteps(statement, [GRANT_REVOKE_STEP, ON_KIND_STEP, TOUR_ORDER_STEP]), lexerAware);
 }
-function schemaWideAclScan(sql) {
+function schemaWideAclScan(sql, lexerAware) {
   return anyStatement(sql, (statement) => hasOrderedSteps(statement, [GRANT_REVOKE_STEP, ON_ALL_STEP])
-    || hasOrderedSteps(statement, [ALTER_DEFAULT_PRIV_STEP, ROUTINE_PLURAL_STEP]));
+    || hasOrderedSteps(statement, [ALTER_DEFAULT_PRIV_STEP, ROUTINE_PLURAL_STEP]), lexerAware);
 }
 // execute（排除 grant/revoke … execute on）語句內出現 create_tour_order；以 ; 為語句界線，保守 fail closed。
 const UNICODE_IDENTIFIER_RE = /\bu&['"]/i;
@@ -179,16 +209,16 @@ const PRIVILEGE_ON = String.raw`(?![ \t\n\r\f\v]+on(?![A-Za-z0-9_$]|[^\x00-\x7F]
 const EXECUTE_KEYWORD_RE = new RegExp(String.raw`(?<![A-Za-z0-9_])execute(?![A-Za-z0-9_])${PRIVILEGE_ON}`, 'iu');
 const EXECUTE_STEP = new RegExp(String.raw`(?<![A-Za-z0-9_])execute(?![A-Za-z0-9_])${PRIVILEGE_ON}`, 'giu');
 const CREATE_TOUR_ORDER_STEP = /create_tour_order/giu;
-function dynamicSqlScan(sql) {
-  return anyStatement(sql, (statement) => hasOrderedSteps(statement, [EXECUTE_STEP, CREATE_TOUR_ORDER_STEP]));
+function dynamicSqlScan(sql, lexerAware) {
+  return anyStatement(sql, (statement) => hasOrderedSteps(statement, [EXECUTE_STEP, CREATE_TOUR_ORDER_STEP]), lexerAware);
 }
 
-function scanText(sql) {
+function scanText(sql, lexerAware = false) {
   return {
-    writer: writerScan(sql),
+    writer: writerScan(sql, lexerAware),
     drop: DROP_RE.test(sql),
-    schemaWideAcl: schemaWideAclScan(sql),
-    dynamicSql: dynamicSqlScan(sql),
+    schemaWideAcl: schemaWideAclScan(sql, lexerAware),
+    dynamicSql: dynamicSqlScan(sql, lexerAware),
     unicodeIdentifier: UNICODE_IDENTIFIER_RE.test(sql),
     unresolvedExecute: EXECUTE_KEYWORD_RE.test(sql),
   };
@@ -203,7 +233,7 @@ export function scanCreateTourOrderDdlParts(sqlText) {
   let stripped = null;
   let lexerError = null;
   try {
-    stripped = scanText(stripSqlComments(sqlText));
+    stripped = scanText(stripSqlComments(sqlText), true);
   } catch (error) {
     lexerError = String(error?.message ?? error);
   }
