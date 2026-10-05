@@ -248,10 +248,15 @@ export function orderPendingProductionMigrations(names = []) {
   return ordered;
 }
 
+// PostgreSQL scan.l：ident_cont = [A-Za-z\200-\377_0-9$]；任何非 ASCII 字元都算識別字字元。
+const PG_IDENT_CONT_RE = /[A-Za-z0-9_$\u0080-\u{10FFFF}]/u;
+// dolq_start = [A-Za-z\200-\377_]；dolq_cont = [A-Za-z\200-\377_0-9]
+const PG_DOLLAR_TAG_RE = /\$(?:[A-Za-z_\u0080-\u{10FFFF}][A-Za-z0-9_\u0080-\u{10FFFF}]*)?\$/uy;
+
 function quotedTokenEnd(input, start, quote) {
   const backslashEscapes = quote === "'"
     && /[eE]/.test(input[start - 1] ?? '')
-    && !/[\p{L}\p{N}_$]/u.test(input[start - 2] ?? '');
+    && !PG_IDENT_CONT_RE.test(input[start - 2] ?? '');
   let index = start + 1;
   while (index < input.length) {
     if (backslashEscapes && input[index] === '\\' && index + 1 < input.length) {
@@ -274,8 +279,10 @@ function quotedTokenEnd(input, start, quote) {
 
 function dollarQuoteAt(input, index) {
   const previous = input[index - 1] ?? '';
-  if (previous && /[\p{L}\p{N}_$]/u.test(previous)) return '';
-  return input.slice(index).match(/^\$[\p{ID_Start}_][\p{ID_Continue}_]*\$|^\$\$/u)?.[0] ?? '';
+  if (previous && PG_IDENT_CONT_RE.test(previous)) return '';
+  if (input[index] !== '$') return '';
+  PG_DOLLAR_TAG_RE.lastIndex = index;
+  return PG_DOLLAR_TAG_RE.exec(input)?.[0] ?? '';
 }
 
 export function stripSqlComments(sql) {
@@ -451,7 +458,7 @@ function hasConflictActionContinuation(input, start) {
       continue;
     }
     if (char === ')' || char === ';') return false;
-    const word = /^[\p{ID_Start}_][\p{ID_Continue}_$]*/u.exec(input.slice(index));
+    const word = /^[A-Za-z_\u0080-\u{10FFFF}][A-Za-z0-9_$\u0080-\u{10FFFF}]*/u.exec(input.slice(index));
     if (word) {
       if (word[0].toLowerCase() === 'do') {
         return /^do\s+(?:nothing|update)\b/i.test(input.slice(index));
