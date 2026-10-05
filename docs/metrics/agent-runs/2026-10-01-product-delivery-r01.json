@@ -91,7 +91,7 @@
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 2,
     "sharedTestPeak": 1,
-    "closureSweeps": 1,
+    "closureSweeps": 2,
     "closureAdvancedOrClosed": 0
   },
   "modelUsage": {
@@ -4305,7 +4305,7 @@
         "outputTokens": null,
         "cachedTokens": null,
         "contextClass": "compact",
-        "note": "#710／#754 誤判為可關（實為 OWNER_BLOCKED：Production 真實註冊驗收／Resend key）、#787 誤判 OWNER_BLOCKED（實為可施工的治理工作）；Sol 改判 closure 結果 EMPTY_WITH_SCAN。"
+        "note": "#710／#754 誤判為可關（實為 OWNER_BLOCKED：Production 真實註冊驗收／Resend key）、#787 誤判 OWNER_BLOCKED（實為可施工的治理工作）；Sol 改判 closure 結果 EMPTY_WITH_SCAN。\n\n掃描清單與不是候選理由：\n- PR #756：MODEL_GOVERNANCE，他線 ACTIVE，非本線\n- PR #727：PARKED，merge 衝突\n- PR #712／#708／#703：治理 Draft／PARKED，他線\n- PR #699：PARKED Draft\n- PR #611：PARKED 自 2026-09-20，mergeable blocked\n- Issue #710：OWNER_BLOCKED，Production 真實註冊驗收\n- Issue #754：OWNER_BLOCKED，Resend key／註冊\n- Issue #787：治理，排後續\n- Issue #781：Product backlog，排後續\n- Issue #755：HOLD，0135 transaction 契約未收斂（Ava 持有）"
       },
       {
         "id": "20261005-sol-triage-785-748",
@@ -4347,7 +4347,7 @@
         "requestedModel": "luna",
         "actualModel": "unknown",
         "issue": null,
-        "startedAt": "2026-10-05T16:19:24.988Z",
+        "startedAt": null,
         "completedAt": "2026-10-05T16:19:24.988Z",
         "count": 1,
         "accepted": true,
