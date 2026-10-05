@@ -57,6 +57,11 @@ const OVERSIZED = [
   ['exclusions 21 項', { exclusions: items(21) }],
   ['notices 單項 301 字', { notices: ['a'.repeat(301)] }],
   ['includes 21 項', { includes: items(21).join('\n') }],
+  /* #785 原始上限 */
+  ['exclusions 單項 100 萬空白', { exclusions: [' '.repeat(1_000_000)] }],
+  ['notices 10 萬個空字串', { notices: Array(100_000).fill('') }],
+  ['includes 100 萬換行', { includes: '\n'.repeat(1_000_000) }],
+  ['exclusions x + 50 萬空白', { exclusions: ['x' + ' '.repeat(500_000)] }],
 ] as const;
 
 beforeEach(() => {
@@ -93,6 +98,25 @@ describe('PUT /api/trips/:id', () => {
     const res = await put({ description: '', notes: '', includes: '', exclusions: [], notices: [] });
     expect(res.status).toBe(200);
     expect(db.updates[0]).toEqual({ description: '', notes: '', includes: '', exclusions: [], notices: [] });
+  });
+});
+
+describe('#785 raw 違規的 400 訊息指出真正原因', () => {
+  const CASES = [
+    ['exclusions 201 個原始項', { exclusions: Array(201).fill('') }, '列數（含空白列）最多 200 列'],
+    ['notices 單項 3001 原始字（全空白）', { notices: [' '.repeat(3001)] }, '每項（含前後空白）最多 3000 字'],
+    ['includes 500 行原始（整體未超過）', { includes: '\n'.repeat(500) }, '列數（含空白列）最多 200 列'],
+    ['includes 整體 20001 原始字（行數過多）', { includes: '\n'.repeat(20001) }, '整體（含空白與換行）最多 20000 字'],
+    ['includes 整體過大且行數 ≤ 200', { includes: ('x' + ' '.repeat(1999) + '\n').repeat(11) }, '整體（含空白與換行）最多 20000 字'],
+    ['exclusions 21 個可見項（沿用舊訊息）', { exclusions: items(21) }, '最多 20 項，每項最多 300 字'],
+  ] as const;
+  it.each(CASES)('%s → message 含對應文字', async (_label, body, text) => {
+    for (const res of [await put(body), await post({ title: 't', ...body })]) {
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(json.code).toBe('REQ_001');
+      expect(json.message).toContain(text);
+    }
   });
 });
 

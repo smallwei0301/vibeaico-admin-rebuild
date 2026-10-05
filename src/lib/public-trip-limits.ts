@@ -14,6 +14,19 @@ export const MAX_PUBLIC_LIST_ITEM_CHARS = 300;
 /** 陣列欄位（inclusions、exclusions、notices）最多項數。 */
 export const MAX_PUBLIC_LIST_ITEMS = 20;
 
+
+/**
+ * #785：「原始」大小上限（儲存安全天花板）。可見上限（trim、忽略空白項）不看空白，
+ * 所以另設原始上限，避免靠空白／空項塞出超大 payload。與可見上限同時成立；
+ * 通過者原樣保存，不做寫入前正規化。
+ */
+/** 清單欄位（exclusions、notices、includes 拆行後）原始項數上限（含空白項）。 */
+export const MAX_TRIP_LIST_RAW_ITEMS = 200;
+/** 清單每一項原始（未 trim）code point 上限。 */
+export const MAX_TRIP_LIST_ITEM_RAW_CHARS = 3000;
+/** includes 原始字串整體 code point 上限。 */
+export const MAX_TRIP_INCLUDES_RAW_CHARS = 20000;
+
 /** 以字元（code point）為單位截斷，不會切斷 surrogate pair；截斷處不加標記。 */
 export function truncateChars(text: string, max: number): string {
   const chars = Array.from(text);
