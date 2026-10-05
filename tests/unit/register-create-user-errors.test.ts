@@ -39,6 +39,7 @@ describe('POST /api/auth/tenant/register createUser errors', () => {
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ success: false, message: 'Email 已註冊', code: 'AUTH_003' });
     expect(mocks.consumeCode).toHaveBeenCalledOnce();
+    expect(mocks.createUser).toHaveBeenCalledOnce();
     expect(from).toHaveBeenCalledTimes(1);
     expect(from).not.toHaveBeenCalledWith('tenant_users');
     expect(from).not.toHaveBeenCalledWith('tenant_settings');
@@ -46,6 +47,9 @@ describe('POST /api/auth/tenant/register createUser errors', () => {
   });
 
   for (const error of [
+    { code: 'user_already_exists', message: 'User exists' },
+    { code: 'unexpected_failure', message: 'upstream already unavailable' },
+    { message: 'Email already registered' },
     { code: 'unexpected_failure', message: 'upstream returned 502' },
     { code: 'email_not_confirmed', message: 'unrelated 422 is not duplicate' },
     { message: 'missing provider code' },
@@ -61,6 +65,7 @@ describe('POST /api/auth/tenant/register createUser errors', () => {
       expect(await res.json()).toEqual({ success: false, message: '系統發生錯誤，請稍後再試', code: 'SYS_001' });
       expect(responseText).not.toContain(error.message);
       expect(mocks.consumeCode).toHaveBeenCalledOnce();
+      expect(mocks.createUser).toHaveBeenCalledOnce();
       expect(from).toHaveBeenCalledTimes(1);
       expect(from).not.toHaveBeenCalledWith('tenant_users');
       expect(from).not.toHaveBeenCalledWith('tenant_settings');
