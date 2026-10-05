@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import {
   assertTestReleaseTarget,
@@ -22,14 +25,35 @@ function fakeGitRunner(command: string, args: string[]) {
   return { status: 1, stdout: '', stderr: `unexpected git args: ${gitArgs.join(' ')}` };
 }
 
-function buildPlan() {
+function buildPlan(repoRoot = process.cwd()) {
   return buildTestReleasePlanFromCheckout({
     releaseId: RELEASE,
     mainSha: MAIN,
     plannedAt: PLANNED_AT,
-    repoRoot: process.cwd(),
+    repoRoot,
     runner: fakeGitRunner as any,
   });
+}
+
+// Successful mutable-path tests use multiple safe source migrations. The real
+// FULL_PENDING_SET is still tested above admission, but includes 0135's wrapper
+// and cannot be used as a fake successful atomic apply.
+const fixtureRoots: string[] = [];
+afterEach(() => {
+  for (const root of fixtureRoots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+function atomicSourceFixture() {
+  const repoRoot = mkdtempSync(join(tmpdir(), 'g3-multi-source-'));
+  fixtureRoots.push(repoRoot);
+  mkdirSync(join(repoRoot, 'supabase/migrations'), { recursive: true });
+  const entries = ['0901_g3_existing', '0902_g3_first_pending', '0903_g3_second_pending'].map((repoFile) => {
+    writeFileSync(join(repoRoot, `supabase/migrations/${repoFile}.sql`),
+      `create table public.${repoFile.slice(5)}(id bigint primary key);`);
+    return { repoFile, classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', ledgerNames: [] };
+  });
+  writeFileSync(join(repoRoot, 'supabase/ledger-alias-map.json'), JSON.stringify({ schemaVersion: 1, entries }));
+  return repoRoot;
 }
 
 function replayMigration(plan:any) {
@@ -83,12 +107,14 @@ describe('Production DB exact-plan remote TEST validator #447', () => {
   });
 
   it('verifies one already-ledgered TEST migration without replaying its DDL and inserts every other absent identity', () => {
-    const plan = buildPlan();
+    const repoRoot = atomicSourceFixture();
+    const plan = buildPlan(repoRoot);
+    expect(plan.migrations).toHaveLength(3);
     const replay = replayMigration(plan);
     const absent = plan.migrations.find((item:any) => item.repoFile !== replay.repoFile)!;
     expect(absent).toBeTruthy();
-    const aliasMap = JSON.parse(require('node:fs').readFileSync('supabase/ledger-alias-map.json', 'utf8'));
-    const readCanonicalSql = (path:string) => require('node:fs').readFileSync(path, 'utf8');
+    const aliasMap = JSON.parse(readFileSync(join(repoRoot, 'supabase/ledger-alias-map.json'), 'utf8'));
+    const readCanonicalSql = (path:string) => readFileSync(join(repoRoot, path), 'utf8');
     const built = buildAtomicTestReleaseValidationSql({
       plan,
       aliasMap,
@@ -125,7 +151,9 @@ describe('Production DB exact-plan remote TEST validator #447', () => {
   });
 
   it('executes exactly one atomic TEST write between two read-only ledger captures and returns plan-bound evidence', async () => {
-    const plan = buildPlan();
+    const repoRoot = atomicSourceFixture();
+    const plan = buildPlan(repoRoot);
+    expect(plan.migrations).toHaveLength(3);
     const replay = replayMigration(plan);
     const calls:string[] = [];
     let readonly = 0;
@@ -149,7 +177,7 @@ describe('Production DB exact-plan remote TEST validator #447', () => {
       projectRef: TEST,
       sourceRunId: '34910000000',
       sourceRunAttempt: 1,
-      repoRoot: process.cwd(),
+      repoRoot,
       fetchImpl: fetchImpl as unknown as typeof fetch,
       runner: fakeGitRunner as any,
     });
