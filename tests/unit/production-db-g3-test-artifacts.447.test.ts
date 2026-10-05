@@ -426,7 +426,7 @@ describe('Production DB G3 TEST artifact builders #447', () => {
             { status: 'passed', fullName: '未登入與已登入使用者都不得直接呼叫 create_booking_addon／delete_booking_addon rpc' },
           ] },
         ],
-      }), ['tests/integration/db/plan-seasonal-order-snapshot.42.test.ts', 'tests/integration/db/tour-refund-snapshot.46.test.ts']),
+      }), ['tests/integration/db/plan-seasonal-order-snapshot.42.test.ts', 'tests/integration/db/tour-refund-snapshot.46.test.ts', 'tests/integration/api/tour-request-accept.46.test.ts']),
       sourceRunId: '1', sourceRunAttempt: 1,
     });
 
@@ -780,14 +780,31 @@ describe('#725 N2 closure evidence follows plan migration content, not scope nam
   const build=(p:any,raw:any)=>buildProductionDbTestCoverageEvidence({report:raw,plan:p,sourceRunId:'1',sourceRunAttempt:1});
   const exact=(file:string)=>ISSUE_46_CLOSURE_COVERAGE.requiredAssertions.filter(r=>r.file===file);
 
-  it('FULL_PENDING_SET-style plan with 0130/0132/0136 requires each family of assertions', () => {
+  it('FULL_PENDING_SET-style plan with 0130/0132/0136 requires every family of assertions (REQUEST included, #771 Codex P1)', () => {
     const p=fullPlan(['0130_issue_46_refund_policy_snapshot','0132_issue_42_seasonal_price_resolution','0136_issue_755_create_tour_order_invoker']);
-    expect(build(p,rowsFor(p,[F_REFUND,F_SEASONAL,F_INVOKER])).reportSuccess).toBe(true);
-    for(const f of [F_REFUND,F_SEASONAL,F_INVOKER]){
-      for(const row of exact(f)) expect(()=>build(p,rowsFor(p,[F_REFUND,F_SEASONAL,F_INVOKER],row.fullName))).toThrow(/REQUIRED_SEMANTIC_TEST_MISSING/);
+    const all=[F_REQUEST,F_REFUND,F_SEASONAL,F_INVOKER];
+    expect(build(p,rowsFor(p,all)).reportSuccess).toBe(true);
+    for(const f of all){
+      expect(exact(f).length).toBeGreaterThan(0);
+      for(const row of exact(f)) expect(()=>build(p,rowsFor(p,all,row.fullName))).toThrow(/REQUIRED_SEMANTIC_TEST_MISSING/);
     }
-    // REQUEST 家族未被選入，不需要
-    expect(exact(F_REQUEST).length).toBeGreaterThan(0);
+  });
+
+  const requires=(p:any,expected:string[])=>{
+    const all=[F_REQUEST,F_REFUND,F_SEASONAL,F_INVOKER];
+    expect(build(p,rowsFor(p,expected)).reportSuccess).toBe(true);
+    for(const f of all){
+      for(const row of exact(f)){
+        const call=()=>build(p,rowsFor(p,expected,row.fullName));
+        if(expected.includes(f)) expect(call).toThrow(/REQUIRED_SEMANTIC_TEST_MISSING/);
+        else expect(call).not.toThrow();
+      }
+    }
+  };
+  it('later create_tour_order writers inherit earlier contracts (#771 Codex P1)', () => {
+    requires(fullPlan(['0132_issue_42_seasonal_price_resolution']),[F_REQUEST,F_REFUND,F_SEASONAL]);
+    requires(fullPlan(['0136_issue_755_create_tour_order_invoker']),[F_REQUEST,F_REFUND,F_SEASONAL,F_INVOKER]);
+    requires(fullPlan(['0130_issue_46_refund_policy_snapshot']),[F_REQUEST,F_REFUND]);
   });
 
   it('0111 alone requires only REQUEST assertions', () => {
@@ -810,7 +827,7 @@ describe('#725 N2 closure evidence follows plan migration content, not scope nam
     const seen:string[]=[];
     const fetchImpl=vi.fn(async(url:any)=>{const u=new URL(url);const v=u.searchParams.get('slug')??u.searchParams.get('note');if(v)seen.push(v);return new Response('[]',{status:200});});
     await captureProductionDbTestCleanupEvidence({plan:p,testSupabaseUrl:TEST_URL,serviceRoleKey:'mock',sourceRunId:'1',sourceRunAttempt:1,fetchImpl});
-    expect(seen).toEqual(['like.refund-snapshot-46-%','like.#755 probe%']);
+    expect(seen).toEqual(['like.request-accept-46-%','like.refund-snapshot-46-%','like.snapshot-42-%','like.#755 probe%']);
     const q=fullPlan(['0128_issue_42_plan_seasonal_pricing','0111_issue_46_guide_request_accept']);
     seen.length=0;
     await captureProductionDbTestCleanupEvidence({plan:q,testSupabaseUrl:TEST_URL,serviceRoleKey:'mock',sourceRunId:'1',sourceRunAttempt:1,fetchImpl});

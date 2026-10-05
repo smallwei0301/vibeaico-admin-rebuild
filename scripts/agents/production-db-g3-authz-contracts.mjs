@@ -40,20 +40,25 @@ export const ISSUE_46_CLOSURE_COVERAGE = Object.freeze({
 // 每個 closure 原生測試檔由哪些 migration 編號保護；plan 含任一者即必須通過該檔的 exact assertions。
 // 單一來源（#771 review NB1／NB4）：每個 closure 家族同時宣告「哪些 migration 編號觸發」與「對應 TEST cleanup 掃描範圍」，
 // coverage（closureRequiredAssertionsForPlan）與 cleanup（test-artifacts cleanupScopes）都由此推導，無法各自漂移。
+// 規則（#771 Codex P1）：任何後續 create_tour_order 的改寫者（create or replace）或變更者（alter）
+// 都會承接並可能破壞先前所有 create_tour_order 契約，因此必須觸發其測試所經過的全部家族。
+// 逐檔核對（supabase/migrations）：create_tour_order 的 create or replace＝0110／0111／0130／0132，alter＝0136（SECURITY INVOKER）；
+// accept／reject／cancel／expire_tour_* 的最後改寫者為 0111（0130 之後沒有任何 migration 再動）；
+// 0136 另外明確 grant select on trip_plan_seasons（0128 新表），故 seasonal 也由 0136 觸發。
 export const ISSUE_46_CLOSURE_FAMILIES = Object.freeze([
   Object.freeze({
     file: 'tests/integration/api/tour-request-accept.46.test.ts',
-    migrations: Object.freeze(['0111']),
+    migrations: Object.freeze(['0111', '0130', '0132', '0136']),
     cleanup: Object.freeze({migration:'0111_issue_46_guide_request_accept',table:'tour_orders',filterColumn:'note',filterOperator:'like',filterValue:'request-accept-46-%'}),
   }),
   Object.freeze({
     file: 'tests/integration/db/tour-refund-snapshot.46.test.ts',
-    migrations: Object.freeze(['0130']),
+    migrations: Object.freeze(['0130', '0132', '0136']),
     cleanup: Object.freeze({migration:'0130_issue_46_refund_policy_snapshot',table:'trips',filterColumn:'slug',filterOperator:'like',filterValue:'refund-snapshot-46-%'}),
   }),
   Object.freeze({
     file: 'tests/integration/db/plan-seasonal-order-snapshot.42.test.ts',
-    migrations: Object.freeze(['0128', '0132']),
+    migrations: Object.freeze(['0128', '0132', '0136']),
     cleanup: Object.freeze({migration:'0132_issue_42_seasonal_price_resolution',table:'trips',filterColumn:'slug',filterOperator:'like',filterValue:'snapshot-42-%'}),
   }),
   Object.freeze({
