@@ -47,8 +47,10 @@ function admin() {
 const PA = 'aaaaaaaa-0000-4000-8000-000000000001';
 const PB = 'bbbbbbbb-0000-4000-8000-000000000002';
 const PC = 'cccccccc-0000-4000-8000-000000000003';
+// id 前綴刻意與 plan_id 排序相反（A 的 id 最大、C 最小），拿掉 order('plan_id') 時排序結果會整個倒過來。
+const ID_PREFIX: Record<string, string> = { [PA]: 'z', [PB]: 'm', [PC]: 'a' };
 const mk = (plan: string, n: number, offset = 0): SeasonRow[] =>
-  Array.from({ length: n }, (_, i) => ({ id: `${plan.slice(0, 4)}-${String(offset + i).padStart(5, '0')}`, plan_id: plan }));
+  Array.from({ length: n }, (_, i) => ({ id: `${ID_PREFIX[plan]}-${String(offset + i).padStart(5, '0')}`, plan_id: plan }));
 
 describe('#766 readPlanSeasons 排序與截斷', () => {
   beforeEach(() => { st.rows = []; st.calls = []; });
@@ -62,9 +64,9 @@ describe('#766 readPlanSeasons 排序與截斷', () => {
   });
 
   it('多 plan_id 截斷：資料故意亂序插入，仍依 plan_id 排序，只有截斷點（含）之後的方案不完整', async () => {
-    // A 2500 列、B 2500 列 → 5000 列剛好 5 滿頁，最後一列屬於 B；C 排在 B 之後。
+    // A 2490 列、B 2500 列、C 10 列，共 5000 列剛好 5 滿頁；依 plan_id 排序後最後 10 列屬於 C，截斷點 = C。
     st.rows = [...mk(PC, 10), ...mk(PB, 2500), ...mk(PA, 2490)];
-    // 5 頁 * 1000 = 5000 列；排序後 A(2490) + B(2500) = 4990，第 5 頁尾端 10 列是 C，截斷點 = C。
+    // 若拿掉 order('plan_id')，只剩 id 排序（C 的 id 最小）會讓 C 排最前面、截斷點變成 A，下列斷言會失敗。
     const reader = await readPlanSeasons(admin(), 't1', [PA, PB, PC]);
     expect(st.calls).toHaveLength(5);
     expect(st.calls.map((c) => c.range)).toEqual([[0, 999], [1000, 1999], [2000, 2999], [3000, 3999], [4000, 4999]]);
