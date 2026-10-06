@@ -253,6 +253,8 @@ const HOME_DEPARTURE_PLAN_ID_CHUNK = 100;
 /**
  * 首頁季節查詢（readPlanSeasons）同樣依 HOME_DEPARTURE_PLAN_ID_CHUNK 分塊；塊數上限 5（最多 500 個方案），
  * 讓單一匿名請求的季節查詢數有界（每塊內部仍最多 5 頁）。超出上限的方案不查詢、視為季節價未知（保守，不誤開入口）。
+ * 最壞查詢數 = 5 塊 × 每塊最多 5 頁 = 25。超出上限的方案必然已因團次判定上限（MAX_HOME_DEPARTURE_PAGES，
+ * 同順序、同 100 一塊）為 dates-not-loaded，所以此上限不改變輸出、只限制查詢數。
  */
 const MAX_HOME_SEASON_CHUNKS = 5;
 

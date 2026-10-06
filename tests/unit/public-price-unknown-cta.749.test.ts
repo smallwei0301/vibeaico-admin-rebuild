@@ -18,6 +18,8 @@ const fx = vi.hoisted(() => ({
   tripCount: 1,
   // 季節查詢的 IN 清單含此 plan_id 時，該次查詢回傳錯誤。
   seasonFailForId: null as null | string,
+  // 季節查詢的 IN 清單含此 plan_id 時，該次查詢 throw（只影響該塊）。
+  seasonThrowForId: null as null | string,
 }));
 const tripOf = (i: number) => `trip-${Math.floor(i / 30) + 1}`;
 
@@ -44,6 +46,7 @@ vi.mock('@/server/supabase', () => ({
         if (table === 'trip_plan_seasons') {
           fx.seasonCalls.push([...((inFilters.plan_id ?? []) as string[])]);
           if (fx.seasonThrow) throw new Error('boom');
+          if (fx.seasonThrowForId && inFilters.plan_id?.includes(fx.seasonThrowForId)) throw new Error('boom');
           if (fx.seasonPaged) return { data: fx.seasonPaged.slice(rangeFrom, rangeTo + 1), error: null };
           if (fx.seasonFailForId && inFilters.plan_id?.includes(fx.seasonFailForId)) return { data: null, error: { message: 'boom' } };
           if (fx.seasonFail) return { data: null, error: { message: 'relation missing' } };
@@ -106,7 +109,7 @@ describe('#749 (b) helper 規則：incomplete 即未知', () => {
 describe('#749 (c)(d) 首頁與詳情頁 loader', () => {
   beforeEach(() => {
     fx.plans = { f: { mode: 'FIXED_DEPARTURE' }, r: { mode: 'REQUEST' }, i: { mode: 'INSTANT' } };
-    fx.seasonFail = false; fx.seasonThrow = false; fx.seasonCalls = []; fx.seasonPaged = null; fx.tripCount = 1; fx.seasonFailForId = null;
+    fx.seasonFail = false; fx.seasonThrow = false; fx.seasonCalls = []; fx.seasonPaged = null; fx.tripCount = 1; fx.seasonFailForId = null; fx.seasonThrowForId = null;
     vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
   const home = async () => Object.fromEntries((await loadPublicShop('demo'))!.trips[0].plans.map((p) => [p.id, p.bookingCta]));
@@ -182,6 +185,34 @@ describe('#749 (c)(d) 首頁與詳情頁 loader', () => {
     for (const p of plans) {
       if (failedChunk.has(p.id)) expect(p.bookingCta).toBe('price-not-loaded');
       else expect(p.bookingCta).not.toBe('price-not-loaded');
+    }
+    expect(plans.some((p) => !failedChunk.has(p.id))).toBe(true);
+  });
+
+  it('方案超過 500 個（600 個、20 個行程）：季節查詢數 <= MAX_HOME_SEASON_CHUNKS(5)，第 501 個起因團次判定上限先為 dates-not-loaded', async () => {
+    fx.tripCount = 20;
+    fx.plans = Object.fromEntries(Array.from({ length: 600 }, (_, n) => [`p${String(n).padStart(3, '0')}`, { mode: 'FIXED_DEPARTURE' } as PlanFx]));
+    const plans = await homeAll();
+    expect(plans.length).toBe(600);
+    expect(fx.seasonCalls.length).toBeLessThanOrEqual(5);
+    expect(Math.max(...fx.seasonCalls.map((c) => c.length))).toBeLessThanOrEqual(100);
+    expect(plans.slice(500).every((p) => p.bookingCta === 'dates-not-loaded')).toBe(true);
+    expect(plans.slice(0, 500).every((p) => p.bookingCta === 'fixed')).toBe(true);
+  });
+
+  it('只有其中一塊 throw（其他塊正常）：只有該塊方案為 price-not-loaded', async () => {
+    manyPlans();
+    const probe = await homeAll();
+    const judged = probe.map((p) => p.id).filter((id) => fx.seasonCalls.flat().includes(id));
+    fx.seasonCalls = [];
+    fx.seasonThrowForId = judged[0];
+    const plans = await homeAll();
+    const failedChunk = new Set(fx.seasonCalls.find((c) => c.includes(judged[0])));
+    expect(failedChunk.size).toBeGreaterThan(0);
+    expect(failedChunk.size).toBeLessThanOrEqual(100);
+    for (const p of plans) {
+      if (failedChunk.has(p.id)) expect(p.bookingCta).toBe('price-not-loaded');
+      else expect(p.bookingCta).toBe('fixed');
     }
     expect(plans.some((p) => !failedChunk.has(p.id))).toBe(true);
   });
