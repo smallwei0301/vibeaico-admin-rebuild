@@ -38,9 +38,14 @@ const MAIL_UNAVAILABLE_MESSAGE = '驗證信暫時無法寄出，請稍後再試�
  * 可用性代價：服務層級失敗後，本 instance 暫停寄信至多 60 秒（Resend 429 突發也會造成 60 秒暫停，
  * #764）；設定類失敗暫停到 TTL 結束或重新部署。
  *
- * 已知殘餘（文件化，best-effort）：視窗存於本 instance 記憶體，serverless 各 instance 獨立、
- * 不跨 instance 共享；每個 instance「第一個」失敗請求之前（視窗尚未建立）仍可能洩漏差異；
- * 持續故障時，視窗每次過期後會重新暴露，直到下一次失敗再開（#764 追蹤）。
+ * 已知殘餘（文件化，best-effort；不保證兩種 email 回應完全相同，#764）：
+ * - 視窗存於本 instance 記憶體，serverless 各 instance 獨立、不跨 instance 共享；
+ *   每個 instance「第一個」失敗請求之前（視窗尚未建立）仍可能洩漏差異。
+ * - 持續故障時視窗自「最後一次失敗寄送」起算，service 60 秒／config 10 分鐘到期，無 grace period；
+ *   到期後到下一次失敗前，不寄信分支回 200、寄信分支才失敗回 503，每次到期都重新暴露。
+ * - check-then-set 競態：視窗開啟當下已通過檢查的並行請求照常完成。
+ * - 正常運作時的既有差異：60 秒冷卻（429）只對真的寄過信的位址成立，且 send-verification-code 不吞 429
+ *   （forgot-password 才吞）；若刪碼失敗殘留一筆，也只有寄信分支的位址會 429。
  */
 export const MAIL_CONFIG_FAILURE_TTL_MS = 10 * 60_000;
 export const MAIL_TRANSIENT_FAILURE_TTL_MS = 60_000;

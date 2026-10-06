@@ -50,6 +50,8 @@ export interface EmailSendDetail {
    * `service`：可證明為服務層級（429、5xx、網路／逾時、SDK 無 statusCode）；
    * `recipient`：僅限可明確證明是 `to` 收件人被拒的 4xx（statusCode 4xx 且 message 指涉 `to` 欄位），
    * 只與該收件人有關，不得被當成全站狀態（否則可被攻擊者用來開啟 parity 視窗做枚舉）。
+   * 殘餘（#764）：`service` 視窗只有 60 秒、`config` 10 分鐘，且僅存於各 instance 記憶體（best-effort）；
+   * Resend 429 以 API key 為單位，burst 即可觸發 `service` 視窗，目前無 app 層 rate limit。
    * SENT 時為 null。
    */
   failureKind: EmailFailureKind | null;

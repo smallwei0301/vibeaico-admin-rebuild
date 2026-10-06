@@ -47,8 +47,17 @@
   `send-verification-code` 與 `forgot-password` 回 **503 `MAIL_001`**，訊息固定為
   「驗證信暫時無法寄出，請稍後再試或聯絡我們」，剛插入的驗證碼即刪除（不留 60 秒冷卻），
   provider 細節只進 server log、不回給 client。**不得**在 provider／設定層級失敗而沒寄出時回 `{sent:true}`（收件人專屬拒絕例外，見下）。
-- **枚舉防護的精確保證**（best-effort，非絕對）：正常運作時，已存在／不存在 email 的回應盡量一致（皆 200 `{sent:true}`）；
-  唯一已知差異是既有的 REGISTER 60 秒重寄 429 節流，它只套用在「真的寄過信」的位址。
+- **枚舉防護的精確保證**（best-effort，非絕對；**不保證**已存在／不存在 email 的回應「完全相同」）：
+  **正常運作時已知的既有差異（#764）**：`POST /api/auth/send-verification-code` 不論 purpose 是 `REGISTER` 或 `RESET_PASSWORD`，
+  對「不存在（REGISTER）／已存在（RESET_PASSWORD）而真的寄出過信」的位址，60 秒內第二次請求回 **429**（不吞）；
+  對「不寄信分支」的位址（REGISTER 已存在、RESET_PASSWORD 不存在）從無碼可查，永遠回 200 `{sent:true}`。
+  只有 `forgot-password` 會吞掉 429，因此不受此差異影響。此差異未消除，需 Owner 決定冷卻是否改為對稱（#764 剩餘範圍）。
+  **殘餘風險**：(a) 持續故障時，parity 視窗在「最後一次失敗寄送」之後才開始計時，`service` 60 秒、`config` 10 分鐘到期（無 grace period）；
+  到期後到下一次失敗前，已存在 email 的探測回 200、而該次寄信分支才會失敗回 503，每次到期都會重新暴露，不是只暴露一次；
+  (b) 視窗存於各 serverless instance 的記憶體，不跨 instance 共享，僅為 best-effort；
+  (c) check-then-set 競態：視窗開啟當下已通過檢查的並行請求照常完成；
+  (d) 失敗後刪除驗證碼若也失敗（只留 server log），會殘留一筆，60 秒內只有寄信分支的位址（REGISTER 未註冊／RESET_PASSWORD 已註冊）在 send-verification-code 會 429（forgot-password 吞 429）；
+  (e) Resend 429 以 API key 為單位，請求 burst 可觸發 service 視窗（60 秒暫停寄信），且 auth email 端點目前無 app 層 rate limit。
   寄信失敗分三類（`src/server/email/send.ts` 的 `failureKind`）：
   `config`（無 key、401／403、金鑰／寄件者／網域設定錯誤）、`service`（429、5xx、網路／逾時、SDK 無 statusCode）、
   `recipient`（僅限可證明為 `to` 收件人被拒的 4xx：statusCode 4xx 且 message 指涉 `to` 欄位，如 422 "Invalid `to` field"）。
