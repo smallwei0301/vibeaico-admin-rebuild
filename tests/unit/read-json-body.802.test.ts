@@ -21,6 +21,7 @@ vi.mock('@/server/tenant', () => ({
 }));
 
 import { POST as switchTenant } from '@/app/api/auth/switch-tenant/route';
+import { POST as changePassword } from '@/app/api/auth/change-password/route';
 
 const enc = new TextEncoder();
 
@@ -143,6 +144,21 @@ describe('POST /api/auth/switch-tenant body 上限 (#802)', () => {
     const pad = 'a'.repeat(PUBLIC_JSON_BODY_LIMIT_BYTES + 1);
     const body = JSON.stringify({ tenantId: '00000000-0000-4000-8000-000000000000', pad });
     const res = await switchTenant(new Request('http://localhost/api/auth/switch-tenant', {
+      method: 'POST', body, headers: { 'content-type': 'application/json' },
+    }), {});
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ success: false, message: '請求內容過大', code: ERR.PAYLOAD_TOO_LARGE });
+    expect(requireUser).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/auth/change-password body 上限 (#802)', () => {
+  beforeEach(() => { requireUser.mockReset(); });
+
+  it('超限回 413 信封，且未呼叫 requireUser／下游', async () => {
+    const pad = 'a'.repeat(PUBLIC_JSON_BODY_LIMIT_BYTES + 1);
+    const body = JSON.stringify({ currentPassword: 'old-password', newPassword: 'new-password-1', pad });
+    const res = await changePassword(new Request('http://localhost/api/auth/change-password', {
       method: 'POST', body, headers: { 'content-type': 'application/json' },
     }), {});
     expect(res.status).toBe(413);
