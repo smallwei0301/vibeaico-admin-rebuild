@@ -79,6 +79,9 @@
     },
     {
       "ref": "issue/750"
+    },
+    {
+      "ref": "issue/749"
     }
   ],
   "main": {
@@ -6425,6 +6428,223 @@
         "completedAt": "2026-10-06T13:28:47Z",
         "note": "依 Codex P2 comment 4195841234：flow.solTouches 184→200，同步計入本 PR 新增 16 筆 audit task",
         "count": 1
+      },
+      {
+        "id": "20261006-close-800-merge",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": "2026-10-06T13:36:40Z",
+        "completedAt": "2026-10-06T13:38:30Z",
+        "note": "Codex 👍＋WIP success（兩次良性競態後重新評估）→ PB-074 預檢（closed_by_pull_requests 空、squash 文字零命中）→ squash 合併 #800 → Completion Truth；Issue 764 Owner 決策留言 issuecomment-6017499611",
+        "evidenceRef": "commit cc54871a",
+        "issue": 764,
+        "count": 1
+      },
+      {
+        "id": "20261006-promote-749",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": "2026-10-06T13:39:00Z",
+        "completedAt": "2026-10-06T13:39:30Z",
+        "note": "升格 Issue 749 F5 RESERVE：merge main cc54871a、cherry-pick 99ebc5b2 為 8a4fdd1c；公開頁無 mock 路徑，改走 TEST_VALIDATION",
+        "evidenceRef": "commit 8a4fdd1c",
+        "issue": 749,
+        "count": 1
+      },
+      {
+        "id": "20261006-scout-r01-ledger-749-1",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": null,
+        "completedAt": "2026-10-06T13:39:26.410Z",
+        "note": "記錄 #800 合併 Completion Truth 與 #749 升格",
+        "count": 1
+      },
+      {
+        "id": "20261006-scout-r01-sources-749",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": null,
+        "completedAt": "2026-10-06T13:42:40.433Z",
+        "note": "依 PR #801 WIP guard PRODUCT_RUN_BINDING_REJECTED 補 sources issue/749",
+        "count": 1
+      },
+      {
+        "id": "20261006-review-801-ledger-delta",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": "2026-10-06T13:44:08.000Z",
+        "completedAt": "2026-10-06T13:44:16.000Z",
+        "note": "ledger delta 8a4fdd1c..44a6c770 PASS（completionTruth issue#764、sources issue/749）",
+        "issue": 749,
+        "evidenceRef": null,
+        "count": 1
+      },
+      {
+        "id": "20261006-ci-801-rerun",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": "2026-10-06T15:10:30.000Z",
+        "completedAt": "2026-10-06T15:11:30.000Z",
+        "note": "PR #801 CI 37473058805 attempt 1 integration 1 案逾時（departure-formation-snapshot.42，非本 PR 路徑；main cc54871a 綠）→ PR 留言 issuecomment-6019276551 → rerun failed job 一次；attempt 2 integration＋E2E success 15:45:45Z",
+        "issue": 749,
+        "evidenceRef": "github:workflow#37473058805",
+        "count": 1
+      },
+      {
+        "id": "20261006-build-801-codex-p2",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": "2026-10-06T15:50:40.000Z",
+        "completedAt": "2026-10-06T15:53:03.000Z",
+        "note": "Codex P2 comment 4197462734：首頁季節查詢依 100 個方案 ID 分塊、MAX_HOME_SEASON_CHUNKS=5",
+        "issue": 749,
+        "evidenceRef": "commit 0cd4e0d8",
+        "count": 1
+      },
+      {
+        "id": "20261006-review-801-delta1",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": "2026-10-06T15:53:35.000Z",
+        "completedAt": "2026-10-06T15:54:58.000Z",
+        "note": "delta 0cd4e0d8 PASS；觀察：上限無測試、單塊 throw 未測",
+        "issue": 749,
+        "evidenceRef": null,
+        "count": 1
+      },
+      {
+        "id": "20261006-build-801-fix2",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": "2026-10-06T15:55:35.000Z",
+        "completedAt": "2026-10-06T15:57:48.000Z",
+        "note": "補 600 方案上限測試與單塊 throw 測試、註明上限不改輸出",
+        "issue": 749,
+        "evidenceRef": "commit 9adabe4c",
+        "count": 1
+      },
+      {
+        "id": "20261006-review-801-delta2",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": "2026-10-06T15:58:09.000Z",
+        "completedAt": "2026-10-06T15:59:59.000Z",
+        "note": "delta 9adabe4c PASS；觀察：季節查詢可只涵蓋已判定方案、過時註解",
+        "issue": 749,
+        "evidenceRef": null,
+        "count": 1
+      },
+      {
+        "id": "20261006-build-801-fix3",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": "2026-10-06T16:01:02.000Z",
+        "completedAt": "2026-10-06T16:03:22.000Z",
+        "note": "季節查詢只涵蓋已判定團次方案（輸出等價）、更新註解、最後一塊 throw 與預算用完測試",
+        "issue": 749,
+        "evidenceRef": "commit e1f01c23",
+        "count": 1
+      },
+      {
+        "id": "20261006-review-801-delta3",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": "2026-10-06T16:03:45.000Z",
+        "completedAt": "2026-10-06T16:05:06.000Z",
+        "note": "delta e1f01c23 PASS，無 blocking",
+        "issue": 749,
+        "evidenceRef": null,
+        "count": 1
+      },
+      {
+        "id": "20261006-scout-r01-ledger-749-2",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": null,
+        "completedAt": "2026-10-06T16:05:06.000Z",
+        "note": "記錄 #801 CI rerun、Codex P2 分塊修正與審查、main CI",
+        "issue": null,
+        "evidenceRef": null,
+        "count": 1
       }
     ],
     "fullContextReplays": 0,
@@ -6441,11 +6661,11 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 172,
+    "fullCiRuns": 174,
     "invalidReruns": 6,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0,
-    "note": "37007212982 因 head 被取代 cancelled，37083653366 在 classify 被拒，37082211071 為 #714 source CI，三者不計入；先前 5 個 dispatch run 是否已計入原 30 仍待查證。本輪新增 3 個完整 canonical TEST run：37008702923、37083761493、37090025615 #757: 37105978199 failure（mock 形狀不擬真，已修）、37108030479 success；main push 37112300377 監看中。 #762：37121399537、37124644493 success；37120725291、37124319682 因 head 被取代而取消（不計）。 #763：37128355259 success（cce85365）。 37133703835 success（39748ec3）。 37137459820 success（ae6cabfe）。 #763 收尾：PR 37148553012 success；main push 37151361102 attempt 1 failure（TEST Supabase ECONNRESET，18 無關檔案）、attempt 2 rerun success。 #765：37155693289 因 review 修正被取代而取消（不計）；37156263191 attempt 1 因 GitHub API 503 於 classify 失敗、attempt 2 success。 #765：PR 37159197639 success；main push 37161655288 success。; +1 2026-10-04 PR #768 canonical shared TEST run 37182834760 (head 10662719, success); LIVE REBUILD 2026-10-05T11:46:05Z: ci.fullCiRuns = completed (success|failure), non-cancelled .github/workflows/ci.yml runs, deduped by run id (a rerun attempt counts once), created after Run start 2026-10-01T03:14:56Z, whose head_sha is a commit of a PR whose body declares RUN_ID: 2026-10-01-product-delivery-r01 (30 PRs: 713 714 715 719 723 725 727 731 733 734 737 738 740 743 744 751 752 757 759 762 763 765 767 768 770 771 772 775 776 779) or is the main push of such a PR's merge commit; plus 1 canonical TEST dispatch this ledger explicitly recorded as this Run's (37083761493, PR #709 branch, success). Result 148 = 123 PR runs (111 pull_request + 12 workflow_dispatch) + 24 main push + 1 noted dispatch; 133+1 success, 14 failure; 51 cancelled runs excluded; PR #782 (MODEL_GOVERNANCE, RUN_ID none) excluded. This supersedes the previous hand-count baseline (51, which carried the unresolved '5 dispatch runs' question). invalidReruns left unchanged (5). Counted run ids: 36810577850(PR#713 c14f01ef success) 36810825537(PR#713 4a7c8a0a success) 36813096694(PR#713 ac8d5654 success) 36814238524(PR#713 ac8d5654 success) 36814288438(PR#714 adf0608d success) 36816705017(PR#713 f1c4984c success) 36817947312(PR#713 f1c4984c success) 36818753669(PR#715 dec730fd success) 36822913910(MAIN#713 9b291ebb success) 36823196438(PR#715 f1c0438a success) 36827423772(PR#719 955b109d failure) 36828034389(PR#719 d7de123f success) 36829391701(PR#719 7a05bbcd success) 36831447495(MAIN#719 701845e4 failure) 36833201119(PR#723 6aac2777 success) 36838286092(PR#723 0d178dc8 success) 36840741621(PR#723 0d178dc8 success) 36845329688(PR#725 b9ca2203 success) 36846439984(MAIN#723 a30acac0 failure) 36849133849(PR#725 25020ad2 success) 36852969928(PR#727 ec1d5508 success) 36857198490(PR#727 ec1d5508 failure) 36862662300(PR#715 f56cadf0 success) 36868657767(PR#715 6676255c success) 36885071854(PR#731 af8a7a10 success) 36885380677(PR#731 228a8c10 success) 36892824792(PR#731 b11968df success) 36895313359(PR#731 14349367 success) 36898637650(PR#731 bcb83b03 failure) 36899284560(PR#731 0b75a42c success) 36902978320(PR#731 3c3dfb58 failure) 36903802975(PR#731 aaf47167 success) 36905935644(PR#731 a0ce9f42 success) 36908468233(PR#731 f945d79a success) 36920180015(PR#733 7c1bd4a7 success) 36923218094(PR#734 145026b5 success) 36951894823(PR#715 183f0208 success) 36951973057(PR#715 183f0208 failure) 36955149036(MAIN#733 075024a7 success) 36955865561(PR#737 c1ed8cb9 success) 36956315234(PR#737 a1a193ab success) 36956761738(MAIN#737 9c1bc969 success) 36957346271(PR#738 6becae71 success) 36958243227(PR#715 f9663d81 success) 36961719387(PR#740 fd16d2ea success) 36962089855(PR#740 5e053401 success) 36962463305(MAIN#740 3b5d34d3 failure) 36963823970(PR#731 fb2bda2b success) 36964242040(PR#731 52b8fa75 success) 36965230556(PR#731 14eb3391 failure) 36969709720(PR#743 057f09ed success) 36970350113(PR#744 c65615c6 success) 36971026374(PR#744 131e6d19 success) 36971391119(PR#731 1928d5ab success) 36975242874(MAIN#744 42f7605d success) 36979639697(PR#731 7364ed2b success) 36983421242(PR#731 63a62259 failure) 36989409527(PR#731 dab21ac9 failure) 36992333574(PR#731 13d53452 failure) 36996678336(PR#731 11aff4c7 success) 37000046696(PR#731 193216c5 success) 37002533186(PR#731 1ad47308 success) 37005494827(PR#731 441650db success) 37008702923(PR#731 83b3fbfb success) 37014341831(MAIN#731 3cd1187f success) 37082211071(PR#714 593731b7 success) 37082958249(MAIN#714 05aa8aa2 success) 37090025615(PR#771 4d29a358 success) 37095867124(MAIN#751 9c2809c1 success) 37097111271(PR#771 607471c1 success) 37097601299(PR#771 f54745b4 failure) 37097716344(PR#771 bac57747 success) 37097767318(PR#771 1cea0239 success) 37097836132(PR#771 38659afd success) 37098159273(MAIN#752 e379ab03 success) 37105978199(PR#771 f7947106 failure) 37108030479(PR#771 25018212 success) 37112300377(MAIN#757 216d2a73 success) 37113139827(PR#771 3fbb4a30 success) 37113422845(PR#771 18f5b600 success) 37113665874(PR#771 2fda1a21 success) 37117779334(PR#771 cef9570e success) 37119723468(MAIN#759 71c0079e success) 37121399537(PR#771 b56f2521 success) 37124644493(PR#771 bfa400dd success) 37127272367(MAIN#762 6d02420d success) 37128355259(PR#771 cce85365 success) 37133703835(PR#771 39748ec3 success) 37137459820(PR#771 ae6cabfe success) 37141237881(PR#771 ba4bca9a success) 37145666175(PR#771 f3997cf0 success) 37148553012(PR#771 236c17bf success) 37151361102(MAIN#763 d5d88f1e success) 37156263191(PR#771 4701a7c4 success) 37159197639(PR#771 4ed6c1f9 success) 37161655288(MAIN#765 e1bea667 success) 37164494467(PR#771 3a92f47e success) 37166817549(MAIN#767 6f308e44 success) 37175382476(PR#771 bf2e3e82 success) 37182834760(PR#771 10662719 success) 37186179275(PR#770 bcfa55f4 success) 37186572275(PR#770 ba6f41bd success) 37186848453(PR#771 6a78c6ff success) 37187451510(PR#770 bca1cfde success) 37187677180(PR#770 c42c6b80 success) 37187879935(PR#770 3d213691 success) 37189191278(PR#770 ed521777 success) 37189447800(PR#771 22b87fc6 success) 37189881128(PR#770 c1b08e2d success) 37191996884(PR#771 dbed2273 success) 37192702511(MAIN#770 170ab413 success) 37194433395(PR#771 d030e966 success) 37198623764(PR#771 e6ea4e3d success) 37201156344(PR#771 ea3cf8ee success) 37204816564(PR#771 46976022 success) 37207921226(PR#771 660c625e success) 37211245451(PR#771 131569bf success) 37214261053(MAIN#768 6e0e51b8 success) 37243405906(PR#725 38a20fbd success) 37243847571(PR#725 8b52d33f success) 37246108140(MAIN#725 287774bb success) 37249301919(PR#771 c48c6aad success) 37249340987(PR#772 ff056e6c success) 37249878632(PR#772 13aa3859 success) 37249953929(PR#771 ce1cf48c success) 37250598438(PR#771 c6f3a32f success) 37251432103(PR#771 1c6e0812 success) 37251833995(MAIN#772 7a0ee537 success) 37252313022(MAIN#771 ee08eb58 success) 37253546716(PR#775 09ee4227 success) 37253663770(PR#775 cc00fb2d success) 37253673963(PR#776 5df08c7b success) 37254552727(PR#775 d47f53c8 success) 37255221330(MAIN#775 8d3ab999 success) 37262467849(PR#779 7cf5adcb success) 37263023517(PR#779 1cc570ac success) 37264029372(PR#779 0ee0a810 success) 37264467232(PR#779 9ab6cf70 success) 37265295419(PR#779 ce8f281c success) 37266031516(PR#779 1d706bb3 success) 37266550631(PR#779 39561814 success) 37267129647(PR#779 8142d292 success) 37268061683(PR#779 711fc0a5 success) 37274572283(PR#779 d37e4bbf success) 37276303188(PR#779 61469863 success) 37277882694(PR#779 196e1e26 success) 37278860517(MAIN#779 24841f1d success) 37083761493(PR#709-dispatch 1e4c7f69 success); +1 PR #783 ci.yml run 37316053944 (040205dc success); main push 37317662409 (54cbe9dd) still pending at 2026-10-05T14:01Z — not counted until completed.\n\n2026-10-05 17:00 UTC：新增 3 個完整 canonical CI run（均已 2026-10-01 後開始）：\n- 37323660501（PR #784，eccdd3a5，success）\n- 37317662409（#783 main push，54cbe9dd，success）\n- 37333828464（#784 main push，6d64bff8，success；integration 完成於 16:16:07Z）\n\n#786 main push 37337218337（95897936）因 docs-only（integration job 所有 step skipped）不計。\n\n2026-10-05 17:30 UTC：新增 PR #788 canonical CI run：\n- 37341186692（58135a06，success，integration 801 PASS、E2E 25 PASS）\n\n37340947635（27d2d7f1）在 check 階段被主 session 取消（被 58135a06 取代），不計。27d2d7f1 的 agent-run-scorecard 與 agent-wip-guard 因 .md 未重產失敗（PUBLICATION_REPORT_REJECTED），是 metadata 失敗非 rerun，不計 invalidReruns。\n\n37348474901（d326a2d2）在 integration 進行中被主 session 於 2026-10-05T17:32:03Z 取消（head 將因 B-1 修正而被取代，釋放 shared TEST），不計 full CI。\n\n2026-10-06 RUN_CAPTURE_HANDOFF：PR #788 ci run 37349939014（ddce3638，success）。\n\nMain push ci run 37388802854（43e4f079，success，integration 2026-10-06T00:13:55Z）。\n\n2026-10-06 final close：main push ci run 37392814849（4679b611，success）、PR #790 ci run 37393966737（3c735db5，success）。\n\n2026-10-06 final：PR #790 ci run 37397418964（5d1cda04，success）。\n\n2026-10-06 PR #791 Codex P2：#790 main push ci run 37398439935（e951f4a4，success，completed 2026-10-06T01:50:02Z）。\n\n2026-10-06 PR #794（Issue 750）ci run 37418884050（059c270f，success）、37419418077（8031e9de，success）。\n\n2026-10-06：#794 main push ci run 37420592099（ae6b8bad，success，integration 06:42:17Z）；PR #795 ci runs 37422042204（99743e51，success）、37422390288（e3670c30，success）、37422649139（3cea03f2，success）。PR #795 手動 lane_transition dispatch 37422677172（3cea03f2）被 guard 自動 dispatch 37422702127 取代而 cancelled，屬重複 dispatch，計 invalidReruns +1、不計 full CI。\n\n2026-10-06 PR #795 canonical shared TEST lane_transition run 37422702127（3cea03f2，success，integration＋E2E 07:15:41Z）。\n\n2026-10-06 PR #795 canonical TEST（sole holder PR CI）run 37429766960（273fa1c3，success，integration＋E2E 08:18:53Z）。\n\n2026-10-06：#795 merge commit 5e1af24a main push 37435878332 failure（integration：ai-settings.27、line-tour-order-query.373 LINE webhook 兩案；afd4e6de main push 37439241198 success 未重現，依 §8.1 非 MAIN_HEALTH_DEFECT）；PR #799 ci run 37437704993（4e5c7014，success，source-only）。PR #799 guard dispatch 37437764078 於 08:57 被 main push afd4e6de 的 pending run 取代而 cancelled（外部併發，不計 full CI、不計 invalid rerun）；之後於 main run 開跑後重新 dispatch 37440590990。\n\n2026-10-06 PR #799 canonical shared TEST lane_transition run 37440590990（4e5c7014，success，integration＋E2E 10:26:24Z）。\n\n2026-10-06 PR #799 canonical TEST（sole holder PR CI）run 37451109796（b50928a3，success，integration＋E2E 11:32:41Z）；sol-review attestation 5427708619（b50928a3，digest 473c953f）；Codex P2 comment 4194765356（PB-074 關單時間錯植）已更正。\n\n2026-10-06：PR #799 合併為 c9d151ee（12:21:58Z）；main push ci run 37462728616 監看中，完成後才計入。\n\n2026-10-06 PR #800（Issue 764）source CI 37463422124（09885961，success，source-only policy skip）；Codex P2 comment 4195288968（已使用碼仍觸發冷卻）已於 54bfbedd 修正文件。\n\n2026-10-06 PR #800 source CI 37466288868（38e61291，success，source-only）；sol-review 5428645570（38e61291）；Codex P2 comment 4195543137（rate limit 敘述）於 74b5dcf4／9ec692b2 修正。\n\n2026-10-06：#799 merge commit c9d151ee main push ci run 37462728616 success（integration＋E2E）。PR #800 source CI 37468016147（bfd5dc10，success，source-only）；sol-review 5428828458（bfd5dc10）；Codex P2 comment 4195677994（email 大小寫繞過冷卻）於 7c07171b 起修正文件。"
+    "note": "37007212982 因 head 被取代 cancelled，37083653366 在 classify 被拒，37082211071 為 #714 source CI，三者不計入；先前 5 個 dispatch run 是否已計入原 30 仍待查證。本輪新增 3 個完整 canonical TEST run：37008702923、37083761493、37090025615 #757: 37105978199 failure（mock 形狀不擬真，已修）、37108030479 success；main push 37112300377 監看中。 #762：37121399537、37124644493 success；37120725291、37124319682 因 head 被取代而取消（不計）。 #763：37128355259 success（cce85365）。 37133703835 success（39748ec3）。 37137459820 success（ae6cabfe）。 #763 收尾：PR 37148553012 success；main push 37151361102 attempt 1 failure（TEST Supabase ECONNRESET，18 無關檔案）、attempt 2 rerun success。 #765：37155693289 因 review 修正被取代而取消（不計）；37156263191 attempt 1 因 GitHub API 503 於 classify 失敗、attempt 2 success。 #765：PR 37159197639 success；main push 37161655288 success。; +1 2026-10-04 PR #768 canonical shared TEST run 37182834760 (head 10662719, success); LIVE REBUILD 2026-10-05T11:46:05Z: ci.fullCiRuns = completed (success|failure), non-cancelled .github/workflows/ci.yml runs, deduped by run id (a rerun attempt counts once), created after Run start 2026-10-01T03:14:56Z, whose head_sha is a commit of a PR whose body declares RUN_ID: 2026-10-01-product-delivery-r01 (30 PRs: 713 714 715 719 723 725 727 731 733 734 737 738 740 743 744 751 752 757 759 762 763 765 767 768 770 771 772 775 776 779) or is the main push of such a PR's merge commit; plus 1 canonical TEST dispatch this ledger explicitly recorded as this Run's (37083761493, PR #709 branch, success). Result 148 = 123 PR runs (111 pull_request + 12 workflow_dispatch) + 24 main push + 1 noted dispatch; 133+1 success, 14 failure; 51 cancelled runs excluded; PR #782 (MODEL_GOVERNANCE, RUN_ID none) excluded. This supersedes the previous hand-count baseline (51, which carried the unresolved '5 dispatch runs' question). invalidReruns left unchanged (5). Counted run ids: 36810577850(PR#713 c14f01ef success) 36810825537(PR#713 4a7c8a0a success) 36813096694(PR#713 ac8d5654 success) 36814238524(PR#713 ac8d5654 success) 36814288438(PR#714 adf0608d success) 36816705017(PR#713 f1c4984c success) 36817947312(PR#713 f1c4984c success) 36818753669(PR#715 dec730fd success) 36822913910(MAIN#713 9b291ebb success) 36823196438(PR#715 f1c0438a success) 36827423772(PR#719 955b109d failure) 36828034389(PR#719 d7de123f success) 36829391701(PR#719 7a05bbcd success) 36831447495(MAIN#719 701845e4 failure) 36833201119(PR#723 6aac2777 success) 36838286092(PR#723 0d178dc8 success) 36840741621(PR#723 0d178dc8 success) 36845329688(PR#725 b9ca2203 success) 36846439984(MAIN#723 a30acac0 failure) 36849133849(PR#725 25020ad2 success) 36852969928(PR#727 ec1d5508 success) 36857198490(PR#727 ec1d5508 failure) 36862662300(PR#715 f56cadf0 success) 36868657767(PR#715 6676255c success) 36885071854(PR#731 af8a7a10 success) 36885380677(PR#731 228a8c10 success) 36892824792(PR#731 b11968df success) 36895313359(PR#731 14349367 success) 36898637650(PR#731 bcb83b03 failure) 36899284560(PR#731 0b75a42c success) 36902978320(PR#731 3c3dfb58 failure) 36903802975(PR#731 aaf47167 success) 36905935644(PR#731 a0ce9f42 success) 36908468233(PR#731 f945d79a success) 36920180015(PR#733 7c1bd4a7 success) 36923218094(PR#734 145026b5 success) 36951894823(PR#715 183f0208 success) 36951973057(PR#715 183f0208 failure) 36955149036(MAIN#733 075024a7 success) 36955865561(PR#737 c1ed8cb9 success) 36956315234(PR#737 a1a193ab success) 36956761738(MAIN#737 9c1bc969 success) 36957346271(PR#738 6becae71 success) 36958243227(PR#715 f9663d81 success) 36961719387(PR#740 fd16d2ea success) 36962089855(PR#740 5e053401 success) 36962463305(MAIN#740 3b5d34d3 failure) 36963823970(PR#731 fb2bda2b success) 36964242040(PR#731 52b8fa75 success) 36965230556(PR#731 14eb3391 failure) 36969709720(PR#743 057f09ed success) 36970350113(PR#744 c65615c6 success) 36971026374(PR#744 131e6d19 success) 36971391119(PR#731 1928d5ab success) 36975242874(MAIN#744 42f7605d success) 36979639697(PR#731 7364ed2b success) 36983421242(PR#731 63a62259 failure) 36989409527(PR#731 dab21ac9 failure) 36992333574(PR#731 13d53452 failure) 36996678336(PR#731 11aff4c7 success) 37000046696(PR#731 193216c5 success) 37002533186(PR#731 1ad47308 success) 37005494827(PR#731 441650db success) 37008702923(PR#731 83b3fbfb success) 37014341831(MAIN#731 3cd1187f success) 37082211071(PR#714 593731b7 success) 37082958249(MAIN#714 05aa8aa2 success) 37090025615(PR#771 4d29a358 success) 37095867124(MAIN#751 9c2809c1 success) 37097111271(PR#771 607471c1 success) 37097601299(PR#771 f54745b4 failure) 37097716344(PR#771 bac57747 success) 37097767318(PR#771 1cea0239 success) 37097836132(PR#771 38659afd success) 37098159273(MAIN#752 e379ab03 success) 37105978199(PR#771 f7947106 failure) 37108030479(PR#771 25018212 success) 37112300377(MAIN#757 216d2a73 success) 37113139827(PR#771 3fbb4a30 success) 37113422845(PR#771 18f5b600 success) 37113665874(PR#771 2fda1a21 success) 37117779334(PR#771 cef9570e success) 37119723468(MAIN#759 71c0079e success) 37121399537(PR#771 b56f2521 success) 37124644493(PR#771 bfa400dd success) 37127272367(MAIN#762 6d02420d success) 37128355259(PR#771 cce85365 success) 37133703835(PR#771 39748ec3 success) 37137459820(PR#771 ae6cabfe success) 37141237881(PR#771 ba4bca9a success) 37145666175(PR#771 f3997cf0 success) 37148553012(PR#771 236c17bf success) 37151361102(MAIN#763 d5d88f1e success) 37156263191(PR#771 4701a7c4 success) 37159197639(PR#771 4ed6c1f9 success) 37161655288(MAIN#765 e1bea667 success) 37164494467(PR#771 3a92f47e success) 37166817549(MAIN#767 6f308e44 success) 37175382476(PR#771 bf2e3e82 success) 37182834760(PR#771 10662719 success) 37186179275(PR#770 bcfa55f4 success) 37186572275(PR#770 ba6f41bd success) 37186848453(PR#771 6a78c6ff success) 37187451510(PR#770 bca1cfde success) 37187677180(PR#770 c42c6b80 success) 37187879935(PR#770 3d213691 success) 37189191278(PR#770 ed521777 success) 37189447800(PR#771 22b87fc6 success) 37189881128(PR#770 c1b08e2d success) 37191996884(PR#771 dbed2273 success) 37192702511(MAIN#770 170ab413 success) 37194433395(PR#771 d030e966 success) 37198623764(PR#771 e6ea4e3d success) 37201156344(PR#771 ea3cf8ee success) 37204816564(PR#771 46976022 success) 37207921226(PR#771 660c625e success) 37211245451(PR#771 131569bf success) 37214261053(MAIN#768 6e0e51b8 success) 37243405906(PR#725 38a20fbd success) 37243847571(PR#725 8b52d33f success) 37246108140(MAIN#725 287774bb success) 37249301919(PR#771 c48c6aad success) 37249340987(PR#772 ff056e6c success) 37249878632(PR#772 13aa3859 success) 37249953929(PR#771 ce1cf48c success) 37250598438(PR#771 c6f3a32f success) 37251432103(PR#771 1c6e0812 success) 37251833995(MAIN#772 7a0ee537 success) 37252313022(MAIN#771 ee08eb58 success) 37253546716(PR#775 09ee4227 success) 37253663770(PR#775 cc00fb2d success) 37253673963(PR#776 5df08c7b success) 37254552727(PR#775 d47f53c8 success) 37255221330(MAIN#775 8d3ab999 success) 37262467849(PR#779 7cf5adcb success) 37263023517(PR#779 1cc570ac success) 37264029372(PR#779 0ee0a810 success) 37264467232(PR#779 9ab6cf70 success) 37265295419(PR#779 ce8f281c success) 37266031516(PR#779 1d706bb3 success) 37266550631(PR#779 39561814 success) 37267129647(PR#779 8142d292 success) 37268061683(PR#779 711fc0a5 success) 37274572283(PR#779 d37e4bbf success) 37276303188(PR#779 61469863 success) 37277882694(PR#779 196e1e26 success) 37278860517(MAIN#779 24841f1d success) 37083761493(PR#709-dispatch 1e4c7f69 success); +1 PR #783 ci.yml run 37316053944 (040205dc success); main push 37317662409 (54cbe9dd) still pending at 2026-10-05T14:01Z — not counted until completed.\n\n2026-10-05 17:00 UTC：新增 3 個完整 canonical CI run（均已 2026-10-01 後開始）：\n- 37323660501（PR #784，eccdd3a5，success）\n- 37317662409（#783 main push，54cbe9dd，success）\n- 37333828464（#784 main push，6d64bff8，success；integration 完成於 16:16:07Z）\n\n#786 main push 37337218337（95897936）因 docs-only（integration job 所有 step skipped）不計。\n\n2026-10-05 17:30 UTC：新增 PR #788 canonical CI run：\n- 37341186692（58135a06，success，integration 801 PASS、E2E 25 PASS）\n\n37340947635（27d2d7f1）在 check 階段被主 session 取消（被 58135a06 取代），不計。27d2d7f1 的 agent-run-scorecard 與 agent-wip-guard 因 .md 未重產失敗（PUBLICATION_REPORT_REJECTED），是 metadata 失敗非 rerun，不計 invalidReruns。\n\n37348474901（d326a2d2）在 integration 進行中被主 session 於 2026-10-05T17:32:03Z 取消（head 將因 B-1 修正而被取代，釋放 shared TEST），不計 full CI。\n\n2026-10-06 RUN_CAPTURE_HANDOFF：PR #788 ci run 37349939014（ddce3638，success）。\n\nMain push ci run 37388802854（43e4f079，success，integration 2026-10-06T00:13:55Z）。\n\n2026-10-06 final close：main push ci run 37392814849（4679b611，success）、PR #790 ci run 37393966737（3c735db5，success）。\n\n2026-10-06 final：PR #790 ci run 37397418964（5d1cda04，success）。\n\n2026-10-06 PR #791 Codex P2：#790 main push ci run 37398439935（e951f4a4，success，completed 2026-10-06T01:50:02Z）。\n\n2026-10-06 PR #794（Issue 750）ci run 37418884050（059c270f，success）、37419418077（8031e9de，success）。\n\n2026-10-06：#794 main push ci run 37420592099（ae6b8bad，success，integration 06:42:17Z）；PR #795 ci runs 37422042204（99743e51，success）、37422390288（e3670c30，success）、37422649139（3cea03f2，success）。PR #795 手動 lane_transition dispatch 37422677172（3cea03f2）被 guard 自動 dispatch 37422702127 取代而 cancelled，屬重複 dispatch，計 invalidReruns +1、不計 full CI。\n\n2026-10-06 PR #795 canonical shared TEST lane_transition run 37422702127（3cea03f2，success，integration＋E2E 07:15:41Z）。\n\n2026-10-06 PR #795 canonical TEST（sole holder PR CI）run 37429766960（273fa1c3，success，integration＋E2E 08:18:53Z）。\n\n2026-10-06：#795 merge commit 5e1af24a main push 37435878332 failure（integration：ai-settings.27、line-tour-order-query.373 LINE webhook 兩案；afd4e6de main push 37439241198 success 未重現，依 §8.1 非 MAIN_HEALTH_DEFECT）；PR #799 ci run 37437704993（4e5c7014，success，source-only）。PR #799 guard dispatch 37437764078 於 08:57 被 main push afd4e6de 的 pending run 取代而 cancelled（外部併發，不計 full CI、不計 invalid rerun）；之後於 main run 開跑後重新 dispatch 37440590990。\n\n2026-10-06 PR #799 canonical shared TEST lane_transition run 37440590990（4e5c7014，success，integration＋E2E 10:26:24Z）。\n\n2026-10-06 PR #799 canonical TEST（sole holder PR CI）run 37451109796（b50928a3，success，integration＋E2E 11:32:41Z）；sol-review attestation 5427708619（b50928a3，digest 473c953f）；Codex P2 comment 4194765356（PB-074 關單時間錯植）已更正。\n\n2026-10-06：PR #799 合併為 c9d151ee（12:21:58Z）；main push ci run 37462728616 監看中，完成後才計入。\n\n2026-10-06 PR #800（Issue 764）source CI 37463422124（09885961，success，source-only policy skip）；Codex P2 comment 4195288968（已使用碼仍觸發冷卻）已於 54bfbedd 修正文件。\n\n2026-10-06 PR #800 source CI 37466288868（38e61291，success，source-only）；sol-review 5428645570（38e61291）；Codex P2 comment 4195543137（rate limit 敘述）於 74b5dcf4／9ec692b2 修正。\n\n2026-10-06：#799 merge commit c9d151ee main push ci run 37462728616 success（integration＋E2E）。PR #800 source CI 37468016147（bfd5dc10，success，source-only）；sol-review 5428828458（bfd5dc10）；Codex P2 comment 4195677994（email 大小寫繞過冷卻）於 7c07171b 起修正文件。\n\n2026-10-06：PR #800 source CI 37471202355（f77a4b0e，success，source-only）；sol-review 5429147192；Codex P2 4195841234（solTouches）已修正；#800 合併為 cc54871a（13:37:57Z），main push CI 監看中、完成後才計入。\n\n2026-10-06：#800 merge commit cc54871a main push ci run 37472340928 success。PR #801 ci run 37473058805（44a6c770）attempt 1 integration 1 案逾時（departure-formation-snapshot.42，非本 PR 路徑，main 綠，PR 留言 issuecomment-6019276551），attempt 2（rerun failed job）integration＋E2E success；計 full CI 1 次，rerun 屬確認性重跑、不計 invalidReruns。sol-review 5431029743（44a6c770）。Codex P2 comment 4197462734（首頁季節查詢分塊）於 0cd4e0d8 起修正。"
   },
   "quality": {
     "acceptanceEvidenceCoveragePercent": null,
@@ -6458,13 +6678,13 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 87,
-    "lunaAccepted": 78,
+    "lunaTasks": 90,
+    "lunaAccepted": 81,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 200,
+    "solTouches": 207,
     "solIssues": 22
   },
   "auditability": {
@@ -6682,7 +6902,7 @@
   },
   "completionTruth": {
     "status": "VERIFIED",
-    "checkedAt": "2026-10-06T12:22:30Z",
+    "checkedAt": "2026-10-06T13:38:30Z",
     "claims": [
       {
         "type": "LOCAL_TEST_GREEN",
@@ -6931,6 +7151,14 @@
         "observedState": "merged",
         "verification": "VERIFIED",
         "evidenceRef": "PR #799 merged_at 2026-10-06T12:21:58Z merge_commit c9d151eec435590c7e29501f5834fcf47027d92e (squash of exact head 055aadb1 onto main; tree differs from exact head only because main had advanced with docs-only governance commits); current main head at verification c9d151eec435590c7e29501f5834fcf47027d92e (compare status identical at 2026-10-06T12:22Z); src/server/public-tour-booking.ts reread on main (MAX_BOOKING_CANDIDATE_SCAN = 600, single .range). Issue 766 stays open for item 1 (migration after #755)."
+      },
+      {
+        "type": "MERGED_TO_MAIN",
+        "subject": "issue#764",
+        "claimedState": "merged",
+        "observedState": "merged",
+        "verification": "VERIFIED",
+        "evidenceRef": "PR #800 merged_at 2026-10-06T13:37:57Z merge_commit cc54871a7afb9b332b025fadf307e2b9660f6aab (squash of exact head f77a4b0e onto main c9d151ee); current main head at verification cc54871a7afb9b332b025fadf307e2b9660f6aab (compare status identical at 2026-10-06T13:38Z); docs/integration/03-AUTH.md and tests/unit/send-code-window-before-cooldown.764.test.ts reread on main. Issue 764 stays open for Owner decisions (issuecomment-6017499611)."
       }
     ]
   },

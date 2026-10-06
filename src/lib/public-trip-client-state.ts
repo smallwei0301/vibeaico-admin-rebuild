@@ -72,6 +72,7 @@ export type BookingCtaState =
   | 'fixed' | 'fixed-unavailable'
   | 'request' | 'request-unavailable'
   | 'dates-not-loaded'
+  | 'price-not-loaded'
   | 'none';
 
 /**
@@ -79,18 +80,24 @@ export type BookingCtaState =
  * - FIXED_DEPARTURE、REQUEST：已列出的團次至少一筆可訂（見 hasBookableListedDeparture）才回 fixed／request，
  *   否則回 *-unavailable（含空陣列）。REQUEST 的目的頁（RequestForm）沒有可選團次就永遠送不出去，
  *   且其 canSubmit 需要 departureId，所以與 FIXED 同樣處理；條件（含 seatsLeft >= minParty）比目的頁更保守。
+ * - 季節價無法確認（seasonalPriceUnknown，Issue 749 F5）：預約／申請頁每個團次都沒有 unitPrice、送不出去，
+ *   所以 FIXED／REQUEST 在團次判定之後回 price-not-loaded（不給入口，請旅客聯絡店家）。
  * - INSTANT 與其他模式：none（沿用原狀：INSTANT 只顯示說明，沒有入口）。
  */
 export function bookingCtaState(plan: {
   salesMode: string;
   minParty?: number;
   departuresNotLoaded?: boolean;
+  seasonalPriceUnknown?: boolean;
   bookableDepartureAvailable?: boolean;
   departures: Array<{ seatsLeft: number; soldOut?: true }>;
 }): BookingCtaState {
   // 未載入團次的方案（超過方案數上限）：不提供入口，請旅客聯絡店家。
   if (plan.departuresNotLoaded && (plan.salesMode === 'FIXED_DEPARTURE' || plan.salesMode === 'REQUEST')) {
     return 'dates-not-loaded';
+  }
+  if (plan.seasonalPriceUnknown && (plan.salesMode === 'FIXED_DEPARTURE' || plan.salesMode === 'REQUEST')) {
+    return 'price-not-loaded';
   }
   if (plan.salesMode === 'FIXED_DEPARTURE') {
     return hasBookableListedDeparture(plan) ? 'fixed' : 'fixed-unavailable';

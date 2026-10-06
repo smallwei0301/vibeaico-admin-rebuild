@@ -35,7 +35,7 @@ import { createAdminSupabase } from '@/server/supabase';
 import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
 import { buildPublicPhone } from '@/lib/public-phone';
 import { resolveSeasonUnitPrice } from '@/lib/public-season-price';
-import { readPlanSeasons } from '@/server/public-plan-seasons';
+import { readPlanSeasons, seasonalPriceUnknown } from '@/server/public-plan-seasons';
 import { bookingCandidateSeatsLeft, createCandidateTracker } from '@/lib/public-departure-candidates';
 import { bookingCtaState, type BookingCtaState } from '@/lib/public-trip-client-state';
 import { hasStartedToday, resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
@@ -89,6 +89,11 @@ export type PublicPlan = {
   salesMode: 'FIXED_DEPARTURE' | 'INSTANT' | 'REQUEST';
   /** 方案有啟用的季節定價：基本價只是參考，實際價格依各團次出發日（見團次 unitPrice）。 */
   seasonalPricing?: true;
+  /**
+   * Issue 749 F5：季節價資料不完整（查詢失敗或被截斷），預約／申請頁算不出團次單價、送不出去。
+   * 只有詳情頁輸出（只輸出 true）；`bookingCtaState` 用它回 price-not-loaded。
+   */
+  seasonalPriceUnknown?: true;
   /**
    * #747：只有店家首頁（loadPublicShop）會填。與詳情頁共用 `bookingCtaState`＋同一套候選規則
    * 與方案選取規則（selectPlansWithDepartures；Issue 760 起首頁以批次查詢 loadHomeBookability 判定），
@@ -245,6 +250,14 @@ const HOME_DEPARTURE_PAGE_SIZE = 1000;
 const MAX_HOME_DEPARTURE_PAGES = 5;
 /** plan_id IN 清單每塊最多 100 個（uuid 約 4KB URL）；各塊共用 MAX_HOME_DEPARTURE_PAGES 總查詢預算。 */
 const HOME_DEPARTURE_PLAN_ID_CHUNK = 100;
+/**
+ * 首頁季節查詢（readPlanSeasons）同樣依 HOME_DEPARTURE_PLAN_ID_CHUNK 分塊；塊數上限 5（最多 500 個方案），
+ * 讓單一匿名請求的季節查詢數有界（每塊內部仍最多 5 頁）。只查「已判定團次」的方案（bookableByPlan 有值者，保持原順序），
+ * 超出上限的方案不查詢、視為季節價未知（保守，不誤開入口）。最壞查詢數 = 5 塊 × 每塊最多 5 頁 = 25，通常遠少於
+ * （團次判定總預算 MAX_HOME_DEPARTURE_PAGES 用完後，未判定方案不進季節查詢）。已判定方案至多 5 頁預算的塊數，
+ * 所以此上限實務上不改變輸出、只限制查詢數。
+ */
+const MAX_HOME_SEASON_CHUNKS = 5;
 
 /**
  * 有上限的併發 map：輸出順序與 items 相同；任一項 reject 則整體 reject（fail-closed，
@@ -573,6 +586,28 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
   } catch (error) {
     console.warn('public shop: plan departures unavailable', error);
   }
+  // Issue 749 F5：季節價是否可確認，與預約／申請頁同一規則（seasonalPriceUnknown）。只查「已判定團次」的方案
+  // （bookableByPlan 有值者）；未判定者帶 departuresNotLoaded，bookingCtaState 先回 dates-not-loaded，季節結果不影響輸出，
+  // 所以不查、維持視為未知。依方案 ID 分塊（避免 .in 清單過長使 URL 超限），各塊獨立 try/catch：某一塊查詢失敗
+  // （readPlanSeasons 降級為該塊全部 incomplete）或 throw，只讓該塊方案為未知，其他塊不受影響；超出 MAX_HOME_SEASON_CHUNKS 的方案視為未知。
+  const seasonKnown = new Set<string>();
+  const seasonIds = homePlans.filter((plan) => bookableByPlan.has(plan.id)).map((plan) => plan.id);
+  const seasonIdSet = new Set(homePlans.map((plan) => plan.id));
+  const seasonChunks: string[][] = [];
+  for (let i = 0; i < seasonIds.length && seasonChunks.length < MAX_HOME_SEASON_CHUNKS; i += HOME_DEPARTURE_PLAN_ID_CHUNK) {
+    seasonChunks.push(seasonIds.slice(i, i + HOME_DEPARTURE_PLAN_ID_CHUNK));
+  }
+  await Promise.all(seasonChunks.map(async (chunk) => {
+    try {
+      const reader = await readPlanSeasons(admin, tenantId, chunk);
+      for (const id of chunk) {
+        if (!seasonalPriceUnknown({ incomplete: reader.isIncomplete(id) })) seasonKnown.add(id);
+      }
+    } catch (error) {
+      console.warn('public shop: plan seasons unavailable', error);
+    }
+  }));
+  const seasonUnknown = (planId: string): boolean => seasonIdSet.has(planId) && !seasonKnown.has(planId);
   for (const list of plansByTrip.values()) {
     for (const plan of list) {
       const bookable = bookableByPlan.get(plan.id);
@@ -580,6 +615,7 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
         salesMode: plan.salesMode,
         minParty: plan.minParty,
         departures: [],
+        ...(seasonUnknown(plan.id) ? { seasonalPriceUnknown: true } : {}),
         ...(bookable ? { bookableDepartureAvailable: true as const } : {}),
         ...(hasPublicDepartureList(plan) && bookable === undefined ? { departuresNotLoaded: true } : {}),
       });
@@ -760,6 +796,7 @@ async function loadPublicTripDetailsUncached(
         ...(departuresByPlan.get(plan.id)?.bookableDepartureAvailable ? { bookableDepartureAvailable: true as const } : {}),
         ...(hasPublicDepartureList(plan) && !departuresByPlan.has(plan.id)
           ? { departuresNotLoaded: true as const } : {}),
+        ...(seasonalPriceUnknown({ incomplete: seasonsIncompleteFor(plan.id) }) ? { seasonalPriceUnknown: true as const } : {}),
       })),
       ...(plansMayBeTruncated ? { plansMayBeTruncated: true as const } : {}),
     },

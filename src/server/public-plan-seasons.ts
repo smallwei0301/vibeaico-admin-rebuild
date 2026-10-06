@@ -93,3 +93,12 @@ export function seasonUnitPriceFor(
 export function hasSeasonalPricing(loaded: LoadedPlanSeasons): boolean {
   return loaded.seasons.length > 0 || loaded.incomplete;
 }
+
+/**
+ * 季節價是否「無法確認」（Issue 749 F5）：該方案的季節資料可能不完整（查詢失敗降級，或落在分頁截斷點及之後）。
+ * 此時預約／申請頁每個團次都沒有 unitPrice、送不出去，所以首頁與詳情頁的入口必須用同一規則改為聯絡店家。
+ * 預約／申請頁的 hasSeasonalPricing 在 incomplete 時必為真，與這個規則等價。
+ */
+export function seasonalPriceUnknown(loaded: Pick<LoadedPlanSeasons, 'incomplete'>): boolean {
+  return loaded.incomplete === true;
+}

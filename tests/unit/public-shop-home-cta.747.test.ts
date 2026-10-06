@@ -219,12 +219,12 @@ describe('#747 首頁方案入口與詳情頁一致', () => {
     const data = await loadPublicShop('demo');
     for (const trip of data!.trips) for (const p of trip.plans) expect(p.bookingCta, p.id).toBe('fixed');
     // 60 個方案 × 21 列 = 1260 列 → 批次 2 頁（每頁 1000）。tenants、trips、services、trip_plans、行程團次列表 ＝ 5，
-    // 加批次 2 頁共 7 次；舊作法是 4 ＋ 60 個方案 × 每方案 >= 1 次（本 fixture 每方案 1 頁＋1 次 lookahead 以上）＝ 約 124 次。
-    expect(fx.calls.length).toBe(7);
+    // 加批次 2 頁共 7 次，再加 Issue 749 的季節批次讀取 1 次 ＝ 8 次；舊作法是 4 ＋ 60 個方案 × 每方案 >= 1 次（本 fixture 每方案 1 頁＋1 次 lookahead 以上）＝ 約 124 次。
+    expect(fx.calls.length).toBe(8);
     expect(fx.calls.filter((t) => t === 'trip_departures').length).toBe(3);
   });
 
-  it('Issue 760：代表性店家（3 個行程 × 30 方案、團次少）只需 6 次 supabase 呼叫（舊作法：5 ＋ 全店最多 30 個方案各 1 次 ＝ 35 次，團次多時最多 4 ＋ 30 × 6 ＝ 184 次）', async () => {
+  it('Issue 760：代表性店家（3 個行程 × 30 方案、團次少）只需 7 次 supabase 呼叫（含 Issue 749 季節批次讀取 1 次）（舊作法：5 ＋ 全店最多 30 個方案各 1 次 ＝ 35 次，團次多時最多 4 ＋ 30 × 6 ＝ 184 次）', async () => {
     fx.trips = ['trip-1', 'trip-2', 'trip-3'];
     fx.plans = {};
     for (const t of fx.trips) for (let i = 0; i < 30; i += 1) {
@@ -232,7 +232,7 @@ describe('#747 首頁方案入口與詳情頁一致', () => {
     }
     fx.calls = [];
     await loadPublicShop('demo');
-    expect(fx.calls.length).toBe(6);
+    expect(fx.calls.length).toBe(7); // 含 Issue 749 的季節批次讀取 1 次
   });
 
   it('Issue 760：單一方案 600 列掃描上限與詳情頁一致（第 601 列才可訂 → 兩邊都無入口）', async () => {
