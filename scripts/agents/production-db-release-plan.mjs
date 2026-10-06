@@ -257,7 +257,10 @@ export const PG_IDENT_CONT_RE = new RegExp(`[${PG_IDENT_CONT_CLASS}]`, 'u');
 // （\s 含 NBSP、U+2028 等，\b 把 é 當分隔），拿來做風險分類會少報（#781）。
 // pgRe 把 regex 內的 \b／\s／\w 改寫成 PG 語意，並強制 u flag；以 source+flags 快取。
 const PG_WS = ' \\t\\n\\r\\f\\v';
-const PG_BOUNDARY = `(?:(?<=[${PG_IDENT_CONT_CLASS}])(?![${PG_IDENT_CONT_CLASS}])|(?<![${PG_IDENT_CONT_CLASS}])(?=[${PG_IDENT_CONT_CLASS}]))`;
+// 邊界用的字元類別不含 `$`：`$$`／`$tag$` 是獨立 token，可緊貼關鍵字（`$$select 1$$security definer`）。
+// 代價是 `drop$x` 之類會多報，屬 fail closed。
+const PG_BOUNDARY_CLASS = PG_IDENT_CONT_CLASS.replace('$', '');
+const PG_BOUNDARY = `(?:(?<=[${PG_BOUNDARY_CLASS}])(?![${PG_BOUNDARY_CLASS}])|(?<![${PG_BOUNDARY_CLASS}])(?=[${PG_BOUNDARY_CLASS}]))`;
 const PG_RE_CACHE = new Map();
 export function pgRe(re) {
   const flags = re.flags.includes('u') ? re.flags : `${re.flags}u`;
@@ -366,10 +369,43 @@ function dollarQuoteAt(input, index) {
   return PG_DOLLAR_TAG_RE.exec(input)?.[0] ?? '';
 }
 
+function unicodeEscapedIdentifierMentionsScs(input) {
+  for (const match of input.matchAll(/u&"((?:[^"]|"")*)"(?:[ \t\n\r\f\v]*uescape[ \t\n\r\f\v]*'([^'])')?/gi)) {
+    const escape = match[2] ?? '\\';
+    let decoded = '';
+    const body = match[1].replaceAll('""', '"');
+    for (let i = 0; i < body.length; i += 1) {
+      if (body[i] !== escape) {
+        decoded += body[i];
+        continue;
+      }
+      if (body[i + 1] === escape) {
+        decoded += escape;
+        i += 1;
+        continue;
+      }
+      const long = body[i + 1] === '+';
+      const digits = body.slice(i + (long ? 2 : 1), i + (long ? 8 : 5));
+      if (digits.length !== (long ? 6 : 4) || !/^[0-9a-f]+$/i.test(digits)) return true;
+      const codePoint = Number.parseInt(digits, 16);
+      if (codePoint > 0x10ffff) return true;
+      decoded += String.fromCodePoint(codePoint);
+      i += long ? 7 : 4;
+    }
+    if (/standard_conforming_strings/i.test(decoded)) return true;
+  }
+  return false;
+}
+
 export function stripSqlComments(sql) {
   const input = String(sql ?? '');
   // 任何提及 standard_conforming_strings 的文字一律 fail closed（含 = 'off'、= false、TO off、
   // 引號識別字、set_config(...)）：它會改變字串詞法，本分類器不逐一建模賦值形式（#781）。
+  // U&"..." 識別字會在詞法階段解碼 \XXXX／\+XXXXXX 跳脫，可拼出 standard_conforming_strings。
+  // 逐一解碼（含 UESCAPE 變體），解出該名稱、或無法解碼，一律 fail closed；其他 U&" 沿用既有路徑。
+  if (unicodeEscapedIdentifierMentionsScs(input)) {
+    fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'standard_conforming_strings via U&"..." is not admitted by the fail-closed classifier');
+  }
   if (/standard_conforming_strings/i.test(input)) {
     fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'standard_conforming_strings is not admitted by the fail-closed classifier');
   }
@@ -1176,20 +1212,20 @@ function hasAuthzConfigurationMutation(statement) {
 
 function matchesChain(text, chain) {
   // pgRe 以 source+flags 快取並共用 regex 實例；g 實例的 lastIndex 是共享狀態，
-  // 用完必須歸零，否則同 source 的 matchAll／exec 會從殘留位置開始（漏報）。
+  // 用完（含 exec 拋錯）必須歸零，否則同 source 的 matchAll／exec 會從殘留位置開始（漏報）。
   let from = 0;
-  let matched = true;
   for (const re of chain) {
-    re.lastIndex = from;
-    const match = re.exec(text);
-    re.lastIndex = 0;
-    if (!match) {
-      matched = false;
-      break;
+    let match;
+    try {
+      re.lastIndex = from;
+      match = re.exec(text);
+    } finally {
+      re.lastIndex = 0;
     }
+    if (!match) return false;
     from = match.index + match[0].length;
   }
-  return matched;
+  return true;
 }
 const SCHEMA_REPAIR_CHAINS = [
   [pgRe(/\balter\s+table\b/gi), pgRe(/\bdrop\s+constraint\b/gi)],
@@ -1228,6 +1264,10 @@ export function inferMigrationRiskTier(sql, repoFile = '') {
   rejectUnsupportedPreparedStatements(statements);
   rejectImmediateRoutineInvocations(statements, repoFile);
   rejectImmediateConfigurationMutations(statements);
+  // ALTER DATABASE/ROLE/USER/SYSTEM ... SET 會持久改變 session 設定（含字串詞法），v1 不放行（#781）。
+  if (statements.some((statement) => matchesChain(statement, [pgRe(/^\s*alter\s+(?:database|role|user|system)\b/gi), pgRe(/\bset\b/gi)]))) {
+    fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'ALTER DATABASE/ROLE/USER/SYSTEM ... SET is not admitted by the fail-closed classifier');
+  }
   if (statements.some((statement) => pgRe(/\btruncate\b|\bdrop\s+(?:table|schema)\b/i).test(statement))) {
     fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'DROP TABLE/SCHEMA and TRUNCATE must use expand → migrate → contract outside v1');
   }

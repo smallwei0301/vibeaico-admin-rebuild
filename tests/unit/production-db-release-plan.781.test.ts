@@ -180,3 +180,53 @@ describe('inferMigrationRiskTier 線性效能（#781 項目 3）', () => {
     expect(performance.now() - started).toBeLessThan(2000);
   }, 30_000);
 });
+
+describe('dollar-quote 分隔符緊貼關鍵字不得降級（#781 Final Risk B1）', () => {
+  const head = 'create function f() returns void language sql as ';
+  it.each<[string, string]>([
+    [head + '$$select 1$$security definer;', 'AUTHZ'],
+    ['create function f() returns void language plpgsql as $$begin perform 1; end$$security definer;', 'AUTHZ'],
+    [head + '$$grant select on t to anon$$;', 'AUTHZ'],
+    [head + '$f$revoke all on t from anon$f$;', 'AUTHZ'],
+    [head + '$$alter role x superuser$$;', 'AUTHZ'],
+    [head + '$$set role postgres$$;', 'AUTHZ'],
+    [head + '$$reset role$$;', 'AUTHZ'],
+  ])('%s -> %s', (sql, tier) => {
+    expect(inferMigrationRiskTier(sql)).toBe(tier);
+  });
+
+  it.each([
+    head + '$$truncate t$$;',
+    head + '$$drop table t$$;',
+  ])('%s 判 DESTRUCTIVE', (sql) => {
+    expect(() => inferMigrationRiskTier(sql)).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
+  });
+});
+
+describe('U&" 識別字與 ALTER ... SET fail closed（#781 Final Risk B2）', () => {
+  it.each([
+    'SET U&"standard_\\0063onforming_strings" = off;',
+    'alter database postgres set U&"standard_\\0063onforming_strings" = off;',
+    'set u&"standard_\\0063onforming_strings" = off;',
+    'set U&"standard_!0063onforming_strings" UESCAPE \'!\' = off;',
+    'alter database postgres set u&"x" uescape \'!\' = 1;',
+  ])('%s', (sql) => {
+    expect(() => inferMigrationRiskTier(sql)).toThrow(/UNSUPPORTED_SQL_LEXICAL_FORM/);
+  });
+
+  it.each([
+    'alter database postgres set search_path = public;',
+    'alter system set work_mem = 1;',
+    'alter role x set search_path = public;',
+    'alter user x set statement_timeout = 1;',
+  ])('%s', (sql) => {
+    expect(() => inferMigrationRiskTier(sql)).toThrow(/UNSUPPORTED_SQL_LEXICAL_FORM/);
+  });
+});
+
+describe('U& 解碼只針對 standard_conforming_strings（#781）', () => {
+  it('無法解碼的跳脫 fail closed；無關名稱不受影響', () => {
+    expect(() => inferMigrationRiskTier('set U&"standard_\\00zzonforming_strings" = off;')).toThrow(/UNSUPPORTED_SQL_LEXICAL_FORM/);
+    expect(() => inferMigrationRiskTier('set U&"standard\\0063onforming_strings" = off;')).not.toThrow(/standard_conforming_strings via/);
+  });
+});
