@@ -58,7 +58,7 @@
   (c) check-then-set 競態：視窗開啟當下已通過檢查的並行請求照常完成；
   (d) 失敗後刪除驗證碼若也失敗（只留 server log），會殘留一筆，60 秒內只有寄信分支的位址（REGISTER 未註冊／RESET_PASSWORD 已註冊）在 send-verification-code 會 429（forgot-password 吞 429）；
   (e) Resend 429 以 API key 為單位，請求 burst 可觸發 service 視窗（60 秒暫停寄信），且 auth email 端點目前無 app 層 rate limit；
-  (f) 驗證碼被使用後只更新 `consumed_at`、不刪除，60 秒冷卻查詢（`send-code.ts`）只看該 (email, purpose) 最近一筆碼的 `created_at`、不排除已使用的碼；因此碼建立後 60 秒內帳號狀態改變的任何情況，都會讓該位址的回應與不寄信分支的預期不同（send-verification-code 不吞 429），屬已知回應差異，至少包含：(1) 完成註冊：REGISTER 碼仍在冷卻內，位址已變為「已存在」的不寄信分支，於碼建立後 60 秒內再次 REGISTER 請求仍回 429；(2) 帳號被刪除（建店失敗時 register route 的 `deleteUser` 補償回滾，或系統外刪除）：RESET_PASSWORD 碼仍在冷卻內，對已不存在的位址回 429。是否改為排除已使用碼／對稱冷卻待 Owner 決定（#764 剩餘範圍）。
+  (f) 驗證碼被使用後只更新 `consumed_at`、不刪除，60 秒冷卻查詢（`send-code.ts`）只看該 (email, purpose) 最近一筆碼的 `created_at`、不排除已使用的碼；因此碼建立後 60 秒內帳號狀態改變的任何情況，都會讓該位址的回應與不寄信分支的預期不同（send-verification-code 不吞 429），屬已知回應差異，至少包含：(1) 完成註冊：REGISTER 碼仍在冷卻內，位址已變為「已存在」的不寄信分支，於碼建立後 60 秒內再次 REGISTER 請求仍回 429；(2) 帳號被刪除（例如系統外刪除）：RESET_PASSWORD 碼仍在冷卻內，對已不存在的位址回 429（send-verification-code；forgot-password 吞 429，回 200）。另：register 建店失敗的 `deleteUser` 補償回滾後，已使用的 REGISTER 碼仍在，60 秒內重新註冊會被 429 擋下；此時位址已回到 REGISTER 寄信分支，與「寄信分支 60 秒內 429」一致，不構成新的分支間差異。是否改為排除已使用碼／對稱冷卻待 Owner 決定（#764 剩餘範圍）。
   寄信失敗分三類（`src/server/email/send.ts` 的 `failureKind`）：
   `config`（無 key、401／403、金鑰／寄件者／網域設定錯誤）、`service`（429、5xx、網路／逾時、SDK 無 statusCode）、
   `recipient`（僅限可證明為 `to` 收件人被拒的 4xx：statusCode 4xx 且 message 指涉 `to` 欄位，如 422 "Invalid `to` field"）。

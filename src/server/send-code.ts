@@ -47,8 +47,9 @@ const MAIL_UNAVAILABLE_MESSAGE = '驗證信暫時無法寄出，請稍後再試�
  * - 正常運作時的既有差異：60 秒冷卻（429）只對真的寄過信的位址成立，且 send-verification-code 不吞 429
  *   （forgot-password 才吞）；若刪碼失敗殘留一筆，也只有寄信分支的位址會 429。
  *   已使用的碼只標 consumed_at、不刪除，冷卻查詢不排除；碼建立後 60 秒內帳號狀態改變的任何情況都會出現此差異：
- *   完成註冊者於碼建立後 60 秒內再次 REGISTER 仍回 429；帳號被刪除（register 建店失敗的 deleteUser 補償，
- *   或系統外刪除）後 RESET_PASSWORD 碼仍在，對已不存在的位址回 429。
+ *   完成註冊者於碼建立後 60 秒內再次 REGISTER 仍回 429；帳號被刪除（例如系統外刪除）後 RESET_PASSWORD 碼仍在，
+ *   send-verification-code 對已不存在的位址回 429（forgot-password 吞 429，回 200）；register 建店失敗的 deleteUser 補償回滾後，
+ *   已使用的 REGISTER 碼仍在、60 秒內重新註冊回 429，但位址已回到寄信分支，與寄信分支 60 秒內 429 一致，非新差異。
  */
 export const MAIL_CONFIG_FAILURE_TTL_MS = 10 * 60_000;
 export const MAIL_TRANSIENT_FAILURE_TTL_MS = 60_000;
@@ -92,7 +93,7 @@ export async function dispatchVerificationCode(email: string, purpose: 'REGISTER
   // 不得丟 503：否則攻擊者可用 provider 會拒絕的位址反覆探測（不寄信分支 → 200、寄信分支 → 503）。
   // 理由：被 provider 拒絕的位址，等同「受理後退信」的不可投遞位址（使用者看到已寄出、信不會到）；
   // #754 的誠實回報保留給 provider／設定層級的真實故障（config／service → 503 + 視窗）。
-  // 冷卻檢查：碼已刪除，故寄信分支的位址再次請求不會被 429 擋下，在帳號狀態未於近 60 秒內改變時與不寄信分支的位址（從無碼）一致；
+  // 冷卻檢查：碼已刪除，故寄信分支的位址再次請求不會被 429 擋下，與不寄信分支的位址（從無碼）一致；
   // 唯一例外是刪除碼本身失敗（delErr，只留 log）時才會殘留一筆而觸發 429，屬資料庫故障的極端邊界。
   if (failureKind === 'recipient') {
     console.error('[send-code] 收件人專屬拒絕（對外回 200，不開視窗）');
