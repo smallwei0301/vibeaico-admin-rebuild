@@ -252,9 +252,10 @@ const MAX_HOME_DEPARTURE_PAGES = 5;
 const HOME_DEPARTURE_PLAN_ID_CHUNK = 100;
 /**
  * 首頁季節查詢（readPlanSeasons）同樣依 HOME_DEPARTURE_PLAN_ID_CHUNK 分塊；塊數上限 5（最多 500 個方案），
- * 讓單一匿名請求的季節查詢數有界（每塊內部仍最多 5 頁）。超出上限的方案不查詢、視為季節價未知（保守，不誤開入口）。
- * 最壞查詢數 = 5 塊 × 每塊最多 5 頁 = 25。超出上限的方案必然已因團次判定上限（MAX_HOME_DEPARTURE_PAGES，
- * 同順序、同 100 一塊）為 dates-not-loaded，所以此上限不改變輸出、只限制查詢數。
+ * 讓單一匿名請求的季節查詢數有界（每塊內部仍最多 5 頁）。只查「已判定團次」的方案（bookableByPlan 有值者，保持原順序），
+ * 超出上限的方案不查詢、視為季節價未知（保守，不誤開入口）。最壞查詢數 = 5 塊 × 每塊最多 5 頁 = 25，通常遠少於
+ * （團次判定總預算 MAX_HOME_DEPARTURE_PAGES 用完後，未判定方案不進季節查詢）。已判定方案至多 5 頁預算的塊數，
+ * 所以此上限實務上不改變輸出、只限制查詢數。
  */
 const MAX_HOME_SEASON_CHUNKS = 5;
 
@@ -585,13 +586,13 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
   } catch (error) {
     console.warn('public shop: plan departures unavailable', error);
   }
-  // Issue 749 F5：季節價是否可確認，與預約／申請頁同一規則（seasonalPriceUnknown）。只讀會判定團次的方案（其餘已是
-  // dates-not-loaded），一次批次讀取；讀取本身丟錯 fail-safe 為全部未知（readPlanSeasons 查詢失敗已降級不 throw）。
-  // 依方案 ID 分塊（避免 .in 清單過長使 URL 超限）：某一塊查詢失敗（readPlanSeasons 降級為該塊全部 incomplete）
-  // 或 throw，只讓該塊方案為未知，其他塊不受影響；超出 MAX_HOME_SEASON_CHUNKS 的方案視為未知。
+  // Issue 749 F5：季節價是否可確認，與預約／申請頁同一規則（seasonalPriceUnknown）。只查「已判定團次」的方案
+  // （bookableByPlan 有值者）；未判定者帶 departuresNotLoaded，bookingCtaState 先回 dates-not-loaded，季節結果不影響輸出，
+  // 所以不查、維持視為未知。依方案 ID 分塊（避免 .in 清單過長使 URL 超限），各塊獨立 try/catch：某一塊查詢失敗
+  // （readPlanSeasons 降級為該塊全部 incomplete）或 throw，只讓該塊方案為未知，其他塊不受影響；超出 MAX_HOME_SEASON_CHUNKS 的方案視為未知。
   const seasonKnown = new Set<string>();
-  const seasonIds = homePlans.map((plan) => plan.id);
-  const seasonIdSet = new Set(seasonIds);
+  const seasonIds = homePlans.filter((plan) => bookableByPlan.has(plan.id)).map((plan) => plan.id);
+  const seasonIdSet = new Set(homePlans.map((plan) => plan.id));
   const seasonChunks: string[][] = [];
   for (let i = 0; i < seasonIds.length && seasonChunks.length < MAX_HOME_SEASON_CHUNKS; i += HOME_DEPARTURE_PLAN_ID_CHUNK) {
     seasonChunks.push(seasonIds.slice(i, i + HOME_DEPARTURE_PLAN_ID_CHUNK));
