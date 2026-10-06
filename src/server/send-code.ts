@@ -46,6 +46,7 @@ const MAIL_UNAVAILABLE_MESSAGE = '驗證信暫時無法寄出，請稍後再試�
  * - check-then-set 競態：視窗開啟當下已通過檢查的並行請求照常完成。
  * - 正常運作時的既有差異：60 秒冷卻（429）只對真的寄過信的位址成立，且 send-verification-code 不吞 429
  *   （forgot-password 才吞）；若刪碼失敗殘留一筆，也只有寄信分支的位址會 429。
+ *   已使用的碼只標 consumed_at、不刪除，冷卻查詢不排除；碼建立後 60 秒內完成註冊者，再次 REGISTER 仍回 429。
  */
 export const MAIL_CONFIG_FAILURE_TTL_MS = 10 * 60_000;
 export const MAIL_TRANSIENT_FAILURE_TTL_MS = 60_000;
