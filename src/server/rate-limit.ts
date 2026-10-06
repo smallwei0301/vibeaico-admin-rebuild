@@ -84,7 +84,7 @@ export function __rateLimitBucketCountForTest(): number {
   return buckets.size;
 }
 
-/** 取逗號分隔清單的「最右邊」非空片段（最近一層可信 proxy 附加的值）。 */
+/** 取逗號分隔清單的「最右邊」非空片段（最近一層 proxy 附加的值；僅當該 proxy 就是平台時才可信）。 */
 function rightmostSegment(value: string | null): string | null {
   if (!value) return null;
   const parts = value.split(',');
@@ -113,8 +113,9 @@ function rightmostSegment(value: string | null): string | null {
  * 取值規則：
  * 1. 優先順序 `x-vercel-forwarded-for` → `x-real-ip` → `x-forwarded-for`。
  *    （在 Vercel 上三者同值；`x-vercel-forwarded-for` 不會被前置 proxy 改寫。）
- * 2. 任何一個標頭若是逗號清單，一律取「最右邊」非空片段——那是離我們最近、
- *    最後一層可信 proxy 附加的值；最左邊的片段是客戶端可控的，絕不採用。
+ * 2. 任何一個標頭若是逗號清單，一律取「最右邊」非空片段——那是離我們最近的
+ *    那一層 proxy 附加的值（只有該 proxy 是平台時才可信）；最左邊的片段是
+ *    客戶端可控的，絕不採用。
  * 3. 不在 Vercel 上（本機開發／測試）沒有可信平台，也沿用同一套確定性規則，
  *    不會讓客戶端可控的最左片段決定 key。
  * 4. 完全沒有可用標頭 → 退回固定字串 `'unknown-ip'`：所有請求共用同一個額度，
@@ -124,6 +125,10 @@ function rightmostSegment(value: string | null): string | null {
  * 單一來源仍可自行送出任意 `x-real-ip`／`x-forwarded-for`（rightmost 規則只能
  * 擋掉「附加在前面」的偽造，擋不住完全由客戶端決定的單一值）。本專案正式環境
  * 為 Vercel，故此處不另做 trusted-proxy 設定。
+ * 另：若部署在非 Vercel、且前面有兩層（含）以上都會附加 XFF 的可信 proxy
+ * （例如 CDN → nginx），最右片段會是最近那層 proxy 自己的 IP，所有客戶端將
+ * 共用同一個 bucket 而被過度節流；這類部署需要明確的 trusted-proxy 跳數設定，
+ * 本專案（正式環境為 Vercel）並未使用。
  */
 export function clientIpFromHeaders(headers: Headers): string {
   return (

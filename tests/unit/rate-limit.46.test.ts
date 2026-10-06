@@ -35,7 +35,7 @@ describe('clientIpFromHeaders', () => {
     expect(clientIpFromHeaders(headers)).toBe('5.6.7.8');
   });
 
-  it('沒有 x-forwarded-for 時退回 x-real-ip', () => {
+  it('x-real-ip 優先於 x-forwarded-for；只有 x-real-ip 時採用它', () => {
     const headers = new Headers({ 'x-real-ip': '9.9.9.9' });
     expect(clientIpFromHeaders(headers)).toBe('9.9.9.9');
   });
