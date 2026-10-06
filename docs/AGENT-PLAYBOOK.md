@@ -109,6 +109,8 @@
 | PB-043 | 在乾淨的最小 schema 上驗 migration，驗不出「既有資料」類的缺陷 | 2026-09-14 的 `0108` 覆核：build 端**確實**起了一個真的 PostgreSQL 16、跑了 9 次 INSERT 探測與突變測試——方法是對的，比字串比對強得多。但它是在一個**自己現建的最小 schema** 上跑的，那張表裡沒有任何既有列。於是它沒測出：`refunded_amount` 是本檔**新增**的欄位（`not null default 0`），而 M1 的 `check (payment_status::text <> 'REFUNDED' or (paid_amount > 0 and refunded_amount > 0))` 會在 `add constraint` 當下驗證既有資料——任何既有的 REFUNDED 訂單加完欄位後都是 `refunded_amount = 0`，於是整支 migration 以 23514 失敗。同一支檔案裡的 M2 有既有資料前置 guard，M1 沒有，兩個等價風險處理方式不對稱。**預防**：(1) 新增 CHECK 時先問「這條約束會不會對既有列失敗」，特別是當約束引用的欄位是**本檔新增**的（新欄位的 default 幾乎必然不滿足誠實性約束）；(2) 本機探測除了空表，至少要塞一列「本檔之前就合法、加上新約束後會違規」的既有資料；(3) 這類 migration 要嘛附既有資料前置 guard 並明確中止，要嘛說明為何既有資料不可能違規——不得靠「目前那張表是空的」，空表是當下的偶然不是保證。 | `supabase/migrations/0108_issue_41_payment_state_model.sql`、PB-026 |
 | PB-071 | 只讀原始碼的獨立審查會漏掉 UI runtime 回歸；使用者可見流程必須在真實瀏覽器實測 | context provider value 物件每次 render 都新建時，會造成依賴它的 `useCallback`／`useEffect` 被迫重建。頁面層實測必須使用真實瀏覽器且涵蓋表單保存、阻擋、草稿保留等關鍵路徑。repo 缺乏 jsdom／testing-library，原始碼斷言無法抓住執行期行為迴歸。 | PR #784；`src/components/ui/Toast.tsx` |
 | PB-072 | 機器驗證的 attestation／receipt JSON 不可用 shell 字串內插組裝；送出前先本機模擬 guard | shell 字串內插可能對特殊字元轉義不當，導致 JSON 結構破損。收據、attestation 一律用 JSON serializer 寫入檔案後以檔案送出，**輸出帶間距的 JSON（`": "`）並在送出後讀回比對 URL 欄位**（PR #788：緊湊 JSON 在傳輸中被插入反引號），並於轉 ready 前本機呼叫 `evaluateGithubAstra()` 驗證無錯誤；ordinary review 的 REVIEW 收據必須來自 fresh-context 子代理。 | PR #783、#784；`scripts/agents/astra-review-policy.mjs` |
+| PB-073 | 一張 Product PR 涵蓋多個 Issue 時，close guard 只認 `pr-lifecycle issue:` 指定的那一個 | close guard 以 merged PR 的 lifecycle `issue:` 尋找「最後一張 merged Product PR」；其他 Issue 找不到就改要求 CLOSE_APPROVED 的 EXACT_HEAD 本身可從 main 到達，而 squash 的 source head 不在 main 歷史上，關單會被拒絕並重開。多 Issue PR 的次要 Issue 以 squash merge commit（先驗 tree 與審查 head 相同）為 EXACT_HEAD，或一張 PR 只綁一個 Product Issue。 | PR #788／#785；`scripts/agents/product-issue-close-policy.mjs` |
+| PB-074 | squash commit 標題含 `fix(…)…（#N）` 會讓 GitHub 在合併時自動關閉 #N，繞過 Product close guard 的順序 | #787 在 PR #789 合併當下被自動關閉。Product Issue 的 PR 合併時，squash 標題不要以 fix／close／resolve 開頭又引用該 Issue 編號；改寫成 `<scope>：…（Issue N）`，讓 Issue 依 Sol CLOSE_APPROVED＋ISSUE_CLOSE_READY 關閉。 | PR #789／#787、PR #790／#781 |
 
 ## 事件紀錄
 
@@ -2187,3 +2189,28 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 補充預防：④ attestation／receipt JSON 一律輸出帶間距的格式（`": "`、`", "`）；⑤ 送出後立即從 GitHub 讀回該 review／comment，assert `reviewerExecutionReceipt` 等 URL 欄位逐字等於本機值，再進行本機 guard 模擬；不以「本機檔案正確」代替讀回。
 - 證據：PR #788 review 5418116715（被改寫）與 5418134134（帶間距重送，通過）。
 - 狀態：已防止
+
+
+### PB-073 — 一張 Product PR 涵蓋多個 Issue 時，close guard 只認 lifecycle 指定的那一個
+
+- 首次／最近：2026-10-06／2026-10-06
+- 發生次數：1
+- Issue／PR／CI：#785、#748；PR #788（squash `43e4f079`，exact head `ddce3638`）
+- 分類：Completion Truth／close admission
+- 事件：PR #788 同時完成 #748 與 #785，`pr-lifecycle issue: 748`。兩張 Issue 依同一格式送出 Sol CLOSE_APPROVED（EXACT_HEAD `ddce3638`）＋ISSUE_CLOSE_READY 後關單：#748 通過；#785 被 `product-issue-close-guard` 拒絕並重開，理由「final Sol CLOSE_APPROVED exact head is not reachable from current main」。
+- 根因：`latestMergedProductPull()` 以 PR lifecycle `issue:` 精確比對關單 Issue；#785 找不到對應的 merged PR，於是退回「EXACT_HEAD 本身須為 current main 祖先」的檢查，而 squash merge 的 source head 不在 main 歷史上。
+- 修正：先驗 squash commit `43e4f079` 的 tree 與審查／TEST 綁定的 `ddce3638` 逐位元相同（`f6f7a16a`）且為 main 祖先，再以它為 EXACT_HEAD 發新一輪 CLOSE_APPROVED（新 close generation）與 ISSUE_CLOSE_READY，guard 通過。
+- 預防：① 規劃時一張 Product PR 盡量只綁一個 Product Issue；② 若必須涵蓋多個，次要 Issue 的 CLOSE_APPROVED 一開始就以 squash merge commit 為 EXACT_HEAD，並在判定中寫明 tree 等同證據；③ 被拒後不立即重關，先修證據。
+- 證據：#785 guard 拒絕留言（2026-10-06T00:49Z）、第二次 CLOSE_APPROVED issuecomment-6007000559、guard 回寫 ISSUE_CLOSED_OBSERVED（00:57:30Z）。
+- 狀態：已記錄（程序面預防）
+
+### PB-074 — squash 標題含 `fix(…)…（#N）` 會讓 GitHub 合併時自動關閉 Issue
+
+- 首次／最近：2026-10-06／2026-10-06
+- 發生次數：1
+- Issue／PR／CI：#787、PR #789（squash `4679b611`）
+- 分類：工具使用／close admission
+- 事件：PR #789 以標題 `fix(governance): PB-038 升級——…（#787） (#789)` squash 合併，#787 在合併同一秒（2026-10-06T00:13:01Z）被自動關閉，早於 closeout 留言。#787 是 MODEL_GOVERNANCE，guard 豁免，未造成拒絕；但同樣寫法用在 Product Issue 會跳過 Sol CLOSE_APPROVED／ISSUE_CLOSE_READY 的順序並被 guard 判為 premature close。
+- 預防：Product Issue 的 PR 合併時，squash 標題不要以 fix／close／resolve 等關鍵字開頭又引用 `#N`；改用 `<scope>：…（Issue N）`。PR #790 依此合併，#781 保持 open 等待正規關單。
+- 證據：#787 events（closed 00:13:01Z、referenced 4679b611）。
+- 狀態：已記錄（程序面預防）
