@@ -53,7 +53,7 @@ vi.mock('@/server/supabase', () => ({
         return { data: [], error: null };
       };
       const chain: Record<string, unknown> = {
-        select: () => chain, order: () => chain, eq: () => chain, gte: () => chain, in: () => chain,
+        select: () => chain, order: () => chain, eq: () => chain, gte: () => chain, in: () => chain, range: () => chain,
         maybeSingle: () => run(),
         then: (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) => run().then(res, rej),
       };

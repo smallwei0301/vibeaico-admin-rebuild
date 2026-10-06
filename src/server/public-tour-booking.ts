@@ -83,7 +83,45 @@ export type PublicBookingPlan = {
   departures: PublicBookingDeparture[];
 };
 
-const MAX_DEPARTURES = MAX_BOOKING_CANDIDATE_DEPARTURES;
+/** #766：單一方案最多掃描列數（與 public-shop 詳情頁視窗 loadPlanDepartureWindow 同一組常數）。 */
+export const MAX_BOOKING_CANDIDATE_SCAN = 600;
+
+/**
+ * #766：預約頁／申請頁的候選團次（依 departs_on、start_time、id 排序，未開始且未客滿，最多
+ * MAX_BOOKING_CANDIDATE_DEPARTURES 個）。
+ * 只發「一次」有上限的查詢（`.range(0, MAX_BOOKING_CANDIDATE_SCAN - 1)`）取得單一快照，再在記憶體內逐列套用
+ * 候選規則、湊滿 12 個即停止。刻意不分頁：offset 分頁在多次查詢之間，若管理員新增／改期／關閉／刪除較前面的
+ * 團次，集合會位移而漏列或重複，導致預約頁漏掉有效候選、送出時誤回 DEPARTURE_NOT_AVAILABLE；單一快照沒有跨頁漂移。
+ * 已開始、客滿的列略過但仍佔掃描列數，所以只要前 600 列內有 12 個候選，選出的集合與順序就與無上限讀取一致；
+ * 600 列上限與詳情頁一致，超出者不會被列入。
+ */
+export async function loadBookingCandidateRows(
+  admin: ReturnType<typeof createAdminSupabase>,
+  args: { tenantId: string; planId: string; now: { today: string; hm: string } },
+  fail: (stage: string, cause: unknown) => Error,
+): Promise<Array<{ row: Record<string, unknown>; seatsLeft: number }>> {
+  const { tenantId, planId, now } = args;
+  const out: Array<{ row: Record<string, unknown>; seatsLeft: number }> = [];
+  const { data, error } = await admin
+    .from('trip_departures')
+    .select('id, departs_on, start_time, capacity, seats_booked')
+    .eq('tenant_id', tenantId).eq('plan_id', planId).eq('status', 'OPEN')
+    .gte('departs_on', now.today)
+    .order('departs_on', { ascending: true })
+    .order('start_time', { ascending: true, nullsFirst: true })
+    // #761：與詳情頁／首頁（loadPlanDepartureWindow）同一個 tie-break，同日同時間的候選集合才會一致。
+    .order('id', { ascending: true })
+    .range(0, MAX_BOOKING_CANDIDATE_SCAN - 1);
+  if (error) throw fail('trip_departures', error);
+  for (const row of (data ?? []) as Array<Record<string, unknown>>) {
+    // #761：候選規則（未開始、未客滿）與詳情頁／首頁入口共用 public-departure-candidates。
+    const seatsLeft = bookingCandidateSeatsLeft(row, now);
+    if (seatsLeft === null) continue;
+    out.push({ row, seatsLeft });
+    if (out.length >= MAX_BOOKING_CANDIDATE_DEPARTURES) break;
+  }
+  return out;
+}
 
 /**
  * 讀一個 FIXED_DEPARTURE 方案的預約頁資料。找不到、非 FIXED_DEPARTURE、未上架、
@@ -127,27 +165,14 @@ export async function loadPublicBookingPlan(
 
   // 店家時區（basic.timezone，缺值或無效回退台北）：「今天」與已開始判斷與詳情頁一致。
   const now = tenantNowParts(resolvePublicTimeZone(settings?.basic?.timezone));
-  const { data: departureRows, error: departureError } = await admin
-    .from('trip_departures')
-    .select('id, departs_on, start_time, capacity, seats_booked')
-    .eq('tenant_id', tenantId).eq('plan_id', planId).eq('status', 'OPEN')
-    .gte('departs_on', now.today)
-    .order('departs_on', { ascending: true })
-    .order('start_time', { ascending: true, nullsFirst: true })
-    // #761：與詳情頁／首頁（loadPlanDepartureWindow）同一個 tie-break，同日同時間的候選集合才會一致。
-    .order('id', { ascending: true });
-  if (departureError) throw queryFailed('trip_departures', departureError);
+  const candidateRows = await loadBookingCandidateRows(admin, { tenantId, planId, now }, queryFailed);
 
   const seasons = options.withSeasonPrices === false
     ? { seasons: [], incomplete: false }
     : await loadPlanSeasons(admin, tenantId, planId);
   const basePrice = Number(plan.price_per_person ?? 0);
   const departures: PublicBookingDeparture[] = [];
-  for (const row of departureRows ?? []) {
-    // #761：候選規則（未開始、未客滿）與詳情頁／首頁入口共用 public-departure-candidates。
-    const seatsLeft = bookingCandidateSeatsLeft(row, now);
-    if (seatsLeft === null) continue;
-    if (departures.length >= MAX_DEPARTURES) break;
+  for (const { row, seatsLeft } of candidateRows) {
     const unitPrice = seasonUnitPriceFor(seasons, row.departs_on as string, basePrice);
     departures.push({
       id: row.id as string,

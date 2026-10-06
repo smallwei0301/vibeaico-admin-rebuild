@@ -36,9 +36,9 @@
  *    但 API 端點本身不能只靠「畫面沒有連結」當作唯一防線（連結可以被猜到／分享）。
  */
 import { z } from 'zod';
-import { bookingCandidateSeatsLeft, MAX_BOOKING_CANDIDATE_DEPARTURES } from '@/lib/public-departure-candidates';
 import { resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
 import { hasSeasonalPricing, loadPlanSeasons, seasonUnitPriceFor } from '@/server/public-plan-seasons';
+import { loadBookingCandidateRows } from '@/server/public-tour-booking';
 import { createAdminSupabase } from '@/server/supabase';
 import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
 import { hydrateTourOrders } from '@/server/tour-orders';
@@ -102,8 +102,6 @@ export type PublicRequestPlan = {
   departures: PublicRequestDeparture[];
 };
 
-const MAX_DEPARTURES = MAX_BOOKING_CANDIDATE_DEPARTURES;
-
 /**
  * 讀一個 REQUEST 方案的申請頁資料。找不到、非 REQUEST、未上架、或所屬行程未發布
  * 一律回 null（呼叫端轉 404）——不區分「不存在」與「不合格」，避免讓外部連結
@@ -145,27 +143,14 @@ export async function loadPublicRequestPlan(
 
   // 店家時區（basic.timezone，缺值或無效回退台北）：「今天」與已開始判斷與詳情頁一致。
   const now = tenantNowParts(resolvePublicTimeZone(settings?.basic?.timezone));
-  const { data: departureRows, error: departureError } = await admin
-    .from('trip_departures')
-    .select('id, departs_on, start_time, capacity, seats_booked')
-    .eq('tenant_id', tenantId).eq('plan_id', planId).eq('status', 'OPEN')
-    .gte('departs_on', now.today)
-    .order('departs_on', { ascending: true })
-    .order('start_time', { ascending: true, nullsFirst: true })
-    // #761：與詳情頁／首頁（loadPlanDepartureWindow）同一個 tie-break，同日同時間的候選集合才會一致。
-    .order('id', { ascending: true });
-  if (departureError) throw queryFailed('trip_departures', departureError);
+  const candidateRows = await loadBookingCandidateRows(admin, { tenantId, planId, now }, queryFailed);
 
   const seasons = options.withSeasonPrices === false
     ? { seasons: [], incomplete: false }
     : await loadPlanSeasons(admin, tenantId, planId);
   const basePrice = Number(plan.price_per_person ?? 0);
   const departures: PublicRequestDeparture[] = [];
-  for (const row of departureRows ?? []) {
-    // #761：候選規則（未開始、未客滿）與詳情頁／首頁入口共用 public-departure-candidates。
-    const seatsLeft = bookingCandidateSeatsLeft(row, now);
-    if (seatsLeft === null) continue;
-    if (departures.length >= MAX_DEPARTURES) break;
+  for (const { row, seatsLeft } of candidateRows) {
     const unitPrice = seasonUnitPriceFor(seasons, row.departs_on as string, basePrice);
     departures.push({
       id: row.id as string,

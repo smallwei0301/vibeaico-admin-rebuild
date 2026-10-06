@@ -111,6 +111,11 @@
 | PB-072 | 機器驗證的 attestation／receipt JSON 不可用 shell 字串內插組裝；送出前先本機模擬 guard | shell 字串內插可能對特殊字元轉義不當，導致 JSON 結構破損。收據、attestation 一律用 JSON serializer 寫入檔案後以檔案送出，**輸出帶間距的 JSON（`": "`）並在送出後讀回比對 URL 欄位**（PR #788：緊湊 JSON 在傳輸中被插入反引號），並於轉 ready 前本機呼叫 `evaluateGithubAstra()` 驗證無錯誤；ordinary review 的 REVIEW 收據必須來自 fresh-context 子代理。 | PR #783、#784；`scripts/agents/astra-review-policy.mjs` |
 | PB-073 | 一張 Product PR 只綁一個 Product Issue，不得以 squash merge commit 充當 EXACT_HEAD 來關次要 Issue | 一張 Product PR 只綁一個 Product Issue（lifecycle `issue:` 與 PRIMARY_ISSUE 相同）；不得以 squash merge commit 充當 EXACT_HEAD 來關次要 Issue——guard 的 main-ancestor fallback 不驗 tree 等同，會把 source-head 綁定降級。PR #791 Codex P1 | PR #788／#785；`scripts/agents/product-issue-close-policy.mjs` |
 | PB-074 | PR 標題、squash commit 標題、內文與 PR 描述的 Issue 引用形式與 closing keyword 會讓 GitHub 自動關閉，繞過 Product close guard | #787 在 PR #789 合併當下被自動關閉。合併前讀 Issue 的 closed_by_pull_requests 確認不含本 PR；grep (a)(b) 補充檢查。 | PR #789／#787、PR #790／#781（僅改標題，未遵守 (a)）；PR #791 Codex P2 |
+| PB-075 | 轉 TEST_VALIDATION 後手動 dispatch canonical TEST，被 guard 隨後的自動 dispatch 取代成重複 run | lane 轉換本身就會讓 guard 自動 dispatch canonical TEST；轉換後先查同一 exact head 的 workflow_dispatch run，確認 guard 未派工才手動 dispatch。 | PR #795；run 37422677172（cancelled）、37422702127（success） |
+| PB-076 | Scout ledger 標準化複合主語時拆分成多項，造成偽造計數 | Issue vs PR 編號拆分時，僅 `issue#N` token 計數；對已編輯的批量 ledger，逐筆列舉與已知 Issue 交叉比對，並檢查有無虛構 Issue 或 PR 當成 Issue。 | PR #791 commit 4ca56072→5394e645、scout 編輯階段。 |
+| PB-077 | 共用 worktree 上，reviewer 在 builder/pusher 進行 verify-before-push 時運行寫入操作，會造成 HEAD 改變或測試干擾 | Reviewer 應使用 `git show/diff` 或獨立 worktree，不在同一 clone 上運行突變；builder/pusher 確認 verify 無誤前，不允許同時進行 mutation。 | PR #791 review phase；verify-before-push 拒絕 VERIFY_FAILED。 |
+| PB-078 | canonical TEST 執行中若推送 ledger-only commit，會讓 exact-head TEST 證據失效（本次已避免） | 推送 ledger-only commit 前先查同 PR 是否有 pending／running canonical TEST；有就留在本機，隨下一個實質修正一併推送。 | PR #795；f9f31534 → 273fa1c3；run 37429766960 |
+| PB-079 | ISSUE_CLOSE_READY 的 CI 證據必須是 current main exact SHA；main 在送出後前進，close guard 會重開 | 送 ISSUE_CLOSE_READY 前立刻 `gh api repos/<repo>/commits/main` 確認 SHA 與證據 run 的 head 相同；被重開時以新 main 的 CI 重送新一輪，不重用舊 approval。 | Issue 760、PR #795；close guard 重開 issuecomment-6013786314；分類：close admission |
 
 ## 事件紀錄
 
@@ -2215,11 +2220,78 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 預防：合併前讀取 Product Issue 的 closed_by_pull_requests（GitHub MCP issue_read get，或 REST/GraphQL 等價欄位）；若本 PR 已出現在其中，先移除造成連結的 closing keyword 或手動 Development 連結，重新讀取確認不含本 PR 才合併。
   - 補充檢查 (a)/**PR 標題、squash 標題與 squash commit body**（合併時明確設定為簡要摘要，不用預設串接）：保守做法——本 PR 的 Product Issue 一律寫 `Issue N`，不得出現 `#N`、`OWNER/REPO#N`、`.../issues/N`；且任何 Issue 引用前不得緊接 closing keyword。檢查（N 換成 Issue 編號，對擬用的 PR 標題、squash 標題與 body 執行，須零命中）：`grep -nEi '(^|[^0-9A-Za-z_])([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#N([^0-9]|$)|/issues/N([^0-9]|$)|(^|[^0-9A-Za-z_])(close[sd]?|fix(e[sd])?|resolve[sd]?):?[[:space:]]+(([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[0-9]+|https://github\.com/[^[:space:]]+/issues/[0-9]+)'`
   - 補充檢查 (b)/**PR 描述與分支 commit 訊息**：保留模板必填的結構化欄位（如 `PRIMARY_ISSUE: #N`、`Primary Issue: #N`），只禁止 closing keyword 緊接任何 Issue 引用。檢查（對 PR 描述與 `git log --format=%B <base>..<head>` 執行，須零命中）：`grep -nEi '(^|[^0-9A-Za-z_])(close[sd]?|fix(e[sd])?|resolve[sd]?):?[[:space:]]+(([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[0-9]+|https://github\.com/[^[:space:]]+/issues/[0-9]+)'`
-  - 合併時明確設定 squash body 而非預設串接。PR #790 只改寫了 squash 標題，body 仍為預設串接、含多處 `#781`（未遵守 (a)）；#781 未被自動關閉只說明這些不帶 keyword 的裸引用未觸發關單，不能當本規則的驗證案例。截至 2026-10-06 尚無完全依本條（closed_by_pull_requests 檢查＋明確簡要 body＋grep 預檢零命中）合併的案例。
+  - 合併時明確設定 squash body 而非預設串接。PR #790 只改寫了 squash 標題，body 仍為預設串接、含多處 `#781`（未遵守 (a)）；#781 未被自動關閉只說明這些不帶 keyword 的裸引用未觸發關單，不能當本規則的驗證案例。**2026-10-06 首個遵守案例**：PR #794（Issue 750）合併前讀取 closed_by_pull_requests 為空，squash 標題 `rate-limit：公開端點節流只採信平台附加的用戶端 IP（Issue 750）` 不含 closing keyword，commit body 無 keyword 組合，grep 預檢零命中；squash body 明確設定為簡要摘要（不用預設串接）；Issue 750 在合併後於 close guard（CLOSE_APPROVED issuecomment-6010896434）監督下於 2026-10-06T06:43:02Z 正式關單（live closed_at 讀回確認）。
 - 證據：#787 events（closed 00:13:01Z、referenced 4679b611）。
 - 補充：2026-10-06 Codex P2 review on PR #791 comment 4191382479 指出本條預防原只涵蓋 squash 標題，GitHub 實際亦解析 PR 描述與 commit message 內的 closing keyword；見 https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue。
 - 補充（2026-10-06，同日 Codex P2 comment 4191472189）：原 grep 漏掉 `OWNER/REPO#N` 與 Issue URL 形式，改為結構化規則 (a)(b)，並更新預檢 grep 以涵蓋自身 Issue 所有可解析形式與其他 Issue 的 closing keyword 引用。發生次數仍為 1。
+- 補充（2026-10-06，Codex P2 comment 4194765356 on PR #799）：首個遵守案例原記錄的關單時間 00:13:53Z 早於 PR #794 merge commit 建立時間（05:50:56Z），為錯植；live 讀回 Issue 750 closed_at 為 2026-10-06T06:43:02Z（CLOSE_APPROVED issuecomment-6010896434 建於 06:42:48Z），已更正。教訓：Playbook 中的時間戳須由 live API 讀回，不得憑記憶填寫。
 - 補充（2026-10-06，同日 Codex P2 comment 4191517867）：整份 PR 描述零命中會誤擋模板必填的 `PRIMARY_ISSUE: #N`，改為描述只擋 keyword 組合、squash 文字才禁自身 `#N`。
 - 補充（同日 Codex P2，comment 4191561983）：更正 #790 不是本規則的遵守案例。
 - 補充（同日 Codex P2，comment 4191657176）：撤回「標題觸發」推定，改以 closed_by_pull_requests 結構化檢查為主要預檢。
 - 狀態：已記錄（程序面預防）
+
+### PB-075 — 轉 TEST_VALIDATION 後手動 dispatch canonical TEST，被 guard 隨後的自動 dispatch 取代成重複 run
+
+- 首次／最近：2026-10-06／2026-10-06
+- 發生次數：1
+- Issue／PR／CI：Issue 760、PR #795；手動 run 37422677172（cancelled）、guard 自動 run 37422702127（success），head 皆為 `3cea03f2`。
+- 分類：CI 派工／shared TEST
+- 事件：PR #795 本文把 `AGENT_LANE` 改為 `TEST_VALIDATION` 後，主 session 於 06:14:48Z 手動以 `lane_transition` dispatch ci.yml（37422677172）；trusted guard 於 06:15:04Z 也為同一 head 自動 dispatch（37422702127）。concurrency group `shared-test-supabase-integration` 只保留一個 pending run，較早的手動 run 被取消，guard 的 run 完成 integration＋E2E（07:15:41Z success）。計入 invalidReruns +1。
+- 根因：lane 轉換本身就會讓 guard 自動 dispatch canonical TEST；手動 dispatch 是多餘的重複派工。
+- 修正：不改 guard；本次以 guard 的 run 為準，手動 run 記為無效重複。
+- 預防：PR 轉為 `TEST_VALIDATION` 後不要手動 dispatch；先查同一 exact head 的 ci.yml workflow_dispatch run，只有確認 guard 沒有派工（guard 留言 `TEST dispatched on this transition: false` 且查無 run）時才手動 dispatch。
+- 證據：run 37422677172（06:14:48Z，cancelled）、37422702127（06:15:04Z，success）。
+- 狀態：已記錄（程序面預防）
+
+### PB-076 — Scout ledger 標準化複合主語時拆分成多項，造成偽造計數
+
+- 首次／最近：2026-10-06／2026-10-06
+- 發生次數：1
+- Issue／PR／CI：PR #791 commit 4ca56072（scout 編輯），修正 5394e645（audit 層發現）；production-stage subjects 複合標準化。
+- 分類：ledger 管理／數據完整性
+- 事件：scout 標準化 run ledger 的 `production.issuesStarted` 與 `issuesClosed` 複合主語（例 `issue#42 / pr#713 / …`）時，以 regex 拆分為 `issue#42` 和 `issue#713`；後者本應是 PR 編號，被誤作為 Issue 編號，於是 ledger 聲稱完成了不存在的 Issue #713。audit 層讀回時注意到計數不符且發現虛構 Issue，以修正 commit 改回原格式並驗證。
+- 根因：複合主語格式 Token 化時，只以 `issue#N` 計數；當拆分邏輯誤把 `pr#N` 也當 issue 時，造成計數溢漏與虛構對象。
+- 影響：ledger 失真；Product 計分卡的 issuesClosed 計數包含不存在的 Issue；若未被 audit 層抓住，會推送虛假的完成信號。
+- 修正：搜尋複合主語時，只認可以 `issue#N` 形式明確出現的對象，PR 引用（`pr#N`）**全部忽略或加進 PR-separate 欄位**；拆分後的產物一律交叉檢查與已知 Issue 列表。
+- 預防：(1) 標準化 ledger 時，複合主語的拆分邏輯只處理明確屬於該維度的 token（例 ledger 的 `production.issuesStarted` 只認 `issue#N`，不拆 `pr#N`）；(2) 任何批量編輯 ledger 後，逐筆列舉所有主語，與 GitHub 上已知的 open/closed Issue 清單交叉比對；(3) audit 層應在讀 ledger 前驗證所宣告的 issue 是否真實存在（`gh api repos/.../issues/<number>`）。
+- 驗證：修正後的 ledger 主語全部驗證通過；PR #791 commit 5394e645 的 issuesClosed 數值正確。
+- 狀態：已更正；scout 層 ledger 編輯 SOP 應含「拆分複合主語後交叉驗證」。
+
+### PB-077 — 共用 worktree 上，reviewer 在 builder/pusher 進行 verify-before-push 時運行寫入操作，會造成 HEAD 改變或測試干擾
+
+- 首次／最近：2026-10-06／2026-10-06
+- 發生次數：1
+- Issue／PR／CI：PR #791 review phase；shared worktree 上 verify-before-push 執行期間 reviewer mutation（~05:36Z head dcf0916f，~06:11Z head e3670c30）。
+- 分類：流程管理／worktree 衛生
+- 事件：PR #791 的 fresh-context reviewer session 在審查過程中對同一 worktree 運行 commit amend 等突變操作，同時 main session 的 verify-before-push 在執行測試。verify script 拒絕推送（VERIFY_FAILED：`HEAD 變成 detached`）。
+- 根因：worktree 限制資源時常被多個 agent 或 thread 重用；reviewer 與 builder/pusher 同時操作同一 clone，造成檔案狀態不同步。
+- 影響：verify-before-push 失敗，無法推送；需回檔重新 verify；若誤認為 verify 失敗是「內容有問題」而重跑測試或修改代碼，會衍生更多干擾。
+- 修正：reviewer 應使用 `git show <ref>:<path>`（讀取樹）或 `git diff <base> <head>`（對比）或獨立 worktree（`git worktree add`），不應在同一 clone 上進行 `checkout`、`commit`、`rebase` 等突變。若必須編輯（例修改 ledger），應在分開的臨時 worktree 中進行。
+- 預防：(1) reviewer agent 應被限制為唯讀 Git 操作（`git show`, `git diff`, `git log`），不得 `checkout` 或 `commit`；(2) 若 reviewer 需編輯檔案（ledger、文件），應獲配獨立 worktree 或在操作前告知 builder/pusher 暫停 verify；(3) builder/pusher 的 verify-before-push 前應檢查 worktree 狀態（`git status`），拒絕在髒狀態或 detached HEAD 下推送。
+- 驗證：PR #791 修正後，reviewer session 改用 `git show/diff`；main session verify-before-push 成功通過，無 detached HEAD。
+- 狀態：已防止；reviewer role SOP 應限定為唯讀 Git 操作。
+
+### PB-078 — canonical TEST 執行中若推送 ledger-only commit，會讓 exact-head TEST 證據失效（本次已避免）
+
+- 首次／最近：2026-10-06／2026-10-06
+- 發生次數：0（風險已辨識並避免）
+- Issue／PR／CI：Issue 760、PR #795；canonical TEST run 37422702127（`3cea03f2`）、37429766960（`273fa1c3`）。
+- 分類：ledger 管理／exact-head 證據
+- 事件：canonical TEST 37422702127 正在 exact head `3cea03f2` 上執行時，scout 產生 ledger-only commit `f9f31534`（Issue 750 關單等事件）。主 session 先留在本機不推送；之後隨下一個實質修正 `4f91bdbd` 一併推送（head 為 `273fa1c3`，另含 ledger commit），canonical TEST 再於 `273fa1c3` 執行（37429766960，success）。
+- 根因：`FINAL_CANONICAL_REQUIRED` 的 PR 以 exact head 的 canonical TEST 為合併證據；TEST 執行中推送任何 commit 都會改變 head，使進行中的 TEST 不再對應最終 head。
+- 修正：TEST 執行中的 ledger commit 留在本機（WRITER_BLOCKER），與下一個實質修正一併推送；或在觸發 TEST 的推送前先把已知事件記完。
+- 預防：推送 ledger-only commit 前，先查同一 PR 是否有 pending／running 的 canonical TEST；若有，延後推送並在本機保留。
+- 證據：`f9f31534` 為 `273fa1c3` 的祖先；run 37429766960 於 `273fa1c3` success。
+- 狀態：已記錄（程序面預防）
+
+### PB-079 — ISSUE_CLOSE_READY 的 CI 證據必須是 current main exact SHA；main 在送出後前進，close guard 會重開
+
+- 首次／最近：2026-10-06／2026-10-06
+- 發生次數：1
+- Issue／PR／CI：Issue 760、PR #795；close guard 重開 issuecomment-6013786314
+- 分類：close admission
+- 事件：以 afd4e6de 的 main push 37439241198 為 ISSUE_CLOSE_READY 證據關單（09:54:55Z），但 main 已前進到 75b3a5ce（另一 session 的 docs 合併），guard 以「ISSUE_CLOSE_READY ci evidence must match current main exact head」重開並加 governance:premature-close。改以 75b3a5ce 的 main push 37441589711 重送新一輪 CLOSE_APPROVED（issuecomment-6013797708）＋ISSUE_CLOSE_READY，09:56:10Z 關單被接受。
+- 根因：guard 讀關單當下的 current main；並行 session 合併會讓證據過期。
+- 預防：送 ISSUE_CLOSE_READY 前立刻 `gh api repos/<repo>/commits/main` 確認 SHA 與證據 run 的 head 相同，三個寫入（CLOSE_APPROVED、READY、close）連續送出；被重開時以新 main 的 CI 重送新一輪，不重用舊 approval。
+- 狀態：已記錄（程序面預防）
+
