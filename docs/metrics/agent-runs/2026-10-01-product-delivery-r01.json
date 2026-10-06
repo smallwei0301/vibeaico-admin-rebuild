@@ -76,6 +76,9 @@
     },
     {
       "ref": "issue/785"
+    },
+    {
+      "ref": "issue/750"
     }
   ],
   "main": {
@@ -4867,13 +4870,123 @@
         "cachedTokens": null,
         "contextClass": "compact",
         "note": "PR #790 merge + attestation + codex + sol close verdict；ledger reconcile 8 → 9。"
+      },
+      {
+        "id": "20261006-scout-triage-766-764",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "startedAt": "2026-10-06T03:54:54Z",
+        "completedAt": "2026-10-06T03:55:48Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "LUNA-r01-S1：#766 score2（migration，排在 #755 後）、#764 score3（item A 待 Owner）"
+      },
+      {
+        "id": "20261006-scout-triage-760-769",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "startedAt": "2026-10-06T03:54:54Z",
+        "completedAt": "2026-10-06T03:55:52Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "LUNA-r01-S2：#760 score2（需 shared TEST integration）、#769 score3（migration＋TEST）"
+      },
+      {
+        "id": "20261006-scout-triage-749-750",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "startedAt": "2026-10-06T03:54:54Z",
+        "completedAt": "2026-10-06T03:56:14Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "LUNA-r01-S3：#749 score2（migration）、#750 score3（無 migration、純 unit）"
+      },
+      {
+        "id": "20261006-sol-triage-750",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "startedAt": "2026-10-06T03:56:14Z",
+        "completedAt": "2026-10-06T03:56:53Z",
+        "issue": 750,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Sol TRIAGE（主 session）：MAIN=#750；§1.5 前四階全卡 #755／Owner gate，只選不增 migration debt 的 source；ASTRA_RISK NONE"
+      },
+      {
+        "id": "20261006-build-750",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "startedAt": "2026-10-06T03:57:18Z",
+        "completedAt": "2026-10-06T03:59:23Z",
+        "issue": 750,
+        "evidenceRef": "commit 60eb1bb7",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "Sonnet builder：clientIpFromHeaders 只採信平台附加 IP（最右片段、x-vercel-forwarded-for 優先），promotion-events 共用；rate-limit.750 7 案例，mutation 4 紅"
+      },
+      {
+        "id": "20261006-early-audit-750",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "startedAt": null,
+        "completedAt": "2026-10-06T04:00:11Z",
+        "issue": 750,
+        "evidenceRef": "commit 60eb1bb7",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "early Sol diff audit（主 session）：PASS_WITH_NOTES，PV/UV fallback key unknown→unknown-ip 需於 PR 揭露"
+      },
+      {
+        "id": "20261006-scout-r01-ledger-750",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "startedAt": "2026-10-06T05:28:03Z",
+        "completedAt": "2026-10-06T05:28:03Z",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "note": "記錄 #750 TRIAGE／build／early audit 事件與 Run 綁定"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 17,
+    "issuesStarted": 18,
     "issuesClosed": 10,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -4900,14 +5013,14 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 62,
-    "lunaAccepted": 55,
+    "lunaTasks": 66,
+    "lunaAccepted": 59,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 157,
-    "solIssues": 18
+    "solTouches": 159,
+    "solIssues": 19
   },
   "auditability": {
     "evidenceFieldsCompletePercent": null,
