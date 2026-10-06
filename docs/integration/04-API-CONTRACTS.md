@@ -87,11 +87,11 @@ export const POST = handle(async (_req, { params }) => {
 
 | 端點 | Body（zod） | data 回傳 |
 |---|---|---|
-| POST `/api/auth/send-verification-code` | `{email, purpose:'REGISTER'\|'RESET_PASSWORD'}` | `{sent:true}`；寄信失敗（或處於 config／service 失敗 parity 視窗內）回 503 `MAIL_001`「驗證信暫時無法寄出，請稍後再試或聯絡我們」；同一 email + purpose 60 秒內對「真的寄過信」的位址再次請求回 429（不吞，不論 REGISTER／RESET_PASSWORD，為已知既有差異；帳號狀態近 60 秒內改變者見 `03-AUTH.md` (f)，不得宣稱兩種 email 回應完全相同），詳見 `03-AUTH.md` §2 |
+| POST `/api/auth/send-verification-code` | `{email, purpose:'REGISTER'\|'RESET_PASSWORD'}` | `{sent:true}`；寄信失敗（或處於 config／service 失敗 parity 視窗內）回 503 `MAIL_001`「驗證信暫時無法寄出，請稍後再試或聯絡我們」；同一 email（依原始大小寫字串）+ purpose 60 秒內對「真的寄過信」的位址再次請求回 429（不吞，不論 REGISTER／RESET_PASSWORD，為已知既有差異；帳號狀態近 60 秒內改變者見 `03-AUTH.md` (f)，不得宣稱兩種 email 回應完全相同），詳見 `03-AUTH.md` §2 |
 | POST `/api/auth/tenant/register` | `{email, code, password, tenantName, shopCode}` | `{registered:true}` |
 | POST `/api/auth/login` | `{email, password}` | `{loggedIn:true}` |
 | POST `/api/auth/logout` | – | `{loggedOut:true}` |
-| POST `/api/auth/forgot-password` | `{email}` | `{sent:true}`；寄信失敗（或處於 config／service 失敗 parity 視窗內）回 503 `MAIL_001`；收件人專屬拒絕（僅限可證明為 `to` 欄位的 4xx，如 422 "Invalid `to` field"；MAIL_FROM 422 等其他 4xx 為 fail-closed config → 503）回 200 `{sent:true}`、不存碼、不開窗（與不寄信分支一致，#763）；503 `MAIL_001` 只用於 config／service 失敗。視窗內所有寄碼請求（含已註冊 email；視窗開啟前已通過檢查的並行在途請求除外）短路回同一個 503、不寄信（可用性代價：該 instance 暫停寄信至多 60 秒／設定類 10 分鐘，429 突發亦然）。枚舉防護為 best-effort：不保證兩種 email 回應完全相同——send-verification-code（REGISTER 與 RESET_PASSWORD）對「真的寄過信」的位址 60 秒內第二次請求回 429（forgot-password 吞掉 429）；視窗不跨 instance，且持續故障時在最後一次失敗後 60 秒（service）／10 分鐘（config）到期、每次到期都重新暴露（#764），詳見 `03-AUTH.md` §2 |
+| POST `/api/auth/forgot-password` | `{email}` | `{sent:true}`；寄信失敗（或處於 config／service 失敗 parity 視窗內）回 503 `MAIL_001`；收件人專屬拒絕（僅限可證明為 `to` 欄位的 4xx，如 422 "Invalid `to` field"；MAIL_FROM 422 等其他 4xx 為 fail-closed config → 503）回 200 `{sent:true}`、不存碼、不開窗（與不寄信分支一致，#763）；503 `MAIL_001` 只用於 config／service 失敗。視窗內所有寄碼請求（含已註冊 email；視窗開啟前已通過檢查的並行在途請求除外）短路回同一個 503、不寄信（可用性代價：該 instance 暫停寄信至多 60 秒／設定類 10 分鐘，429 突發亦然）。枚舉防護為 best-effort：不保證兩種 email 回應完全相同——send-verification-code（REGISTER 與 RESET_PASSWORD）對「真的寄過信」的位址 60 秒內（依原始大小寫 email 字串）第二次請求回 429（forgot-password 吞掉 429）；視窗不跨 instance，且持續故障時在最後一次失敗後 60 秒（service）／10 分鐘（config）到期、每次到期都重新暴露（#764），詳見 `03-AUTH.md` §2 |
 | POST `/api/auth/reset-password` | `{email, code, newPassword}` | `{reset:true}` |
 | POST `/api/auth/change-password` | `{currentPassword, newPassword}` | `{changed:true}` |
 | GET `/api/auth/me` | – | `{email, tenantId, tenantName, shopCode, role}` |

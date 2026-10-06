@@ -51,7 +51,7 @@ export interface EmailSendDetail {
    * `recipient`：僅限可明確證明是 `to` 收件人被拒的 4xx（statusCode 4xx 且 message 指涉 `to` 欄位），
    * 只與該收件人有關，不得被當成全站狀態（否則可被攻擊者用來開啟 parity 視窗做枚舉）。
    * 殘餘（#764）：`service` 視窗只有 60 秒、`config` 10 分鐘，且僅存於各 instance 記憶體（best-effort）；
-   * Resend 429 以 API key 為單位，burst 即可觸發 `service` 視窗；除每個 (email, purpose) 60 秒冷卻外，
+   * Resend 429 以 API key 為單位，burst 即可觸發 `service` 視窗；除依原始大小寫 email 字串的 (email, purpose) 60 秒冷卻外（email 未正規化，大小寫變體是不同冷卻鍵、可各自寄信，#764），
    * （該冷卻為非原子的 check-then-insert、無 unique 約束，同一位址並行請求可一起通過；寄信失敗刪碼後亦無冷卻）
    * 沒有跨位址、IP 或 API key 層級的 app 層節流，輪換 email／purpose 的 burst 仍可觸發 Resend 429。
    * SENT 時為 null。
