@@ -5109,7 +5109,8 @@
     "solTouches re-synced to the recorded audit/triage task events (definition: scorecard-readiness.mjs:281); it had not been incremented since 216d2a73 (stale at 50).",
     "solIssues re-synced 5→14 = distinct issue values of the audit/triage task events counted in solTouches (23 such tasks carry no issue field and are not counted); score-run-current.mjs uses solTouches/solIssues.",
     "solIssues 14→18: structured issue added to 20 audit/triage tasks whose id names exactly one Issue (#42/#43/#46/#47/#11); 3 ambiguous tasks (727-welcome-precondition, retriage46-select11-775, claude-sol-triage-r01) stay null; audit-779 r10–r12 attributed to #780 instead of #777.",
-    "PR #782 (MODEL_GOVERNANCE, RUN_ID none) review-fix rounds are governance work and are intentionally not recorded as Product Run tasks or counters (CLAUDE.md §B+ / AGENT-EXECUTION §1.2); their evidence lives on PR #782 (Codex threads 4182937558/63/73, 4183154674/83, 4183298324/29, 4183450822/33). [Thread 4183750234: ISSUE_CLOSED reconcile commits ed9792f6/73e8832c are likewise governance bookkeeping and not recorded as Product tasks.]"
+    "PR #782 (MODEL_GOVERNANCE, RUN_ID none) review-fix rounds are governance work and are intentionally not recorded as Product Run tasks or counters (CLAUDE.md §B+ / AGENT-EXECUTION §1.2); their evidence lives on PR #782 (Codex threads 4182937558/63/73, 4183154674/83, 4183298324/29, 4183450822/33). [Thread 4183750234: ISSUE_CLOSED reconcile commits ed9792f6/73e8832c are likewise governance bookkeeping and not recorded as Product tasks.]",
+    "2026-10-06 PR #791 Codex P2：completionTruth 的 SOURCE_VERIFIED／MERGED_TO_MAIN／AUTO_VERCEL_DEPLOYED claim 狀態詞彙正規化為 score-run-current 接受的 success／merged／ready（原值為型別名，scorer 會略過該階段）；只改狀態詞彙，未改驗證結果或證據。checkedAt 更新為最新 claim 重驗時間。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -5122,7 +5123,7 @@
   },
   "completionTruth": {
     "status": "VERIFIED",
-    "checkedAt": "2026-10-05T10:50:47Z",
+    "checkedAt": "2026-10-06T04:45:41Z",
     "claims": [
       {
         "type": "LOCAL_TEST_GREEN",
@@ -5135,8 +5136,8 @@
       {
         "type": "SOURCE_VERIFIED",
         "subject": "issue#47 / pr#714 bounded verify-retry slice",
-        "claimedState": "SOURCE_VERIFIED",
-        "observedState": "SOURCE_VERIFIED",
+        "claimedState": "success",
+        "observedState": "success",
         "verification": "VERIFIED",
         "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/714; exactadf0608 sourceCI36814288438/scorecard36814288385success + independentreview47report/workspace/issue47-independent-review.md; no provider/authacceptedclaim"
       },
@@ -5151,24 +5152,24 @@
       {
         "type": "SOURCE_VERIFIED",
         "subject": "issue#42 / pr#713 bounded formation settings slice",
-        "claimedState": "SOURCE_VERIFIED",
-        "observedState": "SOURCE_VERIFIED",
+        "claimedState": "success",
+        "observedState": "success",
         "verification": "VERIFIED",
         "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/713; exactf1c4984c0a2dfda85207c08086ba80d3ada797cf source36816705017 LOCAL36816705044 canonical36817947312; independentreview42 CLOSE_APPROVED/base-compatible b17; merged_at2026-10-01T06:04:53Z merge9b291ebbc878ac68e3378aee1f44991401d5b211 reachable currentmain9b291ebbc878ac68e3378aee1f44991401d5b211; runtime blobs equal fresh main readback; deploy/schema/auth pending"
       },
       {
         "type": "MERGED_TO_MAIN",
         "subject": "issue#42 / pr#713 bounded formation settings slice",
-        "claimedState": "MERGED_TO_MAIN",
-        "observedState": "MERGED_TO_MAIN",
+        "claimedState": "merged",
+        "observedState": "merged",
         "verification": "VERIFIED",
         "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/713; exactf1c4984c0a2dfda85207c08086ba80d3ada797cf source36816705017 LOCAL36816705044 canonical36817947312; independentreview42 CLOSE_APPROVED/base-compatible b17; merged_at2026-10-01T06:04:53Z merge9b291ebbc878ac68e3378aee1f44991401d5b211 reachable currentmain9b291ebbc878ac68e3378aee1f44991401d5b211; runtime blobs equal fresh main readback; deploy/schema/auth pending; aftermerge MAIN_CI_AFTER_MERGE=success exact9b/push ci36822913910 attempt1 completed2026-10-01T06:58:04Z integration749/E2E23 actualpass, G3NOT_RUN"
       },
       {
         "type": "AUTO_VERCEL_DEPLOYED",
         "subject": "issue#42 / pr#713 source9b291eb",
-        "claimedState": "AUTO_VERCEL_DEPLOYED",
-        "observedState": "AUTO_VERCEL_DEPLOYED",
+        "claimedState": "ready",
+        "observedState": "ready",
         "verification": "VERIFIED",
         "evidenceRef": "vercel deployment dpl_F6yMBTCPNFFjL9EuqCD64zDGhT3D targetproduction githubCommitRefmain SHA9b291ebbc878ac68e3378aee1f44991401d5b211 READY2026-10-01T06:07:00.171Z; scout readonlyprovider capture; mainpushCI/schema/auth pending"
       },
@@ -5199,32 +5200,32 @@
       {
         "type": "SOURCE_VERIFIED",
         "subject": "issue#46 pr#719 bounded readonly SOURCE_PREPARE exact7a05bbcd3dee3d699a6932c9e18713313a019a61",
-        "claimedState": "SOURCE_VERIFIED",
-        "observedState": "SOURCE_VERIFIED",
+        "claimedState": "success",
+        "observedState": "success",
         "verification": "VERIFIED",
         "evidenceRef": "pr719 exact7a/source36829391701/LOCAL36829391620 native36+804/3/E2E23/3+cleanup/bootstrap36829391686success; independentreview42 CLOSE_APPROVED StandardsSpec0 FinalRiskNONE readonlyPrep only; /workspace/issue46-independent-final-review.md and issue46-native-final-summary.md; noRemoteG3/Prod/atomicJourneyaccepted"
       },
       {
         "type": "MERGED_TO_MAIN",
         "subject": "issue#46 pr#719 bounded readonly SOURCE_PREPARE",
-        "claimedState": "MERGED_TO_MAIN",
-        "observedState": "MERGED_TO_MAIN",
+        "claimedState": "merged",
+        "observedState": "merged",
         "verification": "VERIFIED",
         "evidenceRef": "pr719 mergedtrue/merged_at2026-10-01T07:37:57Z merge701845e4783f9eb87a19e3b3da52f49018134ea9; freshoriginmain701845e/reachable; d009SQLpinancestorretained; sixsourceblobsidentical7a/actualmainSQLreread. Source/local/bootstrap+distinctCLOSE_APPROVED verified; mainpushCI/remoteG3/Production/auth/atomicjourneypending. MAIN_CI_AFTER_MERGE=failure exact701845e/push ci36831447495 terminal2026-10-01T08:22:12Z; integration749PASS58SKIP/46whole36NOT_RUN/E2E1failed2flaky20PASS3SKIP welcome-card-upload30s; latest main263b ci36833333706 terminalSUCCESS09:02:47Z distinctnewmain749PASS58skip/E2E20PASS3skip3flaky retriesPASS, no authenticated acceptance."
       },
       {
         "type": "SOURCE_VERIFIED",
         "subject": "issue#42 pr#723 boundedseasonal snapshot acceptance anddisposable welcomeE2E exact0d178dc8f40748e0d29a4213c564dc6a03f4042c",
-        "claimedState": "SOURCE_VERIFIED",
-        "observedState": "SOURCE_VERIFIED",
+        "claimedState": "success",
+        "observedState": "success",
         "verification": "VERIFIED",
         "evidenceRef": "exact0d source36838286092SUCCESS/LOCAL36838286306 integration814PASS3skip seasonal10 E2E23PASS3skip welcome23.3/ownedcleanup+stackstop08:56:15; canonical36840741621 SUCCESS09:49:11/integration759PASS58skip seasonal10formation3/E2E21PASS3skip2flaky welcomefirst30stimeoutremoveDELETEwait/retry29.6PASS; fixtureassignmentrestore/Nextstop09:44:37.758/jobcleanup09:49:08.885. Distinctreview47 finalCLOSE_APPROVED StandardsSpec0 RiskNONE/issue42-seasonal-independent-review.md09:53:31. G3interval36policyNOTRUN/noProdacceptance/fullIssueclose. Cleanupsuccessfulretryforcedassertions executed noindependentzerojournal."
       },
       {
         "type": "MERGED_TO_MAIN",
         "subject": "issue#42 pr#723 boundedseasonal-order snapshot acceptance anddisposable welcomeE2E",
-        "claimedState": "MERGED_TO_MAIN",
-        "observedState": "MERGED_TO_MAIN",
+        "claimedState": "merged",
+        "observedState": "merged",
         "verification": "VERIFIED",
         "evidenceRef": "PR723live mergedtrue/merged_at2026-10-01T10:00:58Z mergea30acac04aad838d4b04da9c5464b5b6f33e06b6; freshfetchmaina30/reachable andboth sourcefiles rereadBYTE_IDENTICAL0d. Current sourceLOCALcanonical+distinctreview47FinalCLOSE_APPROVED StandardsSpec0 RiskNONE verified withflakyfirstattempt/welcome29.6retry+cleanupjournalUNKNOWNpreserved. MainpushCI/AUTOdeploy/ProductionSchema/authpending; #42wholeOPEN; necessaryPBdelta/Issuecloseoutpendinguntilactualmain. Sourceacceptance only no transactionshipped."
       },
@@ -5287,8 +5288,8 @@
       {
         "type": "MERGED_TO_MAIN",
         "subject": "issue#748 issue#785 pr#788",
-        "claimedState": "MERGED_TO_MAIN",
-        "observedState": "MERGED_TO_MAIN",
+        "claimedState": "merged",
+        "observedState": "merged",
         "verification": "VERIFIED",
         "evidenceRef": "PR #788 merged_at 2026-10-05T23:29:43Z merge_commit 43e4f079f94020d10af30bd66363bd8302e4a7fc main reachable; src/lib/trip-field-limits.ts reread"
       },
@@ -5311,8 +5312,8 @@
       {
         "type": "MERGED_TO_MAIN",
         "subject": "issue#781 pr#790",
-        "claimedState": "MERGED_TO_MAIN",
-        "observedState": "MERGED_TO_MAIN",
+        "claimedState": "merged",
+        "observedState": "merged",
         "verification": "VERIFIED",
         "evidenceRef": "PR #790 merged_at 2026-10-06T01:17:50Z merge_commit e951f4a4d3b8b575ae17bd7ac2f3e6a47ce33461 (tree === 5d1cda04) main reachable; scripts/agents/production-db-release-plan.mjs reread; current main head at verification e951f4a4d3b8b575ae17bd7ac2f3e6a47ce33461 (identical to merge commit; git fetch origin main + merge-base --is-ancestor at 2026-10-06T04:45:41Z)"
       }
