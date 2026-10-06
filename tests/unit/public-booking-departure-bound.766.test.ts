@@ -1,5 +1,5 @@
 /**
- * #766 項目 2：預約頁／申請頁團次查詢必須有上限（.range 分頁＋掃描上限），且候選集合與無上限讀取一致。
+ * #766 項目 2：預約頁／申請頁團次查詢必須有上限（單一 .range(0,599) 查詢，無跨頁漂移），且候選集合與無上限讀取一致。
  * 項目 3：季節分頁查詢的 order('plan_id')、order('id') 與多 plan_id 截斷點。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -49,6 +49,7 @@ vi.mock('@/server/supabase', () => ({
 
 import { loadPublicBookingPlan } from '@/server/public-tour-booking';
 import { loadPublicRequestPlan } from '@/server/public-tour-request';
+import { tenantNowParts } from '@/lib/public-time-zone';
 import { MAX_BOOKING_CANDIDATE_DEPARTURES } from '@/lib/public-departure-candidates';
 
 const open = (n: number): Dep[] => Array.from({ length: n }, () => ({ capacity: 5, seats_booked: 0 }));
@@ -62,16 +63,16 @@ const loaders = [
 describe.each(loaders)('#766 %s 團次查詢上限', (_name, mode, load) => {
   beforeEach(() => { st.mode = mode; st.deps = []; st.depCalls = []; st.depError = false; });
 
-  it('每次查詢都帶 .range，首頁範圍為 [0,119]，並保留三段排序', async () => {
+  it('只發一次查詢，帶 .range(0,599)，並保留三段排序', async () => {
     st.deps = open(3);
     const plan = await load();
     expect(plan!.departures).toHaveLength(3);
     expect(st.depCalls).toHaveLength(1);
-    expect(st.depCalls[0].range).toEqual([0, 119]);
+    expect(st.depCalls[0].range).toEqual([0, 599]);
     expect(st.depCalls[0].orders).toEqual(['departs_on', 'start_time', 'id']);
   });
 
-  it('候選湊滿 12 個就停止，不再讀下一頁', async () => {
+  it('候選湊滿 12 個就停止，仍只有一次查詢', async () => {
     st.deps = open(500);
     const plan = await load();
     expect(plan!.departures).toHaveLength(MAX_BOOKING_CANDIDATE_DEPARTURES);
@@ -79,24 +80,34 @@ describe.each(loaders)('#766 %s 團次查詢上限', (_name, mode, load) => {
     expect(st.depCalls).toHaveLength(1);
   });
 
-  it('前面大量客滿團次：跨頁讀取，仍挑出同一批候選（客滿略過但計入掃描）', async () => {
+  it('前面大量客滿團次：單一查詢內略過，仍挑出同一批候選', async () => {
     st.deps = [...full(130), ...open(20)];
     const plan = await load();
     expect(plan!.departures.map((d) => d.id)).toEqual(Array.from({ length: 12 }, (_, i) => `d-${130 + i}`));
-    expect(st.depCalls.map((c) => c.range)).toEqual([[0, 119], [120, 239]]);
+    expect(st.depCalls.map((c) => c.range)).toEqual([[0, 599]]);
   });
 
-  it('掃描上限 600 列：全是客滿團次時最多 5 頁、不會無限讀', async () => {
-    st.deps = full(2000);
+  it('已開始團次略過、不計入候選', async () => {
+    st.deps = [
+      { capacity: 5, seats_booked: 0, departs_on: tenantNowParts('Asia/Taipei').today, start_time: '00:00' },
+      ...open(2),
+    ];
+    const plan = await load();
+    expect(plan!.departures.map((d) => d.id)).toEqual(['d-1', 'd-2']);
+    expect(st.depCalls).toHaveLength(1);
+  });
+
+  it('掃描上限 600 列：600 列全客滿 → 無候選；第 601 列的候選不會被回傳，也不發第二次查詢', async () => {
+    st.deps = [...full(600), ...open(5)];
     const plan = await load();
     expect(plan!.departures).toEqual([]);
-    expect(st.depCalls.map((c) => c.range)).toEqual([[0, 119], [120, 239], [240, 359], [360, 479], [480, 599]]);
+    expect(st.depCalls.map((c) => c.range)).toEqual([[0, 599]]);
   });
 
-  it('不滿頁即視為讀完，不多發查詢', async () => {
-    st.deps = [...full(5), ...open(2)];
+  it('掃描上限內最後一列（第 600 列）的候選仍會被選出', async () => {
+    st.deps = [...full(599), ...open(5)];
     const plan = await load();
-    expect(plan!.departures).toHaveLength(2);
+    expect(plan!.departures.map((d) => d.id)).toEqual(['d-599']);
     expect(st.depCalls).toHaveLength(1);
   });
 
