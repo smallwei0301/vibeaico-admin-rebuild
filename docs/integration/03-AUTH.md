@@ -42,7 +42,7 @@
 - 有效 10 分鐘；同一 email + purpose 60 秒內不可重寄（查最近一筆 `created_at`）。
 - 驗證成功即寫 `consumed_at`，一碼一次。
 - 為防 email 枚舉：email 已存在時 `send-verification-code(REGISTER)` 與
-  不存在時 `forgot-password` **都回成功**，只是不寄信（或寄「此信箱已註冊」提醒信）。
+  不存在時 `forgot-password` **都回成功**，只是不寄信、也不寄任何提醒信（帳號狀態近 60 秒內改變者除外，見殘餘風險 (f)）。
 - **寄信失敗契約（#754／#758）**：該寄信卻發生 provider／設定層級失敗時（無 API key、provider 401／403、5xx、429、網路錯誤等），
   `send-verification-code` 與 `forgot-password` 回 **503 `MAIL_001`**，訊息固定為
   「驗證信暫時無法寄出，請稍後再試或聯絡我們」，剛插入的驗證碼即刪除（不留 60 秒冷卻），
@@ -52,7 +52,7 @@
   對「不存在（REGISTER）／已存在（RESET_PASSWORD）而真的寄出過信」的位址，60 秒內第二次請求回 **429**（不吞）；
   對「不寄信分支」的位址（REGISTER 已存在、RESET_PASSWORD 不存在）從無碼可查，帳號狀態未在近 60 秒內改變時回 200 `{sent:true}`（狀態改變的情況見殘餘風險 (f)）。
   只有 `forgot-password` 會吞掉 429，因此不受此差異影響。此差異未消除，需 Owner 決定冷卻是否改為對稱（#764 剩餘範圍）。
-  **殘餘風險**：(a) 持續故障時，parity 視窗到期時間為各次 config／service 失敗時設定的 max(既有到期, 本次失敗時間＋TTL)，取較晚到期者、不縮短（例如 config 10 分鐘後接 service 60 秒失敗，到期仍由較早的 config 決定）；持續故障時通常即自最後一次失敗起算，`service` 60 秒、`config` 10 分鐘到期（無 grace period）；
+  **殘餘風險**：(a) 持續故障時，parity 視窗到期時間為各次 config／service 失敗時設定的 max(既有到期, 本次失敗時間＋TTL)，取較晚到期者、不縮短（例如 config 10 分鐘後接 service 60 秒失敗，到期仍由較早的 config 決定；此疊加僅限視窗開啟前已通過檢查的並行在途請求，見 (c)）；持續故障時通常即自最後一次失敗起算，`service` 60 秒、`config` 10 分鐘到期（無 grace period）；
   到期後到下一次失敗前，不寄信分支（REGISTER 已註冊／RESET_PASSWORD 未註冊）的探測回 200、寄信分支才會失敗回 503，每次到期都會重新暴露，不是只暴露一次；
   (b) 視窗存於各 serverless instance 的記憶體，不跨 instance 共享，僅為 best-effort；
   (c) check-then-set 競態：視窗開啟當下已通過檢查的並行請求照常完成；

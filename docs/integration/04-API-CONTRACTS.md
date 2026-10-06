@@ -87,7 +87,7 @@ export const POST = handle(async (_req, { params }) => {
 
 | 端點 | Body（zod） | data 回傳 |
 |---|---|---|
-| POST `/api/auth/send-verification-code` | `{email, purpose:'REGISTER'\|'RESET_PASSWORD'}` | `{sent:true}`；寄信失敗（或處於 config／service 失敗 parity 視窗內）回 503 `MAIL_001`「驗證信暫時無法寄出，請稍後再試或聯絡我們」；同一 email + purpose 60 秒內對「真的寄過信」的位址再次請求回 429（不吞，不論 REGISTER／RESET_PASSWORD，為已知既有差異，不得宣稱兩種 email 回應完全相同），詳見 `03-AUTH.md` §2 |
+| POST `/api/auth/send-verification-code` | `{email, purpose:'REGISTER'\|'RESET_PASSWORD'}` | `{sent:true}`；寄信失敗（或處於 config／service 失敗 parity 視窗內）回 503 `MAIL_001`「驗證信暫時無法寄出，請稍後再試或聯絡我們」；同一 email + purpose 60 秒內對「真的寄過信」的位址再次請求回 429（不吞，不論 REGISTER／RESET_PASSWORD，為已知既有差異；帳號狀態近 60 秒內改變者見 `03-AUTH.md` (f)，不得宣稱兩種 email 回應完全相同），詳見 `03-AUTH.md` §2 |
 | POST `/api/auth/tenant/register` | `{email, code, password, tenantName, shopCode}` | `{registered:true}` |
 | POST `/api/auth/login` | `{email, password}` | `{loggedIn:true}` |
 | POST `/api/auth/logout` | – | `{loggedOut:true}` |
