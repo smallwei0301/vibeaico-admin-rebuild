@@ -36,27 +36,86 @@ export type EmailSendResult =
   | 'SKIPPED_NO_KEY' // RESEND_API_KEY 未設定 → 完全沒送出
   | 'FAILED';        // Resend 回錯（網路/憑證/收件人格式…）
 
-async function send(to: string, subject: string, html: string): Promise<EmailSendResult> {
-  if (!process.env.RESEND_API_KEY) {           // 未設定時不擋主流程，只留 log
-    console.warn('[email] RESEND_API_KEY 未設定，略過寄信：', subject, '→', to);
-    return 'SKIPPED_NO_KEY';
-  }
-  const { error } = await resend().emails.send({ from: FROM(), to, subject, html });
-  if (error) {
-    console.error('[email] 寄送失敗', subject, to, error);  // 寄信失敗不讓 API 失敗
-    return 'FAILED';
-  }
-  return 'SENT';
+/**
+ * 詳細寄送結果 —— issue #754。`configFailure` 區分「provider 設定類失敗」
+ * （無 key、401/403、金鑰受限、寄件網域未驗證）與暫時性失敗（網路、5xx、429…）：
+ * 前者重試也不會好，需要 Owner 介入，呼叫端據此決定是否進入「服務異常」狀態。
+ */
+export interface EmailSendDetail {
+  result: EmailSendResult;
+  configFailure: boolean;
+  /**
+   * 失敗種類（#763）。`config`：設定類（需 Owner 介入），含 401／403、`from` 欄位錯誤，
+   * 以及所有「無法證明是收件人造成」的 4xx（fail-closed：請求層級問題重試不會好）；
+   * `service`：可證明為服務層級（429、5xx、網路／逾時、SDK 無 statusCode）；
+   * `recipient`：僅限可明確證明是 `to` 收件人被拒的 4xx（statusCode 4xx 且 message 指涉 `to` 欄位），
+   * 只與該收件人有關，不得被當成全站狀態（否則可被攻擊者用來開啟 parity 視窗做枚舉）。
+   * SENT 時為 null。
+   */
+  failureKind: EmailFailureKind | null;
+}
+export type EmailFailureKind = 'config' | 'service' | 'recipient';
+
+const CONFIG_ERROR_NAMES = new Set([
+  'missing_api_key', 'invalid_api_key', 'restricted_api_key', 'invalid_from_address',
+]);
+
+/** message 明確指涉 `to` 欄位（如 "Invalid `to` field."）；不得命中 "Invalid `from` field"。 */
+const RECIPIENT_FIELD_PATTERN = /`to`|\binvalid\s+to\s+(?:field|address)\b/i;
+/** message 指涉 `from` 欄位（MAIL_FROM 格式錯誤，Resend 回 422 validation_error）。 */
+const FROM_FIELD_PATTERN = /`from`|\binvalid\s+from\b/i;
+
+function isConfigFailure(error: { name?: string; statusCode?: number | null; message?: string }): boolean {
+  if (error.statusCode === 401 || error.statusCode === 403) return true;
+  if (error.name && CONFIG_ERROR_NAMES.has(error.name)) return true;
+  const message = error.message ?? '';
+  if (FROM_FIELD_PATTERN.test(message)) return true;
+  return /domain is not verified|api key is invalid/i.test(message);
 }
 
+function classifyFailure(error: { name?: string; statusCode?: number | null; message?: string }): EmailFailureKind {
+  if (isConfigFailure(error)) return 'config';
+  const status = error.statusCode;
+  // 無 statusCode：SDK 網路／連線／逾時錯誤；429 與 5xx：服務層級。
+  if (typeof status !== 'number' || status === 429 || status >= 500) return 'service';
+  // 4xx：只有「可證明是 to 收件人被拒」才算 recipient；其餘（MAIL_FROM 的 422、400、404、409…）
+  // 都是請求層級問題，重試不會好 → fail-closed 歸 config（503 MAIL_001 並開視窗），不可把全站停擺藏成 200。
+  if (RECIPIENT_FIELD_PATTERN.test(error.message ?? '')) return 'recipient';
+  return 'config';
+}
+
+async function sendDetailed(to: string, subject: string, html: string): Promise<EmailSendDetail> {
+  if (!process.env.RESEND_API_KEY) {           // 未設定時不擋主流程，只留 log
+    console.warn('[email] RESEND_API_KEY 未設定，略過寄信：', subject, '→', to);
+    return { result: 'SKIPPED_NO_KEY', configFailure: true, failureKind: 'config' };
+  }
+  try {
+    const { error } = await resend().emails.send({ from: FROM(), to, subject, html });
+    if (error) {
+      console.error('[email] 寄送失敗', subject, to, error);  // 細節只進 server log
+      const failureKind = classifyFailure(error);
+      return { result: 'FAILED', configFailure: failureKind === 'config', failureKind };
+    }
+    return { result: 'SENT', configFailure: false, failureKind: null };
+  } catch (e) {
+    console.error('[email] 寄送丟出例外', subject, to, e);
+    return { result: 'FAILED', configFailure: false, failureKind: 'service' };
+  }
+}
+
+async function send(to: string, subject: string, html: string): Promise<EmailSendResult> {
+  return (await sendDetailed(to, subject, html)).result;
+}
+
+/** 回傳詳細結果；呼叫端（dispatchVerificationCode）據此決定是否回 503。 */
 export async function sendVerificationCodeEmail(
   to: string, code: string, purpose: 'REGISTER' | 'RESET_PASSWORD',
-) {
+): Promise<EmailSendDetail> {
   const title = purpose === 'REGISTER' ? '註冊驗證碼' : '密碼重設驗證碼';
   const resetLink = purpose === 'RESET_PASSWORD'
     ? `${APP_URL}/tenant/reset-password?token=${code}&email=${encodeURIComponent(to)}`
     : undefined;
-  await send(to, `【VibeAI】${title}`, verificationHtml(title, code, resetLink));
+  return sendDetailed(to, `【VibeAI】${title}`, verificationHtml(title, code, resetLink));
 }
 
 /** 新預約 / 取消通知信（05 §3：`notifyNewBooking`/`notifyStaffBooking`/`notifyBookingCancel` 開關）。 */

@@ -115,3 +115,53 @@ describe('stepStatus / allVerifiableChecksPassed — INFO 永不算失敗', () =
     expect(allVerifiableChecksPassed(null)).toBe(false);
   });
 });
+
+
+describe('incomplete verification fails closed', () => {
+  it.each(['CREDENTIALS', 'TOKEN', 'ID_SECRET_PAIR', 'BOT_MODE', 'WEBHOOK', 'WEBHOOK_TEST'])('missing %s cannot complete', (key) => {
+    const partial = ALL_PASS.filter((c) => c.key !== key);
+    expect(allVerifiableChecksPassed(partial)).toBe(false);
+    const expected = ['CREDENTIALS', 'TOKEN', 'ID_SECRET_PAIR'].includes(key) ? 'CONNECTION' : key === 'WEBHOOK_TEST' ? 'WEBHOOK_TEST' : 'BOT_MODE_WEBHOOK';
+    expect(deriveStartingStep({ channelId: true, channelSecret: true, channelAccessToken: true }, partial)).toBe(expected);
+    expect(canAdvanceFromStep(expected, partial)).toBe(false);
+  });
+  it('one PASS, unknown keys and duplicate contradictions cannot imply success', () => {
+    expect(stepStatus('CONNECTION', [check('TOKEN', 'PASS')])).toBe('NOT_CHECKED');
+    expect(allVerifiableChecksPassed([check('OTHER', 'PASS')])).toBe(false);
+    expect(allVerifiableChecksPassed([...ALL_PASS, check('TOKEN', 'FAIL')])).toBe(false);
+  });
+});
+
+describe('latest request identity', () => {
+  it('late old success/failure cannot overwrite a newer result or end its pending state', async () => {
+    const { createWizardRequestGate } = await import('@/lib/line-setup-wizard');
+    const gate = createWizardRequestGate();
+    let finishOld!: (value: VerifyCheck[]) => void;
+    const old = new Promise<VerifyCheck[]>((resolve) => { finishOld = resolve; });
+    let visible: VerifyCheck[] | null = ALL_PASS;
+    let pending = false;
+    const run = async (promise: Promise<VerifyCheck[]>) => {
+      const id = gate.begin(); visible = null; pending = true;
+      try { const result = await promise; if (gate.isCurrent(id)) visible = result; }
+      catch { if (gate.isCurrent(id)) visible = null; }
+      finally { if (gate.isCurrent(id)) pending = false; }
+    };
+    const first = run(old);
+    let finishNew!: (value: VerifyCheck[]) => void;
+    const second = run(new Promise((resolve) => { finishNew = resolve; }));
+    finishOld(ALL_PASS); await first;
+    expect(visible).toBeNull(); expect(pending).toBe(true);
+    finishNew([check('TOKEN', 'FAIL')]); await second;
+    expect(visible).toEqual([check('TOKEN', 'FAIL')]); expect(pending).toBe(false);
+    await run(Promise.reject(new Error('timeout')));
+    expect(visible).toBeNull();
+    await run(Promise.resolve(ALL_PASS));
+    expect(allVerifiableChecksPassed(visible)).toBe(true);
+  });
+  it('reload/unmount invalidates previous responses; new requests still work', async () => {
+    const { createWizardRequestGate } = await import('@/lib/line-setup-wizard');
+    const gate = createWizardRequestGate(); const old = gate.begin();
+    gate.invalidate(); expect(gate.isCurrent(old)).toBe(false);
+    const fresh = gate.begin(); expect(gate.isCurrent(fresh)).toBe(true);
+  });
+});

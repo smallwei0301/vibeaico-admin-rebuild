@@ -19,6 +19,8 @@ export const lineSetupWizardPage = {
 
   messages: {
     loadFailed: '讀取設定失敗：',
+    retryLoad: '重新讀取設定',
+    verifyRetryHint: '目前尚未確認連線，請重試檢查；已儲存的 LINE 設定會保留。',
     unknownError: '未知錯誤',
     saveFailedPrefix: '儲存失敗：',
     verifyFailedPrefix: '檢查失敗：',
@@ -196,6 +198,8 @@ export const lineSetupWizardPage = {
   /* ------------------------------------------------------- 步驟七：完成 */
   done: {
     title: '設定完成！',
+    unverifiedTitle: '連線尚未確認',
+    unverifiedBody: '六項連線檢查尚未全部通過，請返回檢查並重試。',
     intro: '恭喜，你的 LINE 官方帳號已經跟系統連上了。以下是目前的狀態總結：',
     workingTitle: '系統已經確認可以運作的部分',
     manualTitle: '需要你自己確認、系統無法檢查的部分',

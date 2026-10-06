@@ -66,18 +66,76 @@ export function checkRateLimit(
 }
 
 /**
- * 從請求標頭取用戶端 IP。Vercel／大多數反向代理會設定 `x-forwarded-for`
- * （可能是逗號分隔的多層代理鏈，第一個是原始客戶端）；本機開發或代理沒有
- * 設定時退回固定字串——這種情況下所有請求共用同一個節流額度，是刻意的保守
- * 退路（寧可誤傷同一台機器上的多個請求，也不要因為抓不到 IP 就完全不節流）。
+ * 不建立也不修改 bucket 的檢查：回傳「若現在呼叫 checkRateLimit 是否會被允許」。
+ * 沒有 bucket 或視窗已過期 → true；否則 count < max。
+ * 用來在真正計數前先擋掉會被拒絕的請求，避免被拒絕的請求仍建立新 bucket（記憶體無上限成長）。
+ */
+export function peekRateLimit(
+  key: string,
+  { max, windowMs }: { max: number; windowMs: number },
+): boolean {
+  const existing = buckets.get(key);
+  if (!existing || Date.now() - existing.windowStartMs >= windowMs) return true;
+  return existing.count < max;
+}
+
+/** 僅供測試：目前 bucket 數量。 */
+export function __rateLimitBucketCountForTest(): number {
+  return buckets.size;
+}
+
+/** 取逗號分隔清單的「最右邊」非空片段（最近一層 proxy 附加的值；僅當該 proxy 就是平台時才可信）。 */
+function rightmostSegment(value: string | null): string | null {
+  if (!value) return null;
+  const parts = value.split(',');
+  for (let i = parts.length - 1; i >= 0; i -= 1) {
+    const seg = parts[i]?.trim();
+    if (seg) return seg;
+  }
+  return null;
+}
+
+/**
+ * 從請求標頭取用戶端 IP，**只採信平台附加的值**（issue #750）。
+ *
+ * 舊版取 `x-forwarded-for` 的第一段，但那一段是客戶端自己可以偽造的：
+ * 攻擊者每次送不同的假 `X-Forwarded-For: 1.2.3.N` 就能換一個 bucket key，
+ * 繞過本檔所有 per-IP 節流。
+ *
+ * Vercel 官方文件（docs/headers/request-headers）：
+ * - `x-forwarded-for`：「we currently overwrite the X-Forwarded-For header and
+ *   do not forward external IPs. This restriction is in place to prevent IP
+ *   spoofing.」→ 在 Vercel 上這個值由平台覆寫，不含客戶端送來的內容。
+ * - `x-vercel-forwarded-for`：「identical to the x-forwarded-for header. However,
+ *   x-forwarded-for could be overwritten if you're using a proxy on top of Vercel.」
+ * - `x-real-ip`：「identical to the x-forwarded-for header.」
+ *
+ * 取值規則：
+ * 1. 優先順序 `x-vercel-forwarded-for` → `x-real-ip` → `x-forwarded-for`。
+ *    （在 Vercel 上三者同值；`x-vercel-forwarded-for` 不會被前置 proxy 改寫。）
+ * 2. 任何一個標頭若是逗號清單，一律取「最右邊」非空片段——那是離我們最近的
+ *    那一層 proxy 附加的值（只有該 proxy 是平台時才可信）；最左邊的片段是
+ *    客戶端可控的，絕不採用。
+ * 3. 不在 Vercel 上（本機開發／測試）沒有可信平台，也沿用同一套確定性規則，
+ *    不會讓客戶端可控的最左片段決定 key。
+ * 4. 完全沒有可用標頭 → 退回固定字串 `'unknown-ip'`：所有請求共用同一個額度，
+ *    是刻意的保守退路（寧可誤傷，也不因為抓不到 IP 就完全不節流）。
+ *
+ * 已知限制：若部署在「非 Vercel、且前面沒有會覆寫 XFF 的可信 proxy」的環境，
+ * 單一來源仍可自行送出任意 `x-real-ip`／`x-forwarded-for`（rightmost 規則只能
+ * 擋掉「附加在前面」的偽造，擋不住完全由客戶端決定的單一值）。本專案正式環境
+ * 為 Vercel，故此處不另做 trusted-proxy 設定。
+ * 另：若部署在非 Vercel、且前面有兩層（含）以上都會附加 XFF 的可信 proxy
+ * （例如 CDN → nginx），nginx 附加的是其直接上游（CDN 節點）的位址，最右片段
+ * 因此是前一跳的 IP 而非真實客戶端，客戶端會被依 CDN 節點分桶而非個別分桶，
+ * 造成過度節流；這類部署需要明確的 trusted-proxy 跳數設定，
+ * 本專案（正式環境為 Vercel）並未使用。
  */
 export function clientIpFromHeaders(headers: Headers): string {
-  const forwarded = headers.get('x-forwarded-for');
-  if (forwarded) {
-    const first = forwarded.split(',')[0]?.trim();
-    if (first) return first;
-  }
-  const real = headers.get('x-real-ip');
-  if (real) return real.trim();
-  return 'unknown-ip';
+  return (
+    rightmostSegment(headers.get('x-vercel-forwarded-for')) ??
+    rightmostSegment(headers.get('x-real-ip')) ??
+    rightmostSegment(headers.get('x-forwarded-for')) ??
+    'unknown-ip'
+  );
 }

@@ -1,0 +1,252 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-09-30-issue-704-r01",
+  "status": "COMPLETE",
+  "startedAt": "2026-09-30T13:03:33Z",
+  "endedAt": "2026-09-30T15:09:25Z",
+  "sources": [
+    {
+      "ref": "origin/main"
+    },
+    {
+      "ref": "issue/704"
+    },
+    {
+      "ref": "workflow/36713935051"
+    }
+  ],
+  "main": {
+    "startSha": "e51a50dd0ccc4dd9005839e051e5cad7542422fd",
+    "endSha": "7be1373bb49209655a275c42f838a1781168af85"
+  },
+  "inventory": {
+    "openIssuesStart": null,
+    "openIssuesEnd": 52,
+    "openPrsStart": null,
+    "openPrsEnd": 3,
+    "mainTerraPeak": 1,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 1,
+    "sharedTestPeak": 0,
+    "closureSweeps": 0,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [
+      {
+        "id": "terra-20260930-issue704-month-oracle-build",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Accepted unique Terra builder repaired the Taipei month oracle on a clean exact-main worktree; no DB, shared TEST, or Production action.",
+        "count": 1
+      },
+      {
+        "id": "sol-20260930-issue704-month-oracle-audit",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Independent Sol audit PASS on exact Terra head c06185aae1f35109a295bca9997d1fb43cc3063e; canonical integration remains CI-only.",
+        "count": 1
+      },
+      {
+        "id": "sol-issue704-ledger-report-playbook-delta-audits",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Observed independent exact-head reviews c3100a2, d6945fc and327bc65; token/identity telemetry unavailable. Canonical reviews5366678244/5366722716/5366763844.",
+        "count": 3
+      },
+      {
+        "id": "luna-issue704-release-tail-scout",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Read-only repo-local release-tail scout for17/37/680; no eligible second construction slice, no DB/write.",
+        "count": 1
+      },
+      {
+        "id": "terra-issue704-stable-month-followup",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Existing unique builder repaired finding4145229088; local2e5750c, remote f09edb1, merged7be1373b. 3pure tests,typecheck passed.",
+        "count": 1
+      },
+      {
+        "id": "sol-issue704-stable-month-audit",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Independent exact-diff/remote-equivalence PASS5367730324 onf09edb1; no redundant tests.",
+        "count": 1
+      },
+      {
+        "id": "sol-issue704-close-approved",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "CLOSE_APPROVED bounded test/main-health repair after main7be1373b CI36730657034: integration746/22,E2E23. No Production acceptance.",
+        "count": 1
+      }
+    ],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 1,
+    "issuesClosed": 0,
+    "auditReady": 0,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 0,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 8,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 1,
+    "lunaAccepted": 1,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 6,
+    "solIssues": 1
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
+  "notes": [
+    "2026-09-30: main CI 36713935051 exposed a month-end test oracle error; API behavior was not changed.",
+    "Raw model identity and token telemetry are unavailable; requested roles are recorded without inferring actual models.",
+    "PR BUILD_ENTER is captured; CI and TEST lifecycle events are not yet observed and remain absent from this open ledger.",
+    "Late same-task capture from existing GitHub evidence: source CI36719909189,36720083731,36720245879,36720441846,36721055178,36730062328; main CI36723205284 cancelled after integration744/22,36730657034 success integration746/22 andE2E23. Every observed attempt=1; no manual rerun.",
+    "Early task/CI checkpoint publication was incomplete; existing handoffs5912470291/5913463423/5913520485 remain evidence of this gap, not timely capture. Missing token/provider telemetry stays null/unknown. Do not treat this late reconciliation as a comparable #104 efficiency sample.",
+    "Repeated source pipelines followed ledger note/report/Playbook omissions and clock-boundary review findings. Next publication must bundle canonical report+byte check and complete month-stability counterexamples before one push; reuse independent delta review.",
+    "PR705 and706 are source/main-health test repairs. No Production schema readiness or authenticated Production acceptance is claimed; #17/#37/#680 release tails remain open.",
+    "CLOSEOUT_ACCEPTED_NOT_GRADED: Early dispatch and CI checkpoints were not durably captured at event time; late same-task reconciliation preserves the handoffs and cannot certify a comparable complete raw Run. RUN_COMPLETE scoring attestation is intentionally withheld; tokens and provider identity remain unavailable.（gaps: verified RUN_COMPLETE claim is required）"
+  ],
+  "deliveryTruthVersion": 4,
+  "closeout": {
+    "contractVersion": 1,
+    "ownerRole": "PRODUCT_MAIN_SESSION",
+    "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
+    "state": "CLOSED",
+    "closedAt": "2026-09-30T15:09:25Z",
+    "evidenceRef": "github:issue#704"
+  },
+  "wipLifecycle": {
+    "schemaVersion": 1,
+    "events": [
+      {
+        "id": "issue704-pr705-build-enter",
+        "at": "2026-09-30T13:11:52Z",
+        "kind": "BUILD_ENTER",
+        "pr": 705,
+        "issue": 704,
+        "head": "33ad0099b37123a87708d606f1f7f40e572c3967",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Draft PR #705 created for the unique bounded Terra repair after independent Sol audit; remote CI is the first permitted canonical integration execution."
+      }
+    ]
+  },
+  "completionTruth": {
+    "status": "VERIFIED",
+    "checkedAt": "2026-09-30T15:09:25Z",
+    "claims": [
+      {
+        "type": "SOURCE_VERIFIED",
+        "subject": "issue#704",
+        "claimedState": "verified",
+        "observedState": "verified",
+        "verification": "VERIFIED",
+        "evidenceRef": "github:issue#704"
+      },
+      {
+        "type": "MERGED_TO_MAIN",
+        "subject": "issue#704",
+        "claimedState": "merged",
+        "observedState": "merged",
+        "verification": "VERIFIED",
+        "evidenceRef": "github:issue#704"
+      },
+      {
+        "type": "OTHER",
+        "subject": "issue#704",
+        "claimedState": "integration746pass_e2e23pass",
+        "observedState": "integration746pass_e2e23pass",
+        "verification": "VERIFIED",
+        "evidenceRef": "github:workflow#36730657034"
+      }
+    ]
+  }
+}

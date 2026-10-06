@@ -3,18 +3,22 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { premiumExecutionState, selectFinalRiskReviewer, finalRiskReviewerErrors,
   FINAL_RISK_COST_POLICY_VERSION } from '../../scripts/agents/final-risk-cost-policy.mjs';
-import { changeDigestOf, evaluateAstra, evaluateGithubAstra, loadFallbackSourceEvidence, routing } from '../../scripts/agents/astra-review-policy.mjs';
+import { changeDigestOf, evaluateAstra, evaluateGithubAstra, loadFallbackSourceEvidence, routing as currentRouting } from '../../scripts/agents/astra-review-policy.mjs';
 import { buildFinalRiskPacket, decideFinalRiskRecovery, previousReviewFromCanonicalReviews } from '../../scripts/agents/final-risk-workflow.mjs';
 import { evaluateReleasePreflight, releaseEvidenceDigestOf } from '../../scripts/agents/production-db-release-preflight.mjs';
 import { buildProductionDbFinalRiskEvidence, buildProductionDbFinalRiskEvidenceFromGithub } from '../../scripts/agents/production-db-final-risk-evidence.mjs';
 
 // Fixtures are not claims that a model was run or a real release was admitted.
+// Original #552 model/fallback fixtures replay their pre-role-proof policy explicitly.
+// Live admission uses currentRouting; new regressions below explicitly require role evidence.
+const routing = { ...currentRouting, openaiBuilderDecision: { independentReviewerRequired: false } };
 const ref = 'https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/552';
 const failureRef = ref + '#issuecomment-1';
 const replacementRef = 'https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/703#pullrequestreview-1';
 const start = '2026-09-17T01:00:00Z';
 const dispatch = { requestedAt: start, executionRef: 'fixture-execution-552' };
-const history = { historyVerified: true, historyEvidenceRef: ref, reviewLineage: 'vibeaico-admin-rebuild#552', modelSelectionAvailable: true };
+const history = { historyVerified: true, historyEvidenceRef: ref, reviewLineage: 'vibeaico-admin-rebuild#552', modelSelectionAvailable: true,
+  provider: 'OPENAI', availableModels: ['gpt-6-astra', 'gpt-6.1-sol'], runtimeCatalog: { provider: 'OPENAI', models: ['gpt-6-astra', 'gpt-6.1-sol'], captureStartedAt: start, observedAt: start, evidenceRef: ref, providerEvidenceRef: ref } };
 const audit = () => ({ reviewerTier: 'AUDIT', requestedModel: 'gpt-5.6-sol', actualModel: 'gpt-5.6-sol',
   identityEvidence: 'OPERATOR_ATTESTED', costPolicyVersion: FINAL_RISK_COST_POLICY_VERSION,
   downgradeReason: 'PREMIUM_REVIEW_COMPLETED', downgradeEvidenceRef: ref,
@@ -48,12 +52,74 @@ const sources = (review: Record<string, any> = { ...context, ...fallback() }) =>
 const evaluate = (reviewer = {}, extra = {}, trusted = true) => evaluateAstra({ body, changedFiles: ['src/server/payment/fixture.ts'],
   context: { ...context, fallbackSourceEvidence: sources({ ...context, ...reviewer, ...extra }) },
   reviews: [{ trusted, id: 552, state: 'COMMENTED', commit_id: context.headSha, submitted_at: start,
-    body: '```astra-review\n' + JSON.stringify({ ...context, ...reviewer, report: ref, findings: 'Synthetic findings reconciled', verdict: 'PASS', ...extra }) + '\n```' }] });
+    body: '```astra-review\n' + JSON.stringify({ ...context, ...reviewer, report: ref, findings: 'Synthetic findings reconciled', verdict: 'PASS', ...extra }) + '\n```' }] }, routing);
+
+describe('prospective independent role and provider admission regressions', () => {
+  const requiredPolicy = { ...routing, openaiBuilderDecision: { independentReviewerRequired: true } };
+  const role = (kind: string) => ({ role: kind, repository: context.repository, headSha: context.headSha,
+    changeDigest: context.changeDigest, actorId: `fixture-${kind}-actor`, sessionId: `fixture-${kind}-session`,
+    executionRef: kind === 'REVIEW' ? current().executionRef : 'fixture-builder-execution',
+    startedAt: start, completedAt: start, freshContext: kind === 'REVIEW', executionEvidence: 'OPERATOR_ATTESTED' });
+  const roleContext = () => ({ ...context, roleEvidence: { trusted: true,
+    builder: { ...role('BUILD'), sourceRef: ref + '#issuecomment-101' },
+    reviewer: { ...role('REVIEW'), sourceRef: ref + '#issuecomment-102' } } });
+  it('rejects same runtime actor/session and missing or payload-self-reported builder proof', () => {
+    const ctx = roleContext(); ctx.roleEvidence.reviewer.actorId = ctx.roleEvidence.builder.actorId;
+    assert.ok(finalRiskReviewerErrors(current(), requiredPolicy, ctx).length);
+    const sameSession = roleContext(); sameSession.roleEvidence.reviewer.sessionId = sameSession.roleEvidence.builder.sessionId;
+    assert.ok(finalRiskReviewerErrors(current(), requiredPolicy, sameSession).length);
+    assert.ok(finalRiskReviewerErrors({ ...current(), roleEvidence: roleContext().roleEvidence }, requiredPolicy, context).length);
+  });
+  it('accepts distinct same-Sol role actors and truthful unknown CURRENT_AGENT model', () => {
+    const ctx = roleContext();
+    assert.deepEqual(finalRiskReviewerErrors(current(), requiredPolicy, ctx), []);
+    assert.deepEqual(finalRiskReviewerErrors({ ...audit(), executionRef: ctx.roleEvidence.reviewer.executionRef,
+      requestedModel: 'gpt-6.1-sol', actualModel: 'gpt-6.1-sol' }, requiredPolicy, ctx), []);
+  });
+  it('rejects foreign or stale role evidence and non-fresh review context', () => {
+    for (const patch of [{ repository: 'other/repository' }, { headSha: 'd'.repeat(40) }, { changeDigest: 'e'.repeat(64) }, { freshContext: false }]) {
+      const ctx = roleContext(); Object.assign(ctx.roleEvidence.reviewer, patch);
+      assert.ok(finalRiskReviewerErrors(current(), requiredPolicy, ctx).length);
+    }
+  });
+  it('never reserves premium on missing provider/catalog or cross-provider catalog alone', () => {
+    for (const extra of [{}, { provider: 'ANTHROPIC' }, { provider: 'unknown', availableModels: ['gpt-6-astra'] }, { provider: 'ANTHROPIC', availableModels: ['gpt-6-astra'] }]) {
+      assert.notEqual(selectFinalRiskReviewer({ ...history, provider: undefined, availableModels: undefined, runtimeCatalog: undefined, ...extra }, requiredPolicy).action, 'RESERVE_ONE_PREMIUM_CONSULTATION');
+    }
+  });
+  it('uses only the explicitly observed provider-local premium model', () => {
+    for (const [provider, model] of [['OPENAI', 'gpt-6-astra'], ['ANTHROPIC', 'claude-fable-5-1']]) {
+      const result = selectFinalRiskReviewer({ ...history, provider, availableModels: [model],
+        runtimeCatalog: { provider, models: [model], captureStartedAt: start, observedAt: start, evidenceRef: ref, providerEvidenceRef: ref } }, requiredPolicy);
+      assert.equal(result.action, 'RESERVE_ONE_PREMIUM_CONSULTATION'); assert.equal(result.nextModel, model);
+    }
+  });
+  it('keeps first-infra and 300-second audit fallback provider-local and never guesses missing catalogs', () => {
+    const model = 'claude-opus-5-5';
+    const anthro = { ...history, provider: 'ANTHROPIC', availableModels: [model],
+      runtimeCatalog: { provider: 'ANTHROPIC', models: [model], captureStartedAt: start, observedAt: start, evidenceRef: ref, providerEvidenceRef: ref } };
+    assert.equal(selectFinalRiskReviewer({ ...anthro, failureClass: 'ENVIRONMENT' }, requiredPolicy).nextModel, model);
+    assert.equal(selectFinalRiskReviewer({ ...anthro, dispatch, now: '2026-09-17T01:05:00Z' }, requiredPolicy).nextModel, model);
+    for (const provider of ['ANTHROPIC', 'unknown']) {
+      assert.equal(selectFinalRiskReviewer({ ...history, provider, runtimeCatalog: undefined, failureClass: 'ENVIRONMENT' }, requiredPolicy).nextModel, null);
+    }
+    assert.equal(selectFinalRiskReviewer({ modelSelectionAvailable: false }, requiredPolicy).action, 'REVIEW_WITH_CURRENT_AGENT');
+  });
+});
+
+describe('compatible identity rejection summary retains tier diagnostics', () => {
+  it('reports both the established summary and current AUDIT rejection details', () => {
+    const result = evaluate({ ...audit(), actualModel: 'unknown' });
+    assert.equal(result.status, 'ASTRA_PENDING');
+    assert.ok(result.errors.includes('Astra model identity is unverified'));
+    assert.ok(result.errors.some(error => error !== 'Astra model identity is unverified' && /audit|AUDIT|model/i.test(error)));
+  });
+});
 
 function githubFixture(options: Record<string, any> = {}) {
   const files = [{ filename: 'src/server/payment/fixture.ts', status: 'modified', sha: '1'.repeat(40) }];
   const payload = { ...context, ...fallback(), changeDigest: changeDigestOf(files), verdict: 'PASS', report: ref,
-    findings: 'Fixture replacement findings reconciled', ...options.payload };
+    findings: 'Fixture replacement findings reconciled', reviewerExecutionReceipt: ref + '#issuecomment-102', ...options.payload };
   const user = { login: 'fixture-maintainer', id: 123, type: 'User' };
   const review = { id: 1, state: 'COMMENTED', body: reviewBody(payload), user,
     commit_id: context.headSha, submitted_at: start, html_url: replacementRef, ...options.review };
@@ -70,6 +136,17 @@ function githubFixture(options: Record<string, any> = {}) {
       } }, issues: { getComment: async (args: any) => {
         calls.push(args);
         if (options.missingRecord) throw new Error('404');
+        if ([101, 102].includes(args.comment_id)) {
+          const kind = args.comment_id === 101 ? 'BUILD' : 'REVIEW';
+          const receipt = { role: kind, repository: context.repository, headSha: context.headSha,
+            changeDigest: payload.changeDigest, actorId: `fixture-${kind}-actor`, sessionId: `fixture-${kind}-session`,
+            executionRef: kind === 'REVIEW' ? payload.executionRef : 'fixture-builder-execution',
+            startedAt: start, completedAt: start, freshContext: kind === 'REVIEW', executionEvidence: 'OPERATOR_ATTESTED',
+            ...options.rolePatch?.[kind] };
+          if (options.missingRole) throw new Error('404 role');
+          return { data: { id: args.comment_id, html_url: ref + '#issuecomment-' + args.comment_id, user,
+            updated_at: start, body: '```agent-role-execution\n' + JSON.stringify(receipt) + '\n```' } };
+        }
         return { data: { id: 1, html_url: failureRef, user, body: payload.failureDiagnosis, ...options.comment } };
       } }, repos: {
       getCommit: async (args: any) => {
@@ -83,7 +160,7 @@ function githubFixture(options: Record<string, any> = {}) {
       }, getCollaboratorPermissionLevel: async () => ({ data: { permission: options.permission ?? 'write' } }),
     } } };
   const current = { number: 703, changed_files: files.length, base: { sha: context.baseSha }, head: { sha: context.headSha },
-    body: body + `\nASTRA_TEST_BASELINE: ${context.testBaseline}\nASTRA_SCHEMA_BASELINE: ${context.schemaBaseline}`, created_at: start };
+    body: body + `\nBUILDER_EXECUTION_RECEIPT: ${ref}#issuecomment-101\nASTRA_TEST_BASELINE: ${context.testBaseline}\nASTRA_SCHEMA_BASELINE: ${context.schemaBaseline}`, created_at: start };
   return { github, current, calls, payload, reviews: [{ ...review, trusted: true }] };
 }
 
@@ -91,7 +168,7 @@ describe('Owner #552 startup timeout is exactly 300 seconds without execution pr
   it('carries diagnosed failure through normal prepare into a validator-complete reviewer contract', () => {
     const records = [{ filename: 'src/server/payment/fixture.ts', previous_filename: '', status: 'modified', sha: '1'.repeat(40) }];
     const deps = { preflightEvaluator: () => ({ valid: true, errors: [], metadata: {} }) };
-    const input = { body: body + '\nASTRA_TEST_BASELINE: fixture-tests-pass\nASTRA_SCHEMA_BASELINE: fixture-schema-unchanged',
+    const input = { ...history, body: body + '\nASTRA_TEST_BASELINE: fixture-tests-pass\nASTRA_SCHEMA_BASELINE: fixture-schema-unchanged',
       repository: context.repository, prNumber: 703, exactHead: context.headSha,
       changedFileRecords: records, changeDigest: changeDigestOf(records),
       sourceFrozen: true, sourceCiStatus: 'PASS', testEvidenceStatus: 'PASS', coreRegressionStatus: 'PASS', policyVersion: routing.version,
@@ -110,14 +187,24 @@ describe('Owner #552 startup timeout is exactly 300 seconds without execution pr
       priorFindingsReviewed: true, unresolvedFindingCount: 0,
       replacementReviewRef: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/703#pullrequestreview-1',
       playbookEvidenceRef: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/blob/main/docs/AGENT-PLAYBOOK.md#pb-031',
-      executionEvidence: 'OPERATOR_ATTESTED', requestedModel: 'not_requested', actualModel: 'unknown', identityEvidence: 'UNKNOWN',
+      executionEvidence: 'OPERATOR_ATTESTED', requestedModel: 'gpt-6.1-sol', actualModel: 'unknown', identityEvidence: 'UNKNOWN',
+      reviewerExecutionReceipt: ref + '#issuecomment-102',
     };
     for (const field of persistence.reviewerStructuredFields.filter((field: string) => !['findingDetails', 'supportFiles'].includes(field))) {
       expect(reviewerFacts).toHaveProperty(field);
     }
     const review = { repository: result.packet!.repository, changeDigest: result.packet!.changeDigest, ...persistence.copyExactly, ...reviewerFacts };
-    expect(finalRiskReviewerErrors(review, routing, sources({ ...context, ...review }))).toEqual([]);
-    expect(finalRiskReviewerErrors({ ...review, replacementReviewRef: '' }, routing, sources({ ...context, ...review }))).not.toEqual([]);
+    const role = (kind: string) => ({ role: kind, repository: review.repository, headSha: context.headSha,
+      changeDigest: review.changeDigest, actorId: `fixture-${kind}-actor`, sessionId: `fixture-${kind}-session`,
+      executionRef: kind === 'REVIEW' ? review.executionRef : 'fixture-builder-execution',
+      startedAt: start, completedAt: start, freshContext: kind === 'REVIEW', executionEvidence: 'OPERATOR_ATTESTED',
+      sourceRef: ref + (kind === 'REVIEW' ? '#issuecomment-102' : '#issuecomment-101') });
+    const currentContext = { ...context, changeDigest: review.changeDigest,
+      fallbackSourceEvidence: sources({ ...context, ...review }),
+      roleEvidence: { trusted: true, builder: role('BUILD'), reviewer: role('REVIEW') } };
+    expect(finalRiskReviewerErrors(review, currentRouting, currentContext)).toEqual([]);
+    expect(finalRiskReviewerErrors(review, currentRouting, { ...currentContext, roleEvidence: undefined })).not.toEqual([]);
+    expect(finalRiskReviewerErrors({ ...review, replacementReviewRef: '' }, routing, { fallbackSourceEvidence: sources({ ...context, ...review }) })).not.toEqual([]);
     expect(buildFinalRiskPacket({ ...input, failureDiagnosis: '' }, deps).nextAction).toBe('PARK_CURRENT_AND_CONTINUE_CLOSURE_TRIAGE');
   });
   it('waits before 300 seconds and downgrades at the boundary', () => {
@@ -148,7 +235,7 @@ describe('Owner #552 startup timeout is exactly 300 seconds without execution pr
 describe('Owner #552 single premium consultation and immediate downgrade', () => {
   it('requires durable empty history before reserving the first premium consultation', () => {
     assert.equal(selectFinalRiskReviewer(history, routing).action, 'RESERVE_ONE_PREMIUM_CONSULTATION');
-    assert.equal(selectFinalRiskReviewer({}, routing).nextModel, 'gpt-6.1-sol');
+    assert.equal(selectFinalRiskReviewer({}, routing).nextModel, null);
     assert.equal(selectFinalRiskReviewer({ ...history, historyVerified: false }, routing).reason, 'HISTORY_UNAVAILABLE');
   });
   it('does not reset the budget for source fixes, a new digest, or session changes', () => {
@@ -162,13 +249,14 @@ describe('Owner #552 single premium consultation and immediate downgrade', () =>
   });
   for (const failureClass of ['TIMEOUT', 'MODEL_DISPATCH', 'RATE_LIMIT', 'TOOLING', 'ENVIRONMENT']) {
     it(`downgrades the first ${failureClass}, never Fable to Astra`, () => {
-      const result = decideFinalRiskRecovery({ failureClass, sameClassAttempts: 1, currentModel: 'claude-fable-5-1' });
+      const result = decideFinalRiskRecovery({ ...history, failureClass, sameClassAttempts: 1, currentModel: 'claude-fable-5-1' });
       assert.equal(result.action, 'DOWNGRADE_REVIEWER_MODEL');
       assert.equal(result.nextModel, 'gpt-6.1-sol');
     });
   }
   it('uses Opus when Sol is unavailable, current agent only when selector is unavailable', () => {
-    assert.equal(selectFinalRiskReviewer({ premiumUnavailable: true, availableModels: ['claude-opus-5'] }, routing).nextModel, 'claude-opus-5');
+    assert.equal(selectFinalRiskReviewer({ ...history, provider: 'ANTHROPIC', premiumUnavailable: true, availableModels: ['claude-opus-5'],
+      runtimeCatalog: { provider: 'ANTHROPIC', models: ['claude-opus-5'], captureStartedAt: start, observedAt: start, evidenceRef: ref, providerEvidenceRef: ref } }, routing).nextModel, 'claude-opus-5');
     assert.equal(selectFinalRiskReviewer({ modelSelectionAvailable: false }, routing).action, 'REVIEW_WITH_CURRENT_AGENT');
     assert.equal(selectFinalRiskReviewer({ premiumUnavailable: true, availableModels: [] }, routing).action, 'PARK_CURRENT_AND_CONTINUE_CLOSURE_TRIAGE');
   });
@@ -230,22 +318,27 @@ describe('DB release uses the same downgrade gate without granting DB write perm
     return value;
   };
   it('accepts lower-tier evidence only for read-only READY_FOR_LOCK', () => {
+    if (currentRouting.openaiBuilderDecision?.independentReviewerRequired === true) {
+      // Old DB packet contains no prospective independently captured roles; never invent them.
+      assert.throws(() => evaluateReleasePreflight(packet(), { now: start }), /FINAL_RISK_MODEL_UNVERIFIED/);
+      return;
+    }
     const result = evaluateReleasePreflight(packet(), { now: start });
     assert.equal(result.status, 'READY_FOR_LOCK');
     assert.equal(result.databaseMutationAuthorized, false);
   });
-  it('accepts documented unknown identity without granting DB mutation authority', () => {
+  it('rejects documented unknown identity at current DB admission without independent roles', () => {
     const value = packet(); Object.assign(value.finalRisk, context, fallback(), { fallbackSourceEvidence: sources() });
-    assert.equal(evaluateReleasePreflight(value, { now: start }).databaseMutationAuthorized, false);
+    assert.throws(() => evaluateReleasePreflight(value, { now: start }), /FINAL_RISK_MODEL_UNVERIFIED/);
   });
-  it('preserves validated fallback through the DB evidence adapter', () => {
+  it('preserves legacy validated fallback through the DB evidence adapter without live role approval', () => {
     const value = packet();
     const payload = { ...context, ...fallback(), report: ref, findings: 'Fixture findings reconciled', verdict: 'PASS',
       productionDbReviewScope: 'PRODUCTION_DB_RELEASE', productionDbReleaseId: value.releaseId,
       productionDbPlanDigest: value.planDigest, productionDbEvidenceDigest: releaseEvidenceDigestOf(value) };
     const evidence: Record<string, unknown> = buildProductionDbFinalRiskEvidence({ body, changedFiles: ['src/server/payment/fixture.ts'], context: { ...context, fallbackSourceEvidence: sources(payload) },
       releasePacket: value, reviews: [{ trusted: true, id: 700, state: 'COMMENTED', commit_id: context.headSha,
-        submitted_at: start, body: '```astra-review\n' + JSON.stringify(payload) + '\n```' }] });
+        submitted_at: start, body: '```astra-review\n' + JSON.stringify(payload) + '\n```' }] }, routing);
     assert.deepEqual(finalRiskReviewerErrors(evidence, routing), []);
     assert.equal(evidence.failureDiagnosis, payload.failureDiagnosis);
     assert.equal(evidence.databaseMutationAuthorized, false);
@@ -254,19 +347,21 @@ describe('DB release uses the same downgrade gate without granting DB write perm
     const bad = packet(); bad.finalRisk.adversarialEvidence = '';
     assert.throws(() => evaluateReleasePreflight(bad, { now: start }), /FINAL_RISK_MODEL_UNVERIFIED/);
     const stale = packet(); stale.finalRisk.evidenceDigest = 'f'.repeat(64);
-    assert.throws(() => evaluateReleasePreflight(stale, { now: start }), /FINAL_RISK_EVIDENCE_MISMATCH/);
+    assert.throws(() => evaluateReleasePreflight(stale, { now: start }), currentRouting.openaiBuilderDecision?.independentReviewerRequired === true
+      ? /FINAL_RISK_MODEL_UNVERIFIED/ : /FINAL_RISK_EVIDENCE_MISMATCH/);
   });
   it('readbacks canonical sources for the DB adapter and keeps serialized receipts valid', async () => {
     const value = packet();
     const f = githubFixture({ payload: { productionDbReviewScope: 'PRODUCTION_DB_RELEASE', productionDbReleaseId: value.releaseId,
       productionDbPlanDigest: value.planDigest, productionDbEvidenceDigest: releaseEvidenceDigestOf(value) } });
     const evidence = await buildProductionDbFinalRiskEvidenceFromGithub({ github: f.github, owner: 'smallwei0301',
-      repo: 'vibeaico-admin-rebuild', prNumber: 703, releasePacket: value });
+      repo: 'vibeaico-admin-rebuild', prNumber: 703, releasePacket: value }, routing);
     const roundtrip = JSON.parse(JSON.stringify(evidence));
     expect(finalRiskReviewerErrors(roundtrip, routing)).toEqual([]);
-    const result = evaluateReleasePreflight({ ...value, finalRisk: roundtrip }, { now: start });
-    expect(result.status).toBe('READY_FOR_LOCK');
-    expect(result.databaseMutationAuthorized).toBe(false);
+    // Current DB preflight has no trusted role context: identity fallback cannot override that refusal.
+    expect(() => evaluateReleasePreflight({ ...value, finalRisk: roundtrip }, { now: start })).toThrow('FINAL_RISK_MODEL_UNVERIFIED');
+    await expect(buildProductionDbFinalRiskEvidenceFromGithub({ github: f.github, owner: 'smallwei0301',
+      repo: 'vibeaico-admin-rebuild', prNumber: 703, releasePacket: value })).rejects.toThrow('FINAL_RISK_NOT_APPROVED');
     for (const options of [{ permission: 'read' }, { missingRecord: true }, { content: 'candidate anchor absent on main' },
       { movedMain: true }, { review: { state: 'DISMISSED' } }]) {
       const invalid = githubFixture({ ...options, payload: f.payload });
@@ -305,22 +400,22 @@ describe('PR703 trusted source readback (#4146547160/#4146547172)', () => {
     expect(previousReviewFromCanonicalReviews(f.reviews, context.repository)?.canonicalTrustEligible).toBe(false);
     const proof = await loadFallbackSourceEvidence({ github: f.github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', reviews: f.reviews });
     assert.ok(proof);
-    expect(finalRiskReviewerErrors(f.payload, routing, proof)).toEqual([]);
+    expect(finalRiskReviewerErrors(f.payload, routing, { fallbackSourceEvidence: proof })).toEqual([]);
     for (const records of [[], proof.records.map((r: any) => ({ ...r, trusted: false }))]) {
-      expect(finalRiskReviewerErrors(f.payload, routing, { ...proof, records })).not.toEqual([]);
+      expect(finalRiskReviewerErrors(f.payload, routing, { fallbackSourceEvidence: { ...proof, records } })).not.toEqual([]);
     }
-    expect(finalRiskReviewerErrors(f.payload, routing, { ...proof, currentMainSha: 'd'.repeat(40) })).not.toEqual([]);
+    expect(finalRiskReviewerErrors(f.payload, routing, { fallbackSourceEvidence: { ...proof, currentMainSha: 'd'.repeat(40) } })).not.toEqual([]);
   });
 });
 
 describe('Owner #700 infrastructure fallback is evidence-based, not review bypass', () => {
   it('admits a real replacement review despite unavailable identity telemetry', () => {
-    assert.deepEqual(finalRiskReviewerErrors({ ...context, ...fallback() }, routing, sources()), []);
+    assert.deepEqual(finalRiskReviewerErrors({ ...context, ...fallback() }, routing, { fallbackSourceEvidence: sources() }), []);
     assert.equal(evaluate(fallback()).status, 'ASTRA_APPROVED');
     const diagnosed = { ...history, failureEvidenceRef: ref, failureDiagnosis: fallback().failureDiagnosis };
     assert.equal(selectFinalRiskReviewer({ ...diagnosed, failureClass: 'IDENTITY_UNAVAILABLE' }, routing).action, 'REVIEW_WITH_EVIDENCE_FALLBACK');
     assert.equal(decideFinalRiskRecovery({ ...diagnosed, failureClass: 'IDENTITY_UNAVAILABLE' }).action, 'REVIEW_WITH_EVIDENCE_FALLBACK');
-    assert.equal(selectFinalRiskReviewer({ ...diagnosed, premiumUnavailable: true, availableModels: [] }, routing).action, 'REVIEW_WITH_EVIDENCE_FALLBACK');
+    assert.equal(selectFinalRiskReviewer({ ...diagnosed, premiumUnavailable: true, availableModels: [] }, routing).action, 'PARK_CURRENT_AND_CONTINUE_CLOSURE_TRIAGE');
   });
   for (const patch of [{ failureClass: 'CONTENT_FINDING' }, { failureClass: 'SAFETY_REFUSAL' },
     { failureDiagnosis: '' }, { failureEvidenceRef: 'unknown' }, { replacementReviewRef: '' },
@@ -363,4 +458,46 @@ describe('Owner #700 infrastructure fallback is evidence-based, not review bypas
     assert.equal(previousReviewFromCanonicalReviews(record(payload), context.repository, sources(payload))?.canonicalTrustEligible, true);
     assert.equal(previousReviewFromCanonicalReviews(record({ ...payload, unresolvedFindingCount: 1 }), context.repository, sources(payload))?.canonicalTrustEligible, false);
   });
+});
+
+// Current-main composition regressions: fallback only replaces unavailable identity, not role/provider proof.
+describe('PR703 current-main role and provider preservation', () => {
+  for (const options of [
+    { missingRole: true },
+    { rolePatch: { REVIEW: { actorId: 'fixture-BUILD-actor' } } },
+    { rolePatch: { REVIEW: { sessionId: 'fixture-BUILD-session' } } },
+    { rolePatch: { REVIEW: { executionRef: 'fixture-builder-execution' } } },
+    { rolePatch: { REVIEW: { freshContext: false } } },
+    { rolePatch: { REVIEW: { headSha: 'e'.repeat(40) } } },
+    { rolePatch: { REVIEW: { changeDigest: 'f'.repeat(64) } } },
+    { rolePatch: { REVIEW: { repository: 'other/repository' } } },
+  ]) {
+    it(`retains live role rejection with valid fallback sources: ${JSON.stringify(options)}`, async () => {
+      const f = githubFixture(options);
+      const result = await evaluateGithubAstra({ github: f.github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', current: f.current });
+      expect(result.status).toBe('ASTRA_PENDING');
+      expect(result.errors.some((error: string) => /role|actor|session|independent/i.test(error))).toBe(true);
+    });
+  }
+  it('does not let a diagnosed identity failure bypass provider-local catalog admission', () => {
+    const input = { ...history, failureClass: 'IDENTITY_UNAVAILABLE', failureEvidenceRef: failureRef, failureDiagnosis: fallback().failureDiagnosis };
+    for (const patch of [{ provider: undefined }, { runtimeCatalog: undefined }, { provider: 'ANTHROPIC' },
+      { availableModels: [] }, { availableModels: ['claude-opus-5-5'] },
+      { provider: 'ANTHROPIC', runtimeCatalog: { ...history.runtimeCatalog, provider: 'ANTHROPIC' } }]) {
+      expect(selectFinalRiskReviewer({ ...input, ...patch }, currentRouting).reviewerTier).toBe('NONE');
+    }
+    expect(selectFinalRiskReviewer(input, currentRouting).reviewerTier).toBe('EVIDENCE_FALLBACK');
+    expect(selectFinalRiskReviewer({ ...input, modelSelectionAvailable: false }, currentRouting).reviewerTier).toBe('CURRENT_AGENT');
+  });
+});
+
+describe('fallback selector declaration is not a wildcard', () => {
+  for (const modelSelectionAvailable of [true, undefined]) {
+    it(`rejects not_requested without explicit no-selector proof (${modelSelectionAvailable})`, async () => {
+      const f = githubFixture({ payload: { requestedModel: 'not_requested', modelSelectionAvailable } });
+      const result = await evaluateGithubAstra({ github: f.github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', current: f.current });
+      expect(result.status).toBe('ASTRA_PENDING');
+      expect(result.errors).toContain('Replacement must retain qualified audit model selection');
+    });
+  }
 });

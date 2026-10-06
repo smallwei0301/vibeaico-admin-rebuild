@@ -200,6 +200,12 @@ export const lineSettingsSchema = z.object({
   richMenuTextColor: z.string().default('#FFFFFF'),
 });
 
+/** Persisted Rich Menu ID for reference; this value alone does not prove provider publication. */
+export const lineSettingsReadSchema = lineSettingsSchema.extend({
+  /** Saved ID only; its source and current LINE state are not verified by settings readback. */
+  richMenuId: z.string().trim().default('').catch(''),
+});
+
 /* ------------------------------------------------------------- 基本 / 營業 */
 export const DEFAULT_TENANT_TIME_ZONE = 'Asia/Taipei';
 
@@ -412,7 +418,7 @@ export const tenantSettingsSchema = z.object({
   notify: notifySettingsSchema,
   privacy: privacySettingsSchema,
   points: pointsSettingsSchema,
-  line: lineSettingsSchema,
+  line: lineSettingsReadSchema,
   branding: brandingSettingsSchema,
 });
 

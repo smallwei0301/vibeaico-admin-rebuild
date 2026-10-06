@@ -1,4 +1,45 @@
 import { z } from 'zod';
+import { MAX_TRIP_GALLERY_IMAGES } from '@/lib/trip-gallery';
+import {
+  MAX_PUBLIC_LONG_TEXT_CHARS, MAX_PUBLIC_SHORT_TEXT_CHARS,
+  MAX_PUBLIC_LIST_ITEMS, MAX_PUBLIC_LIST_ITEM_CHARS,
+} from '@/lib/public-trip-limits';
+import {
+  MAX_TRIP_INCLUDES_RAW_CHARS, MAX_TRIP_LIST_ITEM_RAW_CHARS, MAX_TRIP_LIST_RAW_ITEMS,
+} from '@/lib/public-trip-limits';
+import {
+  withinTripTextLimit, tripListViolation, tripIncludesViolation,
+  type TripIncludesViolation,
+} from '@/lib/trip-field-limits';
+
+const tripListLimitMessage = `最多 ${MAX_PUBLIC_LIST_ITEMS} 項，每項最多 ${MAX_PUBLIC_LIST_ITEM_CHARS} 字`;
+const tripDescription = z.string().refine(
+  (value) => withinTripTextLimit(value, MAX_PUBLIC_LONG_TEXT_CHARS),
+  `行程介紹最多 ${MAX_PUBLIC_LONG_TEXT_CHARS} 字`,
+).optional();
+const tripNotes = z.string().refine(
+  (value) => withinTripTextLimit(value, MAX_PUBLIC_SHORT_TEXT_CHARS),
+  `安全提醒最多 ${MAX_PUBLIC_SHORT_TEXT_CHARS} 字`,
+).optional();
+/** 依違規種類給對應訊息：可見種類沿用「最多 20 項，每項最多 300 字」，raw 種類指出真正的原因。 */
+function tripListViolationMessage(label: string, kind: TripIncludesViolation): string {
+  switch (kind) {
+    case 'tooManyRawItems': return `${label}列數（含空白列）最多 ${MAX_TRIP_LIST_RAW_ITEMS} 列`;
+    case 'itemRawTooLong': return `${label}每項（含前後空白）最多 ${MAX_TRIP_LIST_ITEM_RAW_CHARS} 字`;
+    case 'includesRawTooLarge': return `${label}整體（含空白與換行）最多 ${MAX_TRIP_INCLUDES_RAW_CHARS} 字`;
+    default: return `${label}${tripListLimitMessage}`;
+  }
+}
+const tripIncludes = z.string().superRefine((value, ctx) => {
+  const kind = tripIncludesViolation(value);
+  if (kind) ctx.addIssue({ code: 'custom', message: tripListViolationMessage('費用包含', kind) });
+}).optional();
+const tripListField = (label: string) => z.array(z.string()).superRefine((items, ctx) => {
+  const kind = tripListViolation(items);
+  if (kind) ctx.addIssue({ code: 'custom', message: tripListViolationMessage(label, kind) });
+}).optional();
+const tripExclusions = tripListField('費用不包含');
+const tripNotices = tripListField('注意事項');
 
 export const tripStatus = ['DRAFT', 'PUBLISHED', 'ARCHIVED'] as const;
 export const departureStatus = ['OPEN', 'CLOSED', 'CANCELLED'] as const;
@@ -25,19 +66,22 @@ export const tripCreateSchema = z.object({
   title: z.string().trim().min(1, '請輸入行程名稱'),
   slug: z.string().trim().min(1).max(160).optional(),
   summary: optionalText,
-  description: optionalText,
+  description: tripDescription,
   coverImageUrl: optionalText,
-  gallery: z.array(z.unknown()).optional(),
+  gallery: z
+    .array(z.unknown())
+    .max(MAX_TRIP_GALLERY_IMAGES, `行程相簿最多 ${MAX_TRIP_GALLERY_IMAGES} 張`)
+    .optional(),
   location: optionalText,
   durationHours: z.number().finite().nonnegative().nullable().optional(),
   meetingPoint: optionalText,
-  includes: optionalText,
-  notes: optionalText,
+  includes: tripIncludes,
+  notes: tripNotes,
   /* ---- issue #259：`0089` 補上欄位後才收得下的五個顯示欄位 ---- */
   tagline: optionalText,
   meetingPointMapUrl: optionalText,
-  exclusions: z.array(z.string()).optional(),
-  notices: z.array(z.string()).optional(),
+  exclusions: tripExclusions,
+  notices: tripNotices,
   refundPolicyType: z.enum(['STANDARD', 'FLEXIBLE', 'STRICT']).optional(),
 });
 
@@ -152,6 +196,8 @@ const departureFields = {
   capacity: z.number().int('名額必須為整數').min(1, '名額必須大於 0').optional(),
   status: z.enum(departureStatus).optional(),
   note: optionalText,
+  formationTimeZone: z.string().trim().min(1).optional(),
+  formationDeadlineAt: z.string().datetime({ offset: true, message: '成團截止時間須包含有效時區' }).optional(),
   /* ---- issue #37：團次實際執行人員。null = 明確清空；undefined = 這次不動它 ---- */
   primaryStaffId: z.string().uuid('請選擇主導遊').nullable().optional(),
   assistantStaffIds: z.array(z.string().uuid('協同導遊 id 格式錯誤')).optional(),
@@ -167,6 +213,8 @@ export const departureCreateSchema = z.object({
 export const departureUpdateSchema = z.object(departureFields);
 
 export const departureBatchSchema = z.object({
+  formationTimeZone: z.string().trim().min(1).optional(),
+  formationDeadlineAt: z.string().datetime({ offset: true, message: '成團截止時間須包含有效時區' }).optional(),
   planId: z.string().uuid('請選擇方案'),
   from: dateField,
   to: dateField,

@@ -12,6 +12,8 @@ import {
 } from '@/server/staff-availability';
 import type { DepartureConflict } from '@/lib/types';
 
+import { departureFormationSnapshot, readDepartureFormationTimeZone } from '@/server/departure-formation-snapshot';
+
 type Context = { params: Promise<{ id: string }> };
 const MAX_DAYS = 366;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -24,7 +26,7 @@ export const POST = handle(async (req, { params }: Context) => {
   const rangeLength = dateRangeLength(body.from, body.to);
   if (rangeLength > MAX_DAYS) return fail(400, `批次開團最多一次 ${MAX_DAYS} 天`, ERR.VALIDATION);
   const dates = dateRange(body.from, body.to);
-  const { data: plan, error: planError } = await t.supabase.from('trip_plans').select('id, trip_id')
+  const { data: plan, error: planError } = await t.supabase.from('trip_plans').select('id, trip_id, min_to_depart, formation_deadline_days_before')
     .eq('tenant_id', t.tenantId).eq('id', body.planId).maybeSingle();
   if (planError) throw planError;
   if (!plan || plan.trip_id !== id) return fail(404, '找不到此方案', ERR.NOT_FOUND);
@@ -72,28 +74,27 @@ export const POST = handle(async (req, { params }: Context) => {
   const conflicts: DepartureConflict[] = [];
   let skipped = 0;
 
-  for (const date of selected) {
-    // 撞班先判：一個「因為撞班而跳過」的日期不該先去 DB 查重複。
-    if (load) {
-      const slot = departureInterval({ departsOn: date, startTime, durationHours });
-      const dayConflicts = findStaffConflicts(assignedIds, slot, date, load);
-      if (dayConflicts.length > 0) {
-        skipped += 1;
-        for (const c of dayConflicts) {
-          conflicts.push({
-            date,
-            staffId: c.staffId,
-            staffName: names.get(c.staffId) ?? '',
-            reason: c.reason,
-            text: CONFLICT_REASON_TEXT[c.reason],
-            conflictStart: c.conflictStart,
-            conflictEnd: c.conflictEnd,
-            departureId: c.departureId,
-          });
-        }
-        continue;
-      }
+  const candidates: string[] = [];
+  const skipConflictingDate = (date: string): boolean => {
+    if (!load) return false;
+    const slot = departureInterval({ departsOn: date, startTime, durationHours });
+    const dayConflicts = findStaffConflicts(assignedIds, slot, date, load);
+    if (dayConflicts.length === 0) return false;
+    skipped += 1;
+    for (const c of dayConflicts) {
+      conflicts.push({
+        date, staffId: c.staffId, staffName: names.get(c.staffId) ?? '', reason: c.reason,
+        text: CONFLICT_REASON_TEXT[c.reason], conflictStart: c.conflictStart,
+        conflictEnd: c.conflictEnd, departureId: c.departureId,
+      });
     }
+    return true;
+  };
+
+  for (const date of selected) {
+    // Existing/conflicting dates remain skips, even when their current Plan
+    // default would now produce a past deadline: no new row is being created.
+    if (skipConflictingDate(date)) continue;
 
     let existingQuery = t.supabase.from('trip_departures').select('id')
       .eq('tenant_id', t.tenantId).eq('plan_id', body.planId).eq('departs_on', date);
@@ -106,7 +107,23 @@ export const POST = handle(async (req, { params }: Context) => {
       skipped += 1;
       continue;
     }
+    candidates.push(date);
+  }
+
+  // Validate every genuinely new candidate before the first insert. Rejecting
+  // one new cutoff must not leave earlier candidates silently created.
+  const timeZone = await readDepartureFormationTimeZone(t.supabase, t.tenantId, body.formationTimeZone);
+  const now = Date.now();
+  const formationByDate = new Map(candidates.map((date) => [
+    date, departureFormationSnapshot(plan, { ...body, departsOn: date }, now, timeZone),
+  ]));
+
+  for (const date of candidates) {
+    // As before, successful earlier inserts are accumulated in load. Recheck
+    // here to preserve same-batch self-overlap and real conflict departure IDs.
+    if (skipConflictingDate(date)) continue;
     const { data, error } = await t.supabase.from('trip_departures').insert({
+      ...formationByDate.get(date),
       tenant_id: t.tenantId, trip_id: id, plan_id: body.planId, departs_on: date,
       start_time: timeValue(body.startTime), capacity: body.capacity, status: 'OPEN', note: '',
     }).select('id').maybeSingle();

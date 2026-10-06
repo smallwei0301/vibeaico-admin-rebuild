@@ -90,7 +90,9 @@ export function previousReviewFromCanonicalReviews(reviews = [], repository = ''
 
   const canonicalTrustEligible =
     latest.parseError !== true &&
-    finalRiskReviewerErrors(latest, routing, fallbackSourceEvidence).length === 0 &&
+    // Historical model/semantic metadata replay is not live role admission.
+    // evaluateGithubAstra separately requires current independent role receipts.
+    finalRiskReviewerErrors(latest, { ...routing, openaiBuilderDecision: { independentReviewerRequired: false } }, { fallbackSourceEvidence }).length === 0 &&
     (['CURRENT_AGENT', 'EVIDENCE_FALLBACK'].includes(latest.reviewerTier) || latest.identityEvidence === 'OPERATOR_ATTESTED') &&
     DIGEST64.test(text(latest.changeDigest)) &&
     requiredForReviewedScope &&
@@ -323,7 +325,7 @@ export function buildFinalRiskPacket(input = {}, deps = {}) {
         ...(reviewerRoute.reviewerTier === 'EVIDENCE_FALLBACK' ? [
           'executionRef', 'adversarialEvidence', 'priorFindingsReviewed',
           'unresolvedFindingCount', 'replacementReviewRef', 'playbookEvidenceRef',
-          'executionEvidence',
+          'executionEvidence', 'reviewerExecutionReceipt',
         ] : [])],
       keepExistingRequiredFields: ['findings', 'report', 'requestedModel', 'actualModel', 'identityEvidence'],
     },
@@ -337,6 +339,7 @@ export function buildFinalRiskPacket(input = {}, deps = {}) {
       ...(reviewerRoute.reviewerTier === 'EVIDENCE_FALLBACK' ? [
         'Copy the preserved failure diagnosis exactly; failure/replacement refs must identify this repository\'s trusted GitHub comments/reviews, never plain Issues.',
         'Persist replacement as a PASS astra-review with matching digest/execution/identity/finding fields. Admission reloads source records and the observed current-main immutable Playbook blob; candidate anchors are insufficient.',
+        'Retain an audit-tier requestedModel when a selector is available; not_requested requires explicitly unavailable selection. Persist reviewerExecutionReceipt as a same-repository trusted role comment with fresh independent actor/session and execution times preceding this canonical review.',
         'Reconcile prior findings; attest execution truthfully and keep unknown identity UNKNOWN. Fallback does not waive substantive review or CI.',
       ] : []),
     ],

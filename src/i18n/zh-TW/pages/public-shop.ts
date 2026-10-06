@@ -5,17 +5,14 @@
  * 「方案」這種內部說法出現在顧客看得到的地方時，要換成他們懂的講法。
  */
 export const publicShopPage = {
-  /** 目前無法線上下單——這一段的每一個字都不能暗示可以 */
+  /** 說明可用的線上申請／預約入口與需要店家聯絡的方案。 */
   booking: {
     title: '想預約嗎？',
     /**
-     * ⚠️ 這句是本頁最重要的一句話。
-     *
-     * 線上下單與付款（#12／#32）目前還沒有建，所以這一頁**只能看、不能訂**。
-     * 與其放一顆按了沒反應的「立即預約」，不如明確說要怎麼預約——那是顧客真正
-     * 需要知道的事，而假按鈕只會讓他以為訂好了。
+     * 送出 REQUEST、固定團次保留名額與完成付款是不同狀態；這段文案只介紹已接上的
+     * 入口，不把申請說成成交，也不把建單說成已付款。
      */
-    howTo: '目前請透過以下方式與我們聯絡完成預約，線上直接下單功能正在準備中。',
+    howTo: '部分行程可線上申請或預約，請從下方選擇方案；送出申請、保留名額與付款各有不同狀態，後續頁面會說明。沒有線上入口的方案，請透過以下方式聯絡店家。',
     viaLine: '用 LINE 聯絡我們',
     viaPhone: (phone: string) => `撥打 ${phone}`,
     viaEmail: (email: string) => `寄信到 ${email}`,
@@ -28,6 +25,7 @@ export const publicShopPage = {
   trips: {
     title: '行程',
     empty: '這家店還沒有上架的行程。',
+    detailsLink: '查看行程詳情',
     /** 顯示在行程卡片上的方案價格區間 */
     priceFrom: (amount: string) => `${amount} 起`,
     partyRange: (min: number, max: number) => `${min}–${max} 人成行`,
@@ -51,6 +49,10 @@ export const publicShopPage = {
      */
     bookBadge: '可線上預約',
     bookCta: '線上預約（送出後立即為您保留名額）',
+    /** #747：方案沒有可訂／可申請日期，或日期未載入時的提示（首頁專用，不沿用詳情頁的措辭）。 */
+    noRequestableHint: '目前沒有可申請的日期，請聯絡店家確認。',
+    noBookableHint: '目前沒有可預約的日期，請聯絡店家確認。',
+    datesNotLoadedHint: '請聯絡店家查詢日期。',
     /**
      * #46：下單前顯示現行取消／退款政策——與
      * `src/i18n/zh-TW/pages/public-tour-request.ts` 的 `cancellationPolicy`

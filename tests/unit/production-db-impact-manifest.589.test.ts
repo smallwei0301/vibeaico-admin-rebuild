@@ -60,8 +60,8 @@ const roots: Record<string, string[]> = {
   ],
 };
 
+// create_tour_order ACL is owned only by its final owner 0136 (#755/#46), not by the 14-file plan.
 const functionAclIdentities = [
-  'public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)',
   'public.accept_tour_request(p_tenant uuid, p_order uuid, p_hold_hours numeric)',
   'public.reject_tour_request(p_tenant uuid, p_order uuid, p_reason text)',
   'public.sync_replace_external_calendar_events(p_external_calendar_id uuid, p_tenant_id uuid, p_events jsonb)',
@@ -109,7 +109,8 @@ describe('#589 Stage 1 production impact manifest', () => {
     const normalized = normalizeProductionDbImpactManifest(manifest) as Manifest;
     const inventory = normalized.entries.filter((entry) => planFiles.includes(entry.repoFile));
     const inventoryDigest = createHash('sha256').update(JSON.stringify(inventory)).digest('hex');
-    expect(inventoryDigest).toBe('3b5b129ea1c4b2af321a6cc7ba82ceb4536e4744f7e3b0012957cfd4e219aa7a');
+    // #773: re-pinned because 0116 (policy p_owner_notify_recipients_all), 0121 (booking_addons_performance_staff_id_fkey) and 0133 (acl table:public.booking_addons) no longer co-own keys whose final writer is 0127/0133/0127.
+    expect(inventoryDigest).toBe('06e52b7364fa4b7545e070e00123dc43969a09003e06c1d91c7ba733749cd0a6');
 
     const functionAclKeys = inventory.flatMap((entry) => entry.impacts)
       .filter((impact) => impact.surface === 'acl' && impact.objectKey.startsWith('function:'))
@@ -137,14 +138,30 @@ describe('#589 Stage 1 production impact manifest', () => {
       .not.toContain('table:public.owner_notify_recipients');
     expect(byFile.get('0127_issue_589_authz_constraint_reconciliation')!.impacts.map((impact) => impact.objectKey))
       .toContain('table:public.owner_notify_recipients');
-    expect(byFile.get('0110_issue_42_plan_duration_pricetype_yearround')!.impacts.map((impact) => impact.objectKey))
-      .not.toContain('public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)');
+    expect(byFile.get('0110_issue_42_plan_duration_pricetype_yearround')!.impacts.map((impact) => `${impact.surface}:${impact.objectKey}`))
+      .not.toContain('acl:function:public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)');
+    expect(byFile.get('0111_issue_46_guide_request_accept')!.impacts.map((impact) => `${impact.surface}:${impact.objectKey}`))
+      .not.toContain('routines:public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)');
+    const owners = (key: string) => normalized.entries.filter((entry) => entry.impacts.some((impact) => `${impact.surface}:${impact.objectKey}` === key)).map((entry) => entry.repoFile);
+    expect(owners('acl:function:public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)')).toEqual(['0136_issue_755_create_tour_order_invoker']);
+    expect(owners('routines:public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)')).toEqual(['0136_issue_755_create_tour_order_invoker']);
 
+    // Minimal plan containing the final owner 0136 so the injected duplicate is the only ambiguity reached
+    // (the 14-file plan also has an unrelated pre-existing 0116/0127 policy overlap that must not mask this).
+    const ctoKey = 'public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)';
+    const minimalPlan = {
+      ...plan,
+      migrations: ['0110_issue_42_plan_duration_pricetype_yearround', '0136_issue_755_create_tour_order_invoker']
+        .map((repoFile) => ({ repoFile, path: `supabase/migrations/${repoFile}.sql` })),
+    };
+    const runMinimal = (impactManifest: Manifest) => buildProductionConsistencyEvidence({
+      report: report(), plan: minimalPlan, impactManifest, mainSha: plan.mainSha, planDigest: plan.planDigest,
+    });
+    expect(() => runMinimal(manifest)).not.toThrow();
     const duplicate: Manifest = structuredClone(manifest);
     duplicate.entries.find((entry) => entry.repoFile === '0110_issue_42_plan_duration_pricetype_yearround')!.impacts.push({
-      surface: 'routines', objectKey: 'public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)',
+      surface: 'routines', objectKey: ctoKey,
     });
-    expect(() => buildProductionConsistencyEvidence({ report: report(), plan, impactManifest: duplicate, mainSha: plan.mainSha, planDigest: plan.planDigest }))
-      .toThrow(/AMBIGUOUS_IMPACT_OWNERSHIP/);
+    expect(() => runMinimal(duplicate)).toThrow(/AMBIGUOUS_IMPACT_OWNERSHIP.*routines:public\.create_tour_order\(/);
   });
 });

@@ -48,6 +48,20 @@ export function resendMockPort(): number {
   }
 }
 
+/**
+ * 擬真的 Resend 錯誤 body。resend SDK（v4.8.0，node_modules/resend/dist/index.js:558-561）
+ * 在 !response.ok 時直接 `JSON.parse(await response.text())` 當 error——`statusCode` 與 `name`
+ * 都取自 **body**，不是 HTTP status；body 沒帶 statusCode 時 error.statusCode 就是 undefined。
+ * 形狀對齊 Production 實際 log：`{statusCode:401,name:'validation_error',message:'API key is invalid'}`。
+ */
+export function realisticResendError(status: number): { statusCode: number; name: string; message: string } {
+  if (status === 401) return { statusCode: 401, name: 'validation_error', message: 'API key is invalid' };
+  if (status === 403) return { statusCode: 403, name: 'invalid_access', message: 'The domain is not verified. Please, add and verify your domain.' };
+  if (status === 429) return { statusCode: 429, name: 'rate_limit_exceeded', message: 'Too many requests. You can only make 2 requests per second.' };
+  if (status === 422) return { statusCode: 422, name: 'validation_error', message: 'Invalid `to` field. The email address needs to follow the `email@example.com` or `Name <email@example.com>` format.' };
+  return { statusCode: status, name: 'application_error', message: `mock forced failure (${status})` };
+}
+
 export class ResendMockServer {
   /** 收到的全部請求，依時間序 */
   readonly requests: RecordedEmail[] = [];
@@ -79,7 +93,7 @@ export class ResendMockServer {
         const failStatus = this.failQueue.shift();
         if (failStatus !== undefined) {
           res.writeHead(failStatus, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ name: 'application_error', message: `mock forced failure (${failStatus})` }));
+          res.end(JSON.stringify(realisticResendError(failStatus)));
           return;
         }
 

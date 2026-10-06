@@ -3,6 +3,7 @@ import type {
   DepartureConflict, Trip, TripAddon, TripDeparture, TripPlan, TripPlanSeason,
   TourOrder, TourOrderStatus, TourPaymentStatus, Paged,
 } from '@/lib/types';
+import { clampGalleryForCopy } from '@/lib/trip-gallery';
 import { canTransitionTourOrder, shouldReleaseSeats } from '@/server/tour-domain';
 import {
   MOCK_TOUR_ORDERS, MOCK_TRIPS, MOCK_TRIP_ADDONS,
@@ -81,7 +82,9 @@ function planApiPayload(payload: Partial<TripPlan>) {
   };
 }
 
-function departureApiPayload(payload: Partial<TripDeparture>) {
+export type DepartureMutation = Partial<TripDeparture> & { formationTimeZone?: string };
+
+function departureApiPayload(payload: DepartureMutation) {
   return {
     planId: payload.planId,
     departsOn: payload.departsOn,
@@ -89,6 +92,8 @@ function departureApiPayload(payload: Partial<TripDeparture>) {
     capacity: payload.capacity,
     status: payload.status,
     note: payload.note,
+    formationDeadlineAt: payload.formationDeadlineAt,
+    formationTimeZone: payload.formationTimeZone,
     /**
      * issue #37：導遊指派。
      *
@@ -370,7 +375,7 @@ export const listTripDepartures = (tripId: string) =>
     () => request<TripDeparture[]>(`/api/trips/${tripId}/departures`),
   );
 
-export const saveTripDeparture = (tripId: string, payload: Partial<TripDeparture>) =>
+export const saveTripDeparture = (tripId: string, payload: DepartureMutation) =>
   adapt(() => undefined, () => (payload.id
     ? request<void>(`/api/trip-departures/${payload.id}`, {
       method: 'PUT', body: JSON.stringify(departureApiPayload(payload)),
@@ -398,6 +403,7 @@ export const batchCreateDepartures = (
   payload: {
     planId: string; from: string; to: string; weekdays: number[]; startTime: string; capacity: number;
     primaryStaffId?: string | null; assistantStaffIds?: string[];
+    formationDeadlineAt?: string; formationTimeZone?: string;
   },
 ) =>
   adapt<BatchDepartureResult>(
@@ -566,7 +572,12 @@ export async function duplicateTripFully(
     createTrip, listTripPlans, listTripAddons, saveTripPlan, saveTripPlanSeason, saveTripAddon, deleteTrip,
   },
 ): Promise<Trip> {
-  const created = await deps.createTrip(tripPayload);
+  // 來源相簿若是超過寫入上限的歷史資料，複本只取前 MAX 張，否則 POST 會被 gallery max 驗證擋成 400。
+  const created = await deps.createTrip(
+    tripPayload.galleryUrls
+      ? { ...tripPayload, galleryUrls: clampGalleryForCopy(tripPayload.galleryUrls) }
+      : tripPayload,
+  );
   if (!created?.id) {
     throw new ApiError('複製行程失敗：伺服器未回傳新行程編號', undefined, 500);
   }

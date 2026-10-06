@@ -12,8 +12,10 @@ import {
   planUpdateSchema,
   slugFromTitle,
   tripCreateSchema,
+  tripUpdateSchema,
   tripRow,
 } from '@/server/tour-domain';
+import { MAX_PUBLIC_GALLERY_IMAGES, MAX_TRIP_GALLERY_IMAGES } from '@/lib/trip-gallery';
 import { mapTrip, mapTripAddon, mapTripDeparture, mapTripPlan } from '@/server/mappers';
 
 const TOUR_HANDLERS = [
@@ -242,5 +244,32 @@ describe('canonical tour row mappers (#8-A)', () => {
       id: 'addon-1', trip_id: 'trip-1', name: '接送', price: '0', unit: 'PER_GROUP',
       stock: null, active: true, sort_order: 1,
     })).toMatchObject({ price: 0, unit: 'PER_GROUP', stock: null });
+  });
+});
+
+describe('行程 gallery 寫入上限（#748）', () => {
+  const imgs = (n: number) => Array.from({ length: n }, (_, i) => `https://img.example.com/${i}.jpg`);
+
+  it('寫入上限與公開上限共用同一個值', () => {
+    expect(MAX_TRIP_GALLERY_IMAGES).toBe(MAX_PUBLIC_GALLERY_IMAGES);
+    expect(MAX_TRIP_GALLERY_IMAGES).toBe(8);
+  });
+
+  it('create：8 張通過、9 張被拒並回明確訊息', () => {
+    expect(tripCreateSchema.parse({ title: 't', gallery: imgs(MAX_TRIP_GALLERY_IMAGES) }).gallery).toHaveLength(8);
+    const r = tripCreateSchema.safeParse({ title: 't', gallery: imgs(MAX_TRIP_GALLERY_IMAGES + 1) });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      expect(r.error.issues[0].path).toEqual(['gallery']);
+      expect(r.error.issues[0].message).toContain(String(MAX_TRIP_GALLERY_IMAGES));
+    }
+  });
+
+  it('update：8 張通過、9 張被拒；不帶 gallery 仍可通過', () => {
+    expect(tripUpdateSchema.parse({ gallery: imgs(MAX_TRIP_GALLERY_IMAGES) }).gallery).toHaveLength(8);
+    const r = tripUpdateSchema.safeParse({ gallery: imgs(MAX_TRIP_GALLERY_IMAGES + 1) });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues[0].path).toEqual(['gallery']);
+    expect(tripUpdateSchema.safeParse({ title: 'x' }).success).toBe(true);
   });
 });

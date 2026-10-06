@@ -87,7 +87,7 @@ describe('公開頁的可見範圍閘門', () => {
 
   it('團次只回 OPEN 且今天以後的', () => {
     expect(loader).toMatch(/\.eq\('status',\s*'OPEN'\)/);
-    expect(loader).toMatch(/\.gte\('departs_on',\s*today\)/);
+    expect(loader).toMatch(/\.gte\('departs_on',\s*homeNow\.today\)/);
   });
 
   it('每一次查詢都以 tenant_id 收窄（service role 繞過 RLS，這是唯一的租戶邊界）', () => {

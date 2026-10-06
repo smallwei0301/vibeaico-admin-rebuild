@@ -1,4 +1,4 @@
-import { USE_MOCK } from '@/config/env';
+import { AUTH_REAL, USE_MOCK } from '@/config/env';
 import type { ApiResponse } from './types';
 
 /**
@@ -73,4 +73,14 @@ export async function adapt<T>(mock: () => T | Promise<T>, real: () => Promise<T
     return mock();
   }
   return real();
+}
+
+/**
+ * 認證專用 adapter（#754）：只看 AUTH_REAL，與業務 USE_MOCK 無關。
+ * AUTH_REAL 時直接打真 API（不 delay）；否則才走 mock。
+ */
+export async function adaptAuth<T>(mock: () => T | Promise<T>, real: () => Promise<T>): Promise<T> {
+  if (AUTH_REAL) return real();
+  await delay();
+  return mock();
 }

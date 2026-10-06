@@ -10,7 +10,7 @@ import {
 import { decryptSecret } from '@/server/crypto';
 import {
   basicSettingsSchema, businessSettingsSchema, notifySettingsSchema,
-  privacySettingsSchema, pointsSettingsSchema, lineSettingsSchema,
+  privacySettingsSchema, pointsSettingsSchema, lineSettingsReadSchema,
   brandingSettingsSchema,
   maskSecret, buildWebhookUrl, DEFAULT_TENANT_SETTINGS,
   type TenantSettings,
@@ -44,7 +44,7 @@ export const GET = handle(async () => {
         notify: notifySettingsSchema.parse(row.notify ?? {}),
         privacy: privacySettingsSchema.parse(row.privacy ?? {}),
         points: pointsSettingsSchema.parse(row.points ?? {}),
-        line: lineSettingsSchema.parse(row.line ?? {}),
+        line: lineSettingsReadSchema.parse(row.line ?? {}),
         branding: brandingSettingsSchema.parse(row.branding ?? {}),
       }
     : DEFAULT_TENANT_SETTINGS(t.shopCode, t.tenantName);

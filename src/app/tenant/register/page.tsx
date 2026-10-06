@@ -172,6 +172,7 @@ export default function RegisterPage() {
         password: form.password,
         tenantName: form.name.trim(),
         shopCode: form.code.trim(),
+        businessType,
       });
       toast.show(t.messages.registerSuccess);
       router.push('/tenant/login');

@@ -1,0 +1,14 @@
+name: agent-review-wakeup
+
+on:
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+
+permissions: {}
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Signal review lifecycle change
+        run: ':'

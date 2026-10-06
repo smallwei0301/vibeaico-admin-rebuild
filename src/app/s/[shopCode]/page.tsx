@@ -33,7 +33,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { loadPublicShop, type PublicShopData } from '@/server/public-shop';
+import { loadPublicShop } from '@/server/public-shop';
+import { PublicContactActions } from '@/components/public/PublicContactActions';
 import { recordPromotionPageView } from '@/server/promotion-events';
 import { publicShopPage as t } from '@/i18n/zh-TW/pages/public-shop';
 import { formatCurrency } from '@/lib/utils';
@@ -89,42 +90,6 @@ function formatDepartureDate(departsOn: string): string {
   return `${m}/${d}（${WEEKDAYS[weekday]}）`;
 }
 
-function ContactActions({ shop }: { shop: PublicShopData['shop'] }) {
-  const actions: React.ReactNode[] = [];
-  if (shop.lineBasicId) {
-    // LINE 官方帳號基本 ID 形如 @abc1234x；加好友連結是 line.me/R/ti/p/{basicId}
-    actions.push(
-      <a
-        key="line"
-        className="btn btn-primary"
-        href={`https://line.me/R/ti/p/${encodeURIComponent(shop.lineBasicId)}`}
-        target="_blank"
-        rel="noreferrer noopener"
-      >
-        {t.booking.viaLine}
-      </a>,
-    );
-  }
-  if (shop.phone) {
-    actions.push(
-      <a key="tel" className="btn btn-outline" href={`tel:${shop.phone.replace(/[^\d+]/g, '')}`}>
-        {t.booking.viaPhone(shop.phone)}
-      </a>,
-    );
-  }
-  if (shop.email) {
-    actions.push(
-      <a key="mail" className="btn btn-outline" href={`mailto:${shop.email}`}>
-        {t.booking.viaEmail(shop.email)}
-      </a>,
-    );
-  }
-  if (actions.length === 0) {
-    return <p className="text-sm text-secondary">{t.booking.noContact}</p>;
-  }
-  return <div className="flex flex-wrap gap-2">{actions}</div>;
-}
-
 export default async function PublicShopPage({ params, searchParams }: Params) {
   const { shopCode } = await params;
   const data = await loadPublicShop(shopCode);
@@ -156,7 +121,7 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
         <div className="card-body flex flex-col gap-3">
           <h2 className="text-base font-medium">{t.booking.title}</h2>
           <p className="text-sm text-secondary">{t.booking.howTo}</p>
-          <ContactActions shop={shop} />
+          <PublicContactActions shop={shop} labels={t.booking} />
           <Link href={`/s/${shopCode}/my-orders`} className="text-sm text-secondary underline w-fit">
             {t.booking.myOrdersLink}
           </Link>
@@ -182,7 +147,14 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
               <article key={trip.id} className="card">
                 <div className="card-body flex flex-col gap-3">
                   <div className="flex flex-col gap-1">
-                    <h3 className="text-base font-medium">{trip.title}</h3>
+                    <h3 className="text-base font-medium">
+                      <Link
+                        href={`/s/${shopCode}/trips/${encodeURIComponent(trip.slug)}`}
+                        className="underline-offset-4 hover:underline"
+                      >
+                        {trip.title}
+                      </Link>
+                    </h3>
                     <div className="flex flex-wrap gap-2 text-2xs text-secondary">
                       {trip.location ? <span>{trip.location}</span> : null}
                       {trip.durationHours ? (
@@ -195,6 +167,12 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
                     {trip.summary ? (
                       <p className="whitespace-pre-line text-sm text-secondary">{trip.summary}</p>
                     ) : null}
+                    <Link
+                      href={`/s/${shopCode}/trips/${encodeURIComponent(trip.slug)}`}
+                      className="text-sm underline underline-offset-4"
+                    >
+                      {t.trips.detailsLink}
+                    </Link>
                     {/* #46：下單前顯示現行取消／退款政策，不用等點進申請表單才看得到 */}
                     <p className="text-2xs text-secondary">
                       {t.trips.cancellationPolicyLabel}
@@ -212,7 +190,7 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
                           <span className="text-2xs text-secondary">
                             {t.trips.partyRange(plan.minParty, plan.maxParty)}
                           </span>
-                          {plan.salesMode === 'REQUEST' ? (
+                          {plan.bookingCta === 'request' ? (
                             <>
                               <span className="badge badge-success">{t.trips.requestBadge}</span>
                               <Link
@@ -223,7 +201,7 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
                               </Link>
                             </>
                           ) : null}
-                          {plan.salesMode === 'FIXED_DEPARTURE' ? (
+                          {plan.bookingCta === 'fixed' ? (
                             <>
                               <span className="badge badge-success">{t.trips.bookBadge}</span>
                               <Link
@@ -233,6 +211,15 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
                                 {t.trips.bookCta}
                               </Link>
                             </>
+                          ) : null}
+                          {plan.bookingCta === 'request-unavailable' ? (
+                            <span className="text-2xs text-secondary">{t.trips.noRequestableHint}</span>
+                          ) : null}
+                          {plan.bookingCta === 'fixed-unavailable' ? (
+                            <span className="text-2xs text-secondary">{t.trips.noBookableHint}</span>
+                          ) : null}
+                          {plan.bookingCta === 'dates-not-loaded' ? (
+                            <span className="text-2xs text-secondary">{t.trips.datesNotLoadedHint}</span>
                           ) : null}
                         </li>
                       ))}

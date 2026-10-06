@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-10-05-issue-755-atomic-publication-r01",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-10-05T02:21:10Z",
+  "endedAt": null,
+  "sources": [
+    {
+      "ref": "issue/755"
+    }
+  ],
+  "main": {
+    "startSha": "f1818d6d0634756e297b03cc27808c6f8635b8e5",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": null,
+    "openIssuesEnd": null,
+    "openPrsStart": null,
+    "openPrsEnd": null,
+    "mainTerraPeak": 0,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 0,
+    "sharedTestPeak": 0,
+    "closureSweeps": 0,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [
+      {
+        "id": "20261005-issue755-freshmain-source-validation",
+        "role": "verification",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "issue": 755,
+        "startedAt": "2026-10-05T02:22:04Z",
+        "completedAt": "2026-10-05T02:24:11Z",
+        "count": 1,
+        "accepted": true,
+        "evidenceRef": "LOCAL_ONLY_UNPUBLISHED_LOGS; base=f1818d6d0634756e297b03cc27808c6f8635b8e5; source-patch-sha256=74c86577cbeed8f43427abdf433a1d37ead4d8feb51d0bc585694710689f413b",
+        "note": "Observed local command sequence on Node 22.23.3: tsc; vitest tests/unit; next build (mock mode). Results: typecheck exit 0; 319 unit files / 4,449 tests pass, exit 0; mock build exit 0. Run base f1818d6d0634756e297b03cc27808c6f8635b8e5; source patch SHA256 74c86577cbeed8f43427abdf433a1d37ead4d8feb51d0bc585694710689f413b. Content SHA256: receipt f8f63f27bf9444291617ab5182795e797e48a8d3962ff9e4db73cf0d41173725; exit summary c77e6abb0bcac2fabfd068fdcb97d140cb452e1dce3654923a1ce328e5dbbee9; typecheck output e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855; unit output a404756478c227ce820a5ee7ccb9ce8cdddbc5a1d74f03e02567624cae3d3f2f; build output c611712a2a44c37bc9449202468bc2df2c00b084cc3714322ec587d6f81353e6. Raw logs are retained locally and have not been published. This is local source validation, not remote/full CI, shared TEST, DB or Production.",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "unknown"
+      }
+    ],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 1,
+    "issuesClosed": 0,
+    "auditReady": 0,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 1,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 1,
+    "unresolvedP1": null,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 0,
+    "lunaAccepted": 0,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 2,
+    "solIssues": 1
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
+  "notes": [
+    "CARRYOVER_ONLY: Before this Run, the 0135 atomic-boundary counterexample produced begin / begin / commit / commit in a pure-local constructor trace and the expected rejection assertion exited 1; the prior TDD RED reported 26 failures / 12 passes. An earlier full-build attempt had no verified terminal result; a separate later offline mock build passed. These are historical carryover only and are not counted in this Run. Raw evidence remains local and unpublished.",
+    "2026-10-05T02:22:04Z–02:24:11Z: local source validation on Node 22.23.3 ran tsc, vitest tests/unit, then next build in mock mode against base f1818d6d0634756e297b03cc27808c6f8635b8e5 and source-patch SHA256 74c86577cbeed8f43427abdf433a1d37ead4d8feb51d0bc585694710689f413b. All exits were 0; the unit run covered 319 files / 4,449 tests. Content SHA256s: receipt f8f63f27bf9444291617ab5182795e797e48a8d3962ff9e4db73cf0d41173725; exit summary c77e6abb0bcac2fabfd068fdcb97d140cb452e1dce3654923a1ce328e5dbbee9; typecheck output e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855; unit output a404756478c227ce820a5ee7ccb9ce8cdddbc5a1d74f03e02567624cae3d3f2f; build output c611712a2a44c37bc9449202468bc2df2c00b084cc3714322ec587d6f81353e6. Raw logs are retained locally, not published. fullCiRuns remains 0.",
+    "Public repository fact: the PR #776 comment https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/776#issuecomment-5986919549 describes the #755 0135 transaction-wrapper blocker, states that #776 does not touch two validator files, and pauses closure TEST/Production dispatch until the wrapper contract converges. This source supports statements about #776 only; it neither authorizes TEST/Production application nor supports claims about #775 or the third file.",
+    "2026-10-05T02:23:44Z: read-only actual changed-filename inventory for PR records #775, #756, #727, #712, #711, #708, #703, #699 and #611 showed zero overlap with the three #755 source/test files. This is a time-bound repository observation, not owner consent or a current WIP claim. Inventory content SHA256 3a098b6db745708490b50ad2a444efa0d8209d03779cb8d3fae9ec1c45b547e3; raw inventory retained locally and unpublished.",
+    "2026-10-05T02:25:29Z and 02:32Z: two repository publication-stage triage/review logical touches for issue/755. flow.solTouches=2 and flow.solIssues=1 reflect these touch events only; requested/actual model identity remains unknown and no Sol-model dispatch is claimed.",
+    "2026-10-05T02:33:58Z: one local source commit-only event for the same three source/test files (+194/-13), with source-patch SHA256 74c86577cbeed8f43427abdf433a1d37ead4d8feb51d0bc585694710689f413b; delivery.commitOnly=1. At that event time the commit was local-only; this note is historical and is not a current remote publication status.",
+    "Repository prospective-integrity observation against main 8d3ab99958afc782f67209fbb1c6d48f216eeeb2 passed on the pre-sanitization five-file local candidate; comparison tree 94ba8a8fc2ed332e061d753c5b56330454a05083, 1,488 tracked / 0 deleted. This is local historical evidence, not the sanitized/public tree or a remote-head claim. Receipt content SHA256 2899ba336c4fad9a253b387f04407a06d1383eea535d914f480dfa8910706fcf.",
+    "At the 2026-10-05T02:25:01Z capacity observation, active Product BUILD/candidate, Reserve and shared TEST counts were each 0; this is a time-bound snapshot, not authorization or a future WIP claim. The Run remains IN_PROGRESS; #755 P0 remains unresolved (1) and P1 is unassessed (null). Source PASS does not imply P0 resolution or shipment.",
+    "2026-10-05T02:48Z–02:51Z publication attempts: the standard branch-push attempt failed because CLI login was unavailable; no branch was created. Four repository source/summary blob objects were then created through an authorized repository operation. A separate publication-receipt blob write was rejected by disclosure review and was not retried. At that time no git tree/ref, branch, PR admission, CI, or DB/TEST/Production operation existed. The Run evidence reference is now limited to repository base/source-patch hashes and local-only log content hashes; raw logs remain unpublished. These events do not change CI or TEST counters."
+  ],
+  "deliveryTruthVersion": 4,
+  "closeout": {
+    "contractVersion": 1,
+    "ownerRole": "PRODUCT_MAIN_SESSION",
+    "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
+    "state": "OPEN",
+    "closedAt": null,
+    "evidenceRef": null
+  },
+  "wipLifecycle": {
+    "schemaVersion": 1,
+    "events": []
+  },
+  "completionTruth": {
+    "status": "NOT_CHECKED",
+    "checkedAt": null,
+    "claims": []
+  }
+}

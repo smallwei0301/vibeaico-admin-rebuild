@@ -2,7 +2,7 @@
 
 > Owner 首次裁示：2026-08-28
 >
-> 最近更新：2026-09-30
+> 最近更新：2026-10-01
 >
 > 現行 Product B+ 以本文件為單一操作入口。歷史基線見
 > `docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`；後續已收斂裁示包含：
@@ -202,6 +202,8 @@ PR body、`TEST_PROFILE`、lane、candidate、Closure、Final Risk metadata 等 
 - metadata 到 CI 才第一次被擋，優先視為 **preflight coverage gap**；補 shared validator／parser，而不是再教每個 Agent 背一段 prose exception。
 - metadata 修正不靠 blind rerun；workflow 若不監聽 `edited`，使用既有 `workflow_dispatch` 或下一個**真實內容變更**觸發，不堆 no-op commit。
 - 同一 deterministic error 不用多輪 CI 猜合法值；先讀 validator 或讓 preflight 直接呼叫與 CI 相同的判定函式。
+- **Agent PR publication receipt（#724）**：#736 實際 merge 時間是不可變的 rollout 邊界；該時間以前建立的 PR 永久 grandfather，即使 live base 前進也不追討歷史 Draft receipt。新建立的 Agent-origin PR 先以 Draft 作 staging；OWNER／UNKNOWN 與 grandfathered PR 不套用新 publication validator。trusted-main guard 用 `agent-wip-preflight.mjs` 的共用 deterministic validator 驗 exact body + GitHub actual changed-file inventory；PASS 才由 `github-actions[bot]` 留 immutable `PUBLICATION_PREFLIGHT_RECEIPT`，其 digest 綁 exact body、files、base SHA、head SHA。轉 ready／ACTIVE 時 receipt 必須仍精確匹配；body edit、source synchronize、base/head/file inventory 改變都會讓舊 receipt 失效，必須回 Draft 取得新 receipt。main push 會喚醒以 main 為 base 的開放 Agent PR，重新驗證 base-bound receipt 並更新當前 head 的 required status；定時 recovery 仍保留。若 push 喚醒無法取得 PR 清單，該 run 失敗，但先前 head 的成功 status 不會自動失效；合併者必須核對最新 base、receipt 與本次有效 guard，不能將失敗 run 當成 PASS。純 MODEL_GOVERNANCE 仍只驗自己的治理 metadata，不借 Product Run。
+- receipt 不是 Final Risk、CI、TEST 或 merge approval，也不能由 PR body 自稱 PASS 取代；remote WIP/Final Risk/TEST/schema/branch-protection 規則照常執行。no-op commit 只會改 head 並使 receipt 失效，不是修 metadata 的手段。
 
 ### 2.0.2 Final Risk blocker 判讀：審查、提交證據、Owner action 必須分開
 
@@ -367,6 +369,9 @@ Production release 也不得因 pending migration 很多就「照編號整批套
 
 ## 4. Product B+ 角色與模型路由
 
+Owner 2026-10-01 00:47 UTC 細化：在同一執行環境用 subagent／multiagent 明確 request 角色模型，主 Agent 保留 ownership，回收結果後核對來源／exact diff／測試再繼續；委派不是交給外人後停工。OpenAI Luna=`gpt-6-luna` 做窄盤點／Aggregator，Sol=`gpt-6.1-sol` 做施工與普通審查，獨立 reviewer 用不同 actor／fresh context。Astra=`gpt-6-astra` 只做 classifier 確定的高風險 Final Risk，不施工、不盤點、不處理普通風險；Anthropic 對應不變。無 model selector 如實記限制並用既有合法 fallback，不假稱 served model；歷史 context／role unknown 不改寫。
+CURRENT_AGENT fallback 不得讓 builder 自審放行；仍需不同 actor／fresh context 做對抗審查並如實 actual unknown。沒有獨立 actor 可用就 park，不虛稱獨立 PASS，不改 #552 attestation 身份／來源契約。
+
 本節只適用 `PRODUCT_MAINLINE`。
 
 ```text
@@ -391,20 +396,20 @@ LUNA_FAN_OUT → LUNA_FAN_IN → SOL_TRIAGE
 
 PROVIDER_FIRST（Owner 2026-09-30 澄清）：先以 session／runtime 的 provider metadata 判定 OpenAI 或 Claude；不能由 `CLAUDE.md` 檔名、repo SDK 或模型前綴猜 actual。再查該環境的 runtime catalog，依角色、任務大小與風險選擇可用模型，記錄 provider 證據及 requested／actual；無可靠 observed identity 就填 unknown。其他 provider 的模型缺席不是 blocker，禁止派送不可用的跨 provider 模型。
 
-OpenAI：Luna6 做窄盤點／QA，Sol6.1 做判案／review；build 預設 Terra 不換版本，可用時優先。若 Terra 不在本地 catalog，須區分本地 build 選項缺席與無關的 Claude 模型缺席；本次 provider 澄清不自動新增 Sol builder 例外，依既有角色授權選擇，無適任且獲授權的本地 builder 才報 blocker。Claude：依任務選 Haiku／Sonnet5.5／Opus5.5，Sonnet 對應 build、Opus 對應 audit；這些名稱只適用 Claude 環境。真正缺少本地適任 builder 才記 local builder blocker。
+OpenAI：Luna6 做窄盤點／QA；Owner 2026-10-01T00:01:00Z 因成本／可用性將 OpenAI Terra 施工模型改為 `gpt-6.1-sol`，同 ID 可分別承擔 build 與 audit，但必須由不同 actor／session 獨立審查，builder 不得自審放行。Claude：依任務選 Haiku／Sonnet5.5／Opus5.5，Sonnet 對應 build、Opus 對應 audit；對應不變。真正缺少本地適任 builder 才記 local builder blocker。決策：`docs/decisions/2026-10-01-owner-openai-sol61-builder.md`。
 
 | 角色 | 主要工作 | OpenAI | Anthropic | 禁止事項 |
 |---|---|---|---|---|
 | Luna / scout | 真實盤點、Closure、CI 摘要、Janitor、文件、QA、Metrics | `gpt-6-luna` | `claude-haiku-4-5` | 不做產品／安全決策，不展開大型 code |
-| Terra / build | Product 施工（MAIN／RESERVE） | `gpt-5.6-terra` | `claude-sonnet-5-5` | 不擴大驗收、不自行關 Issue |
+| Terra / build | Product 施工（MAIN／RESERVE） | `gpt-6.1-sol` | `claude-sonnet-5-5` | 不擴大驗收、不自行關 Issue、不自審放行 |
 | Sol / audit | TRIAGE、早期 diff audit、模糊 CI、高風險設計、final Audit | `gpt-6.1-sol` | `claude-opus-5-5` | 不做 grep、輪詢、一般 CRUD、完整舊對話重讀 |
 
 2026-09-30 Owner 只更新目前 role model 版本：Sol 6.1、Luna 6、Sonnet／Opus 5.5；
-Terra、Astra／Fable 及角色／風險／可信審查契約保留。設定的 `modelMappingVersion`
+該歷史版本裁示的 OpenAI Terra 已由 2026-10-01 決策更新；Astra／Fable 及角色／風險／可信審查契約保留。設定的 `modelMappingVersion`
 與審查 `policyVersion` 分開，既有 receipt 不改寫。派工前查 runtime catalog；
 模型已發布或已寫入設定，不代表本 runtime 可用；目前派工依上方 PROVIDER_FIRST 選擇原則。
 
-Product lane 決定工作責任與所需能力。Terra 一律使用 build 層；不得用 scout 或 audit 層模型做任何 Product 施工，
+Product lane 決定工作責任與所需能力。Terra 一律使用 build 層；不得用 scout 或未獲 build 授權的 audit 層模型做任何 Product 施工（OpenAI `gpt-6.1-sol` 已獲 build 授權；Anthropic Opus 仍禁止施工），
 也不得把 builder 自審宣稱為獨立 audit。模型版本表是 provider-local 選擇起點，不是跨 provider 強制派工。平台無法證明 actual model 時填 `actual=unknown`，
 不得由 lane 名稱推定。
 
@@ -527,6 +532,24 @@ Closeability：5 幾乎可關；4 差一步；3 最多兩步可 Audit；2 需明
 
 ### 7.2 Product Final Risk
 
+#### 獨立角色來源與 provider-local catalog 准入
+
+`openaiBuilderDecision.independentReviewerRequired=true` 時，live review approval 必須有 current builder 與 reviewer 的獨立執行來源；只設 flag、換模型 ID 或在 review 自填 `trusted=true` 不足以放行。
+PR body 增加 `BUILDER_EXECUTION_RECEIPT: https://github.com/<owner>/<repo>/pull/<n>#issuecomment-<id>`（同 repo 的 Issue comment 亦可）；canonical `astra-review` 增加 `reviewerExecutionReceipt` 指向另一筆同 repo comment。兩個 locator 不作證據本身：GitHub adapter 必須 GET 回讀、驗 canonical html_url、可信 write/maintain/admin 提交者或既有 trusted bot，不執行 comment 內容。
+每筆 comment 只有一個 `agent-role-execution` fenced JSON，schema：`role`=BUILD|REVIEW、`repository`、`headSha`、`changeDigest`、runtime `actorId`／`sessionId`／`executionRef`、UTC `startedAt`／`completedAt`、`executionEvidence`=OPERATOR_ATTESTED；REVIEW 另有 `freshContext: true`。這是可信操作者對角色執行的背書，不是 provider-signed telemetry；缺實際 actor/session capture 就 pending，不能由 PR author／lane／requested model 推定。
+回讀內容必須綁 reviewed head/digest/repository；普通 Sol 是 current exact head，高風險純換底只可依下述 semantic reuse 沿用原 reviewed head。review actor/session/execution 與 builder 不同，review 開始不早於 builder 完成，review executionRef 等於 attestation executionRef。comment updatedAt 不能晚於 review submittedAt、completedAt 不能晚於 comment；編輯後須新 review。缺、foreign、stale、self-review 或 latest finding 未解均不 approval。歷史 source/model metadata 可只讀還原，不取代 live role gate。
+角色獨立不把 `actual=unknown` 升為 served verified。AUDIT／PREMIUM 保留原模型 identity 契約；無 selector 的 CURRENT_AGENT 如實 unknown，但仍需另一 actor/fresh context 的實際角色證據。沒有合規獨立 actor 就 park，不虛稱 PASS。
+
+普通 Product final Sol 也須獨立角色，不因 `ASTRA_RISK:NONE` 或 Final Risk `NOT_REQUIRED` 略過。是否進 final 准入由 live PR open/draft/lane 決定，不能用 payload 自填 BUILD 豁免；Draft 施工仍可收集 TEST 證據，純治理免 Product 角色收據。
+可信 canonical `sol-review` JSON 記 `repository/headSha/changeDigest/policyVersion/requestedModel/actualModel/identityEvidence/executionRef/reviewerExecutionReceipt/verdict/report/findings`；REVIEW 角色收據另記 `provider/providerEvidenceRef/requestedModel`，驗同 provider 的 Sol／Opus request。未知 actual 只能 `identityEvidence: UNKNOWN`、`servedVerified: false`，不能冒充模型已驗；普通審查不要求 Astra 諮詢或 ASTRA schema baseline。
+高風險 semantic reuse 必須是最新可信 canonical PASS，GitHub `commit_id` 等於 attested 原 head，且 repository/digest/policy/test/schema 基線與現在一致；原角色收據/source/time/model 不改寫。實質變更或最新 finding 仍拒絕，新 head 仍須 exact-head CI，不重置 #552 budget。
+review submitted/edited/dismissed 的無權限 wake-up 由 trusted-main guard 回讀 canonical event/PR/reviews 再刷新 stable status；不信任分支程式、artifact 或 producer 結論。review 事件不派 TEST，最新否決不可留下舊成功放行；工具或來源無法查證時如實 pending。
+
+新 premium reservation 和 audit fallback 先驗 `provider`=OPENAI|ANTHROPIC、明確 `availableModels`、當次 `runtimeCatalog`（provider／models／providerEvidenceRef／evidenceRef／captureStartedAt／observedAt），captureStartedAt ≤ observedAt ≤ current request `now`。來源須為當次 runtime metadata/catalog 觀測，不是 repo config 或模型發佈消息；函式只驗觀測 record，不認證 backend 可用性，不另創 TTL。
+OpenAI premium 只 Astra、Anthropic premium 只 Fable；audit 只同 provider 已觀測的 Sol／Opus。缺／未知 provider/catalog 不回退全 allowlist 或猜另一 provider 模型：有 selector 但證據缺就 park，只有明確無 selector 才走既有 CURRENT_AGENT。#552 同 lineage 合計一次、零昂貴同級 retry、300 秒無執行證據及首次 infra failure 降級數值全部保留。
+
+DB release preflight 尚未接入可信 role context；enabled policy 下缺此證據安全拒絕，不把本節 source review 當 Production 操作許可。
+
 Product 高後果範圍才需要 Final Risk，例如：
 
 - `PAYMENT_CONSISTENCY`
@@ -551,6 +574,8 @@ requested 型號不當成 actual 證據。共享驗證器仍要求可信提交�
 無 selector 的目前 agent 記 not_requested。Playbook ref 綁 review.repository 的 main，不借別 repo／未合併 branch。
 實質 code/security finding、SAFETY_REFUSAL／SAFETY_CLASSIFIER、失敗 CI／TEST 或 Production gate 不適用此替代路徑。
 此規則不擴張 Product builder 模型權限，不授予 Production 寫入；#552 的歷史有效證據仍可沿用。
+此替代路徑仍須通過本節 current builder/reviewer 獨立角色回讀與 provider-local runtime catalog；
+有 selector 但缺本地 audit catalog 仍 park，明確無 selector 保留 CURRENT_AGENT。DB adapter 缺可信角色 context 仍拒絕。
 
 - 同一 reviewLineage 最多一次 Astra/Fable 昂貴諮詢，兩者合計，不是各一次。
 - 第一次諮詢後修改重審，或已派送無回應／環境不支援，直接 Sol／Opus，不再昂貴第二輪。
@@ -651,6 +676,12 @@ CI 失敗由 Luna 先壓縮：exact head、job／step、suite／case、錯誤碼
 留言或 GitHub 的 merged badge 讓接手者自行猜。若工具／權限／併發使本文當回合無法更新，必須留下
 `STATE_SYNC_PENDING`，精確列出 PR、已驗證 terminal state、尚未同步欄位、失敗 action／error 與下一個合法
 寫入路徑；在清掉這個 pending 前不得宣稱 `POST_MERGE_CLOSEOUT=COMPLETE`。
+
+### 9.0.1.1 Product Issue close admission：先證明可關，再送 close
+Product Issue 的 GitHub `closed` 事件由 trusted `product-issue-close-guard` 機械驗證。關閉前同回合留下 `RUN_CAPTURE_HANDOFF`，至少含 `RUN_ID`、`EVENT: ISSUE_CLOSE_READY`、current-main canonical CI `EVIDENCE_REF`、同 Issue trusted final Sol `CLOSE_APPROVED_REF`、`REVIEWED_HEAD`、`OBSERVED_AT`、`WRITER_BLOCKER`、`NEXT_SAFE_WRITE_PATH`。
+close guard 重新讀 live Issue、current main、owning v4 Product Run、open/merged PR、canonical CI 與 final Sol approval。handoff 必須在 close 前建立/最後編輯且不超過 6 小時；Run 必須 OPEN 且 sources 含本 Issue；final Sol approval 必須同 Issue／同 RUN_ID／本次 close generation，`EXACT_HEAD=REVIEWED_HEAD` 且等於本 Issue 最後一張已 merge Product PR 的 source head。Squash merge 的 ancestry 以該 PR `merge_commit_sha` 對 current main 驗證，不拿 source head 冒充 merge ancestry。
+CI 必須是 `.github/workflows/ci.yml` 的 current-main exact SHA `push` success，且不能有同 Issue open PR。trusted reviewer 沿用既有 immutable Agent-bot allowlist或 GitHub live write/maintain/admin permission；不得另造信任名單。任一條不成立即 reopen 並標 `governance:premature-close`，label 建立須併發冪等。
+合法 close 後 workflow 留下 `ISSUE_CLOSED_OBSERVED` handoff；owning Product session 仍須 reconcile `ISSUE_CLOSED` Completion Truth 與 `delivery.issuesClosed`、重跑 readiness，再完成 `POST_MERGE_CLOSEOUT`。只有正文與 managed label 一致為 `MODEL_GOVERNANCE` 且無 Product label 才豁免；缺失、歧義或衝突一律 fail closed。
 
 ### 9.0.2 STAGE_TRUTH_SYNC：環境階段一變，就更新，不等 closeout／複盤
 

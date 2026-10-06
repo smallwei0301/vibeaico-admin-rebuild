@@ -4,6 +4,8 @@ import { requireFeature } from '@/server/features';
 import { mapTripPlanSeason } from '@/server/mappers';
 import { seasonUpdateSchema } from '@/server/tour-domain';
 
+import { requireSeasonForWrite } from '@/server/trip-plan-review';
+
 type Context = { params: Promise<{ id: string }> };
 
 export const PUT = handle(async (req, { params }: Context) => {
@@ -11,6 +13,7 @@ export const PUT = handle(async (req, { params }: Context) => {
   const t = await requireTenantManager();
   await requireFeature(t.tenantId, 'TOUR_MODULE');
   const body = seasonUpdateSchema.parse(await req.json());
+  const current = await requireSeasonForWrite(t, id);
   const patch: Record<string, unknown> = {};
   if (body.name !== undefined) patch.name = body.name;
   if (body.startMonth !== undefined) patch.start_month = body.startMonth;
@@ -20,13 +23,7 @@ export const PUT = handle(async (req, { params }: Context) => {
   if (body.priceOverride !== undefined) patch.price_override = body.priceOverride;
   if (body.active !== undefined) patch.active = body.active;
   if (body.sortOrder !== undefined) patch.sort_order = body.sortOrder;
-  if (Object.keys(patch).length === 0) {
-    const { data, error } = await t.supabase.from('trip_plan_seasons').select('*')
-      .eq('tenant_id', t.tenantId).eq('id', id).maybeSingle();
-    if (error) throw error;
-    if (!data) return fail(404, '找不到此季節', ERR.NOT_FOUND);
-    return ok(mapTripPlanSeason(data));
-  }
+  if (Object.keys(patch).length === 0) return ok(mapTripPlanSeason(current));
   const { data, error } = await t.supabase.from('trip_plan_seasons').update(patch)
     .eq('tenant_id', t.tenantId).eq('id', id).select('*').maybeSingle();
   if (error) throw error;
@@ -38,6 +35,7 @@ export const DELETE = handle(async (_req, { params }: Context) => {
   const { id } = await params;
   const t = await requireTenantManager();
   await requireFeature(t.tenantId, 'TOUR_MODULE');
+  await requireSeasonForWrite(t, id);
   const { data, error } = await t.supabase.from('trip_plan_seasons').delete()
     .eq('tenant_id', t.tenantId).eq('id', id).select('id').maybeSingle();
   if (error) throw error;

@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 
 import {
   assertTestReleaseTarget,
@@ -8,7 +11,9 @@ import {
   validateProductionDbReleasePlanOnTest,
 } from '../../scripts/db/validate-production-db-release-on-test.mjs';
 import {
+  buildProductionDbReleasePlan,
   releasePlanDigestOf,
+  splitSqlStatements,
   sha256,
 } from '../../scripts/agents/production-db-release-plan.mjs';
 
@@ -71,6 +76,33 @@ function fakeGitRunner(command: string, args: string[]) {
     return { status: 0, stdout: `${MAIN}\n`, stderr: '' };
   }
   return { status: 1, stdout: '', stderr: 'unexpected git invocation' };
+}
+
+// Transport success fixtures must be atomically admissible. A FULL_PENDING_SET
+// from the real repository includes 0135's BEGIN/COMMIT wrapper and must fail.
+const fixtureRoots: string[] = [];
+afterEach(() => {
+  for (const root of fixtureRoots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+function sourceFixture(sql = SQL) {
+  const repoRoot = mkdtempSync(join(tmpdir(), 'g3-atomic-source-'));
+  fixtureRoots.push(repoRoot);
+  mkdirSync(join(repoRoot, 'supabase/migrations'), { recursive: true });
+  writeFileSync(join(repoRoot, 'supabase/ledger-alias-map.json'), JSON.stringify(aliasMap()));
+  writeFileSync(join(repoRoot, PATH), sql);
+  return repoRoot;
+}
+
+function buildWithSql(sql: string, liveLedgerRows: any[] = []) {
+  const source = () => sql;
+  const releasePlan = buildProductionDbReleasePlan({
+    releaseId: 'release-20261005-atomic-admission', mainSha: MAIN,
+    plannedAt: '2026-10-05T00:00:00Z', aliasMap: aliasMap(), readCanonicalSql: source,
+  });
+  return buildAtomicTestReleaseValidationSql({
+    plan: releasePlan, aliasMap: aliasMap(), liveLedgerRows, readCanonicalSql: source,
+  });
 }
 
 describe('Production DB G3 exact-plan TEST validator #447', () => {
@@ -164,11 +196,12 @@ describe('Production DB G3 exact-plan TEST validator #447', () => {
   });
 
   it('uses a project-bound TEST connection for the two ledger reads and one atomic apply without calling the Management API', async () => {
+    const repoRoot = sourceFixture();
     const actualPlan = buildTestReleasePlanFromCheckout({
       releaseId: 'release-20260915-g3-direct-url',
       mainSha: MAIN,
       plannedAt: '2026-09-15T00:17:00Z',
-      repoRoot: process.cwd(),
+      repoRoot,
       runner: fakeGitRunner as any,
     });
     const calls: Array<{ sql: string; readOnly: boolean }> = [];
@@ -198,6 +231,7 @@ describe('Production DB G3 exact-plan TEST validator #447', () => {
       projectRef: TEST,
       sourceRunId: '123',
       sourceRunAttempt: 1,
+      repoRoot,
       runner: fakeGitRunner as any,
       fetchImpl: fetchSpy as unknown as typeof fetch,
     });
@@ -208,15 +242,115 @@ describe('Production DB G3 exact-plan TEST validator #447', () => {
   });
 
   it('accepts a project-bound PostgreSQL URL through the existing TEST_DB_RELEASE_TOKEN secret interface', async () => {
-    const actualPlan = buildTestReleasePlanFromCheckout({ releaseId: 'release-20260915-g3-token-url', mainSha: MAIN, plannedAt: '2026-09-15T00:17:00Z', repoRoot: process.cwd(), runner: fakeGitRunner as any });
+    const repoRoot = sourceFixture();
+    const actualPlan = buildTestReleasePlanFromCheckout({ releaseId: 'release-20260915-g3-token-url', mainSha: MAIN, plannedAt: '2026-09-15T00:17:00Z', repoRoot, runner: fakeGitRunner as any });
     let reads = 0;
     const directQuery = vi.fn(async ({ readOnly }) => {
       if (!readOnly) return [];
       reads += 1;
       return reads === 1 ? [] : actualPlan.migrations.map((migration: any) => ({ version: migration.ledgerVersion, name: migration.repoFile, created_by: 'vibeaico-g3-test-validator', idempotency_key: `g3:${actualPlan.releaseId}:${migration.repoFile}` }));
     });
-    const evidence = await validateProductionDbReleasePlanOnTest({ plan: actualPlan, token: TEST_URL, directQuery, projectRef: TEST, sourceRunId: '123', sourceRunAttempt: 1, runner: fakeGitRunner as any, fetchImpl: vi.fn() as unknown as typeof fetch });
+    const evidence = await validateProductionDbReleasePlanOnTest({ plan: actualPlan, token: TEST_URL, directQuery, projectRef: TEST, sourceRunId: '123', sourceRunAttempt: 1, repoRoot, runner: fakeGitRunner as any, fetchImpl: vi.fn() as unknown as typeof fetch });
     expect(evidence.status).toBe('TEST_RELEASE_PLAN_VERIFIED');
     expect(directQuery).toHaveBeenCalledTimes(3);
+  });
+});
+
+
+describe('G3 atomic SQL admission #755', () => {
+  it.each([
+    'BEGIN', 'BEGIN WORK', 'START TRANSACTION', 'COMMIT', 'COMMIT AND CHAIN',
+    'ROLLBACK', 'ROLLBACK TO SAVEPOINT s', 'ABORT', 'END', 'END WORK',
+    'SAVEPOINT s', 'RELEASE SAVEPOINT s', 'RELEASE s',
+    'SET TRANSACTION READ ONLY', 'SET LOCAL TRANSACTION READ ONLY',
+    'SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY',
+  ])('rejects top-level transaction control: %s', (command) => {
+    expect(() => buildWithSql(`${SQL} /* nested /* comment */ */ ${command};`))
+      .toThrow(/TRANSACTION_CONTROL_NOT_ADMITTED/);
+  });
+
+  it.each([
+    "SET LOCAL lock_timeout = '0'", "SET SESSION statement_timeout = '0'",
+    'SET ROLE postgres', 'RESET ALL', 'DISCARD ALL',
+  ])('rejects writer configuration overrides: %s', (command) => {
+    expect(() => buildWithSql(`${SQL} ${command};`)).toThrow(/WRITER_CONFIGURATION_NOT_ADMITTED/);
+  });
+
+  it.each(['commit', 'rollback'])('rejects transaction control in a stored routine: %s', (command) => {
+    expect(() => buildWithSql(`create function public.g3_bad() returns void language plpgsql as $body$ begin ${command}; end $body$;`))
+      .toThrow(/TRANSACTION_CONTROL_NOT_ADMITTED/);
+  });
+
+  it('preserves earlier classifier rejection of immediate procedural transaction control', () => {
+    expect(() => buildWithSql('do $body$ begin commit; end $body$;'))
+      .toThrow(/UNSUPPORTED_AUTHZ_SQL_NOT_ADMITTED/);
+    expect(() => buildWithSql("PREPARE TRANSACTION 'g3';"))
+      .toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
+  });
+
+  it('admits procedural BEGIN/END and transaction words used only as literals or identifiers', () => {
+    const sql = `${SQL}
+      -- COMMIT; ROLLBACK;
+      do $body$ begin raise notice 'BEGIN; COMMIT; ROLLBACK;'; end $body$;
+      create function public.g3_safe() returns text language plpgsql as $body$
+      begin return $text$COMMIT; ROLLBACK;$text$; end $body$;
+      create table public.g3_quoted("commit" text default 'ROLLBACK; BEGIN;');`;
+    const built = buildWithSql(sql);
+    expect(built.sql).toContain(sql);
+    expect(splitSqlStatements(built.sql).filter((statement: string) => /^(begin|commit)$/i.test(statement.trim())))
+      .toEqual(['begin', 'commit']);
+    expect(built.sql).toContain('pg_try_advisory_xact_lock');
+    expect(built.sql.match(/insert into supabase_migrations\.schema_migrations/g)).toHaveLength(1);
+  });
+
+  it('retains no-DDL/no-insert replay verification for a safe existing ledger identity', () => {
+    const built = buildWithSql(SQL, [{ name: REPO_FILE, version: '20260914060524' }]);
+    expect(built.decisions[0].existedBefore).toBe(true);
+    expect(built.sql).not.toContain(SQL);
+    expect(built.sql).not.toContain('insert into supabase_migrations.schema_migrations');
+  });
+
+  it('refuses exact canonical 0135 bytes in the eight-migration closure', () => {
+    const repoRoot = process.cwd();
+    const source = (path: string) => readFileSync(resolve(repoRoot, path), 'utf8');
+    const aliases = JSON.parse(source('supabase/ledger-alias-map.json'));
+    const releasePlan = buildProductionDbReleasePlan({
+      releaseId: 'release-20261005-0135-wrapper', mainSha: MAIN,
+      plannedAt: '2026-10-05T00:00:00Z', migrationScope: 'ISSUE_46_0110_0136_CLOSURE',
+      aliasMap: aliases, readCanonicalSql: source,
+    });
+    expect(releasePlan.migrations).toHaveLength(8);
+    const wrapper = releasePlan.migrations.find((migration: any) => migration.repoFile.startsWith('0135_'));
+    if (!wrapper) throw new Error('canonical closure must contain migration 0135');
+    expect(splitSqlStatements(source(wrapper.path)).filter((statement: string) => /^(begin|commit)$/i.test(statement.trim())))
+      .toEqual(['begin', 'commit']);
+    // Synthetic constructor-only baseline, never live G2 / TEST evidence.
+    const existing = releasePlan.migrations.slice(0, 6).map((migration: any) => ({ name: migration.repoFile, version: migration.ledgerVersion }));
+    expect(() => buildAtomicTestReleaseValidationSql({ plan: releasePlan, aliasMap: aliases, liveLedgerRows: existing, readCanonicalSql: source }))
+      .toThrow(/TRANSACTION_CONTROL_NOT_ADMITTED: 0135_/);
+  });
+
+  it.each(['direct', 'management'])('never sends an unsafe migration to the %s mutation transport', async (transport) => {
+    const repoRoot = sourceFixture(`BEGIN; ${SQL} COMMIT;`);
+    const releasePlan = buildTestReleasePlanFromCheckout({
+      releaseId: 'release-20261005-block-transport', mainSha: MAIN,
+      plannedAt: '2026-10-05T00:00:00Z', repoRoot, runner: fakeGitRunner as any,
+    });
+    const directQuery = vi.fn(async () => []);
+    const fetchSpy = vi.fn(async () => ({ ok: true, status: 200, json: async () => [] }));
+    await expect(validateProductionDbReleasePlanOnTest({
+      plan: releasePlan, repoRoot, projectRef: TEST, sourceRunId: '123', sourceRunAttempt: 1,
+      runner: fakeGitRunner as any, directQuery, fetchImpl: fetchSpy as unknown as typeof fetch,
+      ...(transport === 'direct' ? { connectionString: TEST_URL } : { token: 'scoped-test-token' }),
+    })).rejects.toThrow(/TRANSACTION_CONTROL_NOT_ADMITTED/);
+    if (transport === 'direct') {
+      expect(directQuery).toHaveBeenCalledTimes(1);
+      expect(directQuery).toHaveBeenCalledWith(expect.objectContaining({ readOnly: true }));
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } else {
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(fetchSpy).toHaveBeenCalledWith(expect.stringMatching(/\/database\/query\/read-only$/), expect.any(Object));
+      expect(directQuery).not.toHaveBeenCalled();
+    }
   });
 });

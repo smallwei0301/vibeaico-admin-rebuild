@@ -2,9 +2,19 @@
 
 > 本檔是跨領域 Owner 決策索引，讓 Agent 在開工前快速知道哪些題目已經裁示，避免重複詢問。
 > 正式領域規格仍以各 `docs/integration/**` canonical 文件為準；Issue 負責施工範圍與驗收。
-> 最後更新：2026-09-30。
+> 最後更新：2026-10-01。
+
+## 2026-10-01 已裁示
+
+00:47 UTC 角色細化：同環境明確模型 subagent；主 Agent 保留 ownership／回收驗證繼續。Luna 窄盤點／Aggregator、Sol6.1 build／普通獨立 review、Astra6 只高風險 Final Risk；OpenAI default Astra，Anthropic 保留。持久化預約／成本理由回讀先於 dispatch，#552 一次預算與300秒 fallback不變。來源：`docs/decisions/2026-10-01-owner-openai-sol61-builder.md`。
+
+| 範圍 | 主題 | 裁示 | 影響 |
+|---|---|---|---|
+| OpenAI Product builder | Terra 施工模型改為 Sol 6.1 | 生效 `2026-10-01T00:01:00Z`；Owner 因成本／可用性批准 `gpt-6.1-sol` 施工窄測試 harness，並將相關 Terra 模型用途改為 Sol 6.1。 | build／audit 可同 ID、須不同 actor／session；Anthropic、lane／容量、獨立 review、Final Risk 與安全 gate 不變，歷史 actual 不改。決策：`docs/decisions/2026-10-01-owner-openai-sol61-builder.md`。 |
 
 ## 2026-09-30 已裁示
+
+> 下列為當日裁示原文；OpenAI build 模型由上方 2026-10-01 決策取代，其他對應保留。
 
 | 範圍 | 主題 | 裁示 | 影響 |
 |---|---|---|---|

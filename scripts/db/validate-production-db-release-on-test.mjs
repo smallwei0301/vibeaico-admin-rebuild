@@ -8,6 +8,8 @@ import postgres from 'postgres';
 
 import {
   buildProductionDbReleasePlan,
+  splitSqlStatements,
+  stripSqlStringLiterals,
   verifyProductionDbReleasePlan,
 } from '../agents/production-db-release-plan.mjs';
 
@@ -111,7 +113,24 @@ export function assertTestReleaseTarget(projectRef) {
 }
 
 function assertAtomicCompatibleSql(sql, repoFile) {
-  const text = String(sql ?? '').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\r\n]*/g, ' ');
+  // Keep G3 admission at least as strict as the Production atomic writer:
+  // nested BEGIN does not create a nested PostgreSQL transaction, and COMMIT
+  // would release the lock before the migration ledger and postchecks finish.
+  const statements = splitSqlStatements(sql);
+  const transactionControl = /^(?:begin\b|start\s+transaction\b|commit\b|rollback\b|abort\b|end(?:\s+(?:work|transaction|and\s+chain))?\b|savepoint\b|release(?:\s+savepoint)?\b|prepare\s+transaction\b|set\s+(?:(?:local|session)\s+)?transaction\b|set\s+session\s+characteristics\s+as\s+transaction\b)/i;
+  const procedural = /^(?:do\b|create\s+(?:or\s+replace\s+)?(?:function|procedure)\b)/i;
+  const proceduralTransactionControl = /\b(?:commit|rollback|abort|savepoint|release(?:\s+savepoint)?|prepare\s+transaction)\b/i;
+  for (const statement of statements) {
+    const trimmed = statement.trim();
+    const lexicalBody = procedural.test(trimmed) ? stripSqlStringLiterals(trimmed) : '';
+    if (transactionControl.test(trimmed) || (lexicalBody && proceduralTransactionControl.test(lexicalBody))) {
+      fail('TRANSACTION_CONTROL_NOT_ADMITTED', `${repoFile} contains a transaction boundary command that would escape the atomic G3 validator`);
+    }
+    if (/^(?:set|reset|discard)\b/i.test(trimmed)) {
+      fail('WRITER_CONFIGURATION_NOT_ADMITTED', `${repoFile} cannot override the G3 validator session configuration`);
+    }
+  }
+  const text = statements.join('\n');
   if (/\b(create|reindex)\s+index\s+concurrently\b/i.test(text)) {
     fail('TRANSACTION_UNSAFE_MIGRATION', `${repoFile} uses CONCURRENTLY and cannot run in the atomic G3 validator`);
   }
