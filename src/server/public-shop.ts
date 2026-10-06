@@ -391,7 +391,8 @@ async function loadHomeBookability(
   let pagesUsed = 0;
   for (let i = 0; i < plans.length && pagesUsed < MAX_HOME_DEPARTURE_PAGES; i += HOME_DEPARTURE_PLAN_ID_CHUNK) {
     const chunk = plans.slice(i, i + HOME_DEPARTURE_PLAN_ID_CHUNK);
-    const planIds = chunk.map((plan) => plan.id);
+    // 本分塊仍未判定的方案；已判定的方案後續分頁不再查（它們的列只會被丟棄、卻吃共用頁數預算）。
+    let planIds = chunk.map((plan) => plan.id);
     const state = new Map(chunk.map((plan) => [plan.id, { tracker: createCandidateTracker(plan.minParty), scanned: 0 }]));
     let offset = 0;
     let exhausted = false;
@@ -418,9 +419,17 @@ async function loadHomeBookability(
         const seatsLeft = bookingCandidateSeatsLeft(row, now);
         if (seatsLeft !== null) s.tracker.observe(seatsLeft);
       }
-      offset += rows.length;
-      if (rows.length < HOME_DEPARTURE_PAGE_SIZE) exhausted = true;
-      else if ([...state.values()].every(isDone)) break;
+      if (rows.length < HOME_DEPARTURE_PAGE_SIZE) { exhausted = true; break; }
+      const undecided = planIds.filter((id) => !isDone(state.get(id)!));
+      if (undecided.length === 0) break;
+      if (undecided.length === planIds.length) {
+        offset += rows.length;
+      } else {
+        // IN 清單縮小：列是全域全序（departs_on、start_time、id）、我們讀的是前綴，所以未判定方案「已讀過的列」
+        // 恰好是新（過濾後）序列的前綴；未判定方案每一列都計入 scanned，新 offset = 它們 scanned 的總和。
+        planIds = undecided;
+        offset = undecided.reduce((sum, id) => sum + state.get(id)!.scanned, 0);
+      }
     }
     for (const [planId, s] of state) {
       if (exhausted || isDone(s)) result.set(planId, s.tracker.bookable);

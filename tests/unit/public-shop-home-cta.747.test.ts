@@ -15,6 +15,8 @@ const fx = vi.hoisted(() => ({
   calls: [] as string[],
   /** Issue 760：每次批次團次查詢帶的 plan_id IN 清單（沒帶為 null）。 */
   batchPlanFilters: [] as Array<string[] | null>,
+  /** Issue 760：每次批次團次查詢的 range（offset 斷言用）。 */
+  batchRanges: [] as Array<[number, number] | null>,
 }));
 
 vi.mock('@/server/supabase', () => ({
@@ -72,6 +74,7 @@ vi.mock('@/server/supabase', () => ({
           })));
           all.sort((x, y) => String(x.departs_on).localeCompare(String(y.departs_on))
             || String(x.start_time ?? '').localeCompare(String(y.start_time ?? '')) || x.id.localeCompare(y.id));
+          fx.batchRanges.push(range);
           const [a, b] = range ?? [0, all.length];
           return { data: all.slice(a, b + 1), error: null };
         }
@@ -264,6 +267,23 @@ describe('#747 首頁方案入口與詳情頁一致', () => {
     const home = await homeCta();
     expect(home).toEqual({ i: 'none', f: 'fixed' });
     expect(fx.batchPlanFilters).toEqual([['f']]);
+  });
+
+  it('Issue 760（Codex P2）：同分塊內已判定的方案，後續分頁不再查它；offset 改為未判定方案已讀列數', async () => {
+    fx.batchPlanFilters = [];
+    fx.batchRanges = [];
+    const day = (d: string, row: Row): Row => ({ ...row, departs_on: d });
+    // A：12 個可訂列（第一頁內即判定）＋ 4988 個客滿列，全部排在 B 的可訂列之前（共 5000 列 = 5 頁預算）。
+    // B：2098-01-01 一列客滿（落在第一頁內，scanned=1），可訂列在 2098-02-01（排在 A 全部列之後）。
+    fx.plans = {
+      A: { sort: 0, mode: 'FIXED_DEPARTURE', min: 1, rows: [...Array.from({ length: 12 }, () => day('2098-01-01', ok(2))), ...Array.from({ length: 4988 }, () => day('2098-01-02', full))] },
+      B: { sort: 1, mode: 'FIXED_DEPARTURE', min: 1, rows: [day('2098-01-01', full), day('2098-02-01', ok(2))] },
+    };
+    const home = await homeCta();
+    expect(home).toEqual({ A: 'fixed', B: 'fixed' });
+    expect(fx.batchPlanFilters).toEqual([['A', 'B'], ['B']]);
+    // 第一頁 [0,999] 內 B 讀到 1 列 → 第二頁只查 B，offset = 1。B 的第 2 列使頁不滿 → 結束。
+    expect(fx.batchRanges).toEqual([[0, 999], [1, 1000]]);
   });
 
   it('Issue 760：120 個候選方案：plan_id IN 分塊（100＋20），查詢數仍在頁數預算內', async () => {
