@@ -7,7 +7,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -213,5 +213,120 @@ describe('verify-before-push.sh（#787）', () => {
     const { work } = setup();
     const r = run(work, ['--force']);
     expect(r.status).toBe(2);
+  });
+});
+
+
+/** A real main snapshot supplies the unchanged canonical classifier. */
+function docsSetup() {
+  const t = setup();
+  mkdirSync(join(t.work, 'scripts/ci'), { recursive: true });
+  writeFileSync(join(t.work, 'scripts/ci/classify-changes.mjs'), readFileSync(resolve(__dirname, '../../scripts/ci/classify-changes.mjs')));
+  git(t.work, 'add', 'scripts/ci/classify-changes.mjs');
+  git(t.work, 'commit', '-q', '-m', 'main classifier');
+  git(t.work, 'push', '-q', 'origin', 'HEAD:refs/heads/main');
+  return t;
+}
+function commitFile(work: string, path: string, content = 'documentation\n') {
+  mkdirSync(resolve(work, path, '..'), { recursive: true });
+  writeFileSync(join(work, path), content);
+  git(work, 'add', path);
+  git(work, 'commit', '-q', '-m', path);
+}
+
+describe('verify-before-push canonical docs route', () => {
+  it('docs-only uses lightweight verification, not npm/typecheck, and pushes exact SHA', () => {
+    const { remote, work } = docsSetup();
+    commitFile(work, 'docs/change.md');
+    const head = git(work, 'rev-parse', 'HEAD');
+    const r = run(work, ['--push'], { VBP_TYPECHECK_CMD: 'exit 93', VBP_TEST_CMD: 'exit 94' });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain('VERIFICATION_ROUTE: docs-only');
+    expect(r.stdout).not.toContain('STEP: typecheck');
+    expect(remoteHead(remote)).toBe(head);
+  });
+  it('mixed source/docs still fails full typecheck without pushing', () => {
+    const { remote, work } = docsSetup();
+    commitFile(work, 'docs/change.md');
+    commitFile(work, 'src/change.ts', 'export const n = 1;\n');
+    const r = run(work, ['--push'], { VBP_TYPECHECK_CMD: 'exit 93' });
+    expect(r.status).not.toBe(0);
+    expect(r.stdout).toContain('STEP: typecheck');
+    expect(remoteHead(remote)).toBe('');
+  });
+  it('runtime fixture under docs/metrics does not use docs route', () => {
+    const { remote, work } = docsSetup();
+    commitFile(work, 'docs/metrics/fake.json', '{}\n');
+    const r = run(work, ['--push'], { VBP_TYPECHECK_CMD: 'exit 93' });
+    expect(r.status).not.toBe(0);
+    expect(remoteHead(remote)).toBe('');
+  });
+  it('source renamed into docs still uses full verification', () => {
+    const { remote, work } = docsSetup();
+    mkdirSync(join(work, 'docs'));
+    git(work, 'mv', 'a.txt', 'docs/a.md');
+    git(work, 'commit', '-q', '-m', 'rename source');
+    const r = run(work, ['--push'], { VBP_TYPECHECK_CMD: 'exit 93' });
+    expect(r.status).not.toBe(0);
+    expect(remoteHead(remote)).toBe('');
+  });
+  it('candidate cannot forge its own classifier to call source docs-only', () => {
+    const { remote, work } = docsSetup();
+    commitFile(work, 'scripts/ci/classify-changes.mjs', "export const classifyChangeRecords = () => ({docsOnly:true});\nexport const parseNameStatus = () => [];\n");
+    commitFile(work, 'src/change.ts');
+    const r = run(work, ['--push'], { VBP_TYPECHECK_CMD: 'exit 93' });
+    expect(r.status).not.toBe(0);
+    expect(remoteHead(remote)).toBe('');
+  });
+  it('empty diff does not receive docs-only exemption', () => {
+    const { remote, work } = docsSetup();
+    const r = run(work, ['--push'], { VBP_TYPECHECK_CMD: 'exit 93' });
+    expect(r.status).not.toBe(0);
+    expect(remoteHead(remote)).toBe('');
+  });
+  it('missing trusted classifier falls back to full gate', () => {
+    const { remote, work } = docsSetup();
+    git(work, 'rm', 'scripts/ci/classify-changes.mjs');
+    git(work, 'commit', '-q', '-m', 'main no classifier');
+    git(work, 'push', '-q', 'origin', 'HEAD:refs/heads/main');
+    commitFile(work, 'docs/change.md');
+    const r = run(work, ['--push'], { VBP_TYPECHECK_CMD: 'exit 93' });
+    expect(r.status).not.toBe(0);
+    expect(remoteHead(remote)).toBe('');
+  });
+  it('narrow fetch refspec cannot reuse stale origin/main docs policy', () => {
+    const { root, remote, work } = docsSetup();
+    git(work, 'fetch', 'origin');
+    const staleMain = git(work, 'rev-parse', 'origin/main');
+    git(work, 'push', '-q', 'origin', `HEAD:refs/heads/${BRANCH}`);
+    const before = remoteHead(remote);
+    const other = join(root, 'other-main');
+    git(root, 'clone', '-q', '-b', 'main', remote, other);
+    git(other, 'rm', 'scripts/ci/classify-changes.mjs');
+    git(other, 'commit', '-q', '-m', 'remove classifier on live main');
+    git(other, 'push', '-q', 'origin', 'main');
+    git(work, 'config', '--replace-all', 'remote.origin.fetch', `+refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}`);
+    commitFile(work, 'docs/change.md');
+    const r = run(work, ['--push'], { VBP_TYPECHECK_CMD: 'exit 93', VBP_TEST_CMD: 'exit 94' });
+    expect(git(work, 'rev-parse', 'origin/main')).toBe(staleMain);
+    expect(r.status).not.toBe(0);
+    expect(r.stdout).toContain('VERIFICATION_ROUTE: full');
+    expect(r.stdout).toContain('STEP: typecheck');
+    expect(remoteHead(remote)).toBe(before);
+  });
+  it('docs whitespace error is real failure and remote remains untouched', () => {
+    const { remote, work } = docsSetup();
+    commitFile(work, 'docs/change.md', 'bad trailing whitespace   \n');
+    const r = run(work, ['--push']);
+    expect(r.status).not.toBe(0);
+    expect(remoteHead(remote)).toBe('');
+  });
+  it('dirty docs candidate remains rejected before classification', () => {
+    const { remote, work } = docsSetup();
+    commitFile(work, 'docs/change.md');
+    writeFileSync(join(work, 'docs/change.md'), 'changed after commit\n');
+    const r = run(work, ['--push']);
+    expect(r.status).not.toBe(0);
+    expect(remoteHead(remote)).toBe('');
   });
 });
