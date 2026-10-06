@@ -92,7 +92,7 @@ describe('recordPromotionPageView（issue #23：best-effort，失敗不得冒出
     expect(JSON.stringify(payload)).not.toContain('203.0.113.7');
   });
 
-  it('x-forwarded-for 取第一段當客戶端 IP（其餘為 proxy 鏈）', async () => {
+  it('x-forwarded-for 讀得到客戶端 IP（不同 IP 產生不同 hash）', async () => {
     await recordPromotionPageView({ tenantId: 'tenant-a', path: '/s/shop-a', rawSrc: null });
     // 用不同 IP 重放一次，兩次 hash 應該不同，證明它真的讀到了 x-forwarded-for
     // 而不是永遠退回 'unknown'。
