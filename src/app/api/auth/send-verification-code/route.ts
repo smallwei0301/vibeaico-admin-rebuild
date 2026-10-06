@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { handle, ok } from '@/server/http';
+import { readJsonBody, PUBLIC_JSON_BODY_LIMIT_BYTES, handle, ok } from '@/server/http';
 import { dispatchVerificationCode } from '@/server/send-code';
 
 const bodySchema = z.object({
@@ -15,7 +15,7 @@ const bodySchema = z.object({
 // 這一行。核心邏輯抽到 `@/server/send-code`（見該檔頂端註解），forgot-password
 // route 也呼叫同一函式，避免兩處複製貼上；行為與規格原文相同。
 export const POST = handle(async (req) => {
-  const { email, purpose } = bodySchema.parse(await req.json());
+  const { email, purpose } = bodySchema.parse(await readJsonBody(req, PUBLIC_JSON_BODY_LIMIT_BYTES));
   await dispatchVerificationCode(email, purpose);
   return ok({ sent: true });
 });

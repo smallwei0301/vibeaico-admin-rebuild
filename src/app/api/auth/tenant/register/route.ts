@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { handle, ok, fail, ERR } from '@/server/http';
+import { readJsonBody, PUBLIC_JSON_BODY_LIMIT_BYTES, handle, ok, fail, ERR } from '@/server/http';
 import { createAdminSupabase } from '@/server/supabase';
 import { consumeCode } from '@/server/verify-code';
 import { DEFAULT_TENANT_SETTINGS } from '@/config/tenant-settings';
@@ -23,7 +23,7 @@ function isDuplicateEmailError(error: unknown): boolean {
 }
 
 export const POST = handle(async (req) => {
-  const b = bodySchema.parse(await req.json());
+  const b = bodySchema.parse(await readJsonBody(req, PUBLIC_JSON_BODY_LIMIT_BYTES));
   const admin = createAdminSupabase();
 
   const { data: dup } = await admin.from('tenants').select('id').eq('shop_code', b.shopCode).maybeSingle();

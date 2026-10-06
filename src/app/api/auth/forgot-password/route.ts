@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { handle, ok, ApiHttpError } from '@/server/http';
+import { readJsonBody, PUBLIC_JSON_BODY_LIMIT_BYTES, handle, ok, ApiHttpError } from '@/server/http';
 import { dispatchVerificationCode } from '@/server/send-code';
 
 const bodySchema = z.object({ email: z.string().email() });
@@ -10,7 +10,7 @@ const bodySchema = z.object({ email: z.string().email() });
 // 依規格「一律」的要求在這裡吞掉，不讓節流狀態外洩給呼叫端（送出重設密碼信
 // 也是防列舉手法的一部分：不論帳號是否存在、是否剛寄過，介面反應都相同）。
 export const POST = handle(async (req) => {
-  const { email } = bodySchema.parse(await req.json());
+  const { email } = bodySchema.parse(await readJsonBody(req, PUBLIC_JSON_BODY_LIMIT_BYTES));
   try {
     await dispatchVerificationCode(email, 'RESET_PASSWORD');
   } catch (e) {
