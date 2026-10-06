@@ -5314,7 +5314,7 @@
         "claimedState": "MERGED_TO_MAIN",
         "observedState": "MERGED_TO_MAIN",
         "verification": "VERIFIED",
-        "evidenceRef": "PR #790 merged_at 2026-10-06T01:17:50Z merge_commit e951f4a4d3b8b575ae17bd7ac2f3e6a47ce33461 (tree === 5d1cda04) main reachable; scripts/agents/production-db-release-plan.mjs reread"
+        "evidenceRef": "PR #790 merged_at 2026-10-06T01:17:50Z merge_commit e951f4a4d3b8b575ae17bd7ac2f3e6a47ce33461 (tree === 5d1cda04) main reachable; scripts/agents/production-db-release-plan.mjs reread; current main head at verification e951f4a4d3b8b575ae17bd7ac2f3e6a47ce33461 (identical to merge commit; git fetch origin main + merge-base --is-ancestor at 2026-10-06T04:45:41Z)"
       }
     ]
   },
