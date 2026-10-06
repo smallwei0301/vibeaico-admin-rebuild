@@ -192,8 +192,30 @@ export function finalRiskReviewerErrors(review = {}, policy = {}, context = {}) 
         review.downgradeReason !== 'REVIEWER_INFRASTRUCTURE_FAILURE' || !INFRASTRUCTURE_FAILURES.has(review.failureClass)) {
       errors.push('Missing supported infrastructure fallback policy/failure');
     }
+    const reviewer = context.roleEvidence?.reviewer;
+    if (requested !== 'not_requested') {
+      const provider = reviewer?.provider, runtime = reviewer?.runtimeCatalog;
+      const captured = millis(runtime?.captureStartedAt), observed = millis(runtime?.observedAt);
+      const started = millis(reviewer?.startedAt);
+      if (context.roleEvidence?.trusted !== true || !['OPENAI', 'ANTHROPIC'].includes(provider)
+        || runtime?.provider !== provider || !validModels(runtime?.models)
+        || !runtime.models.includes(requested) || reviewer?.requestedModel !== requested
+        || !(provider === 'OPENAI' ? requested.startsWith('gpt-') : requested.startsWith('claude-'))
+        || !durable(runtime?.evidenceRef) || !meaningful(reviewer?.providerEvidenceRef)
+        || runtime?.providerEvidenceRef !== reviewer.providerEvidenceRef
+        || !Number.isFinite(captured) || !Number.isFinite(observed) || !Number.isFinite(started)
+        || captured > observed || observed > started) errors.push('Missing trusted provider-local fallback runtime evidence');
+    }
     const failure = sourceRecord(review.failureEvidenceRef, review, sourceEvidence);
     const replacement = sourceRecord(review.replacementReviewRef, review, sourceEvidence);
+    const failureCreated = millis(failure?.createdAt), failureSaved = millis(failure?.updatedAt);
+    const replacementCreated = millis(replacement?.createdAt);
+    const reviewStarted = millis(reviewer?.startedAt), reviewCompleted = millis(reviewer?.completedAt);
+    if (review.failureEvidenceRef === review.replacementReviewRef
+      || (failure?.kind === replacement?.kind && failure?.id === replacement?.id) || context.roleEvidence?.trusted !== true
+      || ![failureCreated, failureSaved, replacementCreated, reviewStarted, reviewCompleted].every(Number.isFinite)
+      || failureCreated > failureSaved || failureSaved > reviewStarted || reviewCompleted < reviewStarted || reviewCompleted > replacementCreated
+      || failureSaved >= replacementCreated) errors.push('Failure diagnosis must be saved separately before replacement review');
     let replacementPayload;
     try {
       replacementPayload = JSON.parse(replacement?.body.match(/```astra-review\s*\n([\s\S]*?)\n```/)?.[1] ?? 'null');

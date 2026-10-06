@@ -682,6 +682,7 @@ semantic reuse 也須帶入獨立回讀證據，CLI 未取得此證據時安全�
 反例固定涵蓋 normal prepare → packet → validator、跨 repo／普通 Issue／404／權限／dismissed、候選獨有 anchor／過時 main／blob 不符及 DB adapter。
 2026-10-06 current-main 整合覆核：fallback 不得以 `not_requested` 冒充無 selector；只有明確 `modelSelectionAvailable=false` 才允許。
 normal prepare 的 reviewer packet 亦須列出獨立角色收據，正例以 current role policy 驗證，缺角色及有 selector 卻未指定模型的 live 反例必須拒絕。
+2026-10-06 新 review `4193325304`／`4193325317`：selector 的 provider gate 不能代替 live admission；fallback 的 requested 必須由可信角色收據內的 provider/runtime catalog 支持。失敗與替代引用須為不同 canonical records，並驗診斷 created/updated 時間先於 review execution、替代紀錄晚於完成；欠缺時間不猜測。正反例走完整 GitHub adapter，不能只測 selector 或手工 payload。
 本 PR 新增的 `pb-031` 在 2026-10-06 重驗 main `ae6b8bad` 尚不存在，合併前不能以此 anchor 宣稱 fallback 可放行；不得為過 gate 改寫 main 或放寬檢查。
 
 - 首次／最近：2026-09-09／2026-09-13

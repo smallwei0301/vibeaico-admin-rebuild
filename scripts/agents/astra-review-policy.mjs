@@ -325,7 +325,8 @@ export async function loadFallbackSourceEvidence({ github, owner, repo, reviews 
   const latest = parseAstraReviews(reviews)[0];
   if (latest?.reviewerTier !== 'EVIDENCE_FALLBACK') return undefined;
   const repository = `${owner}/${repo}`;
-  const refs = [...new Set([latest.failureEvidenceRef, latest.replacementReviewRef])];
+  if (latest.failureEvidenceRef === latest.replacementReviewRef) return undefined;
+  const refs = [latest.failureEvidenceRef, latest.replacementReviewRef];
   if (latest.repository !== repository || refs.some(ref => !fallbackReference(ref, repository))) return undefined;
   try {
     const main = await github.rest.repos.getCommit({ owner, repo, ref: 'main' });
@@ -347,7 +348,8 @@ export async function loadFallbackSourceEvidence({ github, owner, repo, reviews 
         const permission = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: record.user.login });
         trusted = ['admin', 'maintain', 'write'].includes(permission.data.permission);
       }
-      records.push({ ...identity, ref, body: record.body, state: record.state, trusted });
+      records.push({ ...identity, ref, body: record.body, state: record.state, trusted,
+        createdAt: record.created_at ?? record.submitted_at, updatedAt: record.updated_at });
     }
     // Detect main movement during readback; recollect rather than accept stale-main proof.
     const after = await github.rest.repos.getCommit({ owner, repo, ref: 'main' });

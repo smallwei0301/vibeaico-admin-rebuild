@@ -81,7 +81,7 @@ function validatePacketBudget(input = {}) {
  * ineligible, so the planner safely falls back to FULL rather than silently using
  * an older review.
  */
-export function previousReviewFromCanonicalReviews(reviews = [], repository = '', fallbackSourceEvidence) {
+export function previousReviewFromCanonicalReviews(reviews = [], repository = '', fallbackSourceEvidence, roleEvidence) {
   const latest = parseAstraReviews(reviews)[0] ?? null;
   if (!latest) return null;
   const reviewedFiles = fileNames(latest.changedFileRecords);
@@ -92,7 +92,7 @@ export function previousReviewFromCanonicalReviews(reviews = [], repository = ''
     latest.parseError !== true &&
     // Historical model/semantic metadata replay is not live role admission.
     // evaluateGithubAstra separately requires current independent role receipts.
-    finalRiskReviewerErrors(latest, { ...routing, openaiBuilderDecision: { independentReviewerRequired: false } }, { fallbackSourceEvidence }).length === 0 &&
+    finalRiskReviewerErrors(latest, { ...routing, openaiBuilderDecision: { independentReviewerRequired: false } }, { fallbackSourceEvidence, roleEvidence }).length === 0 &&
     (['CURRENT_AGENT', 'EVIDENCE_FALLBACK'].includes(latest.reviewerTier) || latest.identityEvidence === 'OPERATOR_ATTESTED') &&
     DIGEST64.test(text(latest.changeDigest)) &&
     requiredForReviewedScope &&
@@ -254,7 +254,7 @@ export function planFinalRiskReview(input = {}) {
 }
 
 export function buildFinalRiskPacket(input = {}, deps = {}) {
-  const previousReview = previousReviewFromCanonicalReviews(input.reviews, input.repository, deps.fallbackSourceEvidence);
+  const previousReview = previousReviewFromCanonicalReviews(input.reviews, input.repository, deps.fallbackSourceEvidence, deps.roleEvidence);
   const normalized = { ...input, previousReview };
   const readiness = evaluateFinalRiskReadiness(normalized, deps);
   if (readiness.status === 'NOT_REQUIRED') return { ...readiness, packet: null };
@@ -339,7 +339,7 @@ export function buildFinalRiskPacket(input = {}, deps = {}) {
       ...(reviewerRoute.reviewerTier === 'EVIDENCE_FALLBACK' ? [
         'Copy the preserved failure diagnosis exactly; failure/replacement refs must identify this repository\'s trusted GitHub comments/reviews, never plain Issues.',
         'Persist replacement as a PASS astra-review with matching digest/execution/identity/finding fields. Admission reloads source records and the observed current-main immutable Playbook blob; candidate anchors are insufficient.',
-        'Retain an audit-tier requestedModel when a selector is available; not_requested requires explicitly unavailable selection. Persist reviewerExecutionReceipt as a same-repository trusted role comment with fresh independent actor/session and execution times preceding this canonical review.',
+        'Retain an audit-tier requestedModel when a selector is available; not_requested requires explicitly unavailable selection. Persist reviewerExecutionReceipt as a same-repository trusted role comment with fresh independent actor/session, provider/providerEvidenceRef/requestedModel/runtimeCatalog, and execution times preceding this canonical review. The observed catalog must precede review start. Failure and replacement refs must identify distinct records; diagnosis must be saved before review starts and replacement must be recorded after review completes.',
         'Reconcile prior findings; attest execution truthfully and keep unknown identity UNKNOWN. Fallback does not waive substantive review or CI.',
       ] : []),
     ],
