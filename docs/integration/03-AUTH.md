@@ -39,7 +39,7 @@
 規則（照做，不要放寬）：
 
 - 碼為 6 位數字，`crypto.randomInt(100000, 999999)`。
-- 有效 10 分鐘；同一 email + purpose 60 秒內不可重寄（依原始、區分大小寫的 email 字串；大小寫變體見殘餘 (e)）（查最近一筆 `created_at`）。
+- 有效 10 分鐘；同一 email + purpose 60 秒內不可重寄（依原始、區分大小寫的 email 字串；大小寫變體見殘餘 (e)；查最近一筆 `created_at`）。
 - 驗證成功即寫 `consumed_at`，一碼一次。
 - 為防 email 枚舉：email 已存在時 `send-verification-code(REGISTER)` 與
   不存在時 `forgot-password` 在正常運作時**都回成功**，只是不寄信、也不寄任何提醒信（帳號狀態近 60 秒內改變者除外，見殘餘風險 (f)；寄信失敗與 parity 視窗見下）。
@@ -57,8 +57,9 @@
   (b) 視窗存於各 serverless instance 的記憶體，不跨 instance 共享，僅為 best-effort；
   (c) check-then-set 競態：視窗開啟當下已通過檢查的並行請求照常完成；
   (d) 失敗後刪除驗證碼若也失敗（只留 server log），會殘留一筆，60 秒內通常只有寄信分支的位址（REGISTER 未註冊／RESET_PASSWORD 已註冊）在 send-verification-code 會 429（forgot-password 吞 429；帳號狀態改變者見 (f)）；
-  (e) Resend 429 以 API key 為單位，請求 burst 可觸發 service 視窗（60 秒暫停寄信）；除依原始、區分大小寫 email 字串的 (email, purpose) 60 秒冷卻外（該冷卻為非原子的 check-then-insert、無 unique 約束，同一位址的並行請求可一起通過；寄信失敗刪碼後亦無冷卻），沒有跨位址、IP 或 API key 層級的 app 層節流（auth 路由無 IP 節流）；輪換 email／purpose 的 burst 仍可觸發 Resend 429 並開啟 service 視窗；另 email 未正規化（zod 只驗 `.email()`、`send-code.ts` 以區分大小寫的 `.eq('email', email)` 查冷卻並以原字串寫入），同一信箱的大小寫變體（如 `user@example.com` 與 `user@EXAMPLE.com`）是不同冷卻鍵、可各自寄信，而 `email_exists`（0010_auth_helpers.sql）以 `lower()` 判定為同一帳號，因此冷卻不能限制同一信箱的 burst、攻擊者不必輪換實際信箱即可持續打 Resend；`verify-code.ts` 的 `consumeCode`（:12）同樣以區分大小寫 `.eq('email', email)` 比對，驗證時須帶與請求寄碼時完全相同的大小寫，否則回 400 驗證碼錯誤；亦即同一帳號的大小寫變體各自寄出的碼都有效，但只有寄碼時的同一大小寫字串能驗證通過（`consumeCode` 區分大小寫）。正規化 email 屬行為變更，屬 Issue 764 剩餘範圍（待 Owner 決定）；
+  (e) Resend 429 以 API key 為單位，請求 burst 可觸發 service 視窗（60 秒暫停寄信）；除依原始、區分大小寫 email 字串的 (email, purpose) 60 秒冷卻外（該冷卻為非原子的 check-then-insert、無 unique 約束，同一位址的並行請求可一起通過；寄信失敗刪碼後亦無冷卻），沒有跨位址、IP 或 API key 層級的 app 層節流（auth 路由無 IP 節流）；輪換 email／purpose 的 burst 仍可觸發 Resend 429 並開啟 service 視窗；另 email 未正規化（zod 只驗 `.email()`、`send-code.ts` 以區分大小寫的 `.eq('email', email)` 查冷卻並以原字串寫入），同一信箱的大小寫變體（如 `user@example.com` 與 `user@EXAMPLE.com`）是不同冷卻鍵、可各自寄信，而 `email_exists`（0010_auth_helpers.sql）以 `lower()` 判定為同一帳號，因此冷卻不能限制同一信箱的 burst、攻擊者不必輪換實際信箱即可持續打 Resend；`verify-code.ts` 的 `consumeCode`（:12）同樣以區分大小寫 `.eq('email', email)` 比對，驗證時須帶與請求寄碼時完全相同的大小寫，否則回 400 驗證碼錯誤；亦即在寄信分支（REGISTER 未註冊／RESET_PASSWORD 已註冊；不寄信分支不產碼）中，同一帳號的大小寫變體各自寄出的碼都有效，但只有寄碼時的同一大小寫字串能驗證通過（`consumeCode` 區分大小寫）；重設密碼則以 `lower()` 查帳號（0010 `user_id_by_email`，`reset-password/route.ts`），所以任一大小寫取得的 RESET 碼都重設同一帳號。正規化 email 屬行為變更，屬 Issue 764 剩餘範圍（待 Owner 決定）；
   (f) 驗證碼被使用後只更新 `consumed_at`、不刪除，60 秒冷卻查詢（`send-code.ts`）只看該 (email, purpose) 最近一筆碼的 `created_at`、不排除已使用的碼；因此碼建立後 60 秒內帳號狀態改變的任何情況，都會讓該位址的回應與不寄信分支的預期不同（send-verification-code 不吞 429），屬已知回應差異，至少包含：(1) 完成註冊：REGISTER 碼仍在冷卻內，位址已變為「已存在」的不寄信分支，於碼建立後 60 秒內再次 REGISTER 請求仍回 429；(2) 帳號被刪除（例如系統外刪除）：RESET_PASSWORD 碼仍在冷卻內，對已不存在的位址回 429（send-verification-code；forgot-password 吞 429，回 200）。另：register 建店失敗的 `deleteUser` 補償回滾後，已使用的 REGISTER 碼仍在，60 秒內重新註冊會被 429 擋下；此時位址已回到 REGISTER 寄信分支，與「寄信分支 60 秒內 429」一致，不構成新的分支間差異。是否改為排除已使用碼／對稱冷卻待 Owner 決定（#764 剩餘範圍）。
+  (g) 冷卻查詢（`send-code.ts`）未檢查查詢 `error`：DB 查詢失敗時 `recent` 為 null，冷卻被略過、照常繼續（不擋、不報錯），該次請求不受 60 秒冷卻限制（#764 剩餘範圍，待 Owner 決定）。
   寄信失敗分三類（`src/server/email/send.ts` 的 `failureKind`）：
   `config`（無 key、401／403、金鑰／寄件者／網域設定錯誤）、`service`（429、5xx、網路／逾時、SDK 無 statusCode）、
   `recipient`（僅限可證明為 `to` 收件人被拒的 4xx：statusCode 4xx 且 message 指涉 `to` 欄位，如 422 "Invalid `to` field"）。

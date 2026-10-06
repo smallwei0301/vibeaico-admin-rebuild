@@ -39,8 +39,9 @@ const MAIL_UNAVAILABLE_MESSAGE = '驗證信暫時無法寄出，請稍後再試�
  * #764）；設定類失敗暫停到 TTL 結束或重新部署。
  *
  * 已知殘餘（文件化，best-effort；不保證兩種 email 回應完全相同，#764）：
- * - 冷卻與驗證碼比對皆依原始、區分大小寫的 email 字串（未正規化）；同一信箱的大小寫變體是不同冷卻鍵、可各自寄信，
+ * - 冷卻與驗證碼比對皆依原始、區分大小寫的 email 字串（未正規化）；同一信箱的大小寫變體是不同冷卻鍵、可各自寄信（僅寄信分支產碼；重設密碼以 lower() 查帳號，任一大小寫的 RESET 碼都重設同一帳號），
  *   而 email_exists 以 lower() 判定同一帳號；正規化屬行為變更，屬 Issue 764 剩餘範圍（待 Owner 決定，見 03-AUTH.md (e)）。
+ * - 冷卻查詢未檢查查詢 error：DB 查詢失敗時 recent 為 null，冷卻被略過、照常繼續（見 03-AUTH.md (g)，#764）。
  * - 視窗存於本 instance 記憶體，serverless 各 instance 獨立、不跨 instance 共享；
  *   每個 instance「第一個」失敗請求之前（視窗尚未建立）仍可能洩漏差異。
  * - 視窗到期時間為每次 config／service 失敗時設定的 max(既有到期, 本次失敗時間＋TTL)，取較晚到期者、不縮短
