@@ -110,7 +110,7 @@
 | PB-071 | 只讀原始碼的獨立審查會漏掉 UI runtime 回歸；使用者可見流程必須在真實瀏覽器實測 | context provider value 物件每次 render 都新建時，會造成依賴它的 `useCallback`／`useEffect` 被迫重建。頁面層實測必須使用真實瀏覽器且涵蓋表單保存、阻擋、草稿保留等關鍵路徑。repo 缺乏 jsdom／testing-library，原始碼斷言無法抓住執行期行為迴歸。 | PR #784；`src/components/ui/Toast.tsx` |
 | PB-072 | 機器驗證的 attestation／receipt JSON 不可用 shell 字串內插組裝；送出前先本機模擬 guard | shell 字串內插可能對特殊字元轉義不當，導致 JSON 結構破損。收據、attestation 一律用 JSON serializer 寫入檔案後以檔案送出，**輸出帶間距的 JSON（`": "`）並在送出後讀回比對 URL 欄位**（PR #788：緊湊 JSON 在傳輸中被插入反引號），並於轉 ready 前本機呼叫 `evaluateGithubAstra()` 驗證無錯誤；ordinary review 的 REVIEW 收據必須來自 fresh-context 子代理。 | PR #783、#784；`scripts/agents/astra-review-policy.mjs` |
 | PB-073 | 一張 Product PR 涵蓋多個 Issue 時，close guard 只認 `pr-lifecycle issue:` 指定的那一個 | close guard 以 merged PR 的 lifecycle `issue:` 尋找「最後一張 merged Product PR」；其他 Issue 找不到就改要求 CLOSE_APPROVED 的 EXACT_HEAD 本身可從 main 到達，而 squash 的 source head 不在 main 歷史上，關單會被拒絕並重開。多 Issue PR 的次要 Issue 以 squash merge commit（先驗 tree 與審查 head 相同）為 EXACT_HEAD，或一張 PR 只綁一個 Product Issue。 | PR #788／#785；`scripts/agents/product-issue-close-policy.mjs` |
-| PB-074 | squash commit 標題含 `fix(…)…（#N）` 會讓 GitHub 在合併時自動關閉 #N，繞過 Product close guard 的順序 | #787 在 PR #789 合併當下被自動關閉。Product Issue 的 PR 合併時，squash 標題不要以 fix／close／resolve 開頭又引用該 Issue 編號；改寫成 `<scope>：…（Issue N）`，讓 Issue 依 Sol CLOSE_APPROVED＋ISSUE_CLOSE_READY 關閉。 | PR #789／#787、PR #790／#781 |
+| PB-074 | squash commit 標題、內文與 PR 描述含 closing keyword 引用 Issue 時，GitHub 會自動關閉，繞過 Product close guard 的順序 | #787 在 PR #789 合併當下被自動關閉。squash 標題、squash commit body（合併所有分支 commit 訊息）與 PR 描述都不可含 closing keyword（close／closes／closed／fix／fixes／fixed／resolve／resolves／resolved，不分大小寫）相鄰於 Issue 編號；改寫成 `<scope>：…（Issue N）`，合併時明確設定 squash commit body（如簡要摘要）而非預設的 commit 訊息串聯，讓 Issue 依 Sol CLOSE_APPROVED＋ISSUE_CLOSE_READY 關閉。 | PR #789／#787、PR #790／#781；PR #791 Codex P2 |
 
 ## 事件紀錄
 
@@ -2204,13 +2204,14 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 證據：#785 guard 拒絕留言（2026-10-06T00:49Z）、第二次 CLOSE_APPROVED issuecomment-6007000559、guard 回寫 ISSUE_CLOSED_OBSERVED（00:57:30Z）。
 - 狀態：已記錄（程序面預防）
 
-### PB-074 — squash 標題含 `fix(…)…（#N）` 會讓 GitHub 合併時自動關閉 Issue
+### PB-074 — squash 標題、commit 內文與 PR 描述的 closing keyword 會讓 GitHub 合併時自動關閉 Issue
 
 - 首次／最近：2026-10-06／2026-10-06
 - 發生次數：1
 - Issue／PR／CI：#787、PR #789（squash `4679b611`）
 - 分類：工具使用／close admission
 - 事件：PR #789 以標題 `fix(governance): PB-038 升級——…（#787） (#789)` squash 合併，#787 在合併同一秒（2026-10-06T00:13:01Z）被自動關閉，早於 closeout 留言。#787 是 MODEL_GOVERNANCE，guard 豁免，未造成拒絕；但同樣寫法用在 Product Issue 會跳過 Sol CLOSE_APPROVED／ISSUE_CLOSE_READY 的順序並被 guard 判為 premature close。
-- 預防：Product Issue 的 PR 合併時，squash 標題不要以 fix／close／resolve 等關鍵字開頭又引用 `#N`；改用 `<scope>：…（Issue N）`。PR #790 依此合併，#781 保持 open 等待正規關單。
+- 預防：Product Issue 的 PR 合併時，squash 標題、squash commit body（合併所有分支 commit 訊息）與 PR 描述都不可含 closing keyword（close／closes／closed／fix／fixes／fixed／resolve／resolves／resolved，不分大小寫）相鄰於 Issue 編號 `#N`；改用 `<scope>：…（Issue N）`；合併前用 grep 掃 PR body 與待 squash 的 commit 訊息，確認無 `(close[sd]?|fix(e[sd])?|resolve[sd]?)\W*#?<N>` pattern，並於合併時明確設定 squash commit body（如簡要摘要）而非預設的 commit 訊息串聯。PR #790 依此合併，#781 保持 open 等待正規關單。
 - 證據：#787 events（closed 00:13:01Z、referenced 4679b611）。
+- 補充：2026-10-06 Codex P2 review on PR #791 comment 4191382479 指出本條預防原只涵蓋 squash 標題，GitHub 實際亦解析 PR 描述與 commit message 內的 closing keyword；見 https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue。
 - 狀態：已記錄（程序面預防）
