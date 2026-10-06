@@ -95,21 +95,52 @@ describe('readJsonBody (#802)', () => {
     expect(state.cancelled).toBe(true);
   });
 
-  it('格式錯誤與原本 req.json() 相同（SyntaxError，由 handle() 處理）', async () => {
-    const mk = () => new Request('http://localhost/x', { method: 'POST', body: '{bad' });
-    const orig = await mk().json().catch((e) => e);
-    const got = await readJsonBody(mk(), 1024).catch((e) => e);
-    expect(orig).toBeInstanceOf(SyntaxError);
-    expect(got).toBeInstanceOf(SyntaxError);
-    expect(got).not.toBeInstanceOf(ApiHttpError);
+  it('格式錯誤丟 ApiHttpError 400 REQ_001（#804）', async () => {
+    const e = (await readJsonBody(new Request('http://localhost/x', { method: 'POST', body: '{bad' }), 1024).catch((x) => x)) as ApiHttpError;
+    expect(e).toBeInstanceOf(ApiHttpError);
+    expect(e.status).toBe(400);
+    expect(e.code).toBe(ERR.VALIDATION);
+    expect(e.code).toBe('REQ_001');
   });
 
-  it('空 body 與原本 req.json() 相同（SyntaxError）', async () => {
-    const mk = () => new Request('http://localhost/x', { method: 'POST' });
-    const orig = await mk().json().catch((e) => e);
-    const got = await readJsonBody(mk(), 1024).catch((e) => e);
-    expect(orig).toBeInstanceOf(SyntaxError);
-    expect(got).toBeInstanceOf(SyntaxError);
+  it('空 body 丟 ApiHttpError 400 REQ_001（#804）', async () => {
+    const e = (await readJsonBody(new Request('http://localhost/x', { method: 'POST', body: '' }), 1024).catch((x) => x)) as ApiHttpError;
+    expect(e).toBeInstanceOf(ApiHttpError);
+    expect(e.status).toBe(400);
+    expect(e.code).toBe('REQ_001');
+  });
+
+  it('無 body（req.body 為 null）丟 400 REQ_001，且不呼叫 req.json()', async () => {
+    const json = vi.fn();
+    const req = { headers: new Headers(), body: null, json } as unknown as Request;
+    const e = (await readJsonBody(req, 1024).catch((x) => x)) as ApiHttpError;
+    expect(e).toBeInstanceOf(ApiHttpError);
+    expect(e.status).toBe(400);
+    expect(e.code).toBe('REQ_001');
+    expect(json).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/auth/send-verification-code 格式錯誤 body (#804)', () => {
+  beforeEach(() => { dispatch.mockReset(); });
+
+  it.each([
+    ['格式錯誤', '{bad'],
+    ['空 body', ''],
+  ])('%s 回 400 REQ_001 信封，且不呼叫下游', async (_n, body) => {
+    const res = await sendCode(new Request('http://localhost/api/auth/send-verification-code', {
+      method: 'POST', body, headers: { 'content-type': 'application/json' },
+    }), {});
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ success: false, message: '輸入格式錯誤', code: 'REQ_001' });
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('無 body 回 400 REQ_001，且不呼叫下游', async () => {
+    const res = await sendCode(new Request('http://localhost/api/auth/send-verification-code', { method: 'POST' }), {});
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe('REQ_001');
+    expect(dispatch).not.toHaveBeenCalled();
   });
 });
 

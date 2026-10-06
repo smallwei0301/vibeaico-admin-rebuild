@@ -56,11 +56,16 @@ function payloadTooLarge() {
   return new ApiHttpError(413, PAYLOAD_TOO_LARGE_MESSAGE, ERR.PAYLOAD_TOO_LARGE);
 }
 
+function invalidJsonBody() {
+  return new ApiHttpError(400, '輸入格式錯誤', ERR.VALIDATION);
+}
+
 /**
  * 有上限的 `req.json()`：先看 `content-length`（超限直接 413，不讀 body），再以串流
  * 累計實際位元組（涵蓋缺少或謊報 content-length 的情況），超過立即 cancel 並 413。
- * 解碼後以 `JSON.parse` 解析，格式錯誤／空 body 丟出的 SyntaxError 與原本 `req.json()`
- * 相同，對外行為（交給 `handle()`）不變。
+ * 解碼後以 `JSON.parse` 解析；body 非合法 JSON、空 body 或無 body 一律丟
+ * `ApiHttpError(400, '輸入格式錯誤', REQ_001)`（#804），與 zod 驗證失敗同訊息同碼。
+ * 只在此處轉換，不在 `handle()` 全域把 SyntaxError 轉 400。
  */
 export async function readJsonBody(req: Request, maxBytes: number): Promise<unknown> {
   const declared = req.headers.get('content-length');
@@ -68,8 +73,8 @@ export async function readJsonBody(req: Request, maxBytes: number): Promise<unkn
     const n = Number(declared);
     if (Number.isFinite(n) && n > maxBytes) throw payloadTooLarge();
   }
-  // 無 body：交回原生行為（同樣丟 SyntaxError）。
-  if (!req.body) return req.json();
+  // 無 body：直接 400，不呼叫 req.json()（會丟 SyntaxError → 500）。
+  if (!req.body) throw invalidJsonBody();
 
   const reader = req.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -87,7 +92,11 @@ export async function readJsonBody(req: Request, maxBytes: number): Promise<unkn
   const merged = new Uint8Array(total);
   let off = 0;
   for (const c of chunks) { merged.set(c, off); off += c.byteLength; }
-  return JSON.parse(new TextDecoder().decode(merged));
+  try {
+    return JSON.parse(new TextDecoder().decode(merged));
+  } catch {
+    throw invalidJsonBody();
+  }
 }
 
 /** 會改到資料的 HTTP method；只有這些需要留稽核紀錄。 */
