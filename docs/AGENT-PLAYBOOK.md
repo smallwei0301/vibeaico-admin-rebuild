@@ -111,10 +111,10 @@
 | PB-072 | 機器驗證的 attestation／receipt JSON 不可用 shell 字串內插組裝；送出前先本機模擬 guard | shell 字串內插可能對特殊字元轉義不當，導致 JSON 結構破損。收據、attestation 一律用 JSON serializer 寫入檔案後以檔案送出，**輸出帶間距的 JSON（`": "`）並在送出後讀回比對 URL 欄位**（PR #788：緊湊 JSON 在傳輸中被插入反引號），並於轉 ready 前本機呼叫 `evaluateGithubAstra()` 驗證無錯誤；ordinary review 的 REVIEW 收據必須來自 fresh-context 子代理。 | PR #783、#784；`scripts/agents/astra-review-policy.mjs` |
 | PB-073 | 一張 Product PR 只綁一個 Product Issue，不得以 squash merge commit 充當 EXACT_HEAD 來關次要 Issue | 一張 Product PR 只綁一個 Product Issue（lifecycle `issue:` 與 PRIMARY_ISSUE 相同）；不得以 squash merge commit 充當 EXACT_HEAD 來關次要 Issue——guard 的 main-ancestor fallback 不驗 tree 等同，會把 source-head 綁定降級。PR #791 Codex P1 | PR #788／#785；`scripts/agents/product-issue-close-policy.mjs` |
 | PB-074 | PR 標題、squash commit 標題、內文與 PR 描述的 Issue 引用形式與 closing keyword 會讓 GitHub 自動關閉，繞過 Product close guard | #787 在 PR #789 合併當下被自動關閉。合併前讀 Issue 的 closed_by_pull_requests 確認不含本 PR；grep (a)(b) 補充檢查。 | PR #789／#787、PR #790／#781（僅改標題，未遵守 (a)）；PR #791 Codex P2 |
-| PB-075 | TEST_VALIDATION lane 轉換時 guard 已自動 dispatch canonical TEST，主 session 再手動 dispatch 會被同 concurrency group 取代成重複 run | 派工前先查同 concurrency group 已有的 pending run；若發現 auto-dispatch 的 TEST 已提交，不再手動 dispatch。已發生時計入 invalidReruns。 | PR #795、lane_transition auto-dispatch、CI 37422702127（auto）vs 37422677172（manual，被 cancelled） |
+| PB-075 | 轉 TEST_VALIDATION 後手動 dispatch canonical TEST，被 guard 隨後的自動 dispatch 取代成重複 run | lane 轉換本身就會讓 guard 自動 dispatch canonical TEST；轉換後先查同一 exact head 的 workflow_dispatch run，確認 guard 未派工才手動 dispatch。 | PR #795；run 37422677172（cancelled）、37422702127（success） |
 | PB-076 | Scout ledger 標準化複合主語時拆分成多項，造成偽造計數 | Issue vs PR 編號拆分時，僅 `issue#N` token 計數；對已編輯的批量 ledger，逐筆列舉與已知 Issue 交叉比對，並檢查有無虛構 Issue 或 PR 當成 Issue。 | PR #791 commit 4ca56072→5394e645、scout 編輯階段。 |
 | PB-077 | 共用 worktree 上，reviewer 在 builder/pusher 進行 verify-before-push 時運行寫入操作，會造成 HEAD 改變或測試干擾 | Reviewer 應使用 `git show/diff` 或獨立 worktree，不在同一 clone 上運行突變；builder/pusher 確認 verify 無誤前，不允許同時進行 mutation。 | PR #791 review phase；verify-before-push 拒絕 VERIFY_FAILED。 |
-| PB-078 | Ledger commit 與 canonical TEST 在同 exact head 上並行運行時，push ledger 會改變 HEAD，使 TEST 證據失效 | 若 canonical TEST 在 exact-head 執行中，ledger-only commit 應延後推送直到 TEST 完成；或先記在 GitHub issue/PR 留言，待下一個實質代碼 commit 時補記。 | 2026-10-06 教訓；TEST run 與 ledger timing 的協調。 |
+| PB-078 | canonical TEST 執行中若推送 ledger-only commit，會讓 exact-head TEST 證據失效（本次已避免） | 推送 ledger-only commit 前先查同 PR 是否有 pending／running canonical TEST；有就留在本機，隨下一個實質修正一併推送。 | PR #795；f9f31534 → 273fa1c3；run 37429766960 |
 
 ## 事件紀錄
 
@@ -2228,19 +2228,18 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 補充（同日 Codex P2，comment 4191657176）：撤回「標題觸發」推定，改以 closed_by_pull_requests 結構化檢查為主要預檢。
 - 狀態：已記錄（程序面預防）
 
-### PB-075 — TEST_VALIDATION lane 轉換時 guard 已自動 dispatch canonical TEST，主 session 再手動 dispatch 會被同 concurrency group 取代成重複 run
+### PB-075 — 轉 TEST_VALIDATION 後手動 dispatch canonical TEST，被 guard 隨後的自動 dispatch 取代成重複 run
 
 - 首次／最近：2026-10-06／2026-10-06
 - 發生次數：1
-- Issue／PR／CI：PR #795（Issue 782），lane transition auto-dispatch；canonical TEST run 37422702127（auto）vs 37422677172（manual，同 lane_transition，同 head 3cea03f2）；GitHub cancelled 37422677172（only one pending per concurrency group `shared-test-supabase-integration`）。
-- 分類：CI 派工／並行管理
-- 事件：PR #795 body 變更 `AGENT_LANE` 從 `TERRA_BUILD` 轉 `TEST_VALIDATION`；受信 guard `lane_transition_auto_dispatch` 自動派工 canonical TEST（37422702127，lane_transition source）；同時主 session 手動 `gh workflow dispatch ci.yml`（37422677172，以為 auto 沒跑或延遲），結果 GitHub 因 concurrency 規則只保留 auto 版本，manual 被 cancelled。計入 invalidReruns +1。
-- 根因：lane transition 觸發自動派工有延遲；主 session 看不到 auto dispatch 已提交（約 1 分內完成），於是手動補派。guard 層與 session 層缺乏實時訊號同步。
-- 影響：多派一次，被 GitHub 自動取消（不算重跑失敗，但計為無效重複）；ledger 需記錄該次 cancelled run。
-- 修正：不改 auto-dispatch 邏輯；在 session 層 lane transition 之後，先用 `gh api repos/.../actions/runs?created=<date>` 或 workflow run list 掃同 head、同 concurrency group 已有的 pending run；若有，就不手動 dispatch（等待自動派工或讀 auto dispatch 的 run 編號）。
-- 預防：lane transition workflow 輸出 auto-dispatch 的 run_id（或改成 `return_dispatch_id: run_id`），session 層讀取該 output 並記錄，避免手動 dispatch；時間允許情況下，dispatch 前先 list 一次確認無待審核的相同 run。
-- 驗證：PR #795 的兩個 run ID 確認 37422677172 被 cancelled，37422702127 進入 integration 階段；手動派工被自動派工取代。
-- 狀態：已防止；lane_transition auto-dispatch 應輸出 run_id 供下游檢查。
+- Issue／PR／CI：Issue 760、PR #795；手動 run 37422677172（cancelled）、guard 自動 run 37422702127（success），head 皆為 `3cea03f2`。
+- 分類：CI 派工／shared TEST
+- 事件：PR #795 本文把 `AGENT_LANE` 改為 `TEST_VALIDATION` 後，主 session 於 06:14:48Z 手動以 `lane_transition` dispatch ci.yml（37422677172）；trusted guard 於 06:15:04Z 也為同一 head 自動 dispatch（37422702127）。concurrency group `shared-test-supabase-integration` 只保留一個 pending run，較早的手動 run 被取消，guard 的 run 完成 integration＋E2E（07:15:41Z success）。計入 invalidReruns +1。
+- 根因：lane 轉換本身就會讓 guard 自動 dispatch canonical TEST；手動 dispatch 是多餘的重複派工。
+- 修正：不改 guard；本次以 guard 的 run 為準，手動 run 記為無效重複。
+- 預防：PR 轉為 `TEST_VALIDATION` 後不要手動 dispatch；先查同一 exact head 的 ci.yml workflow_dispatch run，只有確認 guard 沒有派工（guard 留言 `TEST dispatched on this transition: false` 且查無 run）時才手動 dispatch。
+- 證據：run 37422677172（06:14:48Z，cancelled）、37422702127（06:15:04Z，success）。
+- 狀態：已記錄（程序面預防）
 
 ### PB-076 — Scout ledger 標準化複合主語時拆分成多項，造成偽造計數
 
@@ -2270,16 +2269,16 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 驗證：PR #791 修正後，reviewer session 改用 `git show/diff`；main session verify-before-push 成功通過，無 detached HEAD。
 - 狀態：已防止；reviewer role SOP 應限定為唯讀 Git 操作。
 
-### PB-078 — Ledger commit 與 canonical TEST 在同 exact head 上並行運行時，push ledger 會改變 HEAD，使 TEST 證據失效
+### PB-078 — canonical TEST 執行中若推送 ledger-only commit，會讓 exact-head TEST 證據失效（本次已避免）
 
 - 首次／最近：2026-10-06／2026-10-06
-- 發生次數：1
-- Issue／PR／CI：2026-10-06 教訓；canonical TEST run 與 ledger-only commit timing；exact-head 成為 canon 的必要條件。
-- 分類：ledger 管理／exact-head 保護
-- 事件：canonical TEST（run 37422702127）執行於 exact-head 3cea03f2；scout 產生 ledger-only commit（f9f31534，關閉 Issue 750 等）但延後推送以保留 exact-head 不變。TEST 完成後，ledger commit f9f31534 與後續實質代碼改動 4f91bdbd 合併為 head 273fa1c3 推送，新 exact-head 為 273fa1c3，canonical TEST 再行執行於新 head（run 37429766960，success）。
-- 根因：exact-head 是指定為 canonical 時的 commit SHA，用來防止「merge 前的改動被 merge 吃掉」。若在 TEST 執行中推送代碼 commit，新 HEAD 變成 canon，但舊 exact-head 的 TEST 結果失效。delayed ledger commit 本意是保留 exact-head 不變，但若 TEST 完成前推送，反而改變了 exact-head。
-- 影響：TEST 的 canonical run 與 final merge 的樹不對應；scorecard 或 guard 依賴的「exact-head 與 main 差異」驗證失敗；merge 後發現 TEST 的 baseline 早就過時。
-- 修正：(1) 若 canonical TEST 在執行中（未返回結果），延後 ledger commit 推送至 TEST 完成；(2) 或先在 PR/Issue 留言記錄待補的 ledger，不 commit 推送，待下一個**實質代碼** commit 時合併補記（此時 exact-head 自然更新為新代碼樹）；(3) 或在 ledger commit 推送時明確宣告「exact-head 已變為新 ledger commit」，更新所有參考。
-- 預防：(1) ledger commit 的推送時機應受 exact-head 狀態控制：若 canonical TEST pending/running，維持 exact-head 不變，ledger 延後或記為 pending；(2) 檢查清單：推送 ledger-only commit 前，讀 GitHub actions 確認沒有同 head 的 pending/running TEST；(3) EXACT_HEAD 與 FINAL_CANONICAL 的判定邏輯應明確區分：exact-head 是「用來防止 merge 期間改動」的點，ledger-only commit 不應改變它。
-- 驗證：ledger commit f9f31534 於 TEST run 37422702127 執行中被保留於本機（未推送），確認 exact-head 3cea03f2 保持不變。TEST 完成後，f9f31534 與實質代碼改動 4f91bdbd 於 head 273fa1c3 推送，新 canonical TEST run 37429766960 執行於 273fa1c3（success）。
-- 狀態：已防止；ledger push SOP 應含「檢查 canonical TEST 狀態」與「exact-head 保護」。
+- 發生次數：0（風險已辨識並避免）
+- Issue／PR／CI：Issue 760、PR #795；canonical TEST run 37422702127（`3cea03f2`）、37429766960（`273fa1c3`）。
+- 分類：ledger 管理／exact-head 證據
+- 事件：canonical TEST 37422702127 正在 exact head `3cea03f2` 上執行時，scout 產生 ledger-only commit `f9f31534`（Issue 750 關單等事件）。主 session 先留在本機不推送；之後隨下一個實質修正 `4f91bdbd` 一併推送（head 為 `273fa1c3`，另含 ledger commit），canonical TEST 再於 `273fa1c3` 執行（37429766960，success）。
+- 根因：`FINAL_CANONICAL_REQUIRED` 的 PR 以 exact head 的 canonical TEST 為合併證據；TEST 執行中推送任何 commit 都會改變 head，使進行中的 TEST 不再對應最終 head。
+- 修正：TEST 執行中的 ledger commit 留在本機（WRITER_BLOCKER），與下一個實質修正一併推送；或在觸發 TEST 的推送前先把已知事件記完。
+- 預防：推送 ledger-only commit 前，先查同一 PR 是否有 pending／running 的 canonical TEST；若有，延後推送並在本機保留。
+- 證據：`f9f31534` 為 `273fa1c3` 的祖先；run 37429766960 於 `273fa1c3` success。
+- 狀態：已記錄（程序面預防）
+
