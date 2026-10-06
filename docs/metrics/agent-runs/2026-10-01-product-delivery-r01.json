@@ -6410,6 +6410,21 @@
         "evidenceRef": null,
         "issue": null,
         "count": 1
+      },
+      {
+        "id": "20261006-scout-r01-soltouches-fix",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": null,
+        "completedAt": "2026-10-06T13:28:47Z",
+        "note": "依 Codex P2 comment 4195841234：flow.solTouches 184→200，同步計入本 PR 新增 16 筆 audit task",
+        "count": 1
       }
     ],
     "fullContextReplays": 0,
@@ -6443,13 +6458,13 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 86,
-    "lunaAccepted": 77,
+    "lunaTasks": 87,
+    "lunaAccepted": 78,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 184,
+    "solTouches": 200,
     "solIssues": 22
   },
   "auditability": {
