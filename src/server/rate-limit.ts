@@ -126,8 +126,9 @@ function rightmostSegment(value: string | null): string | null {
  * 擋掉「附加在前面」的偽造，擋不住完全由客戶端決定的單一值）。本專案正式環境
  * 為 Vercel，故此處不另做 trusted-proxy 設定。
  * 另：若部署在非 Vercel、且前面有兩層（含）以上都會附加 XFF 的可信 proxy
- * （例如 CDN → nginx），最右片段會是最近那層 proxy 自己的 IP，所有客戶端將
- * 共用同一個 bucket 而被過度節流；這類部署需要明確的 trusted-proxy 跳數設定，
+ * （例如 CDN → nginx），nginx 附加的是其直接上游（CDN 節點）的位址，最右片段
+ * 因此是前一跳的 IP 而非真實客戶端，客戶端會被依 CDN 節點分桶而非個別分桶，
+ * 造成過度節流；這類部署需要明確的 trusted-proxy 跳數設定，
  * 本專案（正式環境為 Vercel）並未使用。
  */
 export function clientIpFromHeaders(headers: Headers): string {
