@@ -80,7 +80,7 @@ current truth
 純治理依 2026-09-11 #360 不指定執行模型；`requested=not_requested`，沒有可靠來源時
 `actual=unknown`。取消模型門檻不代表取消驗證。
 
-Product workstream 的結果另分 `USER_VISIBLE_PRODUCT`、`ENVIRONMENT_DELIVERY`、`PRODUCT_INFRA`；三者可屬 PRODUCT_MAINLINE，但每日 throughput 必須分開計數，不能用同一標籤數量冒充可見產品進展。旅客 INSTANT 下單屬前者、Production migration 屬第二者、release risk classifier 屬第三者；分類不改安全門檻，也不新增模型或人工 approval。
+Product workstream 的結果另分 `USER_VISIBLE_PRODUCT`、`ENVIRONMENT_DELIVERY`、`PRODUCT_INFRA`；三者可屬 PRODUCT_MAINLINE。每日成果回報先以逐項 Issue／PR 證據分三類列示，不用同一標籤數量冒充可見產品進展。旅客 INSTANT 下單屬前者、Production migration 屬第二者、release risk classifier 屬第三者。現有 canonical ledger／scorer 只產生 aggregate `shippedUnits`，尚未提供這三類的機械分項；此總量不得宣稱為 user-visible throughput，也不宣稱已自動分項。沒有可回讀的逐項分類證據時，分項數量記 UNKNOWN；若以成果列表人工計數，附該列表及計數方法，明確區別於 canonical scorer 輸出，不回填或改寫歷史 ledger。分類報表缺少分項數字不形成新的 Product blocking gate。此輪只規範成果呈現，不新增 ledger 欄位、scorer、模型或人工 approval，安全門檻不變。
 
 ### 1.3 工作線隔離與純記帳分類（#500 收尾）
 
