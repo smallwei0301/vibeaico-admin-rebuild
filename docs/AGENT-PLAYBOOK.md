@@ -2239,7 +2239,7 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 影響：多派一次，被 GitHub 自動取消（不算重跑失敗，但計為無效重複）；ledger 需記錄該次 cancelled run。
 - 修正：不改 auto-dispatch 邏輯；在 session 層 lane transition 之後，先用 `gh api repos/.../actions/runs?created=<date>` 或 workflow run list 掃同 head、同 concurrency group 已有的 pending run；若有，就不手動 dispatch（等待自動派工或讀 auto dispatch 的 run 編號）。
 - 預防：lane transition workflow 輸出 auto-dispatch 的 run_id（或改成 `return_dispatch_id: run_id`），session 層讀取該 output 並記錄，避免手動 dispatch；時間允許情況下，dispatch 前先 list 一次確認無待審核的相同 run。
-- 驗證：PR #795 的兩個 run ID 確認 37422677172 被 cancelled，37422702127 進入 integration 階段；commit 6b36be13 已補記 invalidReruns +1。
+- 驗證：PR #795 的兩個 run ID 確認 37422677172 被 cancelled，37422702127 進入 integration 階段；手動派工被自動派工取代。
 - 狀態：已防止；lane_transition auto-dispatch 應輸出 run_id 供下游檢查。
 
 ### PB-076 — Scout ledger 標準化複合主語時拆分成多項，造成偽造計數
@@ -2260,9 +2260,9 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 - 首次／最近：2026-10-06／2026-10-06
 - 發生次數：1
-- Issue／PR／CI：PR #791 review phase；shared worktree (commit `8b2de5c0` 時)；verify-before-push run 期間 reviewer mutation。
+- Issue／PR／CI：PR #791 review phase；shared worktree 上 verify-before-push 執行期間 reviewer mutation（~05:36Z head dcf0916f，~06:11Z head e3670c30）。
 - 分類：流程管理／worktree 衛生
-- 事件：PR #791 的 fresh-context reviewer session 在審查過程中對同一 worktree 運行 commit amend 等突變操作，同時 main session 的 verify-before-push 在執行測試。verify 發現 `HEAD 變成 detached`、或測試 fixture 被突變破壞；verify script 拒絕推送（VERIFY_FAILED）。
+- 事件：PR #791 的 fresh-context reviewer session 在審查過程中對同一 worktree 運行 commit amend 等突變操作，同時 main session 的 verify-before-push 在執行測試。verify script 拒絕推送（VERIFY_FAILED：`HEAD 變成 detached`）。
 - 根因：worktree 限制資源時常被多個 agent 或 thread 重用；reviewer 與 builder/pusher 同時操作同一 clone，造成檔案狀態不同步。
 - 影響：verify-before-push 失敗，無法推送；需回檔重新 verify；若誤認為 verify 失敗是「內容有問題」而重跑測試或修改代碼，會衍生更多干擾。
 - 修正：reviewer 應使用 `git show <ref>:<path>`（讀取樹）或 `git diff <base> <head>`（對比）或獨立 worktree（`git worktree add`），不應在同一 clone 上進行 `checkout`、`commit`、`rebase` 等突變。若必須編輯（例修改 ledger），應在分開的臨時 worktree 中進行。
@@ -2276,10 +2276,10 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 發生次數：1
 - Issue／PR／CI：2026-10-06 教訓；canonical TEST run 與 ledger-only commit timing；exact-head 成為 canon 的必要條件。
 - 分類：ledger 管理／exact-head 保護
-- 事件：scout 在 canonical TEST（run 37422702127）執行中推送 ledger-only commit；該 commit 的 parent 是 exact-head（3cea03f2），commit 後 exact-head 變成新 commit SHA（ledger commit）。期中 TEST 對 exact-head 的所有證據（stdout、artifacts、timing）不再與最終 merge head 對應；若之後以該 ledger commit 為 EXACT_HEAD 去驗收，會對比錯的樹（新樹包含 ledger 改動，舊樹不含）。
+- 事件：canonical TEST（run 37422702127）執行於 exact-head 3cea03f2；scout 產生 ledger-only commit（f9f31534，關閉 Issue 750 等）但延後推送以保留 exact-head 不變。TEST 完成後，ledger commit f9f31534 與後續實質代碼改動 4f91bdbd 合併為 head 273fa1c3 推送，新 exact-head 為 273fa1c3，canonical TEST 再行執行於新 head（run 37429766960，success）。
 - 根因：exact-head 是指定為 canonical 時的 commit SHA，用來防止「merge 前的改動被 merge 吃掉」。若在 TEST 執行中推送代碼 commit，新 HEAD 變成 canon，但舊 exact-head 的 TEST 結果失效。delayed ledger commit 本意是保留 exact-head 不變，但若 TEST 完成前推送，反而改變了 exact-head。
 - 影響：TEST 的 canonical run 與 final merge 的樹不對應；scorecard 或 guard 依賴的「exact-head 與 main 差異」驗證失敗；merge 後發現 TEST 的 baseline 早就過時。
 - 修正：(1) 若 canonical TEST 在執行中（未返回結果），延後 ledger commit 推送至 TEST 完成；(2) 或先在 PR/Issue 留言記錄待補的 ledger，不 commit 推送，待下一個**實質代碼** commit 時合併補記（此時 exact-head 自然更新為新代碼樹）；(3) 或在 ledger commit 推送時明確宣告「exact-head 已變為新 ledger commit」，更新所有參考。
 - 預防：(1) ledger commit 的推送時機應受 exact-head 狀態控制：若 canonical TEST pending/running，維持 exact-head 不變，ledger 延後或記為 pending；(2) 檢查清單：推送 ledger-only commit 前，讀 GitHub actions 確認沒有同 head 的 pending/running TEST；(3) EXACT_HEAD 與 FINAL_CANONICAL 的判定邏輯應明確區分：exact-head 是「用來防止 merge 期間改動」的點，ledger-only commit 不應改變它。
-- 驗證：PR #791 ledger commit（commit 6b36be13）與當時的 exact-head 比對；確認延後推送直到 TEST 完成後才提交。
+- 驗證：ledger commit f9f31534 於 TEST run 37422702127 執行中被保留於本機（未推送），確認 exact-head 3cea03f2 保持不變。TEST 完成後，f9f31534 與實質代碼改動 4f91bdbd 於 head 273fa1c3 推送，新 canonical TEST run 37429766960 執行於 273fa1c3（success）。
 - 狀態：已防止；ledger push SOP 應含「檢查 canonical TEST 狀態」與「exact-head 保護」。
