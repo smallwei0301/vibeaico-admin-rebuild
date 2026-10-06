@@ -13,7 +13,8 @@ const fx = vi.hoisted(() => ({
   plans: {} as Record<string, PlanFx>, tripRows: [] as Array<Record<string, unknown>>, trips: ['trip-1'] as string[],
   /** Issue 760：每一次 supabase `from()` 呼叫的資料表名稱（用來斷言查詢數）。 */
   calls: [] as string[],
-  /** Issue 760：批次團次查詢的頁數上限測試用；>0 時每頁只回這麼多列（模擬較小的 page size 之外不使用）。 */
+  /** Issue 760：每次批次團次查詢帶的 plan_id IN 清單（沒帶為 null）。 */
+  batchPlanFilters: [] as Array<string[] | null>,
 }));
 
 vi.mock('@/server/supabase', () => ({
@@ -62,7 +63,9 @@ vi.mock('@/server/supabase', () => ({
         }
         if (table === 'trip_departures' && selectCols.includes('plan_id')) {
           // Issue 760：首頁批次查詢（以行程為範圍、不帶 plan_id eq）。模擬 DB 的全域排序（departs_on、start_time、id）與 range。
-          const planIds = Object.keys(fx.plans).filter((id) => (inFilters.trip_id ?? []).includes(fx.plans[id].trip ?? 'trip-1'));
+          const planIds = Object.keys(fx.plans).filter((id) => (inFilters.trip_id ?? []).includes(fx.plans[id].trip ?? 'trip-1')
+            && (inFilters.plan_id ? inFilters.plan_id.includes(id) : true));
+          fx.batchPlanFilters.push(inFilters.plan_id ? [...inFilters.plan_id] as string[] : null);
           if (planIds.some((id) => fx.plans[id].fail)) return { data: null, error: { message: 'boom' } };
           const all = planIds.flatMap((id) => fx.plans[id].rows.map((r, i) => ({
             id: `${id}-d${String(i).padStart(4, '0')}`, plan_id: id, departs_on: '2098-01-01', start_time: null, ...r,
@@ -241,14 +244,54 @@ describe('#747 首頁方案入口與詳情頁一致', () => {
   });
 
   it('Issue 760：批次頁數用完仍未判定的方案 → dates-not-loaded（不猜測、不誤開入口）', async () => {
-    // INSTANT 方案的列不會被判定，卻占滿批次頁（5 頁 × 1000 列）；排在最後的 FIXED 方案讀不到自己的團次。
+    // 9 個候選方案各 600 列客滿（各自達掃描上限但列仍占頁）＝ 5400 列 > 5 頁 × 1000；排在最後日期的 f 讀不到自己的團次。
+    fx.plans = { f: { sort: 99, mode: 'FIXED_DEPARTURE', min: 1, rows: [{ departs_on: '2099-01-01', capacity: 5, seats_booked: 0 }] } };
+    for (let i = 0; i < 9; i += 1) fx.plans[`a${i}`] = { sort: i, mode: 'FIXED_DEPARTURE', min: 1, rows: Array.from({ length: 600 }, () => full) };
+    const home = await homeCta();
+    expect(home.f).toBe('dates-not-loaded');
+    // 前 8 個方案（4800 列）在預算內判定完；第 9 個只讀到 200 列、f 沒讀到 → 兩者都未載入。
+    for (let i = 0; i < 8; i += 1) expect(home[`a${i}`]).toBe('fixed-unavailable');
+    expect(home.a8).toBe('dates-not-loaded');
+    expect(fx.calls.filter((t) => t === 'trip_departures').length).toBe(1 + 5);
+  });
+
+  it('Issue 760：批次查詢帶 plan_id IN（只含候選方案）：INSTANT 方案的列不吃頁數預算', async () => {
+    fx.batchPlanFilters = [];
     fx.plans = {
       i: { mode: 'INSTANT', min: 1, rows: Array.from({ length: 5200 }, () => ok(2)) },
       f: { sort: 1, mode: 'FIXED_DEPARTURE', min: 1, rows: [{ departs_on: '2099-01-01', capacity: 5, seats_booked: 0 }] },
     };
     const home = await homeCta();
-    expect(home).toEqual({ i: 'none', f: 'dates-not-loaded' });
-    expect(fx.calls.filter((t) => t === 'trip_departures').length).toBe(1 + 5);
+    expect(home).toEqual({ i: 'none', f: 'fixed' });
+    expect(fx.batchPlanFilters).toEqual([['f']]);
+  });
+
+  it('Issue 760：120 個候選方案：plan_id IN 分塊（100＋20），查詢數仍在頁數預算內', async () => {
+    fx.batchPlanFilters = [];
+    fx.trips = ['trip-1', 'trip-2', 'trip-3', 'trip-4'];
+    fx.plans = {};
+    for (const t of fx.trips) for (let i = 0; i < 30; i += 1) {
+      fx.plans[`${t}-p${String(i).padStart(2, '0')}`] = { trip: t, sort: i, mode: 'FIXED_DEPARTURE', min: 1, rows: [ok(2)] };
+    }
+    fx.calls = [];
+    const data = await loadPublicShop('demo');
+    for (const trip of data!.trips) for (const p of trip.plans) expect(p.bookingCta, p.id).toBe('fixed');
+    // 120 個候選 → 2 塊（100 + 20），每塊 1 頁。
+    expect(fx.batchPlanFilters.map((f) => f!.length)).toEqual([100, 20]);
+    expect(fx.calls.filter((t) => t === 'trip_departures').length).toBe(1 + 2);
+  });
+
+  it('Issue 760：第一頁 >= 1000 列就讓所有方案判定完成 → 早停，只有 1 次批次查詢', async () => {
+    fx.batchPlanFilters = [];
+    fx.plans = {};
+    for (let i = 0; i < 3; i += 1) fx.plans[`p${i}`] = { sort: i, mode: 'FIXED_DEPARTURE', min: 1, rows: Array.from({ length: 400 }, () => ok(2)) };
+    fx.calls = [];
+    const home = await homeCta();
+    expect(home).toEqual({ p0: 'fixed', p1: 'fixed', p2: 'fixed' });
+    // 每方案 400 列 = 共 1200 列；候選追蹤器在前 12 個候選即 settled，第一頁（1000 列）即全部判定。
+    expect(fx.batchPlanFilters.length).toBe(1);
+    // trips、services、trip_plans、行程團次列表各 1 ＋ tenants 1 ＋ 批次 1。
+    expect(fx.calls.filter((t) => t === 'trip_departures').length).toBe(1 + 1);
   });
 
   it('Issue 760：同 sort_order、同 id 順序下，兩個頁面選到同一批方案（tie-break 守門）', async () => {

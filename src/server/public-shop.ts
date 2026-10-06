@@ -243,6 +243,8 @@ const DETAIL_PLAN_QUERY_CONCURRENCY = 3;
  */
 const HOME_DEPARTURE_PAGE_SIZE = 1000;
 const MAX_HOME_DEPARTURE_PAGES = 5;
+/** plan_id IN 清單每塊最多 100 個（uuid 約 4KB URL）；各塊共用 MAX_HOME_DEPARTURE_PAGES 總查詢預算。 */
+const HOME_DEPARTURE_PLAN_ID_CHUNK = 100;
 
 /**
  * 有上限的併發 map：輸出順序與 items 相同；任一項 reject 則整體 reject（fail-closed，
@@ -379,39 +381,50 @@ async function loadHomeBookability(
   const { tenantId, tripIds, plans, now } = args;
   const result = new Map<string, boolean>();
   if (plans.length === 0) return result;
-  const state = new Map(plans.map((plan) => [plan.id, { tracker: createCandidateTracker(plan.minParty), scanned: 0 }]));
   const isDone = (s: { tracker: { settled: boolean }; scanned: number }) =>
     s.tracker.settled || s.scanned >= MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN;
 
-  let offset = 0;
-  let exhausted = false;
-  for (let page = 0; page < MAX_HOME_DEPARTURE_PAGES && !exhausted; page += 1) {
-    const { data, error } = await admin.from('trip_departures')
-      .select('plan_id, departs_on, start_time, capacity, seats_booked')
-      .eq('tenant_id', tenantId)
-      .in('trip_id', tripIds)
-      .eq('status', 'OPEN')
-      .gte('departs_on', now.today)
-      .order('departs_on', { ascending: true })
-      .order('start_time', { ascending: true, nullsFirst: true })
-      .order('id', { ascending: true })
-      .range(offset, offset + HOME_DEPARTURE_PAGE_SIZE - 1);
-    if (error) throw queryTripDetailsFailed('trip_departures', error);
-    const rows = data ?? [];
-    for (const row of rows) {
-      const s = state.get(row.plan_id as string);
-      if (!s || isDone(s)) continue;
-      // 與詳情頁相同：掃描計數是原始列數（含今天已開始、客滿的列）。
-      s.scanned += 1;
-      const seatsLeft = bookingCandidateSeatsLeft(row, now);
-      if (seatsLeft !== null) s.tracker.observe(seatsLeft);
+  // 只讀候選方案的團次（plan_id IN）：INSTANT 方案與超過 30／60 上限的方案的列不會吃掉共用的頁數預算。
+  // IN 清單依 HOME_DEPARTURE_PLAN_ID_CHUNK 分塊（避免 URL 過長）；所有分塊共用同一個 MAX_HOME_DEPARTURE_PAGES
+  // 總預算，所以查詢數仍 <= MAX_HOME_DEPARTURE_PAGES。每個方案只在自己的分塊內判定，單方案的列順序
+  // 是全域排序的子序列，判定結果與不分塊相同；預算用完而未處理的分塊，其方案不在 Map（視為團次未載入）。
+  let pagesUsed = 0;
+  for (let i = 0; i < plans.length && pagesUsed < MAX_HOME_DEPARTURE_PAGES; i += HOME_DEPARTURE_PLAN_ID_CHUNK) {
+    const chunk = plans.slice(i, i + HOME_DEPARTURE_PLAN_ID_CHUNK);
+    const planIds = chunk.map((plan) => plan.id);
+    const state = new Map(chunk.map((plan) => [plan.id, { tracker: createCandidateTracker(plan.minParty), scanned: 0 }]));
+    let offset = 0;
+    let exhausted = false;
+    while (pagesUsed < MAX_HOME_DEPARTURE_PAGES && !exhausted) {
+      pagesUsed += 1;
+      const { data, error } = await admin.from('trip_departures')
+        .select('plan_id, departs_on, start_time, capacity, seats_booked')
+        .eq('tenant_id', tenantId)
+        .in('trip_id', tripIds)
+        .in('plan_id', planIds)
+        .eq('status', 'OPEN')
+        .gte('departs_on', now.today)
+        .order('departs_on', { ascending: true })
+        .order('start_time', { ascending: true, nullsFirst: true })
+        .order('id', { ascending: true })
+        .range(offset, offset + HOME_DEPARTURE_PAGE_SIZE - 1);
+      if (error) throw queryTripDetailsFailed('trip_departures', error);
+      const rows = data ?? [];
+      for (const row of rows) {
+        const s = state.get(row.plan_id as string);
+        if (!s || isDone(s)) continue;
+        // 與詳情頁相同：掃描計數是原始列數（含今天已開始、客滿的列）。
+        s.scanned += 1;
+        const seatsLeft = bookingCandidateSeatsLeft(row, now);
+        if (seatsLeft !== null) s.tracker.observe(seatsLeft);
+      }
+      offset += rows.length;
+      if (rows.length < HOME_DEPARTURE_PAGE_SIZE) exhausted = true;
+      else if ([...state.values()].every(isDone)) break;
     }
-    offset += rows.length;
-    if (rows.length < HOME_DEPARTURE_PAGE_SIZE) exhausted = true;
-    else if ([...state.values()].every(isDone)) break;
-  }
-  for (const [planId, s] of state) {
-    if (exhausted || isDone(s)) result.set(planId, s.tracker.bookable);
+    for (const [planId, s] of state) {
+      if (exhausted || isDone(s)) result.set(planId, s.tracker.bookable);
+    }
   }
   return result;
 }
