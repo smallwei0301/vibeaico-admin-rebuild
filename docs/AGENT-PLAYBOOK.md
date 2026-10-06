@@ -115,6 +115,7 @@
 | PB-076 | Scout ledger 標準化複合主語時拆分成多項，造成偽造計數 | Issue vs PR 編號拆分時，僅 `issue#N` token 計數；對已編輯的批量 ledger，逐筆列舉與已知 Issue 交叉比對，並檢查有無虛構 Issue 或 PR 當成 Issue。 | PR #791 commit 4ca56072→5394e645、scout 編輯階段。 |
 | PB-077 | 共用 worktree 上，reviewer 在 builder/pusher 進行 verify-before-push 時運行寫入操作，會造成 HEAD 改變或測試干擾 | Reviewer 應使用 `git show/diff` 或獨立 worktree，不在同一 clone 上運行突變；builder/pusher 確認 verify 無誤前，不允許同時進行 mutation。 | PR #791 review phase；verify-before-push 拒絕 VERIFY_FAILED。 |
 | PB-078 | canonical TEST 執行中若推送 ledger-only commit，會讓 exact-head TEST 證據失效（本次已避免） | 推送 ledger-only commit 前先查同 PR 是否有 pending／running canonical TEST；有就留在本機，隨下一個實質修正一併推送。 | PR #795；f9f31534 → 273fa1c3；run 37429766960 |
+| PB-079 | ISSUE_CLOSE_READY 的 CI 證據必須是 current main exact SHA；main 在送出後前進，close guard 會重開 | 送 ISSUE_CLOSE_READY 前立刻 `gh api repos/<repo>/commits/main` 確認 SHA 與證據 run 的 head 相同；被重開時以新 main 的 CI 重送新一輪，不重用舊 approval。 | Issue 760、PR #795；close guard 重開 issuecomment-6013786314；分類：close admission |
 
 ## 事件紀錄
 
@@ -2280,5 +2281,16 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 修正：TEST 執行中的 ledger commit 留在本機（WRITER_BLOCKER），與下一個實質修正一併推送；或在觸發 TEST 的推送前先把已知事件記完。
 - 預防：推送 ledger-only commit 前，先查同一 PR 是否有 pending／running 的 canonical TEST；若有，延後推送並在本機保留。
 - 證據：`f9f31534` 為 `273fa1c3` 的祖先；run 37429766960 於 `273fa1c3` success。
+- 狀態：已記錄（程序面預防）
+
+### PB-079 — ISSUE_CLOSE_READY 的 CI 證據必須是 current main exact SHA；main 在送出後前進，close guard 會重開
+
+- 首次／最近：2026-10-06／2026-10-06
+- 發生次數：1
+- Issue／PR／CI：Issue 760、PR #795；close guard 重開 issuecomment-6013786314
+- 分類：close admission
+- 事件：以 afd4e6de 的 main push 37439241198 為 ISSUE_CLOSE_READY 證據關單（09:54:55Z），但 main 已前進到 75b3a5ce（另一 session 的 docs 合併），guard 以「ISSUE_CLOSE_READY ci evidence must match current main exact head」重開並加 governance:premature-close。改以 75b3a5ce 的 main push 37441589711 重送新一輪 CLOSE_APPROVED（issuecomment-6013797708）＋ISSUE_CLOSE_READY，09:56:10Z 關單被接受。
+- 根因：guard 讀關單當下的 current main；並行 session 合併會讓證據過期。
+- 預防：送 ISSUE_CLOSE_READY 前立刻 `gh api repos/<repo>/commits/main` 確認 SHA 與證據 run 的 head 相同，三個寫入（CLOSE_APPROVED、READY、close）連續送出；被重開時以新 main 的 CI 重送新一輪，不重用舊 approval。
 - 狀態：已記錄（程序面預防）
 
