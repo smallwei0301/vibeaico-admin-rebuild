@@ -68,6 +68,7 @@ vi.mock('@/server/supabase', () => ({
           if (fakeState.customRows && rangeArgs) {
             const [from, to] = rangeArgs;
             return {
+              count: fakeState.customRows.length,
               data: fakeState.customRows.slice(from, to + 1).map((r, k) => ({
                 id: `c-${from + k}`, departs_on: '2098-01-01', start_time: null, ...r,
                 min_to_depart_snapshot: 1, formation_deadline_at: null, formation_status: 'COLLECTING',
@@ -85,7 +86,7 @@ vi.mock('@/server/supabase', () => ({
               rows.push({ id: `flood-${i}`, departs_on: '2098-01-01', start_time: started ? '09:00:00' : null, capacity: 1, seats_booked: sellable ? 0 : 1,
                 min_to_depart_snapshot: 1, formation_deadline_at: null, formation_status: 'COLLECTING' });
             }
-            return { data: rows, error: null };
+            return { data: rows, count: rows.length >= 600 ? rows.length + 1 : rows.length, error: null };
           }
           if (planId === fakeState.failPlanId) return { data: null, error: { message: 'boom' } };
           const n = Number(planId.replace('plan-', ''));
@@ -93,7 +94,9 @@ vi.mock('@/server/supabase', () => ({
             id: `so-${n}-${k}`, departs_on: '2098-01-0' + (k % 9 + 1), start_time: null, capacity: 2, seats_booked: 2,
             min_to_depart_snapshot: 1, formation_deadline_at: null, formation_status: 'COLLECTING',
           }));
+          const depRows = fakeState.onlySoldOut ? soldOut : null;
           return {
+            count: depRows ? depRows.length : soldOut.length + 1,
             data: fakeState.onlySoldOut ? soldOut : [...soldOut, { id: `dep-${n}`, departs_on: '2099-01-01', start_time: '09:00:00', capacity: 5, seats_booked: n % 5,
               min_to_depart_snapshot: 2, formation_deadline_at: '2098-12-30T00:00:00+00:00', formation_status: 'COLLECTING' }],
             error: null,
@@ -146,7 +149,7 @@ describe('#11 公開行程詳情', () => {
     expect(detailQuery).toContain(".eq('slug', slug)");
     expect(detailQuery).toContain(".eq('status', 'PUBLISHED')");
     expect(columns?.[1]).not.toMatch(/midao_listing_note|midao_listing|tenant_settings|customers|staff|tour_orders/);
-    expect(detailQuery).toContain(".select('id, departs_on, start_time, capacity, seats_booked, min_to_depart_snapshot, formation_deadline_at, formation_status')");
+    expect(detailQuery).toContain(".select('id, departs_on, start_time, capacity, seats_booked, min_to_depart_snapshot, formation_deadline_at, formation_status', { count: 'exact' })");
     expect(detailQuery).toContain(".eq('trip_id', tripId)");
     expect(detailQuery).toContain(".eq('plan_id', plan.id)");
     expect(detailQuery).toContain(".eq('status', 'OPEN')");

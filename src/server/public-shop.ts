@@ -229,8 +229,8 @@ const MAX_DETAIL_SOLD_OUT_PER_PLAN = 6;
  * Scan future OPEN rows per plan so sold-out dates cannot hide a later available date.
  * A bounded scan protects public request latency; the UI marks the list when rows remain.
  * Issue 806：以「單一」`.range(0, MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN - 1)` 查詢取得一致快照（與預約／申請頁
- * loadBookingCandidateRows 同一組上限）。PostgREST max_rows（supabase/config.toml：1000）>= 600，
- * 所以單次 range 不會被靜默截短；若日後調降 max_rows，必須同步調整此上限。
+ * loadBookingCandidateRows 同一組上限）。不假設 PostgREST max_rows >= 600：同一查詢帶 `{ count: 'exact' }`，
+ * 只有 count 為數字且 <= 回傳列數才算「讀到底」；max_rows 較小而被靜默截短、或 count 不可得，一律視為可能截斷。
  */
 const MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN = 600;
 /**
@@ -843,8 +843,8 @@ export async function loadPlanDepartureWindow(
 
   // Issue 806：只發「一次」有上限的查詢取得單一快照（不再 offset 分頁——分頁在兩次查詢之間若有團次新增／取消／
   // 改狀態，會重讀或跳過一列，使詳情頁與預約／申請頁不一致）。每個方案獨立查詢，忙碌方案不占用其他方案的視窗。
-  const { data, error: departureError } = await admin.from('trip_departures')
-    .select('id, departs_on, start_time, capacity, seats_booked, min_to_depart_snapshot, formation_deadline_at, formation_status')
+  const { data, count, error: departureError } = await admin.from('trip_departures')
+    .select('id, departs_on, start_time, capacity, seats_booked, min_to_depart_snapshot, formation_deadline_at, formation_status', { count: 'exact' })
     .eq('tenant_id', tenantId)
     .eq('trip_id', tripId)
     .eq('plan_id', plan.id)
@@ -916,13 +916,16 @@ export async function loadPlanDepartureWindow(
     }
   }
 
-  // 快照語意（Issue 806）：單一查詢、與預約／申請頁同一個 600 列上限（max_rows 1000 >= 600，不會被靜默截短）。
+  // 快照語意（Issue 806）：單一查詢、與預約／申請頁同一個 600 列上限。
   // 列出視窗（6 筆可售）填滿且 12 候選判定 settled 時停止；未 settled 則持續觀察到快照結尾，
   // 所以遠在後面的可售團次仍可開啟 CTA。CTA／候選判定與舊多頁行為相同。
-  // 與舊多頁行為的差異只在提示旗標：現在檢查整個 600 列快照（舊版只看「本頁剩餘＋一頁 lookahead」），較準確。
-  // `departuresMayBeTruncated`：確認有未列出的可售團次（unlistedSellable），或快照達上限（可能還有更多列，一律標示）；
-  // 快照未達上限代表已讀到底，全部客滿則只以 `soldOutOmitted` 回報。不再有 lookahead 查詢。
-  const snapshotFull = rows.length >= MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN;
+  // 「讀到底」以同一查詢的 exact count 判定（count 為數字且 <= 回傳列數），不依賴 max_rows 設定：
+  // max_rows 小於 600 時回傳列數會少於 count，count 不可得（null）時 fail-closed，兩者都標示可能截斷。
+  // 恰好 600 列且 count = 600 代表已讀到底，不誤報截斷。
+  // `departuresMayBeTruncated`：確認有未列出的可售團次（unlistedSellable），或快照未讀到底（可能還有更多列，一律標示）；
+  // 讀到底時全部客滿只以 `soldOutOmitted` 回報。此旗標只影響提示文案，不改變 CTA（見 bookingCtaState）。
+  const readToEnd = typeof count === 'number' && count <= rows.length;
+  const snapshotFull = !readToEnd;
   const mayBeTruncated = unlistedSellable || snapshotFull;
 
   return { departures, mayBeTruncated, soldOutOmitted: skippedSoldOut, bookableDepartureAvailable: candidates.bookable };

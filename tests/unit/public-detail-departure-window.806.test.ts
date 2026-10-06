@@ -17,21 +17,26 @@ const build = (...groups: Array<Array<[number, number]>>): Dep[] =>
     id: `d-${String(i).padStart(4, '0')}`, departs_on: '2098-06-01', start_time: null, capacity, seats_booked,
   }));
 
-function makeAdmin(all: Dep[], opts: { error?: boolean } = {}) {
+// maxRows 模擬 PostgREST max_rows；count 預設為真實總列數（exact count），可用 null 模擬 count 不可得。
+function makeAdmin(all: Dep[], opts: { error?: boolean; maxRows?: number; count?: number | null } = {}) {
   const calls: Array<[number, number] | null> = [];
+  const selectOpts: unknown[] = [];
   const admin = {
     from(table: string) {
       expect(table).toBe('trip_departures');
       let range: [number, number] | null = null;
+      let wantsCount = false;
       const orders: string[] = [];
       const run = async () => {
         calls.push(range);
         if (opts.error) return { data: null, error: { message: 'boom' } };
         const [a, b] = range ?? [0, all.length];
-        return { data: all.slice(a, b + 1), error: null };
+        const end = Math.min(b + 1, a + (opts.maxRows ?? Infinity));
+        const count = 'count' in opts ? opts.count : all.length;
+        return { data: all.slice(a, end), count: wantsCount ? count : null, error: null };
       };
       const chain: Record<string, unknown> = {
-        select: () => chain, eq: () => chain, gte: () => chain,
+        select: (_c: string, o?: { count?: string }) => { selectOpts.push(o); wantsCount = o?.count === 'exact'; return chain; }, eq: () => chain, gte: () => chain,
         order: (c: string) => { orders.push(c); return chain; },
         range: (a: number, b: number) => { range = [a, b]; return chain; },
         then: (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) => run().then(res, rej),
@@ -39,13 +44,13 @@ function makeAdmin(all: Dep[], opts: { error?: boolean } = {}) {
       return chain;
     },
   };
-  return { admin: admin as never, calls };
+  return { admin: admin as never, calls, selectOpts };
 }
 
-const run = async (all: Dep[]) => {
-  const { admin, calls } = makeAdmin(all);
+const run = async (all: Dep[], opts: Parameters<typeof makeAdmin>[1] = {}) => {
+  const { admin, calls, selectOpts } = makeAdmin(all, opts);
   const w = await loadPlanDepartureWindow(admin, { tenantId: 't1', tripId: 'trip1', plan: PLAN, now: NOW });
-  return { w, calls };
+  return { w, calls, selectOpts };
 };
 
 describe('#806 loadPlanDepartureWindow 單一有上限查詢', () => {
@@ -128,8 +133,8 @@ describe('#806 loadPlanDepartureWindow 單一有上限查詢', () => {
     expect(w).toMatchObject({ mayBeTruncated: false, soldOutOmitted: true, bookableDepartureAvailable: true });
   });
 
-  it('快照 = 600 列（視窗填滿後全客滿）→ 快照達上限，mayBeTruncated=true', async () => {
-    const { w } = await run(build(open(6), full(594)));
+  it('快照 600 列但 count 顯示還有更多（視窗填滿後全客滿）→ 未讀到底，mayBeTruncated=true', async () => {
+    const { w } = await run(build(open(6), full(594)), { count: 601 });
     expect(w).toMatchObject({ mayBeTruncated: true, soldOutOmitted: true });
   });
 
@@ -159,8 +164,8 @@ describe('#806 loadPlanDepartureWindow 單一有上限查詢', () => {
     expect(w.mayBeTruncated).toBe(false);
   });
 
-  it('掃描上限：恰 600 列全客滿 → mayBeTruncated=true；599 列全客滿 → 不截斷且 soldOutOmitted', async () => {
-    const atCap = (await run(build(full(600)))).w;
+  it('掃描上限：600 列全客滿且 count > 600 → mayBeTruncated=true；599 列全客滿 → 不截斷且 soldOutOmitted', async () => {
+    const atCap = (await run(build(full(600)), { count: 700 })).w;
     expect(atCap.mayBeTruncated).toBe(true);
     const underCap = (await run(build(full(599)))).w;
     expect(underCap.mayBeTruncated).toBe(false);
@@ -168,10 +173,38 @@ describe('#806 loadPlanDepartureWindow 單一有上限查詢', () => {
   });
 
   it('600 列全客滿 → 無可訂候選；第 601 列的可售不會被讀到，也不發第二次查詢', async () => {
-    const { w, calls } = await run(build(full(600), open(5)));
+    const { w, calls } = await run(build(full(600), open(5)), { count: 605 });
     expect(w.bookableDepartureAvailable).toBe(false);
     expect(w.departures.filter((d) => !d.soldOut)).toEqual([]);
     expect(w.mayBeTruncated).toBe(true);
     expect(calls).toEqual([[0, 599]]);
+  });
+
+  it('查詢帶 { count: \'exact\' }（用 count 判定是否讀到底）', async () => {
+    const { selectOpts } = await run(build(open(3)));
+    expect(selectOpts).toEqual([{ count: 'exact' }]);
+  });
+
+  it('max_rows 模擬為 500：回 500 列、count 700，可售只在第 501-600 列 → mayBeTruncated=true、不誤判為已讀到底', async () => {
+    const all = build(full(500), open(100), full(100));
+    const { w, calls } = await run(all, { maxRows: 500 });
+    expect(calls).toEqual([[0, 599]]);
+    expect(w.mayBeTruncated).toBe(true);
+    // 看不到的可售不會被當成候選：入口不由截斷旗標改變（bookingCtaState 只看已列出／候選），旅客看到的是截斷提示而非「無團次」。
+    expect(w.bookableDepartureAvailable).toBe(false);
+    expect(w.departures.filter((d) => !d.soldOut)).toEqual([]);
+  });
+
+  it('恰 600 列且 count = 600（已讀到底）：全客滿 → mayBeTruncated=false；有未列出可售仍為 true', async () => {
+    const a = await run(build(full(600)), { count: 600 });
+    expect(a.w.mayBeTruncated).toBe(false);
+    expect(a.w.soldOutOmitted).toBe(true);
+    const b = await run(build(open(6), full(593), open(1)));
+    expect(b.w.mayBeTruncated).toBe(true);
+  });
+
+  it('count 不可得（null）→ fail-closed，mayBeTruncated=true（含空集合）', async () => {
+    expect((await run(build(open(3)), { count: null })).w.mayBeTruncated).toBe(true);
+    expect((await run(build(), { count: null })).w.mayBeTruncated).toBe(true);
   });
 });
