@@ -151,7 +151,7 @@ describe('#11 公開行程詳情', () => {
     expect(detailQuery).toContain(".eq('plan_id', plan.id)");
     expect(detailQuery).toContain(".eq('status', 'OPEN')");
     expect(loader).toContain(".eq('plan_id', plan.id)");
-    expect(detailQuery).toContain('.range(offset, offset + pageSize - 1)');
+    expect(detailQuery).toContain('.range(0, MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN - 1)');
     expect(detailQuery).toContain('departuresMayBeTruncated');
     expect(detailClient).toContain('t.departures.truncated');
   });
@@ -320,41 +320,29 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     expect(plan?.departuresMayBeTruncated).toBe(false);
   });
 
-  it('M4：每一次 trip_departures 查詢（分頁與 lookahead）都必須帶 status=OPEN、tenant、trip、plan 條件', async () => {
+  it('M4：trip_departures 查詢（#806 單一有上限查詢）必須帶 status=OPEN、tenant、trip、plan 條件', async () => {
     fakeState.planCount = 1;
     fakeState.flood = true;
     const { loadPublicTripDetails } = await import('@/server/public-shop');
     await loadPublicTripDetails('demo', 'hike');
     const queries = fakeState.calls.filter((c) => c.table === 'trip_departures');
-    // 600 列 / 每頁 120 = 5 頁，再加 1 次 lookahead。
-    expect(queries).toHaveLength(6);
+    // #806：600 列上限用單一 .range(0, 599) 查詢取得，不分頁、不另發 lookahead。
+    expect(queries).toHaveLength(1);
     for (const q of queries) {
       expect(q.filters).toMatchObject({ tenant_id: 'tenant-1', trip_id: 'trip-1', plan_id: 'plan-0', status: 'OPEN' });
+      expect((q as never as { range: number[] }).range).toEqual([0, 599]);
     }
-    expect(queries.filter((q) => (q as never as { range: number[] }).range[0] >= 600)).toHaveLength(1);
   });
 
-  it('超過掃描上限且 lookahead 全客滿 → truncated=false、soldOutOmitted=true、CTA 隱藏', async () => {
+  it('掃描上限 600 列用完且全客滿 → truncated=true（#806 保守：單一查詢看不到上限之外）、soldOutOmitted=true、CTA 隱藏', async () => {
     fakeState.planCount = 1;
     fakeState.flood = true;
     const { loadPublicTripDetails } = await import('@/server/public-shop');
     const { bookingCtaState } = await import('@/lib/public-trip-client-state');
     const plan = (await loadPublicTripDetails('demo', 'hike'))?.trip.plans[0];
     expect(plan?.departures.every((d) => d.soldOut === true)).toBe(true);
-    expect(plan?.departuresMayBeTruncated).toBe(false);
-    expect(plan?.soldOutOmitted).toBe(true);
-    expect(bookingCtaState(plan!)).toBe('fixed-unavailable');
-  });
-
-  it('超過掃描上限且 lookahead 有可售 → truncated=true（只影響提示文案）、CTA 仍隱藏', async () => {
-    fakeState.planCount = 1;
-    fakeState.flood = true;
-    fakeState.lookaheadAvailable = true;
-    const { loadPublicTripDetails } = await import('@/server/public-shop');
-    const { bookingCtaState } = await import('@/lib/public-trip-client-state');
-    const plan = (await loadPublicTripDetails('demo', 'hike'))?.trip.plans[0];
     expect(plan?.departuresMayBeTruncated).toBe(true);
-    // truncated 不開啟 CTA：列出的團次都客滿 → 仍為 unavailable（預約頁看不到 lookahead 那一列）。
+    expect(plan?.soldOutOmitted).toBe(true);
     expect(bookingCtaState(plan!)).toBe('fixed-unavailable');
   });
 
@@ -436,16 +424,19 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     expect(shop.lineBasicId).toBe('@abc');
   });
 
-  it('C15：lookahead 讀到的可售列全是今天已開始的團次 → truncated=false（lookahead 也要過濾）', async () => {
+  it('C15：視窗填滿後快照剩餘的可售列全是今天已開始的團次 → truncated=false（剩餘列也要過濾）', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2098-01-01T02:00:00Z')); // 台北 10:00
     try {
       fakeState.planCount = 1;
-      fakeState.flood = true;
-      fakeState.lookaheadAvailable = true;
-      fakeState.lookaheadStartedToday = true;
+      fakeState.customRows = [
+        ...Array.from({ length: 6 }, () => ({ seats_booked: 0, capacity: 5 })),
+        ...Array.from({ length: 114 }, () => ({ seats_booked: 5, capacity: 5 })),
+        ...Array.from({ length: 3 }, () => ({ seats_booked: 0, capacity: 5, start_time: '09:00:00' })),
+      ];
       const { loadPublicTripDetails } = await import('@/server/public-shop');
       const plan = (await loadPublicTripDetails('demo', 'hike'))?.trip.plans[0];
+      expect(plan?.departures.filter((d) => !d.soldOut)).toHaveLength(6);
       expect(plan?.departuresMayBeTruncated).toBe(false);
     } finally {
       vi.useRealTimers();
@@ -466,8 +457,8 @@ describe('#11 公開行程詳情：以 slug 直查，不讀全店行程清單', 
     const depCalls = fakeState.calls.filter((c) => c.table === 'trip_departures' && c.filters.plan_id);
     expect(depCalls.map((c) => c.filters.plan_id)).not.toContain('plan-30');
     expect(depCalls.length).toBe(30);
-    // 最壞情況總查詢數：30 × (5 頁 + 1 lookahead) ＝ 180。
-    expect(depCalls.length).toBeLessThanOrEqual(30 * 6);
+    // #806：每個方案單一查詢，最壞情況總查詢數 30。
+    expect(depCalls.length).toBeLessThanOrEqual(30);
   });
 
   it('INSTANT 不進團次查詢集合：不查、departures 為 []、不標 departuresNotLoaded、不占 30 個額度；第 31 個 FIXED 才是 notLoaded', async () => {
