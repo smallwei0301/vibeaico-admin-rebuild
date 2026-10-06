@@ -230,3 +230,50 @@ describe('U& 解碼只針對 standard_conforming_strings（#781）', () => {
     expect(() => inferMigrationRiskTier('set U&"standard\\0063onforming_strings" = off;')).not.toThrow(/standard_conforming_strings via/);
   });
 });
+
+describe('Final Risk delta 重審：UESCAPE、DO 內 ALTER ... SET、非 ASCII 識別字呼叫（#781 B2/B3/B4）', () => {
+  it.each([
+    'SET U&"!0073tandard_conforming_strings" UESCAPE E\'!\' = off;',
+    'SET U&"!0073tandard_conforming_strings" UESCAPE $$!$$ = off;',
+    "set U&\"x\" uescape '!' = off;",
+    "select U&\"d!0061ta\" UeScApE '!' from t;",
+  ])('UESCAPE 一律 fail closed：%s', (sql) => {
+    expect(() => inferMigrationRiskTier(sql)).toThrow(/UNSUPPORTED_SQL_LEXICAL_FORM/);
+  });
+
+  it.each([
+    'do $$begin alter database postgres set search_path = evil; end$$;',
+    'do $$begin alter role anon set search_path = evil; end$$;',
+    "do $$begin execute 'alter system set work_mem = 1'; end$$;",
+  ])('DO body 內的 ALTER ... SET fail closed：%s', (sql) => {
+    expect(() => inferMigrationRiskTier(sql)).toThrow(/UNSUPPORTED_SQL_LEXICAL_FORM/);
+  });
+
+  it('不誤擋 alter table／alter function ... set', () => {
+    for (const sql of [
+      'alter table t set schema other;',
+      'alter table t alter column a set not null;',
+      'alter table t set (fillfactor = 70);',
+      'alter function public.f() set search_path = public;',
+    ]) {
+      let code = '';
+      try { inferMigrationRiskTier(sql); } catch (error) { code = String((error as { code?: string }).code); }
+      expect(code, sql).not.toBe('UNSUPPORTED_SQL_LEXICAL_FORM');
+    }
+  });
+
+  it.each([
+    'select f　(1);',
+    'select f (1);',
+    'select f (1);',
+    'select f﻿(1);',
+    'select public.f (1);',
+    'insert into t select f　();',
+  ])('非 ASCII 空白類字元是識別字的一部分，後接 ( 即函式呼叫：%j', (sql) => {
+    expect(() => inferMigrationRiskTier(sql)).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+  });
+
+  it('SET 非 ASCII 開頭識別字仍走組態變更 AUTHZ 路徑（不低於舊版）', () => {
+    expect(inferMigrationRiskTier('set  f = 1;')).toBe('AUTHZ');
+  });
+});

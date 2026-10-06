@@ -403,6 +403,7 @@ export function stripSqlComments(sql) {
   // 引號識別字、set_config(...)）：它會改變字串詞法，本分類器不逐一建模賦值形式（#781）。
   // U&"..." 識別字會在詞法階段解碼 \XXXX／\+XXXXXX 跳脫，可拼出 standard_conforming_strings。
   // 逐一解碼（含 UESCAPE 變體），解出該名稱、或無法解碼，一律 fail closed；其他 U&" 沿用既有路徑。
+  // 預設跳脫字元的 U&"..." 由下方逐一解碼；自訂 UESCAPE 已於上方整體拒絕，故 SET <U& 識別字> 無法繞過。
   if (unicodeEscapedIdentifierMentionsScs(input)) {
     fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'standard_conforming_strings via U&"..." is not admitted by the fail-closed classifier');
   }
@@ -618,7 +619,7 @@ function isSqlParenthesisSyntax(name, before, input, openIndex) {
 }
 
 function isDmlTargetColumnList(text, index) {
-  return pgRe(/\binsert\s+into\s+(?:only\s+)?(?:(?:"(?:[^"]|"")*"|[\p{ID_Start}_][\p{ID_Continue}_$]*)\s*\.\s*)?$/iu).test(
+  return pgRe(/\binsert\s+into\s+(?:only\s+)?(?:(?:"(?:[^"]|"")*"|[A-Za-z_\u0080-\u{10FFFF}][A-Za-z0-9_$\u0080-\u{10FFFF}]*)\s*\.\s*)?$/iu).test(
     String(text).slice(0, index),
   );
 }
@@ -649,7 +650,7 @@ function isAliasColumnList(text, index) {
 function hasUnverifiedRoutineInvocation(text, allowedRoutineCalls = new Set()) {
   const input = String(text);
   const quotedCandidates = input.matchAll(
-    pgRe(/(?<![\p{ID_Continue}$])(?:[\p{ID_Start}_][\p{ID_Continue}_$]*\s*\.\s*)?"(?:[^"]|"")*"\s*\(/giu),
+    pgRe(/(?<![A-Za-z0-9_$\u0080-\u{10FFFF}])(?:[A-Za-z_\u0080-\u{10FFFF}][A-Za-z0-9_$\u0080-\u{10FFFF}]*\s*\.\s*)?"(?:[^"]|"")*"\s*\(/giu),
   );
   for (const match of quotedCandidates) {
     if (isDmlTargetColumnList(input, match.index) || isReferencesColumnList(input, match.index)
@@ -658,7 +659,7 @@ function hasUnverifiedRoutineInvocation(text, allowedRoutineCalls = new Set()) {
   }
 
   const candidates = input.matchAll(
-    pgRe(/(?<![\p{ID_Continue}$])(?:(?:"(?:[^"]|"")*"|[\p{ID_Start}_][\p{ID_Continue}_$]*)\s*\.\s*)?([\p{ID_Start}_][\p{ID_Continue}_$]*)\s*\(/giu),
+    pgRe(/(?<![A-Za-z0-9_$\u0080-\u{10FFFF}])(?:(?:"(?:[^"]|"")*"|[A-Za-z_\u0080-\u{10FFFF}][A-Za-z0-9_$\u0080-\u{10FFFF}]*)\s*\.\s*)?([A-Za-z_\u0080-\u{10FFFF}][A-Za-z0-9_$\u0080-\u{10FFFF}]*)\s*\(/giu),
   );
   for (const match of candidates) {
     if (isDmlTargetColumnList(input, match.index) || isReferencesColumnList(input, match.index)
@@ -676,7 +677,7 @@ function hasUnverifiedRoutineInvocation(text, allowedRoutineCalls = new Set()) {
 }
 
 function rejectUnsupportedPreparedStatements(statements) {
-  const preparedExecute = pgRe(/\bexecute\s+(?!(?:pg_catalog\s*\.\s*)?format\b)(?:(?:[\p{ID_Start}_][\p{ID_Continue}_$]*\s*\.\s*)?[\p{ID_Start}_][\p{ID_Continue}_$]*|"(?:[^"]|"")*")(?:\s*\([^;]*\))?(?=\s*(?:;|$))/iu);
+  const preparedExecute = pgRe(/\bexecute\s+(?!(?:pg_catalog\s*\.\s*)?format\b)(?:(?:[A-Za-z_\u0080-\u{10FFFF}][A-Za-z0-9_$\u0080-\u{10FFFF}]*\s*\.\s*)?[A-Za-z_\u0080-\u{10FFFF}][A-Za-z0-9_$\u0080-\u{10FFFF}]*|"(?:[^"]|"")*")(?:\s*\([^;]*\))?(?=\s*(?:;|$))/iu);
   for (const statement of statements) {
     const immediateText = stripStoredRoutineBodies(statement).trim();
     const procedural = pgRe(/^do\b/i).test(immediateText);
@@ -698,7 +699,7 @@ function rejectUnsupportedPreparedStatements(statements) {
 function indexAccessMethodColumnListStart(text) {
   // Only this anchored CREATE INDEX prefix makes btree/hash syntax rather
   // than a routine call. Leave the column expressions and predicate intact.
-  const identifier = '(?:"(?:[^"]|"")*"|[\\p{ID_Start}_][\\p{ID_Continue}_$]*)';
+  const identifier = '(?:"(?:[^"]|"")*"|[A-Za-z_\\u0080-\\u{10FFFF}][A-Za-z0-9_$\\u0080-\\u{10FFFF}]*)';
   const prefix = pgRe(new RegExp('^create\\s+(?:unique\\s+)?index\\s+(?:concurrently\\s+)?'
     + '(?:if\\s+not\\s+exists\\s+)?(?:' + identifier + '\\s+)?on\\s+(?:only\\s+)?'
     + identifier + '(?:\\s*\\.\\s*' + identifier + ')?\\s+using\\s+(?:btree|hash)\\s*(?=\\()', 'iu'));
@@ -1089,7 +1090,7 @@ function dynamicCommandKind(fragment) {
   }
   // One DROP CONSTRAINT only; a comma must not smuggle ADD CHECK/default/USING
   // or another ALTER action past migration-time expression admission.
-  const identifier = '(?:%I|"(?:[^"]|"")*"|[\\p{ID_Start}_][\\p{ID_Continue}_$]*)';
+  const identifier = '(?:%I|"(?:[^"]|"")*"|[A-Za-z_\\u0080-\\u{10FFFF}][A-Za-z0-9_$\\u0080-\\u{10FFFF}]*)';
   const boundedDrop = pgRe(new RegExp('^alter\\s+table\\s+(?:only\\s+)?' + identifier
     + '(?:\\s*\\.\\s*' + identifier + ')?\\s+drop\\s+constraint\\s+(?:if\\s+exists\\s+)?'
     + identifier + '(?:\\s+restrict)?\\s*;?\\s*$', 'iu'));
@@ -1181,7 +1182,7 @@ function rejectUnclassifiedDropStatements(text) {
     })
     .filter((fragment) => pgRe(/\bdrop\b/i).test(fragment));
   for (const fragment of fragments) {
-    const drops = [...fragment.matchAll(pgRe(/\bdrop\s+(?:if\s+exists\s+)?([A-Za-z_][\w$]*)/gi))];
+    const drops = [...fragment.matchAll(pgRe(/\bdrop\s+(?:if\s+exists\s+)?([A-Za-z_\u0080-\u{10FFFF}][\w$]*)/giu))];
     if (!drops.length) fail('UNCLASSIFIED_DROP_NOT_ADMITTED', 'DROP target could not be lexically identified');
     for (const match of drops) {
       const objectType = String(match[1]).toLowerCase();
@@ -1206,8 +1207,8 @@ function assertSingleRiskTier(tiers = []) {
 
 function hasAuthzConfigurationMutation(statement) {
   const input = String(statement);
-  return pgRe(/^\s*set\s+(?:(?:local|session)\s+)?(?:[A-Za-z_][\w$]*|(?:[uU]&)?(?:"(?:[^"]|"")*"))\s*(?:=|\bto\b)/i).test(input)
-    || pgRe(/^\s*reset\s+(?:[A-Za-z_][\w$]*|(?:[uU]&)?(?:"(?:[^"]|"")*"))/i).test(input);
+  return pgRe(/^\s*set\s+(?:(?:local|session)\s+)?(?:[A-Za-z_\u0080-\u{10FFFF}][\w$]*|(?:[uU]&)?(?:"(?:[^"]|"")*"))\s*(?:=|\bto\b)/iu).test(input)
+    || pgRe(/^\s*reset\s+(?:[A-Za-z_\u0080-\u{10FFFF}][\w$]*|(?:[uU]&)?(?:"(?:[^"]|"")*"))/iu).test(input);
 }
 
 function matchesChain(text, chain) {
@@ -1247,13 +1248,17 @@ const AUTHZ_RISK_CHAINS = [
   [pgRe(/\b(?:alter\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure|routine|type|domain|foreign\s+table)|create\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure|type))\b/gi), pgRe(/\bowner\s+to\b/gi)],
   [pgRe(/\b(?:create|alter)\s+(?:or\s+replace\s+)?(?:view|materialized\s+view)\b/gi), pgRe(/\bsecurity_(?:invoker|barrier)\b/gi)],
   [pgRe(/\bcreate\s+schema\b/gi), pgRe(/\bauthorization\b/gi)],
-  [pgRe(/\bset\s+(?:(?:local|session)\s+)?(?:"role"|role)(?![\p{L}\p{N}_$])/gi)],
+  [pgRe(/\bset\s+(?:(?:local|session)\s+)?(?:"role"|role)(?![A-Za-z0-9_$\u0080-\u{10FFFF}])/giu)],
   [pgRe(/\breset\s+role\b/gi)],
   [pgRe(/\bset\s+(?:(?:local|session)\s+)?authorization\b/gi)],
   [pgRe(/\balter\s+default\s+privileges\b/gi)],
 ];
 
 export function inferMigrationRiskTier(sql, repoFile = '') {
+  // UESCAPE（只在分類入口檢查，stripSqlComments 的其他使用者不受影響）： 的跳脫字元可寫成 '!'、E'!'、$$!$$ 等任意字串形式，不逐一建模：出現即 fail closed。
+  if (/(?<![A-Za-z0-9_\u0080-\u{10FFFF}])uescape(?![A-Za-z0-9_\u0080-\u{10FFFF}])/iu.test(String(sql ?? ''))) {
+    fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'UESCAPE is not admitted by the fail-closed classifier');
+  }
   const text = stripSqlComments(sql);
 
   // v1 絕不放行會直接刪掉資料容器或欄位的操作。constraint/default 的暫時移除
@@ -1264,8 +1269,9 @@ export function inferMigrationRiskTier(sql, repoFile = '') {
   rejectUnsupportedPreparedStatements(statements);
   rejectImmediateRoutineInvocations(statements, repoFile);
   rejectImmediateConfigurationMutations(statements);
+  // 不錨定語句開頭：DO／動態 EXECUTE body 內的同類語句同樣生效。
   // ALTER DATABASE/ROLE/USER/SYSTEM ... SET 會持久改變 session 設定（含字串詞法），v1 不放行（#781）。
-  if (statements.some((statement) => matchesChain(statement, [pgRe(/^\s*alter\s+(?:database|role|user|system)\b/gi), pgRe(/\bset\b/gi)]))) {
+  if (statements.some((statement) => matchesChain(statement, [pgRe(/\balter\s+(?:database|role|user|system)\b/gi), pgRe(/\bset\b/gi)]))) {
     fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'ALTER DATABASE/ROLE/USER/SYSTEM ... SET is not admitted by the fail-closed classifier');
   }
   if (statements.some((statement) => pgRe(/\btruncate\b|\bdrop\s+(?:table|schema)\b/i).test(statement))) {
