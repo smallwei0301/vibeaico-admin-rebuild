@@ -90,8 +90,9 @@ export type PublicPlan = {
   /** 方案有啟用的季節定價：基本價只是參考，實際價格依各團次出發日（見團次 unitPrice）。 */
   seasonalPricing?: true;
   /**
-   * #747：只有店家首頁（loadPublicShop）會填。與詳情頁共用 `bookingCtaState`＋同一個團次視窗
-   * （loadPlanDepartureWindow），所以首頁有／無入口與詳情頁一致；其餘載入器不輸出。
+   * #747：只有店家首頁（loadPublicShop）會填。與詳情頁共用 `bookingCtaState`＋同一套候選規則
+   * 與方案選取規則（selectPlansWithDepartures；Issue 760 起首頁以批次查詢 loadHomeBookability 判定），
+   * 所以首頁有／無入口與詳情頁一致；其餘載入器不輸出。
    */
   bookingCta?: BookingCtaState;
 };
@@ -235,6 +236,15 @@ const MAX_DETAIL_PLANS_WITH_DEPARTURES = 30;
 const DETAIL_PLAN_QUERY_CONCURRENCY = 3;
 
 /**
+ * Issue 760：店家首頁一次批次讀「所有候選方案」的團次時，每頁讀取的列數與最多頁數。
+ * 每頁 1000 列＝PostgREST 預設列數上限（與預約頁 loadPublicBookingPlan 的單次上限相同）。
+ * 頁數用完仍有方案未判定者，一律視為「團次未載入」（不顯示入口），不猜測、不誤開入口。
+ * 單一匿名請求的團次查詢數因此 <= MAX_HOME_DEPARTURE_PAGES，不再隨方案數放大（原本最多 30 × 6 = 180）。
+ */
+const HOME_DEPARTURE_PAGE_SIZE = 1000;
+const MAX_HOME_DEPARTURE_PAGES = 5;
+
+/**
  * 有上限的併發 map：輸出順序與 items 相同；任一項 reject 則整體 reject（fail-closed，
  * 並停止啟動尚未開始的項目）。
  */
@@ -339,6 +349,71 @@ async function loadPublicShopCore(
 /** 這種販售方式的方案才會在詳情頁公開列出團次。 */
 function hasPublicDepartureList(plan: { salesMode: string }): boolean {
   return plan.salesMode === 'FIXED_DEPARTURE' || plan.salesMode === 'REQUEST';
+}
+
+/**
+ * 詳情頁與店家首頁共用的「哪些方案會進團次查詢集合」規則（Issue 760，兩邊不得各寫各的）：
+ * 已依 sort_order、id 排序的方案，先取詳情頁會輸出的前 MAX_PUBLIC_PLANS_OUTPUT 個，
+ * 再只留 FIXED_DEPARTURE／REQUEST，最後取前 MAX_DETAIL_PLANS_WITH_DEPARTURES 個（每個行程各自計算）。
+ * 順序不可改：INSTANT 先占輸出名額、但不占團次名額，首頁與詳情頁才選到同一批。
+ */
+function selectPlansWithDepartures<T extends { salesMode: string }>(orderedPlans: readonly T[]): T[] {
+  return orderedPlans
+    .slice(0, MAX_PUBLIC_PLANS_OUTPUT)
+    .filter(hasPublicDepartureList)
+    .slice(0, MAX_DETAIL_PLANS_WITH_DEPARTURES);
+}
+
+/**
+ * 店家首頁只需要知道「這個方案有沒有可訂團次」，不需要團次列表，所以不逐方案查詢，
+ * 而是以行程為範圍分頁批次讀取 OPEN 團次、在記憶體依方案分組後套用與詳情頁
+ * loadPlanDepartureWindow 相同的判定：同樣的排序（departs_on、start_time、id；單一方案的列是全域排序的子序列）、
+ * 同樣的候選規則（createCandidateTracker：前 12 個候選）、同樣的單方案 600 列掃描上限。
+ * 回傳 Map 只含「已判定」的方案；頁數用完仍未判定的方案不在 Map 內（呼叫端視為團次未載入）。
+ * 查詢失敗直接 throw（呼叫端降級為全部未載入，不讓整頁失敗）。
+ */
+async function loadHomeBookability(
+  admin: ReturnType<typeof createAdminSupabase>,
+  args: { tenantId: string; tripIds: string[]; plans: PublicPlan[]; now: { today: string; hm: string } },
+): Promise<Map<string, boolean>> {
+  const { tenantId, tripIds, plans, now } = args;
+  const result = new Map<string, boolean>();
+  if (plans.length === 0) return result;
+  const state = new Map(plans.map((plan) => [plan.id, { tracker: createCandidateTracker(plan.minParty), scanned: 0 }]));
+  const isDone = (s: { tracker: { settled: boolean }; scanned: number }) =>
+    s.tracker.settled || s.scanned >= MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN;
+
+  let offset = 0;
+  let exhausted = false;
+  for (let page = 0; page < MAX_HOME_DEPARTURE_PAGES && !exhausted; page += 1) {
+    const { data, error } = await admin.from('trip_departures')
+      .select('plan_id, departs_on, start_time, capacity, seats_booked')
+      .eq('tenant_id', tenantId)
+      .in('trip_id', tripIds)
+      .eq('status', 'OPEN')
+      .gte('departs_on', now.today)
+      .order('departs_on', { ascending: true })
+      .order('start_time', { ascending: true, nullsFirst: true })
+      .order('id', { ascending: true })
+      .range(offset, offset + HOME_DEPARTURE_PAGE_SIZE - 1);
+    if (error) throw queryTripDetailsFailed('trip_departures', error);
+    const rows = data ?? [];
+    for (const row of rows) {
+      const s = state.get(row.plan_id as string);
+      if (!s || isDone(s)) continue;
+      // 與詳情頁相同：掃描計數是原始列數（含今天已開始、客滿的列）。
+      s.scanned += 1;
+      const seatsLeft = bookingCandidateSeatsLeft(row, now);
+      if (seatsLeft !== null) s.tracker.observe(seatsLeft);
+    }
+    offset += rows.length;
+    if (rows.length < HOME_DEPARTURE_PAGE_SIZE) exhausted = true;
+    else if ([...state.values()].every(isDone)) break;
+  }
+  for (const [planId, s] of state) {
+    if (exhausted || isDone(s)) result.set(planId, s.tracker.bookable);
+  }
+  return result;
 }
 
 /** 詳情輸出邊界：方案文字欄位上限（name 300、description 2000）；id、數字、enum 不截。 */
@@ -464,41 +539,27 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
     plansByTrip.set(row.trip_id as string, list);
   }
 
-  // #747：首頁方案入口與詳情頁用同一套規則（loadPlanDepartureWindow＋bookingCtaState，店家時區的「今天」）。
-  // 團次查詢總數上限與詳情頁同為 N（單一匿名請求的查詢數不隨店家行程數放大）。為避免前面的行程吃光名額、
-  // 讓後面行程的方案全變「團次未載入」，改以 round-robin 選取：依行程順序，先取每個行程的第 1 個可查方案，
-  // 再取第 2 個…直到湊滿 N 個。單一行程內順序與詳情頁一致（sort_order、id），且單一行程最多取 N 個
-  // （不會比詳情頁多）。未被選中或查詢失敗的方案一律視為「團次未載入」，不顯示可點入口、也不讓整頁失敗。
-  const eligibleByTrip = (tripRows ?? []).map((trip) => ({
-    tripId: trip.id as string,
-    plans: (plansByTrip.get(trip.id as string) ?? []).filter(hasPublicDepartureList)
-      .slice(0, MAX_DETAIL_PLANS_WITH_DEPARTURES),
-  }));
-  const homePlans: Array<{ tripId: string; plan: PublicPlan }> = [];
-  for (let index = 0; index < MAX_DETAIL_PLANS_WITH_DEPARTURES && homePlans.length < MAX_DETAIL_PLANS_WITH_DEPARTURES; index += 1) {
-    for (const { tripId, plans } of eligibleByTrip) {
-      if (index < plans.length && homePlans.length < MAX_DETAIL_PLANS_WITH_DEPARTURES) {
-        homePlans.push({ tripId, plan: plans[index] });
-      }
-    }
+  // #747／Issue 760：首頁方案入口與詳情頁用同一套規則。哪些方案要判定（selectPlansWithDepartures：
+  // 每個行程各自計算，與詳情頁的 30／60 上限同一份程式）與「可訂」的判定（候選規則、600 列掃描上限）都與詳情頁一致；
+  // 差別只在查詢方式：詳情頁逐方案分頁查詢，首頁一次批次讀整家店的候選團次（loadHomeBookability，最多
+  // MAX_HOME_DEPARTURE_PAGES 次），不再 30 個方案 × 6 次。未被選中、未判定或查詢失敗的方案一律視為
+  // 「團次未載入」，不顯示可點入口、也不讓整頁失敗。
+  const homePlans = (tripRows ?? []).flatMap((trip) => selectPlansWithDepartures(plansByTrip.get(trip.id as string) ?? []));
+  let bookableByPlan = new Map<string, boolean>();
+  try {
+    bookableByPlan = await loadHomeBookability(admin, { tenantId, tripIds, plans: homePlans, now: homeNow });
+  } catch (error) {
+    console.warn('public shop: plan departures unavailable', error);
   }
-  const loadedWindows = new Map<string, Awaited<ReturnType<typeof loadPlanDepartureWindow>>>();
-  await mapWithConcurrency(homePlans, DETAIL_PLAN_QUERY_CONCURRENCY, async ({ tripId, plan }) => {
-    try {
-      loadedWindows.set(plan.id, await loadPlanDepartureWindow(admin, { tenantId, tripId, plan, now: homeNow }));
-    } catch (error) {
-      console.warn('public shop: plan departures unavailable', error);
-    }
-  });
   for (const list of plansByTrip.values()) {
     for (const plan of list) {
-      const win = loadedWindows.get(plan.id);
+      const bookable = bookableByPlan.get(plan.id);
       plan.bookingCta = bookingCtaState({
         salesMode: plan.salesMode,
         minParty: plan.minParty,
-        departures: win?.departures ?? [],
-        ...(win?.bookableDepartureAvailable ? { bookableDepartureAvailable: true as const } : {}),
-        ...(hasPublicDepartureList(plan) && !win ? { departuresNotLoaded: true } : {}),
+        departures: [],
+        ...(bookable ? { bookableDepartureAvailable: true as const } : {}),
+        ...(hasPublicDepartureList(plan) && bookable === undefined ? { departuresNotLoaded: true } : {}),
       });
     }
   }
@@ -634,9 +695,7 @@ async function loadPublicTripDetailsUncached(
   // 只有 FIXED_DEPARTURE／REQUEST 方案進入團次查詢集合（30 個額度只算這兩類）。INSTANT（及未知模式）
   // 一律不查團次、departures 為 []、也不標 departuresNotLoaded：canonical 自選時間流程只顯示重新驗證過的
   // 導遊 availability，INSTANT 方案若有手動或私人用途的 OPEN 團次，不得公開成「近期開放日期」。
-  const plansWithDepartures = plans
-    .filter(hasPublicDepartureList)
-    .slice(0, MAX_DETAIL_PLANS_WITH_DEPARTURES);
+  const plansWithDepartures = selectPlansWithDepartures(plans);
   const planDepartureResults = await mapWithConcurrency(plansWithDepartures, DETAIL_PLAN_QUERY_CONCURRENCY, async (plan) => {
     const seasons = seasonsByPlan.has(plan.id) && !seasonsIncompleteFor(plan.id) ? seasonsByPlan.get(plan.id)! : undefined;
     return [plan.id, await loadPlanDepartureWindow(admin, { tenantId: shopData.tenantId, tripId, plan, now, seasons })] as const;
@@ -692,9 +751,9 @@ async function loadPublicTripDetailsUncached(
 export const loadPublicTripDetails = cache(loadPublicTripDetailsUncached);
 
 /**
- * 單一方案的團次視窗（詳情頁與店家首頁共用，兩邊的「可訂」判斷因此不會分岔）：
+ * 單一方案的團次視窗（詳情頁用；首頁的批次判定 loadHomeBookability 與它共用候選規則，「可訂」判斷不會分岔）：
  * 只看 OPEN、今天（店家時區）以後、尚未開始的團次，最多列 6 筆可售＋有上限的客滿團次。
- * `seasons` 只有詳情頁需要（輸出 unitPrice）；首頁不傳。
+ * `seasons` 供輸出 unitPrice。
  */
 export async function loadPlanDepartureWindow(
   admin: ReturnType<typeof createAdminSupabase>,

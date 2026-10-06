@@ -14,6 +14,7 @@ vi.mock('@/server/supabase', () => ({
   createAdminSupabase: () => ({
     from(table: string) {
       const filters: Record<string, unknown> = {};
+      let selectCols = '';
       let single = false;
       let range: [number, number] | null = null;
       const orders: string[] = [];
@@ -44,25 +45,32 @@ vi.mock('@/server/supabase', () => ({
           const [a, b] = range ?? [0, all.length];
           return { data: all.slice(a, b + 1), error: null };
         }
+        // 模擬 DB：只依呼叫端實際下的 order() 欄位排序（沒下 id 排序時同日同時間保持插入順序）。
+        const planRows = (planId: string) => fx.plans[planId].rows
+          .map((r, i) => ({ id: `d-${String(i).padStart(3, '0')}`, plan_id: planId, departs_on: '2098-01-01', start_time: null, ...r }))
+          .map((r, i) => ({ r, i })).sort((x, y) => {
+            for (const col of orders) {
+              if (col !== 'id') continue;
+              if (x.r.id < y.r.id) return -1;
+              if (x.r.id > y.r.id) return 1;
+            }
+            return x.i - y.i;
+          }).map((e) => e.r);
         if (table === 'trip_departures' && filters.plan_id) {
-          const p = fx.plans[filters.plan_id as string];
-          // 模擬 DB：只依呼叫端實際下的 order() 欄位排序（沒下 id 排序時同日同時間保持插入順序）。
-          const all = p.rows.map((r, i) => ({ id: `d-${String(i).padStart(3, '0')}`, departs_on: '2098-01-01', start_time: null, ...r }))
-            .map((r, i) => ({ r, i })).sort((x, y) => {
-              for (const col of orders) {
-                if (col !== 'id') continue;
-                if (x.r.id < y.r.id) return -1;
-                if (x.r.id > y.r.id) return 1;
-              }
-              return x.i - y.i;
-            }).map((e) => e.r);
+          const all = planRows(filters.plan_id as string);
+          const [a, b] = range ?? [0, all.length];
+          return { data: all.slice(a, b + 1), error: null };
+        }
+        if (table === 'trip_departures' && selectCols.includes('plan_id')) {
+          // Issue 760：首頁批次查詢（以行程為範圍）；單一方案的列保持各自的排序（全域排序的子序列）。
+          const all = Object.keys(fx.plans).flatMap((id) => planRows(id));
           const [a, b] = range ?? [0, all.length];
           return { data: all.slice(a, b + 1), error: null };
         }
         return { data: [], error: null };
       };
       const chain: Record<string, unknown> = {
-        select: () => chain, in: () => chain, gte: () => chain, order: (col: string) => { orders.push(col); return chain; },
+        select: (cols?: string) => { selectCols = cols ?? ''; return chain; }, in: () => chain, gte: () => chain, order: (col: string) => { orders.push(col); return chain; },
         range: (a: number, b: number) => { range = [a, b]; return chain; },
         eq: (k: string, v: unknown) => { filters[k] = v; return chain; },
         maybeSingle: () => { single = true; return run(); },

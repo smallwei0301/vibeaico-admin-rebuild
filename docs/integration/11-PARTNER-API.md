@@ -113,6 +113,26 @@ select *，避免洩漏成本欄位）。無登入者可讀行程；下單需旅
 | GET `/api/public/trips/{tripId}/reviews` | 無 | 評論列表（hidden 過濾） |
 | POST `/api/public/orders/{id}/review` | 旅客 JWT | 限本人、訂單 COMPLETED、一單一評 |
 
+`GET /api/public/shops/{shopCode}` 的 `trips[].plans[]` 另帶**選填欄位 `bookingCta`**
+（`'fixed' | 'fixed-unavailable' | 'request' | 'request-unavailable' | 'dates-not-loaded' | 'none'`），
+是商店首頁方案「預約／申請」入口的唯一判定，只有這支端點與首頁會填（詳情端點不回此欄，
+詳情頁由同一份 `bookingCtaState` 規則自行算出）：
+
+| 值 | 意義 |
+|---|---|
+| `fixed` | `FIXED_DEPARTURE` 方案，至少一個可訂團次 → 顯示「預約」入口 |
+| `request` | `REQUEST` 方案，至少一個可申請團次 → 顯示「申請預約」入口 |
+| `fixed-unavailable`／`request-unavailable` | 該方案目前沒有可訂／可申請團次（客滿、剩餘名額小於方案最低人數、無未來團次）→ 不顯示入口 |
+| `dates-not-loaded` | 團次未判定（方案超出下述上限、批次查詢未涵蓋或查詢失敗）→ 不顯示入口，請旅客聯絡店家 |
+| `none` | `INSTANT` 及其他販售方式，沒有此入口 |
+
+判定規則與詳情頁（`/trips/{slug}`）逐項一致，不另立一套：只看 `OPEN`、今天（店家時區）以後、尚未開始的團次；
+「可訂」＝依日期／時間／id 排序後前 12 個候選團次（未客滿）中至少一個剩餘名額 ≥ 方案最低人數，單一方案最多掃描 600 列。
+方案選取上限**每個行程各自計算**：依 `sort_order`、`id` 排序，先取詳情頁會輸出的前 60 個方案，其中只有
+`FIXED_DEPARTURE`／`REQUEST` 的前 30 個會判定，其餘方案一律 `dates-not-loaded`。
+首頁以批次查詢（以行程為範圍分頁，最多 5 頁）判定，匿名請求的資料庫查詢數為常數級，不隨方案數放大；
+欄位為選填，舊版用戶端忽略即可，不影響既有欄位。
+
 VibeAI 商店頁本體：`src/app/s/[shopCode]/**`，吃上表同一組 API ——
 **商店頁不走 services/mock 層**，它是公開站，直接 fetch。
 
