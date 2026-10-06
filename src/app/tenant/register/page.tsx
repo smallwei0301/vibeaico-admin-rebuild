@@ -69,6 +69,13 @@ export default function RegisterPage() {
   const [sending, setSending] = React.useState(false);
   const [countdown, setCountdown] = React.useState(0);
   const [codeSent, setCodeSent] = React.useState(false);
+  // Revision follows the email input, including A → B → A. A previous email
+  // request may finish remotely, but must never update the current form.
+  const codeRequest = React.useRef({ revision: 0, pending: false });
+  React.useEffect(() => () => {
+    codeRequest.current.revision += 1;
+    codeRequest.current.pending = false;
+  }, []);
   const [submitting, setSubmitting] = React.useState(false);
   /** null = 載入中；載入完成後為 GET /api/auth/oauth/status 的真實回應 */
   const [oauthStatus, setOauthStatus] = React.useState<OAuthStatus | null>(null);
@@ -94,7 +101,17 @@ export default function RegisterPage() {
 
   const set = (key: Field | 'referralCode') => (e: React.ChangeEvent<HTMLInputElement>) => {
     const { value } = e.target;
-    setForm((f) => ({ ...f, [key]: value }));
+    if (key === 'email') {
+      codeRequest.current.revision += 1;
+      codeRequest.current.pending = false;
+      setSending(false);
+      setCountdown(0);
+      setCodeSent(false);
+      setForm((f) => ({ ...f, email: value, verificationCode: '' }));
+      setErrors((s) => ({ ...s, verificationCode: undefined }));
+    } else {
+      setForm((f) => ({ ...f, [key]: value }));
+    }
     setErrors((s) => ({ ...s, [key]: undefined }));
   };
 
@@ -106,24 +123,33 @@ export default function RegisterPage() {
   }, [countdown]);
 
   const sendCode = async () => {
+    if (codeRequest.current.pending || countdown > 0) return;
     if (!form.email.trim()) {
       toast.show(t.messages.emailFirst, 'warning');
       setErrors((s) => ({ ...s, email: t.messages.emailFirst }));
       return;
     }
+    const revision = ++codeRequest.current.revision;
+    codeRequest.current.pending = true;
     setSending(true);
+    setCodeSent(false);
     try {
       await sendVerificationCode(form.email.trim(), 'REGISTER');
+      if (revision !== codeRequest.current.revision) return;
       setCodeSent(true);
       setCountdown(RESEND_SECONDS);
       toast.show(`${t.messages.codeSentToPrefix}${form.email.trim()}`);
     } catch (e) {
+      if (revision !== codeRequest.current.revision) return;
       toast.show(
         `${t.messages.sendCodeFailedPrefix}${e instanceof ApiError ? e.message : t.messages.unknownError}`,
         'danger',
       );
     } finally {
-      setSending(false);
+      if (revision === codeRequest.current.revision) {
+        codeRequest.current.pending = false;
+        setSending(false);
+      }
     }
   };
 
