@@ -30,12 +30,12 @@ describe('checkRateLimit', () => {
 });
 
 describe('clientIpFromHeaders', () => {
-  it('優先取 x-forwarded-for 的第一段', () => {
+  it('x-forwarded-for 多段時取最右（平台附加）一段，不取客戶端可偽造的第一段（issue #750）', () => {
     const headers = new Headers({ 'x-forwarded-for': '1.2.3.4, 5.6.7.8' });
-    expect(clientIpFromHeaders(headers)).toBe('1.2.3.4');
+    expect(clientIpFromHeaders(headers)).toBe('5.6.7.8');
   });
 
-  it('沒有 x-forwarded-for 時退回 x-real-ip', () => {
+  it('只有 x-real-ip 時採用它', () => {
     const headers = new Headers({ 'x-real-ip': '9.9.9.9' });
     expect(clientIpFromHeaders(headers)).toBe('9.9.9.9');
   });

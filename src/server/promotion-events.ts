@@ -17,6 +17,7 @@
  */
 import { headers } from 'next/headers';
 import { createAdminSupabase } from '@/server/supabase';
+import { clientIpFromHeaders } from '@/server/rate-limit';
 import {
   classifyUserAgent,
   computeVisitorHash,
@@ -51,17 +52,6 @@ function visitorSaltSecret(): string {
   );
 }
 
-/** Vercel／多數 proxy 慣例：`x-forwarded-for` 第一段是原始客戶端 IP。 */
-function extractClientIp(h: Headers): string {
-  const xff = h.get('x-forwarded-for');
-  if (xff) {
-    const first = xff.split(',')[0]?.trim();
-    if (first) return first;
-  }
-  const real = h.get('x-real-ip')?.trim();
-  return real || 'unknown';
-}
-
 /**
  * 公開頁造訪時 best-effort 寫一列 `page_view_events`。
  *
@@ -75,7 +65,8 @@ export async function recordPromotionPageView(params: {
 }): Promise<void> {
   try {
     const h = await headers();
-    const ip = extractClientIp(h);
+    // issue #750：與節流共用「只採信平台附加 IP」的取值，避免偽造 XFF 灌水 PV/UV。
+    const ip = clientIpFromHeaders(h);
     const userAgent = h.get('user-agent');
     const source = classifySource(params.rawSrc);
     const visitorHash = computeVisitorHash({
