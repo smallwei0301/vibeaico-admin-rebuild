@@ -7,7 +7,7 @@
 ## 兩本帳
 
 - 真正出貨 shipped_units：0（v3 只算已關閉且完成五階段正式環境驗收的 Delivery Slice）
-- 正式環境待驗 production_pending：0
+- 正式環境待驗 production_pending：10
 - 自主完成 autonomous_outcome_units：0（正式出貨 + 唯一完整 OWNER_BLOCKED × 0.75）
 - 在製品 WIP：Audit Ready 0、CI-only 0、commit-only 0、carryover 0
 - 內部加權 usage：1379（不是官方 token）
