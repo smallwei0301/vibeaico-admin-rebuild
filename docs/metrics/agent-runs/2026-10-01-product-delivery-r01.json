@@ -5081,13 +5081,113 @@
         "issue": 750,
         "count": 1,
         "note": "記錄 #750 final review 三輪、build fix 兩輪、PR #794 CI 2 筆"
+      },
+      {
+        "id": "20261006-main-attest-794",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": null,
+        "completedAt": "2026-10-06T05:44:55Z",
+        "issue": 750,
+        "note": "sol-review attestation（PASS）＋ BUILD／REVIEW 角色收據 issuecomment-6010172408／6010172559；本機 evaluateGithubAstra 模擬 SOL_REVIEW_APPROVED",
+        "evidenceRef": "PR #794 review 5424257098",
+        "count": 1
+      },
+      {
+        "id": "20261006-codex-794",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": null,
+        "completedAt": "2026-10-06T05:50:03Z",
+        "issue": 750,
+        "note": "Codex review 無 finding",
+        "evidenceRef": "PR #794 Codex +1",
+        "count": 1
+      },
+      {
+        "id": "20261006-sol-triage-760",
+        "role": "triage",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": "2026-10-06T05:51:30Z",
+        "completedAt": "2026-10-06T05:52:00Z",
+        "issue": 760,
+        "note": "Sol TRIAGE（主 session）：MAIN=#760（無 migration、可完整結案，需 canonical TEST）；#766 item1／#769／#749 需 migration，#764 item A 待 Owner",
+        "count": 1
+      },
+      {
+        "id": "20261006-build-760",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": "2026-10-06T05:52:00Z",
+        "completedAt": "2026-10-06T05:58:00Z",
+        "issue": 760,
+        "note": "Sonnet builder：selectPlansWithDepartures 共用、loadHomeBookability 批次判定（最壞 184→≤10 次查詢）、bookingCta 文件、INSTANT 在前與 ≥60 方案 parity 測試；unit 4876 passed",
+        "evidenceRef": "commit a98c2fbe",
+        "count": 1
+      },
+      {
+        "id": "20261006-early-audit-760",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": null,
+        "completedAt": "2026-10-06T05:58:00Z",
+        "issue": 760,
+        "note": "early Sol diff audit（主 session）：PASS_WITH_NOTES，查詢條件與排序同詳情頁；PostgREST max_rows 1000 假設",
+        "evidenceRef": "commit a98c2fbe",
+        "count": 1
+      },
+      {
+        "id": "20261006-scout-r01-ledger-760",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": null,
+        "completedAt": null,
+        "issue": 760,
+        "note": "記錄 #750 MERGED_TO_MAIN、#794 attestation／Codex、#760 TRIAGE／build／early audit 與 Run 綁定",
+        "count": 1
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 18,
+    "issuesStarted": 19,
     "issuesClosed": 10,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -5114,14 +5214,14 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 67,
-    "lunaAccepted": 60,
+    "lunaTasks": 68,
+    "lunaAccepted": 61,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 162,
-    "solIssues": 19
+    "solTouches": 166,
+    "solIssues": 20
   },
   "auditability": {
     "evidenceFieldsCompletePercent": null,
@@ -5338,7 +5438,7 @@
   },
   "completionTruth": {
     "status": "VERIFIED",
-    "checkedAt": "2026-10-06T04:45:41Z",
+    "checkedAt": "2026-10-06T05:51:05Z",
     "claims": [
       {
         "type": "LOCAL_TEST_GREEN",
@@ -5547,6 +5647,14 @@
         "verification": "VERIFIED",
         "subject": "issue#781",
         "evidenceRef": "PR #790 merged_at 2026-10-06T01:17:50Z merge_commit e951f4a4d3b8b575ae17bd7ac2f3e6a47ce33461 (tree === 5d1cda04) main reachable; scripts/agents/production-db-release-plan.mjs reread; current main head at verification e951f4a4d3b8b575ae17bd7ac2f3e6a47ce33461 (identical to merge commit; git fetch origin main + merge-base --is-ancestor at 2026-10-06T04:45:41Z) (original subject: issue#781 pr#790)"
+      },
+      {
+        "type": "MERGED_TO_MAIN",
+        "subject": "issue#750",
+        "claimedState": "merged",
+        "observedState": "merged",
+        "verification": "VERIFIED",
+        "evidenceRef": "PR #794 merged_at 2026-10-06T05:50:57Z merge_commit ae6b8bad7122b9d79496599b2f7cab51fa66ced2 (tree === exact head 24ace6b2); current main head at verification ae6b8bad7122b9d79496599b2f7cab51fa66ced2 (git fetch origin main + merge-base --is-ancestor at 2026-10-06T05:51:05Z); src/server/rate-limit.ts reread"
       }
     ]
   },
