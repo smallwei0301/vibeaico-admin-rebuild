@@ -27,7 +27,7 @@ const MAIL_UNAVAILABLE_MESSAGE = '驗證信暫時無法寄出，請稍後再試�
  * 寄信失敗 parity 視窗（#754／#758／#763 枚舉防護）：設定類或服務層級的「該寄卻寄失敗」之後，
  * 在視窗內「所有」請求（不論 email 是否已註冊、不論 purpose 對應的分支）都在最前面短路回同一個
  * 503 `MAIL_001`——不查 DB、不寫驗證碼、不呼叫 provider。視窗只由 TTL 結束，SENT 不會提前清除
- * （視窗內根本不會寄信）；否則 provider 在視窗內恢復時，未註冊 email 會寄成功回 200，已註冊 email
+ * （視窗內根本不會寄信）；否則 provider 在視窗內恢復時，寄信分支的位址會寄成功回 200，不寄信分支的位址
  * 仍回 503，形成枚舉 oracle（#763 Codex P1 #2）。檢查必須在 60 秒重寄冷卻（429，只對真的寄過信的
  * 位址成立）與 email_exists 分支之前，否則兩條分支的回應會不同。
  * TTL：設定類（含 MAIL_FROM 錯誤與其餘無法證明是收件人造成的 4xx，fail-closed）10 分鐘；
@@ -86,10 +86,10 @@ export async function dispatchVerificationCode(email: string, purpose: 'REGISTER
   if (delErr) console.error('[send-code] 無法刪除未寄出的驗證碼', delErr);
   // recipient（可證明為 to 欄位的 4xx 拒絕，如 "Invalid `to` field"）：對外必須與「不寄信分支」無法區分（#763 P1 #3）——
   // 碼已刪除、只寫 server log、不開啟／延伸／清除視窗，並**正常返回**（route 回 200 {sent:true}），
-  // 不得丟 503：否則攻擊者可用 provider 會拒絕的位址反覆探測（已註冊 → 200、未註冊 → 503）。
+  // 不得丟 503：否則攻擊者可用 provider 會拒絕的位址反覆探測（不寄信分支 → 200、寄信分支 → 503）。
   // 理由：被 provider 拒絕的位址，等同「受理後退信」的不可投遞位址（使用者看到已寄出、信不會到）；
   // #754 的誠實回報保留給 provider／設定層級的真實故障（config／service → 503 + 視窗）。
-  // 冷卻檢查：碼已刪除，故未註冊位址再次請求不會被 429 擋下，與已註冊位址（從無碼）一致；
+  // 冷卻檢查：碼已刪除，故寄信分支的位址再次請求不會被 429 擋下，與不寄信分支的位址（從無碼）一致；
   // 唯一例外是刪除碼本身失敗（delErr，只留 log）時才會殘留一筆而觸發 429，屬資料庫故障的極端邊界。
   if (failureKind === 'recipient') {
     console.error('[send-code] 收件人專屬拒絕（對外回 200，不開視窗）');

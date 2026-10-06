@@ -53,7 +53,7 @@
   對「不寄信分支」的位址（REGISTER 已存在、RESET_PASSWORD 不存在）從無碼可查，永遠回 200 `{sent:true}`。
   只有 `forgot-password` 會吞掉 429，因此不受此差異影響。此差異未消除，需 Owner 決定冷卻是否改為對稱（#764 剩餘範圍）。
   **殘餘風險**：(a) 持續故障時，parity 視窗在「最後一次失敗寄送」之後才開始計時，`service` 60 秒、`config` 10 分鐘到期（無 grace period）；
-  到期後到下一次失敗前，已存在 email 的探測回 200、而該次寄信分支才會失敗回 503，每次到期都會重新暴露，不是只暴露一次；
+  到期後到下一次失敗前，不寄信分支（REGISTER 已註冊／RESET_PASSWORD 未註冊）的探測回 200、寄信分支才會失敗回 503，每次到期都會重新暴露，不是只暴露一次；
   (b) 視窗存於各 serverless instance 的記憶體，不跨 instance 共享，僅為 best-effort；
   (c) check-then-set 競態：視窗開啟當下已通過檢查的並行請求照常完成；
   (d) 失敗後刪除驗證碼若也失敗（只留 server log），會殘留一筆，60 秒內只有寄信分支的位址（REGISTER 未註冊／RESET_PASSWORD 已註冊）在 send-verification-code 會 429（forgot-password 吞 429）；

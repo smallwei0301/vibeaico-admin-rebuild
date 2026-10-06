@@ -42,21 +42,14 @@ vi.mock('@/server/email/send', () => ({ sendVerificationCodeEmail: mail.fn }));
 vi.mock('next/headers', () => ({ cookies: () => Promise.resolve({ get: () => undefined }) }));
 
 import { POST } from '@/app/api/auth/send-verification-code/route';
-import { POST as FORGOT } from '@/app/api/auth/forgot-password/route';
 import { __resetMailConfigFailureFlag } from '@/server/send-code';
 
 const reg = (email: string) =>
   POST(new Request('http://localhost/api/auth/send-verification-code', {
     method: 'POST', body: JSON.stringify({ email, purpose: 'REGISTER' }),
   }), {});
-const forgot = (email: string) =>
-  FORGOT(new Request('http://localhost/api/auth/forgot-password', {
-    method: 'POST', body: JSON.stringify({ email }),
-  }), {});
 
 const TRANSIENT = { result: 'FAILED', configFailure: false, failureKind: 'service' };
-const CONFIG = { result: 'FAILED', configFailure: true, failureKind: 'config' };
-const RECIPIENT = { result: 'FAILED', configFailure: false, failureKind: 'recipient' };
 const SENT = { result: 'SENT', configFailure: false, failureKind: null };
 
 beforeEach(() => {
