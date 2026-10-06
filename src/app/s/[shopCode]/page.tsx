@@ -221,6 +221,9 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
                           {plan.bookingCta === 'dates-not-loaded' ? (
                             <span className="text-2xs text-secondary">{t.trips.datesNotLoadedHint}</span>
                           ) : null}
+                          {plan.bookingCta === 'price-not-loaded' ? (
+                            <span className="text-2xs text-secondary">{t.trips.priceNotLoadedHint}</span>
+                          ) : null}
                         </li>
                       ))}
                     </ul>

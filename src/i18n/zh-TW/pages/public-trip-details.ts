@@ -60,6 +60,8 @@ export const publicTripDetailsPage = {
     soldOut: '客滿',
     soldOutOmitted: '另有更多客滿日期未列出。',
     notLoaded: '請聯絡店家查詢日期。',
+    /** Issue 749 F5：季節價資料無法確認時不給線上入口。 */
+    priceNotLoaded: '線上價格暫時無法確認，請直接聯絡店家。',
     noRequestable: '本頁列出的日期都無法申請，請聯絡店家確認其他日期。',
     noBookable: '本頁列出的日期都無法預約，請聯絡店家確認其他日期。',
     noStartTime: '時間未定',

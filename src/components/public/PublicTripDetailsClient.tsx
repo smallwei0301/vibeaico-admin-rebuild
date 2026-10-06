@@ -257,6 +257,8 @@ export function PublicTripDetailsClient({ shopCode, slug, initialData }: Props) 
                     {seasonalHeadlineKind(plan) === 'by-departure' ? <p className="text-2xs text-secondary">{t.plans.priceNote}</p> : null}
                     {bookingCtaState(plan) === 'dates-not-loaded' ? (
                       <p className="text-sm text-secondary">{t.departures.notLoaded}</p>
+                    ) : bookingCtaState(plan) === 'price-not-loaded' ? (
+                      <p className="text-sm text-secondary">{t.departures.priceNotLoaded}</p>
                     ) : plan.departures.length ? (
                       <div className="flex flex-col gap-1">
                         <h4 className="text-sm font-medium">{t.departures.title}</h4>

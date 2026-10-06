@@ -35,7 +35,7 @@ import { createAdminSupabase } from '@/server/supabase';
 import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
 import { buildPublicPhone } from '@/lib/public-phone';
 import { resolveSeasonUnitPrice } from '@/lib/public-season-price';
-import { readPlanSeasons } from '@/server/public-plan-seasons';
+import { readPlanSeasons, seasonalPriceUnknown } from '@/server/public-plan-seasons';
 import { bookingCandidateSeatsLeft, createCandidateTracker } from '@/lib/public-departure-candidates';
 import { bookingCtaState, type BookingCtaState } from '@/lib/public-trip-client-state';
 import { hasStartedToday, resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
@@ -89,6 +89,11 @@ export type PublicPlan = {
   salesMode: 'FIXED_DEPARTURE' | 'INSTANT' | 'REQUEST';
   /** 方案有啟用的季節定價：基本價只是參考，實際價格依各團次出發日（見團次 unitPrice）。 */
   seasonalPricing?: true;
+  /**
+   * Issue 749 F5：季節價資料不完整（查詢失敗或被截斷），預約／申請頁算不出團次單價、送不出去。
+   * 只有詳情頁輸出（只輸出 true）；`bookingCtaState` 用它回 price-not-loaded。
+   */
+  seasonalPriceUnknown?: true;
   /**
    * #747：只有店家首頁（loadPublicShop）會填。與詳情頁共用 `bookingCtaState`＋同一套候選規則
    * 與方案選取規則（selectPlansWithDepartures；Issue 760 起首頁以批次查詢 loadHomeBookability 判定），
@@ -573,6 +578,18 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
   } catch (error) {
     console.warn('public shop: plan departures unavailable', error);
   }
+  // Issue 749 F5：季節價是否可確認，與預約／申請頁同一規則（seasonalPriceUnknown）。只讀會判定團次的方案（其餘已是
+  // dates-not-loaded），一次批次讀取；讀取本身丟錯 fail-safe 為全部未知（readPlanSeasons 查詢失敗已降級不 throw）。
+  let seasonUnknown = (_planId: string): boolean => false;
+  if (homePlans.length > 0) {
+    try {
+      const seasonReader = await readPlanSeasons(admin, tenantId, homePlans.map((plan) => plan.id));
+      seasonUnknown = (planId) => seasonalPriceUnknown({ incomplete: seasonReader.isIncomplete(planId) });
+    } catch (error) {
+      console.warn('public shop: plan seasons unavailable', error);
+      seasonUnknown = () => true;
+    }
+  }
   for (const list of plansByTrip.values()) {
     for (const plan of list) {
       const bookable = bookableByPlan.get(plan.id);
@@ -580,6 +597,7 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
         salesMode: plan.salesMode,
         minParty: plan.minParty,
         departures: [],
+        ...(seasonUnknown(plan.id) ? { seasonalPriceUnknown: true } : {}),
         ...(bookable ? { bookableDepartureAvailable: true as const } : {}),
         ...(hasPublicDepartureList(plan) && bookable === undefined ? { departuresNotLoaded: true } : {}),
       });
@@ -760,6 +778,7 @@ async function loadPublicTripDetailsUncached(
         ...(departuresByPlan.get(plan.id)?.bookableDepartureAvailable ? { bookableDepartureAvailable: true as const } : {}),
         ...(hasPublicDepartureList(plan) && !departuresByPlan.has(plan.id)
           ? { departuresNotLoaded: true as const } : {}),
+        ...(seasonalPriceUnknown({ incomplete: seasonsIncompleteFor(plan.id) }) ? { seasonalPriceUnknown: true as const } : {}),
       })),
       ...(plansMayBeTruncated ? { plansMayBeTruncated: true as const } : {}),
     },

@@ -53,6 +53,8 @@ export const publicShopPage = {
     noRequestableHint: '目前沒有可申請的日期，請聯絡店家確認。',
     noBookableHint: '目前沒有可預約的日期，請聯絡店家確認。',
     datesNotLoadedHint: '請聯絡店家查詢日期。',
+    /** Issue 749 F5：季節價資料無法確認時不給線上入口。 */
+    priceNotLoadedHint: '線上價格暫時無法確認，請直接聯絡店家。',
     /**
      * #46：下單前顯示現行取消／退款政策——與
      * `src/i18n/zh-TW/pages/public-tour-request.ts` 的 `cancellationPolicy`

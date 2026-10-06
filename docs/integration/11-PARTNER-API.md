@@ -114,7 +114,7 @@ select *，避免洩漏成本欄位）。無登入者可讀行程；下單需旅
 | POST `/api/public/orders/{id}/review` | 旅客 JWT | 限本人、訂單 COMPLETED、一單一評 |
 
 `GET /api/public/shops/{shopCode}` 的 `trips[].plans[]` 另帶**選填欄位 `bookingCta`**
-（`'fixed' | 'fixed-unavailable' | 'request' | 'request-unavailable' | 'dates-not-loaded' | 'none'`），
+（`'fixed' | 'fixed-unavailable' | 'request' | 'request-unavailable' | 'dates-not-loaded' | 'price-not-loaded' | 'none'`），
 是商店首頁方案「預約／申請」入口的唯一判定，只有這支端點與首頁會填（詳情端點不回此欄，
 詳情頁由同一份 `bookingCtaState` 規則自行算出）：
 
@@ -124,6 +124,7 @@ select *，避免洩漏成本欄位）。無登入者可讀行程；下單需旅
 | `request` | `REQUEST` 方案，至少一個可申請團次 → 顯示「申請預約」入口 |
 | `fixed-unavailable`／`request-unavailable` | 該方案目前沒有可訂／可申請團次（客滿、剩餘名額小於方案最低人數、無未來團次）→ 不顯示入口 |
 | `dates-not-loaded` | 團次未判定（方案超出下述上限、批次查詢未涵蓋或查詢失敗）→ 不顯示入口，請旅客聯絡店家 |
+| `price-not-loaded` | 方案季節價資料無法確認（`trip_plan_seasons` 查詢失敗或被分頁截斷；預約／申請頁因此算不出團次單價、送不出去）→ 不顯示入口，請旅客聯絡店家。優先序在 `dates-not-loaded` 之後、可訂判定之前，只影響 `FIXED_DEPARTURE`／`REQUEST` |
 | `none` | `INSTANT` 及其他販售方式，沒有此入口 |
 
 判定規則與詳情頁（`/trips/{slug}`）逐項一致，不另立一套：只看 `OPEN`、今天（店家時區）以後、尚未開始的團次；
