@@ -19,6 +19,7 @@
 6. **回傳形狀 = `src/lib/types.ts`**，經 `src/server/mappers.ts` 轉換。
 7. **404 規則**：id 查無 **或不屬於本租戶** 都回 404 `REQ_002`（不能洩漏其他店的資料存在與否）。
 8. **金額**：numeric 欄位以 number 回傳（`Number(row.price)`），不回字串。
+9. **匿名／未登入端點的 request body 上限（#802）**：下列端點以 `readJsonBody(req, PUBLIC_JSON_BODY_LIMIT_BYTES)`（`src/server/http.ts`）讀 body，上限 **16 KB**；超限回 **413** `REQ_005`「請求內容過大」，且發生在 zod 驗證與任何下游呼叫之前。先看 `content-length`（超限不讀 body），再以串流累計實際位元組（涵蓋缺少或謊報 `content-length`），超過即中止。適用：`POST /api/public/tour-bookings`、`/api/public/tour-requests`、`/api/auth/login`、`/api/auth/tenant/register`、`/api/auth/forgot-password`、`/api/auth/reset-password`、`/api/auth/send-verification-code`、`POST /api/auth/switch-tenant`、`POST /api/auth/change-password`（兩者皆為已登入端點，但在 `requireUser()` 之前就讀 body，故一併套用）。格式錯誤／空 body 的處理與原本 `req.json()` 相同（`handle()` 目前對 `SyntaxError` 回 500 `SYS_001`，本次刻意不改）。不適用：LINE webhook（需原始 body 驗簽，另行評估）、`/api/donations/callback`（ECPay 匿名 callback，需原始 body 驗簽）另行評估，以及其他在登入檢查後才讀 body 的已登入端點不在本範圍。
 
 ### 參考實作（照這個模式寫其他所有端點）
 
@@ -361,6 +362,7 @@ B-5 時必須新增 `src/services/chat.ts`（`adapt(mock, real)` 包好四個端
 | REQ_001 | 輸入驗證失敗 | 400 |
 | REQ_002 | 資源不存在 | 404 |
 | REQ_003 | 狀態衝突 / 時段重疊 / 頻率限制 | 409/429 |
+| REQ_005 | request body 超過上限（§0 規約 9） | 413 |
 | FEAT_001 | 功能未訂閱 / 免費方案上限 | 403 |
 | POINTS_001 | 點數不足 | 409 |
 | LINE_001 | LINE 尚未設定 | 400 |

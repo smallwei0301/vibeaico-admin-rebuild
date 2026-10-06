@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { handle, ok, fail, ERR } from '@/server/http';
+import { readJsonBody, PUBLIC_JSON_BODY_LIMIT_BYTES, handle, ok, fail, ERR } from '@/server/http';
 import { createAdminSupabase } from '@/server/supabase';
 import { consumeCode } from '@/server/verify-code';
 
@@ -10,7 +10,7 @@ const bodySchema = z.object({
 });
 
 export const POST = handle(async (req) => {
-  const b = bodySchema.parse(await req.json());
+  const b = bodySchema.parse(await readJsonBody(req, PUBLIC_JSON_BODY_LIMIT_BYTES));
   await consumeCode(b.email, b.code, 'RESET_PASSWORD');
   const admin = createAdminSupabase();
   const { data: uid } = await admin.rpc('user_id_by_email', { p_email: b.email });

@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import { cookies } from 'next/headers';
-import { handle, ok, fail, ERR } from '@/server/http';
+import { handle, ok, fail, ERR, readJsonBody, PUBLIC_JSON_BODY_LIMIT_BYTES } from '@/server/http';
 import { requireUser, ACTIVE_TENANT_COOKIE } from '@/server/tenant';
 
 const bodySchema = z.object({ tenantId: z.string().uuid() });
 
 export const POST = handle(async (req) => {
-  const { tenantId } = bodySchema.parse(await req.json());
+  const { tenantId } = bodySchema.parse(await readJsonBody(req, PUBLIC_JSON_BODY_LIMIT_BYTES));
   const { supabase, user } = await requireUser();
 
   const { data: membership } = await supabase

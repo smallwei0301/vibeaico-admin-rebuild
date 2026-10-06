@@ -1,4 +1,4 @@
-import { handle, ok, fail, ERR } from '@/server/http';
+import { readJsonBody, PUBLIC_JSON_BODY_LIMIT_BYTES, handle, ok, fail, ERR } from '@/server/http';
 import { isFeatureActive } from '@/server/features';
 import { checkRateLimit, clientIpFromHeaders } from '@/server/rate-limit';
 import {
@@ -21,7 +21,7 @@ const RATE_LIMIT_MAX = 20;
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 
 export const POST = handle(async (req) => {
-  const body = submitPublicTourBookingSchema.parse(await req.json());
+  const body = submitPublicTourBookingSchema.parse(await readJsonBody(req, PUBLIC_JSON_BODY_LIMIT_BYTES));
 
   const ip = clientIpFromHeaders(req.headers);
   const rateLimitKey = `${ip}:${body.shopCode}`;

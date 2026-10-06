@@ -19,6 +19,7 @@ export const ERR = {
   SEATS_UNAVAILABLE: 'TOUR_001',   // 團次名額不足（10 分冊 §2；併發搶最後一席的敗方）
   TOUR_REQUEST_NOT_ELIGIBLE: 'TOUR_002', // REQUEST 訂單非 PENDING 或方案非 REQUEST，不能接受／拒絕（#46）
   EXTERNAL_CONFIG_BLOCKED: 'EXT_001',    // 依賴的外部憑證／設定尚未到位（例：平台 ECPay 商店憑證，issue #25 C 段）
+  PAYLOAD_TOO_LARGE: 'REQ_005',    // request body 超過應用層上限（#802，見 readJsonBody）
   RATE_LIMITED: 'REQ_004',         // 匿名公開端點節流（#46 Final Risk F1，見 src/server/rate-limit.ts）
   MAIL_UNAVAILABLE: 'MAIL_001',    // 寄信服務暫時不可用（#754：provider 失敗／未設定，不得謊報已寄出）
   INTERNAL: 'SYS_001',
@@ -37,6 +38,56 @@ export class ApiHttpError extends Error {
   constructor(public status: number, message: string, public code?: string) {
     super(message);
   }
+}
+
+/**
+ * 匿名／未登入端點的 JSON body 上限（#802）。
+ *
+ * 這些端點的合法 body 只有數百 bytes 到數 KB（email、密碼、驗證碼、店家代碼、旅客
+ * 姓名／備註等），16 KB 已留足餘裕。平台層上限（Vercel 約 4.5 MB）遠大於此，沒有應用層
+ * 上限時，攻擊者能在 zod 驗證前就逼伺服器解析數 MB 的 JSON。
+ * register 的合法 body 同樣遠小於 16 KB，故共用同一常數。
+ */
+export const PUBLIC_JSON_BODY_LIMIT_BYTES = 16 * 1024;
+
+const PAYLOAD_TOO_LARGE_MESSAGE = '請求內容過大';
+
+function payloadTooLarge() {
+  return new ApiHttpError(413, PAYLOAD_TOO_LARGE_MESSAGE, ERR.PAYLOAD_TOO_LARGE);
+}
+
+/**
+ * 有上限的 `req.json()`：先看 `content-length`（超限直接 413，不讀 body），再以串流
+ * 累計實際位元組（涵蓋缺少或謊報 content-length 的情況），超過立即 cancel 並 413。
+ * 解碼後以 `JSON.parse` 解析，格式錯誤／空 body 丟出的 SyntaxError 與原本 `req.json()`
+ * 相同，對外行為（交給 `handle()`）不變。
+ */
+export async function readJsonBody(req: Request, maxBytes: number): Promise<unknown> {
+  const declared = req.headers.get('content-length');
+  if (declared !== null) {
+    const n = Number(declared);
+    if (Number.isFinite(n) && n > maxBytes) throw payloadTooLarge();
+  }
+  // 無 body：交回原生行為（同樣丟 SyntaxError）。
+  if (!req.body) return req.json();
+
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      throw payloadTooLarge();
+    }
+    chunks.push(value);
+  }
+  const merged = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) { merged.set(c, off); off += c.byteLength; }
+  return JSON.parse(new TextDecoder().decode(merged));
 }
 
 /** 會改到資料的 HTTP method；只有這些需要留稽核紀錄。 */
