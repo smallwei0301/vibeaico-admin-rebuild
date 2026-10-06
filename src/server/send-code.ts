@@ -41,7 +41,9 @@ const MAIL_UNAVAILABLE_MESSAGE = '驗證信暫時無法寄出，請稍後再試�
  * 已知殘餘（文件化，best-effort；不保證兩種 email 回應完全相同，#764）：
  * - 視窗存於本 instance 記憶體，serverless 各 instance 獨立、不跨 instance 共享；
  *   每個 instance「第一個」失敗請求之前（視窗尚未建立）仍可能洩漏差異。
- * - 持續故障時視窗自「最後一次失敗寄送」起算，service 60 秒／config 10 分鐘到期，無 grace period；
+ * - 視窗到期時間為每次 config／service 失敗時設定的 max(既有到期, 本次失敗時間＋TTL)，取較晚到期者、不縮短
+ *   （例：config 10 分鐘後接 service 60 秒失敗，到期仍由較早的 config 決定）；持續故障時通常即自最後一次失敗起算，
+ *   service 60 秒／config 10 分鐘到期，無 grace period；
  *   到期後到下一次失敗前，不寄信分支回 200、寄信分支才失敗回 503，每次到期都重新暴露。
  * - check-then-set 競態：視窗開啟當下已通過檢查的並行請求照常完成。
  * - 正常運作時的既有差異：60 秒冷卻（429）只對真的寄過信的位址成立，且 send-verification-code 不吞 429
