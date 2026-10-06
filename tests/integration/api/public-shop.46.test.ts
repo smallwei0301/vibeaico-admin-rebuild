@@ -230,6 +230,25 @@ describe('公開店家頁真的打得開', () => {
   });
 });
 
+describe('Issue 760：首頁 API 的方案入口 bookingCta（與詳情頁同一個判定）', () => {
+  it('GET /api/public/shops/{shopCode}：有可訂團次的 FIXED 方案回 bookingCta=fixed，且與詳情 API 的團次一致', async () => {
+    const shopRes = await fetch(`${BASE}/api/public/shops/${SHOP_A.shopCode}`);
+    expect(shopRes.status).toBe(200);
+    const shop = (await shopRes.json()) as { data: { trips: Array<{ id: string; slug: string; plans: Array<{ id: string; bookingCta?: string }> }> } };
+    const trip = shop.data.trips.find((t) => t.id === TRIP_PUBLISHED);
+    expect(trip, '已發布行程要在首頁 API 內（對照組）').toBeTruthy();
+    const plan = trip!.plans.find((p) => p.id === PLAN_PUBLISHED);
+    // DEP_FUTURE：capacity 8、seats_booked 3，剩 5 >= min_party 2 → 可訂。
+    expect(plan?.bookingCta).toBe('fixed');
+
+    const detailRes = await fetch(`${BASE}/api/public/shops/${SHOP_A.shopCode}/trips/${trip!.slug}`);
+    expect(detailRes.status).toBe(200);
+    const detail = (await detailRes.json()) as { data: { trip: { plans: Array<{ id: string; departures: Array<{ id: string; soldOut?: true }> }> } } };
+    const detailPlan = detail.data.trip.plans.find((p) => p.id === PLAN_PUBLISHED);
+    expect(detailPlan?.departures.some((d) => d.id === DEP_FUTURE && d.soldOut !== true)).toBe(true);
+  });
+});
+
 describe('看不到什麼（每一條都有對照組）', () => {
   it('草稿行程不出現，但同一頁的已發布行程出現', async () => {
     const { body } = await html(`/s/${SHOP_A.shopCode}`);
