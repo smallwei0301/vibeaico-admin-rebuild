@@ -219,7 +219,7 @@ Owner blocker、requested／actual model、Run ID 與 scorecard。實質失敗�
 - 正式產品／API／驗收以最新 `main` canonical 文件為準。
 - docs-only 可依治理規則直進 main；程式、workflow、skill、依賴與 migration 走 PR／CI／Audit。
 - remote TEST 長期授權只限 Supabase project `nmwhwngojosmagjuvxol`，仍需唯一 TEST holder。
-- Production DDL／DML／migration／部署、真實付款／退款／顧客通知，沒有新授權一律禁止。
+- Production DB 依 `docs/AGENT-EXECUTION.md` §3.2 的有效政策與實際 machine evidence 判定；符合 POLICY_GATED_ACTIVE 精確範圍時不重複要求逐次 Owner 批准。部署、真實付款／退款／顧客通知與政策外操作仍須各自必要授權。
 - **schema 變更的唯一授權來源是 current `origin/main` 的 canonical migration。** 見下節。
 - 不輸出或提交 token、密碼、key、完整 `.env`。
 
