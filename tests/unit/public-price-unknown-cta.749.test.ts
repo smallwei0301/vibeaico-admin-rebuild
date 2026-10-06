@@ -14,7 +14,12 @@ const fx = vi.hoisted(() => ({
   seasonCalls: [] as Array<string[]>,
   // 非 null 時，季節查詢改回傳這份（已依 plan_id、id 排序）資料並尊重 range，用來模擬分頁上限。
   seasonPaged: null as null | Array<Record<string, unknown>>,
+  // 每 30 個方案一個行程（首頁每行程最多判定 30 個方案）；預設 1 個行程。
+  tripCount: 1,
+  // 季節查詢的 IN 清單含此 plan_id 時，該次查詢回傳錯誤。
+  seasonFailForId: null as null | string,
 }));
+const tripOf = (i: number) => `trip-${Math.floor(i / 30) + 1}`;
 
 vi.mock('@/server/supabase', () => ({
   createAdminSupabase: () => ({
@@ -27,12 +32,12 @@ vi.mock('@/server/supabase', () => ({
       const run = async () => {
         if (table === 'tenants') return { data: { id: 'tenant-1', shop_code: 'demo', name: 'Demo', business_type: null, tenant_settings: null }, error: null };
         if (table === 'trips') {
-          const rows = [{ id: 'trip-1', slug: 'trip-1', title: 't', summary: '', location: '', cover_image_url: null, duration_hours: 2, refund_policy_type: 'STANDARD', status: 'PUBLISHED' }];
+          const rows = Array.from({ length: fx.tripCount }, (_, n) => ({ id: `trip-${n + 1}`, slug: `trip-${n + 1}`, title: 't', summary: '', location: '', cover_image_url: null, duration_hours: 2, refund_policy_type: 'STANDARD', status: 'PUBLISHED' }));
           return single ? { data: rows[0], error: null } : { data: rows, error: null };
         }
         if (table === 'trip_plans') {
-          return { data: Object.entries(fx.plans).map(([id, p]) => ({
-            id, trip_id: 'trip-1', sort_order: 0, name: id, description: '', price_per_person: 100, price_type: 'PER_PERSON',
+          return { data: Object.entries(fx.plans).map(([id, p], n) => ({
+            id, trip_id: tripOf(n), sort_order: 0, name: id, description: '', price_per_person: 100, price_type: 'PER_PERSON',
             min_party: 1, max_party: 8, sales_mode: p.mode,
           })), error: null };
         }
@@ -40,6 +45,7 @@ vi.mock('@/server/supabase', () => ({
           fx.seasonCalls.push([...((inFilters.plan_id ?? []) as string[])]);
           if (fx.seasonThrow) throw new Error('boom');
           if (fx.seasonPaged) return { data: fx.seasonPaged.slice(rangeFrom, rangeTo + 1), error: null };
+          if (fx.seasonFailForId && inFilters.plan_id?.includes(fx.seasonFailForId)) return { data: null, error: { message: 'boom' } };
           if (fx.seasonFail) return { data: null, error: { message: 'relation missing' } };
           return { data: Object.entries(fx.plans).filter(([, p]) => p.seasons).map(([id]) => ({
             id: `s-${id}`, plan_id: id, start_month: 1, start_day: 1, end_month: 12, end_day: 31, price_override: 200, sort_order: 0,
@@ -47,7 +53,7 @@ vi.mock('@/server/supabase', () => ({
         }
         if (table === 'trip_departures') {
           return { data: [{ id: 'd1', plan_id: Object.keys(fx.plans)[0], trip_id: 'trip-1', departs_on: '2098-01-01', start_time: null, capacity: 10, seats_booked: 0 }]
-            .flatMap((r) => Object.keys(fx.plans).map((pid, i) => ({ ...r, id: `d-${i}`, plan_id: pid }))), error: null };
+            .flatMap((r) => Object.keys(fx.plans).map((pid, i) => ({ ...r, id: `d-${i}`, plan_id: pid, trip_id: tripOf(i) }))), error: null };
         }
         return { data: [], error: null };
       };
@@ -100,7 +106,7 @@ describe('#749 (b) helper 規則：incomplete 即未知', () => {
 describe('#749 (c)(d) 首頁與詳情頁 loader', () => {
   beforeEach(() => {
     fx.plans = { f: { mode: 'FIXED_DEPARTURE' }, r: { mode: 'REQUEST' }, i: { mode: 'INSTANT' } };
-    fx.seasonFail = false; fx.seasonThrow = false; fx.seasonCalls = []; fx.seasonPaged = null;
+    fx.seasonFail = false; fx.seasonThrow = false; fx.seasonCalls = []; fx.seasonPaged = null; fx.tripCount = 1; fx.seasonFailForId = null;
     vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
   const home = async () => Object.fromEntries((await loadPublicShop('demo'))!.trips[0].plans.map((p) => [p.id, p.bookingCta]));
@@ -144,6 +150,40 @@ describe('#749 (c)(d) 首頁與詳情頁 loader', () => {
     await home();
     expect(fx.seasonCalls).toHaveLength(1);
     expect([...fx.seasonCalls[0]].sort()).toEqual(['f', 'r']);
+  });
+
+  // 250 個 FIXED 方案分在 9 個行程（每行程最多判定 30 個）→ 3 塊（100、100、50）。
+  const manyPlans = () => {
+    fx.tripCount = 9;
+    fx.plans = Object.fromEntries(Array.from({ length: 250 }, (_, n) => [`p${String(n).padStart(3, '0')}`, { mode: 'FIXED_DEPARTURE' } as PlanFx]));
+  };
+  const homeAll = async () => (await loadPublicShop('demo'))!.trips.flatMap((tr) => tr.plans);
+
+  it('方案超過 100 個：季節查詢分塊，每次 .in 的 ID 數 <= 100，且涵蓋全部會判定的方案', async () => {
+    manyPlans();
+    const plans = await homeAll();
+    expect(plans.length).toBe(250);
+    expect(fx.seasonCalls.length).toBeGreaterThan(1);
+    expect(Math.max(...fx.seasonCalls.map((c) => c.length))).toBeLessThanOrEqual(100);
+    expect(new Set(fx.seasonCalls.flat()).size).toBe(fx.seasonCalls.flat().length);
+    expect(plans.filter((p) => p.bookingCta === 'price-not-loaded')).toHaveLength(0);
+  });
+
+  it('其中一塊季節查詢失敗：只有該塊方案為 price-not-loaded，其他塊不受影響', async () => {
+    manyPlans();
+    const probe = await homeAll();
+    const judged = probe.map((p) => p.id).filter((id) => fx.seasonCalls.flat().includes(id));
+    fx.seasonCalls = [];
+    fx.seasonFailForId = judged[0];
+    const plans = await homeAll();
+    const failedChunk = new Set(fx.seasonCalls.find((c) => c.includes(judged[0])));
+    expect(failedChunk.size).toBeLessThanOrEqual(100);
+    expect(failedChunk.size).toBeGreaterThan(0);
+    for (const p of plans) {
+      if (failedChunk.has(p.id)) expect(p.bookingCta).toBe('price-not-loaded');
+      else expect(p.bookingCta).not.toBe('price-not-loaded');
+    }
+    expect(plans.some((p) => !failedChunk.has(p.id))).toBe(true);
   });
 
   it('詳情頁只對未知的方案輸出 seasonalPriceUnknown', async () => {

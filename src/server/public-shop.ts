@@ -250,6 +250,11 @@ const HOME_DEPARTURE_PAGE_SIZE = 1000;
 const MAX_HOME_DEPARTURE_PAGES = 5;
 /** plan_id IN 清單每塊最多 100 個（uuid 約 4KB URL）；各塊共用 MAX_HOME_DEPARTURE_PAGES 總查詢預算。 */
 const HOME_DEPARTURE_PLAN_ID_CHUNK = 100;
+/**
+ * 首頁季節查詢（readPlanSeasons）同樣依 HOME_DEPARTURE_PLAN_ID_CHUNK 分塊；塊數上限 5（最多 500 個方案），
+ * 讓單一匿名請求的季節查詢數有界（每塊內部仍最多 5 頁）。超出上限的方案不查詢、視為季節價未知（保守，不誤開入口）。
+ */
+const MAX_HOME_SEASON_CHUNKS = 5;
 
 /**
  * 有上限的併發 map：輸出順序與 items 相同；任一項 reject 則整體 reject（fail-closed，
@@ -580,16 +585,26 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
   }
   // Issue 749 F5：季節價是否可確認，與預約／申請頁同一規則（seasonalPriceUnknown）。只讀會判定團次的方案（其餘已是
   // dates-not-loaded），一次批次讀取；讀取本身丟錯 fail-safe 為全部未知（readPlanSeasons 查詢失敗已降級不 throw）。
-  let seasonUnknown = (_planId: string): boolean => false;
-  if (homePlans.length > 0) {
+  // 依方案 ID 分塊（避免 .in 清單過長使 URL 超限）：某一塊查詢失敗（readPlanSeasons 降級為該塊全部 incomplete）
+  // 或 throw，只讓該塊方案為未知，其他塊不受影響；超出 MAX_HOME_SEASON_CHUNKS 的方案視為未知。
+  const seasonKnown = new Set<string>();
+  const seasonIds = homePlans.map((plan) => plan.id);
+  const seasonIdSet = new Set(seasonIds);
+  const seasonChunks: string[][] = [];
+  for (let i = 0; i < seasonIds.length && seasonChunks.length < MAX_HOME_SEASON_CHUNKS; i += HOME_DEPARTURE_PLAN_ID_CHUNK) {
+    seasonChunks.push(seasonIds.slice(i, i + HOME_DEPARTURE_PLAN_ID_CHUNK));
+  }
+  await Promise.all(seasonChunks.map(async (chunk) => {
     try {
-      const seasonReader = await readPlanSeasons(admin, tenantId, homePlans.map((plan) => plan.id));
-      seasonUnknown = (planId) => seasonalPriceUnknown({ incomplete: seasonReader.isIncomplete(planId) });
+      const reader = await readPlanSeasons(admin, tenantId, chunk);
+      for (const id of chunk) {
+        if (!seasonalPriceUnknown({ incomplete: reader.isIncomplete(id) })) seasonKnown.add(id);
+      }
     } catch (error) {
       console.warn('public shop: plan seasons unavailable', error);
-      seasonUnknown = () => true;
     }
-  }
+  }));
+  const seasonUnknown = (planId: string): boolean => seasonIdSet.has(planId) && !seasonKnown.has(planId);
   for (const list of plansByTrip.values()) {
     for (const plan of list) {
       const bookable = bookableByPlan.get(plan.id);
