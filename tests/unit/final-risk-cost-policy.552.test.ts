@@ -636,7 +636,7 @@ describe('fallback stays within native PR wakeup and canonical reviewer contract
   }
   it('does not let payload PR number supply missing trusted current PR identity', async () => {
     const f = githubFixture({ payload: { prNumber: 703 } });
-    expect(await loadFallbackSourceEvidence({ github: f.github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', reviews: f.reviews })).toBeUndefined();
+    expect(await loadFallbackSourceEvidence({ github: f.github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', reviews: f.reviews, prNumber: undefined })).toBeUndefined();
   });
   it('native comment edit/delete wakes the consuming PR and edited source rejects', async () => {
     const f = githubFixture();
