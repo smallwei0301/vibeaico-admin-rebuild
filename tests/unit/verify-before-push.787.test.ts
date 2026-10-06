@@ -248,6 +248,70 @@ function commitFile(work: string, path: string, content = 'documentation\n') {
 }
 
 describe('verify-before-push canonical docs route', () => {
+  it.each(['.agents/skill.md', '.claude/settings.md', 'src/runtime.ts'])('main push rejects paths requiring PR: %s', (path) => {
+    const { remote, work } = docsSetup();
+    git(work, 'switch', '-c', 'main');
+    const before = git(work, 'rev-parse', 'HEAD');
+    commitFile(work, path);
+    const r = run(work, ['--push']);
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain('main');
+    expect(git(work, 'ls-remote', 'origin', 'refs/heads/main').split('\t')[0]).toBe(before);
+  });
+  it('future CI docs allowlist growth cannot expand main publication paths', () => {
+    const { work } = docsSetup();
+    const classifier = 'scripts/ci/classify-changes.mjs';
+    const current = readFileSync(join(work, classifier), 'utf8');
+    commitFile(work, classifier, current.replace("path.startsWith('docs/')", "(path.startsWith('docs/') || path.startsWith('future-docs/'))"));
+    git(work, 'push', '-q', 'origin', 'HEAD:refs/heads/main');
+    git(work, 'switch', '-c', 'main');
+    const before = git(work, 'rev-parse', 'HEAD');
+    commitFile(work, 'future-docs/change.md');
+    const r = run(work, ['--push']);
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain('main');
+    expect(git(work, 'ls-remote', 'origin', 'refs/heads/main').split('\t')[0]).toBe(before);
+  });
+  it('main skill-to-doc rename retains the non-documentation source boundary', () => {
+    const { work } = docsSetup();
+    commitFile(work, '.agents/skill.md');
+    git(work, 'push', '-q', 'origin', 'HEAD:refs/heads/main');
+    git(work, 'switch', '-c', 'main');
+    const before = git(work, 'rev-parse', 'HEAD');
+    mkdirSync(join(work, 'docs'));
+    git(work, 'mv', '.agents/skill.md', 'docs/skill.md');
+    git(work, 'commit', '-q', '-m', 'rename skill into docs');
+    const r = run(work, ['--push']);
+    expect(r.status).not.toBe(0);
+    expect(git(work, 'ls-remote', 'origin', 'refs/heads/main').split('\t')[0]).toBe(before);
+  });
+  it('main approved documentation path retains lightweight push eligibility', () => {
+    const { work } = docsSetup();
+    git(work, 'switch', '-c', 'main');
+    commitFile(work, 'docs/change.md');
+    const head = git(work, 'rev-parse', 'HEAD');
+    const r = run(work, ['--push'], { VBP_TYPECHECK_CMD: 'exit 93' });
+    expect(r.status, r.stderr).toBe(0);
+    expect(git(work, 'ls-remote', 'origin', 'refs/heads/main').split('\t')[0]).toBe(head);
+  });
+  it('main documentation with explicit failing targets does not publish', () => {
+    const { work } = docsSetup();
+    git(work, 'switch', '-c', 'main');
+    const before = git(work, 'rev-parse', 'HEAD');
+    commitFile(work, 'docs/change.md');
+    const r = run(work, ['--push', '--', 'tests/unit/requested.test.ts'], { VBP_TEST_CMD: 'exit 94' });
+    expect(r.status).not.toBe(0);
+    expect(r.stdout).toContain('STEP: unit tests');
+    expect(git(work, 'ls-remote', 'origin', 'refs/heads/main').split('\t')[0]).toBe(before);
+  });
+  it('main verify-only still permits checking without publishing', () => {
+    const { work } = docsSetup();
+    git(work, 'switch', '-c', 'main');
+    commitFile(work, 'docs/change.md');
+    const r = run(work, []);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain('VERIFY_PASS');
+  });
   it('docs-only uses lightweight verification, not npm/typecheck, and pushes exact SHA', () => {
     const { remote, work } = docsSetup();
     commitFile(work, 'docs/change.md');

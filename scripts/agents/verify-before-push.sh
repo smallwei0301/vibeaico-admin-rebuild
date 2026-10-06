@@ -99,7 +99,7 @@ fi
 # 缺 main、無 merge-base、空 diff 或 classifier 失敗都維持 full gate。
 # 自訂 push remote 不提供可信政策；明確 targets 也不能被 docs-only 豁免。
 verification="full"
-if [[ "$remote" == "origin" ]] && ((${#targets[@]} == 0)); then
+if [[ "$remote" == "origin" ]] && { ((${#targets[@]} == 0)) || [[ "$branch" == "main" && "$do_push" == true ]]; }; then
 verification="$(node --input-type=module - "$remote" "$head_sha" <<'JS'
 import { execFileSync } from 'node:child_process';
 const [remote, head] = process.argv.slice(2);
@@ -117,14 +117,24 @@ try {
   const { parseNameStatus, classifyChangeRecords } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
   const diff = execFileSync('git', ['diff', '--name-status', '-z', '--find-renames', `${base}...${head}`], { stdio: ['ignore', 'pipe', 'pipe'] });
   const result = classifyChangeRecords(parseNameStatus(diff));
-  console.log(`${result.docsOnly === true ? 'docs-only' : 'full'} ${base}`);
+  // DOCUMENTATION-GOVERNANCE §2.1 has a distinct, narrower publication path contract.
+  // Future CI allowlist growth must not silently expand direct-main path eligibility.
+  const directMainEligible = result.docsOnly === true && Array.isArray(result.changedPaths)
+    && result.changedPaths.length > 0
+    && result.changedPaths.every(path => /^(?:docs\/|(?:README|AGENTS|CLAUDE)\.md$)/.test(path));
+  console.log(`${result.docsOnly === true ? 'docs-only' : 'full'} ${base} ${directMainEligible ? 'yes' : 'no'}`);
 } catch {
   console.log('full');
 }
 JS
 )" || fail "無法執行變更分類；不得推送"
 fi
-read -r verification_route verification_base <<< "$verification"
+read -r verification_route verification_base direct_main_eligible <<< "$verification"
+# Path eligibility does not grant Owner authorization or bypass live branch protection.
+if [[ "$branch" == "main" && "$do_push" == true && "$direct_main_eligible" != yes ]]; then
+  fail "main 直推資格未成立；非文件／skill／未知差異須走工作分支與 PR／CI／審查"
+fi
+if ((${#targets[@]} > 0)); then verification_route="full"; fi
 echo "VERIFICATION_ROUTE: ${verification_route}"
 if [[ "$verification_route" == "docs-only" ]]; then
   echo "STEP: docs-only diff check（typecheck/unit 不適用，非測試 PASS）"
