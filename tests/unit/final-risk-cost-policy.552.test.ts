@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { premiumExecutionState, selectFinalRiskReviewer, finalRiskReviewerErrors,
   FINAL_RISK_COST_POLICY_VERSION } from '../../scripts/agents/final-risk-cost-policy.mjs';
-import { changeDigestOf, evaluateAstra, evaluateGithubAstra, loadFallbackSourceEvidence, routing as currentRouting } from '../../scripts/agents/astra-review-policy.mjs';
+import { changeDigestOf, evaluateAstra, evaluateGithubAstra, loadFallbackSourceEvidence, resolveRoleReceiptWakeup, routing as currentRouting } from '../../scripts/agents/astra-review-policy.mjs';
 import { buildFinalRiskPacket, decideFinalRiskRecovery, previousReviewFromCanonicalReviews } from '../../scripts/agents/final-risk-workflow.mjs';
 import { evaluateReleasePreflight, releaseEvidenceDigestOf } from '../../scripts/agents/production-db-release-preflight.mjs';
 import { buildProductionDbFinalRiskEvidence, buildProductionDbFinalRiskEvidenceFromGithub } from '../../scripts/agents/production-db-final-risk-evidence.mjs';
@@ -13,7 +13,7 @@ import { buildProductionDbFinalRiskEvidence, buildProductionDbFinalRiskEvidenceF
 // Live admission uses currentRouting; new regressions below explicitly require role evidence.
 const routing = { ...currentRouting, openaiBuilderDecision: { independentReviewerRequired: false } };
 const ref = 'https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/552';
-const failureRef = ref + '#issuecomment-1';
+const failureRef = 'https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/703#issuecomment-1';
 const replacementRef = 'https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/703#pullrequestreview-1';
 const start = '2026-09-17T01:00:00Z';
 const failureTime = '2026-09-17T00:59:00Z';
@@ -44,9 +44,9 @@ const reviewBody = (payload: Record<string, unknown>) => '```astra-review\n' + J
 const blobHash = (content: string) => createHash('sha1').update(`blob ${Buffer.byteLength(content)}\0`).update(content).digest('hex');
 const sources = (review: Record<string, any> = { ...context, ...fallback() }) => {
   const content = '<a id="pb-031"></a>\nFixture canonical prevention';
-  return { repository: context.repository, currentMainSha: 'a'.repeat(40),
+  return { repository: context.repository, prNumber: 703, currentMainSha: 'a'.repeat(40),
     playbook: { mainSha: 'a'.repeat(40), content, blobSha: blobHash(content) },
-    records: [{ ref: review.failureEvidenceRef, number: 552, kind: 'issuecomment', id: 1, trusted: true,
+    records: [{ ref: review.failureEvidenceRef, number: 703, kind: 'issuecomment', id: 1, trusted: true,
       body: review.failureDiagnosis, createdAt: failureTime, updatedAt: failureTime }, { ref: review.replacementReviewRef, number: 703, kind: 'pullrequestreview', id: 1,
       trusted: true, state: 'COMMENTED', createdAt: start, updatedAt: start, body: reviewBody({ ...review, verdict: 'PASS' }) }] };
 };
@@ -166,7 +166,7 @@ function githubFixture(options: Record<string, any> = {}) {
           return { data: { id: args.comment_id, html_url: ref + '#issuecomment-' + args.comment_id, user,
             updated_at: start, body: '```agent-role-execution\n' + JSON.stringify(receipt) + '\n```' } };
         }
-        if (args.comment_id === 3) return { data: { id: 3, html_url: ref + '#issuecomment-3', user,
+        if (args.comment_id === 3) return { data: { id: 3, html_url: failureRef.replace('issuecomment-1', 'issuecomment-3'), user,
           created_at: start, updated_at: start, body: reviewBody(payload), ...options.replacementComment } };
         return { data: { id: 1, html_url: failureRef, user, body: payload.failureDiagnosis, created_at: failureTime, updated_at: failureTime, ...options.comment } };
       } }, repos: {
@@ -214,7 +214,7 @@ describe('Owner #552 startup timeout is exactly 300 seconds without execution pr
     for (const field of persistence.reviewerStructuredFields.filter((field: string) => !['findingDetails', 'supportFiles'].includes(field))) {
       expect(reviewerFacts).toHaveProperty(field);
     }
-    const review = { submittedAt: start, repository: result.packet!.repository, changeDigest: result.packet!.changeDigest, ...persistence.copyExactly, ...reviewerFacts };
+    const review = { ...context, submittedAt: start, repository: result.packet!.repository, changeDigest: result.packet!.changeDigest, ...persistence.copyExactly, ...reviewerFacts };
     const role = (kind: string) => ({ role: kind, repository: review.repository, headSha: context.headSha,
       changeDigest: review.changeDigest, actorId: `fixture-${kind}-actor`, sessionId: `fixture-${kind}-session`,
       executionRef: kind === 'REVIEW' ? review.executionRef : 'fixture-builder-execution',
@@ -392,7 +392,7 @@ describe('PR703 trusted source readback (#4146547160/#4146547172)', () => {
   });
   for (const options of [{ missingRecord: true }, { missingPlaybook: true }, { permission: 'read' },
     { movedMain: true }, { blobSha: 'f'.repeat(40) }, { content: 'No canonical anchor; candidate checkout has pb-031' },
-    { comment: { id: 2 } }, { comment: { html_url: failureRef.replace('/552#', '/553#') } },
+    { comment: { id: 2 } }, { comment: { html_url: failureRef.replace('/703#', '/704#') } },
     { comment: { body: 'Unrelated comment is not failure diagnosis' } }, { review: { state: 'DISMISSED' } },
     { review: { body: reviewBody({ ...context, ...fallback(), verdict: 'FIX_REQUIRED' }) } },
     { payload: { failureEvidenceRef: 'https://github.com/attacker/fake/issues/1' } },
@@ -408,7 +408,7 @@ describe('PR703 trusted source readback (#4146547160/#4146547172)', () => {
     expect(evaluateAstra({ body: f.current.body, changedFiles: ['src/server/payment/fixture.ts'],
       context: { ...context, changeDigest: f.payload.changeDigest }, reviews: f.reviews }).status).toBe('ASTRA_PENDING');
     expect(previousReviewFromCanonicalReviews(f.reviews, context.repository)?.canonicalTrustEligible).toBe(false);
-    const proof = await loadFallbackSourceEvidence({ github: f.github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', reviews: f.reviews });
+    const proof = await loadFallbackSourceEvidence({ github: f.github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', reviews: f.reviews, prNumber: f.current.number });
     assert.ok(proof);
     expect(finalRiskReviewerErrors(f.payload, routing, { ...fallbackContext(f.payload), fallbackSourceEvidence: proof })).toEqual([]);
     for (const records of [[], proof.records.map((r: any) => ({ ...r, trusted: false }))]) {
@@ -567,7 +567,7 @@ describe('fallback binds trusted provider catalog and ordered separate records',
 describe('fallback source content is fixed before canonical submission', () => {
   for (const updated_at of [undefined, 'invalid', '2026-09-17T00:59:59Z', '2026-09-17T01:00:01Z']) {
     it(`rejects missing, reversed or post-canonical replacement edit: ${updated_at}`, async () => {
-      const f = githubFixture({ payload: { replacementReviewRef: ref + '#issuecomment-3', submittedAt: '2099-01-01T00:00:00Z' },
+      const f = githubFixture({ payload: { replacementReviewRef: failureRef.replace('issuecomment-1', 'issuecomment-3'), submittedAt: '2099-01-01T00:00:00Z' },
         replacementComment: { updated_at } });
       const result = await evaluateGithubAstra({ github: f.github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', current: f.current });
       expect(result.status).toBe('ASTRA_PENDING');
@@ -575,7 +575,7 @@ describe('fallback source content is fixed before canonical submission', () => {
     });
   }
   it('accepts replacement comment saved before canonical submission', async () => {
-    const f = githubFixture({ payload: { replacementReviewRef: ref + '#issuecomment-3' } });
+    const f = githubFixture({ payload: { replacementReviewRef: failureRef.replace('issuecomment-1', 'issuecomment-3') } });
     expect((await evaluateGithubAstra({ github: f.github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', current: f.current })).status).toBe('ASTRA_APPROVED');
   });
   it('rejects missing canonical submission even if the payload invents it', async () => {
@@ -587,7 +587,7 @@ describe('fallback source content is fixed before canonical submission', () => {
       user: { login: 'fixture-maintainer', id: 123, type: 'User' }, state: 'COMMENTED',
       submitted_at: failureTime, body: fallback().failureDiagnosis };
     const f = githubFixture({ failureReview, payload: { failureEvidenceRef: failureReview.html_url } });
-    const proof = await loadFallbackSourceEvidence({ github: f.github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', reviews: f.reviews });
+    const proof = await loadFallbackSourceEvidence({ github: f.github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', reviews: f.reviews, prNumber: f.current.number });
     expect(proof?.records[0]).toMatchObject({ createdAt: failureTime, updatedAt: failureTime });
     expect((await evaluateGithubAstra({ github: f.github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', current: f.current })).status).toBe('ASTRA_APPROVED');
   });
@@ -622,4 +622,51 @@ describe('fallback source content is fixed before canonical submission', () => {
     const f = githubFixture({ graphqlFailure: true });
     expect((await evaluateGithubAstra({ github: f.github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', current: f.current })).status).toBe('ASTRA_PENDING');
   });
+});
+
+// Fresh Codex P1s4194135501/4194135508: existing native PR wakeup and full contract binding.
+describe('fallback stays within native PR wakeup and canonical reviewer contract', () => {
+  for (const field of ['failureEvidenceRef', 'replacementReviewRef']) {
+    for (const number of [552, 704]) {
+      it(`rejects cross-Issue/PR ${field}=${number} before admission`, async () => {
+        const f = githubFixture({ payload: { [field]: (field === 'failureEvidenceRef' ? failureRef : replacementRef).replace('/703#', `/${number}#`) } });
+        expect((await evaluateGithubAstra({ github: f.github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', current: f.current })).status).toBe('ASTRA_PENDING');
+      });
+    }
+  }
+  it('does not let payload PR number supply missing trusted current PR identity', async () => {
+    const f = githubFixture({ payload: { prNumber: 703 } });
+    expect(await loadFallbackSourceEvidence({ github: f.github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', reviews: f.reviews })).toBeUndefined();
+  });
+  it('native comment edit/delete wakes the consuming PR and edited source rejects', async () => {
+    const f = githubFixture();
+    const native = { ...f.current, state: 'open', base: { ...f.current.base, repo: { full_name: context.repository } } };
+    const list = () => {}, listReviews = () => {};
+    const github = { paginate: async (fn: unknown) => fn === list ? [native] : f.reviews,
+      rest: { pulls: { get: async () => ({ data: native }), list, listReviews },
+        repos: { getCollaboratorPermissionLevel: async () => ({ data: { permission: 'write' } }) } } };
+    expect(await resolveRoleReceiptWakeup({ github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild',
+      repository: context.repository, issueNumber: 703, commentId: 1, nativePr: true }))
+      .toEqual({ numbers: [703], associationIncomplete: false });
+    const edited = githubFixture({ comment: { updated_at: '2026-09-17T01:00:01Z' } });
+    expect((await evaluateGithubAstra({ github: edited.github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', current: edited.current })).status).toBe('ASTRA_PENDING');
+  });
+  for (const patch of [{ identityEvidence: 'OPERATOR_ATTESTED' }, { executionEvidence: 'UNKNOWN' },
+    { reviewerTier: 'AUDIT' }, { fallbackPolicyVersion: 'old' }, { costPolicyVersion: 'old' },
+    { modelSelectionAvailable: false }, { downgradeReason: 'MODEL_UNAVAILABLE' },
+    { downgradeEvidenceRef: ref + '/foreign' }, { reviewLineage: 'other-lineage' },
+    { failureClass: 'TOOLING' }, { failureDiagnosis: 'different diagnosis' },
+    { failureEvidenceRef: ref + '#issuecomment-9' }, { replacementReviewRef: replacementRef },
+    { playbookEvidenceRef: ref }, { reviewerExecutionReceipt: ref + '#issuecomment-103' },
+    { headSha: 'd'.repeat(40) }, { baseSha: 'd'.repeat(40) }, { policyVersion: 'old-policy' },
+    { testBaseline: 'different tested baseline' }, { schemaBaseline: 'different schema baseline' }]) {
+    it(`rejects mismatched replacement reviewer contract: ${JSON.stringify(patch)}`, async () => {
+      const options: Record<string, any> = { payload: { replacementReviewRef: failureRef.replace('issuecomment-1', 'issuecomment-3') } };
+      const f = githubFixture(options);
+      options.replacementComment = { body: reviewBody({ ...f.payload, ...patch }) };
+      const result = await evaluateGithubAstra({ github: f.github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', current: f.current });
+      expect(result.status).toBe('ASTRA_PENDING');
+      expect(result.errors).toContain('Missing durable failure diagnosis/replacement review');
+    });
+  }
 });

@@ -321,13 +321,14 @@ export function evaluateAstra({ body = '', changedFiles = null, context = {}, re
 }
 
 // Only a trusted read-only caller supplies this receipt; never copy it from an attestation.
-export async function loadFallbackSourceEvidence({ github, owner, repo, reviews }, policy = routing) {
+export async function loadFallbackSourceEvidence({ github, owner, repo, reviews, prNumber }, policy = routing) {
   const latest = parseAstraReviews(reviews)[0];
   if (latest?.reviewerTier !== 'EVIDENCE_FALLBACK') return undefined;
   const repository = `${owner}/${repo}`;
   if (latest.failureEvidenceRef === latest.replacementReviewRef) return undefined;
   const refs = [latest.failureEvidenceRef, latest.replacementReviewRef];
-  if (latest.repository !== repository || refs.some(ref => !fallbackReference(ref, repository))) return undefined;
+  if (latest.repository !== repository || !Number.isSafeInteger(prNumber) || prNumber < 1
+    || refs.some(ref => fallbackReference(ref, repository)?.number !== prNumber)) return undefined;
   try {
     const main = await github.rest.repos.getCommit({ owner, repo, ref: 'main' });
     const currentMainSha = main.data.sha;
@@ -368,7 +369,7 @@ export async function loadFallbackSourceEvidence({ github, owner, repo, reviews 
     // Detect main movement during readback; recollect rather than accept stale-main proof.
     const after = await github.rest.repos.getCommit({ owner, repo, ref: 'main' });
     if (after.data.sha !== currentMainSha) return undefined;
-    return { repository, currentMainSha, records,
+    return { repository, prNumber, currentMainSha, records,
       playbook: { mainSha: currentMainSha, blobSha: file.sha, content: Buffer.from(file.content, 'base64').toString('utf8') } };
   } catch {
     return undefined; // Missing records, denied access, or unavailable canonical main fail closed.
@@ -442,7 +443,7 @@ export async function evaluateGithubAstra({ github, owner, repo, current }, poli
     }
   }
   const digest = changeDigestOf(files);
-  const fallbackSourceEvidence = await loadFallbackSourceEvidence({ github, owner, repo, reviews }, policy);
+  const fallbackSourceEvidence = await loadFallbackSourceEvidence({ github, owner, repo, reviews, prNumber: current.number }, policy);
   let roleEvidence;
   if (ordinaryReviewRequired || (classification.required && policy.openaiBuilderDecision?.independentReviewerRequired === true)) {
     const latest = parseAstraReviews(reviews, evidenceType)[0];

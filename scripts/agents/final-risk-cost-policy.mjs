@@ -208,6 +208,10 @@ export function finalRiskReviewerErrors(review = {}, policy = {}, context = {}) 
     }
     const failure = sourceRecord(review.failureEvidenceRef, review, sourceEvidence);
     const replacement = sourceRecord(review.replacementReviewRef, review, sourceEvidence);
+    if (!Number.isSafeInteger(sourceEvidence?.prNumber) || sourceEvidence.prNumber < 1
+      || failure?.number !== sourceEvidence.prNumber || replacement?.number !== sourceEvidence.prNumber) {
+      errors.push('Fallback sources must belong to the current PR for event invalidation');
+    }
     const failureCreated = millis(failure?.createdAt), failureSaved = millis(failure?.updatedAt);
     const replacementCreated = millis(replacement?.createdAt), replacementSaved = millis(replacement?.updatedAt);
     const canonicalSubmitted = millis(review.submittedAt);
@@ -229,6 +233,11 @@ export function finalRiskReviewerErrors(review = {}, policy = {}, context = {}) 
         !replacementPayload || replacementPayload.verdict !== 'PASS' ||
         ['repository', 'changeDigest', 'executionRef', 'adversarialEvidence', 'actualModel', 'requestedModel']
           .some(key => !review[key] || replacementPayload[key] !== review[key]) ||
+        ['baseSha', 'headSha', 'policyVersion', 'testBaseline', 'schemaBaseline', 'reviewerTier', 'identityEvidence', 'executionEvidence', 'modelSelectionAvailable',
+          'costPolicyVersion', 'fallbackPolicyVersion', 'downgradeReason', 'downgradeEvidenceRef',
+          'reviewLineage', 'failureClass', 'failureEvidenceRef', 'failureDiagnosis', 'replacementReviewRef',
+          'playbookEvidenceRef', 'reviewerExecutionReceipt']
+          .some(key => replacementPayload[key] !== review[key]) ||
         replacementPayload.priorFindingsReviewed !== true || replacementPayload.unresolvedFindingCount !== 0) {
       errors.push('Missing durable failure diagnosis/replacement review');
     }

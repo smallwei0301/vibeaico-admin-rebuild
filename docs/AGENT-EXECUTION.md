@@ -563,7 +563,7 @@ Owner 2026-09-17 #552 已授權成本降級，取代 #533 的同級重試／互�
 
 Owner 2026-09-30 11:59 UTC（#700）補充：模型派送、可用性或身份證據失敗不得形成無限阻塞。
 先保存可回讀的失敗原因，再由可用 reviewer／目前 agent 執行真實替代對抗審查，並把預防方式記入 Playbook；
-引用必須由可信讀取端回讀本 repo 的確切 comment／review 與 current-main immutable Playbook blob；候選 payload／工作樹不能自證來源。
+引用必須由可信讀取端回讀本 repo 本次 PR 的確切 comment／review 與 current-main immutable Playbook blob；候選 payload／工作樹不能自證來源。失敗與替代來源限定同一 PR，沿既有 comment edit/delete 與 review edit/dismiss 喚醒即時重驗；不能引用未納入反向喚醒的其他 Issue／PR。
 正常 release gates 通過後可放行，不因 `actualModel=unknown` 再向 Owner 索取授權。
 canonical review 使用 `reviewerTier=EVIDENCE_FALLBACK`、`fallbackPolicyVersion=2026-09-30.1`、
 `downgradeReason=REVIEWER_INFRASTRUCTURE_FAILURE`；記錄 `failureClass`、`failureEvidenceRef`、

@@ -84,7 +84,7 @@ export function buildProductionDbFinalRiskEvidence({
       'modelSelectionAvailable', 'downgradeReason', 'downgradeEvidenceRef',
       'reviewLineage', 'adversarialEvidence', 'priorFindingsReviewed', 'unresolvedFindingCount',
       'fallbackPolicyVersion', 'failureClass', 'failureEvidenceRef', 'failureDiagnosis',
-      'replacementReviewRef', 'playbookEvidenceRef', 'repository',
+      'replacementReviewRef', 'playbookEvidenceRef', 'repository', 'baseSha', 'headSha', 'policyVersion', 'testBaseline', 'schemaBaseline', 'reviewerExecutionReceipt',
     ].filter((key) => latest[key] !== undefined).map((key) => [key, latest[key]])),
     planDigest,
     evidenceDigest,
@@ -194,7 +194,7 @@ export async function buildProductionDbFinalRiskEvidenceFromGithub({
   const changedFiles = [...new Set(files.flatMap((file) => [file.filename, file.previous_filename].filter(Boolean)))];
   const body = current.body ?? '';
   const reviews = await loadTrustedGithubReviews({ github, owner, repo, prNumber }, policy);
-  const fallbackSourceEvidence = await loadFallbackSourceEvidence({ github, owner, repo, reviews }, policy);
+  const fallbackSourceEvidence = await loadFallbackSourceEvidence({ github, owner, repo, reviews, prNumber }, policy);
   const context = {
     fallbackSourceEvidence,
     repository,
