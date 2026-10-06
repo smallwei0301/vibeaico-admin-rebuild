@@ -348,8 +348,22 @@ export async function loadFallbackSourceEvidence({ github, owner, repo, reviews 
         const permission = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: record.user.login });
         trusted = ['admin', 'maintain', 'write'].includes(permission.data.permission);
       }
+      let updatedAt = record.updated_at;
+      if (identity.kind === 'pullrequestreview') {
+        // REST exposes submitted_at but review bodies remain editable. Read the
+        // actual update time; never pretend submission is an immutable save.
+        const { node } = await github.graphql(`query($id: ID!) {
+          node(id: $id) { ... on PullRequestReview {
+            id fullDatabaseId url body state submittedAt updatedAt
+          } }
+        }`, { id: record.node_id });
+        if (!node || node.id !== record.node_id || String(node.fullDatabaseId) !== String(record.id)
+          || node.url !== ref || node.body !== record.body || node.state !== record.state
+          || node.submittedAt !== record.submitted_at) return undefined;
+        updatedAt = node.updatedAt;
+      }
       records.push({ ...identity, ref, body: record.body, state: record.state, trusted,
-        createdAt: record.created_at ?? record.submitted_at, updatedAt: record.updated_at });
+        createdAt: record.created_at ?? record.submitted_at, updatedAt });
     }
     // Detect main movement during readback; recollect rather than accept stale-main proof.
     const after = await github.rest.repos.getCommit({ owner, repo, ref: 'main' });

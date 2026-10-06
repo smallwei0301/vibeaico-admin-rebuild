@@ -89,6 +89,7 @@ export function buildProductionDbFinalRiskEvidence({
     planDigest,
     evidenceDigest,
     reviewedAt: latest.submittedAt,
+    submittedAt: latest.submittedAt,
     executionRef: latest.executionRef || latest.report,
     reviewId: String(latest.reviewId),
     releaseId,

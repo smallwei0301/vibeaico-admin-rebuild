@@ -209,13 +209,18 @@ export function finalRiskReviewerErrors(review = {}, policy = {}, context = {}) 
     const failure = sourceRecord(review.failureEvidenceRef, review, sourceEvidence);
     const replacement = sourceRecord(review.replacementReviewRef, review, sourceEvidence);
     const failureCreated = millis(failure?.createdAt), failureSaved = millis(failure?.updatedAt);
-    const replacementCreated = millis(replacement?.createdAt);
+    const replacementCreated = millis(replacement?.createdAt), replacementSaved = millis(replacement?.updatedAt);
+    const canonicalSubmitted = millis(review.submittedAt);
     const reviewStarted = millis(reviewer?.startedAt), reviewCompleted = millis(reviewer?.completedAt);
     if (review.failureEvidenceRef === review.replacementReviewRef
       || (failure?.kind === replacement?.kind && failure?.id === replacement?.id) || context.roleEvidence?.trusted !== true
       || ![failureCreated, failureSaved, replacementCreated, reviewStarted, reviewCompleted].every(Number.isFinite)
       || failureCreated > failureSaved || failureSaved > reviewStarted || reviewCompleted < reviewStarted || reviewCompleted > replacementCreated
       || failureSaved >= replacementCreated) errors.push('Failure diagnosis must be saved separately before replacement review');
+    if (![replacementCreated, replacementSaved, canonicalSubmitted].every(Number.isFinite)
+      || replacementCreated > replacementSaved || replacementSaved > canonicalSubmitted) {
+      errors.push('Replacement evidence must be saved before canonical review submission');
+    }
     let replacementPayload;
     try {
       replacementPayload = JSON.parse(replacement?.body.match(/```astra-review\s*\n([\s\S]*?)\n```/)?.[1] ?? 'null');
