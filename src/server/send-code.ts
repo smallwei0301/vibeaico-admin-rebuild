@@ -85,7 +85,7 @@ export async function dispatchVerificationCode(email: string, purpose: 'REGISTER
     email, code, purpose, expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
   });
   const { result, failureKind } = await sendVerificationCodeEmail(email, code, purpose);
-  if (result === 'SENT') return; // 視窗內不會走到這裡，故 SENT 不清除視窗
+  if (result === 'SENT') return; // 視窗內（並行在途請求除外）不會走到這裡，故 SENT 不清除視窗
 
   // 沒寄出：讓剛插入的碼失效（刪除；也不會留下 60 秒冷卻擋住使用者重試），再回明確錯誤。
   const { error: delErr } = await admin.from('auth_verification_codes')
@@ -97,7 +97,7 @@ export async function dispatchVerificationCode(email: string, purpose: 'REGISTER
   // 理由：被 provider 拒絕的位址，等同「受理後退信」的不可投遞位址（使用者看到已寄出、信不會到）；
   // #754 的誠實回報保留給 provider／設定層級的真實故障（config／service → 503 + 視窗）。
   // 冷卻檢查：碼已刪除，故寄信分支的位址再次請求不會被 429 擋下，與不寄信分支的位址（從無碼）一致；
-  // 唯一例外是刪除碼本身失敗（delErr，只留 log）時才會殘留一筆而觸發 429，屬資料庫故障的極端邊界。
+  // 已知例外：刪除碼本身失敗（delErr，只留 log）時會殘留一筆而觸發 429，屬資料庫故障的極端邊界。
   if (failureKind === 'recipient') {
     console.error('[send-code] 收件人專屬拒絕（對外回 200，不開視窗）');
     return;

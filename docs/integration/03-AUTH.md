@@ -42,7 +42,7 @@
 - 有效 10 分鐘；同一 email + purpose 60 秒內不可重寄（查最近一筆 `created_at`）。
 - 驗證成功即寫 `consumed_at`，一碼一次。
 - 為防 email 枚舉：email 已存在時 `send-verification-code(REGISTER)` 與
-  不存在時 `forgot-password` **都回成功**，只是不寄信、也不寄任何提醒信（帳號狀態近 60 秒內改變者除外，見殘餘風險 (f)）。
+  不存在時 `forgot-password` 在正常運作時**都回成功**，只是不寄信、也不寄任何提醒信（帳號狀態近 60 秒內改變者除外，見殘餘風險 (f)；寄信失敗與 parity 視窗見下）。
 - **寄信失敗契約（#754／#758）**：該寄信卻發生 provider／設定層級失敗時（無 API key、provider 401／403、5xx、429、網路錯誤等），
   `send-verification-code` 與 `forgot-password` 回 **503 `MAIL_001`**，訊息固定為
   「驗證信暫時無法寄出，請稍後再試或聯絡我們」，剛插入的驗證碼即刪除（不留 60 秒冷卻），
@@ -56,8 +56,8 @@
   到期後到下一次失敗前，不寄信分支（REGISTER 已註冊／RESET_PASSWORD 未註冊）的探測回 200、寄信分支才會失敗回 503，每次到期都會重新暴露，不是只暴露一次；
   (b) 視窗存於各 serverless instance 的記憶體，不跨 instance 共享，僅為 best-effort；
   (c) check-then-set 競態：視窗開啟當下已通過檢查的並行請求照常完成；
-  (d) 失敗後刪除驗證碼若也失敗（只留 server log），會殘留一筆，60 秒內只有寄信分支的位址（REGISTER 未註冊／RESET_PASSWORD 已註冊）在 send-verification-code 會 429（forgot-password 吞 429）；
-  (e) Resend 429 以 API key 為單位，請求 burst 可觸發 service 視窗（60 秒暫停寄信），且 auth email 端點目前無 app 層 rate limit；
+  (d) 失敗後刪除驗證碼若也失敗（只留 server log），會殘留一筆，60 秒內通常只有寄信分支的位址（REGISTER 未註冊／RESET_PASSWORD 已註冊）在 send-verification-code 會 429（forgot-password 吞 429；帳號狀態改變者見 (f)）；
+  (e) Resend 429 以 API key 為單位，請求 burst 可觸發 service 視窗（60 秒暫停寄信）；除每個 (email, purpose) 60 秒冷卻外，沒有跨位址、IP 或 API key 層級的 app 層節流（auth 路由無 IP 節流）；輪換 email／purpose 的 burst 仍可觸發 Resend 429 並開啟 service 視窗；
   (f) 驗證碼被使用後只更新 `consumed_at`、不刪除，60 秒冷卻查詢（`send-code.ts`）只看該 (email, purpose) 最近一筆碼的 `created_at`、不排除已使用的碼；因此碼建立後 60 秒內帳號狀態改變的任何情況，都會讓該位址的回應與不寄信分支的預期不同（send-verification-code 不吞 429），屬已知回應差異，至少包含：(1) 完成註冊：REGISTER 碼仍在冷卻內，位址已變為「已存在」的不寄信分支，於碼建立後 60 秒內再次 REGISTER 請求仍回 429；(2) 帳號被刪除（例如系統外刪除）：RESET_PASSWORD 碼仍在冷卻內，對已不存在的位址回 429（send-verification-code；forgot-password 吞 429，回 200）。另：register 建店失敗的 `deleteUser` 補償回滾後，已使用的 REGISTER 碼仍在，60 秒內重新註冊會被 429 擋下；此時位址已回到 REGISTER 寄信分支，與「寄信分支 60 秒內 429」一致，不構成新的分支間差異。是否改為排除已使用碼／對稱冷卻待 Owner 決定（#764 剩餘範圍）。
   寄信失敗分三類（`src/server/email/send.ts` 的 `failureKind`）：
   `config`（無 key、401／403、金鑰／寄件者／網域設定錯誤）、`service`（429、5xx、網路／逾時、SDK 無 statusCode）、
@@ -68,9 +68,9 @@
   只寫 server log，不開啟／延伸／清除視窗（#763 P1 #3；若回 503，攻擊者可用 provider 會拒絕的位址反覆探測：
   不寄信分支 → 200、寄信分支 → 503）。理由：被 provider 拒絕的位址等同「受理後退信」的不可投遞位址
   （使用者看到已寄出、信不會到）；#754 的誠實回報保留給真正影響使用者的 provider／設定層級故障。
-  驗證碼已刪除，故重複請求不會產生只對寄信分支位址成立的 429 冷卻。
+  驗證碼已刪除，故重複請求通常不會產生只對寄信分支位址成立的 429 冷卻（刪碼失敗見 (d)、帳號狀態改變見 (f)）。
   **視窗內，所有寄碼請求（已註冊／未註冊、REGISTER／RESET_PASSWORD 兩條分支）在最前面短路回同一個 503 `MAIL_001`**：
-  不查 DB、不寫驗證碼、不呼叫 provider，也早於 60 秒重寄冷卻（429）與 email 存在判斷。視窗只由 TTL 結束，
+  不查 DB、不寫驗證碼、不呼叫 provider（視窗開啟前已通過檢查的並行在途請求除外，見 (c)），也早於 60 秒重寄冷卻（429）與 email 存在判斷。視窗只由 TTL 結束，
   不會因 provider 恢復而提前清除（否則寄信分支的位址寄成功回 200、不寄信分支的位址仍 503，形成枚舉 oracle，#763）。
   **可用性代價**：服務層級失敗後，該 instance 暫停寄信至多 60 秒（Resend 429 突發同樣造成 60 秒暫停，#764）；
   設定類失敗暫停到 TTL（10 分鐘）結束或重新部署。
