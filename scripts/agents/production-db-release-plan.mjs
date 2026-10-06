@@ -252,6 +252,41 @@ export function orderPendingProductionMigrations(names = []) {
 export const PG_IDENT_START_CLASS = 'A-Za-z_\\u0080-\\u{10FFFF}';
 export const PG_IDENT_CONT_CLASS = 'A-Za-z0-9_$\\u0080-\\u{10FFFF}';
 export const PG_IDENT_CONT_RE = new RegExp(`[${PG_IDENT_CONT_CLASS}]`, 'u');
+
+// PostgreSQL 詞法：空白只有 [ \t\n\r\f\v]；識別字字元含所有非 ASCII。JS 的 \b／\s／\w 與此不同
+// （\s 含 NBSP、U+2028 等，\b 把 é 當分隔），拿來做風險分類會少報（#781）。
+// pgRe 把 regex 內的 \b／\s／\w 改寫成 PG 語意，並強制 u flag；以 source+flags 快取。
+const PG_WS = ' \\t\\n\\r\\f\\v';
+const PG_BOUNDARY = `(?:(?<=[${PG_IDENT_CONT_CLASS}])(?![${PG_IDENT_CONT_CLASS}])|(?<![${PG_IDENT_CONT_CLASS}])(?=[${PG_IDENT_CONT_CLASS}]))`;
+const PG_RE_CACHE = new Map();
+export function pgRe(re) {
+  const flags = re.flags.includes('u') ? re.flags : `${re.flags}u`;
+  const key = `${flags}/${re.source}`;
+  const cached = PG_RE_CACHE.get(key);
+  if (cached) return cached;
+  const source = re.source.replaceAll('[\\s\\S]', '[^]');
+  let out = '';
+  let inClass = false;
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === '\\') {
+      const next = source[i + 1];
+      i += 1;
+      if (next === 'b' && !inClass) out += PG_BOUNDARY;
+      else if (next === 's') out += inClass ? PG_WS : `[${PG_WS}]`;
+      else if (next === 'w') out += inClass ? PG_IDENT_CONT_CLASS.replace('$', '') : `[${PG_IDENT_CONT_CLASS.replace('$', '')}]`;
+      else out += ch + next;
+      continue;
+    }
+    if (ch === '[' && !inClass) inClass = true;
+    else if (ch === ']' && inClass) inClass = false;
+    out += ch;
+  }
+  const compiled = new RegExp(out, flags);
+  PG_RE_CACHE.set(key, compiled);
+  return compiled;
+}
+
 // dolq_start = [A-Za-z\200-\377_]；dolq_cont = [A-Za-z\200-\377_0-9]
 const PG_DOLLAR_TAG_RE = /\$(?:[A-Za-z_\u0080-\u{10FFFF}][A-Za-z0-9_\u0080-\u{10FFFF}]*)?\$/uy;
 
@@ -333,8 +368,10 @@ function dollarQuoteAt(input, index) {
 
 export function stripSqlComments(sql) {
   const input = String(sql ?? '');
-  if (/\bstandard_conforming_strings\s*(?:=|to)\s*off\b/i.test(input)) {
-    fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'standard_conforming_strings=off is not admitted by the fail-closed classifier');
+  // 任何提及 standard_conforming_strings 的文字一律 fail closed（含 = 'off'、= false、TO off、
+  // 引號識別字、set_config(...)）：它會改變字串詞法，本分類器不逐一建模賦值形式（#781）。
+  if (/standard_conforming_strings/i.test(input)) {
+    fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'standard_conforming_strings is not admitted by the fail-closed classifier');
   }
   let output = '';
   let index = 0;
@@ -470,11 +507,11 @@ function stripStoredRoutineBodies(statement) {
   // executable DML from the migration-time classifier.
   const input = String(statement);
   const lexical = stripSqlStringLiterals(input, true);
-  if (!/^\s*create\s+(?:or\s+replace\s+)?(?:function|procedure)\b/i.test(lexical)) return input;
+  if (!pgRe(/^\s*create\s+(?:or\s+replace\s+)?(?:function|procedure)\b/i).test(lexical)) return input;
 
-  for (const as of lexical.matchAll(/\bas\b/gi)) {
+  for (const as of lexical.matchAll(pgRe(/\bas\b/gi))) {
     let bodyStart = as.index + as[0].length;
-    while (/\s/.test(lexical[bodyStart] ?? '')) bodyStart += 1;
+    while (pgRe(/\s/).test(lexical[bodyStart] ?? '')) bodyStart += 1;
     const dollar = dollarQuoteAt(input, bodyStart);
     if (!dollar) continue;
     const end = input.indexOf(dollar, bodyStart + dollar.length);
@@ -487,8 +524,8 @@ function stripStoredRoutineBodies(statement) {
 }
 
 function hasConflictActionContinuation(input, start) {
-  if (/^\s*do\s+(?:nothing|update)\b/i.test(input.slice(start))) return true;
-  const predicate = /^\s*where\b/i.exec(input.slice(start));
+  if (pgRe(/^\s*do\s+(?:nothing|update)\b/i).test(input.slice(start))) return true;
+  const predicate = pgRe(/^\s*where\b/i).exec(input.slice(start));
   if (!predicate) return false;
   // Locate DO outside predicate parentheses/quoted identifiers. This only
   // recognizes the CONFLICT clause; the caller still scans every nested call.
@@ -507,7 +544,7 @@ function hasConflictActionContinuation(input, start) {
     const word = /^[A-Za-z_\u0080-\u{10FFFF}][A-Za-z0-9_$\u0080-\u{10FFFF}]*/u.exec(input.slice(index));
     if (word) {
       if (word[0].toLowerCase() === 'do') {
-        return /^do\s+(?:nothing|update)\b/i.test(input.slice(index));
+        return pgRe(/^do\s+(?:nothing|update)\b/i).test(input.slice(index));
       }
       index += word[0].length;
     } else {
@@ -528,11 +565,11 @@ function isSqlParenthesisSyntax(name, before, input, openIndex) {
   // versions never reach this helper. Nested candidates are still inspected.
   if (/^(?:all|and|any|as|case|check|coalesce|default|else|end|for|foreign|from|group|having|in|into|lateral|limit|not|offset|on|only|or|order|primary|returning|select|some|then|unique|using|values|when|where|with)$/.test(name)) return true;
   if (name === 'exists') {
-    return /^\s*(?:\(\s*)*(?:select|with|values)\b/i.test(input.slice(openIndex + 1));
+    return pgRe(/^\s*(?:\(\s*)*(?:select|with|values)\b/i).test(input.slice(openIndex + 1));
   }
   // CONFLICT is callable. ON alone is insufficient (JOIN ... ON conflict()
   // would be a routine call); require the INSERT conflict-action continuation.
-  if (name === 'conflict' && /\bon\s*$/i.test(before)) {
+  if (name === 'conflict' && pgRe(/\bon\s*$/i).test(before)) {
     const close = matchingParenthesisEnd(input, openIndex);
     return hasConflictActionContinuation(input, close);
   }
@@ -540,12 +577,12 @@ function isSqlParenthesisSyntax(name, before, input, openIndex) {
   // but `PRIMARY KEY (` / `FOREIGN KEY (` is the fixed table-constraint column
   // list grammar — never a function call — so only that exact two-word
   // continuation is recognized, not bare KEY everywhere.
-  if (name === 'key' && /\b(?:primary|foreign)\s+$/i.test(before)) return true;
+  if (name === 'key' && pgRe(/\b(?:primary|foreign)\s+$/i).test(before)) return true;
   return false;
 }
 
 function isDmlTargetColumnList(text, index) {
-  return /\binsert\s+into\s+(?:only\s+)?(?:(?:"(?:[^"]|"")*"|[\p{ID_Start}_][\p{ID_Continue}_$]*)\s*\.\s*)?$/iu.test(
+  return pgRe(/\binsert\s+into\s+(?:only\s+)?(?:(?:"(?:[^"]|"")*"|[\p{ID_Start}_][\p{ID_Continue}_$]*)\s*\.\s*)?$/iu).test(
     String(text).slice(0, index),
   );
 }
@@ -560,7 +597,7 @@ function isReferencesColumnList(text, index) {
   // REFERENCES clause later in the statement still falls through to full
   // routine-invocation scrutiny, because its own preceding text will not end in
   // `references\s+`.
-  return /\breferences\s+$/iu.test(String(text).slice(0, index));
+  return pgRe(/\breferences\s+$/iu).test(String(text).slice(0, index));
 }
 
 function isAliasColumnList(text, index) {
@@ -570,13 +607,13 @@ function isAliasColumnList(text, index) {
   // spelling is recognized (the word immediately before the candidate identifier
   // must be the `AS` keyword); an implicit (AS-less) alias column list still
   // falls through to full routine-invocation scrutiny.
-  return /\bas\s+$/iu.test(String(text).slice(0, index));
+  return pgRe(/\bas\s+$/iu).test(String(text).slice(0, index));
 }
 
 function hasUnverifiedRoutineInvocation(text, allowedRoutineCalls = new Set()) {
   const input = String(text);
   const quotedCandidates = input.matchAll(
-    /(?<![\p{ID_Continue}$])(?:[\p{ID_Start}_][\p{ID_Continue}_$]*\s*\.\s*)?"(?:[^"]|"")*"\s*\(/giu,
+    pgRe(/(?<![\p{ID_Continue}$])(?:[\p{ID_Start}_][\p{ID_Continue}_$]*\s*\.\s*)?"(?:[^"]|"")*"\s*\(/giu),
   );
   for (const match of quotedCandidates) {
     if (isDmlTargetColumnList(input, match.index) || isReferencesColumnList(input, match.index)
@@ -585,12 +622,12 @@ function hasUnverifiedRoutineInvocation(text, allowedRoutineCalls = new Set()) {
   }
 
   const candidates = input.matchAll(
-    /(?<![\p{ID_Continue}$])(?:(?:"(?:[^"]|"")*"|[\p{ID_Start}_][\p{ID_Continue}_$]*)\s*\.\s*)?([\p{ID_Start}_][\p{ID_Continue}_$]*)\s*\(/giu,
+    pgRe(/(?<![\p{ID_Continue}$])(?:(?:"(?:[^"]|"")*"|[\p{ID_Start}_][\p{ID_Continue}_$]*)\s*\.\s*)?([\p{ID_Start}_][\p{ID_Continue}_$]*)\s*\(/giu),
   );
   for (const match of candidates) {
     if (isDmlTargetColumnList(input, match.index) || isReferencesColumnList(input, match.index)
       || isAliasColumnList(input, match.index)) continue;
-    const calledName = match[0].slice(0, match[0].lastIndexOf('(')).replace(/\s+/g, '').toLowerCase();
+    const calledName = match[0].slice(0, match[0].lastIndexOf('(')).replace(pgRe(/\s+/g), '').toLowerCase();
     const name = String(match[1]).toLowerCase();
     const before = input.slice(0, match.index);
     if (allowedRoutineCalls.has(calledName)) continue;
@@ -603,20 +640,20 @@ function hasUnverifiedRoutineInvocation(text, allowedRoutineCalls = new Set()) {
 }
 
 function rejectUnsupportedPreparedStatements(statements) {
-  const preparedExecute = /\bexecute\s+(?!(?:pg_catalog\s*\.\s*)?format\b)(?:(?:[\p{ID_Start}_][\p{ID_Continue}_$]*\s*\.\s*)?[\p{ID_Start}_][\p{ID_Continue}_$]*|"(?:[^"]|"")*")(?:\s*\([^;]*\))?(?=\s*(?:;|$))/iu;
+  const preparedExecute = pgRe(/\bexecute\s+(?!(?:pg_catalog\s*\.\s*)?format\b)(?:(?:[\p{ID_Start}_][\p{ID_Continue}_$]*\s*\.\s*)?[\p{ID_Start}_][\p{ID_Continue}_$]*|"(?:[^"]|"")*")(?:\s*\([^;]*\))?(?=\s*(?:;|$))/iu);
   for (const statement of statements) {
     const immediateText = stripStoredRoutineBodies(statement).trim();
-    const procedural = /^do\b/i.test(immediateText);
+    const procedural = pgRe(/^do\b/i).test(immediateText);
     const executableText = procedural ? immediateProceduralBody(immediateText) ?? immediateText : immediateText;
     const lexicalText = stripSqlStringLiterals(executableText);
     // SQL EXECUTE is not PL/pgSQL dynamic EXECUTE. Check the entire immediate
     // command, not an end-anchored prepared name: EXPLAIN options, quoted names
     // and CTAS WITH [NO] DATA must not hide it. Privilege declarations are inert.
-    const privilegeDeclaration = /^(?:grant|revoke|alter\s+default\s+privileges)\b/i.test(lexicalText);
+    const privilegeDeclaration = pgRe(/^(?:grant|revoke|alter\s+default\s+privileges)\b/i).test(lexicalText);
     const immediateExecute = !procedural
-      && !/^create\s+(?:or\s+replace\s+)?(?:function|procedure|(?:constraint\s+)?trigger)\b/i.test(lexicalText)
-      && !privilegeDeclaration && /\bexecute\b/i.test(lexicalText);
-    if (/\bprepare\b/i.test(lexicalText) || immediateExecute || preparedExecute.test(lexicalText)) {
+      && !pgRe(/^create\s+(?:or\s+replace\s+)?(?:function|procedure|(?:constraint\s+)?trigger)\b/i).test(lexicalText)
+      && !privilegeDeclaration && pgRe(/\bexecute\b/i).test(lexicalText);
+    if (pgRe(/\bprepare\b/i).test(lexicalText) || immediateExecute || preparedExecute.test(lexicalText)) {
       fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'SQL-level PREPARE/EXECUTE is not admitted by the v1 classifier');
     }
   }
@@ -626,9 +663,9 @@ function indexAccessMethodColumnListStart(text) {
   // Only this anchored CREATE INDEX prefix makes btree/hash syntax rather
   // than a routine call. Leave the column expressions and predicate intact.
   const identifier = '(?:"(?:[^"]|"")*"|[\\p{ID_Start}_][\\p{ID_Continue}_$]*)';
-  const prefix = new RegExp('^create\\s+(?:unique\\s+)?index\\s+(?:concurrently\\s+)?'
+  const prefix = pgRe(new RegExp('^create\\s+(?:unique\\s+)?index\\s+(?:concurrently\\s+)?'
     + '(?:if\\s+not\\s+exists\\s+)?(?:' + identifier + '\\s+)?on\\s+(?:only\\s+)?'
-    + identifier + '(?:\\s*\\.\\s*' + identifier + ')?\\s+using\\s+(?:btree|hash)\\s*(?=\\()', 'iu');
+    + identifier + '(?:\\s*\\.\\s*' + identifier + ')?\\s+using\\s+(?:btree|hash)\\s*(?=\\()', 'iu'));
   return prefix.exec(stripSqlStringLiterals(text, true, true))?.[0].length ?? -1;
 }
 
@@ -641,8 +678,8 @@ function rejectImmediateRoutineInvocations(statements, repoFile = '') {
   for (const statement of statements) {
     const immediateText = stripStoredRoutineBodies(statement).trim();
     const lexicalText = stripSqlStringLiterals(immediateText);
-    const topLevelCall = /^\s*call\b/i.test(lexicalText);
-    const policyDeclaration = /^\s*create\s+policy\b/i.test(lexicalText);
+    const topLevelCall = pgRe(/^\s*call\b/i).test(lexicalText);
+    const policyDeclaration = pgRe(/^\s*create\s+policy\b/i).test(lexicalText);
 
     // A policy predicate takes effect only as authorization logic, not while the
     // migration executes. It is still limited to the G3-tested helper contract.
@@ -650,11 +687,11 @@ function rejectImmediateRoutineInvocations(statements, repoFile = '') {
       fail('UNSUPPORTED_POLICY_ROUTINE_NOT_ADMITTED', 'policy predicate routine is not in the G3-covered contract');
     }
 
-    if (/^(?:create|alter)\b/i.test(lexicalText)
+    if (pgRe(/^(?:create|alter)\b/i).test(lexicalText)
       && !policyDeclaration
-      && !/^create\s+(?:or\s+replace\s+)?(?:function|procedure)\b/i.test(lexicalText)) {
+      && !pgRe(/^create\s+(?:or\s+replace\s+)?(?:function|procedure)\b/i).test(lexicalText)) {
       const indexColumnsStart = indexAccessMethodColumnListStart(immediateText);
-      for (const expression of lexicalText.matchAll(/\b(?:check|default|using|as|where|generated|partition)\b/gi)) {
+      for (const expression of lexicalText.matchAll(pgRe(/\b(?:check|default|using|as|where|generated|partition)\b/gi))) {
         let expressionStart = expression.index + expression[0].length;
         if (/^using$/i.test(expression[0]) && expressionStart < indexColumnsStart) {
           expressionStart = indexColumnsStart;
@@ -663,7 +700,7 @@ function rejectImmediateRoutineInvocations(statements, repoFile = '') {
           fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'DDL expression routine invocation is not admitted');
         }
       }
-      if (/^create\s+(?:unique\s+)?index\b/i.test(lexicalText)) {
+      if (pgRe(/^create\s+(?:unique\s+)?index\b/i).test(lexicalText)) {
         const open = lexicalText.indexOf('(');
         if (open >= 0 && checkCommandText(immediateText.slice(open))) {
           fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'index expression routine invocation is not admitted');
@@ -671,7 +708,7 @@ function rejectImmediateRoutineInvocations(statements, repoFile = '') {
       }
     }
 
-    const copyQuery = /^\s*copy\s*\(/i.exec(lexicalText);
+    const copyQuery = pgRe(/^\s*copy\s*\(/i).exec(lexicalText);
     if (copyQuery && checkCommandText(immediateText.slice(copyQuery[0].length))) {
       fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'routine invocation inside a COPY query is not admitted');
     }
@@ -683,16 +720,16 @@ function rejectImmediateRoutineInvocations(statements, repoFile = '') {
     // builtin allowlist), so re-including `default` here would silently
     // re-reject the very pg_catalog.now()/pg_catalog.gen_random_uuid() calls
     // that scan just admitted, with zero allowance instead of that allowlist.
-    const topLevelExecutable = /^\s*(?:\(\s*)*(?:with|select|insert|update|delete|merge|values|explain)\b/i.test(lexicalText)
-      || /^\s*create\s+(?:(?:(?:global|local)\s+)?(?:temporary|temp)\s+|unlogged\s+)?table\b[\s\S]*\bas\b/i.test(lexicalText)
-      || /^\s*create\s+materialized\s+view\b[\s\S]*\bas\b/i.test(lexicalText)
-      || /^\s*alter\s+table\b[\s\S]*\busing\b/i.test(lexicalText);
+    const topLevelExecutable = pgRe(/^\s*(?:\(\s*)*(?:with|select|insert|update|delete|merge|values|explain)\b/i).test(lexicalText)
+      || pgRe(/^\s*create\s+(?:(?:(?:global|local)\s+)?(?:temporary|temp)\s+|unlogged\s+)?table\b[\s\S]*\bas\b/i).test(lexicalText)
+      || pgRe(/^\s*create\s+materialized\s+view\b[\s\S]*\bas\b/i).test(lexicalText)
+      || pgRe(/^\s*alter\s+table\b[\s\S]*\busing\b/i).test(lexicalText);
     if ((topLevelCall || topLevelExecutable && checkCommandText(immediateText))) {
       fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'immediate routine invocation is not admitted by the fail-closed classifier');
     }
 
-    if (/^\s*do\b/i.test(lexicalText)) {
-      if (/\bexecute\s*\(/i.test(lexicalText)) {
+    if (pgRe(/^\s*do\b/i).test(lexicalText)) {
+      if (pgRe(/\bexecute\s*\(/i).test(lexicalText)) {
         fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'parenthesized dynamic EXECUTE is not admitted');
       }
       const body = immediateProceduralBody(immediateText);
@@ -723,7 +760,7 @@ function isBounded0127ProceduralReconciliation(statements, repoFile) {
     'drop policy if exists p_owner_notify_recipients_all on public.owner_notify_recipients',
     'alter table public.booking_addons drop constraint if exists booking_addons_notified_check',
   ]);
-  const drops = fragments.filter((fragment) => /\bdrop\b/i.test(fragment)).map((fragment) => fragment.toLowerCase());
+  const drops = fragments.filter((fragment) => pgRe(/\bdrop\b/i).test(fragment)).map((fragment) => fragment.toLowerCase());
   return drops.length === exact.size && new Set(drops).size === exact.size
     && drops.every((fragment) => exact.has(fragment));
 }
@@ -732,16 +769,16 @@ function rejectImmediateConfigurationMutations(statements) {
   for (const statement of statements) {
     const immediateText = stripStoredRoutineBodies(statement).trim();
     const lexicalText = stripSqlStringLiterals(immediateText);
-    if (!/^\s*do\b/i.test(lexicalText)) continue;
+    if (!pgRe(/^\s*do\b/i).test(lexicalText)) continue;
     const body = immediateProceduralBody(immediateText);
     const bodyLexical = body === null ? '' : stripSqlStringLiterals(body, true, true);
-    if (/\b(?:commit|rollback|start\s+transaction|begin\s+transaction)\b/i.test(bodyLexical)) {
+    if (pgRe(/\b(?:commit|rollback|start\s+transaction|begin\s+transaction)\b/i).test(bodyLexical)) {
       fail('UNSUPPORTED_AUTHZ_SQL_NOT_ADMITTED', 'transaction control inside an immediate procedural block is not admitted');
     }
-    if (/\bexception\s+when\b[\s\S]*\bthen\b/i.test(bodyLexical)) {
+    if (matchesChain(bodyLexical, [pgRe(/\bexception\s+when\b/gi), pgRe(/\bthen\b/gi)])) {
       fail('UNSUPPORTED_AUTHZ_SQL_NOT_ADMITTED', 'exception handlers inside an immediate procedural block are not admitted');
     }
-    if (/(?:^\s*(?:set|reset)\b|\bbegin\s+(?:set|reset)\b|(?:^|;|\b(?:then|else|loop|exception)\b)\s*(?:set|reset)\b)/i.test(bodyLexical)) {
+    if (pgRe(/(?:^\s*(?:set|reset)\b|\bbegin\s+(?:set|reset)\b|(?:^|;|\b(?:then|else|loop|exception)\b)\s*(?:set|reset)\b)/i).test(bodyLexical)) {
       fail('UNSUPPORTED_AUTHZ_SQL_NOT_ADMITTED', 'SET/RESET inside an immediate procedural block is not admitted by the fail-closed classifier');
     }
   }
@@ -749,20 +786,20 @@ function rejectImmediateConfigurationMutations(statements) {
 
 function immediateProceduralBody(statement) {
   const input = String(statement);
-  const match = input.match(/^\s*do\b/i);
+  const match = input.match(pgRe(/^\s*do\b/i));
   if (!match) return null;
 
   let index = match[0].length;
   const skipWhitespace = () => {
-    while (/\s/.test(input[index] ?? '')) index += 1;
+    while (pgRe(/\s/).test(input[index] ?? '')) index += 1;
   };
   skipWhitespace();
 
-  const language = input.slice(index).match(/^language\b/i);
+  const language = input.slice(index).match(pgRe(/^language\b/i));
   if (language) {
     index += language[0].length;
     skipWhitespace();
-    while (index < input.length && !/\s/.test(input[index])) index += 1;
+    while (index < input.length && !pgRe(/\s/).test(input[index])) index += 1;
     skipWhitespace();
   }
 
@@ -872,7 +909,7 @@ function isSimpleFormatArgument(value) {
     return end >= 0 && input.slice(end + dollar.length).trim() === '';
   }
 
-  return /^(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*)(?:\s*\.\s*(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*))*$/u.test(input);
+  return pgRe(/^(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*)(?:\s*\.\s*(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*))*$/u).test(input);
 }
 
 function boundedFormatPlaceholderCount(template) {
@@ -899,7 +936,7 @@ function assertFormatArgumentsBounded(input, firstArgEnd, formatEnd, template) {
     fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL format contains an unbounded placeholder');
   }
   let cursor = firstArgEnd;
-  while (/\s/.test(input[cursor] ?? '')) cursor += 1;
+  while (pgRe(/\s/).test(input[cursor] ?? '')) cursor += 1;
   if (input[cursor] === ')') {
     if (placeholderCount !== 0) {
       fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL format is missing an identifier argument');
@@ -920,14 +957,14 @@ function firstDynamicSqlTemplate(fragment) {
   const input = String(fragment).trim();
   let index = 0;
   const skipWhitespace = () => {
-    while (/\s/.test(input[index] ?? '')) index += 1;
+    while (pgRe(/\s/).test(input[index] ?? '')) index += 1;
   };
   while (input[index] === '(') {
     index += 1;
     skipWhitespace();
   }
 
-  const format = input.slice(index).match(/^pg_catalog\s*\.\s*format\s*\(/i);
+  const format = input.slice(index).match(pgRe(/^pg_catalog\s*\.\s*format\s*\(/i));
   if (format) {
     const formatOpenIndex = index + format[0].lastIndexOf('(');
     index += format[0].length;
@@ -994,7 +1031,7 @@ function dynamicExecuteFragments(body) {
   const fragments = [];
   for (const statement of splitSqlStatements(body)) {
     const lexicalStatement = stripSqlStringLiterals(statement, true);
-    for (const match of lexicalStatement.matchAll(/\bexecute\b/gi)) {
+    for (const match of lexicalStatement.matchAll(pgRe(/\bexecute\b/gi))) {
       fragments.push(statement.slice(match.index + match[0].length));
     }
   }
@@ -1009,22 +1046,22 @@ function formatPlaceholdersAreBounded(template) {
 function dynamicCommandKind(fragment) {
   const template = firstDynamicSqlTemplate(fragment);
   const lexicalTemplate = stripSqlStringLiterals(template, true).trim();
-  const formatCall = /^\s*\(*\s*(?:pg_catalog\s*\.\s*)?format\s*\(/i.test(fragment);
+  const formatCall = pgRe(/^\s*\(*\s*(?:pg_catalog\s*\.\s*)?format\s*\(/i).test(fragment);
   const templateStatements = splitSqlStatements(template);
-  if (/\bdrop\b[\s\S]*\bcascade\b/i.test(lexicalTemplate)) {
+  if (matchesChain(lexicalTemplate, [pgRe(/\bdrop\b/gi), pgRe(/\bcascade\b/gi)])) {
     fail('CASCADE_NOT_ADMITTED', 'dynamic schema repair cannot prove the dependency scope of CASCADE');
   }
   // One DROP CONSTRAINT only; a comma must not smuggle ADD CHECK/default/USING
   // or another ALTER action past migration-time expression admission.
   const identifier = '(?:%I|"(?:[^"]|"")*"|[\\p{ID_Start}_][\\p{ID_Continue}_$]*)';
-  const boundedDrop = new RegExp('^alter\\s+table\\s+(?:only\\s+)?' + identifier
+  const boundedDrop = pgRe(new RegExp('^alter\\s+table\\s+(?:only\\s+)?' + identifier
     + '(?:\\s*\\.\\s*' + identifier + ')?\\s+drop\\s+constraint\\s+(?:if\\s+exists\\s+)?'
-    + identifier + '(?:\\s+restrict)?\\s*;?\\s*$', 'iu');
+    + identifier + '(?:\\s+restrict)?\\s*;?\\s*$', 'iu'));
   const boundedConstraintRepair = boundedDrop.test(template.trim())
     && formatPlaceholdersAreBounded(template)
     && templateStatements.length === 1;
   if (boundedConstraintRepair) return 'SCHEMA_REPAIR';
-  if (/\bdrop\b|\btruncate\b|\balter\s+table\b[\s\S]*\bdrop\b/i.test(fragment)) {
+  if (pgRe(/\bdrop\b|\btruncate\b/i).test(fragment)) {
     fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'dynamic SQL may execute an unbounded destructive command');
   }
   if (templateStatements.length !== 1) {
@@ -1033,7 +1070,7 @@ function dynamicCommandKind(fragment) {
   if (formatCall) {
     fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic format SQL is not admitted unless it is a bounded constraint repair');
   }
-  if (!/^(?:update\b|delete\s+from\b|insert\s+into\b|merge\s+into\b)/i.test(lexicalTemplate)) {
+  if (!pgRe(/^(?:update\b|delete\s+from\b|insert\s+into\b|merge\s+into\b)/i).test(lexicalTemplate)) {
     fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL must be a statically bounded DML template');
   }
   return 'BACKFILL';
@@ -1041,7 +1078,7 @@ function dynamicCommandKind(fragment) {
 
 function assertDynamicExecutionSafe(body) {
   const lexicalBody = stripSqlStringLiterals(body, true);
-  if (/\bexecute\b[\s\S]*\|\|/i.test(lexicalBody)) {
+  if (matchesChain(lexicalBody, [pgRe(/\bexecute\b/gi), /\|\|/g])) {
     fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'concatenated dynamic SQL is not admitted');
   }
   return dynamicExecuteFragments(body).map(dynamicCommandKind);
@@ -1052,28 +1089,28 @@ function hasImmediateBackfillDml(text) {
     const immediateText = stripStoredRoutineBodies(statement).trim();
     // Creating a stored routine does not execute its body. Keep this boundary
     // explicit before looking for DML inside arbitrary immediate wrappers.
-    if (/^create\s+(?:or\s+replace\s+)?(?:function|procedure)\b/i.test(immediateText)) return false;
+    if (pgRe(/^create\s+(?:or\s+replace\s+)?(?:function|procedure)\b/i).test(immediateText)) return false;
     const lexicalText = stripSqlStringLiterals(immediateText);
-    const procedural = /^do\b/i.test(lexicalText);
+    const procedural = pgRe(/^do\b/i).test(lexicalText);
     const body = procedural ? immediateProceduralBody(immediateText) : null;
     if (procedural && body === null) {
       fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'unrecognized DO body form is not admitted');
     }
     const executableBody = body === null ? '' : stripSqlStringLiterals(body, true);
-    const directDml = /^(?:update\b|delete\s+from\b|insert\s+into\b|merge\s+into\b)/i.test(lexicalText);
-    const explainedDml = /^explain\b[\s\S]*\b(?:update|delete\s+from|insert\s+into|merge\s+into)\b/i.test(lexicalText);
+    const directDml = pgRe(/^(?:update\b|delete\s+from\b|insert\s+into\b|merge\s+into\b)/i).test(lexicalText);
+    const explainedDml = pgRe(/^explain\b[\s\S]*\b(?:update|delete\s+from|insert\s+into|merge\s+into)\b/i).test(lexicalText);
     // WITH can be nested under CTAS, views, EXPLAIN, COPY or other wrappers.
     // Inspect every immediate WITH/DO, not just the first statement keyword;
     // routine declarations are excluded and quoted/commented text is masked.
-    const compoundDml = !procedural && /\bwith\b[\s\S]*\b(?:update|delete\s+from|insert\s+into|merge\s+into)\b/i.test(lexicalText);
+    const compoundDml = !procedural && matchesChain(lexicalText, [pgRe(/\bwith\b/gi), pgRe(/\b(?:update|delete\s+from|insert\s+into|merge\s+into)\b/gi)]);
     // Do not mistake a complete GRANT/REVOKE statement (which can list INSERT
     // or UPDATE as a privilege) for executed DML. Keep the broad scan for all
     // remaining procedural statements so BEGIN/IF/THEN/ELSE/LOOP DML remains
     // fail-closed.
     const proceduralWithoutPrivileges = body === null ? '' : splitSqlStatements(executableBody)
-      .filter((fragment) => !/^\s*(?:grant|revoke)\b/i.test(fragment))
+      .filter((fragment) => !pgRe(/^\s*(?:grant|revoke)\b/i).test(fragment))
       .join(';');
-    const proceduralDml = body !== null && /\b(?:update|delete\s+from\b|insert\s+into\b|merge\s+into\b)/i.test(proceduralWithoutPrivileges);
+    const proceduralDml = body !== null && pgRe(/\b(?:update|delete\s+from\b|insert\s+into\b|merge\s+into\b)/i).test(proceduralWithoutPrivileges);
     const dynamicKinds = body !== null ? assertDynamicExecutionSafe(body) : [];
     return directDml || explainedDml || compoundDml || proceduralDml || dynamicKinds.includes('BACKFILL');
   });
@@ -1091,8 +1128,8 @@ export function highestRiskTier(tiers = []) {
 function rejectUnsupportedRoutineLiteralBodies(statements) {
   for (const statement of statements) {
     const lexical = stripSqlStringLiterals(statement);
-    if (/^\s*create\s+(?:or\s+replace\s+)?(?:function|procedure)\b/i.test(lexical)
-      && /\bas\s+(?:[eE]|[uU]&)?\s*'/i.test(statement)) {
+    if (pgRe(/^\s*create\s+(?:or\s+replace\s+)?(?:function|procedure)\b/i).test(lexical)
+      && pgRe(/\bas\s+(?:[eE]|[uU]&)?\s*'/i).test(statement)) {
       fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'single-quoted routine bodies are not admitted by the fail-closed classifier');
     }
   }
@@ -1103,12 +1140,12 @@ function rejectUnclassifiedDropStatements(text) {
     .map((fragment) => {
       const immediate = stripStoredRoutineBodies(fragment).trim();
       // Single-quoted DO bodies execute too; do not mask their DROP/CASCADE.
-      const executable = /^do\b/i.test(immediate) ? immediateProceduralBody(immediate) ?? immediate : immediate;
+      const executable = pgRe(/^do\b/i).test(immediate) ? immediateProceduralBody(immediate) ?? immediate : immediate;
       return stripSqlStringLiterals(executable);
     })
-    .filter((fragment) => /\bdrop\b/i.test(fragment));
+    .filter((fragment) => pgRe(/\bdrop\b/i).test(fragment));
   for (const fragment of fragments) {
-    const drops = [...fragment.matchAll(/\bdrop\s+(?:if\s+exists\s+)?([A-Za-z_][\w$]*)/gi)];
+    const drops = [...fragment.matchAll(pgRe(/\bdrop\s+(?:if\s+exists\s+)?([A-Za-z_][\w$]*)/gi))];
     if (!drops.length) fail('UNCLASSIFIED_DROP_NOT_ADMITTED', 'DROP target could not be lexically identified');
     for (const match of drops) {
       const objectType = String(match[1]).toLowerCase();
@@ -1116,7 +1153,7 @@ function rejectUnclassifiedDropStatements(text) {
         fail('UNCLASSIFIED_DROP_NOT_ADMITTED', `unrecognized DROP form: ${objectType}`);
       }
     }
-    if (/\bcascade\b/i.test(fragment)) {
+    if (pgRe(/\bcascade\b/i).test(fragment)) {
       fail('CASCADE_NOT_ADMITTED', 'schema repair cannot prove the dependency scope of CASCADE');
     }
   }
@@ -1133,9 +1170,52 @@ function assertSingleRiskTier(tiers = []) {
 
 function hasAuthzConfigurationMutation(statement) {
   const input = String(statement);
-  return /^\s*set\s+(?:(?:local|session)\s+)?(?:[A-Za-z_][\w$]*|(?:[uU]&)?(?:"(?:[^"]|"")*"))\s*(?:=|\bto\b)/i.test(input)
-    || /^\s*reset\s+(?:[A-Za-z_][\w$]*|(?:[uU]&)?(?:"(?:[^"]|"")*"))/i.test(input);
+  return pgRe(/^\s*set\s+(?:(?:local|session)\s+)?(?:[A-Za-z_][\w$]*|(?:[uU]&)?(?:"(?:[^"]|"")*"))\s*(?:=|\bto\b)/i).test(input)
+    || pgRe(/^\s*reset\s+(?:[A-Za-z_][\w$]*|(?:[uU]&)?(?:"(?:[^"]|"")*"))/i).test(input);
 }
+
+function matchesChain(text, chain) {
+  // pgRe 以 source+flags 快取並共用 regex 實例；g 實例的 lastIndex 是共享狀態，
+  // 用完必須歸零，否則同 source 的 matchAll／exec 會從殘留位置開始（漏報）。
+  let from = 0;
+  let matched = true;
+  for (const re of chain) {
+    re.lastIndex = from;
+    const match = re.exec(text);
+    re.lastIndex = 0;
+    if (!match) {
+      matched = false;
+      break;
+    }
+    from = match.index + match[0].length;
+  }
+  return matched;
+}
+const SCHEMA_REPAIR_CHAINS = [
+  [pgRe(/\balter\s+table\b/gi), pgRe(/\bdrop\s+constraint\b/gi)],
+  [pgRe(/\balter\s+table\b/gi), pgRe(/\balter\s+column\b/gi), pgRe(/\bdrop\s+default\b/gi)],
+  [pgRe(/\balter\s+table\b/gi), pgRe(/\balter\s+column\b/gi), pgRe(/\btype\b/gi)],
+];
+// AUTHZ 風險規則；每條是「依序出現」的 regex 鏈（原 `A[\s\S]*B`），以 matchesChain 線性比對，避免 400KB 病態輸入的二次方回溯（#781）。
+const AUTHZ_RISK_CHAINS = [
+  [pgRe(/\b(create|alter|drop)\s+policy\b/gi)],
+  [pgRe(/\b(?:enable|disable|force|no force)\s+row\s+level\s+security\b/gi)],
+  [pgRe(/\bgrant\b/gi)],
+  [pgRe(/\brevoke\b/gi)],
+  [pgRe(/\bsecurity\s+(definer|invoker)\b/gi)],
+  [pgRe(/\b(?:auth\.|tenant_role|is_tenant_member)\b/gi)],
+  [pgRe(/\breassign\s+owned\b/gi)],
+  [pgRe(/\balter\s+group\b/gi), pgRe(/\b(?:add|drop)\s+user\b/gi)],
+  [pgRe(/\b(?:alter|create)\s+(?:role|user|group)\b/gi)],
+  [pgRe(/\b(?:alter|create)\s+(?:role|user)\b/gi), pgRe(/\b(?:bypassrls|nobypassrls|superuser|nosuperuser|createrole|nocreaterole|createdb|nocreatedb|replication|noreplication|inherit|noinherit|login|nologin)\b/gi)],
+  [pgRe(/\b(?:alter\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure|routine|type|domain|foreign\s+table)|create\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure|type))\b/gi), pgRe(/\bowner\s+to\b/gi)],
+  [pgRe(/\b(?:create|alter)\s+(?:or\s+replace\s+)?(?:view|materialized\s+view)\b/gi), pgRe(/\bsecurity_(?:invoker|barrier)\b/gi)],
+  [pgRe(/\bcreate\s+schema\b/gi), pgRe(/\bauthorization\b/gi)],
+  [pgRe(/\bset\s+(?:(?:local|session)\s+)?(?:"role"|role)(?![\p{L}\p{N}_$])/gi)],
+  [pgRe(/\breset\s+role\b/gi)],
+  [pgRe(/\bset\s+(?:(?:local|session)\s+)?authorization\b/gi)],
+  [pgRe(/\balter\s+default\s+privileges\b/gi)],
+];
 
 export function inferMigrationRiskTier(sql, repoFile = '') {
   const text = stripSqlComments(sql);
@@ -1148,20 +1228,20 @@ export function inferMigrationRiskTier(sql, repoFile = '') {
   rejectUnsupportedPreparedStatements(statements);
   rejectImmediateRoutineInvocations(statements, repoFile);
   rejectImmediateConfigurationMutations(statements);
-  if (statements.some((statement) => /\btruncate\b|\bdrop\s+(?:table|schema)\b/i.test(statement))) {
+  if (statements.some((statement) => pgRe(/\btruncate\b|\bdrop\s+(?:table|schema)\b/i).test(statement))) {
     fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'DROP TABLE/SCHEMA and TRUNCATE must use expand → migrate → contract outside v1');
   }
-  if (statements.some((statement) => /\balter\s+table\b[\s\S]*\bdrop(?:\s+column)?\s+(?:if\s+exists\s+)?(?!constraint\b|default\b)/i.test(statement))
+  if (statements.some((statement) => matchesChain(statement, [pgRe(/\balter\s+table\b/gi), pgRe(/\bdrop(?:\s+column)?\s+(?:if\s+exists\s+)?(?!constraint\b|default\b)/gi)]))
     && !isBounded0127ProceduralReconciliation(statements, repoFile)) {
     fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'DROP TABLE/SCHEMA/COLUMN and TRUNCATE must use expand → migrate → contract outside v1');
   }
   rejectUnclassifiedDropStatements(text);
 
   const specialized = [];
-  if (statements.some((statement) => /\balter\s+table\b[\s\S]*\bdrop\s+constraint\b|\balter\s+table\b[\s\S]*\balter\s+column\b[\s\S]*\bdrop\s+default\b|\balter\s+table\b[\s\S]*\balter\s+column\b[\s\S]*\btype\b/i.test(statement))) {
+  if (statements.some((statement) => SCHEMA_REPAIR_CHAINS.some((chain) => matchesChain(statement, chain)))) {
     specialized.push('SCHEMA_REPAIR');
   }
-  if (statements.some((statement) => /\b(create|alter|drop)\s+policy\b|\b(?:enable|disable|force|no force)\s+row\s+level\s+security\b|\bgrant\b|\brevoke\b|\bsecurity\s+(definer|invoker)\b|\b(?:auth\.|tenant_role|is_tenant_member)\b|\breassign\s+owned\b|\balter\s+group\b[\s\S]*\b(?:add|drop)\s+user\b|\b(?:alter|create)\s+(?:role|user|group)\b|\b(?:alter|create)\s+(?:role|user)\b[\s\S]*\b(?:bypassrls|nobypassrls|superuser|nosuperuser|createrole|nocreaterole|createdb|nocreatedb|replication|noreplication|inherit|noinherit|login|nologin)\b|\b(?:alter\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure|routine|type|domain|foreign\s+table)|create\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure|type))\b[\s\S]*\bowner\s+to\b|\b(?:create|alter)\s+(?:or\s+replace\s+)?(?:view|materialized\s+view)\b[\s\S]*\bsecurity_(?:invoker|barrier)\b|\bcreate\s+schema\b[\s\S]*\bauthorization\b|\bset\s+(?:(?:local|session)\s+)?(?:"role"|role)(?![\p{L}\p{N}_$])|\breset\s+role\b|\bset\s+(?:(?:local|session)\s+)?authorization\b|\balter\s+default\s+privileges\b/i.test(statement) || hasAuthzConfigurationMutation(statement))) {
+  if (statements.some((statement) => AUTHZ_RISK_CHAINS.some((chain) => matchesChain(statement, chain)) || hasAuthzConfigurationMutation(statement))) {
     specialized.push('AUTHZ');
   }
   if (hasImmediateBackfillDml(text)) specialized.push('BACKFILL');
