@@ -18,8 +18,8 @@
 #   2. 工作樹與暫存區乾淨（未 commit 的內容不會被推送，也就沒有被驗證）
 #   3. `git fetch --prune <remote>` 成功
 #   4. `git ls-remote` 確認遠端分支狀態；遠端已存在時，本機 HEAD 必須包含遠端 head（fast-forward）
-#   5. typecheck
-#   6. unit tests
+#   5. trusted main 的既有 classifier 判定完整 diff；docs-only 跑 diff --check
+#   6. 其餘或分類不可用時維持 typecheck + unit tests
 #   7. 分支、HEAD 與工作樹在驗證期間都沒有改變；push 的是一開始鎖定的那個 SHA
 #      （`git push <remote> <sha>:refs/heads/<branch>`），不是驗證結束時才讀到的 HEAD
 #
@@ -95,20 +95,66 @@ else
   fail "git ls-remote ${remote} 失敗（exit ${remote_status}）"
 fi
 
-echo "STEP: typecheck"
-if [[ -n "${VBP_TYPECHECK_CMD:-}" ]]; then
-  bash -c "$VBP_TYPECHECK_CMD" || fail "typecheck 失敗"
-else
-  npm run typecheck || fail "typecheck 失敗"
+# 與 CI 共用分類器；明確取得遠端 main exact SHA，不信任 candidate 或 stale tracking ref。
+# 缺 main、無 merge-base、空 diff 或 classifier 失敗都維持 full gate。
+# 自訂 push remote 不提供可信政策；明確 targets 也不能被 docs-only 豁免。
+verification="full"
+if [[ "$remote" == "origin" ]] && { ((${#targets[@]} == 0)) || [[ "$branch" == "main" && "$do_push" == true ]]; }; then
+verification="$(node --input-type=module - "$remote" "$head_sha" <<'JS'
+import { execFileSync } from 'node:child_process';
+const [remote, head] = process.argv.slice(2);
+try {
+  const originUrl = execFileSync('git', ['remote', 'get-url', 'origin'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  const canonicalUrl = /^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)smallwei0301\/vibeaico-admin-rebuild(?:\.git)?$/;
+  if (!canonicalUrl.test(originUrl)) throw new Error('Canonical origin identity unavailable');
+  // fetch --prune obeys configured refspecs and may not update origin/main.
+  const mainLine = execFileSync('git', ['ls-remote', '--exit-code', '--heads', remote, 'refs/heads/main'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  const match = /^([a-f0-9]{40})\trefs\/heads\/main$/.exec(mainLine);
+  if (!match) throw new Error('Remote main identity unavailable');
+  const base = match[1];
+  execFileSync('git', ['fetch', '--no-write-fetch-head', remote, base], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const code = execFileSync('git', ['show', `${base}:scripts/ci/classify-changes.mjs`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const { parseNameStatus, classifyChangeRecords } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+  const diff = execFileSync('git', ['diff', '--name-status', '-z', '--find-renames', `${base}...${head}`], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const result = classifyChangeRecords(parseNameStatus(diff));
+  // DOCUMENTATION-GOVERNANCE §2.1 has a distinct, narrower publication path contract.
+  // Future CI allowlist growth must not silently expand direct-main path eligibility.
+  const directMainEligible = result.docsOnly === true && Array.isArray(result.changedPaths)
+    && result.changedPaths.length > 0
+    && result.changedPaths.every(path => /^(?:docs\/|(?:README|AGENTS|CLAUDE)\.md$)/.test(path));
+  console.log(`${result.docsOnly === true ? 'docs-only' : 'full'} ${base} ${directMainEligible ? 'yes' : 'no'}`);
+} catch {
+  console.log('full');
+}
+JS
+)" || fail "無法執行變更分類；不得推送"
 fi
-
-echo "STEP: unit tests"
-if [[ -n "${VBP_TEST_CMD:-}" ]]; then
-  bash -c "$VBP_TEST_CMD" || fail "unit tests 失敗"
-elif ((${#targets[@]})); then
-  npx vitest run "${targets[@]}" || fail "unit tests 失敗：${targets[*]}"
+read -r verification_route verification_base direct_main_eligible <<< "$verification"
+# Path eligibility does not grant Owner authorization or bypass live branch protection.
+if [[ "$branch" == "main" && "$do_push" == true && "$direct_main_eligible" != yes ]]; then
+  fail "main 直推資格未成立；非文件／skill／未知差異須走工作分支與 PR／CI／審查"
+fi
+if ((${#targets[@]} > 0)); then verification_route="full"; fi
+echo "VERIFICATION_ROUTE: ${verification_route}"
+if [[ "$verification_route" == "docs-only" ]]; then
+  echo "STEP: docs-only diff check（typecheck/unit 不適用，非測試 PASS）"
+  git diff --check "${verification_base}...${head_sha}" || fail "docs-only diff check 失敗"
 else
-  npm test || fail "unit tests 失敗"
+  echo "STEP: typecheck"
+  if [[ -n "${VBP_TYPECHECK_CMD:-}" ]]; then
+    bash -c "$VBP_TYPECHECK_CMD" || fail "typecheck 失敗"
+  else
+    npm run typecheck || fail "typecheck 失敗"
+  fi
+
+  echo "STEP: unit tests"
+  if [[ -n "${VBP_TEST_CMD:-}" ]]; then
+    bash -c "$VBP_TEST_CMD" || fail "unit tests 失敗"
+  elif ((${#targets[@]})); then
+    npx vitest run "${targets[@]}" || fail "unit tests 失敗：${targets[*]}"
+  else
+    npm test || fail "unit tests 失敗"
+  fi
 fi
 
 # 驗證期間不得改變分支、HEAD 或工作樹：推送的必須正是上面驗證過的 commit。
