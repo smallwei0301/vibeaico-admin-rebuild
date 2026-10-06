@@ -3,8 +3,8 @@
 > **Final Risk reviewer 更新（Owner 2026-09-17 #552）**：本 release 自己的 plan/evidence 綁定仍必須審查，但允許 Sol/Opus 或無 selector 的 current-agent 對抗審查，依 `AGENT-EXECUTION.md` §7.2。`production-db-release-preflight.mjs` 與 WIP 使用同一降級證據驗證器。通過只代表下一道安全關卡可檢查，不授予 Production 寫入權；G0–G7 其餘條件不變。
 
 > Owner 裁示：2026-09-14
-> 狀態：`POLICY_APPROVED_AUTOMATION_PENDING`
-> 目標狀態：`POLICY_GATED_ACTIVE`
+> 政策狀態：依 current trusted-main readiness evidence 判定；不得把歷史 `POLICY_APPROVED_AUTOMATION_PENDING` 當永久狀態
+> machine-ready模式：`POLICY_GATED_ACTIVE`／`PER_RUN_OWNER_APPROVAL=NOT_REQUIRED`；單次release仍須G0–G7
 > 適用 repo：`smallwei0301/vibeaico-admin-rebuild`
 > Production Supabase：`egehnijjpgijmccagxac`
 
@@ -14,7 +14,7 @@ Production DB 不再長期依賴「每次由 Owner 回覆同意」作為安全�
 改由可重建、可驗證、可失敗關閉（fail closed）的 release workflow 決定是否能進入寫入階段。
 
 但政策與 writer 必須分階段上線：在下列 `AUTOMATION_READY` 條件尚未全部實作並通過 exact-head CI 前，
-現行逐次 Owner Production DB gate 暫時保留。這是 bootstrap safety，不是永久人工關卡。
+只有實際仍處 bootstrap pending 時才保留逐次 Owner Production DB gate；先查最新可信機器證據，不沿用過期 Issue body／Session 的 pending 結論。
 一旦 trusted main 機器驗證 `AUTOMATION_READY=true`，本 repo 後續符合本流程的 Production DB release
 自動改為 `PER_RUN_OWNER_APPROVAL=NOT_REQUIRED`，不需要 Owner 再做第二次啟用裁示。
 

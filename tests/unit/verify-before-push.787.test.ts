@@ -7,12 +7,13 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const SCRIPT = resolve(__dirname, '../../scripts/agents/verify-before-push.sh');
 const BRANCH = 'feature/x';
+const REAL_GIT = spawnSync('which', ['git'], { encoding: 'utf8' }).stdout.trim();
 const dirs: string[] = [];
 
 const gitEnv = {
@@ -47,7 +48,7 @@ function run(work: string, args: string[], env: Record<string, string> = {}) {
   return spawnSync('bash', [SCRIPT, ...args], {
     cwd: work,
     encoding: 'utf8',
-    env: { ...process.env, ...gitEnv, VBP_TYPECHECK_CMD: 'true', VBP_TEST_CMD: 'true', ...env },
+    env: { ...process.env, ...gitEnv, PATH: `${join(work, '..', 'bin')}:${process.env.PATH}`, VBP_TYPECHECK_CMD: 'true', VBP_TEST_CMD: 'true', ...env },
   });
 }
 
@@ -213,5 +214,236 @@ describe('verify-before-push.sh（#787）', () => {
     const { work } = setup();
     const r = run(work, ['--force']);
     expect(r.status).toBe(2);
+  });
+});
+
+
+/** A real main snapshot supplies the unchanged canonical classifier. */
+function docsSetup() {
+  const t = setup();
+  mkdirSync(join(t.work, 'scripts/ci'), { recursive: true });
+  writeFileSync(join(t.work, 'scripts/ci/classify-changes.mjs'), readFileSync(resolve(__dirname, '../../scripts/ci/classify-changes.mjs')));
+  git(t.work, 'add', 'scripts/ci/classify-changes.mjs');
+  git(t.work, 'commit', '-q', '-m', 'main classifier');
+  git(t.work, 'push', '-q', 'origin', 'HEAD:refs/heads/main');
+  // Only the identity read is stubbed; all fetch/diff/push operations use real bare Git.
+  const bin = join(t.root, 'bin');
+  mkdirSync(bin);
+  const wrapper = join(bin, 'git');
+  writeFileSync(wrapper, `#!/bin/sh
+if [ "$1" = remote ] && [ "$2" = get-url ] && [ "$3" = origin ]; then
+  printf '%s\\n' "\${VBP_TEST_ORIGIN_URL:-https://github.com/smallwei0301/vibeaico-admin-rebuild.git}"
+else
+  exec '${REAL_GIT}' "$@"
+fi
+`);
+  chmodSync(wrapper, 0o755);
+  return t;
+}
+function commitFile(work: string, path: string, content = 'documentation\n') {
+  mkdirSync(resolve(work, path, '..'), { recursive: true });
+  writeFileSync(join(work, path), content);
+  git(work, 'add', path);
+  git(work, 'commit', '-q', '-m', path);
+}
+
+describe('verify-before-push canonical docs route', () => {
+  it.each(['.agents/skill.md', '.claude/settings.md', 'src/runtime.ts'])('main push rejects paths requiring PR: %s', (path) => {
+    const { remote, work } = docsSetup();
+    git(work, 'switch', '-c', 'main');
+    const before = git(work, 'rev-parse', 'HEAD');
+    commitFile(work, path);
+    const r = run(work, ['--push']);
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain('main');
+    expect(git(work, 'ls-remote', 'origin', 'refs/heads/main').split('\t')[0]).toBe(before);
+  });
+  it('future CI docs allowlist growth cannot expand main publication paths', () => {
+    const { work } = docsSetup();
+    const classifier = 'scripts/ci/classify-changes.mjs';
+    const current = readFileSync(join(work, classifier), 'utf8');
+    commitFile(work, classifier, current.replace("path.startsWith('docs/')", "(path.startsWith('docs/') || path.startsWith('future-docs/'))"));
+    git(work, 'push', '-q', 'origin', 'HEAD:refs/heads/main');
+    git(work, 'switch', '-c', 'main');
+    const before = git(work, 'rev-parse', 'HEAD');
+    commitFile(work, 'future-docs/change.md');
+    const r = run(work, ['--push']);
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain('main');
+    expect(git(work, 'ls-remote', 'origin', 'refs/heads/main').split('\t')[0]).toBe(before);
+  });
+  it('main skill-to-doc rename retains the non-documentation source boundary', () => {
+    const { work } = docsSetup();
+    commitFile(work, '.agents/skill.md');
+    git(work, 'push', '-q', 'origin', 'HEAD:refs/heads/main');
+    git(work, 'switch', '-c', 'main');
+    const before = git(work, 'rev-parse', 'HEAD');
+    mkdirSync(join(work, 'docs'));
+    git(work, 'mv', '.agents/skill.md', 'docs/skill.md');
+    git(work, 'commit', '-q', '-m', 'rename skill into docs');
+    const r = run(work, ['--push']);
+    expect(r.status).not.toBe(0);
+    expect(git(work, 'ls-remote', 'origin', 'refs/heads/main').split('\t')[0]).toBe(before);
+  });
+  it('main approved documentation path retains lightweight push eligibility', () => {
+    const { work } = docsSetup();
+    git(work, 'switch', '-c', 'main');
+    commitFile(work, 'docs/change.md');
+    const head = git(work, 'rev-parse', 'HEAD');
+    const r = run(work, ['--push'], { VBP_TYPECHECK_CMD: 'exit 93' });
+    expect(r.status, r.stderr).toBe(0);
+    expect(git(work, 'ls-remote', 'origin', 'refs/heads/main').split('\t')[0]).toBe(head);
+  });
+  it('main documentation with explicit failing targets does not publish', () => {
+    const { work } = docsSetup();
+    git(work, 'switch', '-c', 'main');
+    const before = git(work, 'rev-parse', 'HEAD');
+    commitFile(work, 'docs/change.md');
+    const r = run(work, ['--push', '--', 'tests/unit/requested.test.ts'], { VBP_TEST_CMD: 'exit 94' });
+    expect(r.status).not.toBe(0);
+    expect(r.stdout).toContain('STEP: unit tests');
+    expect(git(work, 'ls-remote', 'origin', 'refs/heads/main').split('\t')[0]).toBe(before);
+  });
+  it('main verify-only still permits checking without publishing', () => {
+    const { work } = docsSetup();
+    git(work, 'switch', '-c', 'main');
+    commitFile(work, 'docs/change.md');
+    const r = run(work, []);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain('VERIFY_PASS');
+  });
+  it('docs-only uses lightweight verification, not npm/typecheck, and pushes exact SHA', () => {
+    const { remote, work } = docsSetup();
+    commitFile(work, 'docs/change.md');
+    const head = git(work, 'rev-parse', 'HEAD');
+    const r = run(work, ['--push'], { VBP_TYPECHECK_CMD: 'exit 93', VBP_TEST_CMD: 'exit 94' });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain('VERIFICATION_ROUTE: docs-only');
+    expect(r.stdout).not.toContain('STEP: typecheck');
+    expect(remoteHead(remote)).toBe(head);
+  });
+  it('non-origin push remote retains full verification', () => {
+    const { remote, work } = docsSetup();
+    git(work, 'remote', 'add', 'fork', remote);
+    commitFile(work, 'docs/change.md');
+    const r = run(work, ['--remote', 'fork', '--push'], { VBP_TYPECHECK_CMD: 'exit 93' });
+    expect(r.status).not.toBe(0);
+    expect(r.stdout).toContain('VERIFICATION_ROUTE: full');
+    expect(remoteHead(remote)).toBe('');
+  });
+  it.each([
+    'https://github.com/other/fork.git',
+    'https://github.com.evil.example/smallwei0301/vibeaico-admin-rebuild.git',
+    'https://github.com/smallwei0301/vibeaico-admin-rebuild.git/other',
+    '/tmp/other-repository.git',
+  ])('noncanonical effective origin URL uses full verification: %s', (url) => {
+    const { remote, work } = docsSetup();
+    commitFile(work, 'docs/change.md');
+    const r = run(work, ['--push'], { VBP_TEST_ORIGIN_URL: url, VBP_TYPECHECK_CMD: 'exit 93' });
+    expect(r.status).not.toBe(0);
+    expect(r.stdout).toContain('VERIFICATION_ROUTE: full');
+    expect(remoteHead(remote)).toBe('');
+  });
+  it.each([
+    'git@github.com:smallwei0301/vibeaico-admin-rebuild.git',
+    'ssh://git@github.com/smallwei0301/vibeaico-admin-rebuild.git',
+  ])('canonical SSH identity retains docs route: %s', (url) => {
+    const { work } = docsSetup();
+    commitFile(work, 'docs/change.md');
+    const r = run(work, [], { VBP_TEST_ORIGIN_URL: url, VBP_TYPECHECK_CMD: 'exit 93' });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain('VERIFICATION_ROUTE: docs-only');
+  });
+  it('explicit docs-only test targets retain the full verification path', () => {
+    const { remote, work } = docsSetup();
+    commitFile(work, 'docs/change.md');
+    const r = run(work, ['--push', '--', 'tests/unit/requested.test.ts'], { VBP_TEST_CMD: 'exit 94' });
+    expect(r.status).not.toBe(0);
+    expect(r.stdout).toContain('STEP: unit tests');
+    expect(remoteHead(remote)).toBe('');
+  });
+  it('mixed source/docs still fails full typecheck without pushing', () => {
+    const { remote, work } = docsSetup();
+    commitFile(work, 'docs/change.md');
+    commitFile(work, 'src/change.ts', 'export const n = 1;\n');
+    const r = run(work, ['--push'], { VBP_TYPECHECK_CMD: 'exit 93' });
+    expect(r.status).not.toBe(0);
+    expect(r.stdout).toContain('STEP: typecheck');
+    expect(remoteHead(remote)).toBe('');
+  });
+  it('runtime fixture under docs/metrics does not use docs route', () => {
+    const { remote, work } = docsSetup();
+    commitFile(work, 'docs/metrics/fake.json', '{}\n');
+    const r = run(work, ['--push'], { VBP_TYPECHECK_CMD: 'exit 93' });
+    expect(r.status).not.toBe(0);
+    expect(remoteHead(remote)).toBe('');
+  });
+  it('source renamed into docs still uses full verification', () => {
+    const { remote, work } = docsSetup();
+    mkdirSync(join(work, 'docs'));
+    git(work, 'mv', 'a.txt', 'docs/a.md');
+    git(work, 'commit', '-q', '-m', 'rename source');
+    const r = run(work, ['--push'], { VBP_TYPECHECK_CMD: 'exit 93' });
+    expect(r.status).not.toBe(0);
+    expect(remoteHead(remote)).toBe('');
+  });
+  it('candidate cannot forge its own classifier to call source docs-only', () => {
+    const { remote, work } = docsSetup();
+    commitFile(work, 'scripts/ci/classify-changes.mjs', "export const classifyChangeRecords = () => ({docsOnly:true});\nexport const parseNameStatus = () => [];\n");
+    commitFile(work, 'src/change.ts');
+    const r = run(work, ['--push'], { VBP_TYPECHECK_CMD: 'exit 93' });
+    expect(r.status).not.toBe(0);
+    expect(remoteHead(remote)).toBe('');
+  });
+  it('empty diff does not receive docs-only exemption', () => {
+    const { remote, work } = docsSetup();
+    const r = run(work, ['--push'], { VBP_TYPECHECK_CMD: 'exit 93' });
+    expect(r.status).not.toBe(0);
+    expect(remoteHead(remote)).toBe('');
+  });
+  it('missing trusted classifier falls back to full gate', () => {
+    const { remote, work } = docsSetup();
+    git(work, 'rm', 'scripts/ci/classify-changes.mjs');
+    git(work, 'commit', '-q', '-m', 'main no classifier');
+    git(work, 'push', '-q', 'origin', 'HEAD:refs/heads/main');
+    commitFile(work, 'docs/change.md');
+    const r = run(work, ['--push'], { VBP_TYPECHECK_CMD: 'exit 93' });
+    expect(r.status).not.toBe(0);
+    expect(remoteHead(remote)).toBe('');
+  });
+  it('narrow fetch refspec cannot reuse stale origin/main docs policy', () => {
+    const { root, remote, work } = docsSetup();
+    git(work, 'fetch', 'origin');
+    const staleMain = git(work, 'rev-parse', 'origin/main');
+    git(work, 'push', '-q', 'origin', `HEAD:refs/heads/${BRANCH}`);
+    const before = remoteHead(remote);
+    const other = join(root, 'other-main');
+    git(root, 'clone', '-q', '-b', 'main', remote, other);
+    git(other, 'rm', 'scripts/ci/classify-changes.mjs');
+    git(other, 'commit', '-q', '-m', 'remove classifier on live main');
+    git(other, 'push', '-q', 'origin', 'main');
+    git(work, 'config', '--replace-all', 'remote.origin.fetch', `+refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}`);
+    commitFile(work, 'docs/change.md');
+    const r = run(work, ['--push'], { VBP_TYPECHECK_CMD: 'exit 93', VBP_TEST_CMD: 'exit 94' });
+    expect(git(work, 'rev-parse', 'origin/main')).toBe(staleMain);
+    expect(r.status).not.toBe(0);
+    expect(r.stdout).toContain('VERIFICATION_ROUTE: full');
+    expect(r.stdout).toContain('STEP: typecheck');
+    expect(remoteHead(remote)).toBe(before);
+  });
+  it('docs whitespace error is real failure and remote remains untouched', () => {
+    const { remote, work } = docsSetup();
+    commitFile(work, 'docs/change.md', 'bad trailing whitespace   \n');
+    const r = run(work, ['--push']);
+    expect(r.status).not.toBe(0);
+    expect(remoteHead(remote)).toBe('');
+  });
+  it('dirty docs candidate remains rejected before classification', () => {
+    const { remote, work } = docsSetup();
+    commitFile(work, 'docs/change.md');
+    writeFileSync(join(work, 'docs/change.md'), 'changed after commit\n');
+    const r = run(work, ['--push']);
+    expect(r.status).not.toBe(0);
+    expect(remoteHead(remote)).toBe('');
   });
 });

@@ -12,6 +12,8 @@
 > 2026-09-15 同步 `docs/AGENT-EXECUTION.md` §3.2 的資料庫分段交付與授權；
 > Production DB 唯一詳細流程是 `docs/PRODUCTION-DB-RELEASE-WORKFLOW.md`，本文件不另造關卡。
 
+> 2026-10-06 throughput recovery：環境與可見產品雙車道、unrelated main-health disposition、Release Guard v1 freeze及POST_MERGE_CLOSEOUT Lite，統一依 `docs/AGENT-EXECUTION.md` §1.5／§3.2.1／§8.1／§9.0.1；本文件不建立第二套approval或gate。
+
 ## 0. 這條鏈路要解決什麼問題
 
 這個專案反覆出現的不是「寫不出功能」，而是**兩種假象**：
