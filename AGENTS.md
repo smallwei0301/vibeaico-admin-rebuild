@@ -253,8 +253,7 @@ git show origin/main:supabase/migrations/<檔名> | head   # 檔案真的在 mai
 canonical 與實際環境永久分歧，而分歧的那一刻在任何日誌上都看不出來。#396 的三方分歧、
 `p_storage_read` 的 TEST 漂移、以及 `issue-41-candidate-baseline` 這類殘留，都是同一個形狀。
 
-順序因此是固定的：**先讓 migration 以最終內容合併進 `main`，再談套用**。套用本身若涉及
-Production，仍需 Owner 另外具名授權——本規則只是它的必要條件，不是充分條件。
+順序因此是固定的：**先讓 migration 以最終內容合併進 `main`，再談套用**。canonical main 來源只是必要條件，不是充分條件；Production 套用依 `docs/AGENT-EXECUTION.md` §3.2 的有效政策與實際 machine evidence 判定。`AUTOMATION_READY` 前保留 bootstrap Owner gate；`POLICY_GATED_ACTIVE` 的精確範圍內由完整機器關卡放行，不重複要求逐次 Owner 批准；政策外操作仍須各自必要授權，既有禁止事項不變。
 
 ## 復盤
 

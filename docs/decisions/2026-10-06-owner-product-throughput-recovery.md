@@ -6,7 +6,7 @@
 
 - A：machine-ready Production DB不再錯等Owner；退化要指出失效machine evidence。政策外reset/seed/destructive/payment/provider等授權不擴張。
 - B：可比較的current-main同源unrelated failure與candidate regression分開；共享hot boundary或未知仍failclosed。
-- C：Release Guard v1 freeze，先使用現有工具完成真實release；只修actual run揭露且未被既有gate覆蓋的可重現風險。
+- C：Release Guard v1 freeze，先使用現有工具完成真實release；只修actual run揭露且未被既有gate覆蓋的可重現風險。actual run失效包含對現有G0–G7 gate實跑對抗case證明錯誤放行，不限於程序回報失敗；仍須同時具備實際執行證據、可重現反例、既有gate未覆蓋的不同failure mode及具體安全風險，純理論推演仍進backlog，不增加執行權限。
 - D：Lane A環境交付、Lane B使用者可見產品；獨立產品不因環境債務全面停止，保留capacity/ownership/isolation。
 - E：merge後truth sync與安全相容性仍阻塞；行政文書背景收尾，不阻止下一個安全bounded slice。
 - Product成果分 USER_VISIBLE_PRODUCT／ENVIRONMENT_DELIVERY／PRODUCT_INFRA，不混算可見產品throughput。

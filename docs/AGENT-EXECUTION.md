@@ -376,9 +376,9 @@ Production release 也不得因 pending migration 很多就「照編號整批套
 
 ### 3.2.1 Release Guard v1 freeze 與 machine-ready 判讀
 
-以 current main 現有 release tooling 為 v1 baseline，先真跑 bounded G0–G7，卡哪一關只修該 technical blocker。沒有真實 G0–G7 execution 暴露新 blocker，不得以 reviewer 理論推演繼續增加 release-tool hardening 或占 Product BUILD slot。
+以 current main 現有 release tooling 為 v1 baseline，先真跑 bounded G0–G7，卡哪一關只修該 technical blocker。真實 execution 包含對現有 G0–G7 gate 實際執行的對抗 case：若可回讀證據顯示 gate 錯誤放行，即屬實際失效，不以程序 exit 0 冒充安全，也不必等待 Production 事故。沒有實際執行暴露新 blocker，不得以 reviewer 理論推演繼續增加 release-tool hardening 或占 Product BUILD slot。
 
-新增修補須同時有實際 run 失敗、可重現 counterexample、既有 gate 尚未覆蓋的不同 failure mode，以及 wrong project／wrong SQL／auth bypass／destructive apply／partial apply／stale evidence／writer collision 等實際風險。純 hypothetical edge case 記 backlog，不阻擋目前 release。
+新增修補須同時有四項證據：實際 run 失敗或上述已實跑對抗 case 證明 gate 錯誤放行、可重現 counterexample、既有 gate 尚未覆蓋的不同 failure mode，以及 wrong project／wrong SQL／auth bypass／destructive apply／partial apply／stale evidence／writer collision 等實際風險。四項缺一不可；純 hypothetical edge case 記 backlog，不阻擋目前 release。本段不授予執行 TEST／Production 或其他副作用的權限，對抗 case 仍須遵守適用授權與安全邊界。
 
 在結論為「等待 Owner」前，重驗 current trusted-main readiness 與其 machine evidence。若 `AUTOMATION_READY=true`、`POLICY_GATED_ACTIVE`、`PER_RUN_OWNER_APPROVAL=NOT_REQUIRED` 仍成立，G0–G5 與寫入當下 G6 PASS 後依既有政策由 controlled writer execute；G7 readback 完成才是 APPLIED_VERIFIED。readiness 是政策就緒，不是單次 release 全 gate PASS，也不是 database mutation 許可本身。若退化，指出失效的具體 machine evidence，不能用籠統 Owner gate 代替。
 
