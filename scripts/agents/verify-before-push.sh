@@ -97,10 +97,16 @@ fi
 
 # 與 CI 共用分類器；明確取得遠端 main exact SHA，不信任 candidate 或 stale tracking ref。
 # 缺 main、無 merge-base、空 diff 或 classifier 失敗都維持 full gate。
+# 自訂 push remote 不提供可信政策；明確 targets 也不能被 docs-only 豁免。
+verification="full"
+if [[ "$remote" == "origin" ]] && ((${#targets[@]} == 0)); then
 verification="$(node --input-type=module - "$remote" "$head_sha" <<'JS'
 import { execFileSync } from 'node:child_process';
 const [remote, head] = process.argv.slice(2);
 try {
+  const originUrl = execFileSync('git', ['remote', 'get-url', 'origin'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  const canonicalUrl = /^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)smallwei0301\/vibeaico-admin-rebuild(?:\.git)?$/;
+  if (!canonicalUrl.test(originUrl)) throw new Error('Canonical origin identity unavailable');
   // fetch --prune obeys configured refspecs and may not update origin/main.
   const mainLine = execFileSync('git', ['ls-remote', '--exit-code', '--heads', remote, 'refs/heads/main'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   const match = /^([a-f0-9]{40})\trefs\/heads\/main$/.exec(mainLine);
@@ -117,6 +123,7 @@ try {
 }
 JS
 )" || fail "無法執行變更分類；不得推送"
+fi
 read -r verification_route verification_base <<< "$verification"
 echo "VERIFICATION_ROUTE: ${verification_route}"
 if [[ "$verification_route" == "docs-only" ]]; then

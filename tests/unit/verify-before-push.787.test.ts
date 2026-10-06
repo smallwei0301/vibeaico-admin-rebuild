@@ -7,12 +7,13 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const SCRIPT = resolve(__dirname, '../../scripts/agents/verify-before-push.sh');
 const BRANCH = 'feature/x';
+const REAL_GIT = spawnSync('which', ['git'], { encoding: 'utf8' }).stdout.trim();
 const dirs: string[] = [];
 
 const gitEnv = {
@@ -47,7 +48,7 @@ function run(work: string, args: string[], env: Record<string, string> = {}) {
   return spawnSync('bash', [SCRIPT, ...args], {
     cwd: work,
     encoding: 'utf8',
-    env: { ...process.env, ...gitEnv, VBP_TYPECHECK_CMD: 'true', VBP_TEST_CMD: 'true', ...env },
+    env: { ...process.env, ...gitEnv, PATH: `${join(work, '..', 'bin')}:${process.env.PATH}`, VBP_TYPECHECK_CMD: 'true', VBP_TEST_CMD: 'true', ...env },
   });
 }
 
@@ -225,6 +226,18 @@ function docsSetup() {
   git(t.work, 'add', 'scripts/ci/classify-changes.mjs');
   git(t.work, 'commit', '-q', '-m', 'main classifier');
   git(t.work, 'push', '-q', 'origin', 'HEAD:refs/heads/main');
+  // Only the identity read is stubbed; all fetch/diff/push operations use real bare Git.
+  const bin = join(t.root, 'bin');
+  mkdirSync(bin);
+  const wrapper = join(bin, 'git');
+  writeFileSync(wrapper, `#!/bin/sh
+if [ "$1" = remote ] && [ "$2" = get-url ] && [ "$3" = origin ]; then
+  printf '%s\\n' "\${VBP_TEST_ORIGIN_URL:-https://github.com/smallwei0301/vibeaico-admin-rebuild.git}"
+else
+  exec '${REAL_GIT}' "$@"
+fi
+`);
+  chmodSync(wrapper, 0o755);
   return t;
 }
 function commitFile(work: string, path: string, content = 'documentation\n') {
@@ -244,6 +257,46 @@ describe('verify-before-push canonical docs route', () => {
     expect(r.stdout).toContain('VERIFICATION_ROUTE: docs-only');
     expect(r.stdout).not.toContain('STEP: typecheck');
     expect(remoteHead(remote)).toBe(head);
+  });
+  it('non-origin push remote retains full verification', () => {
+    const { remote, work } = docsSetup();
+    git(work, 'remote', 'add', 'fork', remote);
+    commitFile(work, 'docs/change.md');
+    const r = run(work, ['--remote', 'fork', '--push'], { VBP_TYPECHECK_CMD: 'exit 93' });
+    expect(r.status).not.toBe(0);
+    expect(r.stdout).toContain('VERIFICATION_ROUTE: full');
+    expect(remoteHead(remote)).toBe('');
+  });
+  it.each([
+    'https://github.com/other/fork.git',
+    'https://github.com.evil.example/smallwei0301/vibeaico-admin-rebuild.git',
+    'https://github.com/smallwei0301/vibeaico-admin-rebuild.git/other',
+    '/tmp/other-repository.git',
+  ])('noncanonical effective origin URL uses full verification: %s', (url) => {
+    const { remote, work } = docsSetup();
+    commitFile(work, 'docs/change.md');
+    const r = run(work, ['--push'], { VBP_TEST_ORIGIN_URL: url, VBP_TYPECHECK_CMD: 'exit 93' });
+    expect(r.status).not.toBe(0);
+    expect(r.stdout).toContain('VERIFICATION_ROUTE: full');
+    expect(remoteHead(remote)).toBe('');
+  });
+  it.each([
+    'git@github.com:smallwei0301/vibeaico-admin-rebuild.git',
+    'ssh://git@github.com/smallwei0301/vibeaico-admin-rebuild.git',
+  ])('canonical SSH identity retains docs route: %s', (url) => {
+    const { work } = docsSetup();
+    commitFile(work, 'docs/change.md');
+    const r = run(work, [], { VBP_TEST_ORIGIN_URL: url, VBP_TYPECHECK_CMD: 'exit 93' });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain('VERIFICATION_ROUTE: docs-only');
+  });
+  it('explicit docs-only test targets retain the full verification path', () => {
+    const { remote, work } = docsSetup();
+    commitFile(work, 'docs/change.md');
+    const r = run(work, ['--push', '--', 'tests/unit/requested.test.ts'], { VBP_TEST_CMD: 'exit 94' });
+    expect(r.status).not.toBe(0);
+    expect(r.stdout).toContain('STEP: unit tests');
+    expect(remoteHead(remote)).toBe('');
   });
   it('mixed source/docs still fails full typecheck without pushing', () => {
     const { remote, work } = docsSetup();
