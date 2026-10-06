@@ -122,8 +122,12 @@ echo "VERIFY_PASS: ${branch} @ ${head_sha}"
 if [[ "$do_push" == true ]]; then
   echo "STEP: git push ${remote} ${head_sha}:refs/heads/${branch}"
   git push "$remote" "${head_sha}:refs/heads/${branch}" || fail "git push 失敗"
+  # 從這裡開始遠端已經更新；之後的步驟失敗不得回報成「沒有推送」。
+  echo "PUSHED: ${branch} @ ${head_sha}"
   # 以 SHA 為來源的 refspec 不會被 -u 設成追蹤分支；推送成功後明確寫入 upstream 設定。
-  git config "branch.${branch}.remote" "$remote" || fail "設定 upstream 失敗"
-  git config "branch.${branch}.merge" "refs/heads/${branch}" || fail "設定 upstream 失敗"
-  echo "PUSHED: ${branch} @ ${head_sha}（upstream: ${remote}/${branch}）"
+  if git config "branch.${branch}.remote" "$remote" && git config "branch.${branch}.merge" "refs/heads/${branch}"; then
+    echo "UPSTREAM: ${remote}/${branch}"
+  else
+    echo "UPSTREAM_WARNING: 已推送 ${head_sha}，但寫入 branch.${branch}.remote／merge 失敗；請手動 git branch --set-upstream-to=${remote}/${branch}" >&2
+  fi
 fi

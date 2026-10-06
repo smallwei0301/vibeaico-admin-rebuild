@@ -190,6 +190,17 @@ describe('verify-before-push.sh（#787）', () => {
     expect(git(work, 'config', `branch.${BRANCH}.merge`)).toBe(`refs/heads/${BRANCH}`);
   });
 
+  it('push 成功但 upstream 設定失敗：仍回報已推送（exit 0）並警告', () => {
+    const { remote, work } = setup();
+    // 以 config.lock 讓 git config 寫入失敗，但 push 本身不需要寫本機 config。
+    writeFileSync(join(work, '.git', 'config.lock'), '');
+    const r = run(work, ['--push']);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain('PUSHED');
+    expect(r.stderr).toContain('UPSTREAM_WARNING');
+    expect(remoteHead(remote)).toBe(git(work, 'rev-parse', 'HEAD'));
+  });
+
   it('detached HEAD：非零退出', () => {
     const { work } = setup();
     git(work, 'checkout', '-q', '--detach');
