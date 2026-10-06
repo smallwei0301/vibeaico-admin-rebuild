@@ -36,8 +36,8 @@ function buildPlan(repoRoot = process.cwd()) {
 }
 
 // Successful mutable-path tests use multiple safe source migrations. The real
-// FULL_PENDING_SET is still tested above admission, but includes 0135's wrapper
-// and cannot be used as a fake successful atomic apply.
+// Real canonical 0135 and its exact closure are covered separately below;
+// synthetic fixtures keep replay/multi-migration behavior independently tested.
 const fixtureRoots: string[] = [];
 afterEach(() => {
   for (const root of fixtureRoots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -215,5 +215,50 @@ describe('Production DB exact-plan remote TEST validator #447', () => {
       runner: fakeGitRunner as any,
     })).rejects.toThrow(/PRODUCTION_TARGET_FORBIDDEN/);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('canonical 0135 transport in G3 #755 (pure construction only)', () => {
+  const repoFile = '0135_issue_46_guide_interval_availability';
+  const path = `supabase/migrations/${repoFile}.sql`;
+  const aliasMap = JSON.parse(readFileSync('supabase/ledger-alias-map.json', 'utf8'));
+  const readCanonicalSql = (file: string) => readFileSync(file, 'utf8');
+  const closure = () => buildTestReleasePlanFromCheckout({
+    releaseId: RELEASE, mainSha: MAIN, plannedAt: PLANNED_AT,
+    migrationScope: 'ISSUE_46_0110_0136_CLOSURE', runner: fakeGitRunner as any,
+  });
+  it('constructs the actual closure in one outer transaction without changing canonical identity', () => {
+    const plan = closure();
+    const built = buildAtomicTestReleaseValidationSql({ plan, aliasMap, liveLedgerRows: [], readCanonicalSql });
+    expect(plan.migrations).toHaveLength(8);
+    expect(built.sql.match(/^begin;$/gm)).toHaveLength(1);
+    expect(built.sql.match(/^commit;$/gm)).toHaveLength(1);
+    expect(built.sql).toContain(readCanonicalSql(path).replace('begin;', '').replace(/commit;\n$/, '\n').trim());
+    const migrationAt = built.sql.indexOf(`G3 exact-main validation ${repoFile}`);
+    expect(built.sql.indexOf('pg_try_advisory_xact_lock')).toBeLessThan(migrationAt);
+    expect(built.sql.indexOf('G3_TEST_POST_LEDGER_MISSING')).toBeGreaterThan(migrationAt);
+    expect(built.sql.lastIndexOf('commit;')).toBeGreaterThan(built.sql.indexOf('G3_TEST_POST_LEDGER_MISSING'));
+    expect(plan.migrations.find((m:any) => m.repoFile === repoFile)?.sha256)
+      .toBe('c798b1596d149d1f866553bf8736bea7214fc7bd0531ea750f2511a17d39a59d');
+    expect(built.sql.match(/insert into supabase_migrations.schema_migrations/g)).toHaveLength(8);
+  });
+  it('still skips existing canonical 0135 DDL while applying absent closure members', () => {
+    const built = buildAtomicTestReleaseValidationSql({ plan: closure(), aliasMap,
+      liveLedgerRows: [{ version: '0135', name: repoFile }], readCanonicalSql });
+    expect(built.sql).toContain(`G3 replay verification ${repoFile}`);
+    expect(built.sql).not.toContain('alter table public.staff add column if not exists availability_policy');
+    expect(built.sql.match(/insert into supabase_migrations.schema_migrations/g)).toHaveLength(7);
+  });
+  it.each(['begin; select 1; commit;', 'rollback;', 'savepoint x;', 'set role postgres;'])('keeps non-pinned boundary/configuration refusal: %s', (sql) => {
+    const root = atomicSourceFixture();
+    for (const name of ['0901_g3_existing', '0902_g3_first_pending', '0903_g3_second_pending']) {
+      writeFileSync(join(root, `supabase/migrations/${name}.sql`), sql);
+    }
+    const plan = buildPlan(root);
+    expect(() => buildAtomicTestReleaseValidationSql({ plan,
+      aliasMap: JSON.parse(readFileSync(join(root, 'supabase/ledger-alias-map.json'), 'utf8')),
+      liveLedgerRows: [], readCanonicalSql: (file:string) => readFileSync(join(root, file), 'utf8'),
+    })).toThrow(/TRANSACTION_CONTROL_NOT_ADMITTED|WRITER_CONFIGURATION_NOT_ADMITTED/);
   });
 });

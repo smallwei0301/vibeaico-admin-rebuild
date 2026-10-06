@@ -1,3 +1,4 @@
+import { canonicalMigrationTransport } from './canonical-migration-transport.mjs';
 import { createHash } from 'node:crypto';
 import process from 'node:process';
 import postgres from 'postgres';
@@ -173,10 +174,11 @@ export function buildAtomicProductionApplySql({
   for (const entry of plan.migrations) {
     const sql = String(readCanonicalSql(entry.path));
     if (sha256(Buffer.from(sql)) !== entry.sha256) fail('MIGRATION_BYTES_MISMATCH', `${entry.path} differs from reviewed main bytes`);
-    assertAtomicCompatibleSql(sql, entry.repoFile);
+    const transport = canonicalMigrationTransport({ entry, sql });
+    assertAtomicCompatibleSql(transport.sql, entry.repoFile);
     const migrationSql = entry.riskTier === 'BACKFILL'
       ? buildBoundedBackfillSql({ sql, repoFile: entry.repoFile, releasePacket, plan })
-      : '-- controlled migration ' + entry.repoFile + '\n' + sql.trim() + (sql.trim().endsWith(';') ? '' : ';');
+      : '-- controlled migration ' + entry.repoFile + '\n' + transport.sql.trim() + (transport.sql.trim().endsWith(';') ? '' : ';');
     statements.push(migrationSql);
     statements.push(
       `insert into supabase_migrations.schema_migrations(version, name) values (` +

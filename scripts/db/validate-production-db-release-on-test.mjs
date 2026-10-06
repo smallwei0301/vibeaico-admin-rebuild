@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { canonicalMigrationTransport } from './canonical-migration-transport.mjs';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
@@ -270,7 +271,8 @@ export function buildAtomicTestReleaseValidationSql({
   for (const migration of plan.migrations) {
     const decision = decisions.find((item) => item.repoFile === migration.repoFile);
     const sql = String(readCanonicalSql(migration.path));
-    assertAtomicCompatibleSql(sql, migration.repoFile);
+    const transport = canonicalMigrationTransport({ entry: migration, sql });
+    assertAtomicCompatibleSql(transport.sql, migration.repoFile);
     if (decision.existedBefore) {
       // A migration already present in the TEST ledger is replay evidence, not
       // permission to execute its DDL again. Historical migrations are allowed
@@ -281,7 +283,7 @@ export function buildAtomicTestReleaseValidationSql({
       statements.push(`-- G3 replay verification ${migration.repoFile}: existing TEST ledger; DDL not replayed`);
       continue;
     }
-    statements.push(`-- G3 exact-main validation ${migration.repoFile}\n${sql.trim()}${sql.trim().endsWith(';') ? '' : ';'}`);
+    statements.push(`-- G3 exact-main validation ${migration.repoFile}\n${transport.sql.trim()}${transport.sql.trim().endsWith(';') ? '' : ';'}`);
     statements.push(
       `insert into supabase_migrations.schema_migrations(version, statements, name, created_by, idempotency_key) values (` +
       `${sqlLiteral(migration.ledgerVersion)}, null, ${sqlLiteral(migration.repoFile)}, ${sqlLiteral(CREATED_BY)}, ${sqlLiteral(decision.idempotencyKey)});`,

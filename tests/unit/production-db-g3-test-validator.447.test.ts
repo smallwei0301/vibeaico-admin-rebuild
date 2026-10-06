@@ -78,8 +78,8 @@ function fakeGitRunner(command: string, args: string[]) {
   return { status: 1, stdout: '', stderr: 'unexpected git invocation' };
 }
 
-// Transport success fixtures must be atomically admissible. A FULL_PENDING_SET
-// from the real repository includes 0135's BEGIN/COMMIT wrapper and must fail.
+// Synthetic transport fixtures remain atomically admissible independently of
+// the exact canonical 0135 wrapper adaptation covered below.
 const fixtureRoots: string[] = [];
 afterEach(() => {
   for (const root of fixtureRoots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -310,7 +310,7 @@ describe('G3 atomic SQL admission #755', () => {
     expect(built.sql).not.toContain('insert into supabase_migrations.schema_migrations');
   });
 
-  it('refuses exact canonical 0135 bytes in the eight-migration closure', () => {
+  it('adapts only pinned canonical 0135 boundaries within the eight-migration closure', () => {
     const repoRoot = process.cwd();
     const source = (path: string) => readFileSync(resolve(repoRoot, path), 'utf8');
     const aliases = JSON.parse(source('supabase/ledger-alias-map.json'));
@@ -326,8 +326,17 @@ describe('G3 atomic SQL admission #755', () => {
       .toEqual(['begin', 'commit']);
     // Synthetic constructor-only baseline, never live G2 / TEST evidence.
     const existing = releasePlan.migrations.slice(0, 6).map((migration: any) => ({ name: migration.repoFile, version: migration.ledgerVersion }));
-    expect(() => buildAtomicTestReleaseValidationSql({ plan: releasePlan, aliasMap: aliases, liveLedgerRows: existing, readCanonicalSql: source }))
-      .toThrow(/TRANSACTION_CONTROL_NOT_ADMITTED: 0135_/);
+    const canonical = source(wrapper.path);
+    expect(sha256(canonical)).toBe('c798b1596d149d1f866553bf8736bea7214fc7bd0531ea750f2511a17d39a59d');
+    const transport = canonical.replace('begin;', '').replace(/commit;\n$/, '\n');
+    expect(sha256(transport)).toBe('961e480475c488b484086a058f68391ca0e512e6aafcc64e13c3246acabefb87');
+    const built = buildAtomicTestReleaseValidationSql({ plan: releasePlan, aliasMap: aliases, liveLedgerRows: existing, readCanonicalSql: source });
+    expect(built.sql).toContain(transport.trim());
+    expect(splitSqlStatements(built.sql).filter((statement: string) => /^(begin|commit)$/i.test(statement.trim())))
+      .toEqual(['begin', 'commit']);
+    expect(built.sql.match(/insert into supabase_migrations\.schema_migrations/g)).toHaveLength(2);
+    expect(built.sql.indexOf('pg_try_advisory_xact_lock')).toBeLessThan(built.sql.indexOf(transport.trim()));
+    expect(built.sql.indexOf('G3_TEST_POST_LEDGER_MISSING')).toBeGreaterThan(built.sql.indexOf(transport.trim()));
   });
 
   it.each(['direct', 'management'])('never sends an unsafe migration to the %s mutation transport', async (transport) => {
