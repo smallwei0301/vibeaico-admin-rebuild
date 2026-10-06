@@ -19,7 +19,7 @@
 6. **回傳形狀 = `src/lib/types.ts`**，經 `src/server/mappers.ts` 轉換。
 7. **404 規則**：id 查無 **或不屬於本租戶** 都回 404 `REQ_002`（不能洩漏其他店的資料存在與否）。
 8. **金額**：numeric 欄位以 number 回傳（`Number(row.price)`），不回字串。
-9. **匿名／未登入端點的 request body 上限（#802）**：下列端點以 `readJsonBody(req, PUBLIC_JSON_BODY_LIMIT_BYTES)`（`src/server/http.ts`）讀 body，上限 **16 KB**；超限回 **413** `REQ_005`「請求內容過大」，且發生在 zod 驗證與任何下游呼叫之前。先看 `content-length`（超限不讀 body），再以串流累計實際位元組（涵蓋缺少或謊報 `content-length`），超過即中止。適用：`POST /api/public/tour-bookings`、`/api/public/tour-requests`、`/api/auth/login`、`/api/auth/tenant/register`、`/api/auth/forgot-password`、`/api/auth/reset-password`、`/api/auth/send-verification-code`。格式錯誤／空 body 的處理與原本 `req.json()` 相同（`handle()` 目前對 `SyntaxError` 回 500 `SYS_001`，本次刻意不改）。不適用：LINE webhook（需原始 body 驗簽，另行評估）與其他已登入端點。
+9. **匿名／未登入端點的 request body 上限（#802）**：下列端點以 `readJsonBody(req, PUBLIC_JSON_BODY_LIMIT_BYTES)`（`src/server/http.ts`）讀 body，上限 **16 KB**；超限回 **413** `REQ_005`「請求內容過大」，且發生在 zod 驗證與任何下游呼叫之前。先看 `content-length`（超限不讀 body），再以串流累計實際位元組（涵蓋缺少或謊報 `content-length`），超過即中止。適用：`POST /api/public/tour-bookings`、`/api/public/tour-requests`、`/api/auth/login`、`/api/auth/tenant/register`、`/api/auth/forgot-password`、`/api/auth/reset-password`、`/api/auth/send-verification-code`、`POST /api/auth/switch-tenant`（已登入端點，但在登入檢查 `requireUser()` 之前就讀 body，故一併套用）。格式錯誤／空 body 的處理與原本 `req.json()` 相同（`handle()` 目前對 `SyntaxError` 回 500 `SYS_001`，本次刻意不改）。不適用：LINE webhook（需原始 body 驗簽，另行評估）、`/api/donations/callback`（ECPay 匿名 callback，需原始 body 驗簽）另行評估，以及其他已登入端點。
 
 ### 參考實作（照這個模式寫其他所有端點）
 

@@ -14,6 +14,14 @@ import {
 } from '@/server/http';
 import { POST as sendCode } from '@/app/api/auth/send-verification-code/route';
 
+const requireUser = vi.fn();
+vi.mock('@/server/tenant', () => ({
+  requireUser: (...a: unknown[]) => requireUser(...a),
+  ACTIVE_TENANT_COOKIE: 'vibeai_active_tenant',
+}));
+
+import { POST as switchTenant } from '@/app/api/auth/switch-tenant/route';
+
 const enc = new TextEncoder();
 
 /** 串流 body，可記錄是否被讀取／取消；不帶 content-length（除非 headers 指定）。 */
@@ -125,5 +133,20 @@ describe('POST /api/auth/send-verification-code body 上限 (#802)', () => {
     }), {});
     expect(res.status).toBe(200);
     expect(dispatch).toHaveBeenCalledWith('a@b.co', 'REGISTER');
+  });
+});
+
+describe('POST /api/auth/switch-tenant body 上限 (#802)', () => {
+  beforeEach(() => { requireUser.mockReset(); });
+
+  it('超限回 413 信封，且未呼叫 requireUser／下游', async () => {
+    const pad = 'a'.repeat(PUBLIC_JSON_BODY_LIMIT_BYTES + 1);
+    const body = JSON.stringify({ tenantId: '00000000-0000-4000-8000-000000000000', pad });
+    const res = await switchTenant(new Request('http://localhost/api/auth/switch-tenant', {
+      method: 'POST', body, headers: { 'content-type': 'application/json' },
+    }), {});
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ success: false, message: '請求內容過大', code: ERR.PAYLOAD_TOO_LARGE });
+    expect(requireUser).not.toHaveBeenCalled();
   });
 });
