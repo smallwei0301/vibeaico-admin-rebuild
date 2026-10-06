@@ -111,6 +111,10 @@
 | PB-072 | 機器驗證的 attestation／receipt JSON 不可用 shell 字串內插組裝；送出前先本機模擬 guard | shell 字串內插可能對特殊字元轉義不當，導致 JSON 結構破損。收據、attestation 一律用 JSON serializer 寫入檔案後以檔案送出，**輸出帶間距的 JSON（`": "`）並在送出後讀回比對 URL 欄位**（PR #788：緊湊 JSON 在傳輸中被插入反引號），並於轉 ready 前本機呼叫 `evaluateGithubAstra()` 驗證無錯誤；ordinary review 的 REVIEW 收據必須來自 fresh-context 子代理。 | PR #783、#784；`scripts/agents/astra-review-policy.mjs` |
 | PB-073 | 一張 Product PR 只綁一個 Product Issue，不得以 squash merge commit 充當 EXACT_HEAD 來關次要 Issue | 一張 Product PR 只綁一個 Product Issue（lifecycle `issue:` 與 PRIMARY_ISSUE 相同）；不得以 squash merge commit 充當 EXACT_HEAD 來關次要 Issue——guard 的 main-ancestor fallback 不驗 tree 等同，會把 source-head 綁定降級。PR #791 Codex P1 | PR #788／#785；`scripts/agents/product-issue-close-policy.mjs` |
 | PB-074 | PR 標題、squash commit 標題、內文與 PR 描述的 Issue 引用形式與 closing keyword 會讓 GitHub 自動關閉，繞過 Product close guard | #787 在 PR #789 合併當下被自動關閉。合併前讀 Issue 的 closed_by_pull_requests 確認不含本 PR；grep (a)(b) 補充檢查。 | PR #789／#787、PR #790／#781（僅改標題，未遵守 (a)）；PR #791 Codex P2 |
+| PB-075 | TEST_VALIDATION lane 轉換時 guard 已自動 dispatch canonical TEST，主 session 再手動 dispatch 會被同 concurrency group 取代成重複 run | 派工前先查同 concurrency group 已有的 pending run；若發現 auto-dispatch 的 TEST 已提交，不再手動 dispatch。已發生時計入 invalidReruns。 | PR #795、lane_transition auto-dispatch、CI 37422702127（auto）vs 37422677172（manual，被 cancelled） |
+| PB-076 | Scout ledger 標準化複合主語時拆分成多項，造成偽造計數 | Issue vs PR 編號拆分時，僅 `issue#N` token 計數；對已編輯的批量 ledger，逐筆列舉與已知 Issue 交叉比對，並檢查有無虛構 Issue 或 PR 當成 Issue。 | PR #791 commit 4ca56072→5394e645、scout 編輯階段。 |
+| PB-077 | 共用 worktree 上，reviewer 在 builder/pusher 進行 verify-before-push 時運行寫入操作，會造成 HEAD 改變或測試干擾 | Reviewer 應使用 `git show/diff` 或獨立 worktree，不在同一 clone 上運行突變；builder/pusher 確認 verify 無誤前，不允許同時進行 mutation。 | PR #791 review phase；verify-before-push 拒絕 VERIFY_FAILED。 |
+| PB-078 | Ledger commit 與 canonical TEST 在同 exact head 上並行運行時，push ledger 會改變 HEAD，使 TEST 證據失效 | 若 canonical TEST 在 exact-head 執行中，ledger-only commit 應延後推送直到 TEST 完成；或先記在 GitHub issue/PR 留言，待下一個實質代碼 commit 時補記。 | 2026-10-06 教訓；TEST run 與 ledger timing 的協調。 |
 
 ## 事件紀錄
 
@@ -2215,7 +2219,7 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 預防：合併前讀取 Product Issue 的 closed_by_pull_requests（GitHub MCP issue_read get，或 REST/GraphQL 等價欄位）；若本 PR 已出現在其中，先移除造成連結的 closing keyword 或手動 Development 連結，重新讀取確認不含本 PR 才合併。
   - 補充檢查 (a)/**PR 標題、squash 標題與 squash commit body**（合併時明確設定為簡要摘要，不用預設串接）：保守做法——本 PR 的 Product Issue 一律寫 `Issue N`，不得出現 `#N`、`OWNER/REPO#N`、`.../issues/N`；且任何 Issue 引用前不得緊接 closing keyword。檢查（N 換成 Issue 編號，對擬用的 PR 標題、squash 標題與 body 執行，須零命中）：`grep -nEi '(^|[^0-9A-Za-z_])([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#N([^0-9]|$)|/issues/N([^0-9]|$)|(^|[^0-9A-Za-z_])(close[sd]?|fix(e[sd])?|resolve[sd]?):?[[:space:]]+(([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[0-9]+|https://github\.com/[^[:space:]]+/issues/[0-9]+)'`
   - 補充檢查 (b)/**PR 描述與分支 commit 訊息**：保留模板必填的結構化欄位（如 `PRIMARY_ISSUE: #N`、`Primary Issue: #N`），只禁止 closing keyword 緊接任何 Issue 引用。檢查（對 PR 描述與 `git log --format=%B <base>..<head>` 執行，須零命中）：`grep -nEi '(^|[^0-9A-Za-z_])(close[sd]?|fix(e[sd])?|resolve[sd]?):?[[:space:]]+(([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[0-9]+|https://github\.com/[^[:space:]]+/issues/[0-9]+)'`
-  - 合併時明確設定 squash body 而非預設串接。PR #790 只改寫了 squash 標題，body 仍為預設串接、含多處 `#781`（未遵守 (a)）；#781 未被自動關閉只說明這些不帶 keyword 的裸引用未觸發關單，不能當本規則的驗證案例。截至 2026-10-06 尚無完全依本條（closed_by_pull_requests 檢查＋明確簡要 body＋grep 預檢零命中）合併的案例。
+  - 合併時明確設定 squash body 而非預設串接。PR #790 只改寫了 squash 標題，body 仍為預設串接、含多處 `#781`（未遵守 (a)）；#781 未被自動關閉只說明這些不帶 keyword 的裸引用未觸發關單，不能當本規則的驗證案例。**2026-10-06 首個遵守案例**：PR #794（Issue 750）合併前讀取 closed_by_pull_requests 為空，squash 標題 `rate-limit：公開端點節流只採信平台附加的用戶端 IP（Issue 750）` 不含 closing keyword，commit body 無 keyword 組合，grep 預檢零命中；squash body 明確設定為簡要摘要（不用預設串接）；Issue 750 在合併後於 close guard（CLOSE_APPROVED issuecomment-6010896434）監督下於 2026-10-06T00:13:53Z 正式關單。
 - 證據：#787 events（closed 00:13:01Z、referenced 4679b611）。
 - 補充：2026-10-06 Codex P2 review on PR #791 comment 4191382479 指出本條預防原只涵蓋 squash 標題，GitHub 實際亦解析 PR 描述與 commit message 內的 closing keyword；見 https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue。
 - 補充（2026-10-06，同日 Codex P2 comment 4191472189）：原 grep 漏掉 `OWNER/REPO#N` 與 Issue URL 形式，改為結構化規則 (a)(b)，並更新預檢 grep 以涵蓋自身 Issue 所有可解析形式與其他 Issue 的 closing keyword 引用。發生次數仍為 1。
@@ -2223,3 +2227,59 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 補充（同日 Codex P2，comment 4191561983）：更正 #790 不是本規則的遵守案例。
 - 補充（同日 Codex P2，comment 4191657176）：撤回「標題觸發」推定，改以 closed_by_pull_requests 結構化檢查為主要預檢。
 - 狀態：已記錄（程序面預防）
+
+### PB-075 — TEST_VALIDATION lane 轉換時 guard 已自動 dispatch canonical TEST，主 session 再手動 dispatch 會被同 concurrency group 取代成重複 run
+
+- 首次／最近：2026-10-06／2026-10-06
+- 發生次數：1
+- Issue／PR／CI：PR #795（Issue 782），lane transition auto-dispatch；canonical TEST run 37422702127（auto）vs 37422677172（manual，同 lane_transition，同 head 3cea03f2）；GitHub cancelled 37422677172（only one pending per concurrency group `shared-test-supabase-integration`）。
+- 分類：CI 派工／並行管理
+- 事件：PR #795 body 變更 `AGENT_LANE` 從 `TERRA_BUILD` 轉 `TEST_VALIDATION`；受信 guard `lane_transition_auto_dispatch` 自動派工 canonical TEST（37422702127，lane_transition source）；同時主 session 手動 `gh workflow dispatch ci.yml`（37422677172，以為 auto 沒跑或延遲），結果 GitHub 因 concurrency 規則只保留 auto 版本，manual 被 cancelled。計入 invalidReruns +1。
+- 根因：lane transition 觸發自動派工有延遲；主 session 看不到 auto dispatch 已提交（約 1 分內完成），於是手動補派。guard 層與 session 層缺乏實時訊號同步。
+- 影響：多派一次，被 GitHub 自動取消（不算重跑失敗，但計為無效重複）；ledger 需記錄該次 cancelled run。
+- 修正：不改 auto-dispatch 邏輯；在 session 層 lane transition 之後，先用 `gh api repos/.../actions/runs?created=<date>` 或 workflow run list 掃同 head、同 concurrency group 已有的 pending run；若有，就不手動 dispatch（等待自動派工或讀 auto dispatch 的 run 編號）。
+- 預防：lane transition workflow 輸出 auto-dispatch 的 run_id（或改成 `return_dispatch_id: run_id`），session 層讀取該 output 並記錄，避免手動 dispatch；時間允許情況下，dispatch 前先 list 一次確認無待審核的相同 run。
+- 驗證：PR #795 的兩個 run ID 確認 37422677172 被 cancelled，37422702127 進入 integration 階段；commit 6b36be13 已補記 invalidReruns +1。
+- 狀態：已防止；lane_transition auto-dispatch 應輸出 run_id 供下游檢查。
+
+### PB-076 — Scout ledger 標準化複合主語時拆分成多項，造成偽造計數
+
+- 首次／最近：2026-10-06／2026-10-06
+- 發生次數：1
+- Issue／PR／CI：PR #791 commit 4ca56072（scout 編輯），修正 5394e645（audit 層發現）；production-stage subjects 複合標準化。
+- 分類：ledger 管理／數據完整性
+- 事件：scout 標準化 run ledger 的 `production.issuesStarted` 與 `issuesClosed` 複合主語（例 `issue#42 / pr#713 / …`）時，以 regex 拆分為 `issue#42` 和 `issue#713`；後者本應是 PR 編號，被誤作為 Issue 編號，於是 ledger 聲稱完成了不存在的 Issue #713。audit 層讀回時注意到計數不符且發現虛構 Issue，以修正 commit 改回原格式並驗證。
+- 根因：複合主語格式 Token 化時，只以 `issue#N` 計數；當拆分邏輯誤把 `pr#N` 也當 issue 時，造成計數溢漏與虛構對象。
+- 影響：ledger 失真；Product 計分卡的 issuesClosed 計數包含不存在的 Issue；若未被 audit 層抓住，會推送虛假的完成信號。
+- 修正：搜尋複合主語時，只認可以 `issue#N` 形式明確出現的對象，PR 引用（`pr#N`）**全部忽略或加進 PR-separate 欄位**；拆分後的產物一律交叉檢查與已知 Issue 列表。
+- 預防：(1) 標準化 ledger 時，複合主語的拆分邏輯只處理明確屬於該維度的 token（例 ledger 的 `production.issuesStarted` 只認 `issue#N`，不拆 `pr#N`）；(2) 任何批量編輯 ledger 後，逐筆列舉所有主語，與 GitHub 上已知的 open/closed Issue 清單交叉比對；(3) audit 層應在讀 ledger 前驗證所宣告的 issue 是否真實存在（`gh api repos/.../issues/<number>`）。
+- 驗證：修正後的 ledger 主語全部驗證通過；PR #791 commit 5394e645 的 issuesClosed 數值正確。
+- 狀態：已更正；scout 層 ledger 編輯 SOP 應含「拆分複合主語後交叉驗證」。
+
+### PB-077 — 共用 worktree 上，reviewer 在 builder/pusher 進行 verify-before-push 時運行寫入操作，會造成 HEAD 改變或測試干擾
+
+- 首次／最近：2026-10-06／2026-10-06
+- 發生次數：1
+- Issue／PR／CI：PR #791 review phase；shared worktree (commit `8b2de5c0` 時)；verify-before-push run 期間 reviewer mutation。
+- 分類：流程管理／worktree 衛生
+- 事件：PR #791 的 fresh-context reviewer session 在審查過程中對同一 worktree 運行 commit amend 等突變操作，同時 main session 的 verify-before-push 在執行測試。verify 發現 `HEAD 變成 detached`、或測試 fixture 被突變破壞；verify script 拒絕推送（VERIFY_FAILED）。
+- 根因：worktree 限制資源時常被多個 agent 或 thread 重用；reviewer 與 builder/pusher 同時操作同一 clone，造成檔案狀態不同步。
+- 影響：verify-before-push 失敗，無法推送；需回檔重新 verify；若誤認為 verify 失敗是「內容有問題」而重跑測試或修改代碼，會衍生更多干擾。
+- 修正：reviewer 應使用 `git show <ref>:<path>`（讀取樹）或 `git diff <base> <head>`（對比）或獨立 worktree（`git worktree add`），不應在同一 clone 上進行 `checkout`、`commit`、`rebase` 等突變。若必須編輯（例修改 ledger），應在分開的臨時 worktree 中進行。
+- 預防：(1) reviewer agent 應被限制為唯讀 Git 操作（`git show`, `git diff`, `git log`），不得 `checkout` 或 `commit`；(2) 若 reviewer 需編輯檔案（ledger、文件），應獲配獨立 worktree 或在操作前告知 builder/pusher 暫停 verify；(3) builder/pusher 的 verify-before-push 前應檢查 worktree 狀態（`git status`），拒絕在髒狀態或 detached HEAD 下推送。
+- 驗證：PR #791 修正後，reviewer session 改用 `git show/diff`；main session verify-before-push 成功通過，無 detached HEAD。
+- 狀態：已防止；reviewer role SOP 應限定為唯讀 Git 操作。
+
+### PB-078 — Ledger commit 與 canonical TEST 在同 exact head 上並行運行時，push ledger 會改變 HEAD，使 TEST 證據失效
+
+- 首次／最近：2026-10-06／2026-10-06
+- 發生次數：1
+- Issue／PR／CI：2026-10-06 教訓；canonical TEST run 與 ledger-only commit timing；exact-head 成為 canon 的必要條件。
+- 分類：ledger 管理／exact-head 保護
+- 事件：scout 在 canonical TEST（run 37422702127）執行中推送 ledger-only commit；該 commit 的 parent 是 exact-head（3cea03f2），commit 後 exact-head 變成新 commit SHA（ledger commit）。期中 TEST 對 exact-head 的所有證據（stdout、artifacts、timing）不再與最終 merge head 對應；若之後以該 ledger commit 為 EXACT_HEAD 去驗收，會對比錯的樹（新樹包含 ledger 改動，舊樹不含）。
+- 根因：exact-head 是指定為 canonical 時的 commit SHA，用來防止「merge 前的改動被 merge 吃掉」。若在 TEST 執行中推送代碼 commit，新 HEAD 變成 canon，但舊 exact-head 的 TEST 結果失效。delayed ledger commit 本意是保留 exact-head 不變，但若 TEST 完成前推送，反而改變了 exact-head。
+- 影響：TEST 的 canonical run 與 final merge 的樹不對應；scorecard 或 guard 依賴的「exact-head 與 main 差異」驗證失敗；merge 後發現 TEST 的 baseline 早就過時。
+- 修正：(1) 若 canonical TEST 在執行中（未返回結果），延後 ledger commit 推送至 TEST 完成；(2) 或先在 PR/Issue 留言記錄待補的 ledger，不 commit 推送，待下一個**實質代碼** commit 時合併補記（此時 exact-head 自然更新為新代碼樹）；(3) 或在 ledger commit 推送時明確宣告「exact-head 已變為新 ledger commit」，更新所有參考。
+- 預防：(1) ledger commit 的推送時機應受 exact-head 狀態控制：若 canonical TEST pending/running，維持 exact-head 不變，ledger 延後或記為 pending；(2) 檢查清單：推送 ledger-only commit 前，讀 GitHub actions 確認沒有同 head 的 pending/running TEST；(3) EXACT_HEAD 與 FINAL_CANONICAL 的判定邏輯應明確區分：exact-head 是「用來防止 merge 期間改動」的點，ledger-only commit 不應改變它。
+- 驗證：PR #791 ledger commit（commit 6b36be13）與當時的 exact-head 比對；確認延後推送直到 TEST 完成後才提交。
+- 狀態：已防止；ledger push SOP 應含「檢查 canonical TEST 狀態」與「exact-head 保護」。
