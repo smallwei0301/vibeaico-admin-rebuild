@@ -193,6 +193,17 @@ describe('computeFormation — availability（成團決策紀錄可用性）與�
     expect(f.availability).toBe('NOT_TRACKED');
     expect(formationCardMode(f)).toBe('NOT_TRACKED');
   });
+  it('全部 COLLECTING 但其中一筆有 formation_decided_at（EXTEND 延長募集回到 COLLECTING）→ TRACKED', () => {
+    const extended: GuideDepartureRow = { ...d('a', '2026-10-02', 'COLLECTING'), formation_decided_at: '2026-09-30T02:00:00Z' };
+    expect(C([extended, d('b', '2026-10-03', 'COLLECTING')]).availability).toBe('TRACKED');
+    expect(C([{ ...extended, departs_on: '2026-09-25' }]).availability).toBe('TRACKED');
+    expect(formationCardMode(C([extended]))).toBe('SHOWN');
+  });
+  it('全部 COLLECTING 且 formation_decided_at 皆 null／缺失 → NOT_TRACKED', () => {
+    const f = C([{ ...d('a', '2026-10-02', 'COLLECTING'), formation_decided_at: null }, d('b', '2026-10-03', 'COLLECTING')]);
+    expect(f.availability).toBe('NOT_TRACKED');
+    expect(formationCardMode(f)).toBe('NOT_TRACKED');
+  });
   it('只要有一團 FORMED（本期或上一期）→ TRACKED；REVIEW_REQUIRED 也算有紀錄', () => {
     expect(C([d('a', '2026-10-02', 'COLLECTING'), d('b', '2026-10-03', 'FORMED')]).availability).toBe('TRACKED');
     expect(C([d('a', '2026-09-25', 'FAILED')]).availability).toBe('TRACKED');
