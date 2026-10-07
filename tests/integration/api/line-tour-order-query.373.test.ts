@@ -97,10 +97,18 @@ async function postWebhook(text: string, replyToken: string): Promise<void> {
 /** 以顧客身分送一則文字訊息，回傳 mock LINE 收到的 reply 文字（沒回覆＝null） */
 async function customerSays(text: string): Promise<string | null> {
   mock.reset();
-  await postWebhook(text, `rt-${Math.random().toString(36).slice(2)}`);
+  const replyToken = `rt-${Math.random().toString(36).slice(2)}`;
+  await postWebhook(text, replyToken);
   const replies = mock.requestsFor('/v2/bot/message/reply');
   if (replies.length === 0) return null;
-  expect(replies).toHaveLength(1);
+  const replyTokens = replies.map((reply) => reply.body?.replyToken ?? null);
+  // 只建診斷，不過濾回覆：foreign callback 與同 token 重複回覆都必須維持紅燈。
+  const diagnostics = `LINE replyToken expected=${replyToken}; received=${JSON.stringify(replyTokens)}; ` +
+    `unexpected=${JSON.stringify(replyTokens.filter((token) => token !== replyToken))}`;
+  expect(replies, diagnostics).toHaveLength(1);
+  for (const reply of replies) {
+    expect(reply.body?.replyToken, diagnostics).toBe(replyToken);
+  }
   return String(replies[0].body?.messages?.[0]?.text ?? '');
 }
 
