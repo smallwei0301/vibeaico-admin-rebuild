@@ -73,19 +73,16 @@ const DEPARTURE_ANCHOR_DATE = '2026-08-23';
 
 /**
  * 成團表現 mock：把種子團次的出發日在呼叫當下平移為相對今天（全部落在今天以前，與報表日期上限一致），
- * 另補上一期的幾筆（已成團／未成團）讓「與上一期比較」有真實資料。formation_status 取自 mock 本身，
+ * 另補上一期的幾筆（已成團／未成團）讓「與上一期比較」有真實資料。formation_status 取自團次 mock 本身（dp_3 FORMED、dp_5 FAILED 皆已在 MOCK_TRIP_DEPARTURES），
  * 不另造；GUIDE 專屬，函式內計算、不在模組層級凍結。
  */
 export function mockDepartureRows(nowMs: number = Date.now()): GuideDepartureRow[] {
   const today = zonedToday(ZONE, nowMs);
-  // 報表示範的呈現調整（不改 MOCK_TRIP_DEPARTURES，收件匣／成團決策 mock 仍用原本的種子）：
-  //  - dp_4（REVIEW_REQUIRED）設為今天出發 → 呈現「今天出發、尚待成團決策 1 團」（尚未結案）
-  //  - dp_3、dp_5（過去的 COLLECTING）改為已有決策（FORMED／FAILED），不再全都像舊資料
+  // 唯一的報表示範調整，僅是日期平移，formation_status 不覆寫（一律取團次 mock）：
+  //  - dp_4（REVIEW_REQUIRED）出發日設為今天 → 呈現「今天出發、尚待成團決策 1 團」（尚未結案）
   //  - dp_10 保留過去的 COLLECTING → 呈現「無成團決策紀錄 1 團」
-  const reportOverride: Record<string, { departs_on?: string; formation_status?: string }> = {
+  const reportOverride: Record<string, { departs_on?: string }> = {
     dp_4: { departs_on: today },
-    dp_3: { formation_status: 'FORMED' },
-    dp_5: { formation_status: 'FAILED' },
   };
   const seeded = MOCK_TRIP_DEPARTURES.map((d) => ({
     id: d.id,
