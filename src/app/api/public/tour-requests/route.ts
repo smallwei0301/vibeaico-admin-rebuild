@@ -48,6 +48,10 @@ export const POST = handle(async (req) => {
     return ok({ orderId, orderNo }, { status: 201 });
   } catch (e) {
     if (e instanceof PublicTourRequestError) {
+      if (e.code === 'PRICE_CHANGED') {
+        return fail(409, e.message, ERR.PRICE_CHANGED, e.quote ? { quote: e.quote } : undefined);
+      }
+      if (e.code === 'PRICE_UNVERIFIABLE') return fail(409, e.message, ERR.PRICE_UNVERIFIABLE);
       const status = e.code === 'SEATS_UNAVAILABLE' ? 409
         : e.code === 'PARTY_SIZE_OUT_OF_RANGE' ? 400
           : e.code === 'DEPARTURE_NOT_AVAILABLE' ? 409

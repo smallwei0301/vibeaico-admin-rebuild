@@ -15,6 +15,8 @@ export class ApiError extends Error {
     message: string,
     public code?: string,
     public status?: number,
+    /** 失敗回應的選填酬載（例：#749 PRICE_CHANGED 的 { quote }）；只增不改。 */
+    public data?: unknown,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -58,7 +60,7 @@ export async function request<T>(
   }
 
   if (!res.ok || body.success === false) {
-    throw new ApiError(body.message ?? '操作失敗，請稍後再試', body.code, res.status);
+    throw new ApiError(body.message ?? '操作失敗，請稍後再試', body.code, res.status, body.data);
   }
   return body.data as T;
 }

@@ -39,6 +39,7 @@ import { z } from 'zod';
 import { resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
 import { hasSeasonalPricing, loadPlanSeasons, seasonUnitPriceFor } from '@/server/public-plan-seasons';
 import { loadBookingCandidateRows } from '@/server/public-tour-booking';
+import { createTourOrderWithQuote, PRICE_UNVERIFIABLE_MESSAGE, type PriceQuote } from '@/server/public-order-quote';
 import { createAdminSupabase } from '@/server/supabase';
 import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
 import { hydrateTourOrders } from '@/server/tour-orders';
@@ -186,6 +187,8 @@ export const submitPublicTourRequestSchema = z.object({
   planId: z.string().uuid(),
   departureId: z.string().uuid(),
   partySize: z.coerce.number().int().min(1, '人數至少為 1'),
+  /** #749：旅客在頁面上看到並確認的總額；有帶時送出當下伺服器依現價重新比對（非原子，空窗由後續 migration 0137 收斂），不符回 PRICE_CHANGED。舊頁面快取不帶則沿用舊行為。 */
+  expectedTotal: z.number().nonnegative().finite().optional(),
   // Final Risk F2：這幾個欄位先前沒有 `.max()`，是本檔唯一一批缺上限的自由文字
   // 欄位（`preferredNote`／`specialRequest` 一開始就有 500 字上限）——在 F1 的
   // 匿名節流補上之前，這是最便宜的儲存耗盡手段。上限值取一般表單常見上限
@@ -210,7 +213,7 @@ export const submitPublicTourRequestSchema = z.object({
 export type SubmitPublicTourRequestInput = z.infer<typeof submitPublicTourRequestSchema>;
 
 export class PublicTourRequestError extends Error {
-  constructor(public code: string, message: string) { super(message); }
+  constructor(public code: string, message: string, public quote?: PriceQuote) { super(message); }
 }
 
 const MAX_ORDER_NO_ATTEMPTS = 3;
@@ -264,7 +267,7 @@ export async function submitPublicTourRequest(
       throw queryFailed('order_no', nError);
     }
 
-    const { data, error } = await admin.rpc('create_tour_order', {
+    const { data, error, quote } = await createTourOrderWithQuote(admin, {
       p_tenant: plan.tenantId,
       p_order_no: candidateOrderNo,
       p_departure: input.departureId,
@@ -279,6 +282,11 @@ export async function submitPublicTourRequest(
       // REQUEST 訂單本身不因為「未付款」而自動過期（10 分冊既有慣例：
       // hold_expires_at 只在導遊接受後由 accept_tour_request 算出）。
       p_hold_expires: null,
+    }, {
+      expectedTotal: input.expectedTotal,
+      plan: { tenantId: plan.tenantId, planId: plan.planId },
+      departsOn: departure.departsOn,
+      partySize: input.partySize,
     });
 
     if (!error) { orderId = data as string; orderNo = candidateOrderNo; break; }
@@ -286,6 +294,12 @@ export async function submitPublicTourRequest(
     const message = String((error as { message?: string } | null)?.message ?? '');
     if ((error as { code?: string } | null)?.code === '23505' || message.includes('duplicate key')) {
       lastError = error; continue;
+    }
+    if (message.includes(PRICE_UNVERIFIABLE_MESSAGE)) {
+      throw new PublicTourRequestError('PRICE_UNVERIFIABLE', '線上價格暫時無法確認，請直接聯絡店家');
+    }
+    if (message.includes('PRICE_CHANGED')) {
+      throw new PublicTourRequestError('PRICE_CHANGED', '價格已更新，請確認新的金額後再送出', quote);
     }
     if (message.includes('SEATS_UNAVAILABLE')) {
       throw new PublicTourRequestError('SEATS_UNAVAILABLE', '此團次名額已被搶先申請，請重新選擇日期');

@@ -16,6 +16,8 @@ export const ERR = {
   LINE_API_ERROR: 'LINE_002',      // LINE 平台回傳錯誤
   OWNER_NOTIFY_LIMIT: 'LINE_003',        // 老闆通知名單已達上限（3 位，無付費解鎖）
   OWNER_NOTIFY_BIND_INVALID: 'LINE_004', // 邀請已不存在／已過期／對象不符
+  PRICE_CHANGED: 'TOUR_003',       // 公開下單：頁面金額與實際金額不符，回傳現價請旅客重新確認（#749）
+  PRICE_UNVERIFIABLE: 'TOUR_004',  // 公開下單：季節價資料不完整，無法確認目前金額（#749，僅 0137 套用前的 fallback）
   SEATS_UNAVAILABLE: 'TOUR_001',   // 團次名額不足（10 分冊 §2；併發搶最後一席的敗方）
   TOUR_REQUEST_NOT_ELIGIBLE: 'TOUR_002', // REQUEST 訂單非 PENDING 或方案非 REQUEST，不能接受／拒絕（#46）
   EXTERNAL_CONFIG_BLOCKED: 'EXT_001',    // 依賴的外部憑證／設定尚未到位（例：平台 ECPay 商店憑證，issue #25 C 段）
@@ -29,8 +31,9 @@ export function ok<T>(data?: T, init?: ResponseInit) {
   return NextResponse.json({ success: true, data }, init);
 }
 
-export function fail(status: number, message: string, code?: string) {
-  return NextResponse.json({ success: false, message, code }, { status });
+/** `extra` 為選填的 `data` 酬載（例：#749 PRICE_CHANGED 帶現價 quote）；不傳時回應形狀與舊版完全相同。 */
+export function fail(status: number, message: string, code?: string, extra?: Record<string, unknown>) {
+  return NextResponse.json({ success: false, message, code, ...(extra ? { data: extra } : {}) }, { status });
 }
 
 /** route handler 最外層包這個：zod 錯誤→400、ApiHttpError→對應狀態、其他→500 */
