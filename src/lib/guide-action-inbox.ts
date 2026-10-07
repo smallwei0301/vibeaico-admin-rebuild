@@ -655,6 +655,26 @@ export function buildGuideActionInboxTourRequestItem(
   };
 }
 
+/**
+ * PostgREST `or` 篩選字串：只留「尚未出發」的團次（租戶時區）——日期在今天之後，或今天但
+ * `start_time` 晚於現在，或今天但沒有 start_time（只知道日期，保留到當天結束）。
+ * `start_time` 是 `time` 欄位（0066），HH:MM:SS 字串比較即時間先後。與 `departureStillAhead`
+ * 同一條規則，用來在查詢層先排除今天已出發的團次，避免它們塞滿有限視窗（builder 仍保留精確檢查作防呆）。
+ */
+export function getGuideActionInboxNotStartedDepartureFilter(
+  now: Date = new Date(),
+  timeZone: string = DEFAULT_GUIDE_TIME_ZONE,
+): string {
+  const today = dateKey(now, timeZone);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: normalizeGuideTimeZone(timeZone),
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  }).formatToParts(now);
+  const v = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const time = `${v.hour}:${v.minute}:${v.second}`;
+  return `departs_on.gt.${today},and(departs_on.eq.${today},start_time.gt.${time}),and(departs_on.eq.${today},start_time.is.null)`;
+}
+
 function localTimeKey(date: Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: normalizeGuideTimeZone(timeZone),

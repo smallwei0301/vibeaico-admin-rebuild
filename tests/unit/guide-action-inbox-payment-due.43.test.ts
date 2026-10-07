@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
   buildGuideActionInboxTourPaymentDueItem,
+  getGuideActionInboxNotStartedDepartureFilter,
   dropGuideActionInboxOrderCardsAlreadyCovered,
   getGuideDepartureDueAt,
   type GuideActionInboxTourPaymentDueInput,
@@ -32,11 +33,23 @@ function apply(rows: FakeRow[], calls: Call[]): FakeRow[] {
     const f = a[0] as string;
     if (m === 'eq') out = out.filter((r) => field(r, f) === a[1]);
     else if (m === 'or') {
-      // 只支援 route 的 keyset 寫法：departs_on.gt.X,and(departs_on.eq.X,id.gt.Y)
-      const mt = String(a[0]).match(/^departs_on\.gt\.([^,]+),and\(departs_on\.eq\.\1,id\.gt\.(.+)\)$/);
-      if (!mt) throw new Error(`unsupported or(): ${String(a[0])}`);
-      out = out.filter((r) => String(r.departs_on) > mt[1]
-        || (String(r.departs_on) === mt[1] && String(r.id) > mt[2]));
+      const embedded = (a[1] as { referencedTable?: string } | undefined)?.referencedTable;
+      const get = (r: FakeRow, k: string) => (embedded ? field(r, `${embedded}.${k}`) : r[k]);
+      const expr = String(a[0]);
+      // 尚未出發：departs_on.gt.D,and(departs_on.eq.D,start_time.gt.T),and(departs_on.eq.D,start_time.is.null)
+      const ns = expr.match(/^departs_on\.gt\.([^,]+),and\(departs_on\.eq\.\1,start_time\.gt\.([^)]+)\),and\(departs_on\.eq\.\1,start_time\.is\.null\)$/);
+      // keyset：departs_on.gt.X,and(departs_on.eq.X,id.gt.Y)
+      const ks = expr.match(/^departs_on\.gt\.([^,]+),and\(departs_on\.eq\.\1,id\.gt\.(.+)\)$/);
+      if (ns) {
+        out = out.filter((r) => {
+          const d = String(get(r, 'departs_on'));
+          const st = get(r, 'start_time');
+          return d > ns[1] || (d === ns[1] && (st == null || String(st) > ns[2]));
+        });
+      } else if (ks) {
+        out = out.filter((r) => String(r.departs_on) > ks[1]
+          || (String(r.departs_on) === ks[1] && String(r.id) > ks[2]));
+      } else throw new Error(`unsupported or(): ${expr}`);
     } else if (m === 'neq') out = out.filter((r) => field(r, f) !== a[1]);
     else if (m === 'gte') out = out.filter((r) => (field(r, f) as string) >= (a[1] as string));
     else if (m === 'in') out = out.filter((r) => (a[1] as unknown[]).includes(field(r, f)));
@@ -214,6 +227,18 @@ describe('buildGuideActionInboxTourPaymentDueItem (#43 類別 2)', () => {
       [{ id: 'a' }, { id: 'b' }], [{ id: 'a' }, { id: 'x' }],
     );
     expect(kept).toEqual([{ id: 'b' }]);
+  });
+});
+
+describe('not-started departure filter string (#43 類別 2)', () => {
+  it('is tenant-local: date after today, or today with later start_time, or today without start_time', () => {
+    expect(getGuideActionInboxNotStartedDepartureFilter(NOW, TZ)).toBe(
+      'departs_on.gt.2026-09-20,and(departs_on.eq.2026-09-20,start_time.gt.12:00:00),and(departs_on.eq.2026-09-20,start_time.is.null)',
+    );
+    // UTC 還是前一天、台北已是隔天 00:30
+    expect(getGuideActionInboxNotStartedDepartureFilter(new Date('2026-09-19T16:30:05.000Z'), TZ)).toContain(
+      'departs_on.gt.2026-09-20,and(departs_on.eq.2026-09-20,start_time.gt.00:30:05)',
+    );
   });
 });
 
@@ -566,6 +591,54 @@ describe('route.ts: payment-due source filters, window and display fields (#43 �
       clock.mockRestore();
       warn.mockRestore();
     }
+  });
+
+  const taipeiToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date());
+  const orQueries = () => recorded.filter((r) => r.calls.some(([m]) => m === 'or'));
+  const embeddedNotStarted = (q: { calls: Call[] }) => q.calls.find(([m, a]) => m === 'or'
+    && (a[1] as any)?.referencedTable === 'trip_departures');
+
+  it('≥200 INITIAL orders on departures that already started today do not crowd out a valid future order (query-level or-filter)', async () => {
+    const hold = new Date(Date.now() + 3_600_000).toISOString();
+    const departed = Array.from({ length: 200 }, (_, i) => mk({
+      id: `gone${i}`, payment_status: 'UNPAID', hold_expires_at: hold,
+      trip_departures: { departs_on: taipeiToday(), start_time: '00:00:00' },
+    }));
+    const future = mk({ id: 'future-init', payment_status: 'UNPAID', hold_expires_at: hold });
+    const due = await run([...departed, future]);
+    expect(due.map((i) => i.id)).toEqual(['future-init']);
+    const q = recorded.find((r) => r.table === 'tour_orders'
+      && r.calls.some(([m, a]) => m === 'eq' && a[0] === 'seats_reserved'))!;
+    const orCall = embeddedNotStarted(q)!;
+    expect(String(orCall[1][0])).toContain(`departs_on.gt.${taipeiToday()}`);
+    expect(String(orCall[1][0])).toContain('start_time.gt.');
+    expect(String(orCall[1][0])).toContain('start_time.is.null');
+  });
+
+  it('PARTIAL and PENDING fast paths: ≥200 departed-today orders do not make the window "complete" without the future one', async () => {
+    const gone = { departs_on: taipeiToday(), start_time: '00:00:00' };
+    const plan = { sales_mode: 'FIXED_DEPARTURE', name: 'p' };
+    const rows = [
+      ...Array.from({ length: 200 }, (_, i) => mk({ id: `pg${i}`, trip_departures: gone })),
+      mk({ id: 'partial-future' }),
+      ...Array.from({ length: 200 }, (_, i) => mk({ id: `ng${i}`, status: 'PENDING', payment_status: 'UNPAID', trip_plans: plan, trip_departures: gone })),
+      mk({ id: 'pending-future', status: 'PENDING', payment_status: 'UNPAID', trip_plans: plan }),
+    ];
+    const due = await run(rows);
+    expect(due.map((i) => i.id).sort()).toEqual(['partial-future', 'pending-future']);
+    for (const q of paymentOrderQueries()) expect(embeddedNotStarted(q)).toBeTruthy();
+  });
+
+  it('slow-path departure scan also carries the not-started or-filter (top-level, next to the keyset or)', async () => {
+    const rows = Array.from({ length: 250 }, (_, i) => mk({ id: `q${i}`, trip_departures: { departs_on: dayStr(300 - i), start_time: '09:00:00' } }));
+    await run(rows);
+    const dq = depWindowQueries();
+    expect(dq.length).toBeGreaterThan(0);
+    for (const q of dq) {
+      const ors = q.calls.filter(([m]) => m === 'or').map(([, a]) => String(a[0]));
+      expect(ors.some((x) => x.includes(`start_time.gt.`) && x.includes('start_time.is.null'))).toBe(true);
+    }
+    expect(orQueries().length).toBeGreaterThan(0);
   });
 
   it('warns (no PII) when a batch hits the per-batch order limit — covered by source: only counts are logged', () => {

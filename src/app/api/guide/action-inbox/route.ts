@@ -9,6 +9,7 @@ import {
   buildGuideActionInboxTourRequestItem,
   dropGuideActionInboxOrderCardsAlreadyCovered,
   getGuideActionInboxDateWindow,
+  getGuideActionInboxNotStartedDepartureFilter,
   getGuideDepartureDueAt,
   getGuideDepartureDay,
   getGuideActionInboxPriority,
@@ -133,6 +134,8 @@ export const GET = handle(async () => {
   const timeZone = normalizeGuideTimeZone(rawTimeZone);
   const now = new Date();
   const { today, tomorrow } = getGuideActionInboxDateWindow(now, timeZone);
+  // 查詢層排除今天已出發的團次（見該 helper 的說明）；內嵌在訂單查詢時走 `trip_departures.or`。
+  const notStarted = getGuideActionInboxNotStartedDepartureFilter(now, timeZone);
 
   const [
     bookingResult, paymentBookingResult, departureResult, formationResult, refundPendingResult,
@@ -252,6 +255,7 @@ export const GET = handle(async () => {
       .not('hold_expires_at', 'is', null)
       .neq('trip_departures.status', 'CANCELLED')
       .gte('trip_departures.departs_on', today)
+      .or(notStarted, { referencedTable: 'trip_departures' })
       .order('hold_expires_at', { ascending: true })
       .limit(PAYMENT_DUE_WINDOW),
   ]);
@@ -541,7 +545,8 @@ export const GET = handle(async () => {
     // 與慢路徑的團次視窗一致：已取消的團次（trip_departures.status = 'CANCELLED'，0066）不產生卡片。
     return (kind === 'PENDING' ? base.neq('trip_plans.sales_mode', 'REQUEST') : base)
       .neq('trip_departures.status', 'CANCELLED')
-      .gte('trip_departures.departs_on', today);
+      .gte('trip_departures.departs_on', today)
+      .or(notStarted, { referencedTable: 'trip_departures' });
   };
 
   const scanPaymentDue = async (kind: 'PARTIAL' | 'PENDING'): Promise<any[]> => {
@@ -576,7 +581,9 @@ export const GET = handle(async () => {
         .select('id, departs_on, start_time')
         .eq('tenant_id', t.tenantId)
         .neq('status', 'CANCELLED')
-        .gte('departs_on', today);
+        .gte('departs_on', today)
+        // 與 keyset 的 or 是兩個獨立的 `or` 參數（PostgREST 以 AND 合併）。
+        .or(notStarted);
       if (cursor) {
         depQuery = depQuery.or(
           `departs_on.gt.${cursor.departsOn},and(departs_on.eq.${cursor.departsOn},id.gt.${cursor.id})`,
