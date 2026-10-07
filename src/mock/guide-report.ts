@@ -89,6 +89,7 @@ export function mockDepartureRows(nowMs: number = Date.now()): GuideDepartureRow
     departs_on: addDays(today, -9 + diffDays(d.departsOn, DEPARTURE_ANCHOR_DATE)),
     formation_status: d.formationStatus ?? 'COLLECTING',
     status: d.status,
+    formation_decided_at: d.formationDecidedAt ?? null,
     ...reportOverride[d.id],
   }));
   const previousPeriod: GuideDepartureRow[] = [

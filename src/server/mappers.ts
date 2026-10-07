@@ -433,6 +433,7 @@ export function mapTripDeparture(r: any): TripDeparture {
     formationDeadlineAt: r.formation_deadline_at ?? null,
     minToDepartSnapshot: Number.isFinite(Number(r.min_to_depart_snapshot))
       ? Number(r.min_to_depart_snapshot) : 1,
+    formationDecidedAt: r.formation_decided_at ?? null,
     formedAt: r.formed_at ?? null,
     formedBy: r.formed_by === 'SYSTEM' || r.formed_by === 'GUIDE_OVERRIDE' ? r.formed_by : null,
     formedParticipants: r.formed_participants == null ? null : Number(r.formed_participants),

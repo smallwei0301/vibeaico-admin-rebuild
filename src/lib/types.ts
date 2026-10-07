@@ -551,6 +551,8 @@ export type TripDeparture = {
   formationDeadlineAt?: string | null;
   /** 建立團次時從 Plan snapshot 的成團門檻。 */
   minToDepartSnapshot?: number;
+  /** 導遊成團決策（FORM／EXTEND／CONTINUE）的時間；EXTEND 後仍是 COLLECTING 但保留此欄，報表以它判斷成團資料已追蹤。 */
+  formationDecidedAt?: string | null;
   formedAt?: string | null;
   formedBy?: DepartureFormedBy | null;
   formedParticipants?: number | null;
