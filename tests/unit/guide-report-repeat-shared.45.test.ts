@@ -131,6 +131,15 @@ describe('報表與訂單清單下鑽共用重複旅客查詢', () => {
     expect((await get('&page=2&size=2')).content).toEqual([]);
   });
 
+  it('邊界與報表一致：剛好 MAX_ROWS 筆仍成功（200），MAX_ROWS+1 才 422', async () => {
+    state.orders = Array.from({ length: 20000 }, (_, i) => o(`z${String(i).padStart(6, '0')}`, `cust${i}`, IN));
+    const ok = await ordersGET(new Request('http://t/api/tour-orders?repeatCustomers=1&createdFrom=2026-10-01&createdTo=2026-10-10'), {});
+    expect(ok.status).toBe(200);
+    state.orders.push(o('z999999', 'custX', IN));
+    const over = await ordersGET(new Request('http://t/api/tour-orders?repeatCustomers=1&createdFrom=2026-10-01&createdTo=2026-10-10'), {});
+    expect(over.status).toBe(422);
+  });
+
   it('區間內訂單超過 MAX_ROWS → 422 與 REPORT_001（不回傳不完整集合）', async () => {
     state.orders = Array.from({ length: 20001 }, (_, i) => o(`z${String(i).padStart(6, '0')}`, `cust${i}`, IN));
     const res = await ordersGET(new Request('http://t/api/tour-orders?repeatCustomers=1&createdFrom=2026-10-01&createdTo=2026-10-10'), {});

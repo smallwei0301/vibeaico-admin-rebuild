@@ -9,7 +9,7 @@ import {
   GuideReportRangeError, addDays, computeGuideReport, resolveReportRange, zonedToday,
   type GuideReport, type GuideReportOrderRow,
 } from '@/server/guide-report';
-import { MOCK_GUIDE_ORDERS, MOCK_GUIDE_PLANS, MOCK_GUIDE_TRIPS } from '@/mock/guide-report';
+import { mockGuideNames, mockOrderToReportRow, mockTourOrdersRelativeToNow } from '@/mock/guide-report';
 import {
   MOCK_DASHBOARD_ALERTS, MOCK_DASHBOARD_STATS, MOCK_STAFF_PERFORMANCE, byMode,
 } from '@/mock';
@@ -433,19 +433,18 @@ function buildMockGuideReport(q: GuideReportQuery): GuideReport {
     if (e instanceof GuideReportRangeError) throw new ApiError(e.message, 'REQ_001', 400);
     throw e;
   }
-  const rows: GuideReportOrderRow[] = MOCK_GUIDE_ORDERS.map(({ dayOffset, ...o }) => ({
-    ...o,
-    // 台北中午 12:00（= 04:00Z），避免落在日界線上
-    created_at: `${addDays(to, -dayOffset)}T04:00:00Z`,
-  }));
-  // 與 real 同一口徑：本期旅客中，本期開始之前已有非取消訂單者（mock 資料內 created_at 早於 from 的列）
+  // 與旅遊訂單清單 mock 同一份資料、同一個日期基準（呼叫當下相對今天），數字走同一支純計算
+  const nowMs = Date.now();
+  const rows: GuideReportOrderRow[] = mockTourOrdersRelativeToNow(nowMs).map(mockOrderToReportRow);
+  const { trips, plans } = mockGuideNames();
+  // 與 real 同一口徑：本期旅客中，本期開始之前已有非取消訂單者
   const curFromMs = resolveReportRange(from, to, zone).curFromMs;
   const priorCustomerIds = new Set(rows
     .filter((r) => r.status !== 'CANCELLED' && r.customer_id && Date.parse(r.created_at) < curFromMs)
     .map((r) => r.customer_id as string));
   return computeGuideReport({
-    rows, from, to, timeZone: zone, tripNames: MOCK_GUIDE_TRIPS, planNames: MOCK_GUIDE_PLANS, priorCustomerIds,
-    asOf: new Date().toISOString(),
+    rows, from, to, timeZone: zone, tripNames: trips, planNames: plans, priorCustomerIds,
+    asOf: new Date(nowMs).toISOString(),
   });
 }
 

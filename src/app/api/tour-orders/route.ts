@@ -139,7 +139,8 @@ export const GET = handle(async (req) => {
       if (rowsPage.length < 1000) break;
       lastId = rowsPage[rowsPage.length - 1].id;
       scanned += rowsPage.length;
-      if (scanned >= MAX_ROWS) throw new ApiHttpError(422, '區間內訂單過多，請縮短日期區間', ERR.REPORT_RANGE_TOO_LARGE);
+      // 與報表同一邊界：剛好 MAX_ROWS 筆仍完整；真的存在第 MAX_ROWS+1 筆才拒絕
+      if (scanned > MAX_ROWS) throw new ApiHttpError(422, '區間內訂單過多，請縮短日期區間', ERR.REPORT_RANGE_TOO_LARGE);
     }
     cand.sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : (a.id < b.id ? 1 : -1)));
     count = cand.length;
