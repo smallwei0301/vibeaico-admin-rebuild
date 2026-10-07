@@ -446,14 +446,9 @@ describe('confirm-payment 對 seats_reserved 的守門（0111 Final Risk B2，cl
     expect(Number(row!.paid_amount ?? 0)).toBe(0);
   });
 
-  it('accept 之後訂單已是 CONFIRMED，confirm-payment 不是這條路徑的收款入口 → 409 CONFLICT，不改動任何資料', async () => {
-    // accept_tour_request 會直接把 REQUEST 訂單轉成 CONFIRMED（鎖名額＋起算 hold_expires_at），
-    // 而不是留在 PENDING 等這支路由收款。confirm-payment 專屬「PENDING → CONFIRMED＋PAID」
-    // 這一段既有的手動建單流程；同狀態自轉（CONFIRMED → CONFIRMED）本來就不合法
-    // （見 tour-domain.ts 的 canTransitionTourOrder），所以會被既有的狀態檢查擋下，
-    // 不會走到本輪新增的 seats_reserved 檢查。REQUEST 訂單接受後的付款對帳走的是
-    // 另一條尚未實作的切片，不在本 Issue 範圍內；這裡只確認 accept 後的訂單不會被
-    // confirm-payment 誤標成一筆自相矛盾的重複確認。
+  it('accept 之後訂單是 CONFIRMED + UNPAID，confirm-payment 可登記收款（#769）：PAID、paid_amount = total、hold 清空、名額不變', async () => {
+    // accept_tour_request 把 REQUEST 訂單轉成 CONFIRMED（鎖名額＋起算 hold_expires_at），付款仍 UNPAID。
+    // #769：這種「已接受、未付款」的單必須能登記收款；status 維持 CONFIRMED。
     await resetDeparture(TRIP_A.departure1, 10);
     await setPlanRequestMode(TRIP_A.planA1, 'REQUEST');
 
@@ -465,15 +460,22 @@ describe('confirm-payment 對 seats_reserved 的守門（0111 Final Risk B2，cl
     expect(await dbSeats(TRIP_A.departure1)).toBe(1);
 
     const confirmed = await ownerA.post(`/api/tour-orders/${order.id}/confirm-payment`, {});
-    expect(confirmed.status).toBe(409);
-    expect((await json(confirmed)).code).toBe('REQ_003');
+    expect(confirmed.status).toBe(200);
     expect(await dbSeats(TRIP_A.departure1)).toBe(1);
 
     const { data: row, error } = await admin.from('tour_orders')
-      .select('status, payment_status').eq('id', order.id).maybeSingle();
+      .select('status, payment_status, paid_amount, total_amount, hold_expires_at')
+      .eq('id', order.id).maybeSingle();
     expect(error).toBeNull();
     expect(row!.status).toBe('CONFIRMED');
-    expect(row!.payment_status).not.toBe('PAID');
+    expect(row!.payment_status).toBe('PAID');
+    expect(Number(row!.paid_amount)).toBe(Number(row!.total_amount));
+    expect(row!.hold_expires_at).toBeNull();
+
+    // 已 PAID 再登記一次 → 409，不得重複收款
+    const again = await ownerA.post(`/api/tour-orders/${order.id}/confirm-payment`, {});
+    expect(again.status).toBe(409);
+    expect((await json(again)).code).toBe('REQ_003');
   });
 });
 

@@ -432,6 +432,45 @@ export function canTransitionTourOrder(
   return false; // COMPLETED / CANCELLED 是終態
 }
 
+/** 訂單是否設有「只收一部分」的訂金：0 < deposit < total（0108 的 PARTIAL CHECK 要求 0 < paid < total）。 */
+export function hasPartialDeposit(order: { depositAmount: number | null | undefined; totalAmount: number | null | undefined }): boolean {
+  const d = Number(order.depositAmount ?? 0);
+  const total = Number(order.totalAmount ?? 0);
+  return d > 0 && d < total;
+}
+
+/** 「待收款」統計：UNPAID 與已收訂金仍有尾款的 PARTIAL 都算，已取消的不算（#816 Codex P2）。 */
+export function isAwaitingPayment(order: { status: string; paymentStatus: string | null | undefined }): boolean {
+  return order.status !== 'CANCELLED' && (order.paymentStatus === 'UNPAID' || order.paymentStatus === 'PARTIAL');
+}
+
+/**
+ * 「確認收到全額」可否執行（#769）。
+ * - PENDING + UNPAID：既有路徑（PENDING → CONFIRMED）。
+ * - CONFIRMED + UNPAID／PARTIAL 且已鎖名額：導遊已接受的申請單，一次收齊或補尾款。
+ * 名額是否鎖定（PENDING 路徑）由呼叫端另行以 `seats_reserved` 守門，維持原本的錯誤碼。
+ */
+export function canRegisterFullPayment(order: {
+  status: TourOrderStatusValue; paymentStatus: string | null | undefined; seatsReserved: boolean | null | undefined;
+}): boolean {
+  if (order.status === 'PENDING') return order.paymentStatus === 'UNPAID';
+  return order.status === 'CONFIRMED'
+    && (order.paymentStatus === 'UNPAID' || order.paymentStatus === 'PARTIAL')
+    && order.seatsReserved === true;
+}
+
+/**
+ * 「確認收到訂金」可否執行（#769 Owner 2026-10-07）：只限已接受未付款
+ * （CONFIRMED + UNPAID + seats_reserved），且訂單有 0 < deposit_amount < total_amount。
+ */
+export function canRegisterDepositPayment(order: {
+  status: TourOrderStatusValue; paymentStatus: string | null | undefined; seatsReserved: boolean | null | undefined;
+  depositAmount: number | null | undefined; totalAmount: number | null | undefined;
+}): boolean {
+  return order.status === 'CONFIRMED' && order.paymentStatus === 'UNPAID' && order.seatsReserved === true
+    && hasPartialDeposit(order);
+}
+
 /**
  * 取消時要不要釋放名額。
  *

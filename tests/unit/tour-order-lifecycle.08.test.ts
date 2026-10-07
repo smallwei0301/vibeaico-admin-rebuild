@@ -199,7 +199,7 @@ describe('付款狀態與實收金額必須一致', () => {
   it('金額取自 DB 的 total_amount，不是用戶端送來的值', () => {
     // 讀回 current 時必須把 total_amount 一起選出來（#46 之後還多選了 seats_reserved
     // 做 Final Risk B2 的名額鎖定守門，但這一條只在乎 total_amount 有沒有被移掉）。
-    expect(confirmRoute).toMatch(/\.select\('id, status, total_amount[^']*'\)/);
+    expect(confirmRoute).toMatch(/\.select\('id, status, payment_status, total_amount[^']*'\)/);
     // 不得從 request body 取金額——那等於讓呼叫端自己宣告收了多少錢
     expect(confirmRoute).not.toMatch(/await req\.json\(\)/);
   });
@@ -222,8 +222,10 @@ describe('逾期 cron 不再是佔位', () => {
     expect(cron).not.toMatch(/skipped:\s*true/);
   });
 
-  it('只取消 PENDING 且已過期的單，且逐筆走同交易的 rpc', () => {
+  it('只掃 PENDING／CONFIRMED 且未付款、已過期的單（#769），且逐筆走同交易的 rpc', () => {
     expect(cron).toMatch(/\.eq\('status', 'PENDING'\)/);
+    expect(cron).toMatch(/\.eq\('status', 'CONFIRMED'\)/);
+    expect(cron).toMatch(/\.eq\('payment_status', 'UNPAID'\)/);
     expect(cron).toMatch(/\.lt\('hold_expires_at'/);
     // #350：這裡刻意斷言用的是**專用**的 expire_tour_order，不是通用取消。
     // 原本這條斷言寫的是 rpc('cancel_tour_order')——它把缺陷鎖成了「正確」：

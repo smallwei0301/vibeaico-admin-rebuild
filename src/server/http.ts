@@ -71,13 +71,39 @@ function invalidJsonBody() {
  * 只在此處轉換，不在 `handle()` 全域把 SyntaxError 轉 400。
  */
 export async function readJsonBody(req: Request, maxBytes: number): Promise<unknown> {
+  const text = await readBodyTextCapped(req, maxBytes);
+  // 無 body：直接 400，不呼叫 req.json()（會丟 SyntaxError → 500）。
+  if (text === undefined) throw invalidJsonBody();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw invalidJsonBody();
+  }
+}
+
+/**
+ * `readJsonBody` 的「body 可省略」版本：無 body、位元組長度為 0、或解碼後 trim 為空字串
+ * 回 `undefined`（不丟錯）；非空但 JSON 解析失敗丟 400；超限同樣 413（content-length 預檢＋
+ * 串流逐塊累計位元組，不會先讀完整個 body）。
+ */
+export async function readOptionalJsonBody(req: Request, maxBytes: number): Promise<unknown | undefined> {
+  const text = await readBodyTextCapped(req, maxBytes);
+  if (text === undefined || !text.trim()) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw invalidJsonBody();
+  }
+}
+
+/** 共用串流讀取：回傳解碼後文字；無 body 回 `undefined`；超限 cancel 並丟 413。 */
+async function readBodyTextCapped(req: Request, maxBytes: number): Promise<string | undefined> {
   const declared = req.headers.get('content-length');
   if (declared !== null) {
     const n = Number(declared);
     if (Number.isFinite(n) && n > maxBytes) throw payloadTooLarge();
   }
-  // 無 body：直接 400，不呼叫 req.json()（會丟 SyntaxError → 500）。
-  if (!req.body) throw invalidJsonBody();
+  if (!req.body) return undefined;
 
   const reader = req.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -95,11 +121,7 @@ export async function readJsonBody(req: Request, maxBytes: number): Promise<unkn
   const merged = new Uint8Array(total);
   let off = 0;
   for (const c of chunks) { merged.set(c, off); off += c.byteLength; }
-  try {
-    return JSON.parse(new TextDecoder().decode(merged));
-  } catch {
-    throw invalidJsonBody();
-  }
+  return new TextDecoder().decode(merged);
 }
 
 /** 會改到資料的 HTTP method；只有這些需要留稽核紀錄。 */

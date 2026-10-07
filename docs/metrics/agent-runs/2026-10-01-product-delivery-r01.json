@@ -94,6 +94,12 @@
     },
     {
       "ref": "issue/809"
+    },
+    {
+      "ref": "issue/769"
+    },
+    {
+      "ref": "issue/815"
     }
   ],
   "main": {
@@ -7236,7 +7242,7 @@
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 26,
+    "issuesStarted": 28,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -7474,7 +7480,8 @@
     "solIssues 14→18: structured issue added to 20 audit/triage tasks whose id names exactly one Issue (#42/#43/#46/#47/#11); 3 ambiguous tasks (727-welcome-precondition, retriage46-select11-775, claude-sol-triage-r01) stay null; audit-779 r10–r12 attributed to #780 instead of #777.",
     "PR #782 (MODEL_GOVERNANCE, RUN_ID none) review-fix rounds are governance work and are intentionally not recorded as Product Run tasks or counters (CLAUDE.md §B+ / AGENT-EXECUTION §1.2); their evidence lives on PR #782 (Codex threads 4182937558/63/73, 4183154674/83, 4183298324/29, 4183450822/33). [Thread 4183750234: ISSUE_CLOSED reconcile commits ed9792f6/73e8832c are likewise governance bookkeeping and not recorded as Product tasks.]",
     "2026-10-06 PR #791 Codex P2：completionTruth 的 SOURCE_VERIFIED／MERGED_TO_MAIN／AUTO_VERCEL_DEPLOYED claim 狀態詞彙正規化為 score-run-current 接受的 success／merged／ready（原值為型別名，scorer 會略過該階段）；只改狀態詞彙，未改驗證結果或證據。checkedAt 更新為最新 claim 重驗時間。",
-    "2026-10-06 PR #791 Codex P2：ISSUE_CLOSED evidenceRef 改為 scorer 可解析的 issue URL；production-stage claim subject 改為單一 canonical issue#N（複合 subject 拆成每個 Issue 一筆，原 subject 保留在 evidenceRef）；補 #781 ISSUE_CLOSED（close-guard capture issuecomment-6007682712）與 issuesClosed 10、#790 main push CI。只改格式與補記已觀測事件，未改驗證結果。"
+    "2026-10-06 PR #791 Codex P2：ISSUE_CLOSED evidenceRef 改為 scorer 可解析的 issue URL；production-stage claim subject 改為單一 canonical issue#N（複合 subject 拆成每個 Issue 一筆，原 subject 保留在 evidenceRef）；補 #781 ISSUE_CLOSED（close-guard capture issuecomment-6007682712）與 issuesClosed 10、#790 main push CI。只改格式與補記已觀測事件，未改驗證結果。",
+    "2026-10-07 session_018ZuhUGeBPHKDk3uZJ92KDj scout層次的事後補記任務未即時埋點（11筆 modelUsage.tasks 已移除）；依CLAUDE.md規則「未埋點的量維持null，不回填推算值」復原至origin/main。相關執行紀錄見branch日誌與PR審查。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {

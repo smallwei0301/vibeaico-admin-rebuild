@@ -35,6 +35,44 @@ describe('tour-orders 頁狀態動作（mock 分支）真的把異動寫回 MOCK
     Object.assign(target!, snapshot);
   });
 
+  it('confirmTourOrderPayment：已接受未付款（CONFIRMED + UNPAID）可登記收款，已 PAID 則 409（#769）', async () => {
+    const target = MOCK_TOUR_ORDERS.find((o) => o.status === 'CONFIRMED');
+    expect(target).toBeDefined();
+    const snapshot = { ...target! };
+
+    target!.paymentStatus = 'UNPAID';
+    await confirmTourOrderPayment(target!.id);
+    expect(target!.status).toBe('CONFIRMED');
+    expect(target!.paymentStatus).toBe('PAID');
+    expect(target!.holdExpiresAt).toBeNull();
+
+    await expect(confirmTourOrderPayment(target!.id)).rejects.toBeInstanceOf(ApiError);
+
+    Object.assign(target!, snapshot);
+  });
+
+  it('confirmTourOrderPayment DEPOSIT → PARTIAL，再 FULL → PAID；無訂金／已 PARTIAL 的 DEPOSIT 為 409（#769）', async () => {
+    const target = MOCK_TOUR_ORDERS.find((o) => o.status === 'CONFIRMED');
+    expect(target).toBeDefined();
+    const snapshot = { ...target! };
+
+    target!.paymentStatus = 'UNPAID';
+    target!.depositAmount = 0;
+    await expect(confirmTourOrderPayment(target!.id, 'DEPOSIT')).rejects.toBeInstanceOf(ApiError);
+
+    target!.depositAmount = Math.floor(target!.totalAmount / 4);
+    await confirmTourOrderPayment(target!.id, 'DEPOSIT');
+    expect(target!.status).toBe('CONFIRMED');
+    expect(target!.paymentStatus).toBe('PARTIAL');
+    expect(target!.holdExpiresAt).toBeNull();
+    await expect(confirmTourOrderPayment(target!.id, 'DEPOSIT')).rejects.toBeInstanceOf(ApiError);
+
+    await confirmTourOrderPayment(target!.id, 'FULL');
+    expect(target!.paymentStatus).toBe('PAID');
+
+    Object.assign(target!, snapshot);
+  });
+
   it('completeTourOrder：CONFIRMED → COMPLETED', async () => {
     const target = MOCK_TOUR_ORDERS.find((o) => o.status === 'CONFIRMED');
     expect(target).toBeDefined();

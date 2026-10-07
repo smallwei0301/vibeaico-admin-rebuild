@@ -20,6 +20,9 @@ export const tourOrdersPage = {
     create: '手動建立訂單',
     detail: '檢視',
     confirmPayment: '確認收款',
+    confirmDeposit: '確認收到訂金',
+    confirmFull: '確認收到全額',
+    confirmBalance: '確認收到尾款',
     complete: '標記完成',
     cancel: '取消訂單',
     contactLine: 'LINE 聯絡',
@@ -143,6 +146,15 @@ export const tourOrdersPage = {
     confirmPaymentTitle: '確認收款',
     confirmPayment: (orderNo: string) =>
       `確認已收到訂單 ${orderNo} 的款項嗎？確認後訂單成立，旅客會收到 LINE 通知。`,
+    confirmDepositTitle: '確認收到訂金',
+    confirmDeposit: (orderNo: string, amount: string) =>
+      `確認已收到訂單 ${orderNo} 的訂金 ${amount} 嗎？尾款尚未收齊前，訂單會顯示為部分付款。`,
+    confirmFullTitle: '確認收到全額',
+    confirmFull: (orderNo: string) =>
+      `確認已收到訂單 ${orderNo} 的全額款項嗎？確認後訂單標記為已付款。`,
+    confirmBalanceTitle: '確認收到尾款',
+    confirmBalance: (orderNo: string) =>
+      `確認已收到訂單 ${orderNo} 的尾款嗎？確認後訂單標記為已付款。`,
     completeTitle: '標記完成',
     complete: (orderNo: string) => `確定要把訂單 ${orderNo} 標記為已完成嗎？`,
     cancelTitle: '取消訂單',
@@ -154,6 +166,9 @@ export const tourOrdersPage = {
   messages: {
     created: '訂單已建立',
     paymentConfirmed: '已確認收款，訂單成立',
+    depositConfirmed: '已確認收到訂金，訂單標記為部分付款',
+    fullConfirmed: '已確認收到全額，訂單標記為已付款',
+    balanceConfirmed: '已確認收到尾款，訂單標記為已付款',
     completed: '訂單已標記完成',
     cancelled: '訂單已取消，名額已釋放',
     seatsUnavailable: '名額不足，請重新選擇團次',
