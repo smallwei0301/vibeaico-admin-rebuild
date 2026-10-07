@@ -109,6 +109,8 @@ const PAYMENT_DUE_WINDOW = 200;
 const PAYMENT_DUE_CAP = 20;
 /** 尾款／全額待付：依出發時刻分批讀團次（每批筆數、最多批數）與每批訂單上限。 */
 const PAYMENT_DUE_DEPARTURE_BATCH = 100;
+/** 慢路徑單一分類的掃描時間預算（毫秒）；超過就 warn 並回傳已知最佳集合。測試以 Date.now 注入時鐘。 */
+const PAYMENT_DUE_SCAN_BUDGET_MS = 1500;
 /** 慢路徑安全上限（100 批 × 100 團次）；撞到時 warn 並回傳已知最佳集合，不回空。 */
 const PAYMENT_DUE_MAX_BATCHES = 100;
 const PAYMENT_DUE_ORDER_LIMIT = 1000;
@@ -563,7 +565,12 @@ export const GET = handle(async () => {
     addCards(firstRows);
     let cursor: { departsOn: string; id: string } | null = null;
     let exhausted = false;
+    let batchesScanned = 0;
+    const scanStartedAt = Date.now();
     for (let batch = 0; batch < PAYMENT_DUE_MAX_BATCHES; batch += 1) {
+      // 次要界線：時間預算（主要界線是批次上限）。第一批一定會掃，之後超時就停。
+      if (batch > 0 && Date.now() - scanStartedAt > PAYMENT_DUE_SCAN_BUDGET_MS) break;
+      batchesScanned += 1;
       let depQuery = t.supabase
         .from('trip_departures')
         .select('id, departs_on, start_time')
@@ -604,7 +611,7 @@ export const GET = handle(async () => {
         && cards[PAYMENT_DUE_CAP - 1].dueLocalDate < cursor.departsOn) { exhausted = true; break; }
     }
     if (!exhausted) {
-      console.warn(`[guide-action-inbox] payment-due:${kind.toLowerCase()} departure scan hit batch cap (${PAYMENT_DUE_MAX_BATCHES}); returning best-known set`);
+      console.warn(`[guide-action-inbox] payment-due:${kind.toLowerCase()} departure scan stopped early (batches scanned: ${batchesScanned}, cap ${PAYMENT_DUE_MAX_BATCHES}, budget ${PAYMENT_DUE_SCAN_BUDGET_MS}ms); returning best-known set`);
     }
     return [...rowsById.values()];
   };

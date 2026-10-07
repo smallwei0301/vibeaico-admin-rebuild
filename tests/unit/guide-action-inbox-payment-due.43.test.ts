@@ -543,8 +543,29 @@ describe('route.ts: payment-due source filters, window and display fields (#43 �
     const due = await runFarOrders(10_050); // 超過 100 批 × 100 團次
     expect(due).toHaveLength(20);
     expect(due.every((i) => i.id.startsWith('f'))).toBe(true);
-    expect(warn.mock.calls.map((c) => String(c[0])).some((m) => m.includes('payment-due:partial') && m.includes('batch cap'))).toBe(true);
+    expect(warn.mock.calls.map((c) => String(c[0])).some((m) => m.includes('payment-due:partial') && m.includes('stopped early'))).toBe(true);
     warn.mockRestore();
+  });
+
+  it('time budget triggers before the batch cap: non-empty seeded result + warn with batches scanned', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let tick = 0;
+    const realNow = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => realNow + (tick += 600)); // 每次讀時鐘 +600ms
+    try {
+      const due = await runFarOrders(3000); // 遠不到 100 批上限（約 30 批）
+      expect(due).toHaveLength(20);
+      expect(due.every((i) => i.id.startsWith('f'))).toBe(true);
+      const msgs = warn.mock.calls.map((c) => String(c[0]));
+      const m = msgs.find((x) => x.includes('payment-due:partial') && x.includes('stopped early'));
+      expect(m).toBeTruthy();
+      const scanned = Number(String(m).match(/batches scanned: (\d+)/)?.[1]);
+      expect(scanned).toBeGreaterThanOrEqual(1);
+      expect(scanned).toBeLessThan(10); // 時間預算先於 100 批上限
+    } finally {
+      clock.mockRestore();
+      warn.mockRestore();
+    }
   });
 
   it('warns (no PII) when a batch hits the per-batch order limit — covered by source: only counts are logged', () => {
