@@ -222,6 +222,8 @@ export type GuideActionInboxTourPaymentDueItem = {
   dueLocalDate: string;
   /** 期限的租戶時區時間（HH:mm）；只知道日期（缺 start_time）時為 null。 */
   dueLocalTime: string | null;
+  /** 期限來源：HOLD = `hold_expires_at`（付款期限）；DEPARTURE = 出發時刻（出發日）。卡片標籤依此決定。 */
+  dueKind: 'HOLD' | 'DEPARTURE';
   /** 期限是否帶有真實時間（false = 只知道日期，例如出發日缺 start_time）。 */
   dueHasTime: boolean;
   priority: GuideActionInboxPriority;
@@ -739,7 +741,7 @@ export function buildGuideActionInboxTourPaymentDueItem(
       const dueAt = getGuideDepartureDueAt(departureDate, input.departureStartTime, timeZone);
       if (!dueAt || Date.parse(dueAt) <= now.getTime()) return null;
       return {
-        dueAt, dueHasTime: true, dueLocalDate: departureDate,
+        dueAt, dueKind: 'DEPARTURE' as const, dueHasTime: true, dueLocalDate: departureDate,
         dueLocalTime: String(input.departureStartTime).slice(0, 5),
         priority: getGuideActionInboxPriority(dueAt, now, timeZone),
       };
@@ -751,7 +753,7 @@ export function buildGuideActionInboxTourPaymentDueItem(
     const { today } = getGuideActionInboxDateWindow(now, timeZone);
     if (departureDate < today) return null;
     return {
-      dueAt, dueHasTime: false, dueLocalDate: departureDate, dueLocalTime: null,
+      dueAt, dueKind: 'DEPARTURE' as const, dueHasTime: false, dueLocalDate: departureDate, dueLocalTime: null,
       priority: (departureDate === today ? 'TODAY' : 'UPCOMING') as GuideActionInboxPriority,
     };
   };
@@ -768,7 +770,7 @@ export function buildGuideActionInboxTourPaymentDueItem(
     const holdOk = !!input.holdExpiresAt && !Number.isNaN(Date.parse(input.holdExpiresAt));
     const deadline = holdOk
       ? {
-        dueAt: input.holdExpiresAt as string, dueHasTime: true,
+        dueAt: input.holdExpiresAt as string, dueKind: 'HOLD' as const, dueHasTime: true,
         dueLocalDate: dateKey(new Date(input.holdExpiresAt as string), timeZone),
         dueLocalTime: localTimeKey(new Date(input.holdExpiresAt as string), timeZone),
         priority: getGuideActionInboxPriority(input.holdExpiresAt as string, now, timeZone),
@@ -793,6 +795,7 @@ export function buildGuideActionInboxTourPaymentDueItem(
       balanceAmount: null,
       dueLocalDate: dateKey(new Date(input.holdExpiresAt), timeZone),
       dueLocalTime: localTimeKey(new Date(input.holdExpiresAt), timeZone),
+      dueKind: 'HOLD',
       dueHasTime: true,
       priority: getGuideActionInboxPriority(input.holdExpiresAt, now, timeZone),
       dueAt: input.holdExpiresAt,

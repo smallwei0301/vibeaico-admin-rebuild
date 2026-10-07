@@ -80,7 +80,7 @@ describe('buildGuideActionInboxTourPaymentDueItem (#43 類別 2)', () => {
   it('UNPAID accepted order: INITIAL card, deadline = hold_expires_at, deposit exposed', () => {
     const item = build();
     expect(item).toMatchObject({
-      kind: 'TOUR_PAYMENT_DUE', stage: 'INITIAL', dueAt: '2026-09-22T10:00:00.000Z',
+      kind: 'TOUR_PAYMENT_DUE', stage: 'INITIAL', dueKind: 'HOLD', dueAt: '2026-09-22T10:00:00.000Z',
       depositAmount: 5000, balanceAmount: null, totalAmount: 18000, dueHasTime: true,
       priority: 'UPCOMING', href: '/tenant/tour-orders?orderId=o1',
     });
@@ -94,7 +94,7 @@ describe('buildGuideActionInboxTourPaymentDueItem (#43 類別 2)', () => {
   it('PARTIAL: BALANCE card, deadline = departure start in tenant timezone, balance = total - paid', () => {
     const item = build({ paymentStatus: 'PARTIAL', paidAmount: 5000, holdExpiresAt: null });
     expect(item).toMatchObject({
-      stage: 'BALANCE', balanceAmount: 13000, depositAmount: null, dueHasTime: true,
+      stage: 'BALANCE', dueKind: 'DEPARTURE', balanceAmount: 13000, depositAmount: null, dueHasTime: true,
       dueAt: getGuideDepartureDueAt('2026-09-30', '09:00', TZ),
     });
     expect(item?.dueAt).toBe('2026-09-30T01:00:00.000Z');
@@ -144,18 +144,26 @@ describe('buildGuideActionInboxTourPaymentDueItem (#43 類別 2)', () => {
 
   it('PENDING + UNPAID + seats reserved + hold: FULL card (full payment only, no deposit shown)', () => {
     const item = build({ status: 'PENDING', seatsReserved: null, salesMode: 'FIXED_DEPARTURE' });
-    expect(item).toMatchObject({ kind: 'TOUR_PAYMENT_DUE', stage: 'FULL', depositAmount: null, balanceAmount: null, totalAmount: 18000 });
+    expect(item).toMatchObject({ dueKind: 'HOLD', kind: 'TOUR_PAYMENT_DUE', stage: 'FULL', depositAmount: null, balanceAmount: null, totalAmount: 18000 });
   });
 
   it('PENDING + UNPAID without hold (what every create path writes today): FULL card with the departure deadline', () => {
     const item = build({ status: 'PENDING', holdExpiresAt: null, seatsReserved: null, salesMode: 'INSTANT' });
     expect(item).toMatchObject({
-      stage: 'FULL', dueHasTime: true, dueLocalDate: '2026-09-30', dueLocalTime: '09:00',
+      stage: 'FULL', dueKind: 'DEPARTURE', dueHasTime: true, dueLocalDate: '2026-09-30', dueLocalTime: '09:00',
       dueAt: '2026-09-30T01:00:00.000Z', priority: 'UPCOMING',
     });
     // 缺 start_time：只顯示日期、不假造午夜；缺出發日 → 不顯示
     expect(build({ status: 'PENDING', holdExpiresAt: null, departureStartTime: null })).toMatchObject({ dueHasTime: false, dueLocalTime: null });
     expect(build({ status: 'PENDING', holdExpiresAt: null, departureDate: null })).toBeNull();
+  });
+
+  it('page labels the deadline from dueKind (HOLD → 付款期限, DEPARTURE → 出發日), not from stage', async () => {
+    const { readFileSync } = await import('node:fs');
+    const page = readFileSync('src/app/tenant/dashboard/page.tsx', 'utf8');
+    expect(page).toContain("item.dueKind === 'DEPARTURE'");
+    expect(dashboardPage.actionInbox.tourPaymentDueDepartureDeadline).toBe('出發日');
+    expect(dashboardPage.actionInbox.tourPaymentDueHoldDeadline).toBe('付款期限');
   });
 
   it('INITIAL/FULL exclude departures that already started today (exact start_time, tenant tz); missing start_time kept through the day', () => {
