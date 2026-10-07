@@ -28,7 +28,7 @@ import {
   type FormationDecisionPayload,
 } from '@/services/tours';
 import { getTenantSettings } from '@/services/settings';
-import { formationTimeZone, formationLocalDateTime, formationWallTimeToIso } from '@/lib/departure-formation-time';
+import { formationTimeZone, formationLocalDateTime, formationWallTimeToIso, tryFormationLocalToIso } from '@/lib/departure-formation-time';
 import { listStaff } from '@/services/catalog';
 import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
@@ -564,7 +564,7 @@ export default function TripDetailPage() {
     } else if (decision.kind === 'CONTINUE') {
       payload = { decision: 'CONTINUE' };
     } else {
-      const iso = departureTimeZone ? confirmedFormationDeadline(decisionLocal, departureTimeZone) : undefined;
+      const iso = departureTimeZone ? tryFormationLocalToIso(decisionLocal, departureTimeZone) : null;
       if (!iso) { toast.show(t.departures.formation.decision.extendInvalid, 'danger'); return; }
       payload = { decision: 'EXTEND', newDeadline: iso };
     }
@@ -575,6 +575,7 @@ export default function TripDetailPage() {
           : t.departures.formation.decision.extended,
     );
     if (ok) setDecision(null);
+    else await load().catch(() => undefined); // 例如 409 狀態已變更：重讀團次，讓畫面反映最新狀態
   };
 
   const saveDeparture = async () => {

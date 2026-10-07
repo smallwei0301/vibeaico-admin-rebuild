@@ -19,3 +19,16 @@ describe('#42 tenant wall time and calendar deadline', () => {
     expect(() => formationWallTimeToIso('2030-11-03', '01:30', 'America/New_York')).toThrow();
   });
 });
+
+describe('#41 tryFormationLocalToIso 換算失敗不丟例外', () => {
+  it('合法輸入回傳 ISO', async () => {
+    const { tryFormationLocalToIso } = await import('@/lib/departure-formation-time');
+    expect(tryFormationLocalToIso('2030-01-15T00:30', 'Asia/Tokyo')).toBe('2030-01-14T15:30:00.000Z');
+  });
+  it('空值、DST 不存在或重複時段回傳 null', async () => {
+    const { tryFormationLocalToIso } = await import('@/lib/departure-formation-time');
+    expect(tryFormationLocalToIso('', 'Asia/Tokyo')).toBeNull();
+    expect(tryFormationLocalToIso('2030-03-10T02:30', 'America/New_York')).toBeNull();
+    expect(tryFormationLocalToIso('2030-11-03T01:30', 'America/New_York')).toBeNull();
+  });
+});

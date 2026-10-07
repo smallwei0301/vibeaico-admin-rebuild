@@ -60,6 +60,9 @@ export const POST = handle(async (req, { params }: Context) => {
       if (rows.length < PAGE) break;
       lastId = rows[rows.length - 1].id;
     }
+    // 注意：有效人數在此先算、下方 CAS update 才寫入，兩者不在同一交易；期間若發生退款，formed_participants 可能略為過時。
+    // 可接受：該數字是導遊做決策當下的證據快照（GUIDE_OVERRIDE），CAS 仍保證狀態轉移原子；
+    // 要做到同交易精準需 RPC／migration，屬 #755 之後。
     // formation_decided_by＝requireTenantManager 回傳的 auth user（代登入時是代入的平台管理者本人，仍是 auth.users 的一列）
     patch = toHttp(() => buildFormPatch(effectiveParticipants(orders), t.user.id, new Date(now).toISOString()));
   } else if (body.decision === 'CONTINUE') {
