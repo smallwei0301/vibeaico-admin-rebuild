@@ -3,6 +3,8 @@ import type {
   DepartureConflict, Trip, TripAddon, TripDeparture, TripPlan, TripPlanSeason,
   TourOrder, TourOrderSource, TourOrderStatus, TourPaymentStatus, Paged,
 } from '@/lib/types';
+import { canDeleteTrip } from '@/lib/trip-deletion';
+import { tripsPage } from '@/i18n/zh-TW/pages/trips';
 import { resolvePublicTimeZone } from '@/lib/public-time-zone';
 import { clampGalleryForCopy } from '@/lib/trip-gallery';
 import { addDays, repeatCustomerIdSet, zonedMidnightMs, zonedToday } from '@/server/guide-report';
@@ -203,6 +205,9 @@ export const deleteTrip = (id: string) =>
   adapt(
     () => {
       const idx = MOCK_TRIPS.findIndex((t) => t.id === id);
+      if (idx >= 0 && !canDeleteTrip(MOCK_TRIPS[idx])) {
+        throw new ApiError(tripsPage.actions.deleteListedBlocked, 'REQ_003', 409);
+      }
       if (idx >= 0) MOCK_TRIPS.splice(idx, 1);
       for (let i = MOCK_TRIP_PLANS.length - 1; i >= 0; i -= 1) {
         if (MOCK_TRIP_PLANS[i].tripId === id) MOCK_TRIP_PLANS.splice(i, 1);

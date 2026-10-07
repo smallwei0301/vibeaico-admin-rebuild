@@ -4,6 +4,8 @@ import { requireFeature } from '@/server/features';
 import { mapTrip, mapTripPlan } from '@/server/mappers';
 import { tripUpdateSchema } from '@/server/tour-domain';
 import { taipeiTodayDateString } from '@/server/tz';
+import { requireUnlistedTripForDelete } from '@/server/trip-plan-review';
+import { tripsPage } from '@/i18n/zh-TW/pages/trips';
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -79,9 +81,17 @@ export const DELETE = handle(async (_req, { params }: Context) => {
   const { id } = await params;
   const t = await requireTenantManager();
   await requireFeature(t.tenantId, 'TOUR_MODULE');
+  await requireUnlistedTripForDelete(t, id);
+  // 帶條件刪除：讀與刪之間若被上架，delete 回 0 列，再讀一次區分「剛被上架」與「不存在」。
   const { data, error } = await t.supabase.from('trips').delete()
-    .eq('tenant_id', t.tenantId).eq('id', id).select('id').maybeSingle();
+    .eq('tenant_id', t.tenantId).eq('id', id).neq('midao_listing', 'LISTED').select('id').maybeSingle();
   if (error) throw error;
-  if (!data) return fail(404, '找不到此行程', ERR.NOT_FOUND);
+  if (!data) {
+    const { data: still, error: rereadError } = await t.supabase.from('trips').select('id')
+      .eq('tenant_id', t.tenantId).eq('id', id).maybeSingle();
+    if (rereadError) throw rereadError;
+    if (still) return fail(409, tripsPage.actions.deleteListedBlocked, ERR.CONFLICT);
+    return fail(404, '找不到此行程', ERR.NOT_FOUND);
+  }
   return ok({ deleted: true });
 });

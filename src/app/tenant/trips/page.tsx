@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmModal } from '@/components/ui/Modal';
+import { canDeleteTrip } from '@/lib/trip-deletion';
 import { TripCopyDraftModal } from '@/components/trips/TripCopyDraftModal';
 import { decideTripCopy, type TripCopyDraft } from '@/lib/trip-field-limits';
 import { Input, Select } from '@/components/ui/Form';
@@ -307,7 +308,9 @@ export default function TripsPage() {
             <Copy size={13} />
           </Button>
           <Button
-            variant="outlineDanger" size="sm" title={t.actions.delete} aria-label={t.actions.delete}
+            variant="outlineDanger" size="sm" aria-label={t.actions.delete}
+            title={canDeleteTrip(r) ? t.actions.delete : t.actions.deleteListedBlocked}
+            disabled={!canDeleteTrip(r)}
             onClick={() => setDeleteTarget(r)}
           >
             <Trash2 size={13} />

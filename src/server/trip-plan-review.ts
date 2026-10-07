@@ -36,3 +36,16 @@ export async function requireSeasonForWrite(t: Tenant, seasonId: string) {
   await requirePlanForSeasonWrite(t, data.plan_id);
   return data;
 }
+
+/** 刪除行程前的 LISTED 擋閘（#42）：已上架 Midao 的行程不可刪（會連帶刪方案／季節）。
+ * 這裡的讀取不與外部上架變更序列化；DELETE 路由另以 `.neq('midao_listing','LISTED')` 帶條件刪除收斂競態。
+ */
+export async function requireUnlistedTripForDelete(t: Tenant, tripId: string) {
+  const { data, error } = await t.supabase.from('trips').select('id, midao_listing')
+    .eq('tenant_id', t.tenantId).eq('id', tripId).maybeSingle();
+  if (error) throw error;
+  if (!data) throw new ApiHttpError(404, '找不到此行程', ERR.NOT_FOUND);
+  if (data.midao_listing === 'LISTED') {
+    throw new ApiHttpError(409, tripsPage.actions.deleteListedBlocked, ERR.CONFLICT);
+  }
+}

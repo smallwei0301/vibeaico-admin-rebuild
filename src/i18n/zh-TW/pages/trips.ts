@@ -21,6 +21,7 @@ export const tripsPage = {
     view: '檢視',
     duplicate: '複製',
     delete: '刪除',
+    deleteListedBlocked: '此行程已上架 Midao，無法刪除。請先聯絡 Midao 下架後再刪除。',
     publish: '發布到商店頁',
     unpublish: '從商店頁下架',
     requestMidao: '申請上架 Midao',
