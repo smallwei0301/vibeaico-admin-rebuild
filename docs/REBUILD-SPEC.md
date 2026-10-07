@@ -1553,10 +1553,11 @@ export function listBookings(q: BookingQuery = {}): Promise<Paged<Booking>> {
 骨架用 mock 資料 + 本地 state 模擬，行為正確但不落地：
 
 * 檔案上傳（頭像、商品圖、Rich Menu 底圖、作品集）—— UI 與驗證訊息都在，缺 upload endpoint
-* QR Code 產生 —— 原站由後端出圖，骨架用佔位框
 * 圖表 —— 原站用圖表套件，骨架用純 CSS bar（刻意不引入相依）
 * 拖曳排序 —— 原站用 SortableJS，骨架用上移／下移按鈕
 * 即時推播（Web Push、聊天）
+
+另：QR Code 已不屬此類（#16）。前端以 `qrcode` 套件產生 PNG 並可下載，不需後端出圖：推廣頁內容為公開預約網址加 `src=qr`，LINE 設定頁內容為加好友連結。
 
 ### 9.3 已知的規格缺口
 

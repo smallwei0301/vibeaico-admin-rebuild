@@ -1813,6 +1813,14 @@ push，Preview 上跑的是舊程式碼。但 issue #16 驗收清單寫的是「
 並明說「不要花力氣去測 `qrcode` 套件本身」，這一項因此**可能已經作廢**，
 但那是擁有者的裁決，不是執行者可以自行認定的——**留著不打勾，等裁決**。
 
+#### 2026-10-07 回歸修復（PR #819）
+
+current main 曾回到佔位圖加假下載 toast（`src/lib/qr.ts` 已不存在），本次以
+`src/lib/qr-code.ts` 重新實作，`qrcode` 鎖定 1.5.4 精確版本（對齊 §8.2 Owner 裁決）。
+推廣頁 QR 內容改為 `publicUrl` 加 `src=qr`（#23 來源分類上線後，讓掃碼流量歸為 QR；
+與上表原本的 `publicUrl` 不同，以本段為準）。檔名不變。`jsqr` 往返測試未恢復，
+現有 unit 測 data URL 與 URL 組裝。
+
 ### 6.14 issue #17（預約加購 `booking_addons` 後端全套）— 2026-08-25 完成（commit `b317d35`）
 
 補齊 §5 點名的缺口：原站有預約加購（`docs/specs/bookings.json` 的 `jsApiCalls`
