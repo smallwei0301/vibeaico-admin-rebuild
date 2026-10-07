@@ -4,11 +4,13 @@ const TENANT = '11111111-1111-4111-8111-111111111111';
 const OTHER = '22222222-2222-4222-8222-222222222222';
 const DEP = '33333333-3333-4333-8333-333333333333';
 const USER = '44444444-4444-4444-8444-444444444444';
+const ADMIN = '55555555-5555-4555-8555-555555555555';
 type Row = Record<string, unknown>;
 const state = vi.hoisted(() => ({
   departures: [] as Row[],
   orders: [] as Row[],
   denied: false,
+  impersonation: false,
   raceLost: false,
   updates: [] as { patch: Row; eq: [string, unknown][]; neq: [string, unknown][] }[],
   orderQueries: [] as [string, unknown][][],
@@ -25,7 +27,10 @@ vi.mock('@/server/tenant', () => ({
       const { ApiHttpError } = await import('@/server/http');
       throw new ApiHttpError(403, '權限不足', 'FORBIDDEN');
     }
-    return { tenantId: TENANT, user: { id: USER }, supabase: fakeDb };
+    // 代登入（平台管理者代入）時 requireTenant 回傳的 user 仍是管理者本人的 auth user，另帶 impersonation 欄位
+    return state.impersonation
+      ? { tenantId: TENANT, user: { id: ADMIN }, supabase: fakeDb, impersonation: { sessionId: 's1' } }
+      : { tenantId: TENANT, user: { id: USER }, supabase: fakeDb };
   },
 }));
 
@@ -88,7 +93,7 @@ const order = (o: Row): Row => ({
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-12-12T00:00:00Z'));
-  Object.assign(state, { departures: [dep()], orders: [], denied: false, raceLost: false, updates: [], orderQueries: [] });
+  Object.assign(state, { departures: [dep()], orders: [], denied: false, impersonation: false, raceLost: false, updates: [], orderQueries: [] });
 });
 
 describe('POST /api/trip-departures/[id]/formation-decision', () => {
@@ -162,5 +167,25 @@ describe('POST /api/trip-departures/[id]/formation-decision', () => {
     state.denied = true;
     expect((await post({ decision: 'FORM' })).status).toBe(403);
     expect(state.updates).toHaveLength(0);
+  });
+
+  it('formation_decided_by 用 requireTenantManager 回傳的 auth user；代登入時是代入的管理者本人', async () => {
+    state.orders = [order({ id: 'o1' })];
+    await post({ decision: 'FORM' });
+    expect(state.updates[0].patch.formation_decided_by).toBe(USER);
+    Object.assign(state, { departures: [dep()], updates: [], impersonation: true });
+    await post({ decision: 'EXTEND', newDeadline: '2026-12-15T18:00:00+08:00' });
+    expect(state.updates[0].patch.formation_decided_by).toBe(ADMIN);
+  });
+
+  it('退款相關訂單不計入 formed_participants（淨實收、REFUND_PENDING、REFUNDED）', async () => {
+    state.orders = [
+      order({ id: 'a', party_size: 2 }),                                          // +2
+      order({ id: 'b', party_size: 3, refunded_amount: 40 }),                     // 淨 60 < 100 → 0
+      order({ id: 'c', party_size: 4, payment_status: 'REFUND_PENDING' }),        // 0
+      order({ id: 'd', party_size: 5, payment_status: 'REFUNDED', refunded_amount: 100 }), // 0
+    ];
+    await post({ decision: 'FORM' });
+    expect(state.updates[0].patch.formed_participants).toBe(2);
   });
 });

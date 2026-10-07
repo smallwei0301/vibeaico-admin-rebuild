@@ -34,6 +34,30 @@ describe('effectiveParticipants（有效成團人數，18 §5）', () => {
   });
 });
 
+describe('effectiveParticipants — 退款（net paid）', () => {
+  it('淨實收＝實收−已退；部分退款後低於頭期款不算；退款處理中／已退款不論訂單狀態都不算', () => {
+    expect(effectiveParticipants([
+      o({ deposit_mode_snapshot: 'FULL', party_size: 2, paid_amount: 1000, refunded_amount: 0, upfront_required_amount: 1000, payment_status: 'PAID' }), // +2
+      o({ deposit_mode_snapshot: 'FULL', party_size: 3, paid_amount: 1000, refunded_amount: 200, upfront_required_amount: 1000, payment_status: 'PAID' }), // 淨 800 < 1000 → 0
+      o({ deposit_mode_snapshot: 'DEPOSIT_FIXED', party_size: 4, paid_amount: 1000, refunded_amount: 400, upfront_required_amount: 500, payment_status: 'PARTIAL' }), // 淨 600 ≥ 500 → +4
+      o({ deposit_mode_snapshot: 'FULL', party_size: 5, paid_amount: 1000, refunded_amount: 1000, upfront_required_amount: 1000, payment_status: 'PAID' }), // 淨 0 → 0
+      o({ deposit_mode_snapshot: 'FULL', party_size: 6, paid_amount: 1000, upfront_required_amount: 1000, payment_status: 'REFUND_PENDING' }), // 0
+      o({ deposit_mode_snapshot: 'FULL', party_size: 7, paid_amount: 1000, upfront_required_amount: 1000, payment_status: 'REFUNDED' }), // 0
+      o({ deposit_mode_snapshot: 'NONE', party_size: 8, status: 'CONFIRMED', payment_status: 'REFUND_PENDING' }), // NONE 也排除 → 0
+      o({ deposit_mode_snapshot: 'NONE', party_size: 1, status: 'CONFIRMED', payment_status: 'UNPAID' }), // NONE 不看付款 → +1
+    ])).toBe(7);
+  });
+
+  it('舊單（無快照）也套用同樣的退款排除，且以淨實收判斷', () => {
+    expect(effectiveParticipants([
+      o({ party_size: 2, status: 'COMPLETED', paid_amount: 100, refunded_amount: 0 }),                       // +2
+      o({ party_size: 3, status: 'COMPLETED', paid_amount: 100, refunded_amount: 100 }),                     // 淨 0 → 0
+      o({ party_size: 4, status: 'CONFIRMED', paid_amount: 100, payment_status: 'REFUND_PENDING' }),         // 0
+      o({ party_size: 5, status: 'CONFIRMED', paid_amount: 100, payment_status: 'REFUNDED', refunded_amount: 100 }), // 0
+    ])).toBe(2);
+  });
+});
+
 describe('buildFormPatch（仍然成團）', () => {
   it('欄位組合滿足 0107 的證據 CHECK：FORMED＋formed_at＋formed_by=GUIDE_OVERRIDE＋formed_participants≥1＋決策證據', () => {
     const p = buildFormPatch(3, 'user-1', '2026-10-07T00:00:00.000Z');

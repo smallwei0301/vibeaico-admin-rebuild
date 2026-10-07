@@ -43,23 +43,29 @@ export type ParticipantOrderRow = {
   paid_amount: number | string | null;
   upfront_required_amount: number | string | null;
   deposit_mode_snapshot: string | null;
+  /** 0108：已退出金額；未提供視為 0 */
+  refunded_amount?: number | string | null;
+  /** tour_payment_status；REFUND_PENDING／REFUNDED 的訂單不算有效報名 */
+  payment_status?: string | null;
 };
 
 const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 
 /**
  * 有效成團人數（18 §5）：容量占用（seats_booked，含未付款占位）與成團計數是兩本帳，這裡由 TourOrders 現算。
- *  - 已取消的訂單不算。
+ *  - 已取消的訂單不算；付款狀態為 REFUND_PENDING／REFUNDED（退款處理中或已退）的訂單不算，不論訂單狀態。
  *  - deposit_mode_snapshot = NONE：訂單成立（CONFIRMED／COMPLETED）即算；PENDING（待導遊接受或尚未成立）不算。
- *  - DEPOSIT_FIXED／DEPOSIT_PERCENT／FULL：實收 paid_amount > 0 且 ≥ 成交當下要求的頭期款 upfront_required_amount。
- *  - 沒有收款政策快照（0108 之前的舊訂單、手動單）：保守處理——只有 CONFIRMED／COMPLETED 且已有實收才算，
+ *  - DEPOSIT_FIXED／DEPOSIT_PERCENT／FULL：淨實收（paid_amount − refunded_amount）> 0 且 ≥ 成交當下要求的頭期款
+ *    upfront_required_amount。部分退款後若淨實收低於頭期款，就不再算。
+ *  - 沒有收款政策快照（0108 之前的舊訂單、手動單）：保守處理——只有 CONFIRMED／COMPLETED 且淨實收 > 0 才算，
  *    不高估人數、不猜測它的收款政策。
  */
 export function effectiveParticipants(orders: ParticipantOrderRow[]): number {
   let total = 0;
   for (const o of orders) {
     if (o.status === 'CANCELLED') continue;
-    const paid = num(o.paid_amount);
+    if (o.payment_status === 'REFUND_PENDING' || o.payment_status === 'REFUNDED') continue;
+    const paid = num(o.paid_amount) - num(o.refunded_amount);
     const confirmed = o.status === 'CONFIRMED' || o.status === 'COMPLETED';
     let ok: boolean;
     switch (o.deposit_mode_snapshot) {

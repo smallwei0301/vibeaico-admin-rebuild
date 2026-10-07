@@ -402,6 +402,7 @@ export const decideDepartureFormation = (id: string, payload: FormationDecisionP
               && o.departsOn === dep.departsOn && o.startTime === dep.startTime)
             .map((o) => ({
               status: o.status, party_size: o.partySize, paid_amount: mockOrderToReportRow(o).paid_amount,
+              refunded_amount: mockOrderToReportRow(o).refunded_amount, payment_status: o.paymentStatus,
               upfront_required_amount: o.upfrontRequiredAmount ?? 0, deposit_mode_snapshot: o.depositModeSnapshot ?? null,
             }));
           const patch = buildFormPatch(effectiveParticipants(orders), 'mock-user', new Date(nowMs).toISOString());

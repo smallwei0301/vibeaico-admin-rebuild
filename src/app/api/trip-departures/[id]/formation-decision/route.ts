@@ -47,7 +47,7 @@ export const POST = handle(async (req, { params }: Context) => {
     const orders: ParticipantOrderRow[] = [];
     for (let lastId: string | null = null; ;) {
       let q = t.supabase.from('tour_orders')
-        .select('id, status, party_size, paid_amount, upfront_required_amount, deposit_mode_snapshot')
+        .select('id, status, party_size, paid_amount, refunded_amount, payment_status, upfront_required_amount, deposit_mode_snapshot')
         .eq('tenant_id', t.tenantId).eq('departure_id', id).neq('status', 'CANCELLED');
       if (lastId) q = q.gt('id', lastId);
       const { data, error } = await q.order('id', { ascending: true }).limit(PAGE);
@@ -58,6 +58,7 @@ export const POST = handle(async (req, { params }: Context) => {
       if (rows.length < PAGE) break;
       lastId = rows[rows.length - 1].id;
     }
+    // formation_decided_by＝requireTenantManager 回傳的 auth user（代登入時是代入的平台管理者本人，仍是 auth.users 的一列）
     patch = toHttp(() => buildFormPatch(effectiveParticipants(orders), t.user.id, new Date(now).toISOString()));
   } else {
     const zone = await readDepartureFormationTimeZone(t.supabase, t.tenantId);
