@@ -45,6 +45,13 @@ const serverSchema = z.object({
   /** Vercel Cron 呼叫 /api/cron/* 的 Bearer token（Phase 7，見 07 分冊） */
   CRON_SECRET: z.string().optional(),
 
+  /**
+   * 成團截止自動推進排程（Issue #41，/api/cron/formation-deadline）的開關。
+   * 預設關閉：未設定或非 'true' 一律視為關閉，route 回 { skipped: 'disabled' }、不讀不寫。
+   * Production 需 Owner 明確開啟。
+   */
+  FORMATION_DEADLINE_SWEEP_ENABLED: z.enum(['true', 'false']).optional(),
+
   /** AI 客服（AI_ASSISTANT，09 分冊 §7）：平台一把 key，所有店共用；未設定時 AI 客服靜默停用 */
   ANTHROPIC_API_KEY: z.string().optional(),
 
