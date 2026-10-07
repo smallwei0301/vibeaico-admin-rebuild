@@ -4,9 +4,15 @@ import { isPriceChangedError, priceChangedQuoteFromError } from '@/lib/public-pr
 
 describe('#749 priceChangedQuoteFromError', () => {
   it('TOUR_003 + data.quote → 現價', () => {
-    const e = new ApiError('x', 'TOUR_003', 409, { quote: { unitPrice: 1200, total: 2400 } });
+    const e = new ApiError('x', 'TOUR_003', 409, { quote: { unitPrice: 1200, total: 2400, priceType: 'PER_GROUP' } });
     expect(isPriceChangedError(e)).toBe(true);
-    expect(priceChangedQuoteFromError(e)).toEqual({ unitPrice: 1200, total: 2400 });
+    expect(priceChangedQuoteFromError(e)).toEqual({ unitPrice: 1200, total: 2400, priceType: 'PER_GROUP' });
+  });
+  it('priceType 缺或非法 → null', () => {
+    expect(priceChangedQuoteFromError(new ApiError('x', 'TOUR_003', 409, { quote: { unitPrice: 1200, total: 2400 } }))).toBeNull();
+    expect(priceChangedQuoteFromError(new ApiError('x', 'TOUR_003', 409, { quote: { unitPrice: 1200, total: 2400, priceType: 'PER_NIGHT' } }))).toBeNull();
+    const ok = priceChangedQuoteFromError(new ApiError('x', 'TOUR_003', 409, { quote: { unitPrice: 1200, total: 2400, priceType: 'PER_PERSON' } }));
+    expect(ok?.priceType).toBe('PER_PERSON');
   });
   it('沒有 quote、格式不符、或其他錯誤碼 → null', () => {
     expect(priceChangedQuoteFromError(new ApiError('x', 'TOUR_003', 409))).toBeNull();

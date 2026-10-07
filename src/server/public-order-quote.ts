@@ -16,7 +16,7 @@ import { resolveBookingTotal } from '@/lib/public-booking-price';
 import { loadPlanSeasons, seasonUnitPriceFor } from '@/server/public-plan-seasons';
 import type { createAdminSupabase } from '@/server/supabase';
 
-export type PriceQuote = { unitPrice: number; total: number };
+export type PriceQuote = { unitPrice: number; total: number; priceType: 'PER_PERSON' | 'PER_GROUP' };
 
 type RpcError = { message?: string; code?: string; details?: string | null } | null;
 /** 形狀同 supabase rpc；價格不符時 error.message 為 PRICE_CHANGED 且 quote 為現價。 */
@@ -46,11 +46,11 @@ export async function createTourOrderWithQuote(
     // 方案價讀取失敗／找不到，或季節資料不完整：無法確認目前價格，不能放行也不能誤報金額。
     if (!planRow || seasons.incomplete) return { data: null, error: { message: PRICE_UNVERIFIABLE_MESSAGE } };
     const pricePerPerson = Number(planRow.price_per_person ?? 0);
-    const priceType = planRow.price_type === 'PER_GROUP' ? 'PER_GROUP' : 'PER_PERSON';
+    const priceType: 'PER_PERSON' | 'PER_GROUP' = planRow.price_type === 'PER_GROUP' ? 'PER_GROUP' : 'PER_PERSON';
     const unitPrice = seasonUnitPriceFor(seasons, ctx.departsOn, pricePerPerson);
     const current = resolveBookingTotal({ unitPrice }, { pricePerPerson, priceType }, ctx.partySize);
     if (current && current.total !== expectedTotal) {
-      return { data: null, error: { message: PRICE_CHANGED_MESSAGE }, quote: current };
+      return { data: null, error: { message: PRICE_CHANGED_MESSAGE }, quote: { unitPrice: current.unitPrice, total: current.total, priceType } };
     }
   }
   return admin.rpc('create_tour_order', args) as unknown as Promise<QuotedRpcResult>;

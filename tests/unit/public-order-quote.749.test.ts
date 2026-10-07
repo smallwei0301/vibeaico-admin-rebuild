@@ -126,7 +126,7 @@ describe.each([
     const err = await submit({ expectedTotal: 2000 }).catch((e) => e);
     expect(err).toBeInstanceOf(ErrorClass);
     expect(err.code).toBe('PRICE_CHANGED');
-    expect(err.quote).toEqual({ unitPrice: 1200, total: 2400 });
+    expect(err.quote).toEqual({ unitPrice: 1200, total: 2400, priceType: 'PER_PERSON' });
     expect(fx.rpcCalls).toEqual([]);
   });
 
@@ -135,7 +135,16 @@ describe.each([
     const err = await submit({ expectedTotal: 2000 }).catch((e) => e);
     expect(err).toBeInstanceOf(ErrorClass);
     expect(err.code).toBe('PRICE_CHANGED');
-    expect(err.quote).toEqual({ unitPrice: 1200, total: 2400 });
+    expect(err.quote).toEqual({ unitPrice: 1200, total: 2400, priceType: 'PER_PERSON' });
+    expect(fx.rpcCalls).toEqual([]);
+  });
+
+  it('頁面為 PER_PERSON、建單前重讀為 PER_GROUP：quote.priceType 為 PER_GROUP，total 不乘人數', async () => {
+    fx.priceType = 'PER_GROUP';
+    fx.planPrice = 1200;
+    const err = await submit({ expectedTotal: 2400 }).catch((e) => e);
+    expect(err.code).toBe('PRICE_CHANGED');
+    expect(err.quote).toEqual({ unitPrice: 1200, total: 1200, priceType: 'PER_GROUP' });
     expect(fx.rpcCalls).toEqual([]);
   });
 
@@ -151,7 +160,7 @@ describe.each([
     fx.seasons = [{ id: 's1', plan_id: PLAN, start_month: 7, start_day: 1, end_month: 7, end_day: 31, price_override: 1500, sort_order: 0 }];
     const err = await submit({ expectedTotal: 2000 }).catch((e) => e);
     expect(err.code).toBe('PRICE_CHANGED');
-    expect(err.quote).toEqual({ unitPrice: 1500, total: 3000 });
+    expect(err.quote).toEqual({ unitPrice: 1500, total: 3000, priceType: 'PER_PERSON' });
     expect(fx.rpcCalls).toEqual([]);
     await expect(submit({ expectedTotal: 3000 })).resolves.toMatchObject({ orderId: 'order-1' });
     expect(fx.rpcCalls.map((c) => c.name)).toEqual(['create_tour_order']);
@@ -162,7 +171,7 @@ describe.each([
     fx.seasons = [{ id: 's1', plan_id: PLAN, start_month: 7, start_day: 1, end_month: 7, end_day: 31, price_override: 1500, sort_order: 0 }];
     const err = await submit({ expectedTotal: 3000 }).catch((e) => e);
     expect(err.code).toBe('PRICE_CHANGED');
-    expect(err.quote?.total).toBe(1500);
+    expect(err.quote).toEqual({ unitPrice: 1500, total: 1500, priceType: 'PER_GROUP' });
     expect(fx.rpcCalls).toEqual([]);
     await expect(submit({ expectedTotal: 1500 })).resolves.toMatchObject({ orderId: 'order-1' });
   });
@@ -202,11 +211,11 @@ describe('routes', () => {
       body: JSON.stringify({ shopCode: 'demo-shop', planId: PLAN, departureId: DEPARTURE, partySize: 2, contactName: 'a', contactPhone: '1', expectedTotal: 2000 }),
     }));
 
-    state.error = new Err('PRICE_CHANGED', '價格已更新', { unitPrice: 1200, total: 2400 });
+    state.error = new Err('PRICE_CHANGED', '價格已更新', { unitPrice: 1200, total: 2400, priceType: 'PER_GROUP' });
     let res = await call();
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({
-      success: false, message: '價格已更新', code: 'TOUR_003', data: { quote: { unitPrice: 1200, total: 2400 } },
+      success: false, message: '價格已更新', code: 'TOUR_003', data: { quote: { unitPrice: 1200, total: 2400, priceType: 'PER_GROUP' } },
     });
 
     state.error = new Err('PRICE_CHANGED', '價格已更新');

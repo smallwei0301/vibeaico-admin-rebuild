@@ -222,7 +222,7 @@ export function BookingForm({
               <span className="font-medium">{t.form.priceChangedTitle}</span>
               <span>
                 {t.form.priceChangedDescription(
-                  `${formatCurrency(confirmedQuote.unitPrice)}${t.form.planPriceUnit[plan.priceType]}`,
+                  `${formatCurrency(confirmedQuote.unitPrice)}${t.form.planPriceUnit[confirmedQuote.priceType]}`,
                   formatCurrency(confirmedQuote.total),
                 )}
               </span>
