@@ -1,7 +1,7 @@
 import { handle, ok, fail, ERR } from '@/server/http';
 import { requireTenantManager } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
-import { canTransitionTourOrder } from '@/server/tour-domain';
+import { canRegisterTourOrderPayment, canTransitionTourOrder } from '@/server/tour-domain';
 import { hydrateTourOrders } from '@/server/tour-orders';
 
 type Context = { params: Promise<{ id: string }> };
@@ -9,7 +9,7 @@ type Context = { params: Promise<{ id: string }> };
 /**
  * POST /api/tour-orders/:id/confirm-payment — 導遊確認收款（#8-B，10 分冊 §3）。
  *
- * `PENDING → CONFIRMED`，同時 `payment_status → PAID`、清掉 `hold_expires_at`
+ * `PENDING → CONFIRMED`（#769 起另允許已接受未付款的 `CONFIRMED + UNPAID` 申請單，status 維持 CONFIRMED），同時 `payment_status → PAID`、清掉 `hold_expires_at`
  * （已收款的單不該再被逾期 cron 取消）。
  *
  * ⚠️ 這支**不做任何真實金流**。它記錄的是「導遊說他收到錢了」——匯款五碼比對、
@@ -30,11 +30,17 @@ export const POST = handle(async (_req, { params }: Context) => {
   await requireFeature(t.tenantId, 'TOUR_MODULE');
 
   const { data: current, error: readError } = await t.supabase.from('tour_orders')
-    .select('id, status, total_amount, seats_reserved').eq('tenant_id', t.tenantId).eq('id', id).maybeSingle();
+    .select('id, status, payment_status, total_amount, seats_reserved').eq('tenant_id', t.tenantId).eq('id', id).maybeSingle();
   if (readError) throw readError;
   if (!current) return fail(404, '找不到此訂單', ERR.NOT_FOUND);
   // 已經是 CONFIRMED 也回 409：店家按下去沒有發生他以為會發生的事，就必須被告知。
-  if (!canTransitionTourOrder(current.status, 'CONFIRMED')) {
+  // #769：PENDING 走原本的轉換；CONFIRMED + UNPAID + seats_reserved（導遊已接受、尚未收款）也可登記收款。
+  const acceptedUnpaid = current.status === 'CONFIRMED';
+  if (acceptedUnpaid
+    ? !canRegisterTourOrderPayment({
+      status: current.status, paymentStatus: current.payment_status, seatsReserved: current.seats_reserved,
+    })
+    : !canTransitionTourOrder(current.status, 'CONFIRMED')) {
     return fail(409, '此訂單狀態已變更', ERR.CONFLICT);
   }
   if (!current.seats_reserved) {
@@ -43,6 +49,7 @@ export const POST = handle(async (_req, { params }: Context) => {
 
   const { data, error } = await t.supabase.from('tour_orders')
     .update({
+      // status 不寫：PENDING 路徑由 CAS 保證 → 需轉 CONFIRMED；已 CONFIRMED 者維持原值。
       status: 'CONFIRMED', payment_status: 'PAID',
       /**
        * ⚠️ `payment_status = 'PAID'` 必須連同**實收金額**一起寫。
@@ -57,7 +64,8 @@ export const POST = handle(async (_req, { params }: Context) => {
       hold_expires_at: null, updated_at: new Date().toISOString(),
     })
     // 帶上 status 條件做 CAS：兩個店員同時按，只有一個會 match。
-    .eq('tenant_id', t.tenantId).eq('id', id).eq('status', current.status)
+    // #769：同時帶 payment_status = UNPAID，與逾期 cron（取消後 status = CANCELLED）或另一位店員並發時 CAS 不中 → 409。
+    .eq('tenant_id', t.tenantId).eq('id', id).eq('status', current.status).eq('payment_status', 'UNPAID')
     .select('*').maybeSingle();
   if (error) throw error;
   if (!data) return fail(409, '此訂單狀態已變更', ERR.CONFLICT);

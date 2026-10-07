@@ -33,6 +33,13 @@
  * 下面這個 select 的 filter 仍然保留，但它的角色只是**縮小掃描範圍**，不是守門；
  * 真正的守門在 rpc 裡。把它當守門正是這個缺陷的成因。
  *
+ * ⚠️ #769：掃描範圍是 `status in (PENDING, CONFIRMED)` 且 `payment_status = UNPAID`。
+ * `CONFIRMED + UNPAID` 是 `accept_tour_request` 產生的「已接受、付款保留中」狀態
+ * （名額已鎖、`hold_expires_at` = 接受當下 + 保留時數）。在 migration 0138 套用之前，
+ * `expire_tour_order` 對這些列回 false（無害、不取消）；套用後才會實際釋放名額。
+ * confirm-payment 會清 `hold_expires_at` 並設 PAID，rpc 在 row lock 內重檢
+ * `payment_status`，防止 #350 型競態（已收款被取消）。
+ *
  * 單筆失敗只 log 不中斷整批（07 分冊慣例）。回 { scanned, cancelled }。
  */
 import { NextResponse } from 'next/server';
@@ -51,13 +58,14 @@ export async function GET(req: Request) {
   const admin = createAdminSupabase();
   const nowIso = new Date().toISOString();
 
-  // 只掃 PENDING 且已過期——這是**範圍縮小**，不是守門。
+  // 只掃 PENDING／CONFIRMED（#769）且未付款、已過期——這是**範圍縮小**，不是守門。
   // 真正保證「CONFIRMED（已收款）永遠不被 cron 取消」的是 expire_tour_order 在
   // row lock 底下的重新檢查；這裡的 filter 在 rpc 執行前就可能過期（#350）。
   const { data: rows, error } = await admin
     .from('tour_orders')
     .select('id, tenant_id')
-    .eq('status', 'PENDING')
+    .in('status', ['PENDING', 'CONFIRMED'])
+    .eq('payment_status', 'UNPAID')
     .not('hold_expires_at', 'is', null)
     .lt('hold_expires_at', nowIso)
     .order('hold_expires_at', { ascending: true })

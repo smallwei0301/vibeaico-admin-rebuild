@@ -35,6 +35,22 @@ describe('tour-orders 頁狀態動作（mock 分支）真的把異動寫回 MOCK
     Object.assign(target!, snapshot);
   });
 
+  it('confirmTourOrderPayment：已接受未付款（CONFIRMED + UNPAID）可登記收款，已 PAID 則 409（#769）', async () => {
+    const target = MOCK_TOUR_ORDERS.find((o) => o.status === 'CONFIRMED');
+    expect(target).toBeDefined();
+    const snapshot = { ...target! };
+
+    target!.paymentStatus = 'UNPAID';
+    await confirmTourOrderPayment(target!.id);
+    expect(target!.status).toBe('CONFIRMED');
+    expect(target!.paymentStatus).toBe('PAID');
+    expect(target!.holdExpiresAt).toBeNull();
+
+    await expect(confirmTourOrderPayment(target!.id)).rejects.toBeInstanceOf(ApiError);
+
+    Object.assign(target!, snapshot);
+  });
+
   it('completeTourOrder：CONFIRMED → COMPLETED', async () => {
     const target = MOCK_TOUR_ORDERS.find((o) => o.status === 'CONFIRMED');
     expect(target).toBeDefined();

@@ -433,6 +433,27 @@ export function canTransitionTourOrder(
 }
 
 /**
+ * 這筆訂單現在能不能「登記收款」（confirm-payment，#769）。
+ *
+ * 兩種合法起點：
+ *   1. `PENDING`——既有的手動單／匯款流程（`PENDING → CONFIRMED + PAID`）。
+ *   2. `CONFIRMED` + `UNPAID` + `seats_reserved`——導遊接受 REQUEST 申請後
+ *      （`accept_tour_request`）的「已接受、付款保留中」訂單；status 已是
+ *      CONFIRMED，只差收款，登記後 status 維持 CONFIRMED。
+ *
+ * 不改 `canTransitionTourOrder` 的狀態機語意：CONFIRMED → CONFIRMED 仍非合法轉換，
+ * 這裡只回答「能不能登記收款」這個獨立問題。已 PAID／PARTIAL 的 CONFIRMED 單
+ * 回 false，避免重複收款。名額是否鎖定（PENDING 路徑）由呼叫端另行以
+ * `seats_reserved` 守門，維持原本的錯誤碼。
+ */
+export function canRegisterTourOrderPayment(order: {
+  status: TourOrderStatusValue; paymentStatus: string | null | undefined; seatsReserved: boolean | null | undefined;
+}): boolean {
+  if (order.status === 'PENDING') return true;
+  return order.status === 'CONFIRMED' && order.paymentStatus === 'UNPAID' && order.seatsReserved === true;
+}
+
+/**
  * 取消時要不要釋放名額。
  *
  * 只有還佔著名額的單（PENDING／CONFIRMED）才釋放。已 CANCELLED 的單再取消一次

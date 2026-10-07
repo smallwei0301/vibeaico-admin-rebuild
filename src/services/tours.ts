@@ -4,7 +4,7 @@ import type {
   TourOrder, TourOrderStatus, TourPaymentStatus, Paged,
 } from '@/lib/types';
 import { clampGalleryForCopy } from '@/lib/trip-gallery';
-import { canTransitionTourOrder, shouldReleaseSeats } from '@/server/tour-domain';
+import { canRegisterTourOrderPayment, canTransitionTourOrder, shouldReleaseSeats } from '@/server/tour-domain';
 import {
   MOCK_TOUR_ORDERS, MOCK_TRIPS, MOCK_TRIP_ADDONS,
   MOCK_TRIP_DEPARTURES, MOCK_TRIP_PLANS,
@@ -735,7 +735,15 @@ function releaseMockDeparture(o: TourOrder): void {
 export const confirmTourOrderPayment = (id: string) =>
   adapt(() => {
     const o = findMockTourOrder(id);
-    requireMockTourOrderTransition(o, 'CONFIRMED');
+    // #769：與真實路由一致——PENDING，或已接受未付款的 CONFIRMED + UNPAID 皆可登記收款。
+    // mock 沒有 seats_reserved 欄位，CONFIRMED 的未付款單視為已鎖名額。
+    if (o.status === 'CONFIRMED') {
+      if (!canRegisterTourOrderPayment({ status: o.status, paymentStatus: o.paymentStatus, seatsReserved: true })) {
+        throw new ApiError('此訂單狀態已變更', 'REQ_003', 409);
+      }
+    } else {
+      requireMockTourOrderTransition(o, 'CONFIRMED');
+    }
     o.status = 'CONFIRMED';
     o.paymentStatus = 'PAID';
     o.holdExpiresAt = null;
