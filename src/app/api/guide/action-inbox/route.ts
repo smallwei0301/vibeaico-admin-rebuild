@@ -253,6 +253,7 @@ export const GET = handle(async () => {
       .eq('status', 'CONFIRMED')
       .eq('payment_status', 'UNPAID')
       .eq('seats_reserved', true)
+      .gt('total_amount', 0) // 零元訂單無待收款，不佔 limit
       .not('hold_expires_at', 'is', null)
       .neq('trip_departures.status', 'CANCELLED')
       .gte('trip_departures.departs_on', today)
@@ -545,7 +546,8 @@ export const GET = handle(async () => {
         : `${ORDER_SELECT}, trip_plans!inner(name, sales_mode)`, { count: 'exact' })
       .eq('tenant_id', t.tenantId)
       .eq('status', kind === 'PARTIAL' ? 'CONFIRMED' : 'PENDING')
-      .eq('payment_status', kind === 'PARTIAL' ? 'PARTIAL' : 'UNPAID');
+      .eq('payment_status', kind === 'PARTIAL' ? 'PARTIAL' : 'UNPAID')
+      .gt('total_amount', 0); // 零元訂單無待收款，不佔 limit／count
     // 與慢路徑的團次視窗一致：已取消的團次（trip_departures.status = 'CANCELLED'，0066）不產生卡片。
     return (kind === 'PENDING' ? base.neq('trip_plans.sales_mode', 'REQUEST') : base)
       .neq('trip_departures.status', 'CANCELLED')

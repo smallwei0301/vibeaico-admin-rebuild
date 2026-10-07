@@ -64,7 +64,12 @@ function apply(rows: FakeRow[], calls: Call[]): FakeRow[] {
       } else {
         out = out.filter(evalOr(expr));
       }
-    } else if (m === 'gt') out = out.filter((r) => String(field(r, f)) > String(a[1]));
+    } else if (m === 'gt') {
+      out = out.filter((r) => {
+        const v = field(r, f);
+        return typeof v === 'number' && typeof a[1] === 'number' ? v > a[1] : String(v) > String(a[1]);
+      });
+    }
     else if (m === 'neq') out = out.filter((r) => field(r, f) !== a[1]);
     else if (m === 'gte') out = out.filter((r) => (field(r, f) as string) >= (a[1] as string));
     else if (m === 'in') out = out.filter((r) => (a[1] as unknown[]).includes(field(r, f)));
@@ -548,6 +553,31 @@ describe('route.ts: payment-due source filters, window and display fields (#43 é
       && r.calls.some(([m, a]) => m === 'eq' && a[0] === 'seats_reserved'))!;
     expect(String(q.calls.find(([m]) => m === 'select')?.[1][0])).toContain('trip_departures!inner(departs_on, start_time, status)');
     expect(q.calls.some(([m, a]) => m === 'neq' && a[0] === 'trip_departures.status' && a[1] === 'CANCELLED')).toBe(true);
+  });
+
+  it('zero-amount orders (PENDING / CONFIRMED UNPAID) produce no card; source queries filter total_amount > 0', async () => {
+    const hold = new Date(Date.now() + 3_600_000).toISOString();
+    const due = await run([
+      mk({ id: 'zero-pending', status: 'PENDING', payment_status: 'UNPAID', total_amount: 0, hold_expires_at: null }),
+      mk({ id: 'zero-init', payment_status: 'UNPAID', total_amount: 0, hold_expires_at: hold }),
+      mk({ id: 'paid-init', payment_status: 'UNPAID', hold_expires_at: hold }),
+    ]);
+    expect(due.map((i) => i.id)).toEqual(['paid-init']);
+    const queries = recorded.filter((r) => r.table === 'tour_orders'
+      && r.calls.some(([m, a]) => m === 'eq' && a[0] === 'payment_status' && (a[1] === 'UNPAID' || a[1] === 'PARTIAL')));
+    expect(queries).toHaveLength(3);
+    for (const q of queries) {
+      expect(q.calls.some(([m, a]) => m === 'gt' && a[0] === 'total_amount' && a[1] === 0)).toBe(true);
+    }
+  });
+
+  it('builder defensively returns null for zero / negative / non-finite totalAmount', () => {
+    expect(build({ totalAmount: 0 })).toBeNull();
+    expect(build({ status: 'PENDING', totalAmount: 0 })).toBeNull();
+    expect(build({ paymentStatus: 'PARTIAL', paidAmount: 0, totalAmount: 0 })).toBeNull();
+    expect(build({ totalAmount: -1 })).toBeNull();
+    expect(build({ totalAmount: Number.NaN })).toBeNull();
+    expect(build({ totalAmount: 100 })).not.toBeNull();
   });
 
   it('builder defensively returns null for CANCELLED departures in all three stages', () => {

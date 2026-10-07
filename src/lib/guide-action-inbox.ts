@@ -739,6 +739,8 @@ export function buildGuideActionInboxTourPaymentDueItem(
 ): GuideActionInboxTourPaymentDueItem | null {
   if (input.status !== 'CONFIRMED' && input.status !== 'PENDING') return null;
   if (input.departureStatus === 'CANCELLED') return null;
+  // 零元（或非有限金額）訂單沒有待收款，與服務預約 final_price > 0 同理。
+  if (!Number.isFinite(Number(input.totalAmount)) || Number(input.totalAmount) <= 0) return null;
   if (!isAwaitingPayment({ status: input.status, paymentStatus: input.paymentStatus })) return null;
   // PENDING 只可能是 UNPAID 全額（PARTIAL 一律是 CONFIRMED）。
   if (input.status === 'PENDING' && input.paymentStatus !== 'UNPAID') return null;
