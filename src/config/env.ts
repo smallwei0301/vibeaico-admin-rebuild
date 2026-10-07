@@ -47,10 +47,11 @@ const serverSchema = z.object({
 
   /**
    * 成團截止自動推進排程（Issue #41，/api/cron/formation-deadline）的開關。
-   * 預設關閉：未設定或非 'true' 一律視為關閉，route 回 { skipped: 'disabled' }、不讀不寫。
+   * 預設關閉：未設定或非精確 'true' 一律視為關閉，route 回 { skipped: 'disabled' }、不讀不寫。
+   * 刻意不用 enum：env.ts 被 middleware 載入，任何打錯的值（'TRUE'、'1'、''）都不得讓整站啟動失敗。
    * Production 需 Owner 明確開啟。
    */
-  FORMATION_DEADLINE_SWEEP_ENABLED: z.enum(['true', 'false']).optional(),
+  FORMATION_DEADLINE_SWEEP_ENABLED: z.string().optional(),
 
   /** AI 客服（AI_ASSISTANT，09 分冊 §7）：平台一把 key，所有店共用；未設定時 AI 客服靜默停用 */
   ANTHROPIC_API_KEY: z.string().optional(),

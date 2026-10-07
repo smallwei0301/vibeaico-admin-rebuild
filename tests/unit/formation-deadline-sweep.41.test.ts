@@ -9,11 +9,13 @@ const T = '11111111-1111-4111-8111-111111111111';
 const st = vi.hoisted(() => ({
   deps: [] as Row[],
   orders: [] as Row[],
-  updates: [] as { patch: Row; eq: [string, unknown][]; neq: [string, unknown][] }[],
+  updates: [] as { patch: Row; eq: [string, unknown][]; neq: [string, unknown][]; lte: [string, string] | null }[],
   reads: 0,
   raceIds: new Set<string>(),
   schemaError: null as string | null,
   pageCap: 1e9,
+  tz: {} as Record<string, string>,
+  beforeCas: null as null | (() => void),
 }));
 
 vi.mock('@/server/supabase', () => ({ createAdminSupabase: () => fakeDb }));
@@ -29,17 +31,23 @@ const fakeDb = {
     const neq: [string, unknown][] = [];
     let patch: Row | null = null;
     let gt: string | null = null;
+    let gte: [string, string] | null = null;
     let lte: [string, string] | null = null;
     let notNull: string | null = null;
     let lim = 1e9;
     const run = () => {
+      if (table === 'tenant_settings') {
+        const tid = eq.find(([k]) => k === 'tenant_id')?.[1] as string;
+        return { data: st.tz[tid] ? { basic: { timezone: st.tz[tid] } } : null, error: null };
+      }
+      if (patch) st.beforeCas?.();
       if (st.schemaError) return { data: null, error: { code: st.schemaError } };
       const src = table === 'trip_departures' ? st.deps : st.orders;
       const match = src.filter((r) => eq.every(([k, v]) => r[k] === v) && neq.every(([k, v]) => r[k] !== v)
         && (!notNull || r[notNull] != null) && (!lte || (r[lte[0]] != null && String(r[lte[0]]) <= lte[1]))
-        && (!gt || String(r.id) > gt));
+        && (!gte || (r[gte[0]] != null && String(r[gte[0]]) >= gte[1])) && (!gt || String(r.id) > gt));
       if (patch) {
-        st.updates.push({ patch, eq, neq });
+        st.updates.push({ patch, eq, neq, lte });
         const id = eq.find(([k]) => k === 'id')?.[1] as string;
         if (st.raceIds.has(id)) return { data: [], error: null };
         match.forEach((r) => Object.assign(r, patch));
@@ -54,6 +62,8 @@ const fakeDb = {
       eq: (k: string, v: unknown) => { eq.push([k, v]); return q; },
       neq: (k: string, v: unknown) => { neq.push([k, v]); return q; },
       not: (k: string) => { notNull = k; return q; },
+      gte: (k: string, v: string) => { gte = [k, v]; return q; },
+      maybeSingle: () => q,
       lte: (k: string, v: string) => { lte = [k, v]; return q; },
       gt: (_k: string, v: string) => { gt = v; return q; },
       order: () => q,
@@ -70,7 +80,8 @@ const req = (auth: string | null = 'Bearer s3cret') =>
   new Request('http://localhost/api/cron/formation-deadline', { headers: auth ? { authorization: auth } : {} });
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const dep = (n: number, over: Row = {}): Row => ({
-  id: id(n), tenant_id: T, status: 'OPEN', formation_status: 'COLLECTING', formation_deadline_at: PAST, min_to_depart_snapshot: 4, ...over,
+  id: id(n), tenant_id: T, status: 'OPEN', formation_status: 'COLLECTING', formation_deadline_at: PAST, min_to_depart_snapshot: 4,
+  departs_on: '2026-10-20', start_time: '09:00:00', ...over,
 });
 let oc = 0;
 const order = (depId: string, party: number, over: Row = {}): Row => ({
@@ -82,7 +93,7 @@ describe('formation-deadline sweep（Issue #41）', () => {
   beforeEach(() => {
     process.env.CRON_SECRET = 's3cret';
     process.env.FORMATION_DEADLINE_SWEEP_ENABLED = 'true';
-    st.deps = []; st.orders = []; st.updates = []; st.reads = 0; st.raceIds = new Set(); st.schemaError = null; st.pageCap = 1e9;
+    st.tz = {}; st.beforeCas = null; st.deps = []; st.orders = []; st.updates = []; st.reads = 0; st.raceIds = new Set(); st.schemaError = null; st.pageCap = 1e9;
     vi.useFakeTimers(); vi.setSystemTime(NOW);
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -98,6 +109,29 @@ describe('formation-deadline sweep（Issue #41）', () => {
     process.env.FORMATION_DEADLINE_SWEEP_ENABLED = 'false';
     expect(await (await GET(req())).json()).toEqual({ skipped: 'disabled' });
     expect(st.reads).toBe(0);
+  });
+
+  it("開關只有精確 'true' 才開；'TRUE'／'1'／''／' true' 一律關閉", async () => {
+    st.deps = [dep(1)];
+    for (const v of ['TRUE', '1', '', ' true', 'yes']) {
+      process.env.FORMATION_DEADLINE_SWEEP_ENABLED = v;
+      expect(await (await GET(req())).json()).toEqual({ skipped: 'disabled' });
+    }
+    expect(st.reads).toBe(0); expect(st.updates).toHaveLength(0);
+  });
+
+  it('env 模組載入：開關任何值都不拋錯（打錯值不得讓 middleware 啟動失敗）', async () => {
+    const saved = { ...process.env };
+    try {
+      for (const v of ['true', 'false', 'TRUE', '1', '', ' true', 'yes']) {
+        vi.resetModules();
+        process.env.FORMATION_DEADLINE_SWEEP_ENABLED = v;
+        await expect(import('@/config/env')).resolves.toBeDefined();
+      }
+    } finally {
+      process.env = saved;
+      vi.resetModules();
+    }
   });
 
   it('CRON_SECRET 驗證：缺、錯、未設定一律 401', async () => {
@@ -152,6 +186,40 @@ describe('formation-deadline sweep（Issue #41）', () => {
       expect(u.neq).toContainEqual(['status', 'CANCELLED']);
     }
     expect(st.deps[0].formation_status).toBe('COLLECTING');
+  });
+
+  it('CAS 帶 formation_deadline_at <= now；選出後截止被延後 → 0 列、不推進、計入 skipped', async () => {
+    st.deps = [dep(1)];
+    st.orders = [order(id(1), 4)];
+    st.beforeCas = () => { st.deps[0].formation_deadline_at = FUTURE; };
+    const body = await (await GET(req())).json();
+    expect(body).toMatchObject({ scanned: 1, formed: 0, reviewRequired: 0, skipped: 1 });
+    expect(st.deps[0].formation_status).toBe('COLLECTING');
+    expect(st.updates[0].lte).toEqual(['formation_deadline_at', new Date(NOW).toISOString()]);
+  });
+
+  it('已出發（店家時區）的 COLLECTING 團次不推進，計入 skipped；未出發者照推', async () => {
+    // NOW = UTC 2026-10-07 03:30 = 台北 11:30
+    st.deps = [
+      dep(1, { departs_on: '2026-10-07', start_time: '09:00:00' }), // 已出發
+      dep(2, { departs_on: '2026-10-07', start_time: '14:00:00' }), // 未出發
+      dep(3, { departs_on: '2026-10-05', start_time: null }),       // 過去日期
+      dep(4, { departs_on: '2026-10-07', start_time: null }),       // 今天無時間：保留到當天結束
+    ];
+    st.orders = [order(id(2), 4), order(id(4), 4)];
+    const body = await (await GET(req())).json();
+    expect(body).toMatchObject({ scanned: 3, formed: 2, skipped: 1 });
+    expect(st.deps[0].formation_status).toBe('COLLECTING');
+    expect(st.deps[1].formation_status).toBe('FORMED');
+    expect(st.deps[2].formation_status).toBe('COLLECTING');
+    expect(st.deps[3].formation_status).toBe('FORMED');
+  });
+
+  it('店家時區決定是否已出發：同一 instant，UTC-8 店家未出發', async () => {
+    st.tz[T] = 'America/Los_Angeles'; // 2026-10-06 20:30 當地
+    st.deps = [dep(1, { departs_on: '2026-10-06', start_time: '21:00:00' })];
+    st.orders = [order(id(1), 4)];
+    expect((await (await GET(req())).json()).formed).toBe(1);
   });
 
   it('退款中／已退款／已取消訂單不計人數', async () => {
