@@ -26,6 +26,19 @@ describe('報表下鑽連結參數（純函式）', () => {
     expect(params(rankingLink(R, 'plan', PLAN, 'orders')).has('tripId')).toBe(false);
   });
 
+  it('排行每個數字格各自口徑：orders／people 帶 activeOnly、revenue 不帶；行程與方案維度皆然', () => {
+    const cases = [['orders', true], ['people', true], ['revenue', false]] as const;
+    for (const dim of ['trip', 'plan'] as const) {
+      for (const [metric, active] of cases) {
+        const p = params(rankingLink(R, dim, dim === 'trip' ? TRIP : PLAN, metric));
+        expect(p.get('activeOnly') === '1', `${dim}/${metric}`).toBe(active);
+        expect(p.get('createdFrom')).toBe(R.from);
+        expect(p.get('createdTo')).toBe(R.to);
+        expect(p.get(dim === 'trip' ? 'tripId' : 'planId')).toBe(dim === 'trip' ? TRIP : PLAN);
+      }
+    }
+  });
+
   it('退款處理中帶 paymentStatus；取消率帶 status=CANCELLED；總數連結不帶任何排除', () => {
     expect(params(refundPendingLink(R)).get('paymentStatus')).toBe('REFUND_PENDING');
     expect(params(rangeLink(R, 'CANCELLED')).get('status')).toBe('CANCELLED');

@@ -55,7 +55,7 @@ export const reportsPage = {
     },
     sourceCard: {
       title: '訂單來源',
-      description: '非取消訂單依來源分列訂單數與實收營收；點選來源可查看該期間該來源的全部訂單（清單含已取消訂單，筆數可能多於此處）。',
+      description: '非取消訂單依來源分列訂單數與實收營收；點選來源可查看該期間該來源的訂單；清單同樣不含已取消訂單，筆數與此處一致。',
       // 來源名稱與旅遊訂單頁共用同一份文案，兩頁不會對不上
       names: { ...tourOrdersPage.source, OTHER: '其他' },
       line: (orders: number, revenue: string) => `${orders} 筆　${revenue}`,
@@ -84,7 +84,12 @@ export const reportsPage = {
       metric: { orders: '依訂單數', people: '依人數', revenue: '依實收營收' },
       columns: { rank: '名次', name: '名稱', orders: '訂單數', people: '人數', revenue: '實收營收' },
       empty: '這段期間沒有可排序的資料',
-      linkNote: '名稱連結：訂單數、人數排序不含已取消訂單；依實收營收排序時連結含已取消訂單（已收款項仍計入實收）。',
+      linkNote: '連結說明：名稱與「訂單數」「人數」欄的連結列出不含已取消的訂單，筆數與表內一致；「實收營收」欄的連結含已取消訂單（已收款項仍計入實收），所以筆數可能多於訂單數。',
+      cellTitles: {
+        orders: (name: string) => `查看「${name}」的訂單（不含已取消）`,
+        people: (name: string) => `查看「${name}」人數所屬的訂單（不含已取消）`,
+        revenue: (name: string) => `查看「${name}」實收營收所屬的訂單（含已取消訂單的已收款）`,
+      },
       tieRule: '同分時依名稱排序，再依編號排序，結果每次相同。',
     },
     defs: {

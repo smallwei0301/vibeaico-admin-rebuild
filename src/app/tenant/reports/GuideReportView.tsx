@@ -123,26 +123,46 @@ export function GuideReportView() {
   /** 所有下鑽連結共用：日期區間＋資料截至（createdBefore），清單與報表用同一個讀取上界 */
   const linkRange = { from: report?.range.from ?? '', to: report?.range.to ?? '', asOf: report?.asOf ?? null, timeZone: report?.range.timeZone };
 
+  const cellLink = (r: GuideRankRow, m: GuideRankMetric, text: string) => (report
+    ? (
+      <Link
+        href={rankingLink(linkRange, dimension, r.id, m)}
+        className="underline" title={t.ranking.cellTitles[m](r.name)} aria-label={t.ranking.cellTitles[m](r.name)}
+      >
+        {text}
+      </Link>
+    )
+    : text);
+
   const columns: Column<GuideRankRow>[] = [
     { key: 'rank', header: t.ranking.columns.rank, width: '64px', render: (_r, i) => <Badge tone={RANK_TONE[i] ?? 'neutral'}>{i + 1}</Badge> },
     {
       key: 'name', header: t.ranking.columns.name,
-      // 行程／方案各自帶 tripId／planId。訂單數與人數排除已取消 → 加 activeOnly；
-      // 實收營收口徑含已取消訂單的已收款，所以「依實收營收」的連結不加 activeOnly。
+      // 名稱連結固定用「訂單數」口徑（不含已取消），不隨排序分頁改變；各數字格另有自己的連結。
       render: (r) => (report
         ? (
           <Link
-            href={rankingLink(linkRange, dimension, r.id, metric)}
-            className="underline" title={t.drilldown.viewTripOrders(r.name)}
+            href={rankingLink(linkRange, dimension, r.id, 'orders')}
+            className="underline" title={t.ranking.cellTitles.orders(r.name)}
           >
             {r.name}
           </Link>
         )
         : r.name),
     },
-    { key: 'orders', header: t.ranking.columns.orders, numeric: true, render: (r) => formatNumber(r.orders) },
-    { key: 'people', header: t.ranking.columns.people, numeric: true, render: (r) => formatNumber(r.people) },
-    { key: 'revenue', header: t.ranking.columns.revenue, numeric: true, render: (r) => formatCurrency(r.revenue) },
+    // 每個數字格各用該欄的口徑：訂單數、人數排除已取消（activeOnly）；實收營收含已取消訂單的已收款（不加）。
+    {
+      key: 'orders', header: t.ranking.columns.orders, numeric: true,
+      render: (r) => cellLink(r, 'orders', formatNumber(r.orders)),
+    },
+    {
+      key: 'people', header: t.ranking.columns.people, numeric: true,
+      render: (r) => cellLink(r, 'people', formatNumber(r.people)),
+    },
+    {
+      key: 'revenue', header: t.ranking.columns.revenue, numeric: true,
+      render: (r) => cellLink(r, 'revenue', formatCurrency(r.revenue)),
+    },
   ];
 
   const cardLabel = (name: string) => (report?.truncated ? `${name}（${t.truncatedHint}）` : name);
