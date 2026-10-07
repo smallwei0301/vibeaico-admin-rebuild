@@ -13,7 +13,9 @@
  *    另列為 refundPendingCount，不與「已退款」混算。
  *  - 平均客單：非取消訂單的實收 ÷ 「非取消且實收 > 0」的訂單數；分母 0 → null。四捨五入到整數元。
  *    取消單（含退款處理中）分子分母皆排除。
- *  - 取消數：status = CANCELLED 的訂單數。DB 只有自由文字 cancel_reason、沒有取消來源欄位，
+ *  - 取消率：status = CANCELLED 的訂單數 ÷ 該期訂單總數（含取消），四捨五入到 1 位小數；總數 0 → null。
+ *    上一期比較以百分點差表示。取消數（筆數）保留為次要資訊。
+ *    DB 無取消來源欄位，因此取消率尚未區分旅客／導遊／系統逾期；DB 只有自由文字 cancel_reason、沒有取消來源欄位，
  *    因此尚未區分旅客／導遊／系統逾期，不推測。
  *  - 排行：行程（trip）與方案（plan）兩種維度，各自依「訂單數／人數／實收營收」三種排序。
  *    訂單數與人數排除 CANCELLED；實收營收用同一個實收口徑。同分依名稱（code unit 升冪）再依 id。
@@ -60,6 +62,8 @@ export type GuideSummary = {
   /** 實收營收 ÷ paidOrderCount；分母 0 → null */
   avgOrderValue: number | null;
   cancelledCount: number;
+  /** 取消率（%，1 位小數）＝取消數 ÷ 該期訂單總數（含取消）；總數 0 → null */
+  cancellationRate: number | null;
   /** payment_status = REFUND_PENDING 的訂單數 */
   refundPendingCount: number;
 };
@@ -68,7 +72,8 @@ export type GuideReportChanges = {
   totalOrders: number | null;
   revenue: number | null;
   avgOrderValue: number | null;
-  cancelledCount: number | null;
+  /** 取消率增減（百分點，本期 − 上一期，1 位小數）；任一期無訂單 → null */
+  cancellationRatePoints: number | null;
 };
 
 export type GuideReport = {
@@ -214,6 +219,7 @@ export function summarize(rows: GuideReportOrderRow[]): GuideSummary {
     paidOrderCount,
     avgOrderValue: paidOrderCount > 0 ? Math.round(avgNumerator / paidOrderCount) : null,
     cancelledCount: byStatus.CANCELLED,
+    cancellationRate: rows.length > 0 ? round1((byStatus.CANCELLED / rows.length) * 100) : null,
     refundPendingCount,
   };
 }
@@ -224,6 +230,12 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
 export function changePercent(current: number | null, previous: number | null): number | null {
   if (current === null || previous === null || previous === 0) return null;
   return round1(((current - previous) / previous) * 100);
+}
+
+/** 百分點差（本期 − 上一期）；任一邊 null → null */
+export function pointDiff(current: number | null, previous: number | null): number | null {
+  if (current === null || previous === null) return null;
+  return round1(current - previous);
 }
 
 const cmpText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -286,7 +298,7 @@ export function computeGuideReport(input: {
       totalOrders: changePercent(summary.totalOrders, previous.totalOrders),
       revenue: changePercent(summary.revenue, previous.revenue),
       avgOrderValue: changePercent(summary.avgOrderValue, previous.avgOrderValue),
-      cancelledCount: changePercent(summary.cancelledCount, previous.cancelledCount),
+      cancellationRatePoints: pointDiff(summary.cancellationRate, previous.cancellationRate),
     },
     ranking: {
       trip: rankBy(cur, (r) => r.trip_id, input.tripNames),

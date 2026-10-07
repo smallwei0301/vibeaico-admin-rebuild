@@ -26,7 +26,8 @@ describe('computeGuideReport — 空資料', () => {
     expect(r.summary.avgOrderValue).toBeNull();
     expect(r.previous.avgOrderValue).toBeNull();
     expect(r.truncated).toBe(false);
-    expect(r.changes).toEqual({ totalOrders: null, revenue: null, avgOrderValue: null, cancelledCount: null });
+    expect(r.changes).toEqual({ totalOrders: null, revenue: null, avgOrderValue: null, cancellationRatePoints: null });
+    expect(r.summary.cancellationRate).toBeNull(); // 分母 0 → null，不是 0%
     expect(r.ranking.plan.orders).toEqual([]);
     expect(r.ranking.trip.revenue).toEqual([]);
   });
@@ -104,6 +105,29 @@ describe('取消與退款不混算', () => {
   });
 });
 
+describe('取消率', () => {
+  const mk = (n: number, cancelled: number, day: string) => Array.from({ length: n }, (_, i) =>
+    row({ created_at: `${day}T02:00:00Z`, status: i < cancelled ? 'CANCELLED' : 'CONFIRMED' }));
+  it('2/10 → 5/100：本期（10 筆）取消率 20%、上一期（100 筆）5%，增減為 +15.0 百分點（不是 +150%）', () => {
+    // 本期 10/01–10/10；上一期 09/21–09/30
+    const r = run([...mk(10, 2, '2026-10-05'), ...mk(100, 5, '2026-09-25')]);
+    expect(r.summary.cancellationRate).toBe(20);
+    expect(r.previous.cancellationRate).toBe(5);
+    expect(r.changes.cancellationRatePoints).toBe(15);
+  });
+  it('取消率四捨五入到 1 位（1/3 → 33.3）；全取消 100；上一期無訂單 → 比較 null', () => {
+    const r = run(mk(3, 1, '2026-10-05'));
+    expect(r.summary.cancellationRate).toBe(33.3);
+    expect(r.previous.cancellationRate).toBeNull();
+    expect(r.changes.cancellationRatePoints).toBeNull();
+    expect(run(mk(2, 2, '2026-10-05')).summary.cancellationRate).toBe(100);
+  });
+  it('取消率下降為負的百分點差', () => {
+    const r = run([...mk(10, 1, '2026-10-05'), ...mk(10, 3, '2026-09-25')]);
+    expect(r.changes.cancellationRatePoints).toBe(-20);
+  });
+});
+
 describe('上一期比較', () => {
   it('上一期為緊鄰的等長期間；變化百分比四捨五入到 1 位；上一期 0 → null', () => {
     // 本期 10/01–10/10（10 天），上一期 09/21–09/30
@@ -121,7 +145,7 @@ describe('上一期比較', () => {
     expect(r.previous.revenue).toBe(9000);
     expect(r.changes.totalOrders).toBe(50); // (3-2)/2
     expect(r.changes.revenue).toBe(0); // 9000 vs 9000
-    expect(r.changes.cancelledCount).toBeNull(); // 上一期取消 0
+    expect(r.changes.cancellationRatePoints).toBe(0); // 兩期取消率皆 0%
   });
 
   it('changePercent：33.333… → 33.3；上一期 0 或 null → null', () => {

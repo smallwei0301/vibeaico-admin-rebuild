@@ -37,16 +37,19 @@ export const reportsPage = {
       down: (pct: string) => `較上一期減少 ${pct}`,
       flat: '與上一期持平',
       previousValue: (v: string) => `上一期：${v}`,
+      pointsUp: (pts: string) => `較上一期上升 ${pts} 個百分點`,
+      pointsDown: (pts: string) => `較上一期下降 ${pts} 個百分點`,
     },
     cards: {
       orders: '旅遊訂單數',
       revenue: '實收營收',
       avgOrderValue: '平均客單',
-      cancelled: '取消訂單數',
+      cancelled: '取消率',
     },
     cardHints: {
       revenueRefunded: (amount: string) => `已退款 ${amount}（已自實收扣除）`,
       refundPending: (n: number) => `另有 ${n} 筆退款處理中（尚未退出，仍計入實收）`,
+      cancelledCount: (n: number, total: number) => `已取消 ${n} 筆，共 ${total} 筆訂單`,
       avgBasis: (n: number) => `分母：非取消且實收大於 0 的 ${n} 筆訂單`,
     },
     statusBreakdownTitle: '各狀態訂單數',
@@ -73,7 +76,7 @@ export const reportsPage = {
       avgOrderValue:
         '平均客單：非取消訂單的實收金額 ÷ 非取消且有實收的訂單數（已取消訂單，含退款處理中，分子分母皆不計）；分母為 0 時顯示「尚無足夠資料」，不以 0 代替。',
       cancelled:
-        '取消訂單數：狀態為已取消的訂單數。目前資料沒有記錄取消是旅客、導遊或系統逾期造成，所以只顯示總數，不拆分原因。',
+        '取消率：已取消訂單數 ÷ 該期訂單總數（含已取消），四捨五入到小數點後 1 位；沒有訂單時顯示「尚無足夠資料」。與上一期的比較以「百分點」表示（本期取消率減上一期取消率）。目前資料沒有記錄取消是旅客、導遊或系統逾期造成，所以只顯示總取消率，不拆分原因。',
       ranking:
         '熱門排行：訂單數與人數不含已取消訂單；實收營收用上方同一口徑。三種排序分開呈現，指標為 0 的項目不列入，最多顯示 10 名。',
       comparison: '上一期：與所選期間天數相同、緊接在前的期間；上一期為 0 時不計算增減百分比。',

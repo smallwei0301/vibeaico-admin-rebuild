@@ -36,6 +36,13 @@ function changeText(pct: number | null): string {
   return pct > 0 ? t.change.up(formatPercent(pct, 1)) : t.change.down(formatPercent(Math.abs(pct), 1));
 }
 
+/** 取消率的上一期比較（百分點差） */
+function pointsText(pts: number | null): string {
+  if (pts === null) return t.noDataPrevious;
+  if (pts === 0) return t.change.flat;
+  return pts > 0 ? t.change.pointsUp(pts.toFixed(1)) : t.change.pointsDown(Math.abs(pts).toFixed(1));
+}
+
 export function GuideReportView() {
   const toast = useToast();
   const [report, setReport] = React.useState<GuideReport | null>(null);
@@ -235,8 +242,8 @@ export function GuideReportView() {
             />
             <StatCard
               label={cardLabel(t.cards.cancelled)} icon={Ban} tone="danger"
-              value={`${formatNumber(s.cancelledCount)} ${t.unit.orders}`}
-              hint={`${changeText(report.changes.cancelledCount)}${t.sep}${t.change.previousValue(formatNumber(prev.cancelledCount))}`}
+              value={s.cancellationRate === null ? t.noData : formatPercent(s.cancellationRate, 1)}
+              hint={`${pointsText(report.changes.cancellationRatePoints)}${t.sep}${t.cardHints.cancelledCount(s.cancelledCount, s.totalOrders)}${t.sep}${t.change.previousValue(prev.cancellationRate === null ? t.noData : formatPercent(prev.cancellationRate, 1))}`}
             />
           </div>
 
