@@ -519,12 +519,15 @@ export const GET = handle(async () => {
   // hold_expires_at，期限用出發時刻，有 hold 則用 hold）。兩類各自獨立處理：
   //
   //  1. 快路徑：一次有界查詢（`trip_departures!inner` + departs_on >= 租戶今天，上限
-  //     PAYMENT_DUE_FIRST_LIMIT）。回傳筆數 < 上限＝已拿到「全部」符合的訂單，程式內依期限排序取前
-  //     20 即完成（一般租戶只花 1 個查詢）。
+  //     PAYMENT_DUE_FIRST_LIMIT），帶 `{ count: 'exact' }`。count ≤ 已取得筆數＝已拿到「全部」符合的訂單，
+  //     程式內依期限排序取前 20 即完成（一般租戶只花 1 個查詢）。**不以「回傳筆數 < 要求上限」判定完整**：
+  //     遠端 PostgREST `max_rows` 若小於要求上限會靜默截斷（N2，見 src/server/tour-order-no.ts）；
+  //     拿不到 count 時一律當作不完整、走慢路徑。
   //  2. 慢路徑（快路徑被塞滿才走）：期限＝出發時刻，所以用 keyset（departs_on, id）分批讀
   //     trip_departures（tenant、非 CANCELLED、departs_on >= 今天），再 `.in('departure_id', ids)` 讀
   //     該批訂單；當已有 ≥20 張卡、且第 20 張的出發日早於本批最後一個出發日（該日可能還有下一批
-  //     的團次）時停止。keyset 不含 start_time，同一天內的先後交給程式內排序；跨批同日的最壞情形
+  //     的團次）時停止。團次批次與訂單分頁的「讀到底」同樣不依賴伺服器上限：每頁帶 count（keyset 條件
+  //     下的剩餘筆數），count ≤ 本頁筆數才算最後一頁，否則（含拿不到 count）繼續讀，直到空頁。keyset 不含 start_time，同一天內的先後交給程式內排序；跨批同日的最壞情形
   //     由上面的停止條件涵蓋。慢路徑以快路徑的列為種子，並用高上限（PAYMENT_DUE_MAX_BATCHES）持續掃描，
   //     撞到上限時 warn 並回傳已知最佳集合（種子列此時不一定是全域最早）。不使用未驗證的 PostgREST 內嵌欄位排序語法。
   // PENDING 若帶 hold，hold 理論上早於出發；慢路徑只在已讀到的批次內依有效期限排序——現行資料沒有
@@ -539,7 +542,7 @@ export const GET = handle(async () => {
       .from('tour_orders')
       .select(kind === 'PARTIAL'
         ? `${ORDER_SELECT}, trip_plans(name)`
-        : `${ORDER_SELECT}, trip_plans!inner(name, sales_mode)`)
+        : `${ORDER_SELECT}, trip_plans!inner(name, sales_mode)`, { count: 'exact' })
       .eq('tenant_id', t.tenantId)
       .eq('status', kind === 'PARTIAL' ? 'CONFIRMED' : 'PENDING')
       .eq('payment_status', kind === 'PARTIAL' ? 'PARTIAL' : 'UNPAID');
@@ -554,7 +557,9 @@ export const GET = handle(async () => {
     const first = await paymentDueOrderQuery(kind).limit(PAYMENT_DUE_FIRST_LIMIT);
     if (first.error) throw first.error;
     const firstRows = first.data ?? [];
-    if (firstRows.length < PAYMENT_DUE_FIRST_LIMIT) return firstRows;
+    // count 是符合條件的總筆數（不受 limit／max_rows 影響）；只有它能證明「已拿到全部」。
+    if (typeof first.count === 'number' && first.count <= firstRows.length) return firstRows;
+    if (firstRows.length === 0) return firstRows;
 
     // 以快路徑的列當種子（依 id 去重）：它們已證明存在，分類不會因為掃描沒走到而變空。
     // 注意：撞到批次安全上限時，種子列不一定是全域最早的（快路徑沒排序）——此時只是「已知最佳集合」。
@@ -579,7 +584,7 @@ export const GET = handle(async () => {
       batchesScanned += 1;
       let depQuery = t.supabase
         .from('trip_departures')
-        .select('id, departs_on, start_time')
+        .select('id, departs_on, start_time', { count: 'exact' })
         .eq('tenant_id', t.tenantId)
         .neq('status', 'CANCELLED')
         .gte('departs_on', today);
@@ -598,6 +603,8 @@ export const GET = handle(async () => {
       if (departureWindow.error) throw departureWindow.error;
       const deps = (departureWindow.data ?? []) as Array<{ id: string; departs_on: string }>;
       if (deps.length === 0) { exhausted = true; break; }
+      // count＝游標之後剩餘的團次總數（不受 limit／max_rows 影響）。
+      const depsRemaining = typeof departureWindow.count === 'number' ? departureWindow.count : null;
       const last = deps[deps.length - 1];
       cursor = { departsOn: String(last.departs_on).slice(0, 10), id: last.id };
 
@@ -607,7 +614,8 @@ export const GET = handle(async () => {
       const rows: any[] = [];
       let lastOrderId: string | null = null;
       let batchComplete = true;
-      // 「頁未滿 ⇒ 最後一頁」假設 PostgREST max-rows ≥ 頁大小（預設 1000，頁大小 500 留有餘裕）。
+      // 不依賴伺服器 max_rows：以 count（游標之後剩餘訂單數）≤ 本頁筆數判定最後一頁，
+      // 拿不到 count 時繼續讀到空頁為止。游標一律取「實際回傳的最後一列」。
       const orderPage = guideActionInboxPaymentDueTuning.orderPage;
       for (;;) {
         let q = paymentDueOrderQuery(kind).in('departure_id', deps.map((d) => d.id));
@@ -616,7 +624,8 @@ export const GET = handle(async () => {
         if (page.error) throw page.error;
         const pageRows = page.data ?? [];
         rows.push(...pageRows);
-        if (pageRows.length < orderPage) break; // 這批最後一頁
+        if (pageRows.length === 0) break;
+        if (typeof page.count === 'number' && page.count <= pageRows.length) break; // 這批最後一頁
         lastOrderId = pageRows[pageRows.length - 1].id;
         if (Date.now() - scanStartedAt > PAYMENT_DUE_SCAN_BUDGET_MS) { batchComplete = false; break; }
       }
@@ -624,7 +633,7 @@ export const GET = handle(async () => {
       addCards(rows);
       if (!batchComplete) break; // 不可宣稱完整：交給下方 warn 與已知最佳集合
 
-      if (deps.length < PAYMENT_DUE_DEPARTURE_BATCH) { exhausted = true; break; }
+      if (depsRemaining !== null && depsRemaining <= deps.length) { exhausted = true; break; }
       const cards = [...cardDueByRowId.values()]
         .sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt) || a.id.localeCompare(b.id));
       if (cards.length >= PAYMENT_DUE_CAP

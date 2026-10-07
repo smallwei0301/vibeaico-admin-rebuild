@@ -75,6 +75,8 @@ function apply(rows: FakeRow[], calls: Call[]): FakeRow[] {
 }
 
 const recorded: { table: string; calls: Call[] }[] = [];
+/** 模擬遠端 PostgREST `max_rows`：每次查詢最多回這麼多筆（count 仍是未截斷的總數）。 */
+const server = { maxRows: Infinity };
 
 /**
  * route 現在先讀 trip_departures（依出發時刻分批）再用 `.in('departure_id', ids)` 讀訂單。
@@ -111,8 +113,14 @@ function fakeSupabase(rawTables: Record<string, FakeRow[]>) {
       b.maybeSingle = async () => (table === 'tenant_settings'
         ? { data: { basic: { timezone: 'Asia/Taipei' } }, error: null }
         : { data: null, error: null });
-      b.then = (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
-        Promise.resolve({ data: tables[table] ? apply(tables[table], calls) : [], error: null }).then(res, rej);
+      b.then = (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => {
+        const wantsCount = calls.some(([m, a]) => m === 'select' && (a[1] as { count?: string } | undefined)?.count === 'exact');
+        const data = tables[table] ? apply(tables[table], calls) : [];
+        const total = tables[table] ? apply(tables[table], calls.filter(([m]) => m !== 'limit')).length : 0;
+        return Promise.resolve({
+          data: data.slice(0, server.maxRows), error: null, count: wantsCount ? total : null,
+        }).then(res, rej);
+      };
       return b;
     },
   };
@@ -549,9 +557,9 @@ describe('route.ts: payment-due source filters, window and display fields (#43 �
     expect(build({ departureStatus: 'OPEN' })).not.toBeNull();
   });
 
-  /** 快路徑被 200 筆遠期訂單塞滿；其前面有 emptyCount 個沒有訂單的近期團次。 */
+  /** 快路徑被 201 筆遠期訂單塞滿（count 201 > 上限 200，無法證明完整）；其前面有 emptyCount 個沒有訂單的近期團次。 */
   async function runFarOrders(emptyCount: number) {
-    const fillers = Array.from({ length: 200 }, (_, i) => mk({
+    const fillers = Array.from({ length: 201 }, (_, i) => mk({
       id: `f${i}`, departure_id: `f${String(i).padStart(3, '0')}`,
       trip_departures: { departs_on: dayStr(400 + i), start_time: '09:00:00' },
     }));
@@ -606,6 +614,85 @@ describe('route.ts: payment-due source filters, window and display fields (#43 �
       clock.mockRestore();
       warn.mockRestore();
     }
+  });
+
+
+  /*
+   * N2：終止條件不得依賴伺服器 max_rows。模擬遠端每次最多只回 server.maxRows 筆（小於我方要求的頁大小），
+   * count 仍是真實總數。
+   */
+  describe('max_rows 小於要求頁大小時不誤判讀到底', () => {
+    const withServerCap = async (cap: number, fn: () => Promise<void>) => {
+      server.maxRows = cap;
+      try { await fn(); } finally { server.maxRows = Infinity; }
+    };
+
+    it('快路徑：250 筆符合、伺服器上限 150（< 要求的 200）→ 不誤判完整，慢路徑讀到全部，最近出發的卡片正確', async () => {
+      const rows = Array.from({ length: 250 }, (_, i) => mk({
+        id: `q${i}`, trip_departures: { departs_on: dayStr(300 - i), start_time: '09:00:00' },
+      }));
+      await withServerCap(150, async () => {
+        const due = (await run(rows)).filter((i) => i.stage === 'BALANCE');
+        expect(due).toHaveLength(20);
+        expect(due.map((i) => i.id)).toEqual(Array.from({ length: 20 }, (_, k) => `q${249 - k}`));
+        expect(depWindowQueries().length).toBeGreaterThan(0); // 走了慢路徑
+      });
+    });
+
+    it('快路徑：只有 150 筆（< 要求的 200）但伺服器只回 100 → count 150 > 100，不可宣稱完整，改走慢路徑', async () => {
+      const rows = Array.from({ length: 150 }, (_, i) => mk({
+        id: `q${i}`, trip_departures: { departs_on: dayStr(300 - i), start_time: '09:00:00' },
+      }));
+      await withServerCap(100, async () => {
+        const due = (await run(rows)).filter((i) => i.stage === 'BALANCE');
+        expect(due).toHaveLength(20);
+        expect(depWindowQueries().length).toBeGreaterThan(0);
+        expect(due.map((i) => i.id)).toEqual(Array.from({ length: 20 }, (_, k) => `q${149 - k}`));
+      });
+    });
+
+    it('慢路徑：團次批次與訂單分頁都被伺服器截斷（上限 7 < 要求的 100／10）仍讀到後面的團次與訂單', async () => {
+      guideActionInboxPaymentDueTuning.orderPage = 10;
+      const fillers = Array.from({ length: 201 }, (_, i) => mk({
+        id: `f${String(i).padStart(4, '0')}`, departure_id: `fd${String(i).padStart(4, '0')}`,
+        trip_departures: { departs_on: dayStr(400 + i), start_time: '09:00:00' },
+      }));
+      const near = mk({ id: 'zz-near', departure_id: 'dep-near', trip_departures: { departs_on: dayStr(60), start_time: '09:00:00' } });
+      const empties: FakeRow[] = Array.from({ length: 40 }, (_, i) => ({
+        id: `e${String(i).padStart(3, '0')}`, tenant_id: T, status: 'OPEN', departs_on: dayStr(1 + i), start_time: '09:00:00',
+      }));
+      const deps: FakeRow[] = [...empties,
+        { id: 'dep-near', tenant_id: T, status: 'OPEN', departs_on: dayStr(60), start_time: '09:00:00' },
+        ...fillers.map((f) => ({ id: f.departure_id as string, tenant_id: T, status: 'OPEN',
+          departs_on: (f.trip_departures as FakeRow).departs_on, start_time: '09:00:00' }))]
+        .sort((a, b) => String(a.departs_on).localeCompare(String(b.departs_on)) || String(a.id).localeCompare(String(b.id)));
+      const orders = [...fillers, near].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+      try {
+        await withServerCap(7, async () => {
+          recorded.length = 0;
+          requireTenantMock.mockReset();
+          requireTenantMock.mockResolvedValue({
+            supabase: fakeSupabase({ tour_orders: orders, trip_departures: deps }), tenantId: T, user: { id: 'u' }, role: 'OWNER',
+          });
+          const res = await guideActionInboxGET(new Request('https://app.test/api/guide/action-inbox'), {});
+          const due: any[] = ((await res.json()).data as any[]).filter((i) => i.kind === 'TOUR_PAYMENT_DUE' && i.stage === 'BALANCE');
+          expect(due).toHaveLength(20);
+          expect(due[0].id).toBe('zz-near'); // 位於被截斷批次之後的近期團次
+          expect(depWindowQueries().length).toBeGreaterThan(5); // 每批只回 7 個團次 → 持續分批
+        });
+      } finally {
+        guideActionInboxPaymentDueTuning.orderPage = 500;
+      }
+    });
+
+    it('一般小店家（無截斷）：每類別訂單查詢 1 次、不讀團次；總 tour_orders 查詢數有上限', async () => {
+      const rows = [mk({ id: 'p1' }), mk({ id: 'p2', trip_departures: { departs_on: dayStr(9), start_time: '09:00:00' } }),
+        mk({ id: 'n1', status: 'PENDING', payment_status: 'UNPAID', trip_plans: { sales_mode: 'FIXED_DEPARTURE', name: 'p' } })];
+      const due = await run(rows);
+      expect(due.length).toBeGreaterThan(0);
+      expect(depWindowQueries()).toHaveLength(0);
+      expect(paymentOrderQueries()).toHaveLength(2); // PARTIAL 1 + PENDING 1
+    });
   });
 
   const taipeiToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date());

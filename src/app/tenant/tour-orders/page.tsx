@@ -30,7 +30,7 @@ import { navLabel } from '@/i18n/zh-TW/nav';
 import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { tourOrdersPage as t } from '@/i18n/zh-TW/pages/tour-orders';
 import { isAwaitingPayment } from '@/server/tour-domain';
-import { tourPaymentActions } from '@/lib/tour-order-payment-actions';
+import { isPendingTourRequest, tourPaymentActions } from '@/lib/tour-order-payment-actions';
 import { formatCurrency, formatDateTime, formatNumber } from '@/lib/utils';
 import type {
   TourOrder, TourOrderSource, TourOrderStatus, TourPaymentStatus,
@@ -670,7 +670,7 @@ export default function TourOrdersPage() {
             </section>
 
             {/* #46：只有「還在等待導遊決定的 REQUEST 申請」才顯示這一段。 */}
-            {detail.salesMode === 'REQUEST' && detail.status === 'PENDING' ? (
+            {isPendingTourRequest(detail) ? (
               <section className="rounded-md border border-warning p-3">
                 <h4 className="mb-1 text-sm font-bold text-warning">
                   {t.detail.sections.request}
