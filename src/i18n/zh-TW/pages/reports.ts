@@ -76,7 +76,10 @@ export const reportsPage = {
       description: '以團次的出發日歸屬期間；只有出發日已到且已成團（含成團後人數不足）或未成團的團次才計入比率。團次目前沒有跨行程的篩選清單，所以這裡只顯示數字、不提供連結。',
       successRate: '成團率',
       failRate: '未達門檻率',
-      concludedHint: (concluded: number, formed: number, failed: number) => `已結案 ${concluded} 團：成團 ${formed} 團、未成團 ${failed} 團`,
+      concludedHint: (concluded: number, formed: number, failed: number, formedAtRisk = 0) =>
+        formedAtRisk > 0
+          ? `已結案 ${concluded} 團：成團 ${formed} 團（含成團後人數不足 ${formedAtRisk} 團）、未成團 ${failed} 團`
+          : `已結案 ${concluded} 團：成團 ${formed} 團、未成團 ${failed} 團`,
       openLine: (n: number) => `尚未結案 ${n} 團（募集中、待導遊決定或出發日未到，不計入比率）`,
       cancelledUndecided: '已取消（未經成團決策）',
       unavailable: '成團表現暫時無法取得',

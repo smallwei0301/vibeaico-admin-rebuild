@@ -9,4 +9,11 @@ describe('報表卡片標註文字（i18n 函式）', () => {
       expect(t.withTruncatedHint(name)).toBe(`${name}（${t.truncatedHint}）`);
     }
   });
+
+  it('concludedHint：含成團後人數不足時標明，為 0 時維持原句', () => {
+    const h = t.formationCard.concludedHint;
+    expect(h(7, 6, 1, 1)).toBe('已結案 7 團：成團 6 團（含成團後人數不足 1 團）、未成團 1 團');
+    expect(h(7, 6, 1, 0)).toBe('已結案 7 團：成團 6 團、未成團 1 團');
+    expect(h(7, 6, 1)).toBe('已結案 7 團：成團 6 團、未成團 1 團');
+  });
 });

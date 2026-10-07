@@ -10,7 +10,7 @@
  *    見 18 分冊第 15 行、第 229 行、第 433 行）；FAILED＝未成團／導遊取消（18 分冊 §3）。
  *    其餘（COLLECTING 募集中、REVIEW_REQUIRED 待導遊決定、以及出發日還沒到的團次）是「尚未結案」，不進比率。
  *    AT_RISK 在各狀態團數分布中仍照實列出，呈現目前風險。
- *  - 成團率 = 已結案 FORMED ÷ 已結案；未達門檻率 = 已結案 FAILED ÷ 已結案；分母 0 → null。1 位小數。
+ *  - 成團率 = 已成團（FORMED＋AT_RISK）÷ 已結案；未達門檻率 = 已結案 FAILED ÷ 已結案；分母 0 → null。1 位小數。
  *  - 團次本身的 status（OPEN／CLOSED／CANCELLED，0066）與 formation_status 是兩條獨立的軸：
  *      · CANCELLED 且 FAILED ＝ 導遊決策取消 → 算「未成團」（已結案，進分母）；
  *      · CANCELLED 且 FORMED ＝ 已成團後才取消（颱風等；18 分冊 §3 兩軸獨立、TOUR_CANCELLED_AFTER_FORMED）
@@ -46,6 +46,8 @@ export type GuideFormationSummary = {
   concluded: number;
   /** 已成團（含 AT_RISK：成團承諾未撤銷） */
   formed: number;
+  /** 已成團中，目前狀態為 AT_RISK（成團後人數不足）的團數；formed 已含這些 */
+  formedAtRisk: number;
   failed: number;
   /** 已取消（status = CANCELLED）且 formation_status 為 COLLECTING／REVIEW_REQUIRED：未經成團決策，不進比率、不算尚未結案 */
   cancelledUndecided: number;
@@ -78,6 +80,7 @@ export function summarizeFormation(
   const byStatus = Object.fromEntries(FORMATION_STATUSES.map((k) => [k, 0])) as Record<FormationStatus, number>;
   let total = 0;
   let formed = 0;
+  let formedAtRisk = 0;
   let failed = 0;
   let cancelledUndecided = 0;
   for (const r of rows) {
@@ -87,12 +90,13 @@ export function summarizeFormation(
     byStatus[r.formation_status] += 1;
     if (r.departs_on <= today) {
       if (r.formation_status === 'FORMED' || r.formation_status === 'AT_RISK') formed += 1;
+      if (r.formation_status === 'AT_RISK') formedAtRisk += 1;
       else if (r.formation_status === 'FAILED') failed += 1;
     }
   }
   const concluded = formed + failed;
   return {
-    total, byStatus, concluded, formed, failed, cancelledUndecided, open: total - concluded - cancelledUndecided,
+    total, byStatus, concluded, formed, formedAtRisk, failed, cancelledUndecided, open: total - concluded - cancelledUndecided,
     successRatePercent: concluded > 0 ? round1((formed / concluded) * 100) : null,
     failRatePercent: concluded > 0 ? round1((failed / concluded) * 100) : null,
   };

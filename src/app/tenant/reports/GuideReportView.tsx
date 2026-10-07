@@ -419,7 +419,7 @@ export function GuideReportView() {
                     label={fm.truncated ? t.withTruncatedHint(t.formationCard.successRate) : t.formationCard.successRate}
                     icon={CalendarCheck} tone="success"
                     value={fm.summary.successRatePercent === null ? t.noData : formatPercent(fm.summary.successRatePercent, 1)}
-                    hint={`${pointsText(fm.successRatePoints)}${t.sep}${t.formationCard.concludedHint(fm.summary.concluded, fm.summary.formed, fm.summary.failed)}`}
+                    hint={`${pointsText(fm.successRatePoints)}${t.sep}${t.formationCard.concludedHint(fm.summary.concluded, fm.summary.formed, fm.summary.failed, fm.summary.formedAtRisk)}`}
                   />
                   <StatCard
                     label={fm.truncated ? t.withTruncatedHint(t.formationCard.failRate) : t.formationCard.failRate}

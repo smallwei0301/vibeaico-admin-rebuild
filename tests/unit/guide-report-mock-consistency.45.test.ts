@@ -69,7 +69,7 @@ describe('mock：報表與下鑽清單同一份資料', () => {
     // 本期補充：mock_failed_1（已取消＋未成團＝導遊決策取消）、mock_cancel_1（已取消＋募集中，未經成團決策）；全部落在預設區間
     expect(f.summary.byStatus).toEqual({ COLLECTING: 3, FORMED: 5, REVIEW_REQUIRED: 1, AT_RISK: 1, FAILED: 1 });
     expect(f.summary).toMatchObject({
-      total: 12, concluded: 7, formed: 6, failed: 1, cancelledUndecided: 1, open: 4, successRatePercent: 85.7, failRatePercent: 14.3,
+      total: 12, concluded: 7, formed: 6, formedAtRisk: 1, failed: 1, cancelledUndecided: 1, open: 4, successRatePercent: 85.7, failRatePercent: 14.3,
     });
     // 上一期補的 3 筆：FORMED×2、FAILED×1 → 66.7／33.3；差 +19.0／-19.0 個百分點
     expect(f.previous).toMatchObject({ concluded: 3, successRatePercent: 66.7, failRatePercent: 33.3 });

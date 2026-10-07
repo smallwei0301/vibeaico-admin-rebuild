@@ -28,9 +28,16 @@ describe('summarizeFormation — 成團率／未達門檻率', () => {
       d('5', '2026-10-06', 'COLLECTING'), d('6', '2026-10-07', 'REVIEW_REQUIRED'), d('7', '2026-10-08', 'AT_RISK'),
     ]);
     expect(r).toMatchObject({
-      total: 7, concluded: 5, formed: 4, failed: 1, open: 2, successRatePercent: 80, failRatePercent: 20,
+      total: 7, concluded: 5, formed: 4, formedAtRisk: 1, failed: 1, open: 2, successRatePercent: 80, failRatePercent: 20,
     });
     expect(r.byStatus).toEqual({ COLLECTING: 1, FORMED: 3, REVIEW_REQUIRED: 1, AT_RISK: 1, FAILED: 1 });
+  });
+
+  it('formedAtRisk：只算已結案且 AT_RISK 的團；沒有 AT_RISK 或出發日未到時為 0', () => {
+    expect(S([d('1', '2026-10-02', 'FORMED'), d('2', '2026-10-03', 'FAILED')]).formedAtRisk).toBe(0);
+    expect(S([d('1', '2026-10-05', 'AT_RISK')], '2026-10-04').formedAtRisk).toBe(0);
+    expect(S([d('1', '2026-10-02', 'AT_RISK'), d('2', '2026-10-03', 'AT_RISK', 'CANCELLED'), d('3', '2026-10-04', 'FORMED')]))
+      .toMatchObject({ formed: 3, formedAtRisk: 2 });
   });
 
   it('1 成團、2 未成團 → 33.3／66.7（四捨五入 1 位）', () => {
