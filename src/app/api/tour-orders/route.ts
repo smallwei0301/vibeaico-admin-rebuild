@@ -136,11 +136,12 @@ export const GET = handle(async (req) => {
       if (ce) throw ce;
       const rowsPage = (pg ?? []) as unknown as typeof cand;
       cand.push(...rowsPage.filter((r) => r.customer_id && repeatIds.has(r.customer_id)));
+      scanned += rowsPage.length; // 每一列都計入（含最後一個不滿頁）
+      // 防禦性上限：主要邊界在 loadRepeatCustomerIds（區間內非取消訂單 > MAX_ROWS 就 422）；
+      // 候選查詢只會再縮小同一個集合，這裡以真正的「> MAX_ROWS」擋住異常情況。
+      if (scanned > MAX_ROWS) throw new ApiHttpError(422, '區間內訂單過多，請縮短日期區間', ERR.REPORT_RANGE_TOO_LARGE);
       if (rowsPage.length < 1000) break;
       lastId = rowsPage[rowsPage.length - 1].id;
-      scanned += rowsPage.length;
-      // 與報表同一邊界：剛好 MAX_ROWS 筆仍完整；真的存在第 MAX_ROWS+1 筆才拒絕
-      if (scanned > MAX_ROWS) throw new ApiHttpError(422, '區間內訂單過多，請縮短日期區間', ERR.REPORT_RANGE_TOO_LARGE);
     }
     cand.sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : (a.id < b.id ? 1 : -1)));
     count = cand.length;

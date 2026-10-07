@@ -21,7 +21,7 @@ const listFor = async (href: string) => {
 };
 
 describe('mock：報表與下鑽清單同一份資料', () => {
-  it('預設區間：總數、各狀態、來源、退款處理中、行程／方案排行、重複旅客皆與清單筆數一致，且不是全 0', { timeout: 120000 }, async () => {
+  it('預設區間：總數、各狀態、來源、退款處理中、行程／方案排行、重複旅客皆與清單筆數一致，且不是全 0', { timeout: 30000 }, async () => {
     const report = await getGuideReport({});
     const range = { ...report.range, asOf: report.asOf, timeZone: report.range.timeZone };
 
