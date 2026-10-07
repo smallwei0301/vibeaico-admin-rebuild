@@ -12,7 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   allVerifiableChecksPassed, canAdvanceFromStep, credentialsConfigured,
-  deriveStartingStep, stepStatus, type VerifyCheck,
+  deriveStartingStep, stepAfterVerifyRetry, stepStatus, type VerifyCheck,
 } from '@/lib/line-setup-wizard';
 
 function check(key: string, status: 'PASS' | 'FAIL' | 'INFO', message = ''): VerifyCheck {
@@ -163,5 +163,38 @@ describe('latest request identity', () => {
     const gate = createWizardRequestGate(); const old = gate.begin();
     gate.invalidate(); expect(gate.isCurrent(old)).toBe(false);
     const fresh = gate.begin(); expect(gate.isCurrent(fresh)).toBe(true);
+  });
+});
+
+describe('stepAfterVerifyRetry — 儲存成功後 verify 失敗的重試（只重驗）', () => {
+  const saved = { channelId: true, channelSecret: true, channelAccessToken: true };
+  it('再次網路錯誤（checks=null）→ 仍留在步驟一，不假裝成功', () => {
+    expect(stepAfterVerifyRetry('CREDENTIALS_INPUT', saved, null)).toBe('CREDENTIALS_INPUT');
+  });
+  it('已儲存憑證 + 重驗憑證 FAIL → 依真實 checks 停在 CONNECTION 並可看到 FAIL，不放行', () => {
+    const checks = [check('CREDENTIALS', 'PASS'), check('TOKEN', 'FAIL'), check('ID_SECRET_PAIR', 'PASS')];
+    const next = stepAfterVerifyRetry('CREDENTIALS_INPUT', saved, checks);
+    expect(next).toBe('CONNECTION');
+    expect(canAdvanceFromStep(next, checks)).toBe(false);
+  });
+  it('已儲存憑證 + 重驗成功 → 不需重存，依 checks 前進', () => {
+    expect(stepAfterVerifyRetry('CREDENTIALS_INPUT', saved, ALL_PASS)).toBe('AUTO_REPLY_CONFIRM');
+    const partial = ALL_PASS.map((c) => (c.key === 'WEBHOOK' ? check('WEBHOOK', 'FAIL') : c));
+    expect(stepAfterVerifyRetry('CREDENTIALS_INPUT', saved, partial)).toBe('BOT_MODE_WEBHOOK');
+  });
+  it('已儲存憑證不齊 → 仍須留在步驟一（先儲存）', () => {
+    expect(stepAfterVerifyRetry('CREDENTIALS_INPUT', { ...saved, channelAccessToken: false }, ALL_PASS)).toBe('CREDENTIALS_INPUT');
+  });
+  it('已在步驟二以後的重新檢查不自動跳步', () => {
+    expect(stepAfterVerifyRetry('BOT_MODE_WEBHOOK', saved, ALL_PASS)).toBe('BOT_MODE_WEBHOOK');
+  });
+});
+
+describe('page 接線 source-pin（page 無法在 node render，改釘原始碼）', () => {
+  it('錯誤提示的重試鈕走 retryVerify（會更新 step），不是裸 runVerify', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('src/app/tenant/line-settings/onboarding/page.tsx', 'utf8');
+    expect(src).toMatch(/onClick=\{\(\) => void retryVerify\(\)\}>\{t\.nav\.retryCheck\}[\s\S]{0,40}<\/Alert>/);
+    expect(src).toContain('stepAfterVerifyRetry(cur');
   });
 });
