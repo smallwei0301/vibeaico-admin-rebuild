@@ -380,7 +380,7 @@ export const MOCK_TOUR_ORDERS: TourOrder[] = [
     unitPrice: 18000, totalAmount: 18000, depositAmount: 5000, status: 'CONFIRMED', paymentStatus: 'UNPAID',
     paymentMethodLabel: '國泰世華銀行轉帳', paymentRef: '',
     source: 'MIDAO', holdExpiresAt: '2026-08-27T23:59:00+08:00', note: '',
-    createdAt: '2026-08-24T10:12:00+08:00',
+    createdAt: '2026-08-22T10:12:00+08:00',
     salesMode: 'REQUEST',
   },
   {
@@ -391,6 +391,6 @@ export const MOCK_TOUR_ORDERS: TourOrder[] = [
     unitPrice: 6800, totalAmount: 6800, depositAmount: 2000, status: 'CONFIRMED', paymentStatus: 'PARTIAL',
     paymentMethodLabel: '國泰世華銀行轉帳', paymentRef: '後五碼 52077',
     source: 'MANUAL', holdExpiresAt: null, note: '',
-    createdAt: '2026-08-24T15:40:00+08:00',
+    createdAt: '2026-08-22T15:40:00+08:00',
   },
 ];
