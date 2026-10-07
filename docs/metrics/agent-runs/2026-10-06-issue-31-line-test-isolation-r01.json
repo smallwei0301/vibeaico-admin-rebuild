@@ -1,0 +1,187 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-10-06-issue-31-line-test-isolation-r01",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-10-06T09:52:01.735Z",
+  "endedAt": null,
+  "sources": [
+    {
+      "ref": "origin/main"
+    },
+    {
+      "ref": "issue/31"
+    }
+  ],
+  "main": {
+    "startSha": "75b3a5ce5db61fef0b4322fb681923f05e3f6bff",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": null,
+    "openIssuesEnd": null,
+    "openPrsStart": null,
+    "openPrsEnd": null,
+    "mainTerraPeak": 0,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 0,
+    "sharedTestPeak": 0,
+    "closureSweeps": 0,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [
+      {
+        "id": "REDACTED_TASK_ID_01",
+        "role": "metrics",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "unknown",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Actual model, context, and token counts are unknown. This record does not establish completion or acceptance.",
+        "count": 1,
+        "issue": 31
+      },
+      {
+        "id": "REDACTED_TASK_ID_02",
+        "role": "build",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "unknown",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Actual model, context, and token counts are unknown. This record does not establish completion or acceptance.",
+        "count": 1,
+        "issue": 31
+      },
+      {
+        "id": "REDACTED_TASK_ID_03",
+        "role": "review",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "unknown",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Actual model, context, and token counts are unknown. This record does not establish completion or acceptance.",
+        "count": 1,
+        "issue": 31
+      },
+      {
+        "id": "REDACTED_TASK_ID_04",
+        "role": "standards",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "unknown",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Actual model, context, and token counts are unknown. This record does not establish completion or acceptance.",
+        "count": 1,
+        "issue": 31
+      }
+    ],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 1,
+    "issuesClosed": 0,
+    "auditReady": 0,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 0,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 1,
+    "lunaAccepted": 1,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 1,
+    "solIssues": 1
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
+  "notes": [
+    "RUN_INIT observedAt=2026-10-06T09:52:01.735Z; recorded RULES_MAIN_SHA=75b3a5ce5db61fef0b4322fb681923f05e3f6bff. Evidence predating this Run is excluded from its counters.",
+    "Bounded scope: tests/integration/api/ai-settings.27.test.ts and tests/integration/api/line-tour-order-query.373.test.ts. At the proposal checkpoint, canonical integration/shared TEST, DB, remote publication, and independent review were not yet complete.",
+    "Start-of-run inventory totals have no attached public evidence and remain unknown.",
+    "No evidence predating this Run establishes its completion or acceptance.",
+    "Structured WIP, TEST, and collision counters are retained as recorded claims; this report does not independently verify their completeness.",
+    "This report does not authorize ownership changes.",
+    "At initialization, start-of-run open-Issue/open-PR totals and an exact new PR number/head were not supplied. Corresponding fields remain null; no BUILD_ENTER transition is inferred.",
+    "Local pure-mock baseline evidence: 5 failures and 4 passes. These are not canonical tests, CI, DB, or shared TEST results; the baseline timestamp was not supplied.",
+    "Local modifications to the two bounded test files were reported around 2026-10-06T09:56–09:57Z; capture observed at 2026-10-06T10:06:38.245Z. No commit or PR was recorded at that capture, so no exact remote PR head or WIP transition is claimed.",
+    "Separate local pure-mock candidate evidence recorded 9/9 passing with no DB/network. This is not canonical Vitest/integration, CI, or shared TEST evidence and does not count as canonical acceptance.",
+    "Local source gates tied to base 75b3a5ce5db61fef0b4322fb681923f05e3f6bff and the uncommitted diff were reported exit=0: integrity 2026-10-06T09:58:12.758344+00:00–2026-10-06T09:58:17.759520+00:00; npm ci 2026-10-06T09:58:17.804295+00:00–2026-10-06T09:58:27.808349+00:00; typecheck 2026-10-06T09:58:27.849037+00:00–2026-10-06T09:58:52.855261+00:00; unit 2026-10-06T09:58:52.891057+00:00–2026-10-06T10:00:27.923387+00:00. These are local receipts, not GitHub CI.",
+    "Further local source gates were reported exit=0: typegen 2026-10-06T10:00:27.962754+00:00–2026-10-06T10:00:32.963793+00:00; cache typecheck 2026-10-06T10:00:33.001310+00:00–2026-10-06T10:00:58.007043+00:00; local mock build 2026-10-06T10:00:58.059621+00:00–2026-10-06T10:01:53.073967+00:00. Unit total: 332 suites / 4,906 tests. These results are not canonical integration/E2E/shared TEST or Production acceptance/deployment.",
+    "No completed Final Risk or CLOSE_APPROVED evidence is attached.",
+    "A local source-only review result was recorded at 2026-10-06T10:18:21.435Z with 0 findings. No public report reference is attached. It is not Final Sol/CLOSE_APPROVED; the recorded source head is 75b3a5ce5db61fef0b4322fb681923f05e3f6bff, and no CI/PR/WIP/test gate was advanced.",
+    "Second local pure-mock evidence set: baseline 4 passes / 9 failures; candidate 13 passes / 0 failures (13/13). It used no DB/network, is not canonical Vitest/integration evidence, and does not prove a CI failure root cause.",
+    "Only one local source-review result is reported; no additional completed review evidence is claimed.",
+    "Remaining gates at final capture: no published commit/PR or exact PR-head CI; canonical integration/E2E/shared TEST not run; Final Risk/CLOSE_APPROVED and merge absent; no verified CI root cause or real external acceptance; no deployment/Production schema/authenticated acceptance. No WIP/CI/TEST/Production counter is inferred or added."
+  ],
+  "deliveryTruthVersion": 4,
+  "closeout": {
+    "contractVersion": 1,
+    "ownerRole": "PRODUCT_MAIN_SESSION",
+    "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
+    "state": "OPEN",
+    "closedAt": null,
+    "evidenceRef": null
+  },
+  "wipLifecycle": {
+    "schemaVersion": 1,
+    "events": []
+  },
+  "completionTruth": {
+    "status": "NOT_CHECKED",
+    "checkedAt": null,
+    "claims": []
+  }
+}

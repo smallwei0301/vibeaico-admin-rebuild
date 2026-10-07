@@ -35,6 +35,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SHOP_A } from '../../fixtures';
 import { loginAs, type AuthedApi } from '../../helpers/auth';
 import { LineMockServer } from '../../helpers/line-mock';
+import { drainWebhook } from '../../helpers/line-webhook';
 import { encryptSecret } from '@/server/crypto';
 
 const BASE_URL = process.env.INTEGRATION_BASE_URL ?? 'http://localhost:3100';
@@ -102,11 +103,14 @@ async function sendCustomerMessage(text: string, replyToken: string): Promise<Re
       message: { id: `m-${replyToken}`, type: 'text', text },
     }],
   });
-  return fetch(`${BASE_URL}/api/line/webhook/${SHOP_A.shopCode}`, {
+  const res = await fetch(`${BASE_URL}/api/line/webhook/${SHOP_A.shopCode}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-line-signature': sign(raw) },
     body: raw,
   });
+  // #31：HTTP 200 不代表 after() 已完成；所有分支（含有 AI key 時）都先排空。
+  await drainWebhook(SHOP_A.shopCode, BASE_URL);
+  return res;
 }
 
 /** 直查 tenant_settings 的兩個 jsonb（「附直查 DB 證據」的證據本身） */
@@ -134,9 +138,8 @@ async function writeLine(patch: Record<string, unknown>): Promise<void> {
 }
 
 /**
- * webhook 的事件處理是 `void handleEvent(...)`（06 §3：永遠先回 200），
- * 所以 API 回 200 的當下 reply 可能還沒到 mock。輪詢等它
- * （間隔 100ms、上限 5s，12 §2.3「禁用 sleep 等待：輪詢條件」）。
+ * sendCustomerMessage 已用 #31 drain seam 等待 after()；此處保留原回覆內容
+ * 斷言與「缺 reply」診斷，不用 reply 的出現代替背景工作完成訊號。
  */
 async function waitForReply(timeoutMs = 5_000): Promise<string> {
   const deadline = Date.now() + timeoutMs;
@@ -182,19 +185,38 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (snapshot) {
-    await admin.from('tenant_settings').update({
-      ai: snapshot.ai,
-      line: snapshot.line,
-      line_channel_secret_enc: snapshot.line_channel_secret_enc,
-      line_channel_access_token_enc: snapshot.line_channel_access_token_enc,
-    }).eq('tenant_id', SHOP_A.id);
+  const cleanupErrors: unknown[] = [];
+  // 失敗案例也必須先等 late callback，才還原其仍可能讀取的設定／資料與關掉 mock。
+  try {
+    await drainWebhook(SHOP_A.shopCode, BASE_URL);
+  } catch (error) {
+    cleanupErrors.push(error);
   }
-  await admin.from('chat_messages').delete()
-    .eq('tenant_id', SHOP_A.id).eq('line_user_id', LINE_USER);
-  await admin.from('line_users').delete()
-    .eq('tenant_id', SHOP_A.id).eq('line_user_id', LINE_USER);
-  await mock.stop();
+  try {
+    if (snapshot) {
+      await admin.from('tenant_settings').update({
+        ai: snapshot.ai,
+        line: snapshot.line,
+        line_channel_secret_enc: snapshot.line_channel_secret_enc,
+        line_channel_access_token_enc: snapshot.line_channel_access_token_enc,
+      }).eq('tenant_id', SHOP_A.id);
+    }
+    await admin.from('chat_messages').delete()
+      .eq('tenant_id', SHOP_A.id).eq('line_user_id', LINE_USER);
+    await admin.from('line_users').delete()
+      .eq('tenant_id', SHOP_A.id).eq('line_user_id', LINE_USER);
+  } catch (error) {
+    cleanupErrors.push(error);
+  } finally {
+    try {
+      await mock.stop();
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+  }
+  if (cleanupErrors.length > 0) {
+    throw new AggregateError(cleanupErrors, 'ai-settings.27 teardown failed');
+  }
 });
 
 beforeEach(() => { mock.reset(); });
