@@ -198,3 +198,74 @@ describe('page 接線 source-pin（page 無法在 node render，改釘原始碼�
     expect(src).toContain('stepAfterVerifyRetry(cur');
   });
 });
+
+/* ---------------------------------------------------------------------------
+ * DONE gating（Issue #47，#714 審查缺口）。
+ * 進入 DONE 的唯一路徑是 page.tsx goNext 由 CAPABILITIES 往下一步；
+ * deriveStartingStep / stepAfterVerifyRetry 最遠只會落在 AUTO_REPLY_CONFIRM。
+ * AUTO_REPLY 為 INFO 人工提示，不計入失敗，autoReplyAck 僅 UI 便利、不是關卡（Issue #47 本文）。
+ * ------------------------------------------------------------------------- */
+describe('DONE gating — verify 未全 PASS 不得抵達 DONE', () => {
+  const saved = { channelId: true, channelSecret: true, channelAccessToken: true };
+  const VERIFIABLE = ['CREDENTIALS', 'TOKEN', 'ID_SECRET_PAIR', 'BOT_MODE', 'WEBHOOK', 'WEBHOOK_TEST'];
+
+  it('六項全 PASS 才通過；任一項 FAIL／INFO／缺漏／重複矛盾都不通過', () => {
+    expect(allVerifiableChecksPassed(ALL_PASS)).toBe(true);
+    for (const key of VERIFIABLE) {
+      expect(allVerifiableChecksPassed(ALL_PASS.map((c) => (c.key === key ? check(key, 'FAIL') : c)))).toBe(false);
+      expect(allVerifiableChecksPassed(ALL_PASS.map((c) => (c.key === key ? check(key, 'INFO') : c)))).toBe(false);
+      expect(allVerifiableChecksPassed(ALL_PASS.filter((c) => c.key !== key))).toBe(false);
+      expect(allVerifiableChecksPassed([...ALL_PASS, check(key, 'FAIL')])).toBe(false);
+    }
+    expect(allVerifiableChecksPassed([])).toBe(false);
+    expect(allVerifiableChecksPassed(null)).toBe(false);
+  });
+
+  it('AUTO_REPLY（INFO）不阻擋：有、無、甚至標成 FAIL 都不影響六項判斷', () => {
+    expect(allVerifiableChecksPassed(ALL_PASS.filter((c) => c.key !== 'AUTO_REPLY'))).toBe(true);
+    expect(allVerifiableChecksPassed(ALL_PASS.map((c) => (c.key === 'AUTO_REPLY' ? check('AUTO_REPLY', 'FAIL') : c)))).toBe(true);
+  });
+
+  it('deriveStartingStep / stepAfterVerifyRetry 永遠不會直接落在 CAPABILITIES 或 DONE', () => {
+    const variants: (VerifyCheck[] | null)[] = [null, [], ALL_PASS];
+    for (const key of VERIFIABLE) {
+      variants.push(ALL_PASS.map((c) => (c.key === key ? check(key, 'FAIL') : c)));
+      variants.push(ALL_PASS.filter((c) => c.key !== key));
+    }
+    for (const checks of variants) {
+      for (const step of [deriveStartingStep(saved, checks), stepAfterVerifyRetry('CREDENTIALS_INPUT', saved, checks)]) {
+        expect(['CAPABILITIES', 'DONE']).not.toContain(step);
+        if (!allVerifiableChecksPassed(checks)) expect(step).not.toBe('AUTO_REPLY_CONFIRM');
+      }
+    }
+  });
+
+  it('全 PASS 時 deriveStartingStep 落在 AUTO_REPLY_CONFIRM（不跳過人工提醒、也不直達 DONE）', () => {
+    expect(deriveStartingStep(saved, ALL_PASS)).toBe('AUTO_REPLY_CONFIRM');
+  });
+});
+
+describe('DONE gating source-pin（page 無法在 node render，釘住 page.tsx 接線；source-pin 非行為測試）', () => {
+  let src = '';
+  it('讀取 page.tsx', async () => {
+    const { readFileSync } = await import('node:fs');
+    src = readFileSync('src/app/tenant/line-settings/onboarding/page.tsx', 'utf8');
+    expect(src.length).toBeGreaterThan(0);
+  });
+
+  it("沒有任何地方直接 setStep('DONE')／setStep('CAPABILITIES')，DONE 只能經 goNext 逐步抵達", () => {
+    expect(src).not.toMatch(/setStep\(\s*['"](DONE|CAPABILITIES)['"]/);
+  });
+
+  it('goNext 仍使用 canAdvanceFromStep，且 CAPABILITIES→DONE 以 allVerifiableChecksPassed 擋住', () => {
+    const body = src.slice(src.indexOf('const goNext'), src.indexOf('const goPrev'));
+    expect(body).toContain('canAdvanceFromStep(step, checks)');
+    expect(body).toMatch(/step === 'CAPABILITIES' && !allVerifiableChecksPassed\(checks\)\) return/);
+  });
+
+  it('AUTO_REPLY_CONFIRM 與 CAPABILITIES 的下一步按鈕 disabled 都用 allVerifiableChecksPassed，且不依賴 autoReplyAck', () => {
+    const gated = src.match(/<Button disabled=\{[^}]*allVerifiableChecksPassed\(checks\)[^}]*\} onClick=\{goNext\}>/g) ?? [];
+    expect(gated.length).toBe(2);
+    for (const b of gated) expect(b).not.toContain('autoReplyAck');
+  });
+});
