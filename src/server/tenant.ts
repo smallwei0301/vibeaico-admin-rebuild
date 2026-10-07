@@ -106,7 +106,17 @@ export async function requireTenant(minRole: 'STAFF' | 'MANAGER' | 'OWNER' = 'ST
     .from('tenant_users')
     .select('tenant_id, role, tenants(shop_code, name, business_type)')
     .eq('user_id', user.id);
-  if (error || !memberships?.length)
+  /**
+   * 「查詢失敗」與「查到零筆」是兩件事（Issue 809）：前者是服務端問題，後者才是權限。
+   * 原本 `error || !memberships?.length` 合併成 403，DB／PostgREST 瞬時故障會讓已登入的
+   * 店主看到「此帳號未加入任何店家」。與 `requireUser()` 同一原則：問不到就 503、fail closed，
+   * 絕不回傳 tenant context，也不降級成 403。
+   */
+  if (error) {
+    console.error('[tenant] tenant_users query failed; refusing to treat it as no membership', error);
+    throw new ApiHttpError(503, '暫時無法確認店家資格，請稍後再試', ERR.INTERNAL);
+  }
+  if (!memberships?.length)
     throw new ApiHttpError(403, '此帳號未加入任何店家', ERR.FORBIDDEN);
 
   const want = (await cookies()).get(ACTIVE_TENANT_COOKIE)?.value;

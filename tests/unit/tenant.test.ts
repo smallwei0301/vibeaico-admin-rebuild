@@ -138,15 +138,15 @@ describe('tenant — requireTenant (01 §5.3)', () => {
     }
   });
 
-  it('查詢回 error → 403 AUTH_005', async () => {
+  it('查詢回 error → 503 SYS_001（Issue 809：不再誤報 403）', async () => {
     eqMock.mockResolvedValue({ data: null, error: { message: 'db error' } });
     try {
       await requireTenant();
       expect.unreachable('應該要丟錯');
     } catch (e) {
       expect(e).toBeInstanceOf(ApiHttpError);
-      expect((e as ApiHttpError).status).toBe(403);
-      expect((e as ApiHttpError).code).toBe('AUTH_005');
+      expect((e as ApiHttpError).status).toBe(503);
+      expect((e as ApiHttpError).code).toBe('SYS_001');
     }
   });
 
