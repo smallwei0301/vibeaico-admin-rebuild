@@ -142,8 +142,8 @@ export function GuideReportView() {
   const cardLabel = (name: string) => (report?.truncated ? `${name}（${t.truncatedHint}）` : name);
   const s = report?.summary;
   const prev = report?.previous;
-  const rangeLink = (status?: string, source?: string) => buildTourOrdersLink({
-    status, source, createdFrom: report?.range.from, createdTo: report?.range.to,
+  const rangeLink = (status?: string, source?: string, paymentStatus?: string) => buildTourOrdersLink({
+    status, source, paymentStatus, createdFrom: report?.range.from, createdTo: report?.range.to,
   });
   const rows = report ? report.ranking[dimension][metric] : [];
 
@@ -250,7 +250,9 @@ export function GuideReportView() {
                   {s.refundPendingCount > 0 ? (
                     <>
                       <br />
-                      {t.cardHints.refundPending(s.refundPendingCount)}
+                      <Link href={rangeLink(undefined, undefined, 'REFUND_PENDING')} className="underline" title={t.drilldown.viewOrders}>
+                        {t.cardHints.refundPending(s.refundPendingCount)}
+                      </Link>
                     </>
                   ) : null}
                 </>

@@ -52,6 +52,20 @@ describe('parseTourOrdersDeepLink 新參數', () => {
   });
 });
 
+describe('退款處理中下鑽連結', () => {
+  it('paymentStatus＋本期區間組裝，且 parse 還原；兩頁來源名稱同一份文案', async () => {
+    const href = buildTourOrdersLink({ paymentStatus: 'REFUND_PENDING', createdFrom: '2026-10-01', createdTo: '2026-10-10' });
+    expect(href).toBe('/tenant/tour-orders?paymentStatus=REFUND_PENDING&createdFrom=2026-10-01&createdTo=2026-10-10');
+    expect(parseTourOrdersDeepLink(href.split('?')[1])).toMatchObject({
+      paymentStatus: 'REFUND_PENDING', createdFrom: '2026-10-01', createdTo: '2026-10-10',
+    });
+    const { reportsPage } = await import('@/i18n/zh-TW/pages/reports');
+    expect(reportsPage.guideReport.sourceCard.names).toEqual({
+      MIDAO: 'Midao 前台', VIBEAI_SHOP: '商店頁', LINE: 'LINE', MANUAL: '手動建立', OTHER: '其他',
+    });
+  });
+});
+
 describe('來源下鑽參數', () => {
   it('parse 只接受四個合法來源；build 帶出 source 且與 parse 互逆', () => {
     expect(parseTourOrdersDeepLink('?source=LINE').source).toBe('LINE');

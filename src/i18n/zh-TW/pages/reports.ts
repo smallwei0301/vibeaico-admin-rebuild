@@ -1,4 +1,5 @@
 import { nav } from '@/i18n/zh-TW/nav';
+import { tourOrdersPage } from '@/i18n/zh-TW/pages/tour-orders';
 
 /**
  * 營運報表（/tenant/reports）文案
@@ -55,7 +56,8 @@ export const reportsPage = {
     sourceCard: {
       title: '訂單來源',
       description: '非取消訂單依來源分列訂單數與實收營收；點選來源可查看該期間該來源的全部訂單（清單含已取消訂單，筆數可能多於此處）。',
-      names: { MIDAO: '祕島平台', VIBEAI_SHOP: '店家商店', LINE: 'LINE', MANUAL: '手動建立', OTHER: '其他' },
+      // 來源名稱與旅遊訂單頁共用同一份文案，兩頁不會對不上
+      names: { ...tourOrdersPage.source, OTHER: '其他' },
       line: (orders: number, revenue: string) => `${orders} 筆　${revenue}`,
       previous: (orders: number) => `上一期：${orders} 筆`,
       viewSourceOrders: (name: string) => `查看來源「${name}」的訂單`,
@@ -96,7 +98,7 @@ export const reportsPage = {
       ranking:
         '熱門排行：訂單數與人數不含已取消訂單；實收營收用上方同一口徑。三種排序分開呈現，指標為 0 的項目不列入，最多顯示 10 名。',
       source:
-        '訂單來源：非取消訂單依下單來源（祕島平台、店家商店、LINE、手動建立）分列訂單數與實收營收，四個來源皆列出（0 為實際筆數）；來源不在已知清單者歸「其他」。',
+        '訂單來源：非取消訂單依下單來源（Midao 前台、商店頁、LINE、手動建立）分列訂單數與實收營收，四個來源皆列出（0 為實際筆數）；來源不在已知清單者歸「其他」。',
       repeat:
         '重複旅客：本期有非取消訂單、且已綁定旅客的人（同一旅客只算一次）中，本期內有 2 筆以上非取消訂單，或本期開始之前（任何時間）已有非取消訂單者。重複率＝重複旅客數 ÷ 本期旅客數，無旅客時顯示「尚無足夠資料」。未綁定旅客的訂單不計入，另行列出筆數。',
       comparison: '上一期：與所選期間天數相同、緊接在前的期間；上一期為 0 時不計算增減百分比。',
