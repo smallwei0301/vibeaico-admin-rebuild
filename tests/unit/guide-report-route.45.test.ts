@@ -14,7 +14,21 @@ const state = vi.hoisted(() => ({
   departures: [] as Record<string, unknown>[],
   depError: false as boolean | string,
   priorCalls: [] as { tenant: unknown; neq: unknown; lt: unknown; ids: string[] }[],
+  selects: [] as { table: string; columns: string }[],
 }));
+
+// 解析 select 字串的頂層純欄位名；含 '*'、嵌入關聯（括號）或別名語法時回 null（維持整列回傳的原行為）
+const projectionOf = (columns: string): string[] | null => {
+  const parts: string[] = [];
+  let depth = 0; let cur = '';
+  for (const ch of columns) {
+    if (ch === '(') depth++;
+    if (ch === ')') depth--;
+    if (ch === ',' && depth === 0) { parts.push(cur.trim()); cur = ''; } else cur += ch;
+  }
+  parts.push(cur.trim());
+  return parts.every((x) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(x)) ? parts : null;
+};
 
 vi.mock('@/config/env', () => ({ USE_MOCK: false }));
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => undefined }) }));
@@ -36,6 +50,7 @@ const fakeDb = {
     let ids: string[] | undefined;
     let gtId: string | undefined;
     let lim = Infinity;
+    let cols: string[] | null = null;
     const rowsFor = () => {
       if (table === 'tenant_settings') return [];
       if (table === 'tour_orders' && call.gte === undefined) { // 「本期之前」查詢：只回 customer_id
@@ -49,15 +64,21 @@ const fakeDb = {
           && (r.created_at as string) >= (call.gte as string) && (r.created_at as string) < (call.lt as string));
       }
       if (table === 'trip_departures') {
-        return state.departures.filter((r) => r.tenant_id === call.filters.tenant_id
+        const picked = state.departures.filter((r) => r.tenant_id === call.filters.tenant_id
           && (r.departs_on as string) >= (call.gte as string) && (r.departs_on as string) <= (call.lte as string));
+        // 依 select 欄位投影：沒被 select 的欄位 route 讀不到（可抓到 select 漏欄位的回歸）
+        return cols ? picked.map((r) => Object.fromEntries(cols!.filter((c) => c in r).map((c) => [c, r[c]]))) : picked;
       }
       if (table === 'trips') return (ids ?? ['tA']).map((id) => ({ id, title: `行程${id}` }));
       if (table === 'trip_plans') return (ids ?? ['pA']).map((id) => ({ id, name: `方案${id}` }));
       return [];
     };
     const q: Record<string, unknown> = {
-      select: () => q,
+      select: (columns?: string) => {
+        state.selects.push({ table, columns: columns ?? '' });
+        cols = columns ? projectionOf(columns) : null;
+        return q;
+      },
       eq: (k: string, v: unknown) => { call.filters[k] = v; return q; },
       in: (_k: string, v: string[]) => {
         ids = v;
@@ -99,7 +120,7 @@ const order = (o: Record<string, unknown>) => ({
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-12-01T00:00:00Z'));
-  state.denied = false; state.calls = []; state.inCalls = []; state.pages = []; state.nameError = ''; state.priorError = false; state.priorCalls = []; state.departures = []; state.depError = false; state.timezone = undefined;
+  state.denied = false; state.calls = []; state.inCalls = []; state.pages = []; state.nameError = ''; state.priorError = false; state.priorCalls = []; state.departures = []; state.selects = []; state.depError = false; state.timezone = undefined;
   state.orders = [
     order({ id: 'a1', tenant_id: TENANT, created_at: '2026-10-02T02:00:00Z' }),
     order({ id: 'b1', tenant_id: OTHER, created_at: '2026-10-02T02:00:00Z', paid_amount: 777777 }),
@@ -294,6 +315,25 @@ describe('GET /api/reports/guide', () => {
     const body = await (await get('?from=2026-10-01&to=2026-10-10')).json();
     expect(body.data.formation.availability).toBe('NOT_TRACKED');
     expect(body.data.formation.summary.undecidedPast).toBe(1);
+  });
+
+  it('成團表現：本期＋上一期全是 COLLECTING，其中一筆有 formation_decided_at → TRACKED（select 必須含該欄位）', async () => {
+    state.departures = [
+      { id: 't1', tenant_id: TENANT, departs_on: '2026-10-02', formation_status: 'COLLECTING', formation_decided_at: '2026-10-01T03:00:00Z' },
+      { id: 't2', tenant_id: TENANT, departs_on: '2026-09-25', formation_status: 'COLLECTING' },
+    ];
+    const body = await (await get('?from=2026-10-01&to=2026-10-10')).json();
+    expect(state.selects.find((x) => x.table === 'trip_departures')?.columns).toContain('formation_decided_at');
+    expect(body.data.formation.availability).toBe('TRACKED');
+  });
+
+  it('成團表現：全是 COLLECTING 且皆無 formation_decided_at → NOT_TRACKED（decided_at 為 null 亦同）', async () => {
+    state.departures = [
+      { id: 'u1', tenant_id: TENANT, departs_on: '2026-10-02', formation_status: 'COLLECTING', formation_decided_at: null },
+      { id: 'u2', tenant_id: TENANT, departs_on: '2026-09-25', formation_status: 'COLLECTING' },
+    ];
+    const body = await (await get('?from=2026-10-01&to=2026-10-10')).json();
+    expect(body.data.formation.availability).toBe('NOT_TRACKED');
   });
 
   it('團次查詢失敗 → 500；筆數剛好 MAX_ROWS 不標 truncated、MAX_ROWS+1 標 truncated', async () => {
