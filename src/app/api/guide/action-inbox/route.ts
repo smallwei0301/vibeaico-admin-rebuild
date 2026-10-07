@@ -89,6 +89,17 @@ function firstOf<T>(value: T | T[] | null | undefined): T | null {
  *     `/tenant/trips/:tripId`，沒有這條排除的話，一個尚未成團、也沒有 PRIMARY
  *     指派的團次會同時冒出 STAFF_UNASSIGNED 與 REVIEW_REQUIRED／AT_RISK 兩張卡。
  */
+const MISSING_SCHEMA_CODES = new Set(['42703', '42P01', 'PGRST200', 'PGRST204', 'PGRST205']);
+
+/** 缺欄位／缺資料表／缺關聯 → 視為空結果；其他錯誤照舊 throw。 */
+function tolerateMissingSchema(result: { data: any[] | null; error: any }): any[] {
+  if (result.error) {
+    if (MISSING_SCHEMA_CODES.has(String(result.error.code ?? ''))) return [];
+    throw result.error;
+  }
+  return result.data ?? [];
+}
+
 /** 等待付款兩個查詢的有界視窗；程式內依期限排序後每類最多取 PAYMENT_DUE_CAP 張。 */
 const PAYMENT_DUE_WINDOW = 200;
 const PAYMENT_DUE_CAP = 20;
@@ -213,16 +224,17 @@ export const GET = handle(async () => {
       .eq('trip_plans.sales_mode', 'REQUEST')
       .order('created_at', { ascending: true })
       .limit(20),
-    // #43 類別 2：等待付款（訂金或全額）——導遊已接受的申請（CONFIRMED + UNPAID +
-    // seats_reserved + 有保留期限），期限是 hold_expires_at。與上面 TOUR_REQUEST（PENDING）
-    // status 互斥。每個 query 都帶 tenant_id。逾期 hold 目前不會被 expiry RPC 取消
+    // #43 類別 2：等待付款——已鎖名額且有保留期限的 UNPAID 訂單（CONFIRMED：導遊已接受的
+    // 申請，訂金或全額；PENDING：一般固定團／即時預約，全額），期限是 hold_expires_at。
+    // 尚未接受的 REQUEST 是 seats_reserved=false，由上面 TOUR_REQUEST 處理；且最後仍以訂單 id
+    // 去重。不使用 sales_mode（0110）。每個 query 都帶 tenant_id。逾期 hold 目前不會被 expiry RPC 取消
     // （CONFIRMED），所以在來源就用 `trip_departures!inner` + departs_on >= 租戶今天排除
     // 已出發的團次，避免陳舊列累積擠掉新的；取較大的有界視窗，再於程式內依期限排序取前 20。
     t.supabase
       .from('tour_orders')
       .select('id, order_no, party_size, total_amount, deposit_amount, paid_amount, status, payment_status, seats_reserved, contact, hold_expires_at, created_at, trip_plans(name), trips(title), trip_departures!inner(departs_on, start_time)')
       .eq('tenant_id', t.tenantId)
-      .eq('status', 'CONFIRMED')
+      .in('status', ['PENDING', 'CONFIRMED'])
       .eq('payment_status', 'UNPAID')
       .eq('seats_reserved', true)
       .not('hold_expires_at', 'is', null)
@@ -249,8 +261,10 @@ export const GET = handle(async () => {
   if (refundPendingResult.error) throw refundPendingResult.error;
   if (staffAssignmentResult.error) throw staffAssignmentResult.error;
   if (tourRequestResult.error) throw tourRequestResult.error;
-  if (paymentDueUnpaidResult.error) throw paymentDueUnpaidResult.error;
-  if (paymentDuePartialResult.error) throw paymentDuePartialResult.error;
+  // `seats_reserved`（0111）在尚未套用該 migration 的環境不存在：這兩個等待付款來源遇到
+  // 缺欄位／缺關聯錯誤時只貢獻 0 張卡，不拖垮其他來源；其他錯誤照舊 throw。
+  const paymentDueUnpaidRows = tolerateMissingSchema(paymentDueUnpaidResult);
+  const paymentDuePartialRows = tolerateMissingSchema(paymentDuePartialResult);
 
   const bookingItems: GuideActionInboxItem[] = (bookingResult.data ?? []).map((row) => ({
     id: row.id,
@@ -491,7 +505,7 @@ export const GET = handle(async () => {
       .sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt) || a.id.localeCompare(b.id))
       .slice(0, PAYMENT_DUE_CAP);
   const paymentDueItems: GuideActionInboxItem[] = dropGuideActionInboxOrderCardsAlreadyCovered(
-    [...toPaymentDueCards(paymentDueUnpaidResult.data), ...toPaymentDueCards(paymentDuePartialResult.data)],
+    [...toPaymentDueCards(paymentDueUnpaidRows), ...toPaymentDueCards(paymentDuePartialRows)],
     [...tourRequestItems, ...refundPendingItems],
   );
 

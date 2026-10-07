@@ -18,6 +18,9 @@ import {
 import { MOCK_BOOKINGS } from '@/mock';
 import { MOCK_TOUR_ORDERS, MOCK_TRIP_DEPARTURES, MOCK_TRIP_PLANS, MOCK_TRIPS } from '@/mock/tours';
 
+const isMockRequestOrder = (order: { tripId: string; planName: string }) =>
+  MOCK_TRIP_PLANS.find((candidate) =>
+    candidate.tripId === order.tripId && candidate.name === order.planName)?.salesMode === 'REQUEST';
 const refundPendingHref = (id: string) =>
   `/tenant/tour-orders?paymentStatus=REFUND_PENDING&orderId=${encodeURIComponent(id)}`;
 const tourRequestHref = (id: string) =>
@@ -207,12 +210,7 @@ export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
       // 'REQUEST'` 且訂單 `status === 'PENDING'` 才算，跟 route.ts 的
       // `.eq('trip_plans.sales_mode', 'REQUEST')` 是同一條規則。
       const tourRequestItems: GuideActionInboxItem[] = MOCK_TOUR_ORDERS
-        .filter((order) => {
-          if (order.status !== 'PENDING') return false;
-          const plan = MOCK_TRIP_PLANS.find((candidate) =>
-            candidate.tripId === order.tripId && candidate.name === order.planName);
-          return plan?.salesMode === 'REQUEST';
-        })
+        .filter((order) => order.status === 'PENDING' && isMockRequestOrder(order))
         .slice(0, 20)
         .map((order) => buildGuideActionInboxTourRequestItem({
           id: order.id,
@@ -245,7 +243,8 @@ export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
             planName: order.planName,
             status: order.status,
             paymentStatus: order.paymentStatus,
-            seatsReserved: true,
+            // mock 沒有 seatsReserved：PENDING 的 REQUEST 方案尚未接受＝未鎖位（由 TOUR_REQUEST 處理）。
+            seatsReserved: !(order.status === 'PENDING' && isMockRequestOrder(order)),
             holdExpiresAt: order.holdExpiresAt ? new Date(now + 5 * 60 * 60 * 1000).toISOString() : null,
             depositAmount: order.depositAmount,
             totalAmount: order.totalAmount,

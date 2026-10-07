@@ -77,7 +77,9 @@ function actionInboxKindLabel(item: GuideActionInboxItem): string {
     case 'TOUR_PAYMENT_DUE':
       return item.stage === 'BALANCE'
         ? t.actionInbox.tourPaymentDueBalance
-        : t.actionInbox.tourPaymentDueInitial;
+        : item.stage === 'FULL'
+          ? t.actionInbox.tourPaymentDueFull
+          : t.actionInbox.tourPaymentDueInitial;
     case 'DEPARTURE':
       return t.actionInbox.departure;
     case 'REVIEW_REQUIRED':
@@ -169,7 +171,9 @@ function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
             <span>
               {item.stage === 'BALANCE'
                 ? t.actionInbox.tourPaymentDueBalanceDetail
-                : t.actionInbox.tourPaymentDueInitialDetail}
+                : item.stage === 'FULL'
+                  ? t.actionInbox.tourPaymentDueFullDetail
+                  : t.actionInbox.tourPaymentDueInitialDetail}
             </span>
             <span>{item.customerName || item.orderNo}</span>
             {item.stage === 'BALANCE' ? (

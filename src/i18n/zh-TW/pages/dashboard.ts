@@ -60,6 +60,8 @@ export const dashboardPage = {
     openTourRequest: '查看申請',
     /* ---- #43 類別 2：等待訂金、尾款或付款即將到期（tour_orders，已接受的申請／已收訂金） ---- */
     tourPaymentDueInitial: '等待付款（訂金或全額）',
+    tourPaymentDueFull: '等待付款（全額）',
+    tourPaymentDueFullDetail: '旅客已下單，名額已暫時保留，等待付款',
     tourPaymentDueBalance: '等待尾款',
     tourPaymentDueInitialDetail: '導遊已接受，名額已保留，等旅客付款',
     tourPaymentDueBalanceDetail: '已收訂金，出發前需收齊尾款',

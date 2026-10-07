@@ -100,7 +100,8 @@ describe('buildGuideActionInboxTourPaymentDueItem (#43 類別 2)', () => {
   });
 
   it('excludes PENDING, CANCELLED, COMPLETED, PAID, REFUND_PENDING and unreserved/hold-less UNPAID', () => {
-    expect(build({ status: 'PENDING' })).toBeNull();
+    expect(build({ status: 'PENDING', paymentStatus: 'PARTIAL', paidAmount: 5000 })).toBeNull();
+    expect(build({ status: 'PENDING', seatsReserved: false })).toBeNull(); // 未接受的 REQUEST
     expect(build({ status: 'CANCELLED' })).toBeNull();
     expect(build({ status: 'COMPLETED', paymentStatus: 'PARTIAL', paidAmount: 5000 })).toBeNull();
     expect(build({ paymentStatus: 'PAID' })).toBeNull();
@@ -140,6 +141,20 @@ describe('buildGuideActionInboxTourPaymentDueItem (#43 類別 2)', () => {
     expect(build({ ...partial, departureDate: '2026-09-19' })).toBeNull();
   });
 
+  it('PENDING + UNPAID + seats reserved + hold: FULL card (full payment only, no deposit shown)', () => {
+    const item = build({ status: 'PENDING' });
+    expect(item).toMatchObject({ kind: 'TOUR_PAYMENT_DUE', stage: 'FULL', depositAmount: null, balanceAmount: null, totalAmount: 18000 });
+  });
+
+  it('INITIAL/FULL exclude departures that already started today (exact start_time, tenant tz); missing start_time kept through the day', () => {
+    // NOW = 2026-09-20 12:00 台北
+    expect(build({ departureDate: '2026-09-20', departureStartTime: '09:00' })).toBeNull();
+    expect(build({ status: 'PENDING', departureDate: '2026-09-20', departureStartTime: '12:00' })).toBeNull();
+    expect(build({ departureDate: '2026-09-20', departureStartTime: '12:01' })).not.toBeNull();
+    expect(build({ departureDate: '2026-09-20', departureStartTime: null })).not.toBeNull();
+    expect(build({ departureDate: '2026-09-19', departureStartTime: null })).toBeNull();
+  });
+
   it('INITIAL hold exactly at tenant midnight renders as next local day 00:00', () => {
     const item = build({ holdExpiresAt: '2026-09-20T16:00:00.000Z' });
     expect(item).toMatchObject({ dueLocalDate: '2026-09-21', dueLocalTime: '00:00' });
@@ -171,7 +186,11 @@ describe('route.ts behaviour: #43 類別 2 TOUR_PAYMENT_DUE', () => {
     row({ id: 'unpaid-unreserved', status: 'CONFIRMED', payment_status: 'UNPAID', hold_expires_at: future(3_600_000), seats_reserved: false }),
     row({ id: 'unpaid-other-tenant', tenant_id: 'tenant-b', status: 'CONFIRMED', payment_status: 'UNPAID', hold_expires_at: future(3_600_000) }),
     row({ id: 'unpaid-cancelled', status: 'CANCELLED', payment_status: 'UNPAID', hold_expires_at: future(3_600_000) }),
+    // 一般固定團／即時預約：PENDING + UNPAID + 已鎖位 + hold → FULL 卡
     row({ id: 'pending-hold', status: 'PENDING', payment_status: 'UNPAID', hold_expires_at: future(3_600_000) }),
+    row({ id: 'pending-unreserved', status: 'PENDING', payment_status: 'UNPAID', hold_expires_at: future(3_600_000), seats_reserved: false }),
+    row({ id: 'unpaid-started-today', status: 'CONFIRMED', payment_status: 'UNPAID', hold_expires_at: future(3_600_000),
+      trip_departures: { departs_on: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date()), start_time: '00:00:00' } }),
     row({ id: 'partial-ok', status: 'CONFIRMED', payment_status: 'PARTIAL', paid_amount: 5000 }),
     row({ id: 'partial-past', status: 'CONFIRMED', payment_status: 'PARTIAL', paid_amount: 5000,
       trip_departures: { departs_on: day(-3), start_time: '09:00:00' } }),
@@ -179,7 +198,7 @@ describe('route.ts behaviour: #43 類別 2 TOUR_PAYMENT_DUE', () => {
     row({ id: 'partial-completed', status: 'COMPLETED', payment_status: 'PARTIAL', paid_amount: 5000 }),
     row({ id: 'paid', status: 'CONFIRMED', payment_status: 'PAID', paid_amount: 18000 }),
     // TOUR_REQUEST 來源（PENDING + REQUEST）與 REFUND_PENDING 來源：不得同時冒出付款卡
-    row({ id: 'request', status: 'PENDING', payment_status: 'UNPAID', hold_expires_at: future(3_600_000),
+    row({ id: 'request', status: 'PENDING', payment_status: 'UNPAID', hold_expires_at: future(3_600_000), seats_reserved: false,
       trip_plans: { sales_mode: 'REQUEST', name: '包船專案' } }),
     row({ id: 'refund', status: 'CANCELLED', payment_status: 'REFUND_PENDING', paid_amount: 5000, refunded_amount: 0,
       updated_at: '2026-09-11T00:00:00.000Z' }),
@@ -198,7 +217,8 @@ describe('route.ts behaviour: #43 類別 2 TOUR_PAYMENT_DUE', () => {
     expect(res.status).toBe(200);
     const items: any[] = (await res.json()).data;
     const due = items.filter((i) => i.kind === 'TOUR_PAYMENT_DUE');
-    expect(due.map((i) => i.id).sort()).toEqual(['partial-ok', 'unpaid-ok']);
+    expect(due.map((i) => i.id).sort()).toEqual(['partial-ok', 'pending-hold', 'unpaid-ok']);
+    expect(due.find((i) => i.id === 'pending-hold')).toMatchObject({ stage: 'FULL', depositAmount: null });
     expect(due.find((i) => i.id === 'unpaid-ok')).toMatchObject({
       stage: 'INITIAL', depositAmount: 5000, totalAmount: 18000, customerName: '旅客',
       href: '/tenant/tour-orders?orderId=unpaid-ok',
@@ -292,11 +312,63 @@ describe('route.ts: payment-due source filters, window and display fields (#43 �
   });
 });
 
+describe('route.ts: payment-due schema tolerance (#43 類別 2, Production lacks 0111)', () => {
+  const T = 'tenant-a';
+  const dep = new Date(Date.now() + 10 * 86_400_000).toISOString().slice(0, 10);
+
+  /** payment 查詢（帶 seats_reserved 或 payment_status=PARTIAL 的 tour_orders）回指定錯誤；其餘照常。 */
+  function setup(error: { code?: string; message: string } | null) {
+    const other = fakeSupabase({ tour_orders: [{
+      id: 'req', tenant_id: T, order_no: 'T', party_size: 2, total_amount: 100, contact: { name: 'x' },
+      hold_expires_at: null, status: 'PENDING', seats_reserved: false, payment_status: 'UNPAID',
+      trip_plans: { sales_mode: 'REQUEST', name: 'p' }, trips: { title: 't' },
+      trip_departures: { departs_on: dep, start_time: '09:00:00' }, created_at: '2026-09-10T00:00:00.000Z',
+    }] });
+    const supabase = {
+      from(table: string) {
+        const b: any = other.from(table);
+        if (table !== 'tour_orders' || !error) return b;
+        let paymentQuery = false;
+        const origEq = b.eq;
+        b.eq = (...a: unknown[]) => {
+          if (a[0] === 'payment_status' && (a[1] === 'UNPAID' || a[1] === 'PARTIAL')) paymentQuery = true;
+          return origEq(...a);
+        };
+        const origThen = b.then;
+        b.then = (res: any, rej: any) => paymentQuery
+          ? Promise.resolve({ data: null, error }).then(res, rej)
+          : origThen(res, rej);
+        return b;
+      },
+    };
+    requireTenantMock.mockReset();
+    requireTenantMock.mockResolvedValue({ supabase, tenantId: T, user: { id: 'u' }, role: 'OWNER' });
+  }
+
+  it('undefined-column error on payment queries → other cards still returned, zero payment cards', async () => {
+    for (const code of ['42703', '42P01', 'PGRST204']) {
+      setup({ code, message: 'column tour_orders.seats_reserved does not exist' });
+      const res = await guideActionInboxGET(new Request('https://app.test/api/guide/action-inbox'), {});
+      expect(res.status).toBe(200);
+      const items: any[] = (await res.json()).data;
+      expect(items.filter((i) => i.kind === 'TOUR_PAYMENT_DUE')).toHaveLength(0);
+      expect(items.filter((i) => i.kind === 'TOUR_REQUEST').map((i) => i.id)).toEqual(['req']);
+    }
+  });
+
+  it('any other error keeps the existing behaviour (request fails, like the other sources)', async () => {
+    setup({ code: '57014', message: 'canceling statement due to statement timeout' });
+    const res = await guideActionInboxGET(new Request('https://app.test/api/guide/action-inbox'), {});
+    expect(res.status).toBeGreaterThanOrEqual(500);
+  });
+});
+
 describe('mock mode + copy (#43 類別 2)', () => {
   it('mock GUIDE inbox shows both payment-due cards with honest, relative deadlines and no overlap with TOUR_REQUEST', async () => {
     const items = await getGuideActionInbox();
     const due = items.filter((i) => i.kind === 'TOUR_PAYMENT_DUE');
-    expect(due.map((i) => i.id).sort()).toEqual(['to_14', 'to_15']);
+    expect(due.map((i) => i.id).sort()).toEqual(['to_1', 'to_14', 'to_15']);
+    expect(due.find((i) => i.id === 'to_1')).toMatchObject({ stage: 'FULL' });
     for (const i of due) expect(i.href).toBe(`/tenant/tour-orders?orderId=${i.id}`);
     const requestIds = new Set(items.filter((i) => i.kind === 'TOUR_REQUEST').map((i) => i.id));
     for (const i of due) expect(requestIds.has(i.id)).toBe(false);

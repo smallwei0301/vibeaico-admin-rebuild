@@ -190,6 +190,10 @@ export type GuideActionInboxStaffUnassignedItem = {
 /*
  * #43 類別 2：等待訂金、尾款或付款即將到期（19 分冊 §3.2）。來源只有 `tour_orders`
  * 既有欄位，不新建狀態：
+ *   - FULL：`status = 'PENDING'` + `UNPAID` + `seats_reserved = true` + hold 不為 null——一般固定團／
+ *     即時預約建單後已暫占名額、等旅客付「全額」（confirm-payment 對 PENDING 只有全額路徑，
+ *     訂金只對 CONFIRMED 有效，故不顯示訂金）。尚未被接受的 REQUEST 是 `seats_reserved = false`，
+ *     由 TOUR_REQUEST 卡處理，不在此列。期限同為 `hold_expires_at`。
  *   - INITIAL：`status = 'CONFIRMED'` + `payment_status = 'UNPAID'` + `seats_reserved`
  *     + `hold_expires_at` 不為 null——導遊已接受申請（#769）、名額已鎖、等旅客付訂金
  *     或全額；期限是 `hold_expires_at`（逾期 cron 會取消）。
@@ -199,7 +203,7 @@ export type GuideActionInboxStaffUnassignedItem = {
  * `PENDING`（TOUR_REQUEST 已涵蓋）、`CANCELLED`／`COMPLETED`、`PAID`、已出發的 PARTIAL
  * 一律不產生卡片。同一筆訂單只會有一張卡（見 `dropGuideActionInboxOrderCardsAlreadyCovered`）。
  */
-export type GuideActionInboxTourPaymentDueStage = 'INITIAL' | 'BALANCE';
+export type GuideActionInboxTourPaymentDueStage = 'INITIAL' | 'FULL' | 'BALANCE';
 
 export type GuideActionInboxTourPaymentDueItem = {
   id: string;
@@ -210,7 +214,7 @@ export type GuideActionInboxTourPaymentDueItem = {
   tripName: string;
   planName: string;
   totalAmount: number;
-  /** INITIAL 且訂單有 0 < 訂金 < 總額時為訂金金額；否則 null（只能收全額）。 */
+  /** 只有 INITIAL（CONFIRMED）且訂單有 0 < 訂金 < 總額時為訂金金額；FULL／BALANCE 為 null。 */
   depositAmount: number | null;
   /** BALANCE：總額 - 已收；INITIAL 為 null。 */
   balanceAmount: number | null;
@@ -660,6 +664,23 @@ function localTimeKey(date: Date, timeZone: string): string {
   return `${values.hour}:${values.minute}`;
 }
 
+/**
+ * 出發時刻是否仍在未來（租戶時區）：有 start_time 用精確 instant（`<= now` 即已出發）；
+ * 缺 start_time 只知道日期，保留到當天結束（過去日期才排除）。INITIAL／BALANCE 共用。
+ */
+function departureStillAhead(
+  departureDate: string,
+  startTime: string | null,
+  now: Date,
+  timeZone: string,
+): boolean {
+  if (startTime) {
+    const dueAt = getGuideDepartureDueAt(departureDate, startTime, timeZone);
+    return !!dueAt && Date.parse(dueAt) > now.getTime();
+  }
+  return departureDate >= dateKey(now, timeZone);
+}
+
 export type GuideActionInboxTourPaymentDueInput = {
   id: string;
   orderNo: string;
@@ -689,8 +710,10 @@ export function buildGuideActionInboxTourPaymentDueItem(
   now: Date = new Date(),
   timeZone: string = DEFAULT_GUIDE_TIME_ZONE,
 ): GuideActionInboxTourPaymentDueItem | null {
-  if (input.status !== 'CONFIRMED') return null;
+  if (input.status !== 'CONFIRMED' && input.status !== 'PENDING') return null;
   if (!isAwaitingPayment({ status: input.status, paymentStatus: input.paymentStatus })) return null;
+  // PENDING 只可能是 UNPAID 全額（PARTIAL 一律是 CONFIRMED）。
+  if (input.status === 'PENDING' && input.paymentStatus !== 'UNPAID') return null;
 
   const base = {
     id: input.id,
@@ -707,10 +730,16 @@ export function buildGuideActionInboxTourPaymentDueItem(
   if (input.paymentStatus === 'UNPAID') {
     if (input.seatsReserved !== true || !input.holdExpiresAt) return null;
     if (Number.isNaN(Date.parse(input.holdExpiresAt))) return null;
+    // 團已出發（精確到 start_time）就不再是出發前待辦；缺 start_time 保留到當天結束。
+    if (input.departureDate
+      && !departureStillAhead(String(input.departureDate).slice(0, 10), input.departureStartTime, now, timeZone)) {
+      return null;
+    }
+    const isPending = input.status === 'PENDING';
     return {
       ...base,
-      stage: 'INITIAL',
-      depositAmount: hasPartialDeposit({ depositAmount: input.depositAmount, totalAmount: input.totalAmount })
+      stage: isPending ? 'FULL' : 'INITIAL',
+      depositAmount: !isPending && hasPartialDeposit({ depositAmount: input.depositAmount, totalAmount: input.totalAmount })
         ? Number(input.depositAmount)
         : null,
       balanceAmount: null,
