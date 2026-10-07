@@ -240,6 +240,10 @@ export const lineSettingsPage = {
     copiedLink: '已複製加好友連結！',
     downloaded: 'QR Code 已下載！可列印張貼在店內',
     noQr: '尚未取得 QR Code',
+    qrAlt: 'LINE 加好友 QR Code',
+    qrFilename: 'LINE加好友QRcode.png',
+    downloadFailed: 'QR Code 產生或下載失敗，請稍後再試',
+    qrGenerating: 'QR Code 產生中',
     noLink: '尚未取得加好友連結',
   },
 

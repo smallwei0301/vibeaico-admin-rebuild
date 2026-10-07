@@ -21,10 +21,8 @@ import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { promotePage as t } from '@/i18n/zh-TW/pages/promote';
 import { formatNumber } from '@/lib/utils';
+import { buildQrSourceUrl, createQrDataUrl, triggerDownload } from '@/lib/qr-code';
 import type { PromotionStats } from '@/lib/types';
-
-/** QR Code 圖檔在骨架階段以本地占位圖代替；正式站由後端產生 */
-const QR_PLACEHOLDER_AVAILABLE = true;
 
 /* -------------------------------------------------------------------------- */
 
@@ -94,9 +92,30 @@ export default function PromotePage() {
     }
   };
 
+  const qrContent = buildQrSourceUrl(publicUrl);
+  const [qrDataUrl, setQrDataUrl] = React.useState<string | null>(null);
+  const [qrFailed, setQrFailed] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setQrDataUrl(null);
+    setQrFailed(false);
+    if (!qrContent) return;
+    createQrDataUrl(qrContent)
+      .then((u) => { if (!cancelled) setQrDataUrl(u); })
+      .catch(() => { if (!cancelled) setQrFailed(true); });
+    return () => { cancelled = true; };
+  }, [qrContent]);
+
   const downloadQr = () => {
     setQrConfirmOpen(false);
-    toast.show(t.messages.downloadStarted(t.qr.filename));
+    if (!qrDataUrl) { toast.show(t.messages.downloadFailed, 'danger'); return; }
+    try {
+      triggerDownload(qrDataUrl, t.qr.filename);
+      toast.show(t.messages.downloadStarted(t.qr.filename));
+    } catch {
+      toast.show(t.messages.downloadFailed, 'danger');
+    }
   };
 
   const sourceLabel = (source: string) =>
@@ -178,15 +197,18 @@ export default function PromotePage() {
                 <span className="text-xs text-muted">{t.publicUrl.loading}</span>
               ) : !publicUrl ? (
                 <span className="text-xs text-muted">{t.qr.notReady}</span>
-              ) : QR_PLACEHOLDER_AVAILABLE ? (
-                <QrCode size={96} className="text-dark" aria-hidden />
-              ) : (
+              ) : qrFailed ? (
                 <span className="text-xs text-muted">{t.qr.widgetFailed}</span>
+              ) : qrDataUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={qrDataUrl} alt={t.qr.alt} className="h-full w-full rounded-md object-contain" />
+              ) : (
+                <span className="text-xs text-muted">{t.publicUrl.loading}</span>
               )}
             </div>
             <Button
               variant="outline" size="sm" className="mt-3"
-              disabled={!publicUrl}
+              disabled={!qrDataUrl}
               onClick={() => setQrConfirmOpen(true)}
             >
               <Download size={14} />{t.qr.download}
