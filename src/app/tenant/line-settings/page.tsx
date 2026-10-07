@@ -23,6 +23,7 @@ import {
 import { buildWebhookUrl, lineSettingsSchema, maskSecret } from '@/config/tenant-settings';
 import type { LineSettings, TenantSettings } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
+import { createQrDataUrl, triggerDownload } from '@/lib/qr-code';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { lineSettingsPage as t } from '@/i18n/zh-TW/pages/line-settings';
@@ -180,6 +181,30 @@ export default function LineSettingsPage() {
   const addFriendUrl = lineBasicId
     ? `https://line.me/R/ti/p/${encodeURIComponent(lineBasicId)}`
     : '';
+
+  const [addFriendQr, setAddFriendQr] = React.useState('');
+  const [addFriendQrFailed, setAddFriendQrFailed] = React.useState(false);
+  React.useEffect(() => {
+    let cancelled = false;
+    setAddFriendQr('');
+    setAddFriendQrFailed(false);
+    if (!addFriendUrl) return;
+    createQrDataUrl(addFriendUrl)
+      .then((u) => { if (!cancelled) setAddFriendQr(u); })
+      .catch(() => { if (!cancelled) setAddFriendQrFailed(true); });
+    return () => { cancelled = true; };
+  }, [addFriendUrl]);
+
+  const downloadAddFriendQr = async () => {
+    if (!addFriendUrl) { toast.show(t.botInfo.noQr, 'warning'); return; }
+    try {
+      const dataUrl = addFriendQr || (await createQrDataUrl(addFriendUrl));
+      triggerDownload(dataUrl, t.botInfo.qrFilename);
+      toast.show(t.botInfo.downloaded);
+    } catch {
+      toast.show(t.botInfo.downloadFailed, 'danger');
+    }
+  };
 
   /** 三組金鑰都在（密文以「已存有遮罩值」或「本次重新輸入」判定）就視為已設定 */
   const hasSecret = secretEditing ? !!secretInput : !!settings?.line.channelSecret;
@@ -791,10 +816,19 @@ export default function LineSettingsPage() {
         <CardBody>
           <div className="flex flex-wrap items-center gap-6">
             <div className="flex h-40 w-40 flex-col items-center justify-center gap-2 rounded-md border border-neutral-250 bg-neutral-50 text-center">
-              <QrCode size={48} className="text-neutral-400" />
-              <span className="px-2 text-2xs text-secondary">
-                {addFriendUrl ? t.botInfo.qrTitle : t.botInfo.noQr}
-              </span>
+              {addFriendUrl && addFriendQr ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={addFriendQr} alt={t.botInfo.qrAlt} className="h-full w-full rounded-md object-contain" />
+              ) : (
+                <>
+                  <QrCode size={48} className="text-neutral-400" />
+                  <span className="px-2 text-2xs text-secondary">
+                    {addFriendUrl
+                      ? (addFriendQrFailed ? t.botInfo.qrFailed : t.botInfo.qrGenerating)
+                      : t.botInfo.noQr}
+                  </span>
+                </>
+              )}
             </div>
             <div className="min-w-0 flex-1">
               <div className="mb-1 text-base font-semibold text-dark">{t.botInfo.qrTitle}</div>
@@ -823,11 +857,7 @@ export default function LineSettingsPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() =>
-                    addFriendUrl
-                      ? toast.show(t.botInfo.downloaded)
-                      : toast.show(t.botInfo.noQr, 'warning')
-                  }
+                  onClick={() => void downloadAddFriendQr()}
                 >
                   <QrCode size={14} />
                   {t.botInfo.downloadQr}

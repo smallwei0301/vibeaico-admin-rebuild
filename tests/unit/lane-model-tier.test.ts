@@ -86,7 +86,7 @@ describe('lane → model tier（Owner 2026-09-30 版本更新）', () => {
     const history = index.split('## 2026-09-10 已裁示')[1].split('## 2026-09-09')[0];
     expect(history).toContain('Terra=`claude-sonnet-5`');
     expect(history).toContain('原文保留為歷史');
-    expect(read('docs/AGENT-EXECUTION.md')).toContain('最近更新：2026-10-01');
+    expect(read('docs/AGENT-EXECUTION.md')).toContain('最近更新：2026-10-07');
   });
 
   it('OpenAI 同 ID 角色仍須獨立 actor，不改歷史 identity 或審查 policy version', () => {
