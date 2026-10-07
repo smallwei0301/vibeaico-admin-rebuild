@@ -1719,15 +1719,17 @@ export default function TripDetailPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-semibold text-dark">{t.seasons.sectionTitle}</p>
-                      <p className="text-xs text-secondary">{t.seasons.sectionHint}</p>
+                      <p className="text-xs text-secondary">{listedPlanWritesBlocked ? t.seasons.listedHint : t.seasons.sectionHint}</p>
                     </div>
-                    <Button
-                      type="button" variant="outline" size="sm"
-                      disabled={listedPlanWritesBlocked || savingPlan || !!seasonDraft}
-                      onClick={() => openSeasonEditor()}
-                    >
-                      <Plus size={14} /> {t.seasons.add}
-                    </Button>
+                    {!listedPlanWritesBlocked ? (
+                      <Button
+                        type="button" variant="outline" size="sm"
+                        disabled={savingPlan || !!seasonDraft}
+                        onClick={() => openSeasonEditor()}
+                      >
+                        <Plus size={14} /> {t.seasons.add}
+                      </Button>
+                    ) : null}
                   </div>
 
                   {planDraft.seasons.length === 0 ? (

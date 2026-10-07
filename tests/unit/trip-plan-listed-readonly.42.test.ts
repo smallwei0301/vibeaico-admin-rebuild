@@ -132,4 +132,16 @@ describe('issue #42 LISTED 方案編輯器唯讀', () => {
     expect(tripsPage.plans.advanced.title).toBe('方案進階設定');
     expect(tripsPage.plans.advanced.save).toBe('儲存進階設定');
   });
+
+  it('LISTED 不渲染新增季節鈕，非 LISTED 仍渲染且 disabled 條件不變', () => {
+    expect(src).toMatch(/\{!listedPlanWritesBlocked \? \(\s*<Button\s+type="button" variant="outline" size="sm"\s+disabled=\{savingPlan \|\| !!seasonDraft\}\s+onClick=\{\(\) => openSeasonEditor\(\)\}/);
+    expect(src).not.toMatch(/disabled=\{listedPlanWritesBlocked \|\| savingPlan \|\| !!seasonDraft\}\s+onClick=\{\(\) => openSeasonEditor\(\)\}/);
+  });
+
+  it('LISTED 季節區塊顯示唯讀說明，非 LISTED 維持原操作說明', () => {
+    expect(src).toContain('{listedPlanWritesBlocked ? t.seasons.listedHint : t.seasons.sectionHint}');
+    expect(tripsPage.seasons.listedHint).toContain('僅供檢視');
+    expect(tripsPage.seasons.listedHint).toContain('Midao');
+    expect(tripsPage.seasons.sectionHint).toContain('設定這個方案');
+  });
 });
