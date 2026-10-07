@@ -209,8 +209,8 @@ export const submitPublicTourBookingSchema = z.object({
   departureId: z.string().uuid(),
   partySize: z.coerce.number().int().min(1, '人數至少為 1'),
   // Final Risk F2 慣例同 `public-tour-request.ts`：自由文字欄位一律有上限。
-  /** #749：旅客在頁面上看到並確認的總額；有帶時建單會原子比對實際金額，不符回 PRICE_CHANGED。舊頁面快取不帶則沿用舊行為。 */
-  expectedTotal: z.coerce.number().nonnegative().finite().optional(),
+  /** #749：旅客在頁面上看到並確認的總額；有帶時送出當下伺服器依現價重新比對（非原子，空窗由後續 migration 0137 收斂），不符回 PRICE_CHANGED。舊頁面快取不帶則沿用舊行為。 */
+  expectedTotal: z.number().nonnegative().finite().optional(),
   contactName: z.string().trim().min(1, '請輸入姓名').max(100, '姓名長度超過上限'),
   contactPhone: z.string().trim().max(40, '電話長度超過上限').optional(),
   contactLine: z.string().trim().max(100, 'LINE ID 長度超過上限').optional(),

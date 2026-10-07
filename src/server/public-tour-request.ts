@@ -187,8 +187,8 @@ export const submitPublicTourRequestSchema = z.object({
   planId: z.string().uuid(),
   departureId: z.string().uuid(),
   partySize: z.coerce.number().int().min(1, '人數至少為 1'),
-  /** #749：旅客在頁面上看到並確認的總額；有帶時建單會原子比對實際金額，不符回 PRICE_CHANGED。舊頁面快取不帶則沿用舊行為。 */
-  expectedTotal: z.coerce.number().nonnegative().finite().optional(),
+  /** #749：旅客在頁面上看到並確認的總額；有帶時送出當下伺服器依現價重新比對（非原子，空窗由後續 migration 0137 收斂），不符回 PRICE_CHANGED。舊頁面快取不帶則沿用舊行為。 */
+  expectedTotal: z.number().nonnegative().finite().optional(),
   // Final Risk F2：這幾個欄位先前沒有 `.max()`，是本檔唯一一批缺上限的自由文字
   // 欄位（`preferredNote`／`specialRequest` 一開始就有 500 字上限）——在 F1 的
   // 匿名節流補上之前，這是最便宜的儲存耗盡手段。上限值取一般表單常見上限

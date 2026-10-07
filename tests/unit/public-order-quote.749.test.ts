@@ -86,7 +86,7 @@ beforeEach(() => {
 describe('schema', () => {
   it('expectedTotal 選填、可為 0、不可為負', () => {
     expect(baseBooking().expectedTotal).toBeUndefined();
-    expect(baseBooking({ expectedTotal: '2000' }).expectedTotal).toBe(2000);
+    expect(baseBooking({ expectedTotal: 2000 }).expectedTotal).toBe(2000);
     expect(baseBooking({ expectedTotal: 0 }).expectedTotal).toBe(0);
     expect(submitPublicTourBookingSchema.safeParse({ shopCode: 's', planId: PLAN, departureId: DEPARTURE, partySize: 1, contactName: 'a', contactPhone: '1', expectedTotal: -1 }).success).toBe(false);
   });
@@ -194,4 +194,33 @@ describe('routes', () => {
     expect(res.status).toBe(409);
     expect((await res.json()).code).toBe('TOUR_004');
   });
+});
+
+describe('#749 expectedTotal schema（嚴格 number，不 coerce）', () => {
+  const base = {
+    shopCode: 'shop',
+    planId: PLAN,
+    departureId: DEPARTURE,
+    partySize: 2,
+    contactName: '王小明',
+    contactLine: 'line-id',
+  };
+  const cases = [
+    ['booking', async () => (await import('@/server/public-tour-booking')).submitPublicTourBookingSchema],
+    ['request', async () => (await import('@/server/public-tour-request')).submitPublicTourRequestSchema],
+  ] as const;
+
+  for (const [name, load] of cases) {
+    it(`${name}：null／""／"100" 失敗`, async () => {
+      const schema = await load();
+      for (const bad of [null, '', '100']) {
+        expect(schema.safeParse({ ...base, expectedTotal: bad }).success).toBe(false);
+      }
+    });
+    it(`${name}：100 或省略成功`, async () => {
+      const schema = await load();
+      expect(schema.safeParse({ ...base, expectedTotal: 100 }).success).toBe(true);
+      expect(schema.safeParse({ ...base }).success).toBe(true);
+    });
+  }
 });
