@@ -393,4 +393,23 @@ export const MOCK_TOUR_ORDERS: TourOrder[] = [
     source: 'MANUAL', holdExpiresAt: null, note: '',
     createdAt: '2026-08-22T15:40:00+08:00',
   },
+  // #41 REVIEW_REQUIRED 示範團次 dp_4（標準團 08-26 13:30，門檻 4 人）的有效報名：已付全額 2 人＋1 人＝3 人，未達門檻。
+  {
+    id: 'to_41a', orderNo: 'T2608180015', tripId: 'tp_1', tripTitle: '龜山島賞鯨半日遊',
+    planName: '標準團（共乘）', departsOn: '2026-08-26', startTime: '13:30',
+    customerName: '周雅婷', customerPhone: '0919-552-301', partySize: 2,
+    unitPrice: 1280, totalAmount: 2560, depositAmount: 0, status: 'CONFIRMED', paymentStatus: 'PAID',
+    paymentMethodLabel: '線上刷卡付款', paymentRef: 'ECPay 2608180015620',
+    source: 'MIDAO', holdExpiresAt: null, note: '', createdAt: '2026-08-18T13:00:00+08:00',
+    upfrontRequiredAmount: 2560, depositModeSnapshot: 'FULL',
+  },
+  {
+    id: 'to_41b', orderNo: 'T2608190016', tripId: 'tp_1', tripTitle: '龜山島賞鯨半日遊',
+    planName: '標準團（共乘）', departsOn: '2026-08-26', startTime: '13:30',
+    customerName: '沈柏翰', customerPhone: '0975-210-846', partySize: 1,
+    unitPrice: 1280, totalAmount: 1280, depositAmount: 0, status: 'CONFIRMED', paymentStatus: 'PAID',
+    paymentMethodLabel: '線上刷卡付款', paymentRef: 'ECPay 2608190016448',
+    source: 'LINE', holdExpiresAt: null, note: '', createdAt: '2026-08-19T10:30:00+08:00',
+    upfrontRequiredAmount: 1280, depositModeSnapshot: 'FULL',
+  },
 ];

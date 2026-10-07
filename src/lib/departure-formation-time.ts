@@ -45,3 +45,14 @@ export function formationDefaultDeadline(date: string, time: string | null | und
   calendar.setUTCDate(calendar.getUTCDate() - days);
   return formationWallTimeToIso(calendar.toISOString().slice(0, 10), time, zone);
 }
+
+/** 表單 datetime-local 值（YYYY-MM-DDTHH:mm）換算為 UTC ISO；空值、格式錯或 DST 不存在／重複時段回傳 null，不丟例外。 */
+export function tryFormationLocalToIso(local: string, zone: string): string | null {
+  if (!local) return null;
+  const [date, time] = local.split('T');
+  try {
+    return formationWallTimeToIso(date, time, zone);
+  } catch {
+    return null;
+  }
+}
