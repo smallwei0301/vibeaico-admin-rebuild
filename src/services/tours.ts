@@ -4,6 +4,7 @@ import type {
   TourOrder, TourOrderStatus, TourPaymentStatus, Paged,
 } from '@/lib/types';
 import { clampGalleryForCopy } from '@/lib/trip-gallery';
+import { addDays, zonedMidnightMs } from '@/server/guide-report';
 import { canRegisterDepositPayment, canRegisterFullPayment, canTransitionTourOrder, shouldReleaseSeats } from '@/server/tour-domain';
 import {
   MOCK_TOUR_ORDERS, MOCK_TRIPS, MOCK_TRIP_ADDONS,
@@ -633,6 +634,8 @@ export async function duplicateTripFully(
 export type TourOrderQuery = {
   page?: number; size?: number; status?: string; source?: string;
   paymentStatus?: string; keyword?: string;
+  /** #45 報表下鑽：行程、建立日期區間（YYYY-MM-DD，店家時區，含 createdTo 當天） */
+  tripId?: string; createdFrom?: string; createdTo?: string;
   /**
    * GUIDE 收件匣 REFUND_PENDING 卡片的 deep link（#43 類別 5）以 orderId 精準撈一筆，
    * 比照 `BookingQuery.bookingId`（`src/services/bookings.ts`）——不是分頁篩選條件，
@@ -640,6 +643,8 @@ export type TourOrderQuery = {
    */
   orderId?: string;
 };
+
+const MOCK_TIME_ZONE = 'Asia/Taipei';
 
 export function listTourOrders(q: TourOrderQuery = {}): Promise<Paged<TourOrder>> {
   return adapt(
@@ -649,6 +654,16 @@ export function listTourOrders(q: TourOrderQuery = {}): Promise<Paged<TourOrder>
       if (q.orderId) rows = rows.filter((o) => o.id === q.orderId);
       if (q.status) rows = rows.filter((o) => o.status === q.status);
       if (q.source) rows = rows.filter((o) => o.source === q.source);
+      if (q.tripId) rows = rows.filter((o) => o.tripId === q.tripId);
+      // mock 以 Asia/Taipei 為店家時區，界線與真實 API 同為半開 [from 00:00, to+1 00:00)
+      if (q.createdFrom) {
+        const lo = zonedMidnightMs(q.createdFrom, MOCK_TIME_ZONE);
+        rows = rows.filter((o) => Date.parse(o.createdAt) >= lo);
+      }
+      if (q.createdTo) {
+        const hi = zonedMidnightMs(addDays(q.createdTo, 1), MOCK_TIME_ZONE);
+        rows = rows.filter((o) => Date.parse(o.createdAt) < hi);
+      }
       if (q.paymentStatus) rows = rows.filter((o) => o.paymentStatus === q.paymentStatus);
       if (q.keyword) {
         const k = q.keyword.toLowerCase();
@@ -686,16 +701,45 @@ export const TOUR_PAYMENT_STATUS_VALUES: TourPaymentStatus[] = [
  * 這個函式後把回傳值指定給 `paymentFilter`／`requestedOrderId` 兩個 state，那一步
  * 是機械的 pass-through，這個測試邊界涵蓋不到它——PR 報告裡如實說明。
  */
-export function parseTourOrdersDeepLink(search: string): {
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TOUR_ORDER_STATUS_VALUES: TourOrderStatus[] = ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'];
+
+export type TourOrdersDeepLink = {
   paymentStatus: TourPaymentStatus | ''; orderId: string;
-} {
+  /** #45 報表下鑽 */
+  status: TourOrderStatus | ''; tripId: string; createdFrom: string; createdTo: string;
+};
+
+export function parseTourOrdersDeepLink(search: string): TourOrdersDeepLink {
   const params = new URLSearchParams(search);
   const ps = params.get('paymentStatus');
   const paymentStatus = ps && (TOUR_PAYMENT_STATUS_VALUES as string[]).includes(ps)
     ? (ps as TourPaymentStatus)
     : '';
   const orderId = params.get('orderId') ?? '';
-  return { paymentStatus, orderId };
+  const st = params.get('status');
+  const status = st && (TOUR_ORDER_STATUS_VALUES as string[]).includes(st) ? (st as TourOrderStatus) : '';
+  const tripId = params.get('tripId') ?? '';
+  const cf = params.get('createdFrom') ?? '';
+  const ct = params.get('createdTo') ?? '';
+  const createdFrom = YMD_RE.test(cf) ? cf : '';
+  const createdTo = YMD_RE.test(ct) ? ct : '';
+  return { paymentStatus, orderId, status, tripId, createdFrom, createdTo };
+}
+
+/**
+ * #45 報表下鑽：組出 `/tenant/tour-orders?...` 連結（純函式）。空值不進 query；
+ * 日期區間用報表實際使用的 range.from／range.to，與 API 同一套店家時區界線。
+ */
+export function buildTourOrdersLink(f: {
+  status?: string; paymentStatus?: string; tripId?: string; createdFrom?: string; createdTo?: string;
+}): string {
+  const p = new URLSearchParams();
+  for (const k of ['status', 'paymentStatus', 'tripId', 'createdFrom', 'createdTo'] as const) {
+    if (f[k]) p.set(k, f[k] as string);
+  }
+  const qs = p.toString();
+  return qs ? `/tenant/tour-orders?${qs}` : '/tenant/tour-orders';
 }
 
 /**

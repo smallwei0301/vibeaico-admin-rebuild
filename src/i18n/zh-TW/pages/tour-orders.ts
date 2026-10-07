@@ -50,6 +50,15 @@ export const tourOrdersPage = {
     paymentAll: '全部收款狀態',
   },
 
+  /** #45 報表下鑽帶入的篩選提示 */
+  drilldown: {
+    current: (desc: string) => `目前篩選：${desc}`,
+    range: (from: string, to: string) => `建立日期 ${from || '不限'} ～ ${to || '不限'}`,
+    trip: '指定行程',
+    sep: '、',
+    clear: '清除日期與行程篩選',
+  },
+
   status: {
     PENDING: '待確認',
     CONFIRMED: '已確認',

@@ -14,6 +14,7 @@ import { Tabs } from '@/components/ui/Tabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Input, Label, FormGroup } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
+import { buildTourOrdersLink } from '@/services/tours';
 import {
   getGuideReport,
   type GuideRankDimension, type GuideRankMetric, type GuideRankRow, type GuideReport,
@@ -118,7 +119,20 @@ export function GuideReportView() {
 
   const columns: Column<GuideRankRow>[] = [
     { key: 'rank', header: t.ranking.columns.rank, width: '64px', render: (_r, i) => <Badge tone={RANK_TONE[i] ?? 'neutral'}>{i + 1}</Badge> },
-    { key: 'name', header: t.ranking.columns.name, render: (r) => r.name },
+    {
+      key: 'name', header: t.ranking.columns.name,
+      // 只有「依行程」的 id 是 trip id，tour-orders 才有 tripId 篩選；方案維度沒有對應篩選，維持純文字。
+      render: (r) => (dimension === 'trip' && report
+        ? (
+          <Link
+            href={buildTourOrdersLink({ tripId: r.id, createdFrom: report.range.from, createdTo: report.range.to })}
+            className="underline" title={t.drilldown.viewTripOrders(r.name)}
+          >
+            {r.name}
+          </Link>
+        )
+        : r.name),
+    },
     { key: 'orders', header: t.ranking.columns.orders, numeric: true, render: (r) => formatNumber(r.orders) },
     { key: 'people', header: t.ranking.columns.people, numeric: true, render: (r) => formatNumber(r.people) },
     { key: 'revenue', header: t.ranking.columns.revenue, numeric: true, render: (r) => formatCurrency(r.revenue) },
@@ -127,6 +141,9 @@ export function GuideReportView() {
   const cardLabel = (name: string) => (report?.truncated ? `${name}（${t.truncatedHint}）` : name);
   const s = report?.summary;
   const prev = report?.previous;
+  const rangeLink = (status?: string) => buildTourOrdersLink({
+    status, createdFrom: report?.range.from, createdTo: report?.range.to,
+  });
   const rows = report ? report.ranking[dimension][metric] : [];
 
   if (forbidden) {
@@ -219,12 +236,12 @@ export function GuideReportView() {
           <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               label={cardLabel(t.cards.orders)} icon={ShoppingBag} tone="primary"
-              value={`${formatNumber(s.totalOrders)} ${t.unit.orders}`}
+              value={<Link href={rangeLink()} className="underline" title={t.drilldown.viewOrders}>{`${formatNumber(s.totalOrders)} ${t.unit.orders}`}</Link>}
               hint={`${changeText(report.changes.totalOrders)}${t.sep}${t.change.previousValue(formatNumber(prev.totalOrders))}`}
             />
             <StatCard
               label={cardLabel(t.cards.revenue)} icon={DollarSign} tone="success"
-              value={formatCurrency(s.revenue)}
+              value={<Link href={rangeLink()} className="underline" title={t.drilldown.viewOrders}>{formatCurrency(s.revenue)}</Link>}
               hint={
                 <>
                   {changeText(report.changes.revenue)}
@@ -249,7 +266,7 @@ export function GuideReportView() {
             />
             <StatCard
               label={cardLabel(t.cards.cancelled)} icon={Ban} tone="danger"
-              value={s.cancellationRate === null ? t.noData : formatPercent(s.cancellationRate, 1)}
+              value={s.cancellationRate === null ? t.noData : <Link href={rangeLink('CANCELLED')} className="underline" title={t.drilldown.viewOrders}>{formatPercent(s.cancellationRate, 1)}</Link>}
               hint={`${pointsText(report.changes.cancellationRatePoints)}${t.sep}${t.cardHints.cancelledCount(s.cancelledCount, s.totalOrders)}${t.sep}${t.change.previousValue(prev.cancellationRate === null ? t.noData : formatPercent(prev.cancellationRate, 1))}`}
             />
           </div>
@@ -261,7 +278,9 @@ export function GuideReportView() {
                 {STATUSES.map((k) => (
                   <div key={k}>
                     <div className="stat-label">{t.status[k]}</div>
-                    <div className="stat-value">{formatNumber(s.byStatus[k])}</div>
+                    <div className="stat-value">
+                      <Link href={rangeLink(k)} className="underline" title={t.drilldown.viewOrders}>{formatNumber(s.byStatus[k])}</Link>
+                    </div>
                   </div>
                 ))}
               </div>

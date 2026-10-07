@@ -79,6 +79,10 @@ export default function TourOrdersPage() {
   const [statusFilter, setStatusFilter] = React.useState('');
   const [sourceFilter, setSourceFilter] = React.useState('');
   const [paymentFilter, setPaymentFilter] = React.useState('');
+  /** #45 報表下鑽：行程與建立日期區間（深連結帶入，可一鍵清除） */
+  const [tripFilter, setTripFilter] = React.useState('');
+  const [createdFrom, setCreatedFrom] = React.useState('');
+  const [createdTo, setCreatedTo] = React.useState('');
 
   const [detail, setDetail] = React.useState<TourOrder | null>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -111,7 +115,12 @@ export default function TourOrdersPage() {
   const openedDeepLinkId = React.useRef('');
 
   React.useEffect(() => {
-    const { paymentStatus, orderId } = parseTourOrdersDeepLink(window.location.search);
+    const dl = parseTourOrdersDeepLink(window.location.search);
+    const { paymentStatus, orderId } = dl;
+    if (dl.status) setStatusFilter(dl.status);
+    if (dl.tripId) setTripFilter(dl.tripId);
+    if (dl.createdFrom) setCreatedFrom(dl.createdFrom);
+    if (dl.createdTo) setCreatedTo(dl.createdTo);
     if (paymentStatus) setPaymentFilter(paymentStatus);
     if (orderId) setRequestedOrderId(orderId);
   }, []);
@@ -122,6 +131,7 @@ export default function TourOrdersPage() {
       const res = await listTourOrders({
         page, size: PAGE_SIZE, keyword,
         status: statusFilter, source: sourceFilter, paymentStatus: paymentFilter,
+        tripId: tripFilter, createdFrom, createdTo,
       });
       setRows(res.content);
       setTotal(res.totalElements);
@@ -137,6 +147,7 @@ export default function TourOrdersPage() {
           const exact = await listTourOrders({
             page: 0, size: 1, orderId: requestedOrderId,
             status: statusFilter, source: sourceFilter, paymentStatus: paymentFilter,
+            tripId: tripFilter, createdFrom, createdTo,
           });
           requested = exact.content.find((o) => o.id === requestedOrderId);
         }
@@ -150,7 +161,7 @@ export default function TourOrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, keyword, statusFilter, sourceFilter, paymentFilter, requestedOrderId, toast]);
+  }, [page, keyword, statusFilter, sourceFilter, paymentFilter, tripFilter, createdFrom, createdTo, requestedOrderId, toast]);
 
   React.useEffect(() => { void load(); }, [load]);
 
@@ -469,6 +480,25 @@ export default function TourOrdersPage() {
         <StatCard label={t.stats.upcoming} value={formatNumber(stats.upcoming)} icon={CalendarClock} tone="info" />
         <StatCard label={t.stats.monthRevenue} value={formatCurrency(stats.revenue)} icon={BadgeDollarSign} tone="success" />
       </div>
+
+      {tripFilter || createdFrom || createdTo ? (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+          <span>
+            {t.drilldown.current(
+              [
+                createdFrom || createdTo ? t.drilldown.range(createdFrom, createdTo) : '',
+                tripFilter ? t.drilldown.trip : '',
+              ].filter(Boolean).join(t.drilldown.sep),
+            )}
+          </span>
+          <Button
+            variant="outline" size="sm"
+            onClick={() => { setTripFilter(''); setCreatedFrom(''); setCreatedTo(''); setPage(0); }}
+          >
+            {t.drilldown.clear}
+          </Button>
+        </div>
+      ) : null}
 
       <DataTableContainer>
         <DataTableHeader

@@ -2,6 +2,9 @@ import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { hydrateTourOrders } from '@/server/tour-orders';
+import { ApiHttpError, ERR } from '@/server/http';
+import { GuideReportRangeError, createdRangeBounds } from '@/server/guide-report';
+import { resolvePublicTimeZone } from '@/lib/public-time-zone';
 
 // #43 Final Risk F1：orderId 完全由 client 控制（GUIDE 收件匣 deep link 的 query string），
 // 沒驗證時傳一個非 uuid 值會讓 Postgres 直接回 22P02，`handle()` 把它變成 500——但這其實是
@@ -10,6 +13,17 @@ import { hydrateTourOrders } from '@/server/tour-orders';
 // 擴大這支 PR 的範圍。驗證失敗要讓 ZodError 往外丟給 `handle()` 轉 400——不能吞掉當成
 // 沒帶 orderId，否則 deep link 打錯字會無聲地退回整頁列表，比報錯更難查。
 const orderIdSchema = z.string().uuid().optional();
+
+// #45 報表下鑽：status／tripId／createdFrom／createdTo 全由 client 控制，一律 zod 驗證（非法 → 400）。
+// createdFrom/createdTo 為 YYYY-MM-DD，語意＝訂單建立時間落在「租戶時區」[from 00:00, to+1 00:00)，
+// 與 /api/reports/guide 同一套界線（createdRangeBounds），所以報表上的數字點進來筆數一致。
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const drilldownSchema = z.object({
+  status: z.enum(['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED']).optional(),
+  tripId: z.string().uuid().optional(),
+  createdFrom: z.string().regex(DATE_RE, 'createdFrom 需為 YYYY-MM-DD').optional(),
+  createdTo: z.string().regex(DATE_RE, 'createdTo 需為 YYYY-MM-DD').optional(),
+});
 
 /**
  * GET /api/tour-orders — 旅遊訂單分頁清單（#8-B，10 分冊 §5）。
@@ -26,7 +40,6 @@ export const GET = handle(async (req) => {
   const url = new URL(req.url);
   const page = Math.max(0, Number(url.searchParams.get('page') ?? 0) || 0);
   const size = Math.min(100, Math.max(1, Number(url.searchParams.get('size') ?? 20) || 20));
-  const status = url.searchParams.get('status');
   const source = url.searchParams.get('source');
   const paymentStatus = url.searchParams.get('paymentStatus');
   const keyword = (url.searchParams.get('keyword') ?? '').trim();
@@ -34,6 +47,13 @@ export const GET = handle(async (req) => {
   // 比照 `/api/bookings` 的 `bookingId`——`.eq('tenant_id', ...)` 已經先套用，這裡再加
   // `.eq('id', orderId)` 不會、也不能繞過租戶邊界：跨租戶的 id 一律撈不到任何列。
   // 非 uuid 值在這裡就擋下（400），不留給 Postgres 的 22P02 變成 500（Final Risk F1）。
+  const q = drilldownSchema.parse({
+    status: url.searchParams.get('status') || undefined,
+    tripId: url.searchParams.get('tripId') || undefined,
+    createdFrom: url.searchParams.get('createdFrom') || undefined,
+    createdTo: url.searchParams.get('createdTo') || undefined,
+  });
+  const status = q.status;
   const orderId = orderIdSchema.parse(url.searchParams.get('orderId') ?? undefined);
 
   let query = t.supabase.from('tour_orders')
@@ -41,6 +61,22 @@ export const GET = handle(async (req) => {
     .eq('tenant_id', t.tenantId);
   if (orderId) query = query.eq('id', orderId);
   if (status) query = query.eq('status', status);
+  if (q.tripId) query = query.eq('trip_id', q.tripId);
+  if (q.createdFrom || q.createdTo) {
+    const { data: settings, error: se } = await t.supabase
+      .from('tenant_settings').select('basic').eq('tenant_id', t.tenantId).maybeSingle();
+    if (se) throw se;
+    const zone = resolvePublicTimeZone((settings?.basic as { timezone?: unknown } | null)?.timezone);
+    let bounds;
+    try {
+      bounds = createdRangeBounds(q.createdFrom, q.createdTo, zone);
+    } catch (e) {
+      if (e instanceof GuideReportRangeError) throw new ApiHttpError(400, e.message, ERR.VALIDATION);
+      throw e;
+    }
+    if (bounds.gteIso) query = query.gte('created_at', bounds.gteIso);
+    if (bounds.ltIso) query = query.lt('created_at', bounds.ltIso);
+  }
   if (source) query = query.eq('source', source);
   if (paymentStatus) query = query.eq('payment_status', paymentStatus);
   // 顧客姓名與電話存在 contact jsonb 裡，訂單編號是欄位——兩者都要搜得到。

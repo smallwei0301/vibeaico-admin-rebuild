@@ -183,6 +183,21 @@ export function resolveReportRange(from: string, to: string, zoneInput: string):
   };
 }
 
+/**
+ * 訂單清單深連結用的「建立日期區間」→ UTC 瞬間界線（半開 [from 00:00, to+1 00:00)，租戶時區）。
+ * 與 resolveReportRange 的本期界線同一套 zonedMidnightMs，保證報表數字與下鑽清單口徑一致。
+ * 只給一端時另一端不設限；格式不合法丟 GuideReportRangeError。
+ */
+export function createdRangeBounds(
+  from: string | undefined, to: string | undefined, zoneInput: string,
+): { gteIso?: string; ltIso?: string } {
+  const out: { gteIso?: string; ltIso?: string } = {};
+  if (from) out.gteIso = new Date(zonedMidnightMs(from, zoneInput)).toISOString();
+  if (to) out.ltIso = new Date(zonedMidnightMs(addDays(to, 1), zoneInput)).toISOString();
+  if (from && to && to < from) throw new GuideReportRangeError('結束日期不可早於開始日期');
+  return out;
+}
+
 /* ------------------------------------------------------------------ 計算 */
 
 const num = (v: unknown): number => {

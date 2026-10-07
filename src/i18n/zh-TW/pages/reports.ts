@@ -52,6 +52,7 @@ export const reportsPage = {
       cancelledCount: (n: number, total: number) => `已取消 ${n} 筆，共 ${total} 筆訂單`,
       avgBasis: (n: number) => `分母：非取消且實收大於 0 的 ${n} 筆訂單`,
     },
+    drilldown: { viewOrders: '查看訂單', viewTripOrders: (name: string) => `查看「${name}」的訂單` },
     statusBreakdownTitle: '各狀態訂單數',
     status: {
       PENDING: '待確認',
