@@ -63,7 +63,8 @@ function apply(rows: FakeRow[], calls: Call[]): FakeRow[] {
       } else {
         out = out.filter(evalOr(expr));
       }
-    } else if (m === 'neq') out = out.filter((r) => field(r, f) !== a[1]);
+    } else if (m === 'gt') out = out.filter((r) => String(field(r, f)) > String(a[1]));
+    else if (m === 'neq') out = out.filter((r) => field(r, f) !== a[1]);
     else if (m === 'gte') out = out.filter((r) => (field(r, f) as string) >= (a[1] as string));
     else if (m === 'in') out = out.filter((r) => (a[1] as unknown[]).includes(field(r, f)));
     else if (m === 'not' && a[1] === 'is' && a[2] === null) out = out.filter((r) => field(r, f) != null);
@@ -103,7 +104,7 @@ function fakeSupabase(rawTables: Record<string, FakeRow[]>) {
       const calls: Call[] = [];
       recorded.push({ table, calls });
       const b: any = {};
-      for (const m of ['select', 'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'not', 'or', 'order', 'limit']) {
+      for (const m of ['select', 'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'not', 'gt', 'or', 'order', 'limit']) {
         b[m] = (...a: unknown[]) => { calls.push([m, a]); return b; };
       }
       b.maybeSingle = async () => (table === 'tenant_settings'
@@ -661,9 +662,57 @@ describe('route.ts: payment-due source filters, window and display fields (#43 �
     expect(orQueries().length).toBeGreaterThan(0);
   });
 
-  it('warns (no PII) when a batch hits the per-batch order limit — covered by source: only counts are logged', () => {
-    const src = readFileSync('src/app/api/guide/action-inbox/route.ts', 'utf8');
-    expect(src).toMatch(/batch hit order limit \(\$\{rows\.length\}\)/);
+  /** 1101 筆 PARTIAL 都落在同一批 100 個團次內；最近出發的那筆 id 排在最後（超過第一頁 1000 筆）。 */
+  async function runBigBatch() {
+    const others = Array.from({ length: 1100 }, (_, i) => mk({
+      id: `o${String(i).padStart(5, '0')}`, departure_id: `d${String(1 + (i % 99)).padStart(3, '0')}`,
+      trip_departures: { departs_on: dayStr(2 + (i % 99)), start_time: '09:00:00' },
+    }));
+    const soonest = mk({ id: 'zz-soonest', departure_id: 'd000', trip_departures: { departs_on: dayStr(1), start_time: '09:00:00' } });
+    const orders = [...others, soonest].sort((x, y) => String(x.id).localeCompare(String(y.id)));
+    const deps: FakeRow[] = Array.from({ length: 100 }, (_, i) => ({
+      id: `d${String(i).padStart(3, '0')}`, tenant_id: T, status: 'OPEN', departs_on: dayStr(1 + i), start_time: '09:00:00',
+    }));
+    recorded.length = 0;
+    requireTenantMock.mockReset();
+    requireTenantMock.mockResolvedValue({
+      supabase: fakeSupabase({ tour_orders: orders, trip_departures: deps }), tenantId: T, user: { id: 'u' }, role: 'OWNER',
+    });
+    const res = await guideActionInboxGET(new Request('https://app.test/api/guide/action-inbox'), {});
+    return ((await res.json()).data as any[]).filter((i) => i.kind === 'TOUR_PAYMENT_DUE' && i.stage === 'BALANCE');
+  }
+
+  it('a batch with >1000 qualifying orders is read page by page (keyset by id): the soonest order beyond the first 1000 is included', async () => {
+    // 凍結時鐘：假 client 處理上千筆較慢，不能讓真實時間觸發掃描預算而影響這個測試
+    const realNow = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(realNow);
+    let due: any[];
+    try { due = await runBigBatch(); } finally { clock.mockRestore(); }
+    expect(due).toHaveLength(20);
+    expect(due[0].id).toBe('zz-soonest');
+    const pageQueries = recorded.filter((r) => r.table === 'tour_orders'
+      && r.calls.some(([m, a]) => m === 'in' && a[0] === 'departure_id'));
+    expect(pageQueries.length).toBeGreaterThanOrEqual(2);
+    for (const q of pageQueries) {
+      expect(q.calls.filter(([m]) => m === 'order').map(([, a]) => [a[0], (a[1] as any).ascending])).toEqual([['id', true]]);
+    }
+    expect(pageQueries.some((q) => q.calls.some(([m, a]) => m === 'gt' && a[0] === 'id'))).toBe(true);
+  }, 30_000);
+
+  it('budget hit mid-batch: warns, returns a non-empty best-known set, never claims the batch complete', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let tick = 0;
+    const realNow = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => realNow + (tick += 2000));
+    try {
+      const due = await runBigBatch();
+      expect(due.length).toBeGreaterThan(0);
+      expect(due.map((i) => i.id)).not.toContain('zz-soonest'); // 第二頁沒讀到，不假裝完整
+      expect(warn.mock.calls.map((c) => String(c[0])).some((m) => m.includes('payment-due:partial') && m.includes('stopped early'))).toBe(true);
+    } finally {
+      clock.mockRestore();
+      warn.mockRestore();
+    }
   });
 
   it('with more than 20 PARTIAL rows keeps the soonest departures, not the oldest-created', async () => {

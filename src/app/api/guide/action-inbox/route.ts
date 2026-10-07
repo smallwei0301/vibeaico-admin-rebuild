@@ -114,7 +114,8 @@ const PAYMENT_DUE_DEPARTURE_BATCH = 100;
 const PAYMENT_DUE_SCAN_BUDGET_MS = 1500;
 /** 慢路徑安全上限（100 批 × 100 團次）；撞到時 warn 並回傳已知最佳集合，不回空。 */
 const PAYMENT_DUE_MAX_BATCHES = 100;
-const PAYMENT_DUE_ORDER_LIMIT = 1000;
+/** 慢路徑每批訂單的 keyset 分頁大小（PostgREST 預設單次上限 1000）。 */
+const PAYMENT_DUE_ORDER_PAGE = 1000;
 /** 快路徑單次查詢上限：回傳筆數低於此值代表已取得全部符合的訂單。 */
 const PAYMENT_DUE_FIRST_LIMIT = 200;
 
@@ -600,17 +601,26 @@ export const GET = handle(async () => {
       const last = deps[deps.length - 1];
       cursor = { departsOn: String(last.departs_on).slice(0, 10), id: last.id };
 
-      const result = await paymentDueOrderQuery(kind)
-        .in('departure_id', deps.map((d) => d.id))
-        .limit(PAYMENT_DUE_ORDER_LIMIT);
-      if (result.error) throw result.error;
-      const rows = result.data ?? [];
-      if (rows.length >= PAYMENT_DUE_ORDER_LIMIT) {
-        // 這批訂單被上限截斷（未排序）；只記來源與筆數，不含訂單／旅客資料。
-        console.warn(`[guide-action-inbox] payment-due:${kind.toLowerCase()} batch hit order limit (${rows.length})`);
+      // 同一批團次上的訂單可能超過一頁：依 id 做 keyset 分頁讀完（order by id、`gt('id', lastId)`、
+      // 頁大小 PAYMENT_DUE_ORDER_PAGE），整批讀完才算「這批已讀完」，停止條件才可據以判斷。
+      // 若讀到一半時間預算用完，這批不算讀完 → 標記為未完成，不讓停止條件宣稱完整，回傳已知最佳集合。
+      const rows: any[] = [];
+      let lastOrderId: string | null = null;
+      let batchComplete = true;
+      for (;;) {
+        let q = paymentDueOrderQuery(kind).in('departure_id', deps.map((d) => d.id));
+        if (lastOrderId) q = q.gt('id', lastOrderId);
+        const page = await q.order('id', { ascending: true }).limit(PAYMENT_DUE_ORDER_PAGE);
+        if (page.error) throw page.error;
+        const pageRows = page.data ?? [];
+        rows.push(...pageRows);
+        if (pageRows.length < PAYMENT_DUE_ORDER_PAGE) break; // 這批最後一頁
+        lastOrderId = pageRows[pageRows.length - 1].id;
+        if (Date.now() - scanStartedAt > PAYMENT_DUE_SCAN_BUDGET_MS) { batchComplete = false; break; }
       }
       for (const row of rows) rowsById.set(row.id, row);
       addCards(rows);
+      if (!batchComplete) break; // 不可宣稱完整：交給下方 warn 與已知最佳集合
 
       if (deps.length < PAYMENT_DUE_DEPARTURE_BATCH) { exhausted = true; break; }
       const cards = [...cardDueByRowId.values()]
