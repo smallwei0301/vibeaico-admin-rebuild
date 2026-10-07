@@ -140,6 +140,11 @@ describe('buildGuideActionInboxTourPaymentDueItem (#43 類別 2)', () => {
     expect(build({ ...partial, departureDate: '2026-09-19' })).toBeNull();
   });
 
+  it('INITIAL hold exactly at tenant midnight renders as next local day 00:00', () => {
+    const item = build({ holdExpiresAt: '2026-09-20T16:00:00.000Z' });
+    expect(item).toMatchObject({ dueLocalDate: '2026-09-21', dueLocalTime: '00:00' });
+  });
+
   it('dedupe helper keeps one card per order id', () => {
     const kept = dropGuideActionInboxOrderCardsAlreadyCovered(
       [{ id: 'a' }, { id: 'b' }], [{ id: 'a' }, { id: 'x' }],
@@ -247,6 +252,14 @@ describe('route.ts: payment-due source filters, window and display fields (#43 �
       mk({ id: 'live', payment_status: 'UNPAID', hold_expires_at: hold }),
     ]);
     expect(due.map((i) => i.id)).toEqual(['live']);
+  });
+
+  it('overdue UNPAID hold with a future departure still shows as an IMMEDIATE card', async () => {
+    const due = await run([
+      mk({ id: 'overdue', payment_status: 'UNPAID', hold_expires_at: new Date(Date.now() - 3_600_000).toISOString() }),
+    ]);
+    expect(due).toHaveLength(1);
+    expect(due[0]).toMatchObject({ id: 'overdue', stage: 'INITIAL', priority: 'IMMEDIATE' });
   });
 
   it('with more than 20 PARTIAL rows keeps the soonest departures, not the oldest-created', async () => {
