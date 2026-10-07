@@ -10,7 +10,7 @@
  *    見 18 分冊第 15 行、第 229 行、第 433 行）；FAILED＝未成團／導遊取消（18 分冊 §3）。
  *    出發日還沒到的團次（任何狀態）是「尚未結案」，不進比率。
  *    出發日已過（< 今天）、未取消、formation_status 仍是 COLLECTING／REVIEW_REQUIRED 的團次＝「無最終成團結果」（undecidedPast；欄位名保留）：
- *    此類不等於「從未決策」：導遊決策 EXTEND（延長募集）後團次回到 COLLECTING 並保留 formation_decided_at，出發日過了仍未成團／未產生最終結果者也歸此類。
+ *    此類不等於「從未決策」：導遊決策 EXTEND（延長募集）後團次回到 COLLECTING 並保留 formation_decided_at，出發日過了仍沒有最終成團結果者也歸此類。
  *    0107 新增 formation_status 時 NOT NULL DEFAULT 'COLLECTING' 且未回填歷史，成團功能上線前就建立的團次會帶著這個預設值，
  *    不能把 migration default 當成真實狀態，更不能說它「還在募集中」。0107 沒有可靠的 legacy 標記
  *    （formation_deadline_at、formation_decided_at 對舊列為 NULL，但新團次也可能為 NULL；min_to_depart_snapshot 預設 1 無法區分），
@@ -32,7 +32,7 @@
  *  - 不變式（summarizeFormation 的測試逐條鎖定）：
  *      total = Σ byStatus + cancelledUndecided + undecidedPast
  *      total = concluded + open + cancelledUndecided + undecidedPast
- *      concluded = formed + failed；open ＝ 尚未結案：出發日未到，或今天出發仍待決策（且非未經決策取消）的團次。
+ *      concluded = formed + failed；open ＝ 尚未結案：出發日未到，或今天出發仍待決策（且非未有最終成團結果即取消）的團次。
  *  - 上一期：與本期等長、緊接在前，用同一個「今天」；比較以百分點（pointDiff）。
  *  - 資料可用性（availability）：正式團次建立時 departureFormationSnapshot() 只寫 COLLECTING（migration 預設值），
  *    轉態目前由人工決策 API 寫入（#825，POST /api/trip-departures/[id]/formation-decision，FORM／EXTEND／CONTINUE）；

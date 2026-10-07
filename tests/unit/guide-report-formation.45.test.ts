@@ -22,7 +22,7 @@ describe('summarizeFormation — 期間歸屬', () => {
 });
 
 describe('summarizeFormation — 成團率／未達門檻率', () => {
-  it('3 成團、1 AT_RISK（計入已成團）、1 未成團 → 80／20；募集中、待導遊決定且出發日已過者為無決策紀錄、不進比率', () => {
+  it('3 成團、1 AT_RISK（計入已成團）、1 未成團 → 80／20；募集中、待導遊決定且出發日已過者為沒有最終成團結果、不進比率', () => {
     const r = S([
       d('1', '2026-10-02', 'FORMED'), d('2', '2026-10-03', 'FORMED'), d('3', '2026-10-04', 'FORMED'),
       d('4', '2026-10-05', 'FAILED'),
@@ -118,7 +118,7 @@ describe('團次本身取消（status = CANCELLED）與成團狀態是兩條軸'
     ]);
     expect(r.cancelledUndecided).toBe(2);
     expect(r).toMatchObject({ total: 5, concluded: 2, formed: 2, failed: 0, open: 0, undecidedPast: 1, successRatePercent: 100, failRatePercent: 0 });
-    // 分布不含未經成團決策者與無決策紀錄者：合計 + cancelledUndecided + undecidedPast = total
+    // 分布不含未有最終成團結果即取消者與出發日已過沒有最終成團結果者：合計 + cancelledUndecided + undecidedPast = total
     expect(r.byStatus).toEqual({ COLLECTING: 0, FORMED: 2, REVIEW_REQUIRED: 0, AT_RISK: 0, FAILED: 0 });
   });
 
@@ -140,7 +140,7 @@ describe('團次本身取消（status = CANCELLED）與成團狀態是兩條軸'
     expect(r).toMatchObject({ concluded: 0, formed: 0, open: 1, cancelledUndecided: 0 });
   });
 
-  it('只有「已取消（未經成團決策）」的團次 → 比率 null（分母 0），不推測為未成團', () => {
+  it('只有「已取消（未有最終成團結果）」的團次 → 比率 null（分母 0），不推測為未成團', () => {
     const r = S([d('1', '2026-10-02', 'COLLECTING', 'CANCELLED')]);
     expect(r).toMatchObject({ total: 1, concluded: 0, cancelledUndecided: 1, open: 0, successRatePercent: null, failRatePercent: null });
   });
@@ -157,7 +157,7 @@ describe('無成團決策紀錄（出發日已過但仍是 COLLECTING／REVIEW_R
     d('3', '2026-10-05', 'COLLECTING'), d('4', '2026-10-06', 'REVIEW_REQUIRED'), // today=10-04：出發日未到 → 尚未結案
     d('5', '2026-10-04', 'COLLECTING'), // 出發日＝今天、仍待決策 → open（尚未結案），不是 undecidedPast
     d('6', '2026-10-01', 'FORMED'), d('7', '2026-10-01', 'FAILED'),
-    d('8', '2026-10-02', 'COLLECTING', 'CANCELLED'), // 未經決策取消優先歸 cancelledUndecided
+    d('8', '2026-10-02', 'COLLECTING', 'CANCELLED'), // 未有最終成團結果即取消，優先歸 cancelledUndecided
   ];
   const r = S(rows, '2026-10-04');
 
@@ -180,7 +180,7 @@ describe('無成團決策紀錄（出發日已過但仍是 COLLECTING／REVIEW_R
     expect(r.total).toBe(r.concluded + r.open + r.cancelledUndecided + r.undecidedPast);
   });
 
-  it('只有無決策紀錄的歷史團次 → 比率 null、open 0（不是「還在募集中」）', () => {
+  it('只有出發日已過、沒有最終成團結果的歷史團次 → 比率 null、open 0（不是「還在募集中」）', () => {
     expect(S([d('1', '2026-10-02', 'COLLECTING')])).toMatchObject({ total: 1, undecidedPast: 1, open: 0, concluded: 0, successRatePercent: null });
   });
 });
@@ -255,6 +255,8 @@ describe('EXTEND 後仍 COLLECTING（formation_decided_at 非空）— 口徑鎖
     ]);
     expect(all).not.toContain('沒有成團決策紀錄');
     expect(all).not.toContain('未經成團決策');
+    expect(t.formationCard.undecidedPastLine(3)).not.toContain('最終仍未成團');
+    expect(t.defs.formation).not.toContain('最終仍未成團');
     expect(t.formationCard.undecidedPastLine(3)).toContain('沒有最終成團結果');
     expect(t.formationCard.cancelledUndecided).toContain('未有最終成團結果');
   });
