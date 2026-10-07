@@ -87,11 +87,11 @@ describe('#42 canDeleteTrip 與 UI／mock 接線', () => {
     expect(canDeleteTrip({ midaoListing: 'LISTED' })).toBe(false);
     for (const s of ['NONE', 'PENDING', 'REJECTED'] as const) expect(canDeleteTrip({ midaoListing: s })).toBe(true);
   });
-  it('列表頁刪除按鈕 disabled 並用 i18n title；mock deleteTrip 同規則', () => {
+  // 以下為 source-pin：列表頁是 React client component，node 環境無法掛載互動，
+  // 故只釘住按鈕接線字串；刪除規則本身由下方 mock 行為測試與 route 測試實測。
+  it('列表頁刪除按鈕 disabled 並用 i18n title（source-pin，非行為測試）', () => {
     const page = readFileSync(resolve(process.cwd(), 'src/app/tenant/trips/page.tsx'), 'utf8');
     expect(page).toContain('disabled={!canDeleteTrip(r)}');
     expect(page).toContain('t.actions.deleteListedBlocked');
-    const svc = readFileSync(resolve(process.cwd(), 'src/services/tours.ts'), 'utf8');
-    expect(svc).toMatch(/!canDeleteTrip\(MOCK_TRIPS\[idx\]\)\) \{\s*throw new ApiError\(tripsPage\.actions\.deleteListedBlocked, 'REQ_003', 409\)/);
   });
 });
