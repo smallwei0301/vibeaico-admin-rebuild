@@ -5,7 +5,9 @@ import {
   buildGuideActionInboxRefundPendingItem,
   buildGuideActionInboxStaffConflictItem,
   buildGuideActionInboxStaffUnassignedItem,
+  buildGuideActionInboxTourPaymentDueItem,
   buildGuideActionInboxTourRequestItem,
+  dropGuideActionInboxOrderCardsAlreadyCovered,
   getGuideActionInboxDateWindow,
   getGuideDepartureDueAt,
   getGuideDepartureDay,
@@ -106,7 +108,7 @@ export const GET = handle(async () => {
 
   const [
     bookingResult, paymentBookingResult, departureResult, formationResult, refundPendingResult,
-    staffAssignmentResult, tourRequestResult,
+    staffAssignmentResult, tourRequestResult, paymentDueUnpaidResult, paymentDuePartialResult,
   ] = await Promise.all([
     t.supabase
       .from('bookings_view')
@@ -207,6 +209,30 @@ export const GET = handle(async () => {
       .eq('trip_plans.sales_mode', 'REQUEST')
       .order('created_at', { ascending: true })
       .limit(20),
+    // #43 類別 2：等待付款（訂金或全額）——導遊已接受的申請（CONFIRMED + UNPAID +
+    // seats_reserved + 有保留期限），期限是 hold_expires_at。與上面 TOUR_REQUEST（PENDING）
+    // status 互斥。每個 query 都帶 tenant_id。
+    t.supabase
+      .from('tour_orders')
+      .select('id, order_no, party_size, total_amount, deposit_amount, paid_amount, status, payment_status, seats_reserved, contact, hold_expires_at, created_at, trip_plans(name), trips(title), trip_departures(departs_on, start_time)')
+      .eq('tenant_id', t.tenantId)
+      .eq('status', 'CONFIRMED')
+      .eq('payment_status', 'UNPAID')
+      .eq('seats_reserved', true)
+      .not('hold_expires_at', 'is', null)
+      .order('hold_expires_at', { ascending: true })
+      .limit(20),
+    // #43 類別 2：等待尾款（CONFIRMED + PARTIAL），期限是出發時刻；在來源就排除已出發
+    // 的團次（`trip_departures!inner` + departs_on >= 租戶今天），避免陳舊列擠掉有效列。
+    t.supabase
+      .from('tour_orders')
+      .select('id, order_no, party_size, total_amount, deposit_amount, paid_amount, status, payment_status, seats_reserved, contact, hold_expires_at, created_at, trip_plans(name), trips(title), trip_departures!inner(departs_on, start_time)')
+      .eq('tenant_id', t.tenantId)
+      .eq('status', 'CONFIRMED')
+      .eq('payment_status', 'PARTIAL')
+      .gte('trip_departures.departs_on', today)
+      .order('created_at', { ascending: true })
+      .limit(20),
   ]);
 
   if (bookingResult.error) throw bookingResult.error;
@@ -216,6 +242,8 @@ export const GET = handle(async () => {
   if (refundPendingResult.error) throw refundPendingResult.error;
   if (staffAssignmentResult.error) throw staffAssignmentResult.error;
   if (tourRequestResult.error) throw tourRequestResult.error;
+  if (paymentDueUnpaidResult.error) throw paymentDueUnpaidResult.error;
+  if (paymentDuePartialResult.error) throw paymentDuePartialResult.error;
 
   const bookingItems: GuideActionInboxItem[] = (bookingResult.data ?? []).map((row) => ({
     id: row.id,
@@ -424,6 +452,38 @@ export const GET = handle(async () => {
     }, now, timeZone);
   });
 
+  // #43 類別 2：兩個 query 的列用同一個 builder；不符合條件（例如 UNPAID 缺期限、已出發的
+  // PARTIAL）回 null 不顯示。同一筆訂單若已有 TOUR_REQUEST／REFUND_PENDING 卡就不再疊一張。
+  const paymentDueItems: GuideActionInboxItem[] = dropGuideActionInboxOrderCardsAlreadyCovered(
+    [...(paymentDueUnpaidResult.data ?? []), ...(paymentDuePartialResult.data ?? [])]
+      .map((row: any) => {
+        const contact = (row.contact ?? {}) as Record<string, unknown>;
+        const trip = firstOf<{ title?: string | null }>(row.trips);
+        const plan = firstOf<{ name?: string | null }>(row.trip_plans);
+        const departure = firstOf<{ departs_on?: string | null; start_time?: string | null }>(row.trip_departures);
+        return buildGuideActionInboxTourPaymentDueItem({
+          id: row.id,
+          orderNo: row.order_no,
+          customerName: String(contact.name ?? ''),
+          tripName: trip?.title ?? '',
+          planName: plan?.name ?? '',
+          status: row.status,
+          paymentStatus: row.payment_status,
+          seatsReserved: row.seats_reserved,
+          holdExpiresAt: row.hold_expires_at ?? null,
+          depositAmount: row.deposit_amount == null ? null : Number(row.deposit_amount),
+          totalAmount: Number(row.total_amount ?? 0),
+          paidAmount: row.paid_amount == null ? null : Number(row.paid_amount),
+          departureDate: departure?.departs_on ? String(departure.departs_on).slice(0, 10) : null,
+          departureStartTime: departure?.start_time ? String(departure.start_time).slice(0, 5) : null,
+          createdAt: row.created_at,
+          href: `/tenant/tour-orders?orderId=${encodeURIComponent(row.id)}`,
+        }, now, timeZone);
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null),
+    [...tourRequestItems, ...refundPendingItems],
+  );
+
   return ok(sortGuideActionInboxItems([
     ...bookingItems,
     ...bookingPaymentItems,
@@ -433,5 +493,6 @@ export const GET = handle(async () => {
     ...staffConflictItems,
     ...staffUnassignedItems,
     ...tourRequestItems,
+    ...paymentDueItems,
   ]));
 });

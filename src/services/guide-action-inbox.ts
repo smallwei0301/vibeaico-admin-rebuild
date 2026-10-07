@@ -3,7 +3,9 @@ import {
   buildGuideActionInboxFormationItem,
   buildGuideActionInboxRefundPendingItem,
   buildGuideActionInboxStaffUnassignedItem,
+  buildGuideActionInboxTourPaymentDueItem,
   buildGuideActionInboxTourRequestItem,
+  dropGuideActionInboxOrderCardsAlreadyCovered,
   getGuideActionInboxDateWindow,
   getGuideDepartureDueAt,
   getGuideDepartureDay,
@@ -229,9 +231,37 @@ export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
           createdAt: order.createdAt,
           href: tourRequestHref(order.id),
         }, nowDate));
+      // #43 類別 2：等待訂金／尾款／付款即將到期。mock 的 `TourOrder` 沒有
+      // `seatsReserved`／`paidAmount`——CONFIRMED + UNPAID + 有 `holdExpiresAt` 視為已接受未付款
+      // （名額已鎖），PARTIAL 的已收金額 = `depositAmount`。期限與出發日同樣改成相對於「現在」，
+      // 避免 demo 永遠顯示過期假卡片（理由同 TOUR_REQUEST）。
+      const paymentDueItems: GuideActionInboxItem[] = dropGuideActionInboxOrderCardsAlreadyCovered(
+        MOCK_TOUR_ORDERS
+          .map((order) => buildGuideActionInboxTourPaymentDueItem({
+            id: order.id,
+            orderNo: order.orderNo,
+            customerName: order.customerName,
+            tripName: order.tripTitle,
+            planName: order.planName,
+            status: order.status,
+            paymentStatus: order.paymentStatus,
+            seatsReserved: true,
+            holdExpiresAt: order.holdExpiresAt ? new Date(now + 5 * 60 * 60 * 1000).toISOString() : null,
+            depositAmount: order.depositAmount,
+            totalAmount: order.totalAmount,
+            paidAmount: order.paymentStatus === 'PARTIAL' ? order.depositAmount : 0,
+            departureDate: tomorrow,
+            departureStartTime: order.startTime || null,
+            createdAt: order.createdAt,
+            href: tourRequestHref(order.id),
+          }, nowDate))
+          .filter((item): item is NonNullable<typeof item> => item !== null)
+          .slice(0, 20),
+        [...tourRequestItems, ...refundPendingItems],
+      );
       return sortGuideActionInboxItems([
         ...items, ...paymentItems, ...departureItems, ...formationItems, ...refundPendingItems,
-        ...staffConflictItems, ...staffUnassignedItems, ...tourRequestItems,
+        ...staffConflictItems, ...staffUnassignedItems, ...tourRequestItems, ...paymentDueItems,
       ]);
     },
     () => request<GuideActionInboxItem[]>('/api/guide/action-inbox'),

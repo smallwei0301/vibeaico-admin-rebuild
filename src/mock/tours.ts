@@ -371,4 +371,26 @@ export const MOCK_TOUR_ORDERS: TourOrder[] = [
     source: 'MIDAO', holdExpiresAt: null, note: '旅客改期未成，已全額退款', createdAt: '2026-07-20T09:40:00+08:00',
     refundedAmount: 4400,
   },
+  {
+    // #43 類別 2：導遊已接受的 REQUEST，CONFIRMED + UNPAID、名額已保留，等旅客付訂金或全額
+    // （`holdExpiresAt` 是付款期限；GUIDE 收件匣 mock 以相對於「現在」的時間顯示，避免過期假卡片）。
+    id: 'to_14', orderNo: 'T2608240006', tripId: 'tp_1', tripTitle: '龜山島賞鯨半日遊',
+    planName: '包船專案', departsOn: '2026-09-12', startTime: '08:00',
+    customerName: '趙子謙', customerPhone: '0918-702-335', partySize: 10,
+    unitPrice: 18000, totalAmount: 18000, depositAmount: 5000, status: 'CONFIRMED', paymentStatus: 'UNPAID',
+    paymentMethodLabel: '國泰世華銀行轉帳', paymentRef: '',
+    source: 'MIDAO', holdExpiresAt: '2026-08-27T23:59:00+08:00', note: '',
+    createdAt: '2026-08-24T10:12:00+08:00',
+    salesMode: 'REQUEST',
+  },
+  {
+    // #43 類別 2：已收訂金、尚待尾款（CONFIRMED + PARTIAL；`depositAmount` = 已收訂金）。
+    id: 'to_15', orderNo: 'T2608240009', tripId: 'tp_2', tripTitle: '九份山城夜訪散策',
+    planName: '私人包團', departsOn: '2026-09-13', startTime: '16:30',
+    customerName: '周佩珊', customerPhone: '0925-118-460', partySize: 6,
+    unitPrice: 6800, totalAmount: 6800, depositAmount: 2000, status: 'CONFIRMED', paymentStatus: 'PARTIAL',
+    paymentMethodLabel: '國泰世華銀行轉帳', paymentRef: '後五碼 52077',
+    source: 'MANUAL', holdExpiresAt: null, note: '',
+    createdAt: '2026-08-24T15:40:00+08:00',
+  },
 ];
