@@ -1,4 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   READ_ONLY_SNAPSHOT_SQL, buildObserverSnapshotFromRaw, buildUnavailableSnapshot,
   captureEnvironmentSnapshot, compareObserverSnapshots, normalizeObserverSnapshot,
@@ -14,6 +19,35 @@ const expected = () => buildObserverSnapshotFromRaw({ environment: 'LOCAL_EXPECT
 const remote = (environment: 'TEST' | 'PRODUCTION', value = 'uuid|false|') => buildObserverSnapshotFromRaw({ environment, projectRef: environment === 'TEST' ? 'nmwhwngojosmagjuvxol' : 'egehnijjpgijmccagxac', observedAt: '2026-09-14T01:18:00Z', observedMainSha: MAIN, evidenceRef: `supabase:${environment.toLowerCase()}/schema-observer`, raw: raw(value) });
 const remoteMissing = (environment: 'TEST' | 'PRODUCTION') => buildObserverSnapshotFromRaw({ environment, projectRef: environment === 'TEST' ? 'nmwhwngojosmagjuvxol' : 'egehnijjpgijmccagxac', observedAt: '2026-09-14T01:18:00Z', observedMainSha: MAIN, evidenceRef: `supabase:${environment.toLowerCase()}/schema-observer`, raw: rawWithoutColumn() });
 const NOW = Date.parse('2026-09-14T02:00:00Z');
+const ROOT = fileURLToPath(new URL('../../', import.meta.url));
+const WORKFLOW = readFileSync(join(ROOT, '.github/workflows/agent-schema-drift-watch.yml'), 'utf8');
+const RETAIN = 'Preserve sanitized normalized schema snapshots';
+function workflowStep(name: string, source = WORKFLOW) {
+  const block = source.split(`      - name: ${name}\n`)[1]?.split(/^      - /m)[0];
+  expect(block, `workflow step ${name}`).toBeDefined();
+  return block!;
+}
+function executeStep(name: string, dir: string, source = WORKFLOW) {
+  const shell = workflowStep(name, source).split('        run: |\n')[1].split('\n').map((line) => line.slice(10)).join('\n');
+  return spawnSync('bash', ['-e', '-o', 'pipefail', '-c', shell], {
+    cwd: ROOT, encoding: 'utf8', timeout: 10_000,
+    env: { PATH: `${dirname(process.execPath)}:/usr/bin:/bin`, NODE_ENV: 'test', RUNNER_TEMP: dir, EXPECTED_MAIN_SHA: MAIN },
+  });
+}
+function withSnapshots(run: (dir: string) => void) {
+  const dir = mkdtempSync(join(tmpdir(), 'schema-retention-'));
+  try {
+    for (const [name, packet] of [['expected', expected()], ['test', remote('TEST')], ['production', remote('PRODUCTION')]] as const) {
+      // The executable compare uses current time; rehash rather than editing the capture timestamp.
+      const environment = packet.environment;
+      const fresh = buildObserverSnapshotFromRaw({ environment, projectRef: packet.projectRef,
+        observedAt: new Date().toISOString(), observedMainSha: MAIN, evidenceRef: packet.evidenceRef, raw: raw() });
+      writeFileSync(join(dir, `${name}.json`), JSON.stringify(fresh));
+    }
+    run(dir);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}
+const saved = (dir: string, name: string) => JSON.parse(readFileSync(join(dir, 'schema-snapshots', `${name}.json`), 'utf8'));
 describe('schema drift watch', () => {
   it('hashes one captured metadata contract without retaining raw definitions', () => {
     const snapshot = expected();
@@ -97,4 +131,72 @@ describe('schema drift watch', () => {
     expect(request).toMatchObject({ url: 'https://api.supabase.com/v1/projects/egehnijjpgijmccagxac/database/query/read-only', authorization: 'Bearer observer-read-only' });
     expect((request as any)?.query).toBe(READ_ONLY_SNAPSHOT_SQL);
   });
+});
+
+describe('schema observer workflow snapshot retention', () => {
+  it.each(['MATCH', 'DRIFT_BLOCKED'])('retains normalized full packets after compare %s without changing its outcome', (status) => withSnapshots((dir) => {
+    if (status === 'DRIFT_BLOCKED') writeFileSync(join(dir, 'test.json'), JSON.stringify(buildObserverSnapshotFromRaw({
+      environment: 'TEST', projectRef: 'nmwhwngojosmagjuvxol', observedAt: new Date().toISOString(),
+      observedMainSha: MAIN, evidenceRef: 'supabase:test/schema-observer', raw: raw('text|false|'),
+    })));
+    for (const name of ['local-raw.json', 'local-supabase-status.json', '.env']) writeFileSync(join(dir, name), 'secret-fixture');
+    const comparison = executeStep('Compare exact object fingerprints and fail closed', dir);
+    expect(comparison.status, comparison.stderr).toBe(status === 'MATCH' ? 0 : 2);
+    const report = readFileSync(join(dir, 'report.json'), 'utf8');
+    expect(JSON.parse(report)).toMatchObject({ status, safety: { authorizesDatabaseWrite: false, fullEnvironmentParityProven: false } });
+    expect(executeStep(RETAIN, dir).status).toBe(0);
+    expect(readFileSync(join(dir, 'report.json'), 'utf8')).toBe(report);
+    expect(readdirSync(join(dir, 'schema-snapshots')).sort()).toEqual(['expected.json', 'production.json', 'test.json']);
+    for (const name of ['expected', 'test', 'production']) {
+      const packet = saved(dir, name);
+      expect(packet).toEqual(normalizeObserverSnapshot(JSON.parse(readFileSync(join(dir, `${name}.json`), 'utf8')), MAIN));
+      expect(packet.migrationLedger.identities).toHaveLength(2);
+      expect(packet.acl.items).toEqual([expect.objectContaining({ key: 'table:public.tours', fingerprint: expect.stringMatching(/^[0-9a-f]{64}$/) })]);
+      expect(JSON.stringify(packet)).not.toMatch(/secret-fixture|uuid\|false\||rowSecurity|privileges/);
+    }
+    for (const name of [RETAIN, 'Upload sanitized schema snapshots']) expect(workflowStep(name)).toContain('if: ${{ always() }}');
+    const upload = workflowStep('Upload sanitized schema snapshots');
+    expect(upload.match(/\$\{\{ runner.temp \}\}\/[^\s]+/g)).toEqual(['${{ runner.temp }}/schema-snapshots/expected.json', '${{ runner.temp }}/schema-snapshots/test.json', '${{ runner.temp }}/schema-snapshots/production.json']);
+    expect(upload).not.toContain('*');
+    expect(workflowStep('Upload sanitized drift report')).toContain('path: ${{ runner.temp }}/report.json');
+  }));
+
+  it('preserves unavailable evidence and marks a missing fixed snapshot explicitly', () => withSnapshots((dir) => {
+    rmSync(join(dir, 'test.json'));
+    const unavailable = buildUnavailableSnapshot({ environment: 'PRODUCTION', observedMainSha: MAIN, reason: 'MIGRATION_LEDGER_UNAVAILABLE' });
+    writeFileSync(join(dir, 'production.json'), JSON.stringify(unavailable));
+    expect(executeStep(RETAIN, dir).status).toBe(0);
+    expect(saved(dir, 'production')).toEqual(unavailable);
+    expect(saved(dir, 'test')).toMatchObject({ status: 'EVIDENCE_UNAVAILABLE', environment: 'TEST', reason: 'SNAPSHOT_MISSING' });
+    expect(saved(dir, 'test')).not.toHaveProperty('migrationLedger');
+  }));
+
+  it.each(['wrong SHA', 'wrong role', 'wrong environment', 'wrong project', 'raw definition', 'raw ACL', 'secret field', 'malformed JSON', 'wrong digest'])('withholds %s payloads', (fault) => withSnapshots((dir) => {
+    const packet: any = JSON.parse(readFileSync(join(dir, 'expected.json'), 'utf8'));
+    if (fault === 'wrong SHA') packet.observedMainSha = 'b'.repeat(40);
+    if (fault === 'wrong role') Object.assign(packet, remote('TEST'));
+    if (fault === 'wrong environment') packet.environment = 'OTHER';
+    if (fault === 'wrong project') packet.projectRef = 'wrong-project';
+    if (fault === 'raw definition') packet.surfaces.columns.items[0].definition = 'secret-fixture';
+    if (fault === 'raw ACL') packet.acl.items[0].privileges = ['secret-fixture'];
+    if (fault === 'secret field') packet.token = 'secret-fixture';
+    if (fault === 'wrong digest') packet.captureDigest.value = '0'.repeat(64);
+    writeFileSync(join(dir, 'expected.json'), fault === 'malformed JSON' ? '{secret-fixture' : JSON.stringify(packet));
+    expect(executeStep(RETAIN, dir).status).toBe(0);
+    expect(saved(dir, 'expected')).toMatchObject({ status: 'EVIDENCE_UNAVAILABLE', environment: 'LOCAL_EXPECTED', reason: 'SNAPSHOT_INVALID' });
+    expect(JSON.stringify(saved(dir, 'expected'))).not.toContain('secret-fixture');
+    expect(saved(dir, 'test').status).toBe('CAPTURED');
+    expect(saved(dir, 'production').status).toBe('CAPTURED');
+  }));
+
+  it('detects unsafe retention when the inline normalizer is removed', () => withSnapshots((dir) => {
+    const packet = { ...expected(), rawRows: [{ token: 'secret-fixture' }] };
+    writeFileSync(join(dir, 'expected.json'), JSON.stringify(packet));
+    expect(executeStep(RETAIN, dir).status).toBe(0);
+    expect(saved(dir, 'expected').status).toBe('EVIDENCE_UNAVAILABLE');
+    const mutant = WORKFLOW.replace('normalizeObserverSnapshot(JSON.parse(readFileSync(input, \'utf8\')), process.env.EXPECTED_MAIN_SHA)', 'JSON.parse(readFileSync(input, \'utf8\'))');
+    expect(mutant).not.toBe(WORKFLOW);
+    expect(executeStep(RETAIN, dir, mutant).status).toBe(0);
+    expect(saved(dir, 'expected').rawRows).toEqual([{ token: 'secret-fixture' }]);
+  }));
 });
