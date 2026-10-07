@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
   buildGuideActionInboxTourPaymentDueItem,
   dropGuideActionInboxOrderCardsAlreadyCovered,
@@ -30,7 +31,13 @@ function apply(rows: FakeRow[], calls: Call[]): FakeRow[] {
   for (const [m, a] of calls) {
     const f = a[0] as string;
     if (m === 'eq') out = out.filter((r) => field(r, f) === a[1]);
-    else if (m === 'neq') out = out.filter((r) => field(r, f) !== a[1]);
+    else if (m === 'or') {
+      // 只支援 route 的 keyset 寫法：departs_on.gt.X,and(departs_on.eq.X,id.gt.Y)
+      const mt = String(a[0]).match(/^departs_on\.gt\.([^,]+),and\(departs_on\.eq\.\1,id\.gt\.(.+)\)$/);
+      if (!mt) throw new Error(`unsupported or(): ${String(a[0])}`);
+      out = out.filter((r) => String(r.departs_on) > mt[1]
+        || (String(r.departs_on) === mt[1] && String(r.id) > mt[2]));
+    } else if (m === 'neq') out = out.filter((r) => field(r, f) !== a[1]);
     else if (m === 'gte') out = out.filter((r) => (field(r, f) as string) >= (a[1] as string));
     else if (m === 'in') out = out.filter((r) => (a[1] as unknown[]).includes(field(r, f)));
     else if (m === 'not' && a[1] === 'is' && a[2] === null) out = out.filter((r) => field(r, f) != null);
@@ -70,7 +77,7 @@ function fakeSupabase(rawTables: Record<string, FakeRow[]>) {
       const calls: Call[] = [];
       recorded.push({ table, calls });
       const b: any = {};
-      for (const m of ['select', 'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'not', 'order', 'limit']) {
+      for (const m of ['select', 'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'not', 'or', 'order', 'limit']) {
         b[m] = (...a: unknown[]) => { calls.push([m, a]); return b; };
       }
       b.maybeSingle = async () => (table === 'tenant_settings'
@@ -182,7 +189,6 @@ describe('buildGuideActionInboxTourPaymentDueItem (#43 類別 2)', () => {
   });
 
   it('page labels the deadline from dueKind (HOLD → 付款期限, DEPARTURE → 出發日), not from stage', async () => {
-    const { readFileSync } = await import('node:fs');
     const page = readFileSync('src/app/tenant/dashboard/page.tsx', 'utf8');
     expect(page).toContain("item.dueKind === 'DEPARTURE'");
     expect(dashboardPage.actionInbox.tourPaymentDueDepartureDeadline).toBe('出發日');
@@ -319,17 +325,6 @@ describe('route.ts: payment-due source filters, window and display fields (#43 �
       && r.calls.some(([m, a]) => m === 'eq' && a[0] === 'status' && a[1] === status)
       && r.calls.some(([m, a]) => m === 'eq' && a[0] === 'payment_status' && a[1] === pay))!;
     const pending = byStatus('PENDING', 'UNPAID');
-    // PARTIAL／PENDING 的訂單查詢改以團次視窗選取：帶 departure_id 範圍、不再依 created_at 截斷
-    for (const q of [byStatus('CONFIRMED', 'PARTIAL'), pending]) {
-      expect(q.calls.some(([m, a]) => m === 'in' && a[0] === 'departure_id')).toBe(true);
-    }
-    // 團次視窗只用 ≤0108 欄位，tenant 範圍、非 CANCELLED、departs_on >= 租戶今天
-    const depQ = recorded.find((r) => r.table === 'trip_departures'
-      && r.calls.some(([m, a]) => m === 'select' && a[0] === 'id, departs_on, start_time'))!;
-    expect(String(depQ.calls.find(([m]) => m === 'select')?.[1][0])).toBe('id, departs_on, start_time');
-    expect(depQ.calls.some(([m, a]) => m === 'eq' && a[0] === 'tenant_id' && a[1] === T)).toBe(true);
-    expect(depQ.calls.some(([m, a]) => m === 'neq' && a[0] === 'status' && a[1] === 'CANCELLED')).toBe(true);
-    expect(depQ.calls.some(([m, a]) => m === 'gte' && a[0] === 'departs_on')).toBe(true);
     const partial = byStatus('CONFIRMED', 'PARTIAL');
     const confirmed = byStatus('CONFIRMED', 'UNPAID');
     expect(sel(confirmed)).toContain('seats_reserved');
@@ -358,6 +353,48 @@ describe('route.ts: payment-due source filters, window and display fields (#43 �
     expect(due[0]).toMatchObject({ id: 'overdue', stage: 'INITIAL', priority: 'IMMEDIATE' });
   });
 
+  const depWindowQueries = () => recorded.filter((r) => r.table === 'trip_departures'
+    && r.calls.some(([m, a]) => m === 'select' && a[0] === 'id, departs_on, start_time'));
+  const paymentOrderQueries = () => recorded.filter((r) => r.table === 'tour_orders'
+    && r.calls.some(([m, a]) => m === 'eq' && a[0] === 'payment_status' && (a[1] === 'PARTIAL'
+      || (a[1] === 'UNPAID' && r.calls.some(([m2, a2]) => m2 === 'eq' && a2[0] === 'status' && a2[1] === 'PENDING')))));
+
+  it('small tenant (few orders, many departures): fast path only — no departure scan, 1 query per category', async () => {
+    const rows = [mk({ id: 'only-partial' }), mk({ id: 'only-pending', status: 'PENDING', payment_status: 'UNPAID',
+      trip_plans: { sales_mode: 'FIXED_DEPARTURE', name: 'p' } })];
+    const many = Array.from({ length: 500 }, (_, i) => ({
+      id: `d${i}`, tenant_id: T, status: 'OPEN', departs_on: dayStr(1 + (i % 300)), start_time: '09:00:00',
+    }));
+    recorded.length = 0;
+    requireTenantMock.mockReset();
+    requireTenantMock.mockResolvedValue({
+      supabase: fakeSupabase({ tour_orders: rows, trip_departures: many }), tenantId: T, user: { id: 'u' }, role: 'OWNER',
+    });
+    const res = await guideActionInboxGET(new Request('https://app.test/api/guide/action-inbox'), {});
+    const due: any[] = ((await res.json()).data as any[]).filter((i) => i.kind === 'TOUR_PAYMENT_DUE');
+    expect(due.map((i) => i.id).sort()).toEqual(['only-partial', 'only-pending']);
+    expect(depWindowQueries()).toHaveLength(0);
+    expect(paymentOrderQueries()).toHaveLength(2); // ≤ 3
+  });
+
+  it('slow path orders departures by departs_on asc then id asc (keyset), tenant/non-cancelled/today-bounded', async () => {
+    const rows = Array.from({ length: 250 }, (_, i) => mk({
+      id: `q${i}`, trip_departures: { departs_on: dayStr(300 - i), start_time: '09:00:00' },
+    }));
+    await run(rows);
+    const dq = depWindowQueries();
+    expect(dq.length).toBeGreaterThan(0);
+    for (const q of dq) {
+      const orders = q.calls.filter(([m]) => m === 'order').map(([, a]) => [a[0], (a[1] as any).ascending]);
+      expect(orders).toEqual([['departs_on', true], ['id', true]]); // departs_on desc 會讓這裡失敗
+      expect(q.calls.some(([m, a]) => m === 'eq' && a[0] === 'tenant_id' && a[1] === T)).toBe(true);
+      expect(q.calls.some(([m, a]) => m === 'neq' && a[0] === 'status' && a[1] === 'CANCELLED')).toBe(true);
+      expect(q.calls.some(([m, a]) => m === 'gte' && a[0] === 'departs_on')).toBe(true);
+    }
+    // 之後的批次帶 keyset 游標
+    if (dq.length > 1) expect(dq[1].calls.some(([m]) => m === 'or')).toBe(true);
+  });
+
   it('selects the window by departure time, not created_at: >200 PARTIAL orders, the newest-created one departs soonest → kept', async () => {
     const rows = Array.from({ length: 250 }, (_, i) => mk({
       id: `q${i}`,
@@ -367,26 +404,38 @@ describe('route.ts: payment-due source filters, window and display fields (#43 �
     }));
     const due = (await run(rows)).filter((i) => i.stage === 'BALANCE');
     expect(due).toHaveLength(20);
-    expect(due[0].id).toBe('q249');
     expect(due.map((i) => i.id)).toEqual(Array.from({ length: 20 }, (_, k) => `q${249 - k}`));
+    const ids = due.map((i) => i.id);
+    expect(new Set(ids).size).toBe(ids.length); // 無重複卡片
   });
 
-  it('keeps reading departure batches until cards are found (orders only on the 150th-soonest departure)', async () => {
-    const rows = [mk({ id: 'far', trip_departures: { departs_on: dayStr(200), start_time: '09:00:00' } })];
-    const depOnly: FakeRow[] = Array.from({ length: 149 }, (_, i) => ({
-      id: `empty-${i}`, tenant_id: T, status: 'OPEN', departs_on: dayStr(1 + (i % 150)), start_time: '09:00:00',
-    })).sort((a, b) => String(a.departs_on).localeCompare(String(b.departs_on)));
-    const far = withDepartures({ tour_orders: rows }).trip_departures;
+  it('slow path keeps reading keyset batches until cards are found (near order sits on the 150th-soonest departure)', async () => {
+    const fillers = Array.from({ length: 200 }, (_, i) => mk({
+      id: `f${i}`, trip_departures: { departs_on: dayStr(300 + i), start_time: '09:00:00' },
+    }));
+    const near = mk({ id: 'near', trip_departures: { departs_on: dayStr(150), start_time: '09:00:00' } });
+    const empties: FakeRow[] = Array.from({ length: 149 }, (_, i) => ({
+      id: `empty-${String(i).padStart(3, '0')}`, tenant_id: T, status: 'OPEN', departs_on: dayStr(1 + i), start_time: '09:00:00',
+    }));
+    const derived = withDepartures({ tour_orders: [...fillers, near] });
+    const allDeps = [...empties, ...(derived.trip_departures as FakeRow[])]
+      .sort((a, b) => String(a.departs_on).localeCompare(String(b.departs_on)) || String(a.id).localeCompare(String(b.id)));
     recorded.length = 0;
     requireTenantMock.mockReset();
     requireTenantMock.mockResolvedValue({
-      supabase: fakeSupabase({ tour_orders: withDepartures({ tour_orders: rows }).tour_orders, trip_departures: [...depOnly, ...far] }),
+      supabase: fakeSupabase({ tour_orders: derived.tour_orders, trip_departures: allDeps }),
       tenantId: T, user: { id: 'u' }, role: 'OWNER',
     });
     const res = await guideActionInboxGET(new Request('https://app.test/api/guide/action-inbox'), {});
-    const items: any[] = (await res.json()).data;
-    expect(items.filter((i) => i.kind === 'TOUR_PAYMENT_DUE').map((i) => i.id)).toEqual(['far']);
-    expect(recorded.filter((r) => r.table === 'trip_departures').length).toBeGreaterThanOrEqual(2); // 讀了不只一批
+    const due: any[] = ((await res.json()).data as any[]).filter((i) => i.kind === 'TOUR_PAYMENT_DUE');
+    expect(due[0].id).toBe('near');
+    expect(due.filter((i) => i.stage === 'BALANCE')).toHaveLength(20);
+    expect(depWindowQueries().length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('warns (no PII) when a batch hits the per-batch order limit — covered by source: only counts are logged', () => {
+    const src = readFileSync('src/app/api/guide/action-inbox/route.ts', 'utf8');
+    expect(src).toMatch(/batch hit order limit \(\$\{rows\.length\}\)/);
   });
 
   it('with more than 20 PARTIAL rows keeps the soonest departures, not the oldest-created', async () => {

@@ -111,6 +111,8 @@ const PAYMENT_DUE_CAP = 20;
 const PAYMENT_DUE_DEPARTURE_BATCH = 100;
 const PAYMENT_DUE_MAX_BATCHES = 10;
 const PAYMENT_DUE_ORDER_LIMIT = 1000;
+/** 快路徑單次查詢上限：回傳筆數低於此值代表已取得全部符合的訂單。 */
+const PAYMENT_DUE_FIRST_LIMIT = 200;
 
 export const GET = handle(async () => {
   const t = await requireTenant();
@@ -504,70 +506,88 @@ export const GET = handle(async () => {
     .slice(0, PAYMENT_DUE_CAP);
   // #43 類別 2（BALANCE／FULL）：等待尾款（CONFIRMED + PARTIAL，期限＝出發時刻）與一般固定團／
   // 即時預約的 PENDING + UNPAID 全額待付（旅客轉帳、導遊確認收款；現行所有建單路徑都不寫
-  // hold_expires_at，期限用出發時刻，有 hold 則用 hold）。
+  // hold_expires_at，期限用出發時刻，有 hold 則用 hold）。兩類各自獨立處理：
   //
-  // 「最緊急」＝出發最近，所以視窗要依出發時刻而不是 created_at 選：先分批讀 trip_departures
-  // （tenant_id、departs_on >= 租戶今天、非 CANCELLED，依 departs_on／start_time／id 升冪），
-  // 再用 `.in('departure_id', ids)` 讀這批團次上的訂單，直到兩類各湊滿 PAYMENT_DUE_CAP 張或
-  // 團次讀完（上限 PAYMENT_DUE_MAX_BATCHES 批）。不使用未驗證的 PostgREST 內嵌欄位排序語法。
-  // PENDING 若帶 hold，hold 理論上早於出發；後面的團次不可能比已湊滿的卡更緊急的假設在「沒有 hold」
-  // （現況）時成立，帶 hold 的列只在已讀到的批次內依有效期限排序——現行資料沒有這種列，如實記錄。
-  // 只用 ≤0108 欄位與 0107 的 trip_plans.sales_mode；PARTIAL／PENDING 不碰 seats_reserved（0111）。
-  // 這兩個來源沒有套 tolerateMissingSchema：它們不依賴 0109+ 欄位，錯誤照舊 throw。
+  //  1. 快路徑：一次有界查詢（`trip_departures!inner` + departs_on >= 租戶今天，上限
+  //     PAYMENT_DUE_FIRST_LIMIT）。回傳筆數 < 上限＝已拿到「全部」符合的訂單，程式內依期限排序取前
+  //     20 即完成（一般租戶只花 1 個查詢）。
+  //  2. 慢路徑（快路徑被塞滿才走）：期限＝出發時刻，所以用 keyset（departs_on, id）分批讀
+  //     trip_departures（tenant、非 CANCELLED、departs_on >= 今天），再 `.in('departure_id', ids)` 讀
+  //     該批訂單；當已有 ≥20 張卡、且第 20 張的出發日早於本批最後一個出發日（該日可能還有下一批
+  //     的團次）時停止。keyset 不含 start_time，同一天內的先後交給程式內排序；跨批同日的最壞情形
+  //     由上面的停止條件涵蓋。不使用未驗證的 PostgREST 內嵌欄位排序語法。
+  // PENDING 若帶 hold，hold 理論上早於出發；慢路徑只在已讀到的批次內依有效期限排序——現行資料沒有
+  // 這種列，如實記錄。訂單依 id 去重，避免團次中途異動造成重複卡片。
+  // 只用 ≤0108 欄位與 0107 的 trip_plans.sales_mode；PARTIAL／PENDING 不碰 seats_reserved（0111），
+  // 也不套 tolerateMissingSchema：它們不依賴 0109+ 欄位，錯誤照舊 throw。
   // 未接受的 REQUEST（sales_mode = 'REQUEST'）由 TOUR_REQUEST 處理，這裡排除。
   // TODO：加入線上金流（ECPay）PENDING 流程後，經線上 provider 付款的 PENDING 必須排除（18 §5／§6）。
   const ORDER_SELECT = 'id, order_no, party_size, total_amount, deposit_amount, paid_amount, status, payment_status, contact, hold_expires_at, created_at, trips(title), trip_departures!inner(departs_on, start_time)';
-  const partialRows: any[] = [];
-  const pendingRows: any[] = [];
-  let partialCount = 0;
-  let pendingCount = 0;
-  for (let batch = 0; batch < PAYMENT_DUE_MAX_BATCHES; batch += 1) {
-    // 用遞增的 limit 再切片取代 range（保持與其他來源相同的最小 query 介面）。
-    const departureWindow = await t.supabase
-      .from('trip_departures')
-      .select('id, departs_on, start_time')
+  const paymentDueOrderQuery = (kind: 'PARTIAL' | 'PENDING') => {
+    const base = t.supabase
+      .from('tour_orders')
+      .select(kind === 'PARTIAL'
+        ? `${ORDER_SELECT}, trip_plans(name)`
+        : `${ORDER_SELECT}, trip_plans!inner(name, sales_mode)`)
       .eq('tenant_id', t.tenantId)
-      .neq('status', 'CANCELLED')
-      .gte('departs_on', today)
-      .order('departs_on', { ascending: true })
-      .order('start_time', { ascending: true, nullsFirst: false })
-      .order('id', { ascending: true })
-      .limit(PAYMENT_DUE_DEPARTURE_BATCH * (batch + 1));
-    if (departureWindow.error) throw departureWindow.error;
-    const ids = ((departureWindow.data ?? []) as Array<{ id: string }>)
-      .slice(PAYMENT_DUE_DEPARTURE_BATCH * batch)
-      .map((row) => row.id);
-    if (ids.length === 0) break;
-    const [partialResult, pendingResult] = await Promise.all([
-      t.supabase
-        .from('tour_orders')
-        .select(`${ORDER_SELECT}, trip_plans(name)`)
+      .eq('status', kind === 'PARTIAL' ? 'CONFIRMED' : 'PENDING')
+      .eq('payment_status', kind === 'PARTIAL' ? 'PARTIAL' : 'UNPAID');
+    return (kind === 'PENDING' ? base.neq('trip_plans.sales_mode', 'REQUEST') : base)
+      .gte('trip_departures.departs_on', today);
+  };
+
+  const scanPaymentDue = async (kind: 'PARTIAL' | 'PENDING'): Promise<any[]> => {
+    const first = await paymentDueOrderQuery(kind).limit(PAYMENT_DUE_FIRST_LIMIT);
+    if (first.error) throw first.error;
+    const firstRows = first.data ?? [];
+    if (firstRows.length < PAYMENT_DUE_FIRST_LIMIT) return firstRows;
+
+    const rowsById = new Map<string, any>();
+    let cursor: { departsOn: string; id: string } | null = null;
+    for (let batch = 0; batch < PAYMENT_DUE_MAX_BATCHES; batch += 1) {
+      let depQuery = t.supabase
+        .from('trip_departures')
+        .select('id, departs_on, start_time')
         .eq('tenant_id', t.tenantId)
-        .eq('status', 'CONFIRMED')
-        .eq('payment_status', 'PARTIAL')
-        .in('departure_id', ids)
-        .gte('trip_departures.departs_on', today)
-        .limit(PAYMENT_DUE_ORDER_LIMIT),
-      t.supabase
-        .from('tour_orders')
-        .select(`${ORDER_SELECT}, trip_plans!inner(name, sales_mode)`)
-        .eq('tenant_id', t.tenantId)
-        .eq('status', 'PENDING')
-        .eq('payment_status', 'UNPAID')
-        .neq('trip_plans.sales_mode', 'REQUEST')
-        .in('departure_id', ids)
-        .gte('trip_departures.departs_on', today)
-        .limit(PAYMENT_DUE_ORDER_LIMIT),
-    ]);
-    if (partialResult.error) throw partialResult.error;
-    if (pendingResult.error) throw pendingResult.error;
-    partialRows.push(...(partialResult.data ?? []));
-    pendingRows.push(...(pendingResult.data ?? []));
-    partialCount = buildPaymentDueCards(partialRows).length;
-    pendingCount = buildPaymentDueCards(pendingRows).length;
-    if (ids.length < PAYMENT_DUE_DEPARTURE_BATCH
-      || (partialCount >= PAYMENT_DUE_CAP && pendingCount >= PAYMENT_DUE_CAP)) break;
-  }
+        .neq('status', 'CANCELLED')
+        .gte('departs_on', today);
+      if (cursor) {
+        depQuery = depQuery.or(
+          `departs_on.gt.${cursor.departsOn},and(departs_on.eq.${cursor.departsOn},id.gt.${cursor.id})`,
+        );
+      }
+      const departureWindow = await depQuery
+        .order('departs_on', { ascending: true })
+        .order('id', { ascending: true })
+        .limit(PAYMENT_DUE_DEPARTURE_BATCH);
+      if (departureWindow.error) throw departureWindow.error;
+      const deps = (departureWindow.data ?? []) as Array<{ id: string; departs_on: string }>;
+      if (deps.length === 0) break;
+      const last = deps[deps.length - 1];
+      cursor = { departsOn: String(last.departs_on).slice(0, 10), id: last.id };
+
+      const result = await paymentDueOrderQuery(kind)
+        .in('departure_id', deps.map((d) => d.id))
+        .limit(PAYMENT_DUE_ORDER_LIMIT);
+      if (result.error) throw result.error;
+      const rows = result.data ?? [];
+      if (rows.length >= PAYMENT_DUE_ORDER_LIMIT) {
+        // 這批訂單被上限截斷（未排序）；只記來源與筆數，不含訂單／旅客資料。
+        console.warn(`[guide-action-inbox] payment-due:${kind.toLowerCase()} batch hit order limit (${rows.length})`);
+      }
+      for (const row of rows) rowsById.set(row.id, row);
+
+      if (deps.length < PAYMENT_DUE_DEPARTURE_BATCH) break;
+      const cards = toPaymentDueCards([...rowsById.values()]);
+      if (cards.length >= PAYMENT_DUE_CAP
+        && cards[PAYMENT_DUE_CAP - 1].dueLocalDate < cursor.departsOn) break;
+    }
+    return [...rowsById.values()];
+  };
+  const [partialRows, pendingRows] = await Promise.all([
+    scanPaymentDue('PARTIAL'),
+    scanPaymentDue('PENDING'),
+  ]);
 
   const paymentDueItems: GuideActionInboxItem[] = dropGuideActionInboxOrderCardsAlreadyCovered(
     [...toPaymentDueCards(paymentDueUnpaidRows), ...toPaymentDueCards(partialRows), ...toPaymentDueCards(pendingRows)],
