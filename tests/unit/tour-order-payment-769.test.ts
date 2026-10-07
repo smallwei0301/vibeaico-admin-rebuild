@@ -11,8 +11,7 @@ const state = vi.hoisted(() => ({
   update: null as Record<string, unknown> | null,
   eqCalls: [] as Array<[string, unknown]>,
   cronEq: [] as Array<[string, unknown]>,
-  cronIn: [] as Array<[string, unknown]>,
-  cronRows: [] as Array<{ id: string; tenant_id: string }>,
+  cronRows: {} as Record<string, Array<{ id: string; tenant_id: string }>>,
   rpcResults: [] as boolean[],
 }));
 
@@ -53,12 +52,15 @@ vi.mock('@/server/tenant', () => ({
 vi.mock('@/server/supabase', () => ({
   createAdminSupabase: () => ({
     from: () => {
+      let status = '';
       const q: any = {
         select: () => q,
-        in: (k: string, v: unknown) => { state.cronIn.push([k, v]); return q; },
-        eq: (k: string, v: unknown) => { state.cronEq.push([k, v]); return q; },
+        eq: (k: string, v: unknown) => {
+          if (k === 'status') status = String(v); else state.cronEq.push([k, v]);
+          return q;
+        },
         not: () => q, lt: () => q, order: () => q,
-        limit: async () => ({ data: state.cronRows, error: null }),
+        limit: async () => ({ data: state.cronRows[status] ?? [], error: null }),
       };
       return q;
     },
@@ -71,7 +73,7 @@ const req = new Request('http://x/api/tour-orders/o1/confirm-payment', { method:
 
 beforeEach(() => {
   state.current = null; state.casResult = null; state.update = null;
-  state.eqCalls = []; state.cronEq = []; state.cronIn = []; state.cronRows = []; state.rpcResults = [];
+  state.eqCalls = []; state.cronEq = []; state.cronRows = {}; state.rpcResults = [];
 });
 
 describe('canRegisterTourOrderPayment', () => {
@@ -139,13 +141,23 @@ describe('GET cron tour-order-expiry（#769）', () => {
     headers: { authorization: `Bearer ${process.env.CRON_SECRET}` },
   });
 
-  it('查詢條件含 status in (PENDING, CONFIRMED) 與 payment_status = UNPAID；RPC 回 false 不計入 cancelled', async () => {
+  it('CONFIRMED 查詢帶 payment_status = UNPAID；RPC 回 false 不計入 cancelled', async () => {
     process.env.CRON_SECRET = 'secret';
-    state.cronRows = [{ id: 'a', tenant_id: 't' }, { id: 'b', tenant_id: 't' }];
-    state.rpcResults = [false, true];
+    state.cronRows = { PENDING: [{ id: 'a', tenant_id: 't' }], CONFIRMED: [{ id: 'b', tenant_id: 't' }] };
+    state.rpcResults = [true, false];
     const res = await (await load())(cronReq());
-    expect(state.cronIn).toContainEqual(['status', ['PENDING', 'CONFIRMED']]);
     expect(state.cronEq).toContainEqual(['payment_status', 'UNPAID']);
     expect(await res.json()).toEqual({ scanned: 2, cancelled: 1 });
+  });
+
+  it('CONFIRMED 查詢回滿 500 筆且 RPC 全 false 時，PENDING 列仍被處理並計入 cancelled', async () => {
+    process.env.CRON_SECRET = 'secret';
+    state.cronRows = {
+      PENDING: [{ id: 'p1', tenant_id: 't' }, { id: 'p2', tenant_id: 't' }],
+      CONFIRMED: Array.from({ length: 500 }, (_, i) => ({ id: `c${i}`, tenant_id: 't' })),
+    };
+    state.rpcResults = [true, true]; // PENDING 先處理；其餘（CONFIRMED）預設回 false
+    const res = await (await load())(cronReq());
+    expect(await res.json()).toEqual({ scanned: 502, cancelled: 2 });
   });
 });

@@ -37,8 +37,15 @@
  * `CONFIRMED + UNPAID` 是 `accept_tour_request` 產生的「已接受、付款保留中」狀態
  * （名額已鎖、`hold_expires_at` = 接受當下 + 保留時數）。在 migration 0138 套用之前，
  * `expire_tour_order` 對這些列回 false（無害、不取消）；套用後才會實際釋放名額。
- * confirm-payment 會清 `hold_expires_at` 並設 PAID，rpc 在 row lock 內重檢
- * `payment_status`，防止 #350 型競態（已收款被取消）。
+ * 現況如實：現行 `expire_tour_order`（0100/0111）只認 PENDING，對 CONFIRMED 回 false。
+ * 0138 必須在 row lock 內同時檢查 `status in (PENDING, CONFIRMED)`、
+ * `payment_status = 'UNPAID'` 與 hold 已逾期；confirm-payment 會清 `hold_expires_at`
+ * 並設 PAID，該鎖內重檢才能防止 #350 型競態（已收款被取消）。
+ *
+ * 批次飢餓：0138 前 CONFIRMED + UNPAID 逾期列 rpc 永遠回 false，若與 PENDING 混在
+ * 同一個 `order by hold_expires_at limit 500`，累積滿 500 筆就會把 PENDING 擠出批次。
+ * 因此 PENDING 與 CONFIRMED + UNPAID **分兩次查詢、各自 limit BATCH_LIMIT**（不對半分：
+ * PENDING 維持原本每輪吞吐，CONFIRMED 另有自己的額度），合併後處理。
  *
  * 單筆失敗只 log 不中斷整批（07 分冊慣例）。回 { scanned, cancelled }。
  */
@@ -58,25 +65,36 @@ export async function GET(req: Request) {
   const admin = createAdminSupabase();
   const nowIso = new Date().toISOString();
 
-  // 只掃 PENDING／CONFIRMED（#769）且未付款、已過期——這是**範圍縮小**，不是守門。
-  // 真正保證「CONFIRMED（已收款）永遠不被 cron 取消」的是 expire_tour_order 在
-  // row lock 底下的重新檢查；這裡的 filter 在 rpc 執行前就可能過期（#350）。
-  const { data: rows, error } = await admin
+  // 只掃已過期的 PENDING，以及 CONFIRMED + UNPAID（#769）——這是**範圍縮小**，不是守門。
+  // 真正守門是 expire_tour_order 在 row lock 底下的重新檢查（#350）。
+  // 兩組分開查、各自 order + limit，避免 0138 前永遠回 false 的 CONFIRMED 列餓死 PENDING。
+  const pendingQ = admin
     .from('tour_orders')
     .select('id, tenant_id')
-    .in('status', ['PENDING', 'CONFIRMED'])
+    .eq('status', 'PENDING')
+    .not('hold_expires_at', 'is', null)
+    .lt('hold_expires_at', nowIso)
+    .order('hold_expires_at', { ascending: true })
+    .limit(BATCH_LIMIT);
+  const acceptedQ = admin
+    .from('tour_orders')
+    .select('id, tenant_id')
+    .eq('status', 'CONFIRMED')
     .eq('payment_status', 'UNPAID')
     .not('hold_expires_at', 'is', null)
     .lt('hold_expires_at', nowIso)
     .order('hold_expires_at', { ascending: true })
     .limit(BATCH_LIMIT);
-  if (error) {
-    console.error('[cron] tour-order-expiry: 查詢 tour_orders 失敗', error);
+  const [{ data: pendingRows, error }, { data: acceptedRows, error: acceptedError }] =
+    await Promise.all([pendingQ, acceptedQ]);
+  if (error || acceptedError) {
+    console.error('[cron] tour-order-expiry: 查詢 tour_orders 失敗', error ?? acceptedError);
     return new Response('query failed', { status: 500 });
   }
+  const rows = [...(pendingRows ?? []), ...(acceptedRows ?? [])];
 
   let cancelled = 0;
-  for (const row of rows ?? []) {
+  for (const row of rows) {
     try {
       const { data: released, error: rpcError } = await admin.rpc('expire_tour_order', {
         p_tenant: row.tenant_id,
@@ -90,5 +108,5 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ scanned: rows?.length ?? 0, cancelled });
+  return NextResponse.json({ scanned: rows.length, cancelled });
 }

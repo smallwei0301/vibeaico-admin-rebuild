@@ -223,7 +223,8 @@ describe('逾期 cron 不再是佔位', () => {
   });
 
   it('只掃 PENDING／CONFIRMED 且未付款、已過期的單（#769），且逐筆走同交易的 rpc', () => {
-    expect(cron).toMatch(/\.in\('status', \['PENDING', 'CONFIRMED'\]\)/);
+    expect(cron).toMatch(/\.eq\('status', 'PENDING'\)/);
+    expect(cron).toMatch(/\.eq\('status', 'CONFIRMED'\)/);
     expect(cron).toMatch(/\.eq\('payment_status', 'UNPAID'\)/);
     expect(cron).toMatch(/\.lt\('hold_expires_at'/);
     // #350：這裡刻意斷言用的是**專用**的 expire_tour_order，不是通用取消。
