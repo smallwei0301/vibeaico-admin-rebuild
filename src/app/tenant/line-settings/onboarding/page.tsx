@@ -23,7 +23,7 @@ import { nav } from '@/i18n/zh-TW/nav';
 import { lineSetupWizardPage as t } from '@/i18n/zh-TW/line-setup-wizard';
 import {
   WIZARD_STEP_KEYS, VERIFIABLE_CHECK_KEYS, allVerifiableChecksPassed, canAdvanceFromStep, credentialsConfigured,
-  deriveStartingStep, stepStatus, createWizardRequestGate,
+  deriveStartingStep, stepAfterVerifyRetry, stepStatus, createWizardRequestGate,
   type VerifyCheck, type WizardStepKey,
 } from '@/lib/line-setup-wizard';
 
@@ -247,6 +247,17 @@ export default function LineSetupWizardPage() {
     }
   };
 
+  /* 儲存已成功、只有 verify 失敗後的重試：只重驗，不要求重新儲存憑證。 */
+  const retryVerify = async () => {
+    const realChecks = await runVerify();
+    if (!mounted.current) return;
+    setStep((cur) => stepAfterVerifyRetry(cur, {
+      channelId: !!settings?.line.channelId,
+      channelSecret: !!settings?.line.channelSecret,
+      channelAccessToken: !!settings?.line.channelAccessToken,
+    }, realChecks));
+  };
+
   const fixWebhook = async () => {
     setSyncingWebhook(true);
     try {
@@ -319,7 +330,7 @@ export default function LineSetupWizardPage() {
       <p className="mb-4 text-base text-neutral-700">{t.subtitle}</p>
       {verifyError ? <Alert tone="danger" className="mb-4">
         <p>{verifyError}</p><p>{t.messages.verifyRetryHint}</p>
-        <Button variant="outline" className="mt-2" onClick={() => void runVerify()}>{t.nav.retryCheck}</Button>
+        <Button variant="outline" className="mt-2" onClick={() => void retryVerify()}>{t.nav.retryCheck}</Button>
       </Alert> : null}
 
       {/* ---------------------------------------------------------- 進度條 */}

@@ -134,6 +134,27 @@ export function deriveStartingStep(
   return 'AUTO_REPLY_CONFIRM';
 }
 
+/**
+ * 「重新檢查」之後該停在哪一步（Issue #47：儲存成功、verify 暫時失敗後的重試）。
+ *
+ *   - 重驗沒有拿到結果（再次網路錯誤／被新請求取代，`checks === null`）→ 留在原步驟。
+ *   - 已經離開步驟一 → 留在原步驟（步驟二～五的重新檢查只刷新狀態，不自動跳步）。
+ *   - 仍在步驟一，且「已儲存」的憑證三項齊全 → 不要求重新儲存，直接依真實 checks
+ *     以 `deriveStartingStep` 前進（憑證真的錯誤時會停在 CONNECTION 並顯示 FAIL）。
+ *   - 已儲存的憑證不齊 → 留在步驟一（仍須先儲存）。
+ * `savedPresence` 必須來自後端回傳的已儲存設定，不是表單編輯中的草稿，也不是 localStorage。
+ */
+export function stepAfterVerifyRetry(
+  current: WizardStepKey,
+  savedPresence: CredentialsPresence,
+  checks: VerifyCheck[] | null,
+): WizardStepKey {
+  if (!checks) return current;
+  if (current !== 'CREDENTIALS_INPUT') return current;
+  if (!credentialsConfigured(savedPresence)) return current;
+  return deriveStartingStep(savedPresence, checks);
+}
+
 /** 精靈是否可以往下一步走（未查證檢查一律視為「還不能往下」，避免跳過失敗步驟）。 */
 export function canAdvanceFromStep(
   step: WizardStepKey,
