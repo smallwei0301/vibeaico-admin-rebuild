@@ -206,6 +206,7 @@ PR body、`TEST_PROFILE`、lane、candidate、Closure、Final Risk metadata 等 
 → 才 push / dispatch remote CI
 ```
 
+- **推送驗證與傳輸分開（Owner 2026-10-07，PB-038）**：已授權的 GitHub connector 可在原 `scripts/agents/verify-before-push.sh` verify-only 成功後，依 [PB-038](AGENT-PLAYBOOK.md#pb-038) 的同 SHA／狀態重查／非 force 寫入及回讀要求承接最後傳輸；CLI `--push` 仍有效。必要測試、獨立審查、ownership、適用 gates 與分支保護不變，傳輸成功不等於驗證或發布完成。
 - metadata 到 CI 才第一次被擋，優先視為 **preflight coverage gap**；補 shared validator／parser，而不是再教每個 Agent 背一段 prose exception。
 - metadata 修正不靠 blind rerun；workflow 若不監聽 `edited`，使用既有 `workflow_dispatch` 或下一個**真實內容變更**觸發，不堆 no-op commit。
 - 同一 deterministic error 不用多輪 CI 猜合法值；先讀 validator 或讓 preflight 直接呼叫與 CI 相同的判定函式。
