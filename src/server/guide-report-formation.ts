@@ -90,7 +90,7 @@ export type GuideFormation = {
   truncated: boolean;
   /**
    * TRACKED＝本期或上一期至少一團有成團決策紀錄（formation_status 不是 COLLECTING）；
-   * NOT_TRACKED＝全部仍是 COLLECTING（沒有任何決策紀錄），比率與分布沒有意義，UI 只顯示說明。
+   * NOT_TRACKED＝全部仍是 COLLECTING（沒有任何決策紀錄；兩期皆 0 團時亦同），比率與分布沒有意義；卡片模式由 formationCardMode 決定（本期 0 團優先 EMPTY）。
    */
   availability: FormationAvailability;
 };
@@ -101,8 +101,10 @@ export type FormationAvailability = 'TRACKED' | 'NOT_TRACKED';
 export type FormationCardMode = 'UNAVAILABLE' | 'NOT_TRACKED' | 'EMPTY' | 'SHOWN';
 export function formationCardMode(fm: GuideFormation | null): FormationCardMode {
   if (!fm) return 'UNAVAILABLE';
+  // 本期沒有團次就是誠實的「這段期間沒有出發的團次」，優先於 availability（兩期皆 0 團時 availability 也是 NOT_TRACKED）
+  if (fm.summary.total === 0) return 'EMPTY';
   if (fm.availability === 'NOT_TRACKED') return 'NOT_TRACKED';
-  return fm.summary.total === 0 ? 'EMPTY' : 'SHOWN';
+  return 'SHOWN';
 }
 /** 筆數達上限時，整張成團卡（含比率以外的未結案、無決策、各狀態團數）都要有截斷警示 */
 export function formationShowsTruncationAlert(fm: GuideFormation | null): boolean {

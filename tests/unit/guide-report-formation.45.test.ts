@@ -204,6 +204,19 @@ describe('computeFormation — availability（成團決策紀錄可用性）與�
     expect(formationCardMode(C([d('a', '2026-10-02', 'FORMED')]))).toBe('SHOWN');
     const empty = C([]);
     expect(empty.availability).toBe('NOT_TRACKED');
+    expect(formationCardMode(empty)).toBe('EMPTY');
+  });
+  it('formationCardMode：本期 0 團（不論 availability）→ EMPTY；本期有團且 NOT_TRACKED → NOT_TRACKED；TRACKED → SHOWN', () => {
+    // 本期 0 團、上一期有決策紀錄 → TRACKED 但仍 EMPTY
+    const trackedEmpty = C([d('b', '2026-09-25', 'FORMED')]);
+    expect(trackedEmpty.availability).toBe('TRACKED');
+    expect(formationCardMode(trackedEmpty)).toBe('EMPTY');
+    // 本期 0 團、上一期只有 COLLECTING → NOT_TRACKED 但 EMPTY 優先
+    const untrackedEmpty = C([d('b', '2026-09-25', 'COLLECTING')]);
+    expect(untrackedEmpty.availability).toBe('NOT_TRACKED');
+    expect(formationCardMode(untrackedEmpty)).toBe('EMPTY');
+    expect(formationCardMode(C([d('a', '2026-10-02', 'COLLECTING')]))).toBe('NOT_TRACKED');
+    expect(formationCardMode(C([d('a', '2026-10-02', 'FORMED')]))).toBe('SHOWN');
   });
   it('截斷警示：只要有 formation 且 truncated 就整卡警示；未截斷或 null 不顯示', () => {
     expect(formationShowsTruncationAlert(C([d('a', '2026-10-02', 'FORMED')], true))).toBe(true);
