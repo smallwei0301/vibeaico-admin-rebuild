@@ -59,7 +59,8 @@ vi.mock('@/server/supabase', () => ({
         if (table === 'trip_departures' && filters.plan_id) {
           const all = planRows(filters.plan_id as string);
           const [a, b] = range ?? [0, all.length];
-          return { data: all.slice(a, b + 1), error: null };
+          // exact count：模擬 DB 真實總列數（詳情頁以此判定是否讀到底）。
+          return { data: all.slice(a, b + 1), count: all.length, error: null };
         }
         if (table === 'trip_departures' && selectCols.includes('plan_id')) {
           // Issue 760：首頁批次查詢（以行程為範圍）；單一方案的列保持各自的排序（全域排序的子序列）。

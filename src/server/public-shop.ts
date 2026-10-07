@@ -228,12 +228,14 @@ const MAX_DETAIL_SOLD_OUT_PER_PLAN = 6;
 /**
  * Scan future OPEN rows per plan so sold-out dates cannot hide a later available date.
  * A bounded scan protects public request latency; the UI marks the list when rows remain.
+ * Issue 806：以「單一」`.range(0, MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN - 1)` 查詢取得一致快照（與預約／申請頁
+ * loadBookingCandidateRows 同一組上限）。不假設 PostgREST max_rows >= 600：同一查詢帶 `{ count: 'exact' }`，
+ * 只有 count 為數字且 <= 回傳列數才算「讀到底」；max_rows 較小而被靜默截短、或 count 不可得，一律視為可能截斷。
  */
-const DETAIL_DEPARTURE_PAGE_SIZE = 120;
 const MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN = 600;
 /**
  * 只有排序後的前 N 個方案會查團次；其餘方案照樣列出，但標 departuresNotLoaded、不查團次。
- * 單一匿名請求的團次查詢數上限：N × (掃描 600/120 = 5 頁 + 1 次 lookahead) = 30 × 6 = 180
+ * 單一匿名請求的團次查詢數上限（Issue 806 後每方案單一查詢）：N × 1 = 30
  * （另加方案分頁最多 10 次、行程 1 次、店家 1 次），不再隨方案數（最多 2000）放大。
  */
 const MAX_DETAIL_PLANS_WITH_DEPARTURES = 30;
@@ -831,135 +833,100 @@ export async function loadPlanDepartureWindow(
 }> {
   const { tenantId, tripId, plan, now, seasons } = args;
   const departures: PublicTripDetailDeparture[] = [];
-  let offset = 0;
-  let scanned = 0;
-  let exhausted = false;
   let soldOutCount = 0;
   let skippedSoldOut = false;
-  // 已確認「本頁剩下未列出的列」中有可售團次。
+  // 已確認「列出視窗填滿後檢查的列」中有可售團次。
   let unlistedSellable = false;
   const availableCount = () => departures.length - soldOutCount;
   // #761：入口只看預約／申請頁會提供的前 12 個候選團次（與 6 筆列出視窗無關），掃描到找到可訂的或候選用完為止。
   const candidates = createCandidateTracker(plan.minParty);
 
-  // Query each plan independently. A busy plan must not consume another plan's window.
-  while ((availableCount() < MAX_DETAIL_DEPARTURES_PER_PLAN || !candidates.settled)
-    && scanned < MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN) {
-    const pageSize = Math.min(
-      DETAIL_DEPARTURE_PAGE_SIZE,
-      MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN - scanned,
-    );
-    const { data, error: departureError } = await admin.from('trip_departures')
-      .select('id, departs_on, start_time, capacity, seats_booked, min_to_depart_snapshot, formation_deadline_at, formation_status')
-      .eq('tenant_id', tenantId)
-      .eq('trip_id', tripId)
-      .eq('plan_id', plan.id)
-      .eq('status', 'OPEN')
-      .gte('departs_on', now.today)
-      .order('departs_on', { ascending: true })
-      .order('start_time', { ascending: true, nullsFirst: true })
-      .order('id', { ascending: true })
-      .range(offset, offset + pageSize - 1);
-    if (departureError) throw queryTripDetailsFailed('trip_departures', departureError);
+  // Issue 806：只發「一次」有上限的查詢取得單一快照（不再 offset 分頁——分頁在兩次查詢之間若有團次新增／取消／
+  // 改狀態，會重讀或跳過一列，使詳情頁與預約／申請頁不一致）。每個方案獨立查詢，忙碌方案不占用其他方案的視窗。
+  const { data, count, error: departureError } = await admin.from('trip_departures')
+    .select('id, departs_on, start_time, capacity, seats_booked, min_to_depart_snapshot, formation_deadline_at, formation_status', { count: 'exact' })
+    .eq('tenant_id', tenantId)
+    .eq('trip_id', tripId)
+    .eq('plan_id', plan.id)
+    .eq('status', 'OPEN')
+    .gte('departs_on', now.today)
+    .order('departs_on', { ascending: true })
+    .order('start_time', { ascending: true, nullsFirst: true })
+    .order('id', { ascending: true })
+    .range(0, MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN - 1);
+  if (departureError) throw queryTripDetailsFailed('trip_departures', departureError);
 
-    const rows = data ?? [];
-    scanned += rows.length;
-    offset += rows.length;
-    for (let index = 0; index < rows.length; index += 1) {
-      const departure = rows[index];
-      // 今天已到開始時間的團次不列出，也不計入可售或客滿（游標仍以已讀列數前進）。
-      if (hasStartedToday(departure, now)) continue;
-      const capacity = Number(departure.capacity ?? 0);
-      const seatsBooked = Number(departure.seats_booked ?? 0);
-      const soldOut = seatsBooked >= capacity;
-      const candidateSeats = bookingCandidateSeatsLeft(departure, now);
-      if (candidateSeats !== null) candidates.observe(candidateSeats);
-      // 已列滿 6 筆可售：只為判斷入口／截斷旗標繼續看後面的列，不再列出。
-      if (availableCount() >= MAX_DETAIL_DEPARTURES_PER_PLAN) {
-        if (soldOut) skippedSoldOut = true; else unlistedSellable = true;
-        if (candidates.settled) {
-          for (const rest of rows.slice(index + 1)) {
-            if (hasStartedToday(rest, now)) continue;
-            if (Number(rest.seats_booked ?? 0) < Number(rest.capacity ?? 0)) unlistedSellable = true;
-            else skippedSoldOut = true;
-          }
-          break;
-        }
-        continue;
-      }
-      // canonical 19 §2.1：旅客要能分辨「客滿」，所以客滿團次保留並標示 soldOut（不提供動作）。
-      // 客滿團次不占可售名額上限；另設上限避免整頁被客滿團次佔滿。
-      if (soldOut) {
-        if (soldOutCount >= MAX_DETAIL_SOLD_OUT_PER_PLAN) { skippedSoldOut = true; continue; }
-        soldOutCount += 1;
-      }
-      departures.push({
-        id: departure.id as string,
-        departsOn: departure.departs_on as string,
-        startTime: departure.start_time == null ? '' : String(departure.start_time).slice(0, 5),
-        seatsLeft: soldOut ? 0 : capacity - seatsBooked,
-        ...(seasons
-          ? { unitPrice: resolveSeasonUnitPrice(departure.departs_on as string, seasons, plan.pricePerPerson) }
-          : {}),
-        ...(soldOut ? { soldOut: true } : {}),
-        // M1：成團欄位只對 FIXED_DEPARTURE 輸出，REQUEST／INSTANT 的輸出不帶，
-        // 以免與 seatsLeft 合併後被反推出 capacity／占位資訊。
-        ...(plan.salesMode === 'FIXED_DEPARTURE' ? {
-          minToDepart: Number.isInteger(departure.min_to_depart_snapshot) && Number(departure.min_to_depart_snapshot) >= 1
-            ? Number(departure.min_to_depart_snapshot) : null,
-          formationDeadlineAt: typeof departure.formation_deadline_at === 'string'
-            && departure.formation_deadline_at ? departure.formation_deadline_at : null,
-          formationStatus: typeof departure.formation_status === 'string' ? departure.formation_status : null,
-        } : {}),
-      });
-      if (availableCount() >= MAX_DETAIL_DEPARTURES_PER_PLAN && candidates.settled) {
-        // 檢查本頁剩下的列：有可售 → 確認還有未列出的可售團次；其餘為略過的客滿列。
-        for (const rest of rows.slice(index + 1)) {
-          if (hasStartedToday(rest, now)) continue;
-          if (Number(rest.seats_booked ?? 0) < Number(rest.capacity ?? 0)) unlistedSellable = true;
-          else skippedSoldOut = true;
-        }
+  const rows = data ?? [];
+  // 列出視窗填滿且入口判定 settled 後，檢查快照剩下的所有列（整個快照，不再依 120 列區段切）。
+  const examineRest = (from: number) => {
+    for (const rest of rows.slice(from)) {
+      if (hasStartedToday(rest, now)) continue;
+      if (Number(rest.seats_booked ?? 0) < Number(rest.capacity ?? 0)) unlistedSellable = true;
+      else skippedSoldOut = true;
+    }
+  };
+
+  for (let index = 0; index < rows.length; index += 1) {
+    const departure = rows[index];
+    // 今天已到開始時間的團次不列出，也不計入可售或客滿（仍佔掃描列數）。
+    if (hasStartedToday(departure, now)) continue;
+    const capacity = Number(departure.capacity ?? 0);
+    const seatsBooked = Number(departure.seats_booked ?? 0);
+    const soldOut = seatsBooked >= capacity;
+    const candidateSeats = bookingCandidateSeatsLeft(departure, now);
+    if (candidateSeats !== null) candidates.observe(candidateSeats);
+    // 已列滿 6 筆可售：只為判斷入口／截斷旗標繼續看後面的列，不再列出。
+    if (availableCount() >= MAX_DETAIL_DEPARTURES_PER_PLAN) {
+      if (soldOut) skippedSoldOut = true; else unlistedSellable = true;
+      if (candidates.settled) {
+        examineRest(index + 1);
         break;
       }
+      continue;
     }
-
-    if (rows.length < pageSize) {
-      exhausted = true;
+    // canonical 19 §2.1：旅客要能分辨「客滿」，所以客滿團次保留並標示 soldOut（不提供動作）。
+    // 客滿團次不占可售名額上限；另設上限避免整頁被客滿團次佔滿。
+    if (soldOut) {
+      if (soldOutCount >= MAX_DETAIL_SOLD_OUT_PER_PLAN) { skippedSoldOut = true; continue; }
+      soldOutCount += 1;
+    }
+    departures.push({
+      id: departure.id as string,
+      departsOn: departure.departs_on as string,
+      startTime: departure.start_time == null ? '' : String(departure.start_time).slice(0, 5),
+      seatsLeft: soldOut ? 0 : capacity - seatsBooked,
+      ...(seasons
+        ? { unitPrice: resolveSeasonUnitPrice(departure.departs_on as string, seasons, plan.pricePerPerson) }
+        : {}),
+      ...(soldOut ? { soldOut: true } : {}),
+      // M1：成團欄位只對 FIXED_DEPARTURE 輸出，REQUEST／INSTANT 的輸出不帶，
+      // 以免與 seatsLeft 合併後被反推出 capacity／占位資訊。
+      ...(plan.salesMode === 'FIXED_DEPARTURE' ? {
+        minToDepart: Number.isInteger(departure.min_to_depart_snapshot) && Number(departure.min_to_depart_snapshot) >= 1
+          ? Number(departure.min_to_depart_snapshot) : null,
+        formationDeadlineAt: typeof departure.formation_deadline_at === 'string'
+          && departure.formation_deadline_at ? departure.formation_deadline_at : null,
+        formationStatus: typeof departure.formation_status === 'string' ? departure.formation_status : null,
+      } : {}),
+    });
+    if (availableCount() >= MAX_DETAIL_DEPARTURES_PER_PLAN && candidates.settled) {
+      // 檢查快照剩下的所有列：有可售 → 確認還有未列出的可售團次；未開始且客滿 → 略過的客滿列。
+      examineRest(index + 1);
       break;
     }
   }
 
-  // The loop stopped before exhausting the rows. It stops when six sellable rows are listed AND the
-  // 12-candidate booking decision is settled, or when the 600-row scan bound is hit; while that decision
-  // is unsettled the scan keeps paging past the six listed rows (up to the bound), so a sellable
-  // departure far down the list can still open the CTA. If the bound is hit first the CTA stays off
-  // (conservative: never a false CTA, possibly a missed one).
-  // `departuresMayBeTruncated` is true ONLY when a row we can see confirms an unlisted SELLABLE
-  // departure (seats_booked < capacity): either among the rows examined after the listing filled, or in one
-  // lookahead page past everything examined. If everything seen is sold out we cannot confirm more
-  // sellable dates, so it stays false and the sold-out rows are reported via `soldOutOmitted`.
-  // Trade-off: a sellable departure beyond the lookahead page is not detected. These flags only drive
-  // the hint copy; the CTA comes from `bookableDepartureAvailable` / the listed rows.
-  let mayBeTruncated = unlistedSellable;
-  if (!exhausted && !unlistedSellable) {
-    const { data, error: lookaheadError } = await admin.from('trip_departures')
-      .select('id, capacity, seats_booked, departs_on, start_time')
-      .eq('tenant_id', tenantId)
-      .eq('trip_id', tripId)
-      .eq('plan_id', plan.id)
-      .eq('status', 'OPEN')
-      .gte('departs_on', now.today)
-      .order('departs_on', { ascending: true })
-      .order('start_time', { ascending: true, nullsFirst: true })
-      .order('id', { ascending: true })
-      .range(offset, offset + DETAIL_DEPARTURE_PAGE_SIZE - 1);
-    if (lookaheadError) throw queryTripDetailsFailed('trip_departures', lookaheadError);
-    const ahead = (data ?? []).filter((row) => !hasStartedToday(row, now));
-    mayBeTruncated = ahead.some(
-      (row) => Number(row.seats_booked ?? 0) < Number(row.capacity ?? 0),
-    );
-    if (ahead.length > 0 && !mayBeTruncated) skippedSoldOut = true;
-  }
+  // 快照語意（Issue 806）：單一查詢、與預約／申請頁同一個 600 列上限。
+  // 列出視窗（6 筆可售）填滿且 12 候選判定 settled 時停止；未 settled 則持續觀察到快照結尾，
+  // 所以遠在後面的可售團次仍可開啟 CTA。CTA／候選判定與舊多頁行為相同。
+  // 「讀到底」以同一查詢的 exact count 判定（count 為數字且 <= 回傳列數），不依賴 max_rows 設定：
+  // max_rows 小於 600 時回傳列數會少於 count，count 不可得（null）時 fail-closed，兩者都標示可能截斷。
+  // 恰好 600 列且 count = 600 代表已讀到底，不誤報截斷。
+  // `departuresMayBeTruncated`：確認有未列出的可售團次（unlistedSellable），或快照未讀到底（可能還有更多列，一律標示）；
+  // 讀到底時全部客滿只以 `soldOutOmitted` 回報。此旗標只影響提示文案，不改變 CTA（見 bookingCtaState）。
+  const readToEnd = typeof count === 'number' && count <= rows.length;
+  const snapshotFull = !readToEnd;
+  const mayBeTruncated = unlistedSellable || snapshotFull;
 
   return { departures, mayBeTruncated, soldOutOmitted: skippedSoldOut, bookableDepartureAvailable: candidates.bookable };
 }
