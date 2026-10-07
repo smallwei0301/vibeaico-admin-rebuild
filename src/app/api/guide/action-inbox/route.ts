@@ -107,6 +107,10 @@ function tolerateMissingSchema(source: string, result: { data: any[] | null; err
 /** 等待付款兩個查詢的有界視窗；程式內依期限排序後每類最多取 PAYMENT_DUE_CAP 張。 */
 const PAYMENT_DUE_WINDOW = 200;
 const PAYMENT_DUE_CAP = 20;
+/** 尾款／全額待付：依出發時刻分批讀團次（每批筆數、最多批數）與每批訂單上限。 */
+const PAYMENT_DUE_DEPARTURE_BATCH = 100;
+const PAYMENT_DUE_MAX_BATCHES = 10;
+const PAYMENT_DUE_ORDER_LIMIT = 1000;
 
 export const GET = handle(async () => {
   const t = await requireTenant();
@@ -127,8 +131,7 @@ export const GET = handle(async () => {
 
   const [
     bookingResult, paymentBookingResult, departureResult, formationResult, refundPendingResult,
-    staffAssignmentResult, tourRequestResult, paymentDueUnpaidResult, paymentDuePartialResult,
-    paymentDuePendingResult,
+    staffAssignmentResult, tourRequestResult, paymentDueUnpaidResult,
   ] = await Promise.all([
     t.supabase
       .from('bookings_view')
@@ -245,32 +248,6 @@ export const GET = handle(async () => {
       .gte('trip_departures.departs_on', today)
       .order('hold_expires_at', { ascending: true })
       .limit(PAYMENT_DUE_WINDOW),
-    // #43 類別 2：等待尾款（CONFIRMED + PARTIAL），期限是出發時刻；同樣在來源排除已出發
-    // 的團次。不依賴未驗證的 embedded order 語法：取有界視窗後於程式內依出發時刻排序取前 20。
-    t.supabase
-      .from('tour_orders')
-      .select('id, order_no, party_size, total_amount, deposit_amount, paid_amount, status, payment_status, contact, hold_expires_at, created_at, trip_plans(name), trips(title), trip_departures!inner(departs_on, start_time)')
-      .eq('tenant_id', t.tenantId)
-      .eq('status', 'CONFIRMED')
-      .eq('payment_status', 'PARTIAL')
-      .gte('trip_departures.departs_on', today)
-      .order('created_at', { ascending: true })
-      .limit(PAYMENT_DUE_WINDOW),
-    // #43 類別 2（FULL）：一般固定團／即時預約的 PENDING + UNPAID（旅客轉帳、導遊確認收款）。
-    // 現行所有建單路徑都不寫 hold_expires_at，期限用出發時刻（有 hold 則用 hold）。
-    // 只用 ≤0108 欄位與 0107 的 trip_plans.sales_mode；不碰 seats_reserved（0111）。
-    // 未接受的 REQUEST（sales_mode = 'REQUEST'）由 TOUR_REQUEST 處理，這裡排除。
-    // TODO：加入線上金流（ECPay）PENDING 流程後，經線上 provider 付款的 PENDING 必須排除（18 §5／§6）。
-    t.supabase
-      .from('tour_orders')
-      .select('id, order_no, party_size, total_amount, deposit_amount, paid_amount, status, payment_status, contact, hold_expires_at, created_at, trip_plans!inner(name, sales_mode), trips(title), trip_departures!inner(departs_on, start_time)')
-      .eq('tenant_id', t.tenantId)
-      .eq('status', 'PENDING')
-      .eq('payment_status', 'UNPAID')
-      .neq('trip_plans.sales_mode', 'REQUEST')
-      .gte('trip_departures.departs_on', today)
-      .order('created_at', { ascending: true })
-      .limit(PAYMENT_DUE_WINDOW),
   ]);
 
   if (bookingResult.error) throw bookingResult.error;
@@ -283,8 +260,6 @@ export const GET = handle(async () => {
   // `seats_reserved`（0111）在尚未套用該 migration 的環境不存在：這兩個等待付款來源遇到
   // 缺欄位／缺關聯錯誤時只貢獻 0 張卡，不拖垮其他來源；其他錯誤照舊 throw。
   const paymentDueUnpaidRows = tolerateMissingSchema('payment-due:confirmed-unpaid', paymentDueUnpaidResult);
-  if (paymentDuePendingResult.error) throw paymentDuePendingResult.error;
-  const paymentDuePartialRows = tolerateMissingSchema('payment-due:partial', paymentDuePartialResult);
 
   const bookingItems: GuideActionInboxItem[] = (bookingResult.data ?? []).map((row) => ({
     id: row.id,
@@ -495,7 +470,7 @@ export const GET = handle(async () => {
 
   // #43 類別 2：兩個 query 的列用同一個 builder；不符合條件（例如 UNPAID 缺期限、已出發的
   // PARTIAL）回 null 不顯示。同一筆訂單若已有 TOUR_REQUEST／REFUND_PENDING 卡就不再疊一張。
-  const toPaymentDueCards = (rows: any[] | null) => (rows ?? [])
+  const buildPaymentDueCards = (rows: any[] | null) => (rows ?? [])
       .map((row: any) => {
         const contact = (row.contact ?? {}) as Record<string, unknown>;
         const trip = firstOf<{ title?: string | null }>(row.trips);
@@ -522,11 +497,80 @@ export const GET = handle(async () => {
         }, now, timeZone);
       })
       .filter((item): item is NonNullable<typeof item> => item !== null)
-      // 依期限（instant）由近到遠；最終跨類型排序仍只在下方 return 處做一次。
-      .sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt) || a.id.localeCompare(b.id))
-      .slice(0, PAYMENT_DUE_CAP);
+      ;
+  // 依期限（instant）由近到遠取前 PAYMENT_DUE_CAP；最終跨類型排序仍只在下方 return 處做一次。
+  const toPaymentDueCards = (rows: any[] | null) => buildPaymentDueCards(rows)
+    .sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt) || a.id.localeCompare(b.id))
+    .slice(0, PAYMENT_DUE_CAP);
+  // #43 類別 2（BALANCE／FULL）：等待尾款（CONFIRMED + PARTIAL，期限＝出發時刻）與一般固定團／
+  // 即時預約的 PENDING + UNPAID 全額待付（旅客轉帳、導遊確認收款；現行所有建單路徑都不寫
+  // hold_expires_at，期限用出發時刻，有 hold 則用 hold）。
+  //
+  // 「最緊急」＝出發最近，所以視窗要依出發時刻而不是 created_at 選：先分批讀 trip_departures
+  // （tenant_id、departs_on >= 租戶今天、非 CANCELLED，依 departs_on／start_time／id 升冪），
+  // 再用 `.in('departure_id', ids)` 讀這批團次上的訂單，直到兩類各湊滿 PAYMENT_DUE_CAP 張或
+  // 團次讀完（上限 PAYMENT_DUE_MAX_BATCHES 批）。不使用未驗證的 PostgREST 內嵌欄位排序語法。
+  // PENDING 若帶 hold，hold 理論上早於出發；後面的團次不可能比已湊滿的卡更緊急的假設在「沒有 hold」
+  // （現況）時成立，帶 hold 的列只在已讀到的批次內依有效期限排序——現行資料沒有這種列，如實記錄。
+  // 只用 ≤0108 欄位與 0107 的 trip_plans.sales_mode；PARTIAL／PENDING 不碰 seats_reserved（0111）。
+  // 這兩個來源沒有套 tolerateMissingSchema：它們不依賴 0109+ 欄位，錯誤照舊 throw。
+  // 未接受的 REQUEST（sales_mode = 'REQUEST'）由 TOUR_REQUEST 處理，這裡排除。
+  // TODO：加入線上金流（ECPay）PENDING 流程後，經線上 provider 付款的 PENDING 必須排除（18 §5／§6）。
+  const ORDER_SELECT = 'id, order_no, party_size, total_amount, deposit_amount, paid_amount, status, payment_status, contact, hold_expires_at, created_at, trips(title), trip_departures!inner(departs_on, start_time)';
+  const partialRows: any[] = [];
+  const pendingRows: any[] = [];
+  let partialCount = 0;
+  let pendingCount = 0;
+  for (let batch = 0; batch < PAYMENT_DUE_MAX_BATCHES; batch += 1) {
+    // 用遞增的 limit 再切片取代 range（保持與其他來源相同的最小 query 介面）。
+    const departureWindow = await t.supabase
+      .from('trip_departures')
+      .select('id, departs_on, start_time')
+      .eq('tenant_id', t.tenantId)
+      .neq('status', 'CANCELLED')
+      .gte('departs_on', today)
+      .order('departs_on', { ascending: true })
+      .order('start_time', { ascending: true, nullsFirst: false })
+      .order('id', { ascending: true })
+      .limit(PAYMENT_DUE_DEPARTURE_BATCH * (batch + 1));
+    if (departureWindow.error) throw departureWindow.error;
+    const ids = ((departureWindow.data ?? []) as Array<{ id: string }>)
+      .slice(PAYMENT_DUE_DEPARTURE_BATCH * batch)
+      .map((row) => row.id);
+    if (ids.length === 0) break;
+    const [partialResult, pendingResult] = await Promise.all([
+      t.supabase
+        .from('tour_orders')
+        .select(`${ORDER_SELECT}, trip_plans(name)`)
+        .eq('tenant_id', t.tenantId)
+        .eq('status', 'CONFIRMED')
+        .eq('payment_status', 'PARTIAL')
+        .in('departure_id', ids)
+        .gte('trip_departures.departs_on', today)
+        .limit(PAYMENT_DUE_ORDER_LIMIT),
+      t.supabase
+        .from('tour_orders')
+        .select(`${ORDER_SELECT}, trip_plans!inner(name, sales_mode)`)
+        .eq('tenant_id', t.tenantId)
+        .eq('status', 'PENDING')
+        .eq('payment_status', 'UNPAID')
+        .neq('trip_plans.sales_mode', 'REQUEST')
+        .in('departure_id', ids)
+        .gte('trip_departures.departs_on', today)
+        .limit(PAYMENT_DUE_ORDER_LIMIT),
+    ]);
+    if (partialResult.error) throw partialResult.error;
+    if (pendingResult.error) throw pendingResult.error;
+    partialRows.push(...(partialResult.data ?? []));
+    pendingRows.push(...(pendingResult.data ?? []));
+    partialCount = buildPaymentDueCards(partialRows).length;
+    pendingCount = buildPaymentDueCards(pendingRows).length;
+    if (ids.length < PAYMENT_DUE_DEPARTURE_BATCH
+      || (partialCount >= PAYMENT_DUE_CAP && pendingCount >= PAYMENT_DUE_CAP)) break;
+  }
+
   const paymentDueItems: GuideActionInboxItem[] = dropGuideActionInboxOrderCardsAlreadyCovered(
-    [...toPaymentDueCards(paymentDueUnpaidRows), ...toPaymentDueCards(paymentDuePartialRows), ...toPaymentDueCards(paymentDuePendingResult.data)],
+    [...toPaymentDueCards(paymentDueUnpaidRows), ...toPaymentDueCards(partialRows), ...toPaymentDueCards(pendingRows)],
     [...tourRequestItems, ...refundPendingItems],
   );
 
