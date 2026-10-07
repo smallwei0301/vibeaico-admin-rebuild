@@ -66,25 +66,28 @@ export const GET = handle(async (req) => {
   }
 
   // 本期＋上一等長期間一次撈回（半開區間），Node 端聚合；分頁避開 PostgREST 預設 1000 列上限。
+  // keyset 分頁（order id + gt lastId）：讀取期間有新寫入也不會重複／漏讀；固定上界 created_at < 本期終點。
   const rows: GuideReportOrderRow[] = [];
-  let truncated = false;
-  const fetchPage = async (offset: number, last: number) => {
-    const { data, error } = await t.supabase.from('tour_orders').select(ORDER_COLUMNS)
+  const fetchPage = async (afterId: string | null, limit: number) => {
+    let query = t.supabase.from('tour_orders').select(ORDER_COLUMNS)
       .eq('tenant_id', t.tenantId)
       .gte('created_at', new Date(range.prevFromMs).toISOString())
-      .lt('created_at', new Date(range.curToMs).toISOString())
-      .order('id', { ascending: true })
-      .range(offset, last);
+      .lt('created_at', new Date(range.curToMs).toISOString());
+    if (afterId) query = query.gt('id', afterId);
+    const { data, error } = await query.order('id', { ascending: true }).limit(limit);
     if (error) throw error;
     return (data ?? []) as GuideReportOrderRow[];
   };
-  for (let offset = 0; offset < MAX_ROWS; offset += PAGE) {
-    const page = await fetchPage(offset, offset + PAGE - 1);
+  let lastId: string | null = null;
+  while (rows.length < MAX_ROWS) {
+    const limit = Math.min(PAGE, MAX_ROWS - rows.length);
+    const page = await fetchPage(lastId, limit);
     rows.push(...page);
-    if (page.length < PAGE) break;
+    if (page.length < limit) break; // 短頁 = 已讀完
+    lastId = page[page.length - 1].id;
   }
-  // 剛好讀滿 MAX_ROWS：多探測第 MAX_ROWS+1 筆，確實存在才標 truncated（計算只用前 MAX_ROWS 筆）
-  if (rows.length >= MAX_ROWS) truncated = (await fetchPage(MAX_ROWS, MAX_ROWS)).length > 0;
+  // 剛好讀滿 MAX_ROWS：再以 keyset 探測下一筆，確實存在才標 truncated（計算只用前 MAX_ROWS 筆）
+  const truncated = rows.length >= MAX_ROWS && (await fetchPage(lastId, 1)).length > 0;
 
   const tripIds = [...new Set(rows.map((r) => r.trip_id))];
   const planIds = [...new Set(rows.map((r) => r.plan_id))];

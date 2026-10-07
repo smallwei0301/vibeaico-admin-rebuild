@@ -140,6 +140,18 @@ describe('時區與月界線', () => {
     expect(new Date(zonedMidnightMs('2026-10-01', 'America/New_York')).toISOString()).toBe('2026-10-01T04:00:00.000Z');
   });
 
+  it('午夜跳時：Santiago 2024-09-08 無 00:00，取該日第一個有效瞬間 04:00Z；前一日仍是 03:00Z 的 23:00', () => {
+    expect(new Date(zonedMidnightMs('2024-09-08', 'America/Santiago')).toISOString()).toBe('2024-09-08T04:00:00.000Z');
+    expect(new Date(zonedMidnightMs('2024-09-07', 'America/Santiago')).toISOString()).toBe('2024-09-07T04:00:00.000Z');
+    expect(new Date(zonedMidnightMs('2024-09-09', 'America/Santiago')).toISOString()).toBe('2024-09-09T03:00:00.000Z');
+  });
+
+  it('一般日期與台北不變；秋季回撥日（Havana 2024-11-03 00:00 重複）取第一次出現', () => {
+    expect(new Date(zonedMidnightMs('2026-03-15', 'Asia/Taipei')).toISOString()).toBe('2026-03-14T16:00:00.000Z');
+    expect(new Date(zonedMidnightMs('2024-11-03', 'America/Havana')).toISOString()).toBe('2024-11-03T04:00:00.000Z');
+    expect(new Date(zonedMidnightMs('2024-11-04', 'America/Havana')).toISOString()).toBe('2024-11-04T05:00:00.000Z');
+  });
+
   it('09/30 15:59:59Z（台北 09/30 23:59:59）屬九月；16:00:00Z 屬十月', () => {
     const rows = [
       row({ created_at: '2026-09-30T15:59:59Z', status: 'COMPLETED', payment_status: 'PAID', paid_amount: 100 }),

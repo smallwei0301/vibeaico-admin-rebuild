@@ -121,13 +121,27 @@ function zoneOffsetMs(instantMs: number, zone: string): number {
   return Date.UTC(g('year'), g('month') - 1, g('day'), g('hour'), g('minute'), g('second')) - instantMs;
 }
 
-/** 租戶時區「ymd 當天 00:00」對應的 UTC 毫秒（兩次收斂，涵蓋日光節約換日） */
+function zonedDateString(instantMs: number, zone: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date(instantMs));
+}
+
+/**
+ * 租戶時區「ymd 當天」第一個存在的瞬間（UTC 毫秒）。
+ * 一般日子就是當地 00:00；若午夜因日光節約跳時而不存在（如 America/Santiago 2024-09-08，
+ * 00:00 直接跳到 01:00），回傳該日第一個有效瞬間。兩次 offset 收斂後再以本地日期驗證：
+ * 仍屬前一天就逐分鐘往後推；若已進入目標日的前一分鐘仍是目標日（重複時段）則往前收。
+ */
 export function zonedMidnightMs(ymd: string, zoneInput: string): number {
   const zone = resolvePublicTimeZone(zoneInput);
   const [y, m, d] = parseYmd(ymd);
   const wall = Date.UTC(y, m - 1, d);
   let guess = wall - zoneOffsetMs(wall, zone);
   guess = wall - zoneOffsetMs(guess, zone);
+  const MINUTE = 60000;
+  for (let i = 0; i < 24 * 60 && zonedDateString(guess, zone) < ymd; i += 1) guess += MINUTE;
+  for (let i = 0; i < 24 * 60 && zonedDateString(guess - MINUTE, zone) === ymd; i += 1) guess -= MINUTE;
   return guess;
 }
 
