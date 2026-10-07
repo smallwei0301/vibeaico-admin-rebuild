@@ -1,10 +1,15 @@
-import { adapt, request } from '@/lib/api';
+import { ApiError, adapt, request } from '@/lib/api';
 import {
   NOT_DOWNLOADED,
   downloadAttachment,
   type AttachmentDownloadResult,
 } from '@/services/download';
 import type { Booking, DashboardAlerts, DashboardStats, StaffPerformance } from '@/lib/types';
+import {
+  GuideReportRangeError, addDays, computeGuideReport, resolveReportRange, zonedToday,
+  type GuideReport, type GuideReportOrderRow,
+} from '@/server/guide-report';
+import { MOCK_GUIDE_ORDERS, MOCK_GUIDE_PLANS, MOCK_GUIDE_TRIPS } from '@/mock/guide-report';
 import {
   MOCK_DASHBOARD_ALERTS, MOCK_DASHBOARD_STATS, MOCK_STAFF_PERFORMANCE, byMode,
 } from '@/mock';
@@ -407,4 +412,38 @@ export const exportBookingsXlsx = (q?: ExportBookingsQuery) =>
   adapt<AttachmentDownloadResult>(
     () => NOT_DOWNLOADED,
     () => downloadAttachment(bookingsExportUrl('xlsx', q)),
+  );
+
+/* ========================================================================== */
+/* GUIDE 導遊營運報表（Issue #45 第一個 Delivery Slice）                         */
+/* ========================================================================== */
+
+export type { GuideReport, GuideRankRow, GuideRankMetric, GuideRankDimension } from '@/server/guide-report';
+/** ?from&to = YYYY-MM-DD（店家時區日界線，含 to 當天） */
+/** 缺省 = 近 30 天（含今天，依店家時區由後端決定）；回應的 range 會帶回實際區間 */
+export type GuideReportQuery = { from?: string; to?: string };
+
+function buildMockGuideReport(q: GuideReportQuery): GuideReport {
+  const zone = 'Asia/Taipei';
+  const to = q.to ?? zonedToday(zone);
+  const from = q.from ?? addDays(to, -29);
+  try {
+    resolveReportRange(from, to, zone);
+  } catch (e) {
+    if (e instanceof GuideReportRangeError) throw new ApiError(e.message, 'REQ_001', 400);
+    throw e;
+  }
+  const rows: GuideReportOrderRow[] = MOCK_GUIDE_ORDERS.map(({ dayOffset, ...o }) => ({
+    ...o,
+    // 台北中午 12:00（= 04:00Z），避免落在日界線上
+    created_at: `${addDays(to, -dayOffset)}T04:00:00Z`,
+  }));
+  return computeGuideReport({ rows, from, to, timeZone: zone, tripNames: MOCK_GUIDE_TRIPS, planNames: MOCK_GUIDE_PLANS, asOf: new Date().toISOString() });
+}
+
+/** GUIDE 營運報表：mock 走同一支純計算（資料為 GUIDE 專屬）；real 打 /api/reports/guide */
+export const getGuideReport = (q: GuideReportQuery) =>
+  adapt<GuideReport>(
+    () => buildMockGuideReport(q),
+    () => request<GuideReport>('/api/reports/guide', { query: q }),
   );

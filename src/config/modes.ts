@@ -41,7 +41,7 @@ export type ModePreset = {
   /** GUIDE 首頁是否顯示第一版待處理事項 action inbox */
   showActionInbox: boolean;
   /** 報表頁使用的資料口徑；GUIDE 專屬報表完成前不顯示通用報表。 */
-  reportingMode: 'GENERAL' | 'GUIDE_PENDING';
+  reportingMode: 'GENERAL' | 'GUIDE_TOUR';
   /**
    * Rich Menu 六格：`label` 是顧客看到的按鈕字，`text` 是按下去實際送出的訊息。
    *
@@ -87,7 +87,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     keywordGroups: ['TRIP', 'DEPARTURE'],
     shopSections: ['TRIPS', 'PORTFOLIO'],
     showActionInbox: true,
-    reportingMode: 'GUIDE_PENDING',
+    reportingMode: 'GUIDE_TOUR',
     richMenuCells: [
       { label: '所有行程', text: '行程' },
       { label: '近期團次', text: '團次' },
