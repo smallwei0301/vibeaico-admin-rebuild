@@ -25,6 +25,26 @@ const PAGE = 1000;
 const ORDER_COLUMNS =
   'id, trip_id, plan_id, party_size, status, payment_status, paid_amount, refunded_amount, created_at';
 
+const ID_BATCH = 200;
+
+/** 名稱查詢分批（避免 URL 過長／PostgREST 列數上限），每批都帶 tenant_id；任一批失敗就丟出（500），不退回顯示 UUID。 */
+async function fetchNames(
+  db: Awaited<ReturnType<typeof requireTenantManager>>['supabase'],
+  table: 'trips' | 'trip_plans',
+  column: 'title' | 'name',
+  tenantId: string,
+  ids: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (let i = 0; i < ids.length; i += ID_BATCH) {
+    const { data, error } = await db.from(table).select(`id, ${column}`)
+      .eq('tenant_id', tenantId).in('id', ids.slice(i, i + ID_BATCH));
+    if (error) throw error;
+    for (const x of (data ?? []) as unknown as Record<string, string>[]) out.set(x.id, x[column]);
+  }
+  return out;
+}
+
 export const GET = handle(async (req) => {
   const t = await requireTenantManager();
   await requireEntitlement({ tenantId: t.tenantId, businessType: t.businessType }, 'GUIDE_BASIC_REPORT');
@@ -63,20 +83,13 @@ export const GET = handle(async (req) => {
 
   const tripIds = [...new Set(rows.map((r) => r.trip_id))];
   const planIds = [...new Set(rows.map((r) => r.plan_id))];
-  const [tripsRes, plansRes] = await Promise.all([
-    tripIds.length
-      ? t.supabase.from('trips').select('id, title').eq('tenant_id', t.tenantId).in('id', tripIds)
-      : Promise.resolve({ data: [], error: null }),
-    planIds.length
-      ? t.supabase.from('trip_plans').select('id, name').eq('tenant_id', t.tenantId).in('id', planIds)
-      : Promise.resolve({ data: [], error: null }),
+  const [tripNames, planNames] = await Promise.all([
+    fetchNames(t.supabase, 'trips', 'title', t.tenantId, tripIds),
+    fetchNames(t.supabase, 'trip_plans', 'name', t.tenantId, planIds),
   ]);
-  if (tripsRes.error) throw tripsRes.error;
-  if (plansRes.error) throw plansRes.error;
 
   return ok(computeGuideReport({
     rows, from, to, timeZone, truncated,
-    tripNames: new Map((tripsRes.data ?? []).map((x: { id: string; title: string }) => [x.id, x.title])),
-    planNames: new Map((plansRes.data ?? []).map((x: { id: string; name: string }) => [x.id, x.name])),
+    tripNames, planNames,
   }));
 });

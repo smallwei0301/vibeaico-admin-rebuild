@@ -1,11 +1,12 @@
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
-import { BarChart3, Ban, CalendarCheck, DollarSign, ShoppingBag, Wallet } from 'lucide-react';
+import { BarChart3, Ban, Lock, CalendarCheck, DollarSign, ShoppingBag, Wallet } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { StatCard } from '@/components/ui/StatCard';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ApiError } from '@/lib/api';
 import { Alert } from '@/components/ui/Alert';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -44,6 +45,7 @@ export function GuideReportView() {
   const toast = useToast();
   const [report, setReport] = React.useState<GuideReport | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [forbidden, setForbidden] = React.useState(false);
   /** null = 使用後端預設（近 30 天，店家時區） */
   const [query, setQuery] = React.useState<{ from: string; to: string } | null>(null);
   const [fromInput, setFromInput] = React.useState('');
@@ -62,7 +64,18 @@ export function GuideReportView() {
         setFromInput(r.range.from);
         setToInput(r.range.to);
       } catch (e) {
-        if (alive) toast.show(e instanceof Error ? e.message : t.errors.loadFailed, 'danger');
+        if (!alive) return;
+        if (e instanceof ApiError && e.status === 403) {
+          setForbidden(true);
+          setReport(null);
+        } else {
+          toast.show(e instanceof Error ? e.message : t.errors.loadFailed, 'danger');
+          // 失敗時保留的是上一份報表：輸入框還原成該報表的區間，數字與區間才一致
+          setReport((prev) => {
+            if (prev) { setFromInput(prev.range.from); setToInput(prev.range.to); }
+            return prev;
+          });
+        }
       } finally {
         if (alive) setLoading(false);
       }
@@ -98,6 +111,19 @@ export function GuideReportView() {
   const s = report?.summary;
   const prev = report?.previous;
   const rows = report ? report.ranking[dimension][metric] : [];
+
+  if (forbidden) {
+    return (
+      <>
+        <PageHeader eyebrow={t.eyebrow} title={reportsPage.title} />
+        <Card>
+          <CardBody className="py-12">
+            <EmptyState icon={Lock} title={t.forbidden.title} description={t.forbidden.description} />
+          </CardBody>
+        </Card>
+      </>
+    );
+  }
 
   return (
     <>

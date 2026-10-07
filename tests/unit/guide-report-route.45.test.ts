@@ -7,6 +7,8 @@ const state = vi.hoisted(() => ({
   calls: [] as { table: string; filters: Record<string, unknown>; gte?: unknown; lt?: unknown }[],
   orders: [] as Record<string, unknown>[],
   timezone: undefined as string | undefined,
+  inCalls: [] as { table: string; size: number; tenant: unknown }[],
+  nameError: '' as string,
 }));
 
 vi.mock('@/config/env', () => ({ USE_MOCK: false }));
@@ -26,6 +28,7 @@ const fakeDb = {
   from: (table: string) => {
     const call: { table: string; filters: Record<string, unknown>; gte?: unknown; lt?: unknown } = { table, filters: {} };
     state.calls.push(call);
+    let ids: string[] | undefined;
     let from = 0;
     let to = 999;
     const rowsFor = () => {
@@ -34,14 +37,18 @@ const fakeDb = {
         return state.orders.filter((r) => r.tenant_id === call.filters.tenant_id
           && (r.created_at as string) >= (call.gte as string) && (r.created_at as string) < (call.lt as string));
       }
-      if (table === 'trips') return [{ id: 'tA', title: '甲行程' }];
-      if (table === 'trip_plans') return [{ id: 'pA', name: '甲方案' }];
+      if (table === 'trips') return (ids ?? ['tA']).map((id) => ({ id, title: `行程${id}` }));
+      if (table === 'trip_plans') return (ids ?? ['pA']).map((id) => ({ id, name: `方案${id}` }));
       return [];
     };
     const q: Record<string, unknown> = {
       select: () => q,
       eq: (k: string, v: unknown) => { call.filters[k] = v; return q; },
-      in: () => q,
+      in: (_k: string, v: string[]) => {
+        ids = v;
+        state.inCalls.push({ table, size: v.length, tenant: call.filters.tenant_id });
+        return q;
+      },
       gte: (_k: string, v: unknown) => { call.gte = v; return q; },
       lt: (_k: string, v: unknown) => { call.lt = v; return q; },
       order: () => q,
@@ -49,7 +56,10 @@ const fakeDb = {
       maybeSingle: async () => ({
         data: table === 'tenant_settings' && state.timezone ? { basic: { timezone: state.timezone } } : null, error: null,
       }),
-      then: (resolve: (v: unknown) => unknown) => resolve({ data: rowsFor().slice(from, to + 1), error: null }),
+      then: (resolve: (v: unknown) => unknown) => resolve(
+        (table === state.nameError)
+          ? { data: null, error: new Error('names failed') }
+          : { data: rowsFor().slice(from, to + 1), error: null }),
     };
     return q;
   },
@@ -64,7 +74,7 @@ const order = (o: Record<string, unknown>) => ({
 });
 
 beforeEach(() => {
-  state.denied = false; state.calls = []; state.timezone = undefined;
+  state.denied = false; state.calls = []; state.inCalls = []; state.nameError = ''; state.timezone = undefined;
   state.orders = [
     order({ id: 'a1', tenant_id: TENANT, created_at: '2026-10-02T02:00:00Z' }),
     order({ id: 'b1', tenant_id: OTHER, created_at: '2026-10-02T02:00:00Z', paid_amount: 777777 }),
@@ -99,6 +109,23 @@ describe('GET /api/reports/guide', () => {
     const body = await (await get('?from=2026-10-01&to=2026-10-10')).json();
     expect(body.data.truncated).toBe(true);
     expect(body.data.summary.totalOrders).toBe(MAX_ROWS);
+  });
+
+  it('名稱查詢分批：450 個行程／方案 id → 各 3 批（200/200/50），每批帶 tenant_id，名稱不退回 UUID', async () => {
+    state.orders = Array.from({ length: 450 }, (_, i) =>
+      order({ id: `n${i}`, tenant_id: TENANT, trip_id: `t${i}`, plan_id: `p${i}`, created_at: '2026-10-02T02:00:00Z' }));
+    const body = await (await get('?from=2026-10-01&to=2026-10-10')).json();
+    const sizes = (table: string) => state.inCalls.filter((c) => c.table === table).map((c) => c.size);
+    expect(sizes('trips')).toEqual([200, 200, 50]);
+    expect(sizes('trip_plans')).toEqual([200, 200, 50]);
+    for (const c of state.inCalls) expect(c.tenant).toBe(TENANT);
+    expect(body.data.ranking.plan.orders[0].name).toMatch(/^方案p/);
+  });
+
+  it('任一批名稱查詢失敗 → 500，不靜默', async () => {
+    state.nameError = 'trip_plans';
+    const res = await get('?from=2026-10-01&to=2026-10-10');
+    expect(res.status).toBe(500);
   });
 
   it('非 manager 被拒（403），且不查任何表', async () => {

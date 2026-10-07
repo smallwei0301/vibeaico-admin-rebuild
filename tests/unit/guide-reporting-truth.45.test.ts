@@ -26,4 +26,13 @@ describe('#45 GUIDE reporting routing (mode preset)', () => {
     expect(reportsCopy).toContain('不顯示成交率');
     expect(reportsCopy).toContain('尚無足夠資料');
   });
+
+  // 本專案 unit 跑 node 環境、無 RTL，無法掛載頁面；以原始碼斷言守住 403 與失敗還原兩個分支（行為已由 route 403 測試與型別保證另一半）
+  it('GuideReportView 對 403 顯示權限狀態、失敗時把輸入框還原為現有報表區間', () => {
+    const view = read('src/app/tenant/reports/GuideReportView.tsx');
+    expect(view).toContain('e.status === 403');
+    expect(view).toContain('t.forbidden.title');
+    expect(view).toContain('setFromInput(prev.range.from)');
+    expect(reportsCopy).toContain('需要店長或管理者權限');
+  });
 });

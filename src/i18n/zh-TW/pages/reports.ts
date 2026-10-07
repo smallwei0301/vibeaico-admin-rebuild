@@ -89,6 +89,7 @@ export const reportsPage = {
         { name: '詢問到成交', reason: '尚未啟用詢問追蹤，沒有可靠的詢問事件，不顯示成交率。' },
       ],
     },
+    forbidden: { title: '需要店長或管理者權限', description: '營運報表包含營收數字，僅店長或管理者可查看。請聯絡店家管理者開通權限。' },
     errors: { loadFailed: '載入 GUIDE 報表失敗，請稍後再試', invalidRange: '結束日期不可早於開始日期' },
   },
 
