@@ -45,6 +45,7 @@ import {
 import { TRIP_TEXT_FIELD_LABEL, TripTextFieldMeta } from '@/components/trips/TripTextFieldMeta';
 import {
   reorderPlans, toAdvancedPlanPayload, toQuickPlanPayload, validateAdvancedPlan, validateQuickPlan,
+  isValidAddonPrice, isValidSeasonPriceOverride,
 } from '@/lib/trip-plan-quick-edit';
 import type {
   DepartureConflict, DepartureFormationStatus, DepartureStatus, PlanReviewState, PriceType, Staff, Trip, TripAddon,
@@ -393,8 +394,7 @@ export default function TripDetailPage() {
       return;
     }
     if (
-      seasonDraft.priceOverride !== null
-      && (!Number.isFinite(seasonDraft.priceOverride) || seasonDraft.priceOverride < 0)
+      !isValidSeasonPriceOverride(seasonDraft.priceOverride)
     ) {
       toast.show(t.messages.seasonPriceInvalid, 'danger');
       return;
@@ -651,6 +651,10 @@ export default function TripDetailPage() {
   /* ------------------------------------------------------------- 加購 */
   const saveAddon = async () => {
     if (!addonDraft) return;
+    if (!isValidAddonPrice(addonDraft.price)) {
+      toast.show(t.messages.addonPriceInvalid, 'danger');
+      return;
+    }
     const ok = await runAction(
       () => saveTripAddon(tripId, addonDraft), t.messages.addonSaved,
     );
@@ -1401,6 +1405,7 @@ export default function TripDetailPage() {
                     id="plan-quick-base-price"
                     type="number"
                     min={0}
+                    step={1}
                     value={planDraft.basePrice}
                     onChange={(e) => patchPlan({ basePrice: Number(e.target.value) })}
                   />
@@ -1438,6 +1443,7 @@ export default function TripDetailPage() {
                       id="plan-quick-child-price"
                       type="number"
                       min={0}
+                      step={1}
                       value={planDraft.childPrice ?? ''}
                       onChange={(e) => patchPlan({
                         childPrice: e.target.value === '' ? null : Number(e.target.value),
@@ -1985,7 +1991,7 @@ export default function TripDetailPage() {
               <FormGroup>
                 <Label required>{t.addons.fields.priceLabel}</Label>
                 <Input
-                  type="number" min={0} value={addonDraft.price}
+                  type="number" min={0} step={1} value={addonDraft.price}
                   onChange={(e) => setAddonDraft({ ...addonDraft, price: Number(e.target.value) })}
                 />
               </FormGroup>

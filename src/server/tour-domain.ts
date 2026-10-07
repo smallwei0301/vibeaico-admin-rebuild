@@ -90,12 +90,12 @@ export const tripUpdateSchema = tripCreateSchema.partial();
 const planFields = {
   name: z.string().trim().min(1, '請輸入方案名稱').optional(),
   description: optionalText,
-  pricePerPerson: z.number().finite().nonnegative('價格不得為負數').optional(),
-  childPrice: z.number().finite().nonnegative('兒童價不得為負數').nullable().optional(),
+  pricePerPerson: z.number().finite().int('價格必須為整數元').nonnegative('價格不得為負數').optional(),
+  childPrice: z.number().finite().int('兒童價必須為整數元').nonnegative('兒童價不得為負數').nullable().optional(),
   minParty: z.number().int().min(1, '最低人數必須至少為 1').optional(),
   maxParty: z.number().int().min(1, '最高人數必須至少為 1').optional(),
   depositMode: z.enum(depositModes).optional(),
-  depositValue: z.number().finite().nonnegative('定金不得為負數').optional(),
+  depositValue: z.number().finite().int('定金必須為整數元').nonnegative('定金不得為負數').optional(),
   sortOrder: z.number().int().optional(),
   active: z.boolean().optional(),
   /* ---- issue #42：時長／計價方式／是否全年販售，取代 mapTripPlan() 過去的假值 ---- */
@@ -234,7 +234,7 @@ export const departureBatchSchema = z.object({
 
 export const addonCreateSchema = z.object({
   name: z.string().trim().min(1, '請輸入加購項名稱'),
-  price: z.number().finite().nonnegative('價格不得為負數').optional(),
+  price: z.number().finite().int('價格必須為整數元').nonnegative('價格不得為負數').optional(),
   unit: z.enum(addonUnits).optional(),
   stock: z.number().int('庫存必須為整數').nonnegative('庫存不得為負數').nullable().optional(),
   active: z.boolean().optional(),
@@ -258,7 +258,7 @@ export const seasonCreateSchema = z.object({
   startDay: dayField,
   endMonth: monthField,
   endDay: dayField,
-  priceOverride: z.number().finite().nonnegative('季節售價不得為負數').nullable().optional(),
+  priceOverride: z.number().finite().int('季節售價必須為整數元').nonnegative('季節售價不得為負數').nullable().optional(),
   active: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
 });

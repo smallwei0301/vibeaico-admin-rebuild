@@ -496,7 +496,7 @@ export const tripsPage = {
     seasonDeleted: '季節已刪除',
     seasonNameRequired: '請輸入季節名稱',
     seasonRangeInvalid: '請輸入有效的月份（1–12）與日期（1–31）',
-    seasonPriceInvalid: '請輸入有效的季節售價，或留空使用方案基本價',
+    seasonPriceInvalid: '請輸入有效的季節售價（必須為整數元），或留空使用方案基本價',
     departureCreated: '團次已建立',
     /**
      * 數字必須來自後端回傳的 `created`，不能用前端自己算日曆得到的筆數：
@@ -507,6 +507,7 @@ export const tripsPage = {
     departureUpdated: '團次已更新',
     departureDeleted: '團次已刪除',
     addonSaved: '加購項目已儲存',
+    addonPriceInvalid: '請輸入有效的加購價格（必須為整數元）',
     addonDeleted: '加購項目已刪除',
     slugTaken: '這個網址代稱已被使用',
     needPlan: '請先建立至少一個方案',
@@ -520,8 +521,8 @@ export const tripsPage = {
     /** 「新增行程」建立的草稿標題（店家接著在詳情頁改成真正的名稱） */
     untitled: '未命名行程',
     planNameRequired: '請輸入方案名稱',
-    planPriceInvalid: '請輸入有效的基本價格',
-    planChildPriceInvalid: '請輸入有效的兒童價格',
+    planPriceInvalid: '請輸入有效的基本價格（必須為整數元）',
+    planChildPriceInvalid: '請輸入有效的兒童價格（必須為整數元）',
     planAdvancedReadbackFailed: '儲存後讀回的販售或成團設定不一致，請重新載入確認。',
     planSalesModeInvalid: '請選擇有效的販售方式',
     planParticipationModeInvalid: '自選時間與先申請再確認須選擇私人包團',
