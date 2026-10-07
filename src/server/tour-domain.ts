@@ -432,25 +432,38 @@ export function canTransitionTourOrder(
   return false; // COMPLETED / CANCELLED 是終態
 }
 
+/** 訂單是否設有「只收一部分」的訂金：0 < deposit < total（0108 的 PARTIAL CHECK 要求 0 < paid < total）。 */
+export function hasPartialDeposit(order: { depositAmount: number | null | undefined; totalAmount: number | null | undefined }): boolean {
+  const d = Number(order.depositAmount ?? 0);
+  const total = Number(order.totalAmount ?? 0);
+  return d > 0 && d < total;
+}
+
 /**
- * 這筆訂單現在能不能「登記收款」（confirm-payment，#769）。
- *
- * 兩種合法起點：
- *   1. `PENDING`——既有的手動單／匯款流程（`PENDING → CONFIRMED + PAID`）。
- *   2. `CONFIRMED` + `UNPAID` + `seats_reserved`——導遊接受 REQUEST 申請後
- *      （`accept_tour_request`）的「已接受、付款保留中」訂單；status 已是
- *      CONFIRMED，只差收款，登記後 status 維持 CONFIRMED。
- *
- * 不改 `canTransitionTourOrder` 的狀態機語意：CONFIRMED → CONFIRMED 仍非合法轉換，
- * 這裡只回答「能不能登記收款」這個獨立問題。已 PAID／PARTIAL 的 CONFIRMED 單
- * 回 false，避免重複收款。名額是否鎖定（PENDING 路徑）由呼叫端另行以
- * `seats_reserved` 守門，維持原本的錯誤碼。
+ * 「確認收到全額」可否執行（#769）。
+ * - PENDING + UNPAID：既有路徑（PENDING → CONFIRMED）。
+ * - CONFIRMED + UNPAID／PARTIAL 且已鎖名額：導遊已接受的申請單，一次收齊或補尾款。
+ * 名額是否鎖定（PENDING 路徑）由呼叫端另行以 `seats_reserved` 守門，維持原本的錯誤碼。
  */
-export function canRegisterTourOrderPayment(order: {
+export function canRegisterFullPayment(order: {
   status: TourOrderStatusValue; paymentStatus: string | null | undefined; seatsReserved: boolean | null | undefined;
 }): boolean {
-  if (order.status === 'PENDING') return true;
-  return order.status === 'CONFIRMED' && order.paymentStatus === 'UNPAID' && order.seatsReserved === true;
+  if (order.status === 'PENDING') return order.paymentStatus === 'UNPAID';
+  return order.status === 'CONFIRMED'
+    && (order.paymentStatus === 'UNPAID' || order.paymentStatus === 'PARTIAL')
+    && order.seatsReserved === true;
+}
+
+/**
+ * 「確認收到訂金」可否執行（#769 Owner 2026-10-07）：只限已接受未付款
+ * （CONFIRMED + UNPAID + seats_reserved），且訂單有 0 < deposit_amount < total_amount。
+ */
+export function canRegisterDepositPayment(order: {
+  status: TourOrderStatusValue; paymentStatus: string | null | undefined; seatsReserved: boolean | null | undefined;
+  depositAmount: number | null | undefined; totalAmount: number | null | undefined;
+}): boolean {
+  return order.status === 'CONFIRMED' && order.paymentStatus === 'UNPAID' && order.seatsReserved === true
+    && hasPartialDeposit(order);
 }
 
 /**

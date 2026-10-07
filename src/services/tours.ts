@@ -4,7 +4,7 @@ import type {
   TourOrder, TourOrderStatus, TourPaymentStatus, Paged,
 } from '@/lib/types';
 import { clampGalleryForCopy } from '@/lib/trip-gallery';
-import { canRegisterTourOrderPayment, canTransitionTourOrder, shouldReleaseSeats } from '@/server/tour-domain';
+import { canRegisterDepositPayment, canRegisterFullPayment, canTransitionTourOrder, shouldReleaseSeats } from '@/server/tour-domain';
 import {
   MOCK_TOUR_ORDERS, MOCK_TRIPS, MOCK_TRIP_ADDONS,
   MOCK_TRIP_DEPARTURES, MOCK_TRIP_PLANS,
@@ -732,22 +732,36 @@ function releaseMockDeparture(o: TourOrder): void {
   if (d) d.seatsBooked = Math.max(0, d.seatsBooked - o.partySize);
 }
 
-export const confirmTourOrderPayment = (id: string) =>
+/**
+ * #769：`kind` 省略 = FULL（確認收到全額）；DEPOSIT = 確認收到訂金（payment → PARTIAL）。
+ * mock 與真實路由同一套規則。
+ */
+export const confirmTourOrderPayment = (id: string, kind: 'DEPOSIT' | 'FULL' = 'FULL') =>
   adapt(() => {
     const o = findMockTourOrder(id);
-    // #769：與真實路由一致——PENDING，或已接受未付款的 CONFIRMED + UNPAID 皆可登記收款。
     // mock 沒有 seats_reserved 欄位，CONFIRMED 的未付款單視為已鎖名額。
+    const conflict = () => new ApiError('此訂單狀態已變更', 'REQ_003', 409);
+    if (kind === 'DEPOSIT') {
+      if (!canRegisterDepositPayment({
+        status: o.status, paymentStatus: o.paymentStatus, seatsReserved: true,
+        depositAmount: o.depositAmount, totalAmount: o.totalAmount,
+      })) throw conflict();
+      o.paymentStatus = 'PARTIAL';
+      o.holdExpiresAt = null;
+      return;
+    }
     if (o.status === 'CONFIRMED') {
-      if (!canRegisterTourOrderPayment({ status: o.status, paymentStatus: o.paymentStatus, seatsReserved: true })) {
-        throw new ApiError('此訂單狀態已變更', 'REQ_003', 409);
-      }
+      if (!canRegisterFullPayment({ status: o.status, paymentStatus: o.paymentStatus, seatsReserved: true })) throw conflict();
     } else {
+      if (o.paymentStatus !== 'UNPAID') throw conflict();
       requireMockTourOrderTransition(o, 'CONFIRMED');
     }
     o.status = 'CONFIRMED';
     o.paymentStatus = 'PAID';
     o.holdExpiresAt = null;
-  }, () => request<void>(`/api/tour-orders/${id}/confirm-payment`, { method: 'POST' }));
+  }, () => request<void>(`/api/tour-orders/${id}/confirm-payment`, {
+    method: 'POST', body: JSON.stringify({ kind }),
+  }));
 
 export const completeTourOrder = (id: string) =>
   adapt(() => {

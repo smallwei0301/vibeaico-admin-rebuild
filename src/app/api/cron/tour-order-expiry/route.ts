@@ -41,6 +41,8 @@
  * 0138 必須在 row lock 內同時檢查 `status in (PENDING, CONFIRMED)`、
  * `payment_status = 'UNPAID'` 與 hold 已逾期；confirm-payment 會清 `hold_expires_at`
  * 並設 PAID，該鎖內重檢才能防止 #350 型競態（已收款被取消）。
+ * 已收訂金（`payment_status = 'PARTIAL'`，confirm-payment kind=DEPOSIT）同樣清掉 hold，
+ * 且不在掃描範圍（只掃 UNPAID）：已收訂金的單不逾期取消。
  *
  * 批次飢餓：0138 前 CONFIRMED + UNPAID 逾期列 rpc 永遠回 false，若與 PENDING 混在
  * 同一個 `order by hold_expires_at limit 500`，累積滿 500 筆就會把 PENDING 擠出批次。

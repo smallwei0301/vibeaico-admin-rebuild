@@ -26,6 +26,7 @@ import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
 import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { tourOrdersPage as t } from '@/i18n/zh-TW/pages/tour-orders';
+import { hasPartialDeposit } from '@/server/tour-domain';
 import { formatCurrency, formatDateTime, formatNumber } from '@/lib/utils';
 import type {
   TourOrder, TourOrderSource, TourOrderStatus, TourPaymentStatus,
@@ -82,7 +83,7 @@ export default function TourOrdersPage() {
   const [detail, setDetail] = React.useState<TourOrder | null>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
   const [action, setAction] = React.useState<
-    { kind: 'confirmPayment' | 'complete' | 'cancel' | 'reject'; order: TourOrder } | null
+    { kind: 'confirmPayment' | 'confirmDeposit' | 'confirmFull' | 'confirmBalance' | 'complete' | 'cancel' | 'reject'; order: TourOrder } | null
   >(null);
   /** #46：接受申請的付款保留時數覆寫——空字串＝不覆寫，用方案的預設值。 */
   const [acceptHoldHours, setAcceptHoldHours] = React.useState('');
@@ -208,6 +209,12 @@ export default function TourOrdersPage() {
     const { kind, order } = action;
     const [call, message] = kind === 'confirmPayment'
       ? [() => confirmTourOrderPayment(order.id), t.messages.paymentConfirmed] as const
+      : kind === 'confirmDeposit'
+        ? [() => confirmTourOrderPayment(order.id, 'DEPOSIT'), t.messages.depositConfirmed] as const
+        : kind === 'confirmFull'
+          ? [() => confirmTourOrderPayment(order.id, 'FULL'), t.messages.fullConfirmed] as const
+          : kind === 'confirmBalance'
+            ? [() => confirmTourOrderPayment(order.id, 'FULL'), t.messages.balanceConfirmed] as const
       : kind === 'complete'
         ? [() => completeTourOrder(order.id), t.messages.completed] as const
         : kind === 'reject'
@@ -387,7 +394,32 @@ export default function TourOrdersPage() {
           >
             <Eye size={13} />
           </Button>
-          {o.paymentStatus === 'UNPAID' && o.status !== 'CANCELLED' ? (
+          {o.status !== 'CANCELLED' && o.paymentStatus === 'UNPAID' && o.status === 'CONFIRMED' && hasPartialDeposit(o) ? (
+            <>
+              <Button
+                variant="outline" size="sm"
+                title={t.actions.confirmDeposit} aria-label={t.actions.confirmDeposit}
+                onClick={() => setAction({ kind: 'confirmDeposit', order: o })}
+              >
+                <Wallet size={13} className="text-warning" />
+              </Button>
+              <Button
+                variant="outline" size="sm"
+                title={t.actions.confirmFull} aria-label={t.actions.confirmFull}
+                onClick={() => setAction({ kind: 'confirmFull', order: o })}
+              >
+                <CheckCircle2 size={13} className="text-success" />
+              </Button>
+            </>
+          ) : o.status === 'CONFIRMED' && o.paymentStatus === 'PARTIAL' ? (
+            <Button
+              variant="outline" size="sm"
+              title={t.actions.confirmBalance} aria-label={t.actions.confirmBalance}
+              onClick={() => setAction({ kind: 'confirmBalance', order: o })}
+            >
+              <CheckCircle2 size={13} className="text-success" />
+            </Button>
+          ) : o.paymentStatus === 'UNPAID' && o.status !== 'CANCELLED' ? (
             <Button
               variant="outline" size="sm"
               title={t.actions.confirmPayment} aria-label={t.actions.confirmPayment}
@@ -723,6 +755,9 @@ export default function TourOrdersPage() {
         onConfirm={runAction}
         title={
           action?.kind === 'confirmPayment' ? t.confirm.confirmPaymentTitle
+            : action?.kind === 'confirmDeposit' ? t.confirm.confirmDepositTitle
+            : action?.kind === 'confirmFull' ? t.confirm.confirmFullTitle
+            : action?.kind === 'confirmBalance' ? t.confirm.confirmBalanceTitle
             : action?.kind === 'complete' ? t.confirm.completeTitle
               : action?.kind === 'reject' ? t.confirm.rejectTitle
                 : t.confirm.cancelTitle
@@ -730,6 +765,10 @@ export default function TourOrdersPage() {
         message={
           action
             ? action.kind === 'confirmPayment' ? t.confirm.confirmPayment(action.order.orderNo)
+              : action.kind === 'confirmDeposit'
+                ? t.confirm.confirmDeposit(action.order.orderNo, formatCurrency(action.order.depositAmount))
+              : action.kind === 'confirmFull' ? t.confirm.confirmFull(action.order.orderNo)
+              : action.kind === 'confirmBalance' ? t.confirm.confirmBalance(action.order.orderNo)
               : action.kind === 'complete' ? t.confirm.complete(action.order.orderNo)
                 : action.kind === 'reject' ? t.request.rejectConfirm(action.order.orderNo)
                   : t.confirm.cancel(action.order.orderNo)
@@ -737,6 +776,9 @@ export default function TourOrdersPage() {
         }
         confirmText={
           action?.kind === 'confirmPayment' ? t.actions.confirmPayment
+            : action?.kind === 'confirmDeposit' ? t.actions.confirmDeposit
+            : action?.kind === 'confirmFull' ? t.actions.confirmFull
+            : action?.kind === 'confirmBalance' ? t.actions.confirmBalance
             : action?.kind === 'complete' ? t.actions.complete
               : action?.kind === 'reject' ? t.actions.reject
                 : t.actions.cancel

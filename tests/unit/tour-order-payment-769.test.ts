@@ -3,7 +3,7 @@
  * 且逾期 cron 的掃描範圍涵蓋 CONFIRMED + UNPAID。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { canRegisterTourOrderPayment } from '@/server/tour-domain';
+import { canRegisterDepositPayment, canRegisterFullPayment, hasPartialDeposit } from '@/server/tour-domain';
 
 const state = vi.hoisted(() => ({
   current: null as Record<string, unknown> | null,
@@ -70,21 +70,45 @@ vi.mock('@/server/supabase', () => ({
 
 const ctx = { params: Promise.resolve({ id: 'o1' }) };
 const req = new Request('http://x/api/tour-orders/o1/confirm-payment', { method: 'POST' });
+const jsonReq = (body: unknown) => new Request('http://x/api/tour-orders/o1/confirm-payment', {
+  method: 'POST', headers: { 'content-type': 'application/json' }, body: typeof body === 'string' ? body : JSON.stringify(body),
+});
 
 beforeEach(() => {
   state.current = null; state.casResult = null; state.update = null;
   state.eqCalls = []; state.cronEq = []; state.cronRows = {}; state.rpcResults = [];
 });
 
-describe('canRegisterTourOrderPayment', () => {
-  it('PENDING 恆可；CONFIRMED 僅限 UNPAID 且已鎖名額；其餘不可', () => {
-    expect(canRegisterTourOrderPayment({ status: 'PENDING', paymentStatus: 'UNPAID', seatsReserved: false })).toBe(true);
-    expect(canRegisterTourOrderPayment({ status: 'CONFIRMED', paymentStatus: 'UNPAID', seatsReserved: true })).toBe(true);
-    expect(canRegisterTourOrderPayment({ status: 'CONFIRMED', paymentStatus: 'PAID', seatsReserved: true })).toBe(false);
-    expect(canRegisterTourOrderPayment({ status: 'CONFIRMED', paymentStatus: 'PARTIAL', seatsReserved: true })).toBe(false);
-    expect(canRegisterTourOrderPayment({ status: 'CONFIRMED', paymentStatus: 'UNPAID', seatsReserved: false })).toBe(false);
-    expect(canRegisterTourOrderPayment({ status: 'CANCELLED', paymentStatus: 'UNPAID', seatsReserved: true })).toBe(false);
-    expect(canRegisterTourOrderPayment({ status: 'COMPLETED', paymentStatus: 'UNPAID', seatsReserved: true })).toBe(false);
+describe('hasPartialDeposit／canRegisterFullPayment／canRegisterDepositPayment', () => {
+  it('hasPartialDeposit：0 < deposit < total 才成立', () => {
+    expect(hasPartialDeposit({ depositAmount: 300, totalAmount: 1000 })).toBe(true);
+    expect(hasPartialDeposit({ depositAmount: 0, totalAmount: 1000 })).toBe(false);
+    expect(hasPartialDeposit({ depositAmount: 1000, totalAmount: 1000 })).toBe(false);
+    expect(hasPartialDeposit({ depositAmount: 1200, totalAmount: 1000 })).toBe(false);
+    expect(hasPartialDeposit({ depositAmount: null, totalAmount: 1000 })).toBe(false);
+  });
+
+  it('FULL：PENDING+UNPAID、CONFIRMED+UNPAID／PARTIAL（已鎖名額）可；其餘不可', () => {
+    const f = canRegisterFullPayment;
+    expect(f({ status: 'PENDING', paymentStatus: 'UNPAID', seatsReserved: false })).toBe(true);
+    expect(f({ status: 'PENDING', paymentStatus: 'PAID', seatsReserved: true })).toBe(false);
+    expect(f({ status: 'CONFIRMED', paymentStatus: 'UNPAID', seatsReserved: true })).toBe(true);
+    expect(f({ status: 'CONFIRMED', paymentStatus: 'PARTIAL', seatsReserved: true })).toBe(true);
+    expect(f({ status: 'CONFIRMED', paymentStatus: 'PAID', seatsReserved: true })).toBe(false);
+    expect(f({ status: 'CONFIRMED', paymentStatus: 'UNPAID', seatsReserved: false })).toBe(false);
+    expect(f({ status: 'CANCELLED', paymentStatus: 'UNPAID', seatsReserved: true })).toBe(false);
+    expect(f({ status: 'COMPLETED', paymentStatus: 'UNPAID', seatsReserved: true })).toBe(false);
+  });
+
+  it('DEPOSIT：僅 CONFIRMED+UNPAID+已鎖名額且有部分訂金', () => {
+    const base = { status: 'CONFIRMED' as const, paymentStatus: 'UNPAID', seatsReserved: true, depositAmount: 300, totalAmount: 1000 };
+    expect(canRegisterDepositPayment(base)).toBe(true);
+    expect(canRegisterDepositPayment({ ...base, depositAmount: 0 })).toBe(false);
+    expect(canRegisterDepositPayment({ ...base, depositAmount: 1000 })).toBe(false);
+    expect(canRegisterDepositPayment({ ...base, paymentStatus: 'PARTIAL' })).toBe(false);
+    expect(canRegisterDepositPayment({ ...base, paymentStatus: 'PAID' })).toBe(false);
+    expect(canRegisterDepositPayment({ ...base, status: 'PENDING' })).toBe(false);
+    expect(canRegisterDepositPayment({ ...base, seatsReserved: false })).toBe(false);
   });
 });
 
@@ -132,6 +156,77 @@ describe('POST confirm-payment（#769）', () => {
     state.casResult = null;
     const res = await (await load())(req, ctx);
     expect(res.status).toBe(409);
+  });
+});
+
+describe('POST confirm-payment kind（#769 訂金／全額）', () => {
+  const load = async () => (await import('@/app/api/tour-orders/[id]/confirm-payment/route')).POST as unknown as
+    (r: Request, c: typeof ctx) => Promise<Response>;
+  const row = (over: Record<string, unknown>) => ({
+    id: 'o1', status: 'CONFIRMED', payment_status: 'UNPAID', total_amount: 1000, deposit_amount: 300, seats_reserved: true, ...over,
+  });
+
+  it('DEPOSIT 成功：寫 PARTIAL、paid=deposit_amount、hold null；CAS 帶 CONFIRMED+UNPAID', async () => {
+    state.current = row({}); state.casResult = { id: 'o1' };
+    const res = await (await load())(jsonReq({ kind: 'DEPOSIT' }), ctx);
+    expect(res.status).toBe(200);
+    expect(state.update).toMatchObject({
+      status: 'CONFIRMED', payment_status: 'PARTIAL', paid_amount: 300, hold_expires_at: null,
+    });
+    expect(state.eqCalls).toContainEqual(['status', 'CONFIRMED']);
+    expect(state.eqCalls).toContainEqual(['payment_status', 'UNPAID']);
+  });
+
+  it.each([
+    ['無訂金', { deposit_amount: 0 }],
+    ['訂金=total', { deposit_amount: 1000 }],
+    ['已 PARTIAL', { payment_status: 'PARTIAL' }],
+    ['已 PAID', { payment_status: 'PAID' }],
+    ['PENDING', { status: 'PENDING' }],
+  ])('DEPOSIT 對%s → 409，不寫入', async (_n, over) => {
+    state.current = row(over);
+    const res = await (await load())(jsonReq({ kind: 'DEPOSIT' }), ctx);
+    expect(res.status).toBe(409);
+    expect(state.update).toBeNull();
+  });
+
+  it('DEPOSIT 的金額取 DB 值，不信 body 帶的 amount', async () => {
+    state.current = row({}); state.casResult = { id: 'o1' };
+    await (await load())(jsonReq({ kind: 'DEPOSIT', amount: 999 }), ctx);
+    expect(state.update).toMatchObject({ paid_amount: 300 });
+  });
+
+  it('FULL 從 CONFIRMED+PARTIAL 補尾款：PAID、paid=total，CAS 帶 payment_status=PARTIAL', async () => {
+    state.current = row({ payment_status: 'PARTIAL' }); state.casResult = { id: 'o1' };
+    const res = await (await load())(jsonReq({ kind: 'FULL' }), ctx);
+    expect(res.status).toBe(200);
+    expect(state.update).toMatchObject({ payment_status: 'PAID', paid_amount: 1000, hold_expires_at: null, status: 'CONFIRMED' });
+    expect(state.eqCalls).toContainEqual(['payment_status', 'PARTIAL']);
+  });
+
+  it('FULL 從 CONFIRMED+UNPAID（有訂金方案也可一次收全額）', async () => {
+    state.current = row({}); state.casResult = { id: 'o1' };
+    const res = await (await load())(jsonReq({ kind: 'FULL' }), ctx);
+    expect(res.status).toBe(200);
+    expect(state.update).toMatchObject({ payment_status: 'PAID', paid_amount: 1000 });
+    expect(state.eqCalls).toContainEqual(['payment_status', 'UNPAID']);
+  });
+
+  it('空 body 與 `{}` = FULL', async () => {
+    state.current = row({ deposit_amount: 0 }); state.casResult = { id: 'o1' };
+    expect((await (await load())(req, ctx)).status).toBe(200);
+    expect(state.update).toMatchObject({ payment_status: 'PAID' });
+    state.update = null;
+    expect((await (await load())(jsonReq({}), ctx)).status).toBe(200);
+    expect(state.update).toMatchObject({ payment_status: 'PAID' });
+  });
+
+  it('kind 非法值或壞 JSON → 400，不寫入', async () => {
+    state.current = row({});
+    // 此檔把 handle() 換成直通，所以 zod／ApiHttpError 以 reject 呈現（真實 handle 會轉 400）。
+    await expect((await load())(jsonReq({ kind: 'HALF' }), ctx)).rejects.toThrow();
+    await expect((await load())(jsonReq('{bad'), ctx)).rejects.toMatchObject({ status: 400 });
+    expect(state.update).toBeNull();
   });
 });
 
