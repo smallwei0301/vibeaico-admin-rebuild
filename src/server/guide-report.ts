@@ -107,7 +107,9 @@ export type GuideReportChanges = {
 
 export type GuideReport = {
   /** 成團表現（trip_departures；口徑見 guide-report-formation.ts） */
-  formation: GuideFormation;
+  formation: GuideFormation | null;
+  /** formation 為 null 的原因（目前只有 SCHEMA_MISSING：Production 尚未有成團欄位／資料表）；有資料時為 null */
+  formationUnavailableReason: 'SCHEMA_MISSING' | null;
   range: {
     from: string; to: string; prevFrom: string; prevTo: string; days: number; timeZone: string;
   };
@@ -387,6 +389,8 @@ export function computeGuideReport(input: {
   departures?: GuideDepartureRow[];
   /** 團次筆數達上限（成團表現數字可能不完整） */
   departuresTruncated?: boolean;
+  /** 成團資料暫時無法取得（schema 缺欄位）：formation 回 null，報表其餘部分照常 */
+  formationUnavailable?: 'SCHEMA_MISSING';
 }): GuideReport {
   const range = resolveReportRange(input.from, input.to, input.timeZone);
   const { cur, prev } = splitPeriods(input.rows, range);
@@ -394,10 +398,11 @@ export function computeGuideReport(input: {
   const previous = summarize(prev);
   const nowMs = input.asOf ? Date.parse(input.asOf) : Date.now();
   return {
-    formation: computeFormation({
+    formation: input.formationUnavailable ? null : computeFormation({
       rows: input.departures ?? [], from: range.from, to: range.to, prevFrom: range.prevFrom, prevTo: range.prevTo,
       today: zonedToday(range.timeZone, nowMs), truncated: input.departuresTruncated,
     }),
+    formationUnavailableReason: input.formationUnavailable ?? null,
     range: {
       from: range.from, to: range.to, prevFrom: range.prevFrom, prevTo: range.prevTo,
       days: range.days, timeZone: range.timeZone,

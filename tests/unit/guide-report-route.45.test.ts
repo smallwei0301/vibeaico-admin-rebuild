@@ -12,7 +12,7 @@ const state = vi.hoisted(() => ({
   nameError: '' as string,
   priorError: false,
   departures: [] as Record<string, unknown>[],
-  depError: false,
+  depError: false as boolean | string,
   priorCalls: [] as { tenant: unknown; neq: unknown; lt: unknown; ids: string[] }[],
 }));
 
@@ -80,7 +80,7 @@ const fakeDb = {
       }),
       then: (resolve: (v: unknown) => unknown) => resolve(
         (table === state.nameError || (state.depError && table === 'trip_departures') || (state.priorError && table === 'tour_orders' && call.gte === undefined))
-          ? { data: null, error: new Error('names failed') }
+          ? { data: null, error: Object.assign(new Error('failed'), typeof state.depError === 'string' && table === 'trip_departures' ? { code: state.depError } : {}) }
           : { data: rowsFor().filter((r) => !gtId || (r.id as string) > gtId).sort((a, b) => ((a.id as string) < (b.id as string) ? -1 : 1)).slice(0, lim), error: null }),
     };
     return q;
@@ -299,4 +299,35 @@ describe('GET /api/reports/guide', () => {
     expect(b.formation.truncated).toBe(true);
     expect(b.formation.summary.total).toBe(MAX_ROWS);
   });
+
+  it('欄位／資料表不存在類錯誤 → 成團表現降級（formation=null＋原因），報表其餘照常 200', async () => {
+    state.orders = [order({ id: 'a1', tenant_id: TENANT, created_at: '2026-10-02T02:00:00Z' })];
+    for (const code of ['42703', '42P01', 'PGRST200', 'PGRST204', 'PGRST205']) {
+      state.depError = code;
+      const res = await get('?from=2026-10-01&to=2026-10-10');
+      expect(res.status, code).toBe(200);
+      const b = (await res.json()).data;
+      expect(b.formation).toBeNull();
+      expect(b.formationUnavailableReason).toBe('SCHEMA_MISSING');
+      expect(b.summary.totalOrders).toBe(1);
+    }
+  });
+
+  it('其他團次查詢錯誤（含沒有 code、其他 code）仍是 500，不靜默降級', async () => {
+    for (const dep of [true, '57014', '42501']) {
+      state.depError = dep;
+      expect((await get('?from=2026-10-01&to=2026-10-10')).status, String(dep)).toBe(500);
+    }
+  });
+
+  it('正常時 formationUnavailableReason 為 null；團次的 status 一併讀取並影響已取消分類', async () => {
+    state.departures = [
+      { id: 'c1', tenant_id: TENANT, departs_on: '2026-10-02', status: 'CANCELLED', formation_status: 'FORMED' },
+      { id: 'c2', tenant_id: TENANT, departs_on: '2026-10-03', status: 'CANCELLED', formation_status: 'FAILED' },
+    ];
+    const b = (await (await get('?from=2026-10-01&to=2026-10-10')).json()).data;
+    expect(b.formationUnavailableReason).toBeNull();
+    expect(b.formation.summary).toMatchObject({ total: 2, cancelledUndecided: 1, concluded: 1, failed: 1, formed: 0 });
+  });
 });
+

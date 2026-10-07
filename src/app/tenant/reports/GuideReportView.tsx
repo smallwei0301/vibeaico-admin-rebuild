@@ -168,6 +168,7 @@ export function GuideReportView() {
 
   const cardLabel = (name: string) => (report?.truncated ? `${name}（${t.truncatedHint}）` : name);
   const s = report?.summary;
+  const fm = report?.formation ?? null;
   const prev = report?.previous;
   const rangeLink = (status?: string) => (report ? buildRangeLink(linkRange, status) : '/tenant/tour-orders');
   const rows = report ? report.ranking[dimension][metric] : [];
@@ -407,39 +408,45 @@ export function GuideReportView() {
         <Card className="mb-4">
           <CardHeader><CardTitle>{t.formationCard.title}</CardTitle></CardHeader>
           <CardBody>
-            {report.formation.summary.total === 0 ? (
+            {!fm ? (
+              <EmptyState icon={BarChart3} title={t.formationCard.unavailable} description={t.formationCard.unavailableHint} />
+            ) : fm.summary.total === 0 ? (
               <EmptyState icon={BarChart3} title={t.formationCard.empty} />
             ) : (
               <>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <StatCard
-                    label={report.formation.truncated ? `${t.formationCard.successRate}（${t.truncatedHint}）` : t.formationCard.successRate}
+                    label={fm.truncated ? `${t.formationCard.successRate}（${t.truncatedHint}）` : t.formationCard.successRate}
                     icon={CalendarCheck} tone="success"
-                    value={report.formation.summary.successRatePercent === null ? t.noData : formatPercent(report.formation.summary.successRatePercent, 1)}
-                    hint={`${pointsText(report.formation.successRatePoints)}${t.sep}${t.formationCard.concludedHint(report.formation.summary.concluded, report.formation.summary.formed, report.formation.summary.failed)}`}
+                    value={fm.summary.successRatePercent === null ? t.noData : formatPercent(fm.summary.successRatePercent, 1)}
+                    hint={`${pointsText(fm.successRatePoints)}${t.sep}${t.formationCard.concludedHint(fm.summary.concluded, fm.summary.formed, fm.summary.failed)}`}
                   />
                   <StatCard
-                    label={report.formation.truncated ? `${t.formationCard.failRate}（${t.truncatedHint}）` : t.formationCard.failRate}
+                    label={fm.truncated ? `${t.formationCard.failRate}（${t.truncatedHint}）` : t.formationCard.failRate}
                     icon={Ban} tone="danger"
-                    value={report.formation.summary.failRatePercent === null ? t.noData : formatPercent(report.formation.summary.failRatePercent, 1)}
-                    hint={`${pointsText(report.formation.failRatePoints)}${t.sep}${t.change.previousValue(report.formation.previous.failRatePercent === null ? t.noData : formatPercent(report.formation.previous.failRatePercent, 1))}`}
+                    value={fm.summary.failRatePercent === null ? t.noData : formatPercent(fm.summary.failRatePercent, 1)}
+                    hint={`${pointsText(fm.failRatePoints)}${t.sep}${t.change.previousValue(fm.previous.failRatePercent === null ? t.noData : formatPercent(fm.previous.failRatePercent, 1))}`}
                   />
                 </div>
-                <p className="form-text mt-3">{t.formationCard.openLine(report.formation.summary.open)}</p>
+                <p className="form-text mt-3">{t.formationCard.openLine(fm.summary.open)}</p>
                 <div className="mt-3">
                   <div className="stat-label">{t.formationCard.distributionTitle}</div>
-                  <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-5">
+                  <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                    <div>
+                      <div className="stat-label">{t.formationCard.cancelledUndecided}</div>
+                      <div className="stat-value">{formatNumber(fm.summary.cancelledUndecided)} {t.formationCard.unit}</div>
+                    </div>
                     {FORMATION_STATUSES.map((k) => (
                       <div key={k}>
                         <div className="stat-label">{t.formationCard.status[k]}</div>
-                        <div className="stat-value">{formatNumber(report.formation.summary.byStatus[k])} {t.formationCard.unit}</div>
+                        <div className="stat-value">{formatNumber(fm.summary.byStatus[k])} {t.formationCard.unit}</div>
                       </div>
                     ))}
                   </div>
                 </div>
               </>
             )}
-            <p className="form-text mt-3">{t.formationCard.description}</p>
+            {fm ? <p className="form-text mt-3">{t.formationCard.description}</p> : null}
           </CardBody>
         </Card>
       ) : null}

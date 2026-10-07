@@ -82,11 +82,14 @@ export function mockDepartureRows(nowMs: number = Date.now()): GuideDepartureRow
     id: d.id,
     departs_on: addDays(today, -9 + diffDays(d.departsOn, DEPARTURE_ANCHOR_DATE)),
     formation_status: d.formationStatus ?? 'COLLECTING',
+    status: d.status,
   }));
   const previousPeriod: GuideDepartureRow[] = [
     { id: 'mock_prev_1', departs_on: addDays(today, -40), formation_status: 'FORMED' },
     { id: 'mock_prev_2', departs_on: addDays(today, -38), formation_status: 'FAILED' },
     { id: 'mock_prev_3', departs_on: addDays(today, -35), formation_status: 'FORMED' },
+    // 團次已取消但沒有成團決策（formation_status 仍是募集中）：單獨計數，不當成未成團
+    { id: 'mock_cancel_1', departs_on: addDays(today, -3), formation_status: 'COLLECTING', status: 'CANCELLED' },
   ];
   return [...seeded, ...previousPeriod];
 }

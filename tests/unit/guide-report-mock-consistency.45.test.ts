@@ -64,11 +64,12 @@ describe('mock：報表與下鑽清單同一份資料', () => {
   });
 
   it('成團表現 mock：由 MOCK_TRIP_DEPARTURES 的成團狀態算出（相對今天的日期），預設區間非零且與手算一致', async () => {
-    const f = (await getGuideReport({})).formation;
-    // 種子團次：FORMED×4（dp_1、2、7、9）、FAILED×1（dp_6）、COLLECTING×3、REVIEW_REQUIRED×1、AT_RISK×1；全部落在預設區間
+    const f = (await getGuideReport({})).formation!;
+    // 種子團次：FORMED×4（dp_1、2、7、9）、FAILED×1（dp_6，團次已取消＝導遊決策取消）、COLLECTING×3、REVIEW_REQUIRED×1、AT_RISK×1；
+    // 另補 1 筆已取消但未經成團決策（mock_cancel_1）：單獨計數，不進分布與比率；全部落在預設區間
     expect(f.summary.byStatus).toEqual({ COLLECTING: 3, FORMED: 4, REVIEW_REQUIRED: 1, AT_RISK: 1, FAILED: 1 });
     expect(f.summary).toMatchObject({
-      total: 10, concluded: 5, formed: 4, failed: 1, open: 5, successRatePercent: 80, failRatePercent: 20,
+      total: 11, concluded: 5, formed: 4, failed: 1, cancelledUndecided: 1, open: 5, successRatePercent: 80, failRatePercent: 20,
     });
     // 上一期補的 3 筆：FORMED×2、FAILED×1 → 66.7／33.3；差 +13.3／-13.3 個百分點
     expect(f.previous).toMatchObject({ concluded: 3, successRatePercent: 66.7, failRatePercent: 33.3 });

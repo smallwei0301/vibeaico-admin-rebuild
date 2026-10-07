@@ -17,6 +17,13 @@ import {
 } from '@/server/guide-report';
 import type { GuideDepartureRow } from '@/server/guide-report-formation';
 
+/** Postgres／PostgREST 的「欄位或資料表不存在」錯誤碼：undefined_column、undefined_table、PostgREST 找不到關聯／欄位 */
+const MISSING_SCHEMA_CODES = new Set(['42703', '42P01', 'PGRST200', 'PGRST204', 'PGRST205']);
+function isMissingSchemaError(e: unknown): boolean {
+  const code = (e as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && MISSING_SCHEMA_CODES.has(code);
+}
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const querySchema = z.object({
   from: z.string().regex(DATE_RE, 'from 需為 YYYY-MM-DD').optional(),
@@ -111,9 +118,11 @@ export const GET = handle(async (req) => {
   );
 
   // 成團表現：期間（含上一期）內出發的團次；同樣 keyset＋MAX_ROWS 探測，不假裝完整。
+  // 只有「欄位／資料表不存在」類錯誤（Production 尚未套用 0107 等）才降級成「暫時無法取得」，
+  // 報表其餘部分照常回 200；其他任何錯誤維持 500，不靜默吞掉。
   const depFrom = range.prevFrom;
   const fetchDeps = async (afterId: string | null, limit: number) => {
-    let dq = t.supabase.from('trip_departures').select('id, departs_on, formation_status')
+    let dq = t.supabase.from('trip_departures').select('id, departs_on, status, formation_status')
       .eq('tenant_id', t.tenantId).gte('departs_on', depFrom).lte('departs_on', to);
     if (afterId) dq = dq.gt('id', afterId);
     const { data, error } = await dq.order('id', { ascending: true }).limit(limit);
@@ -121,18 +130,25 @@ export const GET = handle(async (req) => {
     return (data ?? []) as GuideDepartureRow[];
   };
   const departures: GuideDepartureRow[] = [];
-  let depLast: string | null = null;
-  while (departures.length < MAX_ROWS) {
-    const limit = Math.min(PAGE, MAX_ROWS - departures.length);
-    const pg = await fetchDeps(depLast, limit);
-    departures.push(...pg);
-    if (pg.length < limit) break;
-    depLast = pg[pg.length - 1].id;
+  let departuresTruncated = false;
+  let formationUnavailable: 'SCHEMA_MISSING' | undefined;
+  try {
+    let depLast: string | null = null;
+    while (departures.length < MAX_ROWS) {
+      const limit = Math.min(PAGE, MAX_ROWS - departures.length);
+      const pg = await fetchDeps(depLast, limit);
+      departures.push(...pg);
+      if (pg.length < limit) break;
+      depLast = pg[pg.length - 1].id;
+    }
+    departuresTruncated = departures.length >= MAX_ROWS && (await fetchDeps(depLast, 1)).length > 0;
+  } catch (e) {
+    if (!isMissingSchemaError(e)) throw e;
+    formationUnavailable = 'SCHEMA_MISSING';
   }
-  const departuresTruncated = departures.length >= MAX_ROWS && (await fetchDeps(depLast, 1)).length > 0;
 
   return ok(computeGuideReport({
-    rows, from, to, timeZone, truncated, priorCustomerIds, departures, departuresTruncated, asOf: new Date(requestStartedAt).toISOString(),
+    rows, from, to, timeZone, truncated, priorCustomerIds, departures, departuresTruncated, formationUnavailable, asOf: new Date(requestStartedAt).toISOString(),
     tripNames, planNames,
   }));
 });

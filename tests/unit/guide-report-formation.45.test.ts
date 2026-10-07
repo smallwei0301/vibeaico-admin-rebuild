@@ -3,7 +3,7 @@ import { computeFormation, summarizeFormation, type GuideDepartureRow } from '@/
 import { computeGuideReport } from '@/server/guide-report';
 
 // 期望值全部手算寫死。本期 2026-10-01～10-10，上一期 09-21～09-30。
-const d = (id: string, departs_on: string, formation_status: string): GuideDepartureRow => ({ id, departs_on, formation_status });
+const d = (id: string, departs_on: string, formation_status: string, status?: string): GuideDepartureRow => ({ id, departs_on, formation_status, status });
 const TODAY = '2026-12-01';
 const S = (rows: GuideDepartureRow[], today = TODAY) => summarizeFormation(rows, '2026-10-01', '2026-10-10', today);
 
@@ -75,7 +75,7 @@ describe('computeGuideReport — 「今天」依店家時區與 asOf 決定', ()
   const run = (timeZone: string, asOf: string) => computeGuideReport({
     rows: [], from: '2026-10-01', to: '2026-10-07', timeZone, asOf,
     tripNames: new Map(), planNames: new Map(), departures: dep,
-  }).formation.summary;
+  }).formation!.summary;
 
   it('同一個 asOf：台北已是 10/07（團次已結案）、紐約仍是 10/06（尚未結案）', () => {
     const asOf = '2026-10-06T17:00:00.000Z'; // 台北 10/07 01:00；紐約 10/06 13:00
@@ -88,6 +88,37 @@ describe('computeGuideReport — 「今天」依店家時區與 asOf 決定', ()
       rows: [], from: '2026-10-01', to: '2026-10-07', timeZone: 'Asia/Taipei', asOf: '2026-12-01T00:00:00Z',
       tripNames: new Map(), planNames: new Map(),
     });
-    expect(r.formation.summary).toMatchObject({ total: 0, successRatePercent: null });
+    expect(r.formation!.summary).toMatchObject({ total: 0, successRatePercent: null });
   });
 });
+
+describe('團次本身取消（status = CANCELLED）與成團狀態是兩條軸', () => {
+  it('CANCELLED＋FAILED → 算未成團（已結案、進分母）', () => {
+    const r = S([d('1', '2026-10-02', 'FAILED', 'CANCELLED'), d('2', '2026-10-03', 'FORMED', 'OPEN')]);
+    expect(r).toMatchObject({ total: 2, concluded: 2, formed: 1, failed: 1, cancelledUndecided: 0, open: 0, successRatePercent: 50 });
+  });
+
+  it('CANCELLED＋FORMED 不算成團（不進分子）、CANCELLED＋COLLECTING 不算尚未結案；兩者單獨計數、不進分母', () => {
+    const r = S([
+      d('1', '2026-10-02', 'FORMED', 'CANCELLED'),
+      d('2', '2026-10-03', 'COLLECTING', 'CANCELLED'),
+      d('3', '2026-10-04', 'AT_RISK', 'CANCELLED'),
+      d('4', '2026-10-05', 'FORMED', 'CLOSED'), // CLOSED 不是取消：照常算成團
+      d('5', '2026-10-06', 'COLLECTING', 'OPEN'),
+    ]);
+    expect(r.cancelledUndecided).toBe(3);
+    expect(r).toMatchObject({ total: 5, concluded: 1, formed: 1, failed: 0, open: 1, successRatePercent: 100, failRatePercent: 0 });
+    // 分布不含已取消（未經成團決策）者：合計 + cancelledUndecided = total
+    expect(r.byStatus).toEqual({ COLLECTING: 1, FORMED: 1, REVIEW_REQUIRED: 0, AT_RISK: 0, FAILED: 0 });
+  });
+
+  it('只有「已取消（未經成團決策）」的團次 → 比率 null（分母 0），不推測為未成團', () => {
+    const r = S([d('1', '2026-10-02', 'FORMED', 'CANCELLED')]);
+    expect(r).toMatchObject({ total: 1, concluded: 0, cancelledUndecided: 1, open: 0, successRatePercent: null, failRatePercent: null });
+  });
+
+  it('沒有提供 status（舊資料）視為未取消', () => {
+    expect(S([d('1', '2026-10-02', 'FORMED')])).toMatchObject({ formed: 1, cancelledUndecided: 0 });
+  });
+});
+
