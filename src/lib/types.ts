@@ -435,8 +435,10 @@ export type PriceType = 'PER_PERSON' | 'PER_GROUP';
  */
 export type TripBookingType = 'INSTANT' | 'REQUEST' | 'SCHEDULED';
 
-/** 方案送審狀態（Midao 管理者審核方案內容與定價） */
-/** @deprecated Legacy contract：DB 無 trip_plans.review_state，不代表真實審核狀態，勿在 UI 使用。正式審核真相為 Trip 層 midaoListing / midaoListingNote（Issue #42）。 */
+/**
+ * 方案送審狀態（Midao 管理者審核方案內容與定價）。
+ * @deprecated Legacy contract：DB 無 trip_plans.review_state，不代表真實審核狀態，勿在 UI 使用。正式審核真相為 Trip 層 midaoListing / midaoListingNote（Issue #42）。
+ */
 export type PlanReviewState = 'NONE' | 'PENDING' | 'CHANGES_REQUESTED';
 
 /**

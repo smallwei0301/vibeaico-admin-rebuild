@@ -1724,7 +1724,7 @@ export default function TripDetailPage() {
                               <Button
                                 type="button" variant="ghost" size="sm"
                                 title={t.actions.edit} aria-label={t.actions.edit}
-                                disabled={listedPlanWritesBlocked || savingPlan || !!seasonDraft}
+                                disabled={savingPlan || !!seasonDraft}
                                 onClick={() => openSeasonEditor(season)}
                               >
                                 <Pencil size={13} />
@@ -1732,7 +1732,7 @@ export default function TripDetailPage() {
                               <Button
                                 type="button" variant="ghost" size="sm"
                                 title={t.actions.delete} aria-label={t.actions.delete}
-                                disabled={listedPlanWritesBlocked || savingPlan || !!seasonDraft}
+                                disabled={savingPlan || !!seasonDraft}
                                 onClick={() => setDeleteTarget({ kind: 'season', id: season.id, name: season.name })}
                               >
                                 <Trash2 size={13} />

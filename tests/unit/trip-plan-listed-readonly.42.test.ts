@@ -40,7 +40,9 @@ describe('issue #42 LISTED 方案編輯器唯讀', () => {
   });
 
   it('儲存方案與季節新增／編輯／刪除按鈕 disabled', () => {
-    expect(src).toContain('disabled={listedPlanWritesBlocked || savingPlan || !!seasonDraft}');
+    // 季節新增／編輯／刪除鈕外層已以 !listedPlanWritesBlocked 條件渲染，disabled 不再重複判斷
+    expect(src).toContain('disabled={savingPlan || !!seasonDraft}');
+    expect(src).not.toContain('listedPlanWritesBlocked || savingPlan');
     expect(src).toMatch(/<Button type="button" size="sm" disabled=\{listedPlanWritesBlocked\} loading=\{savingSeason\}/);
   });
 
@@ -110,7 +112,8 @@ describe('issue #42 LISTED 方案編輯器唯讀', () => {
     expect(seasonBtns).toContain('title={t.actions.edit} aria-label={t.actions.edit}');
     expect(seasonBtns).toContain('title={t.actions.delete} aria-label={t.actions.delete}');
     expect(seasonBtns).not.toContain('t.actions.view');
-    expect(seasonBtns.match(/disabled=\{listedPlanWritesBlocked \|\| savingPlan \|\| !!seasonDraft\}/g)?.length).toBe(2);
+    expect(seasonBtns.match(/disabled=\{savingPlan \|\| !!seasonDraft\}/g)?.length).toBe(2);
+    expect(seasonBtns.replace('{!listedPlanWritesBlocked ? (', '')).not.toContain('listedPlanWritesBlocked');
     // 未上架儲存按鈕：原文案、原 loadingText、無額外 disabled
     expect(src).toContain("loadingText={planEditorMode === 'advanced' ? t.plans.advanced.saving : t.plans.quick.saving}");
     expect(src).toContain("{planEditorMode === 'advanced' ? t.plans.advanced.save : t.plans.quick.save}");
