@@ -65,7 +65,8 @@ function firstOf<T>(value: T | T[] | null | undefined): T | null {
  * 只讀既有 bookings_view、trip_departures、tour_orders 與 tenant timezone，不建立
  * 新狀態、不重新推算成團與否，也不觸發通知、付款或其他外部副作用。預約卡片帶
  * bookingId deep link，讓操作人直接開啟該筆詳情而不是重新搜尋列表；formation 卡片
- * 沿用既有團次深連結（`/tenant/trips/:id`），因為成團決定發生在團次詳情頁；
+ * 深連結為 `/tenant/trips/{tripId}?tab=departures&departureId={id}`（由
+ * `buildGuideActionInboxFormationHref` 產生），因為成團決定發生在團次詳情頁的出發場次分頁；
  * REFUND_PENDING 卡片帶 orderId deep link 到 `/tenant/tour-orders`——該頁已消費
  * `paymentStatus`／`orderId` query string（`src/app/tenant/tour-orders/page.tsx`：
  * `paymentStatus` 只接受 `TourPaymentStatus` 值域內的值，值域外忽略；`orderId` 比照
@@ -170,8 +171,9 @@ export const GET = handle(async () => {
       // 今天已出發的團次不再是待辦：與 payment-due 同一條店家時區規則，在查詢層排除，
       // 避免它們佔掉有限視窗（builder 不再另外猜測）。
       .or(notStarted)
-      // 一個團次不能同時是「今日／明日出發」卡片又是「成團決定」卡片：兩者的深連結
-      // 完全相同（/tenant/trips/:tripId），guide 只需要被問一次。formation query 是
+      // 一個團次不能同時是「今日／明日出發」卡片又是「成團決定」卡片：兩者指向同一個
+      // 團次詳情頁（DEPARTURE 卡為 /tenant/trips/{tripId}；formation 卡另帶
+      // ?tab=departures&departureId={id}），guide 只需要被問一次。formation query 是
       // 這兩個 formation_status 值的唯一權威來源，這裡直接在來源排除，而不是把兩組
       // 結果都抓回來後在 JS 裡事後去重——排除條件在這裡是可證的（誰是權威一望即知），
       // 事後去重只會讓人猜哪一個 query 才是準的。
@@ -194,6 +196,10 @@ export const GET = handle(async () => {
       // 永遠顯示「立即處理」。這裡只加下限，不去猜測／改寫它們的 formation_status——
       // 那是 #41 §6 要做的事，不是這個唯讀收件匣端點的責任。
       .gte('departs_on', today)
+      // 排序依據：AT_RISK 的期限即出發時刻；REVIEW_REQUIRED 的成團截止已過（皆屬
+      // 「立即處理」），決策必須在出發前完成，因此以出發先後（departs_on → start_time
+      // → created_at）代表急迫度。limit(20) 是收件匣顯示上限；今天已出發的團次已由
+      // 上方 notStarted 排除，不會佔用名額。
       .order('departs_on', { ascending: true })
       .order('start_time', { ascending: true, nullsFirst: true })
       .order('created_at', { ascending: true })
