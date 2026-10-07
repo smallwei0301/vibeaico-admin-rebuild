@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeFormation, summarizeFormation, type GuideDepartureRow } from '@/server/guide-report-formation';
+import { computeFormation, summarizeFormation, formationCardMode, formationShowsTruncationAlert, type GuideDepartureRow } from '@/server/guide-report-formation';
 import { computeGuideReport } from '@/server/guide-report';
 
 // 期望值全部手算寫死。本期 2026-10-01～10-10，上一期 09-21～09-30。
@@ -181,5 +181,34 @@ describe('無成團決策紀錄（出發日已過但仍是 COLLECTING／REVIEW_R
 
   it('只有無決策紀錄的歷史團次 → 比率 null、open 0（不是「還在募集中」）', () => {
     expect(S([d('1', '2026-10-02', 'COLLECTING')])).toMatchObject({ total: 1, undecidedPast: 1, open: 0, concluded: 0, successRatePercent: null });
+  });
+});
+
+describe('computeFormation — availability（成團決策紀錄可用性）與截斷警示', () => {
+  const C = (rows: GuideDepartureRow[], truncated = false) =>
+    computeFormation({ rows, from: '2026-10-01', to: '2026-10-10', prevFrom: '2026-09-21', prevTo: '2026-09-30', today: TODAY, truncated });
+
+  it('全部 COLLECTING → NOT_TRACKED（卡片只顯示說明）', () => {
+    const f = C([d('a', '2026-10-02', 'COLLECTING'), d('b', '2026-09-25', 'COLLECTING', 'CANCELLED')]);
+    expect(f.availability).toBe('NOT_TRACKED');
+    expect(formationCardMode(f)).toBe('NOT_TRACKED');
+  });
+  it('只要有一團 FORMED（本期或上一期）→ TRACKED；REVIEW_REQUIRED 也算有紀錄', () => {
+    expect(C([d('a', '2026-10-02', 'COLLECTING'), d('b', '2026-10-03', 'FORMED')]).availability).toBe('TRACKED');
+    expect(C([d('a', '2026-09-25', 'FAILED')]).availability).toBe('TRACKED');
+    expect(C([d('a', '2026-10-02', 'COLLECTING'), d('b', '2026-10-03', 'REVIEW_REQUIRED')]).availability).toBe('TRACKED');
+  });
+  it('區間外或未知狀態的決策紀錄不影響判斷；無團次 → NOT_TRACKED 但卡片模式由 total 決定', () => {
+    expect(C([d('a', '2026-10-02', 'COLLECTING'), d('x', '2026-08-01', 'FORMED'), d('y', '2026-10-03', 'WEIRD')]).availability).toBe('NOT_TRACKED');
+    expect(formationCardMode(null)).toBe('UNAVAILABLE');
+    expect(formationCardMode(C([d('a', '2026-10-02', 'FORMED')]))).toBe('SHOWN');
+    const empty = C([]);
+    expect(empty.availability).toBe('NOT_TRACKED');
+  });
+  it('截斷警示：只要有 formation 且 truncated 就整卡警示；未截斷或 null 不顯示', () => {
+    expect(formationShowsTruncationAlert(C([d('a', '2026-10-02', 'FORMED')], true))).toBe(true);
+    expect(formationShowsTruncationAlert(C([d('a', '2026-10-02', 'FORMED')], false))).toBe(false);
+    expect(formationShowsTruncationAlert(C([d('a', '2026-10-02', 'COLLECTING')], true))).toBe(true);
+    expect(formationShowsTruncationAlert(null)).toBe(false);
   });
 });

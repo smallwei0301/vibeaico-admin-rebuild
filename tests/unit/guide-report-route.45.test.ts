@@ -283,6 +283,17 @@ describe('GET /api/reports/guide', () => {
     expect(body.data.formation.previous).toMatchObject({ total: 1, concluded: 1, successRatePercent: 100 });
     expect(body.data.formation.successRatePoints).toBe(-50);
     expect(body.data.formation.truncated).toBe(false);
+    expect(body.data.formation.availability).toBe('TRACKED');
+  });
+
+  it('成團表現：真實流程建立的團次全是 COLLECTING → availability=NOT_TRACKED', async () => {
+    state.departures = [
+      { id: 'n1', tenant_id: TENANT, departs_on: '2026-10-02', formation_status: 'COLLECTING' },
+      { id: 'n2', tenant_id: TENANT, departs_on: '2026-09-25', formation_status: 'COLLECTING' },
+    ];
+    const body = await (await get('?from=2026-10-01&to=2026-10-10')).json();
+    expect(body.data.formation.availability).toBe('NOT_TRACKED');
+    expect(body.data.formation.summary.undecidedPast).toBe(1);
   });
 
   it('團次查詢失敗 → 500；筆數剛好 MAX_ROWS 不標 truncated、MAX_ROWS+1 標 truncated', async () => {

@@ -33,6 +33,12 @@
  *      total = concluded + open + cancelledUndecided + undecidedPast
  *      concluded = formed + failed；open ＝ 尚未結案：出發日未到，或今天出發仍待決策（且非未經決策取消）的團次。
  *  - 上一期：與本期等長、緊接在前，用同一個「今天」；比較以百分點（pointDiff）。
+ *  - 資料可用性（availability）：正式團次建立時 departureFormationSnapshot() 只寫 COLLECTING（migration 預設值），
+ *    且 src／supabase/migrations 目前沒有把團次轉 FORMED／FAILED／REVIEW_REQUIRED／AT_RISK 的 runtime 寫入（人工決策 API 尚未合併）。
+ *    若本期與上一期查到的團次「全部」仍是 COLLECTING，沒有任何成團決策紀錄，比率只會是算不出的空值，卡片就誠實顯示 NOT_TRACKED。
+ *    判斷只看 formation_status 是否出現過 COLLECTING 以外的值：0107 的 CHECK 約束把 formed_at／formed_by／formation_decided_at 綁在
+ *    非 COLLECTING 的狀態上，formation_status 是最可靠、且不需多選欄位的單一訊號；日後轉態上線，一出現第一筆決策紀錄就自動恢復為 TRACKED。
+ *    REVIEW_REQUIRED 也算（它只能由系統轉態寫入，代表轉態機制已在運作）。
  *  - 這是「目前的成團狀態」：formation_status 沒有歷史快照，所以數字反映讀取當下的狀態，不是當時的狀態。
  */
 export const FORMATION_STATUSES = ['COLLECTING', 'FORMED', 'REVIEW_REQUIRED', 'AT_RISK', 'FAILED'] as const;
@@ -82,7 +88,26 @@ export type GuideFormation = {
   failRatePoints: number | null;
   /** true＝團次筆數達上限，數字可能不完整 */
   truncated: boolean;
+  /**
+   * TRACKED＝本期或上一期至少一團有成團決策紀錄（formation_status 不是 COLLECTING）；
+   * NOT_TRACKED＝全部仍是 COLLECTING（沒有任何決策紀錄），比率與分布沒有意義，UI 只顯示說明。
+   */
+  availability: FormationAvailability;
 };
+
+export type FormationAvailability = 'TRACKED' | 'NOT_TRACKED';
+
+/** 成團卡的呈現模式（純函式，供元件與測試共用） */
+export type FormationCardMode = 'UNAVAILABLE' | 'NOT_TRACKED' | 'EMPTY' | 'SHOWN';
+export function formationCardMode(fm: GuideFormation | null): FormationCardMode {
+  if (!fm) return 'UNAVAILABLE';
+  if (fm.availability === 'NOT_TRACKED') return 'NOT_TRACKED';
+  return fm.summary.total === 0 ? 'EMPTY' : 'SHOWN';
+}
+/** 筆數達上限時，整張成團卡（含比率以外的未結案、無決策、各狀態團數）都要有截斷警示 */
+export function formationShowsTruncationAlert(fm: GuideFormation | null): boolean {
+  return fm !== null && fm.truncated;
+}
 
 /** 尚未做出成團決策的 formation_status（AT_RISK 只發生在 FORMED 之後，不在其中） */
 const UNDECIDED_STATUSES: readonly string[] = ['COLLECTING', 'REVIEW_REQUIRED'];
@@ -128,11 +153,14 @@ export function computeFormation(input: {
 }): GuideFormation {
   const summary = summarizeFormation(input.rows, input.from, input.to, input.today);
   const previous = summarizeFormation(input.rows, input.prevFrom, input.prevTo, input.today);
+  const tracked = input.rows.some((r) =>
+    r.departs_on >= input.prevFrom && r.departs_on <= input.to && isStatus(r.formation_status) && r.formation_status !== 'COLLECTING');
   const diff = (a: number | null, b: number | null) => (a === null || b === null ? null : round1(a - b));
   return {
     summary, previous,
     successRatePoints: diff(summary.successRatePercent, previous.successRatePercent),
     failRatePoints: diff(summary.failRatePercent, previous.failRatePercent),
     truncated: input.truncated === true,
+    availability: tracked ? 'TRACKED' : 'NOT_TRACKED',
   };
 }

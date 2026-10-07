@@ -24,7 +24,7 @@ import {
 import { reportsPage } from '@/i18n/zh-TW/pages/reports';
 import { formatAsOf, presetRange, todayIn } from '@/lib/guide-report-range';
 import { GUIDE_SOURCE_KEYS, GUIDE_SOURCES } from '@/server/guide-report';
-import { FORMATION_STATUSES } from '@/server/guide-report-formation';
+import { FORMATION_STATUSES, formationCardMode, formationShowsTruncationAlert } from '@/server/guide-report-formation';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/utils';
 
 const t = reportsPage.guideReport;
@@ -169,6 +169,7 @@ export function GuideReportView() {
   const cardLabel = (name: string) => (report?.truncated ? t.withTruncatedHint(name) : name);
   const s = report?.summary;
   const fm = report?.formation ?? null;
+  const formationMode = formationCardMode(fm);
   const prev = report?.previous;
   const rangeLink = (status?: string) => (report ? buildRangeLink(linkRange, status) : '/tenant/tour-orders');
   const rows = report ? report.ranking[dimension][metric] : [];
@@ -408,9 +409,14 @@ export function GuideReportView() {
         <Card className="mb-4">
           <CardHeader><CardTitle>{t.formationCard.title}</CardTitle></CardHeader>
           <CardBody>
-            {!fm ? (
+            {formationShowsTruncationAlert(fm) ? (
+              <Alert tone="warning" className="mb-4">{t.formationCard.truncatedWarning}</Alert>
+            ) : null}
+            {formationMode === 'UNAVAILABLE' || !fm ? (
               <EmptyState icon={BarChart3} title={t.formationCard.unavailable} description={t.formationCard.unavailableHint} />
-            ) : fm.summary.total === 0 ? (
+            ) : formationMode === 'NOT_TRACKED' ? (
+              <EmptyState icon={BarChart3} title={t.formationCard.notTracked} description={t.formationCard.notTrackedHint} />
+            ) : formationMode === 'EMPTY' ? (
               <EmptyState icon={BarChart3} title={t.formationCard.empty} />
             ) : (
               <>
@@ -449,7 +455,7 @@ export function GuideReportView() {
                 </div>
               </>
             )}
-            {fm ? <p className="form-text mt-3">{t.formationCard.description}</p> : null}
+            {formationMode === 'SHOWN' ? <p className="form-text mt-3">{t.formationCard.description}</p> : null}
           </CardBody>
         </Card>
       ) : null}
