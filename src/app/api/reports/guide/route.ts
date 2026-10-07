@@ -46,6 +46,7 @@ async function fetchNames(
 }
 
 export const GET = handle(async (req) => {
+  const requestStartedAt = Date.now();
   const t = await requireTenantManager();
   await requireEntitlement({ tenantId: t.tenantId, businessType: t.businessType }, 'GUIDE_BASIC_REPORT');
   const q = querySchema.parse(Object.fromEntries(new URL(req.url).searchParams));
@@ -66,13 +67,15 @@ export const GET = handle(async (req) => {
   }
 
   // 本期＋上一等長期間一次撈回（半開區間），Node 端聚合；分頁避開 PostgREST 預設 1000 列上限。
+  // 讀取上界取「本期終點」與「請求開始時間」較小者：讀取期間新建立的訂單一律不計入（無 DB 快照時的成本相稱作法）。
+  const upperMs = Math.min(range.curToMs, requestStartedAt);
   // keyset 分頁（order id + gt lastId）：讀取期間有新寫入也不會重複／漏讀；固定上界 created_at < 本期終點。
   const rows: GuideReportOrderRow[] = [];
   const fetchPage = async (afterId: string | null, limit: number) => {
     let query = t.supabase.from('tour_orders').select(ORDER_COLUMNS)
       .eq('tenant_id', t.tenantId)
       .gte('created_at', new Date(range.prevFromMs).toISOString())
-      .lt('created_at', new Date(range.curToMs).toISOString());
+      .lt('created_at', new Date(upperMs).toISOString());
     if (afterId) query = query.gt('id', afterId);
     const { data, error } = await query.order('id', { ascending: true }).limit(limit);
     if (error) throw error;
@@ -97,7 +100,7 @@ export const GET = handle(async (req) => {
   ]);
 
   return ok(computeGuideReport({
-    rows, from, to, timeZone, truncated,
+    rows, from, to, timeZone, truncated, asOf: new Date(requestStartedAt).toISOString(),
     tripNames, planNames,
   }));
 });

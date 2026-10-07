@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const OTHER = '22222222-2222-4222-8222-222222222222';
@@ -79,13 +79,18 @@ const order = (o: Record<string, unknown>) => ({
   paid_amount: 1000, refunded_amount: 0, ...o,
 });
 
+// 固定「現在」晚於所有測試區間，讓讀取上界 = 本期終點（上界取 min 另有專屬測試）
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-12-01T00:00:00Z'));
   state.denied = false; state.calls = []; state.inCalls = []; state.pages = []; state.nameError = ''; state.timezone = undefined;
   state.orders = [
     order({ id: 'a1', tenant_id: TENANT, created_at: '2026-10-02T02:00:00Z' }),
     order({ id: 'b1', tenant_id: OTHER, created_at: '2026-10-02T02:00:00Z', paid_amount: 777777 }),
   ];
 });
+
+afterEach(() => { vi.useRealTimers(); });
 
 const get = (qs: string) => GET(new Request(`http://t/api/reports/guide${qs}`), {});
 
@@ -143,6 +148,24 @@ describe('GET /api/reports/guide', () => {
     state.orders = many(MAX_ROWS);
     await get('?from=2026-10-01&to=2026-10-10');
     expect(state.pages[state.pages.length - 1]).toEqual({ gt: `x${String(MAX_ROWS - 1).padStart(6, '0')}`, limit: 1 });
+  });
+
+  it('讀取上界取 min(本期終點, 請求開始時間)；asOf 回傳請求開始時間', async () => {
+    try {
+      vi.setSystemTime(new Date('2026-10-05T00:00:00Z'));
+      const body = await (await get('?from=2026-10-01&to=2026-10-10')).json();
+      const orders = state.calls.filter((c) => c.table === 'tour_orders');
+      expect(orders.length).toBeGreaterThan(0);
+      for (const c of orders) expect(c.lt).toBe('2026-10-05T00:00:00.000Z'); // 早於本期終點 10-10 → 取請求時間
+      expect(body.data.asOf).toBe('2026-10-05T00:00:00.000Z');
+      // 請求時間晚於本期終點時，上界仍是本期終點
+      state.calls = [];
+      vi.setSystemTime(new Date('2026-11-01T00:00:00Z'));
+      await get('?from=2026-10-01&to=2026-10-10');
+      for (const c of state.calls.filter((x) => x.table === 'tour_orders')) expect(c.lt).toBe('2026-10-10T16:00:00.000Z');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('名稱查詢分批：450 個行程／方案 id → 各 3 批（200/200/50），每批帶 tenant_id，名稱不退回 UUID', async () => {

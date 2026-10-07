@@ -81,6 +81,8 @@ export type GuideReport = {
   ranking: Record<GuideRankDimension, GuideRanking>;
   /** true = 查詢筆數達上限，數字可能不完整（UI 必須警示） */
   truncated: boolean;
+  /** 資料截至時間（ISO）：只計入此刻以前建立的訂單；mock／未提供時為 null */
+  asOf: string | null;
 };
 
 export class GuideReportRangeError extends Error {}
@@ -258,6 +260,7 @@ export function computeGuideReport(input: {
   tripNames: Map<string, string>;
   planNames: Map<string, string>;
   truncated?: boolean;
+  asOf?: string;
 }): GuideReport {
   const range = resolveReportRange(input.from, input.to, input.timeZone);
   const cur: GuideReportOrderRow[] = [];
@@ -276,6 +279,7 @@ export function computeGuideReport(input: {
       days: range.days, timeZone: range.timeZone,
     },
     truncated: input.truncated === true,
+    asOf: input.asOf ?? null,
     summary,
     previous,
     changes: {

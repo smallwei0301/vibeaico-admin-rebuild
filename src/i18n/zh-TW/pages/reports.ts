@@ -20,6 +20,7 @@ export const reportsPage = {
     to: '結束日期',
     presets: { last7: '近 7 天', last30: '近 30 天', last90: '近 90 天' },
     compareLine: (prevFrom: string, prevTo: string) => `與上一期（${prevFrom} ～ ${prevTo}）比較`,
+    asOfLine: (at: string) => `資料截至 ${at}`,
     timeZoneLine: (zone: string) => `日期界線採店家時區：${zone}`,
     noData: '尚無足夠資料',
     truncatedWarning: '資料筆數超過上限，數字可能不完整，請縮短日期區間後重新查詢。',

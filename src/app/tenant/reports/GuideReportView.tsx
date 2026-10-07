@@ -155,6 +155,7 @@ export function GuideReportView() {
           {report ? (
             <p className="form-text mt-3">
               {t.compareLine(report.range.prevFrom, report.range.prevTo)}{t.sep}{t.timeZoneLine(report.range.timeZone)}
+              {report.asOf ? <>{t.sep}{t.asOfLine(formatAsOf(report.asOf, report.range.timeZone))}</> : null}
             </p>
           ) : null}
         </CardBody>
@@ -309,4 +310,11 @@ export function GuideReportView() {
       </Card>
     </>
   );
+}
+
+/** 以店家時區顯示「資料截至」時間 */
+function formatAsOf(iso: string, zone: string): string {
+  return new Intl.DateTimeFormat('zh-TW', {
+    timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).format(new Date(iso));
 }
