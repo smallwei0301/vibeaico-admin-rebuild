@@ -167,6 +167,9 @@ export const GET = handle(async () => {
       .in('status', ['OPEN', 'CLOSED'])
       .gte('departs_on', today)
       .lte('departs_on', tomorrow)
+      // 今天已出發的團次不再是待辦：與 payment-due 同一條店家時區規則，在查詢層排除，
+      // 避免它們佔掉有限視窗（builder 不再另外猜測）。
+      .or(notStarted)
       // 一個團次不能同時是「今日／明日出發」卡片又是「成團決定」卡片：兩者的深連結
       // 完全相同（/tenant/trips/:tripId），guide 只需要被問一次。formation query 是
       // 這兩個 formation_status 值的唯一權威來源，這裡直接在來源排除，而不是把兩組
@@ -183,6 +186,8 @@ export const GET = handle(async () => {
       .eq('tenant_id', t.tenantId)
       .neq('status', 'CANCELLED')
       .in('formation_status', ['REVIEW_REQUIRED', 'AT_RISK'])
+      // 已出發（含今天已過 start_time）的團次不能再「前往決定」，在查詢層排除。
+      .or(notStarted)
       // 0107 還沒有 #41 §6 的自動轉態 transaction，REVIEW_REQUIRED／AT_RISK 不會在
       // 出發後自動被清掉。沒有下限的話，已經出發過的舊團次會跟現在的團次一起用
       // `.order('departs_on' asc).limit(20)` 排序，陳舊列可能擠掉還活著的列，而且

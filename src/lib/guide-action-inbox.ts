@@ -428,6 +428,26 @@ export function getGuideActionInboxPriority(
   return dateKey(start, timeZone) === dateKey(now, timeZone) ? 'TODAY' : 'UPCOMING';
 }
 
+/**
+ * 成團決策卡片的深連結：直接開團次分頁並帶上 `departureId`，讓團次頁能定位到
+ * 要決定的那一列（#41 的決策按鈕就在該列）。departureId 一律 encode。
+ */
+export function buildGuideActionInboxFormationHref(tripId: string, departureId: string): string {
+  return `/tenant/trips/${tripId}?tab=departures&departureId=${encodeURIComponent(departureId)}`;
+}
+
+/**
+ * 團次頁解析 `departureId` query：只有該 id 真的存在於目前載入的團次清單才回傳，
+ * 否則回 null（陳舊連結、已刪除團次都誠實地不定位，不猜測）。純函式，可單測。
+ */
+export function resolveGuideInboxDepartureFocus(
+  raw: string | null | undefined,
+  departures: ReadonlyArray<{ id: string }>,
+): string | null {
+  if (!raw) return null;
+  return departures.some((departure) => departure.id === raw) ? raw : null;
+}
+
 export type GuideActionInboxFormationInput = {
   id: string;
   tripId: string;
@@ -477,7 +497,7 @@ export function buildGuideActionInboxFormationItem(
     priority: getGuideActionInboxPriority(dueAt, now, timeZone),
     dueAt,
     createdAt: input.createdAt,
-    href: `/tenant/trips/${input.tripId}`,
+    href: buildGuideActionInboxFormationHref(input.tripId, input.id),
   };
 }
 
