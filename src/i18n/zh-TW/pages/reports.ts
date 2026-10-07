@@ -10,13 +10,81 @@ export const reportsPage = {
   metaTitle: '營運報表 - 店家後台',
   eyebrow: nav.navBooking,
 
-  /* -------------------------------------------------------- GUIDE 報表狀態 */
-  guideUnavailable: {
+  /* ----------------------------------------------------- GUIDE 導遊營運報表 */
+  guideReport: {
     eyebrow: '行程營運',
-    title: 'GUIDE 專屬報表尚未建置',
-    description:
-      '目前不顯示通用店家報表，避免把示範或非旅遊領域的數字當成旅遊營運結果。待團次、訂單、付款與來源的旅遊口徑完成後，這裡會提供可追溯的 GUIDE 報表。',
-    action: '前往行程與方案',
+    rangeLabel: '日期區間',
+    apply: '套用',
+    loading: '載入中…',
+    from: '開始日期',
+    to: '結束日期',
+    presets: { last7: '近 7 天', last30: '近 30 天', last90: '近 90 天' },
+    compareLine: (prevFrom: string, prevTo: string) => `與上一期（${prevFrom} ～ ${prevTo}）比較`,
+    timeZoneLine: (zone: string) => `日期界線採店家時區：${zone}`,
+    noData: '尚無足夠資料',
+    noDataPrevious: '上一期無資料可比較',
+    emptyTitle: '這段期間沒有旅遊訂單',
+    emptyDescription: '換一個日期區間，或先到旅遊訂單建立訂單；沒有訂單時不會顯示任何推算數字。',
+    emptyAction: '前往旅遊訂單',
+    unit: { orders: '筆', people: '人' },
+    change: {
+      up: (pct: string) => `較上一期增加 ${pct}`,
+      down: (pct: string) => `較上一期減少 ${pct}`,
+      flat: '與上一期持平',
+      previousValue: (v: string) => `上一期：${v}`,
+    },
+    cards: {
+      orders: '旅遊訂單數',
+      revenue: '實收營收',
+      avgOrderValue: '平均客單',
+      cancelled: '取消訂單數',
+    },
+    cardHints: {
+      revenueRefunded: (amount: string) => `已退款 ${amount}（已自實收扣除）`,
+      refundPending: (n: number) => `另有 ${n} 筆退款處理中（尚未退出，仍計入實收）`,
+      avgBasis: (n: number) => `分母：實收大於 0 的 ${n} 筆訂單`,
+    },
+    statusBreakdownTitle: '各狀態訂單數',
+    status: {
+      PENDING: '待確認',
+      CONFIRMED: '已確認',
+      COMPLETED: '已完成',
+      CANCELLED: '已取消',
+    },
+    ranking: {
+      title: '熱門行程與方案',
+      dimension: { trip: '依行程', plan: '依方案' },
+      metric: { orders: '依訂單數', people: '依人數', revenue: '依實收營收' },
+      columns: { rank: '名次', name: '名稱', orders: '訂單數', people: '人數', revenue: '實收營收' },
+      empty: '這段期間沒有可排序的資料',
+      tieRule: '同分時依名稱排序，再依編號排序，結果每次相同。',
+    },
+    defs: {
+      title: '指標定義',
+      scope: '期間歸屬：以訂單「建立時間」落在所選日期（店家時區）內為準，含結束當天。',
+      orders: '旅遊訂單數：期間內建立的旅遊訂單，依待確認、已確認、已完成、已取消分開計數。',
+      revenue:
+        '實收營收：已實際收到的金額加總，扣掉已退款金額。部分付款只算已收的部分，未收尾款不算；退款處理中尚未退出，仍算在內並另行提示。',
+      avgOrderValue: '平均客單：實收營收 ÷ 有實收的訂單數；沒有任何有實收的訂單時顯示「尚無足夠資料」，不以 0 代替。',
+      cancelled:
+        '取消訂單數：狀態為已取消的訂單數。目前資料沒有記錄取消是旅客、導遊或系統逾期造成，所以只顯示總數，不拆分原因。',
+      ranking:
+        '熱門排行：訂單數與人數不含已取消訂單；實收營收用上方同一口徑。三種排序分開呈現，指標為 0 的項目不列入，最多顯示 10 名。',
+      comparison: '上一期：與所選期間天數相同、緊接在前的期間；上一期為 0 時不計算增減百分比。',
+    },
+    notEnabled: {
+      title: '尚未啟用的指標',
+      description: '以下指標需要資料模型支援，目前不顯示數字，避免用 0 或示範值冒充已計算。',
+      items: [
+        { name: '取消原因（旅客／導遊／系統逾期）', reason: '訂單目前沒有取消來源欄位，只有自由文字理由。' },
+        { name: '未付款率', reason: '尚未記錄「進入付款階段」的時間點，分母無法可靠算出。' },
+        { name: '成團表現', reason: '尚未彙整公開團次與成團狀態快照。' },
+        { name: '訂單來源、重複旅客', reason: '尚未完成來源分組與旅客去重定義。' },
+        { name: '導遊與加購業績', reason: '需使用完成時凍結的業績快照，尚未接入報表。' },
+        { name: '詢問到成交', reason: '尚未啟用詢問追蹤，沒有可靠的詢問事件，不顯示成交率。' },
+      ],
+    },
+    errors: { loadFailed: '載入 GUIDE 報表失敗，請稍後再試', invalidRange: '結束日期不可早於開始日期' },
   },
 
   /* ------------------------------------------------------------ 日期區間 */

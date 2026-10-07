@@ -1,10 +1,14 @@
-import { adapt, request } from '@/lib/api';
+import { ApiError, adapt, request } from '@/lib/api';
 import {
   NOT_DOWNLOADED,
   downloadAttachment,
   type AttachmentDownloadResult,
 } from '@/services/download';
 import type { Booking, DashboardAlerts, DashboardStats, StaffPerformance } from '@/lib/types';
+import {
+  GuideReportRangeError, addDays, computeGuideReport, resolveReportRange, zonedToday,
+  type GuideReport, type GuideReportOrderRow,
+} from '@/server/guide-report';
 import {
   MOCK_DASHBOARD_ALERTS, MOCK_DASHBOARD_STATS, MOCK_STAFF_PERFORMANCE, byMode,
 } from '@/mock';
@@ -407,4 +411,70 @@ export const exportBookingsXlsx = (q?: ExportBookingsQuery) =>
   adapt<AttachmentDownloadResult>(
     () => NOT_DOWNLOADED,
     () => downloadAttachment(bookingsExportUrl('xlsx', q)),
+  );
+
+/* ========================================================================== */
+/* GUIDE 導遊營運報表（Issue #45 第一個 Delivery Slice）                         */
+/* ========================================================================== */
+
+export type { GuideReport, GuideRankRow, GuideRankMetric, GuideRankDimension } from '@/server/guide-report';
+/** ?from&to = YYYY-MM-DD（店家時區日界線，含 to 當天） */
+/** 缺省 = 近 30 天（含今天，依店家時區由後端決定）；回應的 range 會帶回實際區間 */
+export type GuideReportQuery = { from?: string; to?: string };
+
+const MOCK_GUIDE_TRIPS = new Map([
+  ['trip_1', '龜山島賞鯨半日遊'],
+  ['trip_2', '花蓮砂婆礑溯溪體驗'],
+  ['trip_3', '九份山城夜訪散策'],
+]);
+const MOCK_GUIDE_PLANS = new Map([
+  ['plan_1', '標準班（含保險）'],
+  ['plan_2', '包團專案'],
+  ['plan_3', '親子友善班'],
+  ['plan_4', '夜間散策'],
+]);
+
+/**
+ * mock 訂單：dayOffset = 距「to」往前幾天（本期為 0..days-1，上一期為 days..2*days-1，
+ * 以 days = 30 為基準；區間較短時超出的列自然落在區間外被忽略）。
+ * 刻意包含部分付款、退款與取消，讓畫面能看到各口徑分開。
+ */
+type MockOrder = Omit<GuideReportOrderRow, 'created_at'> & { dayOffset: number };
+const MOCK_GUIDE_ORDERS: MockOrder[] = [
+  { id: 'o01', trip_id: 'trip_1', plan_id: 'plan_1', party_size: 4, status: 'COMPLETED', payment_status: 'PAID', paid_amount: 6400, refunded_amount: 0, dayOffset: 2 },
+  { id: 'o02', trip_id: 'trip_1', plan_id: 'plan_2', party_size: 8, status: 'CONFIRMED', payment_status: 'PARTIAL', paid_amount: 4000, refunded_amount: 0, dayOffset: 4 },
+  { id: 'o03', trip_id: 'trip_2', plan_id: 'plan_1', party_size: 2, status: 'COMPLETED', payment_status: 'PAID', paid_amount: 3600, refunded_amount: 0, dayOffset: 6 },
+  { id: 'o04', trip_id: 'trip_2', plan_id: 'plan_3', party_size: 3, status: 'CANCELLED', payment_status: 'REFUNDED', paid_amount: 2700, refunded_amount: 2700, dayOffset: 9 },
+  { id: 'o05', trip_id: 'trip_3', plan_id: 'plan_4', party_size: 5, status: 'CONFIRMED', payment_status: 'PAID', paid_amount: 4500, refunded_amount: 0, dayOffset: 11 },
+  { id: 'o06', trip_id: 'trip_3', plan_id: 'plan_4', party_size: 2, status: 'PENDING', payment_status: 'UNPAID', paid_amount: 0, refunded_amount: 0, dayOffset: 13 },
+  { id: 'o07', trip_id: 'trip_1', plan_id: 'plan_1', party_size: 6, status: 'CANCELLED', payment_status: 'REFUND_PENDING', paid_amount: 9600, refunded_amount: 0, dayOffset: 16 },
+  { id: 'o08', trip_id: 'trip_2', plan_id: 'plan_1', party_size: 4, status: 'COMPLETED', payment_status: 'PAID', paid_amount: 7200, refunded_amount: 0, dayOffset: 21 },
+  { id: 'o09', trip_id: 'trip_1', plan_id: 'plan_1', party_size: 3, status: 'COMPLETED', payment_status: 'PAID', paid_amount: 4800, refunded_amount: 0, dayOffset: 33 },
+  { id: 'o10', trip_id: 'trip_3', plan_id: 'plan_4', party_size: 4, status: 'COMPLETED', payment_status: 'PAID', paid_amount: 3600, refunded_amount: 0, dayOffset: 40 },
+  { id: 'o11', trip_id: 'trip_2', plan_id: 'plan_3', party_size: 2, status: 'CANCELLED', payment_status: 'UNPAID', paid_amount: 0, refunded_amount: 0, dayOffset: 47 },
+];
+
+function buildMockGuideReport(q: GuideReportQuery): GuideReport {
+  const zone = 'Asia/Taipei';
+  const to = q.to ?? zonedToday(zone);
+  const from = q.from ?? addDays(to, -29);
+  try {
+    resolveReportRange(from, to, zone);
+  } catch (e) {
+    if (e instanceof GuideReportRangeError) throw new ApiError(e.message, 'REQ_001', 400);
+    throw e;
+  }
+  const rows: GuideReportOrderRow[] = MOCK_GUIDE_ORDERS.map(({ dayOffset, ...o }) => ({
+    ...o,
+    // 台北中午 12:00（= 04:00Z），避免落在日界線上
+    created_at: `${addDays(to, -dayOffset)}T04:00:00Z`,
+  }));
+  return computeGuideReport({ rows, from, to, timeZone: zone, tripNames: MOCK_GUIDE_TRIPS, planNames: MOCK_GUIDE_PLANS });
+}
+
+/** GUIDE 營運報表：mock 走同一支純計算（資料為 GUIDE 專屬）；real 打 /api/reports/guide */
+export const getGuideReport = (q: GuideReportQuery) =>
+  adapt<GuideReport>(
+    () => buildMockGuideReport(q),
+    () => request<GuideReport>('/api/reports/guide', { query: q }),
   );

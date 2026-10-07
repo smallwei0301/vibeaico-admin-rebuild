@@ -26,6 +26,7 @@ import { reportsPage as t } from '@/i18n/zh-TW/pages/reports';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/utils';
 import type { StaffPerformance } from '@/lib/types';
 import { MODE_PRESETS } from '@/config/modes';
+import { GuideReportView } from './GuideReportView';
 
 /* -------------------------------------------------------------------------- */
 
@@ -132,28 +133,7 @@ export default function ReportsPage() {
     })();
   }, [fail, showGeneralReports]);
 
-  if (!showGeneralReports) {
-    return (
-      <>
-        <PageHeader eyebrow={t.guideUnavailable.eyebrow} title={t.title} />
-        <Card>
-          <CardBody className="py-12">
-            <EmptyState
-              icon={BarChart3}
-              title={t.guideUnavailable.title}
-              description={t.guideUnavailable.description}
-              action={
-                <Link href="/tenant/trips" className="btn btn-primary">
-                  <CalendarCheck size={15} />
-                  {t.guideUnavailable.action}
-                </Link>
-              }
-            />
-          </CardBody>
-        </Card>
-      </>
-    );
-  }
+  if (!showGeneralReports) return <GuideReportView />;
 
   const runExport = async (ext: string) => {
     setExportOpen(false);
