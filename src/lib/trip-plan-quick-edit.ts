@@ -34,9 +34,9 @@ export function validateQuickPlan(
   childPriceVisible: boolean,
 ): QuickPlanValidationError | null {
   if (!plan.name.trim()) return 'name';
-  if (!Number.isFinite(plan.basePrice) || plan.basePrice < 0) return 'basePrice';
+  if (!Number.isInteger(plan.basePrice) || plan.basePrice < 0) return 'basePrice';
   if (childPriceVisible && plan.childPrice !== null
-    && (!Number.isFinite(plan.childPrice) || plan.childPrice < 0)) {
+    && (!Number.isInteger(plan.childPrice) || plan.childPrice < 0)) {
     return 'childPrice';
   }
   return null;
@@ -128,7 +128,7 @@ export function validateAdvancedPlan(plan: TripPlan): AdvancedPlanValidationErro
   }
   if (plan.minParticipants > plan.maxParticipants) return 'partyRange';
 
-  if (!Number.isFinite(plan.depositValue) || plan.depositValue < 0) return 'deposit';
+  if (!Number.isInteger(plan.depositValue) || plan.depositValue < 0) return 'deposit';
   if ((plan.depositMode === 'NONE' || plan.depositMode === 'FULL') && plan.depositValue !== 0) {
     return 'deposit';
   }
@@ -141,4 +141,14 @@ export function validateAdvancedPlan(plan: TripPlan): AdvancedPlanValidationErro
     return 'deposit';
   }
   return null;
+}
+
+/** 季節售價：null 代表沿用方案基本價；有值時必須是非負整數元。 */
+export function isValidSeasonPriceOverride(value: number | null): boolean {
+  return value === null || (Number.isInteger(value) && value >= 0);
+}
+
+/** 加購項價格：必須是非負整數元。 */
+export function isValidAddonPrice(value: number): boolean {
+  return Number.isInteger(value) && value >= 0;
 }
