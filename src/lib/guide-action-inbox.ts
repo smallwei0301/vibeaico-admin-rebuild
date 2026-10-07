@@ -214,6 +214,10 @@ export type GuideActionInboxTourPaymentDueItem = {
   depositAmount: number | null;
   /** BALANCE：總額 - 已收；INITIAL 為 null。 */
   balanceAmount: number | null;
+  /** 期限的租戶時區日期（YYYY-MM-DD）；顯示一律用這個，不用瀏覽器時區換算 dueAt。 */
+  dueLocalDate: string;
+  /** 期限的租戶時區時間（HH:mm）；只知道日期（缺 start_time）時為 null。 */
+  dueLocalTime: string | null;
   /** 期限是否帶有真實時間（false = 只知道日期，例如出發日缺 start_time）。 */
   dueHasTime: boolean;
   priority: GuideActionInboxPriority;
@@ -645,6 +649,17 @@ export function buildGuideActionInboxTourRequestItem(
   };
 }
 
+function localTimeKey(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: normalizeGuideTimeZone(timeZone),
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.hour}:${values.minute}`;
+}
+
 export type GuideActionInboxTourPaymentDueInput = {
   id: string;
   orderNo: string;
@@ -699,6 +714,8 @@ export function buildGuideActionInboxTourPaymentDueItem(
         ? Number(input.depositAmount)
         : null,
       balanceAmount: null,
+      dueLocalDate: dateKey(new Date(input.holdExpiresAt), timeZone),
+      dueLocalTime: localTimeKey(new Date(input.holdExpiresAt), timeZone),
       dueHasTime: true,
       priority: getGuideActionInboxPriority(input.holdExpiresAt, now, timeZone),
       dueAt: input.holdExpiresAt,
@@ -716,6 +733,7 @@ export function buildGuideActionInboxTourPaymentDueItem(
     if (!dueAt || Date.parse(dueAt) <= now.getTime()) return null; // 已出發：尾款不再是出發前待辦
     return {
       ...base, stage: 'BALANCE', depositAmount: null, balanceAmount, dueHasTime: true,
+      dueLocalDate: departureDate, dueLocalTime: String(input.departureStartTime).slice(0, 5),
       priority: getGuideActionInboxPriority(dueAt, now, timeZone), dueAt,
     };
   }
@@ -728,6 +746,7 @@ export function buildGuideActionInboxTourPaymentDueItem(
   if (departureDate < today) return null;
   return {
     ...base, stage: 'BALANCE', depositAmount: null, balanceAmount, dueHasTime: false,
+    dueLocalDate: departureDate, dueLocalTime: null,
     priority: departureDate === today ? 'TODAY' : 'UPCOMING', dueAt,
   };
 }

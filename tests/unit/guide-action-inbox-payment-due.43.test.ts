@@ -38,10 +38,13 @@ function apply(rows: FakeRow[], calls: Call[]): FakeRow[] {
   return out;
 }
 
+const recorded: { table: string; calls: Call[] }[] = [];
+
 function fakeSupabase(tables: Record<string, FakeRow[]>) {
   return {
     from(table: string) {
       const calls: Call[] = [];
+      recorded.push({ table, calls });
       const b: any = {};
       for (const m of ['select', 'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'not', 'order', 'limit']) {
         b[m] = (...a: unknown[]) => { calls.push([m, a]); return b; };
@@ -178,6 +181,7 @@ describe('route.ts behaviour: #43 類別 2 TOUR_PAYMENT_DUE', () => {
   ];
 
   beforeEach(() => {
+    recorded.length = 0;
     requireTenantMock.mockReset();
     requireTenantMock.mockResolvedValue({
       supabase: fakeSupabase({ tour_orders: ROWS }), tenantId: T, user: { id: 'u' }, role: 'OWNER',
@@ -200,6 +204,78 @@ describe('route.ts behaviour: #43 類別 2 TOUR_PAYMENT_DUE', () => {
     expect(items.filter((i) => i.id === 'refund').map((i) => i.kind)).toEqual(['REFUND_PENDING']);
     const orderIds = items.filter((i) => ['TOUR_REQUEST', 'REFUND_PENDING', 'TOUR_PAYMENT_DUE'].includes(i.kind)).map((i) => i.id);
     expect(new Set(orderIds).size).toBe(orderIds.length);
+  });
+});
+
+describe('route.ts: payment-due source filters, window and display fields (#43 類別 2)', () => {
+  const T = 'tenant-a';
+  const dayStr = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+  const mk = (over: FakeRow): FakeRow => ({
+    tenant_id: T, order_no: 'T', total_amount: 18000, deposit_amount: 5000, paid_amount: 5000,
+    contact: { name: '旅客' }, hold_expires_at: null, seats_reserved: true, status: 'CONFIRMED',
+    payment_status: 'PARTIAL', trip_plans: { name: 'p' }, trips: { title: 't' },
+    trip_departures: { departs_on: dayStr(10), start_time: '09:00:00' },
+    created_at: '2026-09-10T00:00:00.000Z', ...over,
+  });
+  const run = async (rows: FakeRow[]) => {
+    recorded.length = 0;
+    requireTenantMock.mockReset();
+    requireTenantMock.mockResolvedValue({
+      supabase: fakeSupabase({ tour_orders: rows }), tenantId: T, user: { id: 'u' }, role: 'OWNER',
+    });
+    const res = await guideActionInboxGET(new Request('https://app.test/api/guide/action-inbox'), {});
+    return ((await res.json()).data as any[]).filter((i) => i.kind === 'TOUR_PAYMENT_DUE');
+  };
+
+  it('both payment-due queries filter trip_departures.departs_on >= tenant today at the source', async () => {
+    await run([]);
+    const queries = recorded.filter((r) => r.table === 'tour_orders'
+      && r.calls.some(([m, a]) => m === 'eq' && a[0] === 'payment_status' && (a[1] === 'UNPAID' || a[1] === 'PARTIAL')));
+    expect(queries).toHaveLength(2);
+    const todayTaipei = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date());
+    for (const q of queries) {
+      const gte = q.calls.find(([m, a]) => m === 'gte' && a[0] === 'trip_departures.departs_on');
+      expect(gte?.[1][1]).toBe(todayTaipei);
+      expect(q.calls.some(([m, a]) => m === 'eq' && a[0] === 'tenant_id' && a[1] === T)).toBe(true);
+    }
+  });
+
+  it('drops UNPAID orders whose departure already passed (stale holds cannot crowd out new ones)', async () => {
+    const hold = new Date(Date.now() + 3_600_000).toISOString();
+    const due = await run([
+      mk({ id: 'stale', payment_status: 'UNPAID', hold_expires_at: hold, trip_departures: { departs_on: dayStr(-5), start_time: '09:00:00' } }),
+      mk({ id: 'live', payment_status: 'UNPAID', hold_expires_at: hold }),
+    ]);
+    expect(due.map((i) => i.id)).toEqual(['live']);
+  });
+
+  it('with more than 20 PARTIAL rows keeps the soonest departures, not the oldest-created', async () => {
+    // created_at 越早的出發越晚：若只照 created_at 取前 20，最近出發的 5 筆會被截掉。
+    const rows = Array.from({ length: 25 }, (_, i) => mk({
+      id: `p${i}`,
+      created_at: `2026-09-${String(1 + (i % 9)).padStart(2, '0')}T00:00:${String(i).padStart(2, '0')}.000Z`,
+      trip_departures: { departs_on: dayStr(60 - i), start_time: '09:00:00' }, // i 越大越近
+    }));
+    const due = await run(rows);
+    const partial = due.filter((i) => i.stage === 'BALANCE');
+    expect(partial).toHaveLength(20);
+    const ids = partial.map((i) => i.id);
+    for (let i = 24; i >= 5; i -= 1) expect(ids).toContain(`p${i}`);
+    expect(ids).not.toContain('p0');
+    expect(ids[0]).toBe('p24'); // 依期限由近到遠
+  });
+
+  it('carries tenant-local display fields (no browser-timezone conversion)', async () => {
+    const dep = dayStr(10);
+    const due = await run([
+      mk({ id: 'bal-time' }),
+      mk({ id: 'bal-date', trip_departures: { departs_on: dep, start_time: null } }),
+      // 2026 年 12 月 31 日 17:30Z = 台北 2027/01/01 01:30，跨日也要用租戶時區
+      mk({ id: 'hold', payment_status: 'UNPAID', hold_expires_at: '2099-12-31T17:30:00.000Z' }),
+    ]);
+    expect(due.find((i) => i.id === 'bal-time')).toMatchObject({ dueLocalDate: dep, dueLocalTime: '09:00' });
+    expect(due.find((i) => i.id === 'bal-date')).toMatchObject({ dueLocalDate: dep, dueLocalTime: null, dueHasTime: false });
+    expect(due.find((i) => i.id === 'hold')).toMatchObject({ dueLocalDate: '2100-01-01', dueLocalTime: '01:30' });
   });
 });
 

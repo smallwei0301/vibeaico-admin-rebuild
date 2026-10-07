@@ -89,6 +89,10 @@ function firstOf<T>(value: T | T[] | null | undefined): T | null {
  *     `/tenant/trips/:tripId`，沒有這條排除的話，一個尚未成團、也沒有 PRIMARY
  *     指派的團次會同時冒出 STAFF_UNASSIGNED 與 REVIEW_REQUIRED／AT_RISK 兩張卡。
  */
+/** 等待付款兩個查詢的有界視窗；程式內依期限排序後每類最多取 PAYMENT_DUE_CAP 張。 */
+const PAYMENT_DUE_WINDOW = 200;
+const PAYMENT_DUE_CAP = 20;
+
 export const GET = handle(async () => {
   const t = await requireTenant();
   const settingsResult = await t.supabase
@@ -211,19 +215,22 @@ export const GET = handle(async () => {
       .limit(20),
     // #43 類別 2：等待付款（訂金或全額）——導遊已接受的申請（CONFIRMED + UNPAID +
     // seats_reserved + 有保留期限），期限是 hold_expires_at。與上面 TOUR_REQUEST（PENDING）
-    // status 互斥。每個 query 都帶 tenant_id。
+    // status 互斥。每個 query 都帶 tenant_id。逾期 hold 目前不會被 expiry RPC 取消
+    // （CONFIRMED），所以在來源就用 `trip_departures!inner` + departs_on >= 租戶今天排除
+    // 已出發的團次，避免陳舊列累積擠掉新的；取較大的有界視窗，再於程式內依期限排序取前 20。
     t.supabase
       .from('tour_orders')
-      .select('id, order_no, party_size, total_amount, deposit_amount, paid_amount, status, payment_status, seats_reserved, contact, hold_expires_at, created_at, trip_plans(name), trips(title), trip_departures(departs_on, start_time)')
+      .select('id, order_no, party_size, total_amount, deposit_amount, paid_amount, status, payment_status, seats_reserved, contact, hold_expires_at, created_at, trip_plans(name), trips(title), trip_departures!inner(departs_on, start_time)')
       .eq('tenant_id', t.tenantId)
       .eq('status', 'CONFIRMED')
       .eq('payment_status', 'UNPAID')
       .eq('seats_reserved', true)
       .not('hold_expires_at', 'is', null)
+      .gte('trip_departures.departs_on', today)
       .order('hold_expires_at', { ascending: true })
-      .limit(20),
-    // #43 類別 2：等待尾款（CONFIRMED + PARTIAL），期限是出發時刻；在來源就排除已出發
-    // 的團次（`trip_departures!inner` + departs_on >= 租戶今天），避免陳舊列擠掉有效列。
+      .limit(PAYMENT_DUE_WINDOW),
+    // #43 類別 2：等待尾款（CONFIRMED + PARTIAL），期限是出發時刻；同樣在來源排除已出發
+    // 的團次。不依賴未驗證的 embedded order 語法：取有界視窗後於程式內依出發時刻排序取前 20。
     t.supabase
       .from('tour_orders')
       .select('id, order_no, party_size, total_amount, deposit_amount, paid_amount, status, payment_status, seats_reserved, contact, hold_expires_at, created_at, trip_plans(name), trips(title), trip_departures!inner(departs_on, start_time)')
@@ -232,7 +239,7 @@ export const GET = handle(async () => {
       .eq('payment_status', 'PARTIAL')
       .gte('trip_departures.departs_on', today)
       .order('created_at', { ascending: true })
-      .limit(20),
+      .limit(PAYMENT_DUE_WINDOW),
   ]);
 
   if (bookingResult.error) throw bookingResult.error;
@@ -454,8 +461,7 @@ export const GET = handle(async () => {
 
   // #43 類別 2：兩個 query 的列用同一個 builder；不符合條件（例如 UNPAID 缺期限、已出發的
   // PARTIAL）回 null 不顯示。同一筆訂單若已有 TOUR_REQUEST／REFUND_PENDING 卡就不再疊一張。
-  const paymentDueItems: GuideActionInboxItem[] = dropGuideActionInboxOrderCardsAlreadyCovered(
-    [...(paymentDueUnpaidResult.data ?? []), ...(paymentDuePartialResult.data ?? [])]
+  const toPaymentDueCards = (rows: any[] | null) => (rows ?? [])
       .map((row: any) => {
         const contact = (row.contact ?? {}) as Record<string, unknown>;
         const trip = firstOf<{ title?: string | null }>(row.trips);
@@ -480,7 +486,12 @@ export const GET = handle(async () => {
           href: `/tenant/tour-orders?orderId=${encodeURIComponent(row.id)}`,
         }, now, timeZone);
       })
-      .filter((item): item is NonNullable<typeof item> => item !== null),
+      .filter((item): item is NonNullable<typeof item> => item !== null)
+      // 依期限（instant）由近到遠；最終跨類型排序仍只在下方 return 處做一次。
+      .sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt) || a.id.localeCompare(b.id))
+      .slice(0, PAYMENT_DUE_CAP);
+  const paymentDueItems: GuideActionInboxItem[] = dropGuideActionInboxOrderCardsAlreadyCovered(
+    [...toPaymentDueCards(paymentDueUnpaidResult.data), ...toPaymentDueCards(paymentDuePartialResult.data)],
     [...tourRequestItems, ...refundPendingItems],
   );
 

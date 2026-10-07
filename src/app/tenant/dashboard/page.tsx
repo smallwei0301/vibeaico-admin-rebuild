@@ -186,7 +186,7 @@ function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
               {item.stage === 'BALANCE'
                 ? t.actionInbox.tourPaymentDueDepartureDeadline
                 : t.actionInbox.tourPaymentDueHoldDeadline}
-              ：{formatDate(item.dueAt)}{item.dueHasTime ? ` ${formatTime(item.dueAt)}` : ''}
+              ：{item.dueLocalDate.replaceAll('-', '/')}{item.dueLocalTime ? ` ${item.dueLocalTime}` : ''}
             </span>
           </div>
         </>
