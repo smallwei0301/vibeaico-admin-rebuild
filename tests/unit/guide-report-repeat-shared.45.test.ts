@@ -152,3 +152,41 @@ describe('fetchPriorCustomers 只確認存在，不翻完歷史訂單', () => {
     for (const q of state.priorQueries) expect(q.tenant).toBe(TENANT);
   });
 });
+
+describe('資料截至（asOf／createdBefore）：報表與清單同一個上界', () => {
+  it('asOf 之後建立的訂單同時不進報表與下鑽清單（含重複旅客判定）', async () => {
+    vi.setSystemTime(new Date('2026-10-05T00:00:00Z')); // 台北 10-05 08:00；asOf = 此刻
+    state.orders = [
+      o('a1', 'A', '2026-10-03T02:00:00Z'), o('a2', 'A', '2026-10-04T02:00:00Z'),
+      o('e1', 'E', '2026-10-03T02:00:00Z'),
+      o('e2', 'E', '2026-10-05T01:00:00Z'), // asOf 之後：不得計入（否則 E 會變成重複旅客）
+      o('late', 'L', '2026-10-05T02:00:00Z'),
+    ];
+    const rep = (await (await reportGET(new Request('http://t/api/reports/guide?from=2026-10-01&to=2026-10-05'), {})).json()).data;
+    expect(rep.asOf).toBe('2026-10-05T00:00:00.000Z');
+    expect(rep.summary.totalOrders).toBe(3);
+    expect(rep.repeat).toMatchObject({ customers: 2, repeatCustomers: 1, repeatOrders: 2 });
+
+    const list = async (qs: string) => (await (await ordersGET(new Request(`http://t/api/tour-orders?createdFrom=2026-10-01&createdTo=2026-10-05&createdBefore=${encodeURIComponent(rep.asOf)}${qs}`), {})).json()).data;
+    const all = await list('&activeOnly=1');
+    expect(all.totalElements).toBe(rep.summary.totalOrders);
+    expect(all.content.map((r: Row) => r.id).sort()).toEqual(['a1', 'a2', 'e1']);
+    const repeat = await list('&repeatCustomers=1');
+    expect(repeat.totalElements).toBe(rep.repeat.repeatOrders);
+    expect(repeat.content.map((r: Row) => r.id).sort()).toEqual(['a1', 'a2']);
+    // 沒帶 createdBefore 時，同一區間會多出 asOf 之後的訂單（證明上界確實有作用）
+    const noBound = (await (await ordersGET(new Request('http://t/api/tour-orders?createdFrom=2026-10-01&createdTo=2026-10-05&activeOnly=1'), {})).json()).data;
+    expect(noBound.totalElements).toBe(5);
+  });
+
+  it('createdBefore 非法或早於 createdFrom 當天開始 → 400；嚴格小於（等於 asOf 的訂單不列）', async () => {
+    const get = (qs: string) => ordersGET(new Request(`http://t/api/tour-orders${qs}`), {});
+    expect((await get('?createdBefore=yesterday')).status).toBe(400);
+    expect((await get('?createdBefore=2026-10-05')).status).toBe(400); // 非完整 ISO 瞬間
+    expect((await get('?createdFrom=2026-10-01&createdBefore=2026-09-30T00:00:00Z')).status).toBe(400);
+    state.orders = [o('t1', 'A', '2026-10-03T02:00:00Z'), o('t2', 'A', '2026-10-03T02:00:01Z')];
+    const body = (await (await get('?createdFrom=2026-10-01&createdTo=2026-10-05&createdBefore=2026-10-03T02:00:01Z')).json()).data;
+    expect(body.content.map((r: Row) => r.id)).toEqual(['t1']);
+  });
+});
+

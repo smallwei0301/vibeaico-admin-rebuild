@@ -636,6 +636,8 @@ export type TourOrderQuery = {
   paymentStatus?: string; keyword?: string;
   /** #45 報表下鑽：行程、建立日期區間（YYYY-MM-DD，店家時區，含 createdTo 當天） */
   tripId?: string; createdFrom?: string; createdTo?: string;
+  /** #45：只列 created_at < 此時間點（ISO-8601 瞬間；報表「資料截至」asOf），與報表同一個上界 */
+  createdBefore?: string;
   /** #45：方案；只列非取消訂單（'1'）；只列重複旅客的訂單（'1'，需同時帶 createdFrom／createdTo） */
   planId?: string; activeOnly?: '1'; repeatCustomers?: '1';
   /**
@@ -657,7 +659,10 @@ export function listTourOrders(q: TourOrderQuery = {}): Promise<Paged<TourOrder>
       let repeatPhones: Set<string> | null = null;
       if (q.repeatCustomers === '1') {
         const lo = q.createdFrom ? zonedMidnightMs(q.createdFrom, MOCK_TIME_ZONE) : 0;
-        const hi = q.createdTo ? zonedMidnightMs(addDays(q.createdTo, 1), MOCK_TIME_ZONE) : Infinity;
+        const hi = Math.min(
+          q.createdTo ? zonedMidnightMs(addDays(q.createdTo, 1), MOCK_TIME_ZONE) : Infinity,
+          q.createdBefore ? Date.parse(q.createdBefore) : Infinity,
+        );
         const live = MOCK_TOUR_ORDERS.filter((o) => o.status !== 'CANCELLED');
         const prior = new Set(live.filter((o) => Date.parse(o.createdAt) < lo).map((o) => o.customerPhone));
         const counts = new Map<string, number>();
@@ -685,6 +690,10 @@ export function listTourOrders(q: TourOrderQuery = {}): Promise<Paged<TourOrder>
       if (q.createdTo) {
         const hi = zonedMidnightMs(addDays(q.createdTo, 1), MOCK_TIME_ZONE);
         rows = rows.filter((o) => Date.parse(o.createdAt) < hi);
+      }
+      if (q.createdBefore) {
+        const ub = Date.parse(q.createdBefore);
+        rows = rows.filter((o) => Date.parse(o.createdAt) < ub);
       }
       if (q.paymentStatus) rows = rows.filter((o) => o.paymentStatus === q.paymentStatus);
       if (repeatPhones) rows = rows.filter((o) => repeatPhones!.has(o.customerPhone));
@@ -725,6 +734,7 @@ export const TOUR_PAYMENT_STATUS_VALUES: TourPaymentStatus[] = [
  * 是機械的 pass-through，這個測試邊界涵蓋不到它——PR 報告裡如實說明。
  */
 const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+const ISO_INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 const TOUR_ORDER_STATUS_VALUES: TourOrderStatus[] = ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'];
 
 export type TourOrdersDeepLink = {
@@ -733,6 +743,8 @@ export type TourOrdersDeepLink = {
   status: TourOrderStatus | ''; tripId: string; createdFrom: string; createdTo: string;
   source: TourOrderSource | '';
   planId: string; activeOnly: boolean; repeatCustomers: boolean;
+  /** ISO-8601 瞬間（報表 asOf）；格式不合法 → '' */
+  createdBefore: string;
 };
 const TOUR_ORDER_SOURCE_VALUES: TourOrderSource[] = ['MIDAO', 'VIBEAI_SHOP', 'LINE', 'MANUAL'];
 
@@ -752,12 +764,14 @@ export function parseTourOrdersDeepLink(search: string): TourOrdersDeepLink {
   const createdTo = YMD_RE.test(ct) ? ct : '';
   const sr = params.get('source');
   const source = sr && (TOUR_ORDER_SOURCE_VALUES as string[]).includes(sr) ? (sr as TourOrderSource) : '';
+  const cb = params.get('createdBefore') ?? '';
+  const createdBefore = ISO_INSTANT_RE.test(cb) && Number.isFinite(Date.parse(cb)) ? cb : '';
   const planId = params.get('planId') ?? '';
   // status=CANCELLED 與「排除取消」矛盾：以明確的 status 為準，忽略這兩個旗標（API 對同時帶會回 400）
   const excl = status !== 'CANCELLED';
   const activeOnly = excl && params.get('activeOnly') === '1';
   const repeatCustomers = excl && params.get('repeatCustomers') === '1' && !!createdFrom && !!createdTo;
-  return { paymentStatus, orderId, status, tripId, createdFrom, createdTo, source, planId, activeOnly, repeatCustomers };
+  return { paymentStatus, orderId, status, tripId, createdFrom, createdTo, source, planId, activeOnly, repeatCustomers, createdBefore };
 }
 
 /**
@@ -766,10 +780,10 @@ export function parseTourOrdersDeepLink(search: string): TourOrdersDeepLink {
  */
 export function buildTourOrdersLink(f: {
   status?: string; paymentStatus?: string; tripId?: string; createdFrom?: string; createdTo?: string; source?: string;
-  planId?: string; activeOnly?: boolean; repeatCustomers?: boolean;
+  planId?: string; activeOnly?: boolean; repeatCustomers?: boolean; createdBefore?: string | null;
 }): string {
   const p = new URLSearchParams();
-  for (const k of ['status', 'paymentStatus', 'tripId', 'createdFrom', 'createdTo', 'source', 'planId'] as const) {
+  for (const k of ['status', 'paymentStatus', 'tripId', 'createdFrom', 'createdTo', 'createdBefore', 'source', 'planId'] as const) {
     if (f[k]) p.set(k, f[k] as string);
   }
   if (f.activeOnly) p.set('activeOnly', '1');

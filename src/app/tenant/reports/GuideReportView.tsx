@@ -22,7 +22,7 @@ import {
   type GuideRankDimension, type GuideRankMetric, type GuideRankRow, type GuideReport,
 } from '@/services/reports';
 import { reportsPage } from '@/i18n/zh-TW/pages/reports';
-import { presetRange, todayIn } from '@/lib/guide-report-range';
+import { formatAsOf, presetRange, todayIn } from '@/lib/guide-report-range';
 import { GUIDE_SOURCE_KEYS, GUIDE_SOURCES } from '@/server/guide-report';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/utils';
 
@@ -120,6 +120,9 @@ export function GuideReportView() {
     setQuery({ from: fromInput, to: toInput });
   };
 
+  /** 所有下鑽連結共用：日期區間＋資料截至（createdBefore），清單與報表用同一個讀取上界 */
+  const linkRange = { from: report?.range.from ?? '', to: report?.range.to ?? '', asOf: report?.asOf ?? null };
+
   const columns: Column<GuideRankRow>[] = [
     { key: 'rank', header: t.ranking.columns.rank, width: '64px', render: (_r, i) => <Badge tone={RANK_TONE[i] ?? 'neutral'}>{i + 1}</Badge> },
     {
@@ -129,7 +132,7 @@ export function GuideReportView() {
       render: (r) => (report
         ? (
           <Link
-            href={rankingLink(report.range, dimension, r.id, metric)}
+            href={rankingLink(linkRange, dimension, r.id, metric)}
             className="underline" title={t.drilldown.viewTripOrders(r.name)}
           >
             {r.name}
@@ -145,7 +148,7 @@ export function GuideReportView() {
   const cardLabel = (name: string) => (report?.truncated ? `${name}（${t.truncatedHint}）` : name);
   const s = report?.summary;
   const prev = report?.previous;
-  const rangeLink = (status?: string) => (report ? buildRangeLink(report.range, status) : '/tenant/tour-orders');
+  const rangeLink = (status?: string) => (report ? buildRangeLink(linkRange, status) : '/tenant/tour-orders');
   const rows = report ? report.ranking[dimension][metric] : [];
 
   if (forbidden) {
@@ -251,7 +254,7 @@ export function GuideReportView() {
                   {s.refundPendingCount > 0 ? (
                     <>
                       <br />
-                      <Link href={refundPendingLink(report.range)} className="underline" title={t.drilldown.viewOrders}>
+                      <Link href={refundPendingLink(linkRange)} className="underline" title={t.drilldown.viewOrders}>
                         {t.cardHints.refundPending(s.refundPendingCount)}
                       </Link>
                     </>
@@ -305,7 +308,7 @@ export function GuideReportView() {
                       <div className="stat-label">{name}</div>
                       <div className="stat-value text-base">
                         {(GUIDE_SOURCES as readonly string[]).includes(k)
-                          ? <Link href={sourceLink(report.range, k)} className="underline" title={t.sourceCard.viewSourceOrders(name)}>{line}</Link>
+                          ? <Link href={sourceLink(linkRange, k)} className="underline" title={t.sourceCard.viewSourceOrders(name)}>{line}</Link>
                           : line}
                       </div>
                       <div className="form-text">{t.sourceCard.previous(prev.bySource[k].orders)}</div>
@@ -338,7 +341,7 @@ export function GuideReportView() {
               {report.repeat.repeatOrders > 0 && !report.truncated ? (
                 <p className="mt-2 text-sm">
                   <Link
-                    href={repeatCustomersLink(report.range)}
+                    href={repeatCustomersLink(linkRange)}
                     className="underline"
                   >
                     {t.repeatCard.viewOrders(report.repeat.repeatOrders)}
@@ -406,11 +409,4 @@ export function GuideReportView() {
       </Card>
     </>
   );
-}
-
-/** 以店家時區顯示「資料截至」時間 */
-function formatAsOf(iso: string, zone: string): string {
-  return new Intl.DateTimeFormat('zh-TW', {
-    timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).format(new Date(iso));
 }

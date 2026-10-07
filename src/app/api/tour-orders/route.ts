@@ -30,6 +30,8 @@ const drilldownSchema = z.object({
   source: z.enum(['MIDAO', 'VIBEAI_SHOP', 'LINE', 'MANUAL']).optional(),
   createdFrom: z.string().regex(DATE_RE, 'createdFrom 需為 YYYY-MM-DD').optional(),
   createdTo: z.string().regex(DATE_RE, 'createdTo 需為 YYYY-MM-DD').optional(),
+  /** 報表「資料截至」asOf：只列 created_at < 此 ISO-8601 瞬間，與報表讀取上界同一個比較（嚴格小於） */
+  createdBefore: z.string().datetime({ offset: true }).optional(),
 });
 
 /**
@@ -62,6 +64,7 @@ export const GET = handle(async (req) => {
     source: url.searchParams.get('source') || undefined,
     createdFrom: url.searchParams.get('createdFrom') || undefined,
     createdTo: url.searchParams.get('createdTo') || undefined,
+    createdBefore: url.searchParams.get('createdBefore') || undefined,
   });
   const status = q.status;
   const orderId = orderIdSchema.parse(url.searchParams.get('orderId') ?? undefined);
@@ -85,6 +88,15 @@ export const GET = handle(async (req) => {
       if (e instanceof GuideReportRangeError) throw new ApiHttpError(400, e.message, ERR.VALIDATION);
       throw e;
     }
+  }
+
+  // 上界 = min(日期區間終點, createdBefore)；與報表的 min(本期終點, requestStartedAt) 同一個 `<` 比較。
+  if (q.createdBefore) {
+    const beforeMs = Date.parse(q.createdBefore);
+    if (bounds.gteIso && beforeMs < Date.parse(bounds.gteIso)) {
+      throw new ApiHttpError(400, 'createdBefore 不可早於 createdFrom 當天的開始', ERR.VALIDATION);
+    }
+    if (!bounds.ltIso || beforeMs < Date.parse(bounds.ltIso)) bounds = { ...bounds, ltIso: new Date(beforeMs).toISOString() };
   }
 
   // 所有篩選集中在這一處，一般清單與「重複旅客」候選查詢共用；tenant_id 一律先套用。

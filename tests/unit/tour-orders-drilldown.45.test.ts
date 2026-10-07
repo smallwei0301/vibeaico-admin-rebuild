@@ -47,7 +47,7 @@ describe('parseTourOrdersDeepLink 新參數', () => {
     expect(parseTourOrdersDeepLink('?status=BOGUS&createdFrom=10/01&createdTo=x'))
       .toMatchObject({ status: '', createdFrom: '', createdTo: '' });
     expect(parseTourOrdersDeepLink('')).toEqual({
-      paymentStatus: '', orderId: '', status: '', tripId: '', createdFrom: '', createdTo: '', source: '', planId: '', activeOnly: false, repeatCustomers: false,
+      paymentStatus: '', orderId: '', status: '', tripId: '', createdFrom: '', createdTo: '', source: '', planId: '', activeOnly: false, repeatCustomers: false, createdBefore: '',
     });
   });
 });

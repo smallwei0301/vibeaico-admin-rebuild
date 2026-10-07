@@ -3,15 +3,16 @@
  * 原則：連結列出的訂單必須就是該數字所計算的訂單——
  *  - 訂單數／人數／來源分布排除已取消 → 帶 activeOnly
  *  - 實收營收口徑含已取消訂單的已收款 → 不帶 activeOnly
- * 日期一律用報表實際使用的區間（店家時區，與 API 同一套界線）。
+ * 日期一律用報表實際使用的區間（店家時區，與 API 同一套界線）；asOf 以 createdBefore（嚴格小於）傳遞。
  */
 import { buildTourOrdersLink } from '@/services/tours';
 
-export type ReportRange = { from: string; to: string };
+/** asOf＝報表「資料截至」；有值時所有連結帶 createdBefore，讓清單與報表用同一個讀取上界 */
+export type ReportRange = { from: string; to: string; asOf?: string | null };
 export type RankMetric = 'orders' | 'people' | 'revenue';
 export type RankDimension = 'trip' | 'plan';
 
-const dates = (r: ReportRange) => ({ createdFrom: r.from, createdTo: r.to });
+const dates = (r: ReportRange) => ({ createdFrom: r.from, createdTo: r.to, createdBefore: r.asOf });
 
 /** 整個區間（含所有狀態）；可選狀態 */
 export const rangeLink = (r: ReportRange, status?: string) => buildTourOrdersLink({ status, ...dates(r) });

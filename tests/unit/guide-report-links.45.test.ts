@@ -38,4 +38,18 @@ describe('報表下鑽連結參數（純函式）', () => {
     expect(href).toBe('/tenant/tour-orders?createdFrom=2026-10-01&createdTo=2026-10-10&repeatCustomers=1');
     expect(parseTourOrdersDeepLink(href.split('?')[1])).toMatchObject({ repeatCustomers: true, createdFrom: R.from, createdTo: R.to });
   });
+
+  it('有 asOf 時所有連結帶 createdBefore；沒有則不帶；parse 還原且非法值忽略', () => {
+    const asOf = '2026-10-07T03:40:00.000Z';
+    const R2 = { ...R, asOf };
+    const links = [
+      rangeLink(R2), rangeLink(R2, 'CANCELLED'), sourceLink(R2, 'LINE'), rankingLink(R2, 'plan', PLAN, 'orders'),
+      refundPendingLink(R2), repeatCustomersLink(R2),
+    ];
+    for (const l of links) expect(params(l).get('createdBefore')).toBe(asOf);
+    expect(params(rangeLink(R)).has('createdBefore')).toBe(false);
+    expect(params(rangeLink({ ...R, asOf: null })).has('createdBefore')).toBe(false);
+    expect(parseTourOrdersDeepLink(repeatCustomersLink(R2).split('?')[1]).createdBefore).toBe(asOf);
+    expect(parseTourOrdersDeepLink('?createdBefore=nope').createdBefore).toBe('');
+  });
 });
