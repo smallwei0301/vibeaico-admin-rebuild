@@ -3,6 +3,7 @@ import {
   changeDigestOf,
   evaluateAstra,
   isTrustedFinalRiskAgentUser,
+  loadFallbackSourceEvidence,
   parseAstraReviews,
   routing,
 } from './astra-review-policy.mjs';
@@ -72,6 +73,7 @@ export function buildProductionDbFinalRiskEvidence({
 
   return {
     status: 'ASTRA_APPROVED',
+    changeDigest: latest.changeDigest,
     requestedModel: latest.requestedModel,
     actualModel: latest.actualModel,
     // Preserve the already-validated Owner #552 identity contract for G6.
@@ -81,15 +83,19 @@ export function buildProductionDbFinalRiskEvidence({
       'reviewerTier', 'costPolicyVersion', 'identityEvidence', 'executionEvidence',
       'modelSelectionAvailable', 'downgradeReason', 'downgradeEvidenceRef',
       'reviewLineage', 'adversarialEvidence', 'priorFindingsReviewed', 'unresolvedFindingCount',
+      'fallbackPolicyVersion', 'failureClass', 'failureEvidenceRef', 'failureDiagnosis',
+      'replacementReviewRef', 'playbookEvidenceRef', 'repository', 'baseSha', 'headSha', 'policyVersion', 'testBaseline', 'schemaBaseline', 'reviewerExecutionReceipt',
     ].filter((key) => latest[key] !== undefined).map((key) => [key, latest[key]])),
     planDigest,
     evidenceDigest,
     reviewedAt: latest.submittedAt,
+    submittedAt: latest.submittedAt,
     executionRef: latest.executionRef || latest.report,
     reviewId: String(latest.reviewId),
     releaseId,
     trustSource: latest.trustSource,
     databaseMutationAuthorized: false,
+    ...(latest.reviewerTier === 'EVIDENCE_FALLBACK' ? { fallbackSourceEvidence: context.fallbackSourceEvidence } : {}),
   };
 }
 
@@ -188,7 +194,9 @@ export async function buildProductionDbFinalRiskEvidenceFromGithub({
   const changedFiles = [...new Set(files.flatMap((file) => [file.filename, file.previous_filename].filter(Boolean)))];
   const body = current.body ?? '';
   const reviews = await loadTrustedGithubReviews({ github, owner, repo, prNumber }, policy);
+  const fallbackSourceEvidence = await loadFallbackSourceEvidence({ github, owner, repo, reviews, prNumber }, policy);
   const context = {
+    fallbackSourceEvidence,
     repository,
     baseSha: current.base.sha,
     headSha: current.head.sha,

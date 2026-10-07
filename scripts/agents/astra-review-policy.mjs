@@ -1,4 +1,4 @@
-import { finalRiskReviewerErrors, independentRoleErrors } from './final-risk-cost-policy.mjs';
+import { fallbackReference, finalRiskReviewerErrors, independentRoleErrors } from './final-risk-cost-policy.mjs';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { AMBIGUOUS_FIELD, readField } from './agent-wip-policy.mjs';
@@ -277,7 +277,8 @@ export function parseAstraReviews(reviews = [], evidenceType = 'astra-review') {
     const match = body.match(evidenceType === 'sol-review' ? /```sol-review\s*\n([\s\S]*?)\n```/ : /```astra-review\s*\n([\s\S]*?)\n```/);
     try {
       if (!match) throw new Error('Malformed attestation');
-      return [{ ...JSON.parse(match[1]), ...record }];
+      // Candidate payloads cannot manufacture a trusted source readback receipt.
+      return [{ ...JSON.parse(match[1]), fallbackSourceEvidence: undefined, ...record }];
     } catch { return [{ ...record, parseError: true }]; }
   }).sort((a, b) => String(b.submittedAt).localeCompare(String(a.submittedAt)) || Number(b.reviewId) - Number(a.reviewId));
 }
@@ -310,13 +311,69 @@ export function evaluateAstra({ body = '', changedFiles = null, context = {}, re
     const roleContext = { ...context, headSha: semanticRoleHead(latest, context) };
     const reviewerErrors = finalRiskReviewerErrors(latest, policy, roleContext);
     if (reviewerErrors.length) errors.push('Astra model identity is unverified', ...reviewerErrors);
-    if (latest.reviewerTier !== 'CURRENT_AGENT' && latest.identityEvidence !== 'OPERATOR_ATTESTED') {
+    if (!['CURRENT_AGENT', 'EVIDENCE_FALLBACK'].includes(latest.reviewerTier) && latest.identityEvidence !== 'OPERATOR_ATTESTED') {
       errors.push('Missing explicit operator model attestation');
     }
     if (!meaningful(latest.report) || !/^https:\/\/github\.com\//.test(latest.report)) errors.push('Missing durable review report URL');
     if (!meaningful(latest.findings)) errors.push('Missing Astra findings');
   }
   return { ...classification, errors, status: errors.length ? 'ASTRA_PENDING' : 'ASTRA_APPROVED' };
+}
+
+// Only a trusted read-only caller supplies this receipt; never copy it from an attestation.
+export async function loadFallbackSourceEvidence({ github, owner, repo, reviews, prNumber }, policy = routing) {
+  const latest = parseAstraReviews(reviews)[0];
+  if (latest?.reviewerTier !== 'EVIDENCE_FALLBACK') return undefined;
+  const repository = `${owner}/${repo}`;
+  if (latest.failureEvidenceRef === latest.replacementReviewRef) return undefined;
+  const refs = [latest.failureEvidenceRef, latest.replacementReviewRef];
+  if (latest.repository !== repository || !Number.isSafeInteger(prNumber) || prNumber < 1
+    || refs.some(ref => fallbackReference(ref, repository)?.number !== prNumber)) return undefined;
+  try {
+    const main = await github.rest.repos.getCommit({ owner, repo, ref: 'main' });
+    const currentMainSha = main.data.sha;
+    if (!SHA.test(currentMainSha)) return undefined;
+    const response = await github.rest.repos.getContent({ owner, repo, ref: currentMainSha, path: 'docs/AGENT-PLAYBOOK.md' });
+    const file = response.data;
+    if (Array.isArray(file) || file.type !== 'file' || file.encoding !== 'base64' || !SHA.test(file.sha)) return undefined;
+    const records = [];
+    for (const ref of refs) {
+      const identity = fallbackReference(ref, repository);
+      const response = identity.kind === 'pullrequestreview'
+        ? await github.rest.pulls.getReview({ owner, repo, pull_number: identity.number, review_id: identity.id })
+        : await github.rest.issues.getComment({ owner, repo, comment_id: identity.id });
+      const record = response.data;
+      if (record.id !== identity.id || record.html_url !== ref || !record.user?.login || !record.body) return undefined;
+      let trusted = isTrustedFinalRiskAgentUser(record.user, policy);
+      if (!trusted) {
+        const permission = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: record.user.login });
+        trusted = ['admin', 'maintain', 'write'].includes(permission.data.permission);
+      }
+      let updatedAt = record.updated_at;
+      if (identity.kind === 'pullrequestreview') {
+        // REST exposes submitted_at but review bodies remain editable. Read the
+        // actual update time; never pretend submission is an immutable save.
+        const { node } = await github.graphql(`query($id: ID!) {
+          node(id: $id) { ... on PullRequestReview {
+            id fullDatabaseId url body state submittedAt updatedAt
+          } }
+        }`, { id: record.node_id });
+        if (!node || node.id !== record.node_id || String(node.fullDatabaseId) !== String(record.id)
+          || node.url !== ref || node.body !== record.body || node.state !== record.state
+          || node.submittedAt !== record.submitted_at) return undefined;
+        updatedAt = node.updatedAt;
+      }
+      records.push({ ...identity, ref, body: record.body, state: record.state, trusted,
+        createdAt: record.created_at ?? record.submitted_at, updatedAt });
+    }
+    // Detect main movement during readback; recollect rather than accept stale-main proof.
+    const after = await github.rest.repos.getCommit({ owner, repo, ref: 'main' });
+    if (after.data.sha !== currentMainSha) return undefined;
+    return { repository, prNumber, currentMainSha, records,
+      playbook: { mainSha: currentMainSha, blobSha: file.sha, content: Buffer.from(file.content, 'base64').toString('utf8') } };
+  } catch {
+    return undefined; // Missing records, denied access, or unavailable canonical main fail closed.
+  }
 }
 
 const ordinaryConcrete = value => typeof value === 'string' && value.trim().length >= 8 && !/^(unknown|none|tbd)$/i.test(value);
@@ -386,6 +443,7 @@ export async function evaluateGithubAstra({ github, owner, repo, current }, poli
     }
   }
   const digest = changeDigestOf(files);
+  const fallbackSourceEvidence = await loadFallbackSourceEvidence({ github, owner, repo, reviews, prNumber: current.number }, policy);
   let roleEvidence;
   if (ordinaryReviewRequired || (classification.required && policy.openaiBuilderDecision?.independentReviewerRequired === true)) {
     const latest = parseAstraReviews(reviews, evidenceType)[0];
@@ -422,6 +480,7 @@ export async function evaluateGithubAstra({ github, owner, repo, current }, poli
     } catch { roleEvidence = undefined; } // missing runtime capture stays pending, never manufacture historical actors
   }
   const result = evaluateAstra({ body, changedFiles, reviews, context: {
+    fallbackSourceEvidence,
     repository: `${owner}/${repo}`, baseSha: current.base.sha, headSha: current.head.sha,
     policyVersion: policy.version, testBaseline: readField(body, 'ASTRA_TEST_BASELINE'),
     schemaBaseline: readField(body, 'ASTRA_SCHEMA_BASELINE'),
