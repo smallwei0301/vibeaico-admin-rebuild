@@ -238,7 +238,7 @@ describe('GET /api/reports/guide', () => {
       expect(c.lt).toBe('2026-09-30T16:00:00.000Z');
     }
     // p449 落在 09-30 23:59:59 台北時間 = 15:59:59Z，早於本期開始 → 算；c2 屬於其他租戶 → 不算；c1 先前只有取消 → 不算
-    expect(body.data.repeat).toEqual({ customers: 450, repeatCustomers: 2, ratePercent: 0.4, unlinkedOrders: 0 });
+    expect(body.data.repeat).toEqual({ customers: 450, repeatCustomers: 2, repeatOrders: 2, ratePercent: 0.4, unlinkedOrders: 0 });
   });
 
   it('先前訂單查詢失敗 → 500，不靜默當成沒有重複', async () => {

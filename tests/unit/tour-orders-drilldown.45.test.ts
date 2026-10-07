@@ -21,7 +21,7 @@ vi.mock('@/server/tenant', () => ({
 const fakeDb = {
   from: (table: string) => {
     const q: Record<string, unknown> = {};
-    for (const m of ['select', 'eq', 'gte', 'lt', 'or', 'order', 'range']) {
+    for (const m of ['select', 'eq', 'neq', 'gte', 'lt', 'gt', 'in', 'or', 'order', 'range', 'limit']) {
       q[m] = (...a: unknown[]) => { state.ops.push([`${table}.${m}`, ...a]); return q; };
     }
     q.maybeSingle = async () => ({
@@ -47,7 +47,7 @@ describe('parseTourOrdersDeepLink 新參數', () => {
     expect(parseTourOrdersDeepLink('?status=BOGUS&createdFrom=10/01&createdTo=x'))
       .toMatchObject({ status: '', createdFrom: '', createdTo: '' });
     expect(parseTourOrdersDeepLink('')).toEqual({
-      paymentStatus: '', orderId: '', status: '', tripId: '', createdFrom: '', createdTo: '', source: '',
+      paymentStatus: '', orderId: '', status: '', tripId: '', createdFrom: '', createdTo: '', source: '', planId: '', activeOnly: false, repeatCustomers: false,
     });
   });
 });
@@ -78,6 +78,32 @@ describe('來源下鑽參數', () => {
     expect((await get('?source=LINE')).status).toBe(200);
     expect(ops('tour_orders.eq')).toEqual(expect.arrayContaining([['tour_orders.eq', 'source', 'LINE']]));
     expect((await get('?source=BOGUS')).status).toBe(400);
+  });
+});
+
+const PLAN = '44444444-4444-4444-8444-444444444444';
+describe('planId／activeOnly 下鑽', () => {
+  it('parse 與 build 互逆；status=CANCELLED 時忽略 activeOnly／repeatCustomers', () => {
+    const href = buildTourOrdersLink({ planId: PLAN, activeOnly: true, createdFrom: '2026-10-01', createdTo: '2026-10-10' });
+    expect(href).toBe(`/tenant/tour-orders?createdFrom=2026-10-01&createdTo=2026-10-10&planId=${PLAN}&activeOnly=1`);
+    expect(parseTourOrdersDeepLink(href.split('?')[1])).toMatchObject({ planId: PLAN, activeOnly: true, repeatCustomers: false });
+    const rp = buildTourOrdersLink({ repeatCustomers: true, createdFrom: '2026-10-01', createdTo: '2026-10-10' });
+    expect(rp).toBe('/tenant/tour-orders?createdFrom=2026-10-01&createdTo=2026-10-10&repeatCustomers=1');
+    expect(parseTourOrdersDeepLink(rp.split('?')[1]).repeatCustomers).toBe(true);
+    expect(parseTourOrdersDeepLink('?repeatCustomers=1').repeatCustomers).toBe(false); // 缺日期不啟用
+    expect(parseTourOrdersDeepLink('?status=CANCELLED&activeOnly=1')).toMatchObject({ status: 'CANCELLED', activeOnly: false });
+  });
+  it('GET：planId 帶 .eq(plan_id)（在 tenant_id 之後）、activeOnly 帶 .neq(status, CANCELLED)', async () => {
+    const res = await get(`?planId=${PLAN}&activeOnly=1`);
+    expect(res.status).toBe(200);
+    const eqs = ops('tour_orders.eq');
+    expect(eqs[0]).toEqual(['tour_orders.eq', 'tenant_id', TENANT]);
+    expect(eqs).toEqual(expect.arrayContaining([['tour_orders.eq', 'plan_id', PLAN]]));
+    expect(ops('tour_orders.neq')).toEqual([['tour_orders.neq', 'status', 'CANCELLED']]);
+  });
+  it('沒帶 activeOnly 就不加 neq', async () => {
+    await get('?status=PENDING');
+    expect(ops('tour_orders.neq')).toHaveLength(0);
   });
 });
 

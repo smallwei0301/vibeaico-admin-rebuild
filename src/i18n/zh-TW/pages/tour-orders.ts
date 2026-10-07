@@ -55,8 +55,11 @@ export const tourOrdersPage = {
     current: (desc: string) => `目前篩選：${desc}`,
     range: (from: string, to: string) => `建立日期 ${from || '不限'} ～ ${to || '不限'}`,
     trip: '指定行程',
+    plan: '指定方案',
+    activeOnly: '不含已取消訂單',
+    repeatCustomers: '重複旅客的訂單（不含已取消）',
     sep: '、',
-    clear: '清除日期與行程篩選',
+    clear: '清除報表下鑽篩選',
   },
 
   status: {

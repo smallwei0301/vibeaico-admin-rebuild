@@ -61,6 +61,8 @@ export type GuideRepeatStat = {
   /** 本期有非取消訂單且 customer_id 非空的旅客數（去重） */
   customers: number;
   repeatCustomers: number;
+  /** 重複旅客在本期的非取消訂單數（下鑽清單列出的筆數） */
+  repeatOrders: number;
   /** repeatCustomers ÷ customers × 100，1 位小數；分母 0 → null */
   ratePercent: number | null;
   /** customer_id 為空的非取消訂單數（不計入分母） */
@@ -272,21 +274,37 @@ export function summarize(rows: GuideReportOrderRow[]): GuideSummary {
   };
 }
 
+/** 重複旅客的 customer_id 集合（定義見檔頭）。報表與訂單清單下鑽共用，口徑只此一份。 */
+export function repeatCustomerIdSet(
+  curRows: Pick<GuideReportOrderRow, 'status' | 'customer_id'>[],
+  priorCustomerIds: ReadonlySet<string>,
+): Set<string> {
+  const counts = new Map<string, number>();
+  for (const r of curRows) {
+    if (r.status === 'CANCELLED' || !r.customer_id) continue;
+    counts.set(r.customer_id, (counts.get(r.customer_id) ?? 0) + 1);
+  }
+  const out = new Set<string>();
+  for (const [id, n] of counts) if (n >= 2 || priorCustomerIds.has(id)) out.add(id);
+  return out;
+}
+
 /** 重複旅客（定義見檔頭）。curRows＝本期訂單；priorCustomerIds＝本期開始前已有非取消訂單的 customer_id。 */
 export function repeatCustomers(curRows: GuideReportOrderRow[], priorCustomerIds: ReadonlySet<string>): GuideRepeatStat {
-  const counts = new Map<string, number>();
+  const customers = new Set<string>();
   let unlinkedOrders = 0;
   for (const r of curRows) {
     if (r.status === 'CANCELLED') continue;
-    if (!r.customer_id) { unlinkedOrders += 1; continue; }
-    counts.set(r.customer_id, (counts.get(r.customer_id) ?? 0) + 1);
+    if (!r.customer_id) unlinkedOrders += 1; else customers.add(r.customer_id);
   }
-  let repeat = 0;
-  for (const [id, n] of counts) if (n >= 2 || priorCustomerIds.has(id)) repeat += 1;
+  const repeat = repeatCustomerIdSet(curRows, priorCustomerIds);
+  let repeatOrders = 0;
+  for (const r of curRows) if (r.status !== 'CANCELLED' && r.customer_id && repeat.has(r.customer_id)) repeatOrders += 1;
   return {
-    customers: counts.size,
-    repeatCustomers: repeat,
-    ratePercent: counts.size > 0 ? round1((repeat / counts.size) * 100) : null,
+    customers: customers.size,
+    repeatCustomers: repeat.size,
+    repeatOrders,
+    ratePercent: customers.size > 0 ? round1((repeat.size / customers.size) * 100) : null,
     unlinkedOrders,
   };
 }

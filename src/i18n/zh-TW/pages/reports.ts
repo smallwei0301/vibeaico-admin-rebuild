@@ -67,6 +67,7 @@ export const reportsPage = {
       customers: '本期旅客數',
       repeatCustomers: '重複旅客數',
       rate: '重複率',
+      viewOrders: (n: number) => `查看重複旅客本期的訂單（${n} 筆，不含已取消）`,
       unlinked: (n: number) => `未綁定旅客的訂單 ${n} 筆（不計入旅客數與重複率）`,
     },
     drilldown: { viewOrders: '查看訂單', viewTripOrders: (name: string) => `查看「${name}」的訂單` },
@@ -83,6 +84,7 @@ export const reportsPage = {
       metric: { orders: '依訂單數', people: '依人數', revenue: '依實收營收' },
       columns: { rank: '名次', name: '名稱', orders: '訂單數', people: '人數', revenue: '實收營收' },
       empty: '這段期間沒有可排序的資料',
+      linkNote: '名稱連結：訂單數、人數排序不含已取消訂單；依實收營收排序時連結含已取消訂單（已收款項仍計入實收）。',
       tieRule: '同分時依名稱排序，再依編號排序，結果每次相同。',
     },
     defs: {

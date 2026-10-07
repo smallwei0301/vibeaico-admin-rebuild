@@ -45,7 +45,7 @@ describe('重複旅客', () => {
       row({ created_at: CUR, customer_id: 'B' }),
       row({ created_at: CUR, customer_id: 'C' }),
     ], ['B']);
-    expect(r.repeat).toEqual({ customers: 3, repeatCustomers: 2, ratePercent: 66.7, unlinkedOrders: 0 });
+    expect(r.repeat).toEqual({ customers: 3, repeatCustomers: 2, repeatOrders: 3, ratePercent: 66.7, unlinkedOrders: 0 });
   });
 
   it('customer_id 為空不計分母、另列筆數；只有取消的旅客不計入；取消單不湊成 2 筆', () => {
@@ -56,18 +56,18 @@ describe('重複旅客', () => {
       row({ created_at: CUR, customer_id: 'E' }),
       row({ created_at: CUR, customer_id: 'E', status: 'CANCELLED' }),
     ]);
-    expect(r.repeat).toEqual({ customers: 1, repeatCustomers: 0, ratePercent: 0, unlinkedOrders: 2 });
+    expect(r.repeat).toEqual({ customers: 1, repeatCustomers: 0, repeatOrders: 0, ratePercent: 0, unlinkedOrders: 2 });
   });
 
   it('分母 0（只有取消／沒有訂單）→ 重複率 null，不是 0', () => {
     expect(run([row({ created_at: CUR, customer_id: 'F', status: 'CANCELLED' })]).repeat)
-      .toEqual({ customers: 0, repeatCustomers: 0, ratePercent: null, unlinkedOrders: 0 });
+      .toEqual({ customers: 0, repeatCustomers: 0, repeatOrders: 0, ratePercent: null, unlinkedOrders: 0 });
     expect(run([]).repeat.ratePercent).toBeNull();
   });
 
   it('上一期訂單不算本期旅客，且本期單筆旅客不因上一期訂單被自動算重複（先前須由 priorCustomerIds 提供）', () => {
     const r = run([row({ created_at: PREV, customer_id: 'G' }), row({ created_at: CUR, customer_id: 'G' })]);
-    expect(r.repeat).toEqual({ customers: 1, repeatCustomers: 0, ratePercent: 0, unlinkedOrders: 0 });
+    expect(r.repeat).toEqual({ customers: 1, repeatCustomers: 0, repeatOrders: 0, ratePercent: 0, unlinkedOrders: 0 });
   });
 
   it('repeatCustomers 直接呼叫：4 位旅客 1 位重複 → 25', () => {

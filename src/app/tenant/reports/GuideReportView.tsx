@@ -122,11 +122,16 @@ export function GuideReportView() {
     { key: 'rank', header: t.ranking.columns.rank, width: '64px', render: (_r, i) => <Badge tone={RANK_TONE[i] ?? 'neutral'}>{i + 1}</Badge> },
     {
       key: 'name', header: t.ranking.columns.name,
-      // 只有「依行程」的 id 是 trip id，tour-orders 才有 tripId 篩選；方案維度沒有對應篩選，維持純文字。
-      render: (r) => (dimension === 'trip' && report
+      // 行程／方案各自帶 tripId／planId。訂單數與人數排除已取消 → 加 activeOnly；
+      // 實收營收口徑含已取消訂單的已收款，所以「依實收營收」的連結不加 activeOnly。
+      render: (r) => (report
         ? (
           <Link
-            href={buildTourOrdersLink({ tripId: r.id, createdFrom: report.range.from, createdTo: report.range.to })}
+            href={buildTourOrdersLink({
+              ...(dimension === 'trip' ? { tripId: r.id } : { planId: r.id }),
+              activeOnly: metric !== 'revenue',
+              createdFrom: report.range.from, createdTo: report.range.to,
+            })}
             className="underline" title={t.drilldown.viewTripOrders(r.name)}
           >
             {r.name}
@@ -142,8 +147,8 @@ export function GuideReportView() {
   const cardLabel = (name: string) => (report?.truncated ? `${name}（${t.truncatedHint}）` : name);
   const s = report?.summary;
   const prev = report?.previous;
-  const rangeLink = (status?: string, source?: string, paymentStatus?: string) => buildTourOrdersLink({
-    status, source, paymentStatus, createdFrom: report?.range.from, createdTo: report?.range.to,
+  const rangeLink = (status?: string, source?: string, paymentStatus?: string, activeOnly?: boolean) => buildTourOrdersLink({
+    status, source, paymentStatus, activeOnly, createdFrom: report?.range.from, createdTo: report?.range.to,
   });
   const rows = report ? report.ranking[dimension][metric] : [];
 
@@ -304,7 +309,7 @@ export function GuideReportView() {
                       <div className="stat-label">{name}</div>
                       <div className="stat-value text-base">
                         {(GUIDE_SOURCES as readonly string[]).includes(k)
-                          ? <Link href={rangeLink(undefined, k)} className="underline" title={t.sourceCard.viewSourceOrders(name)}>{line}</Link>
+                          ? <Link href={rangeLink(undefined, k, undefined, true)} className="underline" title={t.sourceCard.viewSourceOrders(name)}>{line}</Link>
                           : line}
                       </div>
                       <div className="form-text">{t.sourceCard.previous(prev.bySource[k].orders)}</div>
@@ -334,6 +339,18 @@ export function GuideReportView() {
                   </div>
                 </div>
               </div>
+              {report.repeat.repeatOrders > 0 ? (
+                <p className="mt-2 text-sm">
+                  <Link
+                    href={buildTourOrdersLink({
+                      repeatCustomers: true, createdFrom: report.range.from, createdTo: report.range.to,
+                    })}
+                    className="underline"
+                  >
+                    {t.repeatCard.viewOrders(report.repeat.repeatOrders)}
+                  </Link>
+                </p>
+              ) : null}
               <p className="form-text mt-2">{t.repeatCard.unlinked(report.repeat.unlinkedOrders)}</p>
             </CardBody>
           </Card>
@@ -362,6 +379,7 @@ export function GuideReportView() {
                 />
               </div>
               <p className="form-text mt-2">{t.ranking.tieRule}</p>
+              <p className="form-text mt-1">{t.ranking.linkNote}</p>
             </CardBody>
           </Card>
         </>

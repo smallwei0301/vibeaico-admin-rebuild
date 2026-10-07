@@ -3,7 +3,8 @@ import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { hydrateTourOrders } from '@/server/tour-orders';
 import { ApiHttpError, ERR } from '@/server/http';
-import { GuideReportRangeError, createdRangeBounds } from '@/server/guide-report';
+import { GuideReportRangeError, MAX_ROWS, createdRangeBounds } from '@/server/guide-report';
+import { loadRepeatCustomerIds } from '@/server/guide-report-repeat';
 import { resolvePublicTimeZone } from '@/lib/public-time-zone';
 
 // #43 Final Risk F1：orderId 完全由 client 控制（GUIDE 收件匣 deep link 的 query string），
@@ -21,6 +22,11 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const drilldownSchema = z.object({
   status: z.enum(['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED']).optional(),
   tripId: z.string().uuid().optional(),
+  planId: z.string().uuid().optional(),
+  /** 只列非取消訂單（報表的訂單數／人數／來源口徑）；與 status=CANCELLED 互相矛盾 → 400 */
+  activeOnly: z.literal('1').optional(),
+  /** 只列「重複旅客」的訂單（口徑同報表）；必須同時帶 createdFrom／createdTo */
+  repeatCustomers: z.literal('1').optional(),
   source: z.enum(['MIDAO', 'VIBEAI_SHOP', 'LINE', 'MANUAL']).optional(),
   createdFrom: z.string().regex(DATE_RE, 'createdFrom 需為 YYYY-MM-DD').optional(),
   createdTo: z.string().regex(DATE_RE, 'createdTo 需為 YYYY-MM-DD').optional(),
@@ -50,48 +56,99 @@ export const GET = handle(async (req) => {
   const q = drilldownSchema.parse({
     status: url.searchParams.get('status') || undefined,
     tripId: url.searchParams.get('tripId') || undefined,
+    planId: url.searchParams.get('planId') || undefined,
+    activeOnly: url.searchParams.get('activeOnly') || undefined,
+    repeatCustomers: url.searchParams.get('repeatCustomers') || undefined,
     source: url.searchParams.get('source') || undefined,
     createdFrom: url.searchParams.get('createdFrom') || undefined,
     createdTo: url.searchParams.get('createdTo') || undefined,
   });
   const status = q.status;
   const orderId = orderIdSchema.parse(url.searchParams.get('orderId') ?? undefined);
+  const excludeCancelled = q.activeOnly === '1' || q.repeatCustomers === '1';
+  if (excludeCancelled && status === 'CANCELLED') {
+    throw new ApiHttpError(400, 'status=CANCELLED 與 activeOnly／repeatCustomers（排除取消訂單）互相矛盾', ERR.VALIDATION);
+  }
+  if (q.repeatCustomers === '1' && !(q.createdFrom && q.createdTo)) {
+    throw new ApiHttpError(400, 'repeatCustomers 必須同時帶 createdFrom 與 createdTo', ERR.VALIDATION);
+  }
 
-  let query = t.supabase.from('tour_orders')
-    .select('*', { count: 'exact' })
-    .eq('tenant_id', t.tenantId);
-  if (orderId) query = query.eq('id', orderId);
-  if (status) query = query.eq('status', status);
-  if (q.tripId) query = query.eq('trip_id', q.tripId);
+  let bounds: { gteIso?: string; ltIso?: string } = {};
   if (q.createdFrom || q.createdTo) {
     const { data: settings, error: se } = await t.supabase
       .from('tenant_settings').select('basic').eq('tenant_id', t.tenantId).maybeSingle();
     if (se) throw se;
     const zone = resolvePublicTimeZone((settings?.basic as { timezone?: unknown } | null)?.timezone);
-    let bounds;
     try {
       bounds = createdRangeBounds(q.createdFrom, q.createdTo, zone);
     } catch (e) {
       if (e instanceof GuideReportRangeError) throw new ApiHttpError(400, e.message, ERR.VALIDATION);
       throw e;
     }
-    if (bounds.gteIso) query = query.gte('created_at', bounds.gteIso);
-    if (bounds.ltIso) query = query.lt('created_at', bounds.ltIso);
-  }
-  if (q.source) query = query.eq('source', q.source);
-  if (paymentStatus) query = query.eq('payment_status', paymentStatus);
-  // 顧客姓名與電話存在 contact jsonb 裡，訂單編號是欄位——兩者都要搜得到。
-  if (keyword) {
-    const like = `%${keyword}%`;
-    query = query.or(
-      `order_no.ilike.${like},contact->>name.ilike.${like},contact->>phone.ilike.${like}`,
-    );
   }
 
-  const { data, error, count } = await query
-    .order('created_at', { ascending: false })
-    .range(page * size, page * size + size - 1);
-  if (error) throw error;
+  // 所有篩選集中在這一處，一般清單與「重複旅客」候選查詢共用；tenant_id 一律先套用。
+  const filtered = (columns: string, opts?: { count: 'exact' }) => {
+    let query = t.supabase.from('tour_orders').select(columns, opts).eq('tenant_id', t.tenantId);
+    if (orderId) query = query.eq('id', orderId);
+    if (status) query = query.eq('status', status);
+    if (excludeCancelled) query = query.neq('status', 'CANCELLED');
+    if (q.tripId) query = query.eq('trip_id', q.tripId);
+    if (q.planId) query = query.eq('plan_id', q.planId);
+    if (bounds.gteIso) query = query.gte('created_at', bounds.gteIso);
+    if (bounds.ltIso) query = query.lt('created_at', bounds.ltIso);
+    if (q.source) query = query.eq('source', q.source);
+    if (paymentStatus) query = query.eq('payment_status', paymentStatus);
+    // 顧客姓名與電話存在 contact jsonb 裡，訂單編號是欄位——兩者都要搜得到。
+    if (keyword) {
+      const like = `%${keyword}%`;
+      query = query.or(
+        `order_no.ilike.${like},contact->>name.ilike.${like},contact->>phone.ilike.${like}`,
+      );
+    }
+    return query;
+  };
+
+  let data: Record<string, unknown>[] | null;
+  let count: number | null;
+  if (q.repeatCustomers === '1') {
+    // 重複旅客集合與報表同一支（loadRepeatCustomerIds → repeatCustomerIdSet）；其餘篩選再縮小清單。
+    const repeatIds = await loadRepeatCustomerIds(t.supabase, t.tenantId, bounds.gteIso as string, bounds.ltIso as string);
+    const cand: { id: string; customer_id: string | null; created_at: string }[] = [];
+    let lastId: string | null = null;
+    let scanned = 0;
+    for (;;) {
+      let cq = filtered('id, customer_id, created_at');
+      if (lastId) cq = cq.gt('id', lastId);
+      const { data: pg, error: ce } = await cq.order('id', { ascending: true }).limit(1000);
+      if (ce) throw ce;
+      const rowsPage = (pg ?? []) as unknown as typeof cand;
+      cand.push(...rowsPage.filter((r) => r.customer_id && repeatIds.has(r.customer_id)));
+      if (rowsPage.length < 1000) break;
+      lastId = rowsPage[rowsPage.length - 1].id;
+      scanned += rowsPage.length;
+      if (scanned >= MAX_ROWS) throw new ApiHttpError(400, '區間內訂單過多，請縮短日期區間', ERR.VALIDATION);
+    }
+    cand.sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : (a.id < b.id ? 1 : -1)));
+    count = cand.length;
+    const pageIds = cand.slice(page * size, page * size + size).map((r) => r.id);
+    if (pageIds.length === 0) {
+      data = [];
+    } else {
+      const { data: rows, error: re } = await t.supabase.from('tour_orders').select('*')
+        .eq('tenant_id', t.tenantId).in('id', pageIds);
+      if (re) throw re;
+      const byId = new Map(((rows ?? []) as Record<string, unknown>[]).map((r) => [r.id as string, r]));
+      data = pageIds.map((id) => byId.get(id)).filter((r): r is Record<string, unknown> => !!r);
+    }
+  } else {
+    const res = await filtered('*', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(page * size, page * size + size - 1);
+    if (res.error) throw res.error;
+    data = res.data as unknown as Record<string, unknown>[] | null;
+    count = res.count;
+  }
 
   const content = await hydrateTourOrders(t.supabase, t.tenantId, data ?? []);
   const totalElements = count ?? content.length;

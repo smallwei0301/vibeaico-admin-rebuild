@@ -83,6 +83,9 @@ export default function TourOrdersPage() {
   const [tripFilter, setTripFilter] = React.useState('');
   const [createdFrom, setCreatedFrom] = React.useState('');
   const [createdTo, setCreatedTo] = React.useState('');
+  const [planFilter, setPlanFilter] = React.useState('');
+  const [activeOnly, setActiveOnly] = React.useState(false);
+  const [repeatOnly, setRepeatOnly] = React.useState(false);
 
   const [detail, setDetail] = React.useState<TourOrder | null>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -122,9 +125,18 @@ export default function TourOrdersPage() {
     if (dl.tripId) setTripFilter(dl.tripId);
     if (dl.createdFrom) setCreatedFrom(dl.createdFrom);
     if (dl.createdTo) setCreatedTo(dl.createdTo);
+    if (dl.planId) setPlanFilter(dl.planId);
+    if (dl.activeOnly) setActiveOnly(true);
+    if (dl.repeatCustomers) setRepeatOnly(true);
     if (paymentStatus) setPaymentFilter(paymentStatus);
     if (orderId) setRequestedOrderId(orderId);
   }, []);
+
+  const drillExtras = React.useMemo(() => ({
+    ...(planFilter ? { planId: planFilter } : {}),
+    ...(activeOnly ? { activeOnly: '1' as const } : {}),
+    ...(repeatOnly ? { repeatCustomers: '1' as const } : {}),
+  }), [planFilter, activeOnly, repeatOnly]);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -132,7 +144,7 @@ export default function TourOrdersPage() {
       const res = await listTourOrders({
         page, size: PAGE_SIZE, keyword,
         status: statusFilter, source: sourceFilter, paymentStatus: paymentFilter,
-        tripId: tripFilter, createdFrom, createdTo,
+        tripId: tripFilter, createdFrom, createdTo, ...drillExtras,
       });
       setRows(res.content);
       setTotal(res.totalElements);
@@ -148,7 +160,7 @@ export default function TourOrdersPage() {
           const exact = await listTourOrders({
             page: 0, size: 1, orderId: requestedOrderId,
             status: statusFilter, source: sourceFilter, paymentStatus: paymentFilter,
-            tripId: tripFilter, createdFrom, createdTo,
+            tripId: tripFilter, createdFrom, createdTo, ...drillExtras,
           });
           requested = exact.content.find((o) => o.id === requestedOrderId);
         }
@@ -162,7 +174,7 @@ export default function TourOrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, keyword, statusFilter, sourceFilter, paymentFilter, tripFilter, createdFrom, createdTo, requestedOrderId, toast]);
+  }, [page, keyword, statusFilter, sourceFilter, paymentFilter, tripFilter, createdFrom, createdTo, drillExtras, requestedOrderId, toast]);
 
   React.useEffect(() => { void load(); }, [load]);
 
@@ -482,19 +494,25 @@ export default function TourOrdersPage() {
         <StatCard label={t.stats.monthRevenue} value={formatCurrency(stats.revenue)} icon={BadgeDollarSign} tone="success" />
       </div>
 
-      {tripFilter || createdFrom || createdTo ? (
+      {tripFilter || planFilter || activeOnly || repeatOnly || createdFrom || createdTo ? (
         <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
           <span>
             {t.drilldown.current(
               [
                 createdFrom || createdTo ? t.drilldown.range(createdFrom, createdTo) : '',
                 tripFilter ? t.drilldown.trip : '',
+                planFilter ? t.drilldown.plan : '',
+                activeOnly ? t.drilldown.activeOnly : '',
+                repeatOnly ? t.drilldown.repeatCustomers : '',
               ].filter(Boolean).join(t.drilldown.sep),
             )}
           </span>
           <Button
             variant="outline" size="sm"
-            onClick={() => { setTripFilter(''); setCreatedFrom(''); setCreatedTo(''); setPage(0); }}
+            onClick={() => {
+              setTripFilter(''); setPlanFilter(''); setActiveOnly(false); setRepeatOnly(false);
+              setCreatedFrom(''); setCreatedTo(''); setPage(0);
+            }}
           >
             {t.drilldown.clear}
           </Button>
@@ -512,7 +530,12 @@ export default function TourOrdersPage() {
                 placeholder={t.filters.keywordPlaceholder}
                 className="w-full sm:w-56"
               />
-              <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}>
+              <Select value={statusFilter} onChange={(e) => {
+                setStatusFilter(e.target.value);
+                // 明確選「已取消」與「排除取消」矛盾：以使用者剛選的狀態為準，移除這兩個報表下鑽旗標
+                if (e.target.value === 'CANCELLED') { setActiveOnly(false); setRepeatOnly(false); }
+                setPage(0);
+              }}>
                 <option value="">{t.filters.statusAll}</option>
                 {(Object.keys(t.status) as TourOrderStatus[]).map((k) => (
                   <option key={k} value={k}>{t.status[k]}</option>

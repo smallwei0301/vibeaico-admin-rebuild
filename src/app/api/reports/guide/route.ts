@@ -8,6 +8,7 @@
 import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenantManager } from '@/server/tenant';
+import { fetchPriorCustomers, ID_BATCH } from '@/server/guide-report-repeat';
 import { requireEntitlement } from '@/server/features';
 import { resolvePublicTimeZone } from '@/lib/public-time-zone';
 import {
@@ -25,7 +26,6 @@ const PAGE = 1000;
 const ORDER_COLUMNS =
   'id, trip_id, plan_id, party_size, status, payment_status, paid_amount, refunded_amount, created_at, source, customer_id';
 
-const ID_BATCH = 200;
 
 /** 名稱查詢分批（避免 URL 過長／PostgREST 列數上限），每批都帶 tenant_id；任一批失敗就丟出（500），不退回顯示 UUID。 */
 async function fetchNames(
@@ -41,34 +41,6 @@ async function fetchNames(
       .eq('tenant_id', tenantId).in('id', ids.slice(i, i + ID_BATCH));
     if (error) throw error;
     for (const x of (data ?? []) as unknown as Record<string, string>[]) out.set(x.id, x[column]);
-  }
-  return out;
-}
-
-/** 本期旅客中「本期開始之前已有非取消訂單」者：以 customer_id 分批（帶 tenant_id）查；任一批失敗就丟出（500）。 */
-async function fetchPriorCustomers(
-  db: Awaited<ReturnType<typeof requireTenantManager>>['supabase'],
-  tenantId: string,
-  beforeIso: string,
-  ids: string[],
-): Promise<Set<string>> {
-  const out = new Set<string>();
-  for (let i = 0; i < ids.length; i += ID_BATCH) {
-    // keyset 分頁（order id + gt lastId），與主查詢同一套；每頁帶 id 以便推進游標
-    let lastId: string | null = null;
-    for (;;) {
-      let q = db.from('tour_orders').select('id, customer_id')
-        .eq('tenant_id', tenantId).neq('status', 'CANCELLED')
-        .lt('created_at', beforeIso).in('customer_id', ids.slice(i, i + ID_BATCH));
-      if (lastId) q = q.gt('id', lastId);
-      const { data, error } = await q.order('id', { ascending: true }).limit(PAGE);
-      if (error) throw error;
-      const page = (data ?? []) as { id: string; customer_id: string | null }[];
-      for (const x of page) if (x.customer_id) out.add(x.customer_id);
-      if (page.length < PAGE) break;
-      lastId = page[page.length - 1].id;
-    }
-    if (out.size >= ids.length) break; // 全部都已確認有先前訂單，不必再查
   }
   return out;
 }
