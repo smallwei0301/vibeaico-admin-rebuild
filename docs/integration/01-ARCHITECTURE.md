@@ -212,7 +212,10 @@ export async function requireTenant(minRole: 'STAFF' | 'MANAGER' | 'OWNER' = 'ST
     .from('tenant_users')
     .select('tenant_id, role, tenants(shop_code, name)')
     .eq('user_id', user.id);
-  if (error || !memberships?.length)
+  // 查詢失敗是服務端問題（503，fail-closed），查到零筆才是權限（403）——Issue 809
+  if (error)
+    throw new ApiHttpError(503, '暫時無法確認店家資格，請稍後再試', ERR.INTERNAL);
+  if (!memberships?.length)
     throw new ApiHttpError(403, '此帳號未加入任何店家', ERR.FORBIDDEN);
 
   const want = (await cookies()).get(ACTIVE_TENANT_COOKIE)?.value;
