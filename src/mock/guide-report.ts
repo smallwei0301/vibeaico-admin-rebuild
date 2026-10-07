@@ -9,7 +9,8 @@
  */
 import { addDays, zonedToday, type GuideReportOrderRow } from '@/server/guide-report';
 import type { TourOrder } from '@/lib/types';
-import { MOCK_TOUR_ORDERS, MOCK_TRIPS, MOCK_TRIP_PLANS } from '@/mock/tours';
+import type { GuideDepartureRow } from '@/server/guide-report-formation';
+import { MOCK_TOUR_ORDERS, MOCK_TRIPS, MOCK_TRIP_DEPARTURES, MOCK_TRIP_PLANS } from '@/mock/tours';
 
 const ZONE = 'Asia/Taipei';
 /** 種子訂單建立時間的參考日（最新一筆所在日）；平移後它落在「昨天」，確保所有種子都在現在之前 */
@@ -65,4 +66,27 @@ export function mockGuideNames(): { trips: Map<string, string>; plans: Map<strin
     trips: new Map(MOCK_TRIPS.map((t) => [t.id, t.title])),
     plans: new Map(MOCK_TRIP_PLANS.map((p) => [p.id, p.name])),
   };
+}
+
+/** MOCK_TRIP_DEPARTURES 種子團次的參考出發日（最早一筆）；平移後整批落在「今天往前 9 天起」的區間內 */
+const DEPARTURE_ANCHOR_DATE = '2026-08-23';
+
+/**
+ * 成團表現 mock：把種子團次的出發日在呼叫當下平移為相對今天（全部落在今天以前，與報表日期上限一致），
+ * 另補上一期的幾筆（已成團／未成團）讓「與上一期比較」有真實資料。formation_status 取自 mock 本身，
+ * 不另造；GUIDE 專屬，函式內計算、不在模組層級凍結。
+ */
+export function mockDepartureRows(nowMs: number = Date.now()): GuideDepartureRow[] {
+  const today = zonedToday(ZONE, nowMs);
+  const seeded = MOCK_TRIP_DEPARTURES.map((d) => ({
+    id: d.id,
+    departs_on: addDays(today, -9 + diffDays(d.departsOn, DEPARTURE_ANCHOR_DATE)),
+    formation_status: d.formationStatus ?? 'COLLECTING',
+  }));
+  const previousPeriod: GuideDepartureRow[] = [
+    { id: 'mock_prev_1', departs_on: addDays(today, -40), formation_status: 'FORMED' },
+    { id: 'mock_prev_2', departs_on: addDays(today, -38), formation_status: 'FAILED' },
+    { id: 'mock_prev_3', departs_on: addDays(today, -35), formation_status: 'FORMED' },
+  ];
+  return [...seeded, ...previousPeriod];
 }

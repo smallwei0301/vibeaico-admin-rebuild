@@ -24,6 +24,7 @@ import {
 import { reportsPage } from '@/i18n/zh-TW/pages/reports';
 import { formatAsOf, presetRange, todayIn } from '@/lib/guide-report-range';
 import { GUIDE_SOURCE_KEYS, GUIDE_SOURCES } from '@/server/guide-report';
+import { FORMATION_STATUSES } from '@/server/guide-report-formation';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/utils';
 
 const t = reportsPage.guideReport;
@@ -402,11 +403,52 @@ export function GuideReportView() {
         </>
       ) : null}
 
+      {!loading && report ? (
+        <Card className="mb-4">
+          <CardHeader><CardTitle>{t.formationCard.title}</CardTitle></CardHeader>
+          <CardBody>
+            {report.formation.summary.total === 0 ? (
+              <EmptyState icon={BarChart3} title={t.formationCard.empty} />
+            ) : (
+              <>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <StatCard
+                    label={report.formation.truncated ? `${t.formationCard.successRate}（${t.truncatedHint}）` : t.formationCard.successRate}
+                    icon={CalendarCheck} tone="success"
+                    value={report.formation.summary.successRatePercent === null ? t.noData : formatPercent(report.formation.summary.successRatePercent, 1)}
+                    hint={`${pointsText(report.formation.successRatePoints)}${t.sep}${t.formationCard.concludedHint(report.formation.summary.concluded, report.formation.summary.formed, report.formation.summary.failed)}`}
+                  />
+                  <StatCard
+                    label={report.formation.truncated ? `${t.formationCard.failRate}（${t.truncatedHint}）` : t.formationCard.failRate}
+                    icon={Ban} tone="danger"
+                    value={report.formation.summary.failRatePercent === null ? t.noData : formatPercent(report.formation.summary.failRatePercent, 1)}
+                    hint={`${pointsText(report.formation.failRatePoints)}${t.sep}${t.change.previousValue(report.formation.previous.failRatePercent === null ? t.noData : formatPercent(report.formation.previous.failRatePercent, 1))}`}
+                  />
+                </div>
+                <p className="form-text mt-3">{t.formationCard.openLine(report.formation.summary.open)}</p>
+                <div className="mt-3">
+                  <div className="stat-label">{t.formationCard.distributionTitle}</div>
+                  <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-5">
+                    {FORMATION_STATUSES.map((k) => (
+                      <div key={k}>
+                        <div className="stat-label">{t.formationCard.status[k]}</div>
+                        <div className="stat-value">{formatNumber(report.formation.summary.byStatus[k])} {t.formationCard.unit}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+            <p className="form-text mt-3">{t.formationCard.description}</p>
+          </CardBody>
+        </Card>
+      ) : null}
+
       <Card className="mb-4">
         <CardHeader><CardTitle>{t.defs.title}</CardTitle></CardHeader>
         <CardBody>
           <ul className="list-disc space-y-1 pl-5 text-sm">
-            {[t.defs.scope, t.defs.orders, t.defs.revenue, t.defs.avgOrderValue, t.defs.cancelled, t.defs.ranking, t.defs.source, t.defs.repeat, t.defs.comparison].map((line) => (
+            {[t.defs.scope, t.defs.orders, t.defs.revenue, t.defs.avgOrderValue, t.defs.cancelled, t.defs.ranking, t.defs.source, t.defs.repeat, t.defs.formation, t.defs.comparison].map((line) => (
               <li key={line}>{line}</li>
             ))}
           </ul>

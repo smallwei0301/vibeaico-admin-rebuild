@@ -9,7 +9,7 @@ import {
   GuideReportRangeError, addDays, computeGuideReport, resolveReportRange, zonedToday,
   type GuideReport, type GuideReportOrderRow,
 } from '@/server/guide-report';
-import { mockGuideNames, mockOrderToReportRow, mockTourOrdersRelativeToNow } from '@/mock/guide-report';
+import { mockDepartureRows, mockGuideNames, mockOrderToReportRow, mockTourOrdersRelativeToNow } from '@/mock/guide-report';
 import {
   MOCK_DASHBOARD_ALERTS, MOCK_DASHBOARD_STATS, MOCK_STAFF_PERFORMANCE, byMode,
 } from '@/mock';
@@ -444,7 +444,7 @@ function buildMockGuideReport(q: GuideReportQuery): GuideReport {
     .map((r) => r.customer_id as string));
   return computeGuideReport({
     rows, from, to, timeZone: zone, tripNames: trips, planNames: plans, priorCustomerIds,
-    asOf: new Date(nowMs).toISOString(),
+    asOf: new Date(nowMs).toISOString(), departures: mockDepartureRows(nowMs),
   });
 }
 

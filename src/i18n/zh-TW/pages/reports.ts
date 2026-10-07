@@ -70,6 +70,18 @@ export const reportsPage = {
       viewOrders: (n: number) => `查看重複旅客本期的訂單（${n} 筆，不含已取消）`,
       unlinked: (n: number) => `未綁定旅客的訂單 ${n} 筆（不計入旅客數與重複率）`,
     },
+    formationCard: {
+      title: '成團表現',
+      description: '以團次的出發日歸屬期間；只有出發日已到且已成團或未成團的團次才計入比率。團次目前沒有跨行程的篩選清單，所以這裡只顯示數字、不提供連結。',
+      successRate: '成團率',
+      failRate: '未達門檻率',
+      concludedHint: (concluded: number, formed: number, failed: number) => `已結案 ${concluded} 團：成團 ${formed} 團、未成團 ${failed} 團`,
+      openLine: (n: number) => `尚未結案 ${n} 團（募集中、待導遊決定、成團後人數跌破門檻等，不計入比率）`,
+      distributionTitle: '各成團狀態的團數（期間內全部團次）',
+      status: { COLLECTING: '募集中', FORMED: '已成團', REVIEW_REQUIRED: '待導遊決定', AT_RISK: '成團後人數不足', FAILED: '未成團' },
+      empty: '這段期間沒有出發的團次',
+      unit: '團',
+    },
     drilldown: { viewOrders: '查看訂單', viewTripOrders: (name: string) => `查看「${name}」的訂單` },
     statusBreakdownTitle: '各狀態訂單數',
     status: {
@@ -108,6 +120,8 @@ export const reportsPage = {
         '訂單來源：非取消訂單依下單來源（Midao 前台、商店頁、LINE、手動建立）分列訂單數與實收營收，四個來源皆列出（0 為實際筆數）；來源不在已知清單者歸「其他」。',
       repeat:
         '重複旅客：本期有非取消訂單、且已綁定旅客的人（同一旅客只算一次）中，本期內有 2 筆以上非取消訂單，或本期開始之前（任何時間）已有非取消訂單者。重複率＝重複旅客數 ÷ 本期旅客數，無旅客時顯示「尚無足夠資料」。未綁定旅客的訂單不計入，另行列出筆數。',
+      formation:
+        '成團表現：以團次的「出發日」落在所選日期（店家日曆日）為準。已結案＝出發日已到（含今天）且狀態為已成團或未成團；成團率＝已成團 ÷ 已結案，未達門檻率＝未成團 ÷ 已結案，已結案為 0 時顯示「尚無足夠資料」。募集中、待導遊決定、成團後人數跌破門檻的團次尚未結案，不計入比率，只在各狀態團數中列出。與上一期的比較以百分點表示。團次的成團狀態沒有歷史快照，數字反映讀取當下的狀態。',
       comparison: '上一期：與所選期間天數相同、緊接在前的期間；上一期為 0 時不計算增減百分比。',
     },
     notEnabled: {
@@ -116,7 +130,6 @@ export const reportsPage = {
       items: [
         { name: '取消原因（旅客／導遊／系統逾期）', reason: '訂單目前沒有取消來源欄位，只有自由文字理由。' },
         { name: '未付款率', reason: '尚未記錄「進入付款階段」的時間點，分母無法可靠算出。' },
-        { name: '成團表現', reason: '尚未彙整公開團次與成團狀態快照。' },
         { name: '導遊與加購業績', reason: '需使用完成時凍結的業績快照，尚未接入報表。' },
         { name: '詢問到成交', reason: '尚未啟用詢問追蹤，沒有可靠的詢問事件，不顯示成交率。' },
       ],

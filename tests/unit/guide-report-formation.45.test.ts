@@ -1,0 +1,93 @@
+import { describe, expect, it } from 'vitest';
+import { computeFormation, summarizeFormation, type GuideDepartureRow } from '@/server/guide-report-formation';
+import { computeGuideReport } from '@/server/guide-report';
+
+// 期望值全部手算寫死。本期 2026-10-01～10-10，上一期 09-21～09-30。
+const d = (id: string, departs_on: string, formation_status: string): GuideDepartureRow => ({ id, departs_on, formation_status });
+const TODAY = '2026-12-01';
+const S = (rows: GuideDepartureRow[], today = TODAY) => summarizeFormation(rows, '2026-10-01', '2026-10-10', today);
+
+describe('summarizeFormation — 期間歸屬', () => {
+  it('出發日含兩端；區間外與未知狀態不計', () => {
+    const r = S([
+      d('a', '2026-10-01', 'FORMED'), d('b', '2026-10-10', 'FAILED'),
+      d('c', '2026-09-30', 'FORMED'), d('e', '2026-10-11', 'FORMED'),
+      d('f', '2026-10-05', 'WEIRD'),
+    ]);
+    expect(r.total).toBe(2);
+    expect(r.formed).toBe(1);
+    expect(r.failed).toBe(1);
+  });
+});
+
+describe('summarizeFormation — 成團率／未達門檻率', () => {
+  it('3 成團、1 未成團 → 75／25；其餘狀態只進分布、不進比率', () => {
+    const r = S([
+      d('1', '2026-10-02', 'FORMED'), d('2', '2026-10-03', 'FORMED'), d('3', '2026-10-04', 'FORMED'),
+      d('4', '2026-10-05', 'FAILED'),
+      d('5', '2026-10-06', 'COLLECTING'), d('6', '2026-10-07', 'REVIEW_REQUIRED'), d('7', '2026-10-08', 'AT_RISK'),
+    ]);
+    expect(r).toMatchObject({
+      total: 7, concluded: 4, formed: 3, failed: 1, open: 3, successRatePercent: 75, failRatePercent: 25,
+    });
+    expect(r.byStatus).toEqual({ COLLECTING: 1, FORMED: 3, REVIEW_REQUIRED: 1, AT_RISK: 1, FAILED: 1 });
+  });
+
+  it('1 成團、2 未成團 → 33.3／66.7（四捨五入 1 位）', () => {
+    const r = S([d('1', '2026-10-02', 'FORMED'), d('2', '2026-10-03', 'FAILED'), d('3', '2026-10-04', 'FAILED')]);
+    expect(r.successRatePercent).toBe(33.3);
+    expect(r.failRatePercent).toBe(66.7);
+  });
+
+  it('分母 0（沒有團次，或只有未結案團次）→ 比率 null，不是 0', () => {
+    expect(S([]).successRatePercent).toBeNull();
+    const r = S([d('1', '2026-10-02', 'COLLECTING'), d('2', '2026-10-03', 'AT_RISK')]);
+    expect(r).toMatchObject({ total: 2, concluded: 0, open: 2, successRatePercent: null, failRatePercent: null });
+  });
+
+  it('出發日還沒到的 FORMED／FAILED 不算已結案（今天含當天算已到）', () => {
+    const rows = [d('1', '2026-10-05', 'FORMED'), d('2', '2026-10-06', 'FAILED'), d('3', '2026-10-07', 'FORMED')];
+    expect(S(rows, '2026-10-04')).toMatchObject({ total: 3, concluded: 0, open: 3 });
+    expect(S(rows, '2026-10-05')).toMatchObject({ concluded: 1, formed: 1, failed: 0 });
+    expect(S(rows, '2026-10-06')).toMatchObject({ concluded: 2, formed: 1, failed: 1, successRatePercent: 50 });
+  });
+});
+
+describe('computeFormation — 上一期比較與截斷', () => {
+  it('百分點差：本期 75、上一期 50 → +25；任一期無已結案 → null', () => {
+    const rows = [
+      d('1', '2026-10-02', 'FORMED'), d('2', '2026-10-03', 'FORMED'), d('3', '2026-10-04', 'FORMED'), d('4', '2026-10-05', 'FAILED'),
+      d('5', '2026-09-22', 'FORMED'), d('6', '2026-09-23', 'FAILED'),
+    ];
+    const base = { rows, from: '2026-10-01', to: '2026-10-10', prevFrom: '2026-09-21', prevTo: '2026-09-30', today: TODAY };
+    const r = computeFormation(base);
+    expect(r.previous).toMatchObject({ concluded: 2, successRatePercent: 50 });
+    expect(r.successRatePoints).toBe(25);
+    expect(r.failRatePoints).toBe(-25);
+    expect(computeFormation({ ...base, rows: rows.slice(0, 4) }).successRatePoints).toBeNull();
+    expect(computeFormation({ ...base, truncated: true }).truncated).toBe(true);
+    expect(computeFormation(base).truncated).toBe(false);
+  });
+});
+
+describe('computeGuideReport — 「今天」依店家時區與 asOf 決定', () => {
+  const dep = [d('x', '2026-10-07', 'FORMED')];
+  const run = (timeZone: string, asOf: string) => computeGuideReport({
+    rows: [], from: '2026-10-01', to: '2026-10-07', timeZone, asOf,
+    tripNames: new Map(), planNames: new Map(), departures: dep,
+  }).formation.summary;
+
+  it('同一個 asOf：台北已是 10/07（團次已結案）、紐約仍是 10/06（尚未結案）', () => {
+    const asOf = '2026-10-06T17:00:00.000Z'; // 台北 10/07 01:00；紐約 10/06 13:00
+    expect(run('Asia/Taipei', asOf)).toMatchObject({ concluded: 1, formed: 1, open: 0 });
+    expect(run('America/New_York', asOf)).toMatchObject({ concluded: 0, open: 1 });
+  });
+
+  it('沒有提供 departures 時成團表現為空、比率 null（不捏造）', () => {
+    const r = computeGuideReport({
+      rows: [], from: '2026-10-01', to: '2026-10-07', timeZone: 'Asia/Taipei', asOf: '2026-12-01T00:00:00Z',
+      tripNames: new Map(), planNames: new Map(),
+    });
+    expect(r.formation.summary).toMatchObject({ total: 0, successRatePercent: null });
+  });
+});

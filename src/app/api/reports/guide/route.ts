@@ -15,6 +15,7 @@ import {
   GuideReportRangeError, MAX_ROWS, computeGuideReport, currentCustomerIds, resolveReportRange, zonedToday, addDays,
   type GuideReportOrderRow,
 } from '@/server/guide-report';
+import type { GuideDepartureRow } from '@/server/guide-report-formation';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const querySchema = z.object({
@@ -109,8 +110,29 @@ export const GET = handle(async (req) => {
     currentCustomerIds(rows, from, to, timeZone),
   );
 
+  // 成團表現：期間（含上一期）內出發的團次；同樣 keyset＋MAX_ROWS 探測，不假裝完整。
+  const depFrom = range.prevFrom;
+  const fetchDeps = async (afterId: string | null, limit: number) => {
+    let dq = t.supabase.from('trip_departures').select('id, departs_on, formation_status')
+      .eq('tenant_id', t.tenantId).gte('departs_on', depFrom).lte('departs_on', to);
+    if (afterId) dq = dq.gt('id', afterId);
+    const { data, error } = await dq.order('id', { ascending: true }).limit(limit);
+    if (error) throw error;
+    return (data ?? []) as GuideDepartureRow[];
+  };
+  const departures: GuideDepartureRow[] = [];
+  let depLast: string | null = null;
+  while (departures.length < MAX_ROWS) {
+    const limit = Math.min(PAGE, MAX_ROWS - departures.length);
+    const pg = await fetchDeps(depLast, limit);
+    departures.push(...pg);
+    if (pg.length < limit) break;
+    depLast = pg[pg.length - 1].id;
+  }
+  const departuresTruncated = departures.length >= MAX_ROWS && (await fetchDeps(depLast, 1)).length > 0;
+
   return ok(computeGuideReport({
-    rows, from, to, timeZone, truncated, priorCustomerIds, asOf: new Date(requestStartedAt).toISOString(),
+    rows, from, to, timeZone, truncated, priorCustomerIds, departures, departuresTruncated, asOf: new Date(requestStartedAt).toISOString(),
     tripNames, planNames,
   }));
 });

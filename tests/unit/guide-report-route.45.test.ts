@@ -4,13 +4,15 @@ const TENANT = '11111111-1111-4111-8111-111111111111';
 const OTHER = '22222222-2222-4222-8222-222222222222';
 const state = vi.hoisted(() => ({
   denied: false,
-  calls: [] as { table: string; filters: Record<string, unknown>; gte?: unknown; lt?: unknown; neq?: unknown }[],
+  calls: [] as { table: string; filters: Record<string, unknown>; gte?: unknown; lt?: unknown; lte?: unknown; neq?: unknown }[],
   orders: [] as Record<string, unknown>[],
   timezone: undefined as string | undefined,
   pages: [] as { gt: unknown; limit: number }[],
   inCalls: [] as { table: string; size: number; tenant: unknown }[],
   nameError: '' as string,
   priorError: false,
+  departures: [] as Record<string, unknown>[],
+  depError: false,
   priorCalls: [] as { tenant: unknown; neq: unknown; lt: unknown; ids: string[] }[],
 }));
 
@@ -29,7 +31,7 @@ vi.mock('@/server/tenant', () => ({
 
 const fakeDb = {
   from: (table: string) => {
-    const call: { table: string; filters: Record<string, unknown>; gte?: unknown; lt?: unknown; neq?: unknown } = { table, filters: {} };
+    const call: { table: string; filters: Record<string, unknown>; gte?: unknown; lt?: unknown; lte?: unknown; neq?: unknown } = { table, filters: {} };
     state.calls.push(call);
     let ids: string[] | undefined;
     let gtId: string | undefined;
@@ -46,6 +48,10 @@ const fakeDb = {
         return state.orders.filter((r) => r.tenant_id === call.filters.tenant_id
           && (r.created_at as string) >= (call.gte as string) && (r.created_at as string) < (call.lt as string));
       }
+      if (table === 'trip_departures') {
+        return state.departures.filter((r) => r.tenant_id === call.filters.tenant_id
+          && (r.departs_on as string) >= (call.gte as string) && (r.departs_on as string) <= (call.lte as string));
+      }
       if (table === 'trips') return (ids ?? ['tA']).map((id) => ({ id, title: `行程${id}` }));
       if (table === 'trip_plans') return (ids ?? ['pA']).map((id) => ({ id, name: `方案${id}` }));
       return [];
@@ -60,6 +66,7 @@ const fakeDb = {
       },
       gte: (_k: string, v: unknown) => { call.gte = v; return q; },
       lt: (_k: string, v: unknown) => { call.lt = v; return q; },
+      lte: (_k: string, v: unknown) => { call.lte = v; return q; },
       neq: (_k: string, v: unknown) => { call.neq = v; return q; },
       order: () => q,
       gt: (_k: string, v: string) => { gtId = v; return q; },
@@ -72,7 +79,7 @@ const fakeDb = {
         data: table === 'tenant_settings' && state.timezone ? { basic: { timezone: state.timezone } } : null, error: null,
       }),
       then: (resolve: (v: unknown) => unknown) => resolve(
-        (table === state.nameError || (state.priorError && table === 'tour_orders' && call.gte === undefined))
+        (table === state.nameError || (state.depError && table === 'trip_departures') || (state.priorError && table === 'tour_orders' && call.gte === undefined))
           ? { data: null, error: new Error('names failed') }
           : { data: rowsFor().filter((r) => !gtId || (r.id as string) > gtId).sort((a, b) => ((a.id as string) < (b.id as string) ? -1 : 1)).slice(0, lim), error: null }),
     };
@@ -92,7 +99,7 @@ const order = (o: Record<string, unknown>) => ({
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-12-01T00:00:00Z'));
-  state.denied = false; state.calls = []; state.inCalls = []; state.pages = []; state.nameError = ''; state.priorError = false; state.priorCalls = []; state.timezone = undefined;
+  state.denied = false; state.calls = []; state.inCalls = []; state.pages = []; state.nameError = ''; state.priorError = false; state.priorCalls = []; state.departures = []; state.depError = false; state.timezone = undefined;
   state.orders = [
     order({ id: 'a1', tenant_id: TENANT, created_at: '2026-10-02T02:00:00Z' }),
     order({ id: 'b1', tenant_id: OTHER, created_at: '2026-10-02T02:00:00Z', paid_amount: 777777 }),
@@ -250,5 +257,46 @@ describe('GET /api/reports/guide', () => {
   it('本期沒有已綁定旅客 → 不發出先前訂單查詢', async () => {
     await get('?from=2026-10-01&to=2026-10-10');
     expect(state.priorCalls).toHaveLength(0);
+  });
+
+  it('成團表現：團次查詢帶 tenant_id、departs_on 區間含上一期、看不到其他租戶，數字手算', async () => {
+    // 系統時間固定 2026-12-01；區間 10/01–10/10，上一期 09/21–09/30
+    state.departures = [
+      { id: 'd1', tenant_id: TENANT, departs_on: '2026-10-01', formation_status: 'FORMED' },
+      { id: 'd2', tenant_id: TENANT, departs_on: '2026-10-10', formation_status: 'FAILED' },
+      { id: 'd3', tenant_id: TENANT, departs_on: '2026-10-05', formation_status: 'COLLECTING' },
+      { id: 'd4', tenant_id: TENANT, departs_on: '2026-09-21', formation_status: 'FORMED' },
+      { id: 'd5', tenant_id: TENANT, departs_on: '2026-09-20', formation_status: 'FORMED' }, // 區間外
+      { id: 'x1', tenant_id: OTHER, departs_on: '2026-10-02', formation_status: 'FORMED' }, // 其他租戶
+    ];
+    const body = await (await get('?from=2026-10-01&to=2026-10-10')).json();
+    const dc = state.calls.filter((c) => c.table === 'trip_departures');
+    expect(dc.length).toBeGreaterThan(0);
+    for (const c of dc) {
+      expect(c.filters.tenant_id).toBe(TENANT);
+      expect(c.gte).toBe('2026-09-21');
+      expect(c.lte).toBe('2026-10-10');
+    }
+    expect(body.data.formation.summary).toMatchObject({
+      total: 3, concluded: 2, formed: 1, failed: 1, open: 1, successRatePercent: 50, failRatePercent: 50,
+    });
+    expect(body.data.formation.previous).toMatchObject({ total: 1, concluded: 1, successRatePercent: 100 });
+    expect(body.data.formation.successRatePoints).toBe(-50);
+    expect(body.data.formation.truncated).toBe(false);
+  });
+
+  it('團次查詢失敗 → 500；筆數剛好 MAX_ROWS 不標 truncated、MAX_ROWS+1 標 truncated', async () => {
+    state.depError = true;
+    expect((await get('?from=2026-10-01&to=2026-10-10')).status).toBe(500);
+    state.depError = false;
+    const mk = (n: number) => Array.from({ length: n }, (_, i) => ({
+      id: `d${String(i).padStart(6, '0')}`, tenant_id: TENANT, departs_on: '2026-10-02', formation_status: 'FORMED',
+    }));
+    state.departures = mk(MAX_ROWS);
+    expect((await (await get('?from=2026-10-01&to=2026-10-10')).json()).data.formation.truncated).toBe(false);
+    state.departures = mk(MAX_ROWS + 1);
+    const b = (await (await get('?from=2026-10-01&to=2026-10-10')).json()).data;
+    expect(b.formation.truncated).toBe(true);
+    expect(b.formation.summary.total).toBe(MAX_ROWS);
   });
 });
