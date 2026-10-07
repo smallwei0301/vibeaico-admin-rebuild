@@ -30,6 +30,7 @@ function apply(rows: FakeRow[], calls: Call[]): FakeRow[] {
   for (const [m, a] of calls) {
     const f = a[0] as string;
     if (m === 'eq') out = out.filter((r) => field(r, f) === a[1]);
+    else if (m === 'neq') out = out.filter((r) => field(r, f) !== a[1]);
     else if (m === 'gte') out = out.filter((r) => (field(r, f) as string) >= (a[1] as string));
     else if (m === 'in') out = out.filter((r) => (a[1] as unknown[]).includes(field(r, f)));
     else if (m === 'not' && a[1] === 'is' && a[2] === null) out = out.filter((r) => field(r, f) != null);
@@ -101,7 +102,7 @@ describe('buildGuideActionInboxTourPaymentDueItem (#43 類別 2)', () => {
 
   it('excludes PENDING, CANCELLED, COMPLETED, PAID, REFUND_PENDING and unreserved/hold-less UNPAID', () => {
     expect(build({ status: 'PENDING', paymentStatus: 'PARTIAL', paidAmount: 5000 })).toBeNull();
-    expect(build({ status: 'PENDING', seatsReserved: false })).toBeNull(); // 未接受的 REQUEST
+    expect(build({ status: 'PENDING', salesMode: 'REQUEST' })).toBeNull(); // 未接受的 REQUEST
     expect(build({ status: 'CANCELLED' })).toBeNull();
     expect(build({ status: 'COMPLETED', paymentStatus: 'PARTIAL', paidAmount: 5000 })).toBeNull();
     expect(build({ paymentStatus: 'PAID' })).toBeNull();
@@ -142,8 +143,19 @@ describe('buildGuideActionInboxTourPaymentDueItem (#43 類別 2)', () => {
   });
 
   it('PENDING + UNPAID + seats reserved + hold: FULL card (full payment only, no deposit shown)', () => {
-    const item = build({ status: 'PENDING' });
+    const item = build({ status: 'PENDING', seatsReserved: null, salesMode: 'FIXED_DEPARTURE' });
     expect(item).toMatchObject({ kind: 'TOUR_PAYMENT_DUE', stage: 'FULL', depositAmount: null, balanceAmount: null, totalAmount: 18000 });
+  });
+
+  it('PENDING + UNPAID without hold (what every create path writes today): FULL card with the departure deadline', () => {
+    const item = build({ status: 'PENDING', holdExpiresAt: null, seatsReserved: null, salesMode: 'INSTANT' });
+    expect(item).toMatchObject({
+      stage: 'FULL', dueHasTime: true, dueLocalDate: '2026-09-30', dueLocalTime: '09:00',
+      dueAt: '2026-09-30T01:00:00.000Z', priority: 'UPCOMING',
+    });
+    // 缺 start_time：只顯示日期、不假造午夜；缺出發日 → 不顯示
+    expect(build({ status: 'PENDING', holdExpiresAt: null, departureStartTime: null })).toMatchObject({ dueHasTime: false, dueLocalTime: null });
+    expect(build({ status: 'PENDING', holdExpiresAt: null, departureDate: null })).toBeNull();
   });
 
   it('INITIAL/FULL exclude departures that already started today (exact start_time, tenant tz); missing start_time kept through the day', () => {
@@ -187,8 +199,11 @@ describe('route.ts behaviour: #43 類別 2 TOUR_PAYMENT_DUE', () => {
     row({ id: 'unpaid-other-tenant', tenant_id: 'tenant-b', status: 'CONFIRMED', payment_status: 'UNPAID', hold_expires_at: future(3_600_000) }),
     row({ id: 'unpaid-cancelled', status: 'CANCELLED', payment_status: 'UNPAID', hold_expires_at: future(3_600_000) }),
     // 一般固定團／即時預約：PENDING + UNPAID + 已鎖位 + hold → FULL 卡
-    row({ id: 'pending-hold', status: 'PENDING', payment_status: 'UNPAID', hold_expires_at: future(3_600_000) }),
-    row({ id: 'pending-unreserved', status: 'PENDING', payment_status: 'UNPAID', hold_expires_at: future(3_600_000), seats_reserved: false }),
+    row({ id: 'pending-hold', status: 'PENDING', payment_status: 'UNPAID', hold_expires_at: future(3_600_000),
+      seats_reserved: null, trip_plans: { sales_mode: 'FIXED_DEPARTURE', name: '標準團' } }),
+    // 現行建單路徑不寫 hold、也不一定有 seats_reserved：仍要出現（期限＝出發時刻）
+    row({ id: 'pending-nohold', status: 'PENDING', payment_status: 'UNPAID', hold_expires_at: null,
+      seats_reserved: null, trip_plans: { sales_mode: 'INSTANT', name: '即時' } }),
     row({ id: 'unpaid-started-today', status: 'CONFIRMED', payment_status: 'UNPAID', hold_expires_at: future(3_600_000),
       trip_departures: { departs_on: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date()), start_time: '00:00:00' } }),
     row({ id: 'partial-ok', status: 'CONFIRMED', payment_status: 'PARTIAL', paid_amount: 5000 }),
@@ -217,7 +232,8 @@ describe('route.ts behaviour: #43 類別 2 TOUR_PAYMENT_DUE', () => {
     expect(res.status).toBe(200);
     const items: any[] = (await res.json()).data;
     const due = items.filter((i) => i.kind === 'TOUR_PAYMENT_DUE');
-    expect(due.map((i) => i.id).sort()).toEqual(['partial-ok', 'pending-hold', 'unpaid-ok']);
+    expect(due.map((i) => i.id).sort()).toEqual(['partial-ok', 'pending-hold', 'pending-nohold', 'unpaid-ok']);
+    expect(due.find((i) => i.id === 'pending-nohold')).toMatchObject({ stage: 'FULL', dueHasTime: true, dueLocalTime: '09:00' });
     expect(due.find((i) => i.id === 'pending-hold')).toMatchObject({ stage: 'FULL', depositAmount: null });
     expect(due.find((i) => i.id === 'unpaid-ok')).toMatchObject({
       stage: 'INITIAL', depositAmount: 5000, totalAmount: 18000, customerName: '旅客',
@@ -256,13 +272,31 @@ describe('route.ts: payment-due source filters, window and display fields (#43 �
     await run([]);
     const queries = recorded.filter((r) => r.table === 'tour_orders'
       && r.calls.some(([m, a]) => m === 'eq' && a[0] === 'payment_status' && (a[1] === 'UNPAID' || a[1] === 'PARTIAL')));
-    expect(queries).toHaveLength(2);
+    expect(queries).toHaveLength(3);
     const todayTaipei = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date());
     for (const q of queries) {
       const gte = q.calls.find(([m, a]) => m === 'gte' && a[0] === 'trip_departures.departs_on');
       expect(gte?.[1][1]).toBe(todayTaipei);
       expect(q.calls.some(([m, a]) => m === 'eq' && a[0] === 'tenant_id' && a[1] === T)).toBe(true);
     }
+  });
+
+  it('Production safety: only the CONFIRMED+UNPAID query touches seats_reserved (0111); PENDING and PARTIAL queries never do', async () => {
+    await run([]);
+    const sel = (q: { calls: Call[] }) => String(q.calls.find(([m]) => m === 'select')?.[1][0]);
+    const byStatus = (status: string, pay: string) => recorded.find((r) => r.table === 'tour_orders'
+      && r.calls.some(([m, a]) => m === 'eq' && a[0] === 'status' && a[1] === status)
+      && r.calls.some(([m, a]) => m === 'eq' && a[0] === 'payment_status' && a[1] === pay))!;
+    const pending = byStatus('PENDING', 'UNPAID');
+    const partial = byStatus('CONFIRMED', 'PARTIAL');
+    const confirmed = byStatus('CONFIRMED', 'UNPAID');
+    expect(sel(confirmed)).toContain('seats_reserved');
+    for (const q of [pending, partial]) {
+      expect(sel(q)).not.toContain('seats_reserved');
+      expect(q.calls.some(([, a]) => a[0] === 'seats_reserved')).toBe(false);
+    }
+    expect(pending.calls.some(([m, a]) => m === 'neq' && a[0] === 'trip_plans.sales_mode' && a[1] === 'REQUEST')).toBe(true);
+    expect(sel(pending)).toContain('trip_plans!inner(name, sales_mode)');
   });
 
   it('drops UNPAID orders whose departure already passed (stale holds cannot crowd out new ones)', async () => {
@@ -329,9 +363,13 @@ describe('route.ts: payment-due schema tolerance (#43 類別 2, Production lacks
         const b: any = other.from(table);
         if (table !== 'tour_orders' || !error) return b;
         let paymentQuery = false;
+        let confirmed = false;
+        let payStatus = '';
         const origEq = b.eq;
         b.eq = (...a: unknown[]) => {
-          if (a[0] === 'payment_status' && (a[1] === 'UNPAID' || a[1] === 'PARTIAL')) paymentQuery = true;
+          if (a[0] === 'status' && a[1] === 'CONFIRMED') confirmed = true;
+          if (a[0] === 'payment_status') payStatus = String(a[1]);
+          paymentQuery = confirmed && (payStatus === 'UNPAID' || payStatus === 'PARTIAL');
           return origEq(...a);
         };
         const origThen = b.then;
@@ -346,14 +384,23 @@ describe('route.ts: payment-due schema tolerance (#43 類別 2, Production lacks
   }
 
   it('undefined-column error on payment queries → other cards still returned, zero payment cards', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     for (const code of ['42703', '42P01', 'PGRST204']) {
+      warn.mockClear();
       setup({ code, message: 'column tour_orders.seats_reserved does not exist' });
       const res = await guideActionInboxGET(new Request('https://app.test/api/guide/action-inbox'), {});
       expect(res.status).toBe(200);
       const items: any[] = (await res.json()).data;
       expect(items.filter((i) => i.kind === 'TOUR_PAYMENT_DUE')).toHaveLength(0);
       expect(items.filter((i) => i.kind === 'TOUR_REQUEST').map((i) => i.id)).toEqual(['req']);
+      // 降級時各來源各 warn 一次（INITIAL、PARTIAL），只含來源名稱與錯誤碼
+      const messages = warn.mock.calls.map((c) => String(c[0]));
+      expect(messages).toHaveLength(2);
+      for (const m of messages) expect(m).toContain(code);
+      expect(messages.some((m) => m.includes('payment-due:confirmed-unpaid'))).toBe(true);
+      expect(messages.some((m) => m.includes('payment-due:partial'))).toBe(true);
     }
+    warn.mockRestore();
   });
 
   it('any other error keeps the existing behaviour (request fails, like the other sources)', async () => {

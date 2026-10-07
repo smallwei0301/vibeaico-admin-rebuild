@@ -243,8 +243,10 @@ export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
             planName: order.planName,
             status: order.status,
             paymentStatus: order.paymentStatus,
-            // mock 沒有 seatsReserved：PENDING 的 REQUEST 方案尚未接受＝未鎖位（由 TOUR_REQUEST 處理）。
-            seatsReserved: !(order.status === 'PENDING' && isMockRequestOrder(order)),
+            // mock 沒有 seatsReserved；CONFIRMED + UNPAID 視為已鎖位。PENDING 由方案 sales_mode 判斷：
+            // REQUEST 是尚未接受的申請（TOUR_REQUEST 處理），其他走 FULL 卡。
+            seatsReserved: true,
+            salesMode: isMockRequestOrder(order) ? 'REQUEST' : 'FIXED_DEPARTURE',
             holdExpiresAt: order.holdExpiresAt ? new Date(now + 5 * 60 * 60 * 1000).toISOString() : null,
             depositAmount: order.depositAmount,
             totalAmount: order.totalAmount,

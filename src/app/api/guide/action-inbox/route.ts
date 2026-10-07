@@ -92,9 +92,13 @@ function firstOf<T>(value: T | T[] | null | undefined): T | null {
 const MISSING_SCHEMA_CODES = new Set(['42703', '42P01', 'PGRST200', 'PGRST204', 'PGRST205']);
 
 /** 缺欄位／缺資料表／缺關聯 → 視為空結果；其他錯誤照舊 throw。 */
-function tolerateMissingSchema(result: { data: any[] | null; error: any }): any[] {
+function tolerateMissingSchema(source: string, result: { data: any[] | null; error: any }): any[] {
   if (result.error) {
-    if (MISSING_SCHEMA_CODES.has(String(result.error.code ?? ''))) return [];
+    if (MISSING_SCHEMA_CODES.has(String(result.error.code ?? ''))) {
+      // 只記來源名稱與錯誤碼（不含訂單／旅客資料）。
+      console.warn(`[guide-action-inbox] ${source} degraded to 0 cards: schema error ${String(result.error.code)}`);
+      return [];
+    }
     throw result.error;
   }
   return result.data ?? [];
@@ -124,6 +128,7 @@ export const GET = handle(async () => {
   const [
     bookingResult, paymentBookingResult, departureResult, formationResult, refundPendingResult,
     staffAssignmentResult, tourRequestResult, paymentDueUnpaidResult, paymentDuePartialResult,
+    paymentDuePendingResult,
   ] = await Promise.all([
     t.supabase
       .from('bookings_view')
@@ -224,17 +229,16 @@ export const GET = handle(async () => {
       .eq('trip_plans.sales_mode', 'REQUEST')
       .order('created_at', { ascending: true })
       .limit(20),
-    // #43 類別 2：等待付款——已鎖名額且有保留期限的 UNPAID 訂單（CONFIRMED：導遊已接受的
-    // 申請，訂金或全額；PENDING：一般固定團／即時預約，全額），期限是 hold_expires_at。
-    // 尚未接受的 REQUEST 是 seats_reserved=false，由上面 TOUR_REQUEST 處理；且最後仍以訂單 id
-    // 去重。不使用 sales_mode（0110）。每個 query 都帶 tenant_id。逾期 hold 目前不會被 expiry RPC 取消
-    // （CONFIRMED），所以在來源就用 `trip_departures!inner` + departs_on >= 租戶今天排除
-    // 已出發的團次，避免陳舊列累積擠掉新的；取較大的有界視窗，再於程式內依期限排序取前 20。
+    // #43 類別 2（INITIAL）：導遊已接受的申請（CONFIRMED + UNPAID + seats_reserved +
+    // 有保留期限，訂金或全額），期限是 hold_expires_at。`seats_reserved` 來自 0111，所以這個
+    // 來源以 tolerateMissingSchema 包起來。逾期 hold 目前不會被 expiry RPC 取消，所以在來源
+    // 就用 `trip_departures!inner` + departs_on >= 租戶今天排除已出發團次；取有界視窗後於程式內
+    // 依期限排序取前 20。每個 query 都帶 tenant_id。
     t.supabase
       .from('tour_orders')
       .select('id, order_no, party_size, total_amount, deposit_amount, paid_amount, status, payment_status, seats_reserved, contact, hold_expires_at, created_at, trip_plans(name), trips(title), trip_departures!inner(departs_on, start_time)')
       .eq('tenant_id', t.tenantId)
-      .in('status', ['PENDING', 'CONFIRMED'])
+      .eq('status', 'CONFIRMED')
       .eq('payment_status', 'UNPAID')
       .eq('seats_reserved', true)
       .not('hold_expires_at', 'is', null)
@@ -245,10 +249,25 @@ export const GET = handle(async () => {
     // 的團次。不依賴未驗證的 embedded order 語法：取有界視窗後於程式內依出發時刻排序取前 20。
     t.supabase
       .from('tour_orders')
-      .select('id, order_no, party_size, total_amount, deposit_amount, paid_amount, status, payment_status, seats_reserved, contact, hold_expires_at, created_at, trip_plans(name), trips(title), trip_departures!inner(departs_on, start_time)')
+      .select('id, order_no, party_size, total_amount, deposit_amount, paid_amount, status, payment_status, contact, hold_expires_at, created_at, trip_plans(name), trips(title), trip_departures!inner(departs_on, start_time)')
       .eq('tenant_id', t.tenantId)
       .eq('status', 'CONFIRMED')
       .eq('payment_status', 'PARTIAL')
+      .gte('trip_departures.departs_on', today)
+      .order('created_at', { ascending: true })
+      .limit(PAYMENT_DUE_WINDOW),
+    // #43 類別 2（FULL）：一般固定團／即時預約的 PENDING + UNPAID（旅客轉帳、導遊確認收款）。
+    // 現行所有建單路徑都不寫 hold_expires_at，期限用出發時刻（有 hold 則用 hold）。
+    // 只用 ≤0108 欄位與 0107 的 trip_plans.sales_mode；不碰 seats_reserved（0111）。
+    // 未接受的 REQUEST（sales_mode = 'REQUEST'）由 TOUR_REQUEST 處理，這裡排除。
+    // TODO：加入線上金流（ECPay）PENDING 流程後，經線上 provider 付款的 PENDING 必須排除（18 §5／§6）。
+    t.supabase
+      .from('tour_orders')
+      .select('id, order_no, party_size, total_amount, deposit_amount, paid_amount, status, payment_status, contact, hold_expires_at, created_at, trip_plans!inner(name, sales_mode), trips(title), trip_departures!inner(departs_on, start_time)')
+      .eq('tenant_id', t.tenantId)
+      .eq('status', 'PENDING')
+      .eq('payment_status', 'UNPAID')
+      .neq('trip_plans.sales_mode', 'REQUEST')
       .gte('trip_departures.departs_on', today)
       .order('created_at', { ascending: true })
       .limit(PAYMENT_DUE_WINDOW),
@@ -263,8 +282,9 @@ export const GET = handle(async () => {
   if (tourRequestResult.error) throw tourRequestResult.error;
   // `seats_reserved`（0111）在尚未套用該 migration 的環境不存在：這兩個等待付款來源遇到
   // 缺欄位／缺關聯錯誤時只貢獻 0 張卡，不拖垮其他來源；其他錯誤照舊 throw。
-  const paymentDueUnpaidRows = tolerateMissingSchema(paymentDueUnpaidResult);
-  const paymentDuePartialRows = tolerateMissingSchema(paymentDuePartialResult);
+  const paymentDueUnpaidRows = tolerateMissingSchema('payment-due:confirmed-unpaid', paymentDueUnpaidResult);
+  if (paymentDuePendingResult.error) throw paymentDuePendingResult.error;
+  const paymentDuePartialRows = tolerateMissingSchema('payment-due:partial', paymentDuePartialResult);
 
   const bookingItems: GuideActionInboxItem[] = (bookingResult.data ?? []).map((row) => ({
     id: row.id,
@@ -490,6 +510,7 @@ export const GET = handle(async () => {
           status: row.status,
           paymentStatus: row.payment_status,
           seatsReserved: row.seats_reserved,
+          salesMode: firstOf<{ sales_mode?: string | null }>(row.trip_plans)?.sales_mode ?? null,
           holdExpiresAt: row.hold_expires_at ?? null,
           depositAmount: row.deposit_amount == null ? null : Number(row.deposit_amount),
           totalAmount: Number(row.total_amount ?? 0),
@@ -505,7 +526,7 @@ export const GET = handle(async () => {
       .sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt) || a.id.localeCompare(b.id))
       .slice(0, PAYMENT_DUE_CAP);
   const paymentDueItems: GuideActionInboxItem[] = dropGuideActionInboxOrderCardsAlreadyCovered(
-    [...toPaymentDueCards(paymentDueUnpaidRows), ...toPaymentDueCards(paymentDuePartialRows)],
+    [...toPaymentDueCards(paymentDueUnpaidRows), ...toPaymentDueCards(paymentDuePartialRows), ...toPaymentDueCards(paymentDuePendingResult.data)],
     [...tourRequestItems, ...refundPendingItems],
   );
 

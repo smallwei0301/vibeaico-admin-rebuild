@@ -190,10 +190,10 @@ export type GuideActionInboxStaffUnassignedItem = {
 /*
  * #43 類別 2：等待訂金、尾款或付款即將到期（19 分冊 §3.2）。來源只有 `tour_orders`
  * 既有欄位，不新建狀態：
- *   - FULL：`status = 'PENDING'` + `UNPAID` + `seats_reserved = true` + hold 不為 null——一般固定團／
- *     即時預約建單後已暫占名額、等旅客付「全額」（confirm-payment 對 PENDING 只有全額路徑，
- *     訂金只對 CONFIRMED 有效，故不顯示訂金）。尚未被接受的 REQUEST 是 `seats_reserved = false`，
- *     由 TOUR_REQUEST 卡處理，不在此列。期限同為 `hold_expires_at`。
+ *   - FULL：`status = 'PENDING'` + `UNPAID` + 方案 `sales_mode <> 'REQUEST'`（0107）——一般固定團／
+ *     即時預約建單後等旅客付「全額」；期限是 hold（若有）否則出發時刻（現行建單路徑不寫 hold）（confirm-payment 對 PENDING 只有全額路徑，
+ *     訂金只對 CONFIRMED 有效，故不顯示訂金）。尚未被接受的 REQUEST（sales_mode = 'REQUEST'）
+ *     由 TOUR_REQUEST 卡處理，不在此列。
  *   - INITIAL：`status = 'CONFIRMED'` + `payment_status = 'UNPAID'` + `seats_reserved`
  *     + `hold_expires_at` 不為 null——導遊已接受申請（#769）、名額已鎖、等旅客付訂金
  *     或全額；期限是 `hold_expires_at`（逾期 cron 會取消）。
@@ -689,7 +689,10 @@ export type GuideActionInboxTourPaymentDueInput = {
   planName: string;
   status: string;
   paymentStatus: string | null | undefined;
+  /** 只有 CONFIRMED + UNPAID（INITIAL）需要（0111 欄位）；PENDING／PARTIAL 不讀。 */
   seatsReserved: boolean | null | undefined;
+  /** `trip_plans.sales_mode`（0107）；PENDING 時 'REQUEST' 代表尚未接受的申請，排除。 */
+  salesMode?: string | null;
   holdExpiresAt: string | null;
   depositAmount: number | null | undefined;
   totalAmount: number;
@@ -727,19 +730,64 @@ export function buildGuideActionInboxTourPaymentDueItem(
     href: input.href,
   };
 
+  const departureDate = input.departureDate ? String(input.departureDate).slice(0, 10) : null;
+
+  /** 以出發時刻為期限（租戶時區）：BALANCE 與沒有 hold 的 FULL 共用。已出發回 null。 */
+  const departureDeadline = () => {
+    if (!departureDate) return null;
+    if (input.departureStartTime) {
+      const dueAt = getGuideDepartureDueAt(departureDate, input.departureStartTime, timeZone);
+      if (!dueAt || Date.parse(dueAt) <= now.getTime()) return null;
+      return {
+        dueAt, dueHasTime: true, dueLocalDate: departureDate,
+        dueLocalTime: String(input.departureStartTime).slice(0, 5),
+        priority: getGuideActionInboxPriority(dueAt, now, timeZone),
+      };
+    }
+    // 缺 start_time：只知道日期。過去日期不顯示；當天 TODAY、未來 UPCOMING，不假造午夜逾期。
+    // dueAt 僅供排序（該日起點）。
+    const dueAt = getGuideDepartureDueAt(departureDate, '00:00', timeZone);
+    if (!dueAt) return null;
+    const { today } = getGuideActionInboxDateWindow(now, timeZone);
+    if (departureDate < today) return null;
+    return {
+      dueAt, dueHasTime: false, dueLocalDate: departureDate, dueLocalTime: null,
+      priority: (departureDate === today ? 'TODAY' : 'UPCOMING') as GuideActionInboxPriority,
+    };
+  };
+
+  if (input.status === 'PENDING') {
+    // FULL：一般固定團／即時預約的 PENDING + UNPAID（旅客轉帳、導遊確認收款）。
+    // 尚未接受的 REQUEST（sales_mode = 'REQUEST'）由 TOUR_REQUEST 處理，這裡排除。
+    // 目前所有建單路徑都不寫 hold_expires_at，所以期限通常是出發時刻；有 hold 就用 hold。
+    // TODO：加入線上金流（ECPay）的 PENDING 流程後，經線上 provider 付款的 PENDING 訂單
+    // 必須排除（18 分冊 §5／§6：線上付款成功由 callback 自動推進，不需導遊人工確認）。
+    if (input.salesMode === 'REQUEST') return null;
+    if (departureDate
+      && !departureStillAhead(departureDate, input.departureStartTime, now, timeZone)) return null;
+    const holdOk = !!input.holdExpiresAt && !Number.isNaN(Date.parse(input.holdExpiresAt));
+    const deadline = holdOk
+      ? {
+        dueAt: input.holdExpiresAt as string, dueHasTime: true,
+        dueLocalDate: dateKey(new Date(input.holdExpiresAt as string), timeZone),
+        dueLocalTime: localTimeKey(new Date(input.holdExpiresAt as string), timeZone),
+        priority: getGuideActionInboxPriority(input.holdExpiresAt as string, now, timeZone),
+      }
+      : departureDeadline();
+    if (!deadline) return null;
+    return { ...base, stage: 'FULL', depositAmount: null, balanceAmount: null, ...deadline };
+  }
+
   if (input.paymentStatus === 'UNPAID') {
+    // INITIAL：導遊已接受的申請（CONFIRMED + UNPAID + seats_reserved + hold）。
     if (input.seatsReserved !== true || !input.holdExpiresAt) return null;
     if (Number.isNaN(Date.parse(input.holdExpiresAt))) return null;
-    // 團已出發（精確到 start_time）就不再是出發前待辦；缺 start_time 保留到當天結束。
-    if (input.departureDate
-      && !departureStillAhead(String(input.departureDate).slice(0, 10), input.departureStartTime, now, timeZone)) {
-      return null;
-    }
-    const isPending = input.status === 'PENDING';
+    if (departureDate
+      && !departureStillAhead(departureDate, input.departureStartTime, now, timeZone)) return null;
     return {
       ...base,
-      stage: isPending ? 'FULL' : 'INITIAL',
-      depositAmount: !isPending && hasPartialDeposit({ depositAmount: input.depositAmount, totalAmount: input.totalAmount })
+      stage: 'INITIAL',
+      depositAmount: hasPartialDeposit({ depositAmount: input.depositAmount, totalAmount: input.totalAmount })
         ? Number(input.depositAmount)
         : null,
       balanceAmount: null,
@@ -752,32 +800,11 @@ export function buildGuideActionInboxTourPaymentDueItem(
   }
 
   // PARTIAL：等尾款，期限是出發時刻。
-  if (!input.departureDate) return null;
-  const departureDate = String(input.departureDate).slice(0, 10);
   const balanceAmount = Math.max(Number(input.totalAmount) - Number(input.paidAmount ?? 0), 0);
   if (balanceAmount <= 0) return null;
-
-  if (input.departureStartTime) {
-    const dueAt = getGuideDepartureDueAt(departureDate, input.departureStartTime, timeZone);
-    if (!dueAt || Date.parse(dueAt) <= now.getTime()) return null; // 已出發：尾款不再是出發前待辦
-    return {
-      ...base, stage: 'BALANCE', depositAmount: null, balanceAmount, dueHasTime: true,
-      dueLocalDate: departureDate, dueLocalTime: String(input.departureStartTime).slice(0, 5),
-      priority: getGuideActionInboxPriority(dueAt, now, timeZone), dueAt,
-    };
-  }
-
-  // 缺 start_time：只知道日期。過去日期不顯示；當天為 TODAY、未來為 UPCOMING，
-  // 不會因為「假午夜」被判成 IMMEDIATE。dueAt 僅供排序（該日起點）。
-  const dueAt = getGuideDepartureDueAt(departureDate, '00:00', timeZone);
-  if (!dueAt) return null;
-  const { today } = getGuideActionInboxDateWindow(now, timeZone);
-  if (departureDate < today) return null;
-  return {
-    ...base, stage: 'BALANCE', depositAmount: null, balanceAmount, dueHasTime: false,
-    dueLocalDate: departureDate, dueLocalTime: null,
-    priority: departureDate === today ? 'TODAY' : 'UPCOMING', dueAt,
-  };
+  const deadline = departureDeadline();
+  if (!deadline) return null;
+  return { ...base, stage: 'BALANCE', depositAmount: null, balanceAmount, ...deadline };
 }
 
 /**
