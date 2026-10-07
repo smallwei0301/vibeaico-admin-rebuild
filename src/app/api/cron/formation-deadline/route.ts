@@ -20,6 +20,7 @@
  * 開關：FORMATION_DEADLINE_SWEEP_ENABLED !== 精確 'true' → 200 { skipped: 'disabled' }，不讀不寫。
  * Schema 缺欄位／表（42703／42P01／PGRST200／204／205）→ 整個 sweep 降級為 no-op（200 + warn），不 500。
  * log 不含個資（只印 id 與計數）。
+ * maxDuration = 60 秒：須大於 MAX_RUN_MS（45 秒）並留出收尾餘裕，確保自我截斷發生在平台強制中止之前。
  */
 import { NextResponse } from 'next/server';
 import { createAdminSupabase } from '@/server/supabase';
@@ -27,6 +28,7 @@ import { getGuideDepartureDueAt, normalizeGuideTimeZone } from '@/lib/guide-acti
 import { effectiveParticipants, type ParticipantOrderRow } from '@/lib/departure-formation-decision';
 
 export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 const PAGE = 200;
 const ORDER_PAGE = 1000;

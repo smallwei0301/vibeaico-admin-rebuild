@@ -245,6 +245,48 @@ describe('formation-deadline sweep（Issue #41）', () => {
     expect(body).toMatchObject({ formed: 0, reviewRequired: 1 });
   });
 
+  it('同一 departure_id 下其他租戶的已付訂單不計入有效人數（countParticipants 必須帶 tenant_id）', async () => {
+    const T2 = '22222222-2222-4222-8222-222222222222';
+    st.deps = [dep(1, { min_to_depart_snapshot: 4 })];
+    st.orders = [order(id(1), 1), order(id(1), 4, { tenant_id: T2 })];
+    const body = await (await GET(req())).json();
+    expect(body).toMatchObject({ formed: 0, reviewRequired: 1 });
+    expect(st.deps[0].formation_status).toBe('REVIEW_REQUIRED');
+  });
+
+  it('訂單超過一頁（短頁）仍讀到底，有效人數正確', async () => {
+    st.deps = [dep(1, { min_to_depart_snapshot: 5 })];
+    st.orders = Array.from({ length: 5 }, () => order(id(1), 1));
+    st.pageCap = 2; // 每頁只回 2 筆（< 要求的 ORDER_PAGE），模擬 PostgREST max_rows
+    const body = await (await GET(req())).json();
+    expect(body).toMatchObject({ formed: 1, reviewRequired: 0 });
+    expect(st.deps[0]).toMatchObject({ formation_status: 'FORMED', formed_participants: 5 });
+  });
+
+  it.each([[0], [null], ['abc'], [-2]])('min_to_depart_snapshot=%j 且有效人數 0 → REVIEW_REQUIRED，不寫 FORMED', async (min) => {
+    st.deps = [dep(1, { min_to_depart_snapshot: min })];
+    const body = await (await GET(req())).json();
+    expect(body).toMatchObject({ formed: 0, reviewRequired: 1 });
+    expect(st.deps[0].formation_status).toBe('REVIEW_REQUIRED');
+    expect(st.updates[0].patch).toEqual({ formation_status: 'REVIEW_REQUIRED' });
+  });
+
+  it.each([[0], [null], [-2]])('min_to_depart_snapshot=%j 且有效人數 1 → FORMED（下限 1），formed_by SYSTEM', async (min) => {
+    st.deps = [dep(1, { min_to_depart_snapshot: min })];
+    st.orders = [order(id(1), 1)];
+    const body = await (await GET(req())).json();
+    expect(body).toMatchObject({ formed: 1, reviewRequired: 0 });
+    expect(st.deps[0]).toMatchObject({ formation_status: 'FORMED', formed_by: 'SYSTEM', formed_participants: 1 });
+  });
+
+  it("min_to_depart_snapshot='3'（字串）解析為 3", async () => {
+    st.deps = [dep(1, { min_to_depart_snapshot: '3' }), dep(2, { min_to_depart_snapshot: '3' })];
+    st.orders = [order(id(1), 2), order(id(2), 3)];
+    await GET(req());
+    expect(st.deps[0].formation_status).toBe('REVIEW_REQUIRED');
+    expect(st.deps[1].formation_status).toBe('FORMED');
+  });
+
   it('團次數觸頂 → truncated 並 warn，剩下留給下一輪', async () => {
     st.deps = Array.from({ length: MAX_DEPARTURES + 3 }, (_, i) => dep(i + 1));
     const body = await (await GET(req())).json();
