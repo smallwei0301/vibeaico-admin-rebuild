@@ -104,6 +104,9 @@
     {
       "ref": "issue/16",
       "title": "QR Code 真實產生與下載"
+    },
+    {
+      "ref": "issue/45"
     }
   ],
   "main": {
@@ -7246,7 +7249,7 @@
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 29,
+    "issuesStarted": 30,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
