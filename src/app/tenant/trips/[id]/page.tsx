@@ -1337,7 +1337,7 @@ export default function TripDetailPage() {
             rows={departures}
             rowKey={(d) => d.id}
             rowId={(d) => `departure-row-${d.id}`}
-            rowClassName={(d) => (d.id === focusedDepartureId ? 'bg-[var(--primary-a10)]' : undefined)}
+            rowClassName={(d) => (d.id === focusedDepartureId ? '![--row-bg:var(--primary-a10)]' : undefined)}
             scroll
             empty={
               <EmptyState

@@ -710,7 +710,7 @@ function localTimeKey(date: Date, timeZone: string): string {
  * 出發時刻是否仍在未來（租戶時區）：有 start_time 用精確 instant（`<= now` 即已出發）；
  * 缺 start_time 只知道日期，保留到當天結束（過去日期才排除）。INITIAL／BALANCE 共用。
  */
-function departureStillAhead(
+export function departureStillAhead(
   departureDate: string,
   startTime: string | null,
   now: Date,
