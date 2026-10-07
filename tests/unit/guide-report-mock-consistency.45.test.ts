@@ -68,7 +68,7 @@ describe('mock：報表與下鑽清單同一份資料', () => {
     // 種子團次（出發日平移為相對今天）加報表示範調整：dp_4 REVIEW_REQUIRED 設為今天出發 → open 1；
     // dp_3 FORMED、dp_5 FAILED（過去的 COLLECTING 改為已有決策）；dp_10 保留過去的 COLLECTING → undecidedPast 1。
     // FORMED×6（dp_1、2、3、6、7、9；dp_6 已成團後因颱風取消）、AT_RISK×1（dp_8，計入已成團 → 已成團 7）、FAILED×1（dp_5）、REVIEW_REQUIRED×1（dp_4，今天）；
-    // 本期補充：mock_failed_1（已取消＋未成團，FAILED → 未成團 2）、mock_cancel_1（已取消＋募集中，未經成團決策）
+    // 本期補充：mock_failed_1（已取消＋未成團，FAILED → 未成團 2）、mock_cancel_1（已取消＋募集中，未有最終成團結果）
     expect(f.summary.byStatus).toEqual({ COLLECTING: 0, FORMED: 6, REVIEW_REQUIRED: 1, AT_RISK: 1, FAILED: 2 });
     expect(f.summary).toMatchObject({
       total: 12, concluded: 9, formed: 7, formedAtRisk: 1, failed: 2, cancelledUndecided: 1, undecidedPast: 1, open: 1, successRatePercent: 77.8, failRatePercent: 22.2,

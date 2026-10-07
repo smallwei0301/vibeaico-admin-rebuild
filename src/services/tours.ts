@@ -408,13 +408,15 @@ export const decideDepartureFormation = (id: string, payload: FormationDecisionP
             }));
           const patch = buildFormPatch(effectiveParticipants(orders), 'mock-user', new Date(nowMs).toISOString());
           dep.formationStatus = 'FORMED';
+          dep.formationDecidedAt = patch.formation_decided_at as string;
           dep.formedAt = patch.formed_at as string;
           dep.formedBy = 'GUIDE_OVERRIDE';
           dep.formedParticipants = patch.formed_participants as number;
         } else if (payload.decision === 'CONTINUE') {
           // AT_RISK → FORMED：只改狀態；formedAt／formedBy／formedParticipants 原成團證據保持不變，不動任何訂單
-          buildContinuePatch('mock-user', new Date(nowMs).toISOString());
+          const patch = buildContinuePatch('mock-user', new Date(nowMs).toISOString());
           dep.formationStatus = 'FORMED';
+          dep.formationDecidedAt = patch.formation_decided_at as string;
         } else {
           // mock 團次的出發日是固定的過去日期；為了讓示範能走完整流程，延長募集的「不晚於出發」
           // 以「出發日與今天起 30 天後取較晚者」驗證（僅 mock；真實 API 用團次實際出發時間）。
@@ -425,6 +427,7 @@ export const decideDepartureFormation = (id: string, payload: FormationDecisionP
           );
           dep.formationStatus = 'COLLECTING';
           dep.formationDeadlineAt = patch.formation_deadline_at as string;
+          dep.formationDecidedAt = patch.formation_decided_at as string;
         }
       } catch (e) {
         if (e instanceof FormationDecisionError) throw new ApiError(e.message, 'REQ_001', 400);

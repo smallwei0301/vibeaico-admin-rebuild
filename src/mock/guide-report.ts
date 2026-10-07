@@ -80,7 +80,7 @@ export function mockDepartureRows(nowMs: number = Date.now()): GuideDepartureRow
   const today = zonedToday(ZONE, nowMs);
   // 唯一的報表示範調整，僅是日期平移，formation_status 不覆寫（一律取團次 mock）：
   //  - dp_4（REVIEW_REQUIRED）出發日設為今天 → 呈現「今天出發、尚待成團決策 1 團」（尚未結案）
-  //  - dp_10 保留過去的 COLLECTING → 呈現「無成團決策紀錄 1 團」
+  //  - dp_10 保留過去的 COLLECTING → 呈現「無最終成團結果 1 團」
   const reportOverride: Record<string, { departs_on?: string }> = {
     dp_4: { departs_on: today },
   };
@@ -89,6 +89,7 @@ export function mockDepartureRows(nowMs: number = Date.now()): GuideDepartureRow
     departs_on: addDays(today, -9 + diffDays(d.departsOn, DEPARTURE_ANCHOR_DATE)),
     formation_status: d.formationStatus ?? 'COLLECTING',
     status: d.status,
+    formation_decided_at: d.formationDecidedAt ?? null,
     ...reportOverride[d.id],
   }));
   const previousPeriod: GuideDepartureRow[] = [
@@ -96,7 +97,7 @@ export function mockDepartureRows(nowMs: number = Date.now()): GuideDepartureRow
     { id: 'mock_prev_2', departs_on: addDays(today, -38), formation_status: 'FAILED' },
     { id: 'mock_prev_3', departs_on: addDays(today, -35), formation_status: 'FORMED' },
   ];
-  // 本期補充（不屬於上一期）：一筆導遊決策取消（已取消＋未成團）、一筆已取消但未經成團決策（成團狀態仍是募集中）
+  // 本期補充（不屬於上一期）：一筆導遊決策取消（已取消＋未成團）、一筆已取消但未有最終成團結果（成團狀態仍是募集中）
   const currentPeriodExtras: GuideDepartureRow[] = [
     { id: 'mock_failed_1', departs_on: addDays(today, -4), formation_status: 'FAILED', status: 'CANCELLED' },
     { id: 'mock_cancel_1', departs_on: addDays(today, -3), formation_status: 'COLLECTING', status: 'CANCELLED' },

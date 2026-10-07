@@ -122,7 +122,7 @@ export const GET = handle(async (req) => {
   // 報表其餘部分照常回 200；其他任何錯誤維持 500，不靜默吞掉。
   const depFrom = range.prevFrom;
   const fetchDeps = async (afterId: string | null, limit: number) => {
-    let dq = t.supabase.from('trip_departures').select('id, departs_on, status, formation_status')
+    let dq = t.supabase.from('trip_departures').select('id, departs_on, status, formation_status, formation_decided_at')
       .eq('tenant_id', t.tenantId).gte('departs_on', depFrom).lte('departs_on', to);
     if (afterId) dq = dq.gt('id', afterId);
     const { data, error } = await dq.order('id', { ascending: true }).limit(limit);

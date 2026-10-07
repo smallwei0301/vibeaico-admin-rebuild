@@ -9,7 +9,8 @@
  *    成團率以「成團承諾」為口徑：FORMED、AT_RISK 都算已成團（AT_RISK 只能由 FORMED 轉入，且「不自動撤銷已成團承諾」，
  *    見 18 分冊第 15 行、第 229 行、第 433 行）；FAILED＝未成團／導遊取消（18 分冊 §3）。
  *    出發日還沒到的團次（任何狀態）是「尚未結案」，不進比率。
- *    出發日已過（< 今天）、未取消、formation_status 仍是 COLLECTING／REVIEW_REQUIRED 的團次＝「無成團決策紀錄」（undecidedPast）：
+ *    出發日已過（< 今天）、未取消、formation_status 仍是 COLLECTING／REVIEW_REQUIRED 的團次＝「無最終成團結果」（undecidedPast；欄位名保留）：
+ *    此類不等於「從未決策」：導遊決策 EXTEND（延長募集）後團次回到 COLLECTING 並保留 formation_decided_at，出發日過了仍沒有最終成團結果者也歸此類。
  *    0107 新增 formation_status 時 NOT NULL DEFAULT 'COLLECTING' 且未回填歷史，成團功能上線前就建立的團次會帶著這個預設值，
  *    不能把 migration default 當成真實狀態，更不能說它「還在募集中」。0107 沒有可靠的 legacy 標記
  *    （formation_deadline_at、formation_decided_at 對舊列為 NULL，但新團次也可能為 NULL；min_to_depart_snapshot 預設 1 無法區分），
@@ -21,24 +22,27 @@
  *      · CANCELLED 且 FORMED ＝ 已成團後才取消（颱風等；18 分冊 §3 兩軸獨立、TOUR_CANCELLED_AFTER_FORMED）
  *        → 成團結果保留，照一般規則：出發日已到即算已結案、已成團。
  *      · CANCELLED 且 formation_status 為 COLLECTING／REVIEW_REQUIRED ＝ 尚未做出成團決策就取消 →
- *        「已取消（未經成團決策）」，單獨計數，不進成團率／未達門檻率的分子與分母，也不算「尚未結案」。
+ *        「已取消（未有最終成團結果）」，單獨計數（cancelledUndecided；EXTEND 後仍 COLLECTING 即被取消者亦同），不進成團率／未達門檻率的分子與分母，也不算「尚未結案」。
  *        不推測它是成團失敗。
  *      · AT_RISK 只會發生在 FORMED 之後（18 分冊 §3 第 15、229 行：成團後人數跌破門檻才進 AT_RISK），
- *        代表成團承諾早已做過，故 CANCELLED＋AT_RISK 不歸「未經成團決策」，與未取消的 AT_RISK 同樣處理：
+ *        代表成團承諾早已做過，故 CANCELLED＋AT_RISK 不歸「未有最終成團結果」，與未取消的 AT_RISK 同樣處理：
  *        出發日已到即算已成團（已結案、進分子），分布仍標示 AT_RISK。
- *  - 各 formation_status 的團數：期間內全部團次的分布（不分是否結案；不含「已取消（未經成團決策）」與「無成團決策紀錄」，
+ *  - 各 formation_status 的團數：期間內全部團次的分布（不分是否結案；不含「已取消（未有最終成團結果）」與「無最終成團結果」，
  *    這兩類另列，所以分布的 COLLECTING／REVIEW_REQUIRED 只剩出發日未到者），供對照。
  *  - 不變式（summarizeFormation 的測試逐條鎖定）：
  *      total = Σ byStatus + cancelledUndecided + undecidedPast
  *      total = concluded + open + cancelledUndecided + undecidedPast
- *      concluded = formed + failed；open ＝ 尚未結案：出發日未到，或今天出發仍待決策（且非未經決策取消）的團次。
+ *      concluded = formed + failed；open ＝ 尚未結案：出發日未到，或今天出發仍待決策（且非未有最終成團結果即取消）的團次。
  *  - 上一期：與本期等長、緊接在前，用同一個「今天」；比較以百分點（pointDiff）。
  *  - 資料可用性（availability）：正式團次建立時 departureFormationSnapshot() 只寫 COLLECTING（migration 預設值），
- *    且 src／supabase/migrations 目前沒有把團次轉 FORMED／FAILED／REVIEW_REQUIRED／AT_RISK 的 runtime 寫入（人工決策 API 尚未合併）。
- *    若本期與上一期查到的團次「全部」仍是 COLLECTING，沒有任何成團決策紀錄，比率只會是算不出的空值，卡片就誠實顯示 NOT_TRACKED。
- *    判斷只看 formation_status 是否出現過 COLLECTING 以外的值：0107 的 CHECK 約束把 formed_at／formed_by／formation_decided_at 綁在
- *    非 COLLECTING 的狀態上，formation_status 是最可靠、且不需多選欄位的單一訊號；日後轉態上線，一出現第一筆決策紀錄就自動恢復為 TRACKED。
- *    REVIEW_REQUIRED 也算（它只能由系統轉態寫入，代表轉態機制已在運作）。
+ *    轉態目前由人工決策 API 寫入（#825，POST /api/trip-departures/[id]/formation-decision，FORM／EXTEND／CONTINUE）；
+ *    自動轉態（成團截止排程）尚未上線，因此仍可能出現「尚無任何決策紀錄」的期間。
+ *    若本期與上一期查到的團次「全部」仍是 COLLECTING 且都沒有 formation_decided_at，沒有任何成團決策紀錄，比率只會是算不出的空值，卡片就誠實顯示 NOT_TRACKED。
+ *    判斷訊號有兩個，任一成立即 TRACKED：(1) formation_status 出現過 COLLECTING 以外的值（REVIEW_REQUIRED 也算，代表轉態機制已在運作）；
+ *    (2) formation_decided_at 非空：#825 的導遊決策 EXTEND（延長募集）會把 REVIEW_REQUIRED 改回 COLLECTING，但仍寫入 formation_decided_at，
+ *    若只看 formation_status，全部經 EXTEND 回到 COLLECTING 的期間會被誤判成「尚未追蹤」。
+ *    0107 的 formed_evidence_ck 只約束 FORMED／AT_RISK 須有 formed_at／formed_by／formed_participants，不約束 formation_decided_at。
+ *    欄位缺失（mock 或舊資料）視為 null。一旦出現第一筆決策紀錄就自動恢復為 TRACKED。
  *  - 這是「目前的成團狀態」：formation_status 沒有歷史快照，所以數字反映讀取當下的狀態，不是當時的狀態。
  */
 export const FORMATION_STATUSES = ['COLLECTING', 'FORMED', 'REVIEW_REQUIRED', 'AT_RISK', 'FAILED'] as const;
@@ -50,6 +54,8 @@ export type GuideDepartureRow = {
   /** YYYY-MM-DD（店家日曆日） */
   departs_on: string;
   formation_status: string;
+  /** 0107 formation_decided_at（ISO 時間戳）；#825 的 EXTEND 會讓 formation_status 回到 COLLECTING 但保留此欄；未提供視為 null */
+  formation_decided_at?: string | null;
   /** trip_departures.status（OPEN／CLOSED／CANCELLED）；未提供視為未取消 */
   status?: string;
 };
@@ -65,11 +71,11 @@ export type GuideFormationSummary = {
   /** 已成團中，目前狀態為 AT_RISK（成團後人數不足）的團數；formed 已含這些 */
   formedAtRisk: number;
   failed: number;
-  /** 已取消（status = CANCELLED）且 formation_status 為 COLLECTING／REVIEW_REQUIRED：未經成團決策，不進比率、不算尚未結案 */
+  /** 已取消（status = CANCELLED）且 formation_status 為 COLLECTING／REVIEW_REQUIRED：未有最終成團結果（含 EXTEND 後仍 COLLECTING 者），不進比率、不算尚未結案 */
   cancelledUndecided: number;
   /**
-   * 出發日已過（< 店家今天）、未取消、formation_status 仍為 COLLECTING／REVIEW_REQUIRED：無成團決策紀錄
-   * （例如成團功能上線前建立的團次，migration 預設值 COLLECTING 不是真實狀態）。不進比率、不算尚未結案。
+   * 出發日已過（< 店家今天）、未取消、formation_status 仍為 COLLECTING／REVIEW_REQUIRED：無最終成團結果
+   * （例如成團功能上線前建立的團次，migration 預設值 COLLECTING 不是真實狀態；或 EXTEND 延長募集後仍 COLLECTING、formation_decided_at 非空者）。不進比率、不算尚未結案。
    */
   undecidedPast: number;
   /** total − concluded − cancelledUndecided − undecidedPast：尚未結案（出發日未到，或今天出發仍待成團決策） */
@@ -89,8 +95,8 @@ export type GuideFormation = {
   /** true＝團次筆數達上限，數字可能不完整 */
   truncated: boolean;
   /**
-   * TRACKED＝本期或上一期至少一團有成團決策紀錄（formation_status 不是 COLLECTING）；
-   * NOT_TRACKED＝全部仍是 COLLECTING（沒有任何決策紀錄；兩期皆 0 團時亦同），比率與分布沒有意義；卡片模式由 formationCardMode 決定（本期 0 團優先 EMPTY）。
+   * TRACKED＝本期或上一期至少一團有成團決策紀錄（formation_status 不是 COLLECTING，或 formation_decided_at 非空）；
+   * NOT_TRACKED＝全部仍是 COLLECTING 且無 formation_decided_at（沒有任何決策紀錄；兩期皆 0 團時亦同），比率與分布沒有意義；卡片模式由 formationCardMode 決定（本期 0 團優先 EMPTY）。
    */
   availability: FormationAvailability;
 };
@@ -156,7 +162,7 @@ export function computeFormation(input: {
   const summary = summarizeFormation(input.rows, input.from, input.to, input.today);
   const previous = summarizeFormation(input.rows, input.prevFrom, input.prevTo, input.today);
   const tracked = input.rows.some((r) =>
-    r.departs_on >= input.prevFrom && r.departs_on <= input.to && isStatus(r.formation_status) && r.formation_status !== 'COLLECTING');
+    r.departs_on >= input.prevFrom && r.departs_on <= input.to && isStatus(r.formation_status) && (r.formation_status !== 'COLLECTING' || r.formation_decided_at != null));
   const diff = (a: number | null, b: number | null) => (a === null || b === null ? null : round1(a - b));
   return {
     summary, previous,
