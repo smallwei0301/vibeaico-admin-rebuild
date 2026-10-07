@@ -24,6 +24,7 @@ export const ERR = {
   PAYLOAD_TOO_LARGE: 'REQ_005',    // request body 超過應用層上限（#802，見 readJsonBody）
   RATE_LIMITED: 'REQ_004',         // 匿名公開端點節流（#46 Final Risk F1，見 src/server/rate-limit.ts）
   MAIL_UNAVAILABLE: 'MAIL_001',    // 寄信服務暫時不可用（#754：provider 失敗／未設定，不得謊報已寄出）
+  REPORT_RANGE_TOO_LARGE: 'REPORT_001', // 報表／下鑽區間內資料量超過可完整計算的上限，請縮短日期區間（#45，HTTP 422）
   INTERNAL: 'SYS_001',
 } as const;
 

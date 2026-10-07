@@ -15,11 +15,15 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Input, Label, FormGroup } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
+  rangeLink as buildRangeLink, rankingLink, refundPendingLink, repeatCustomersLink, sourceLink,
+} from '@/lib/guide-report-links';
+import {
   getGuideReport,
   type GuideRankDimension, type GuideRankMetric, type GuideRankRow, type GuideReport,
 } from '@/services/reports';
 import { reportsPage } from '@/i18n/zh-TW/pages/reports';
-import { presetRange, todayIn } from '@/lib/guide-report-range';
+import { formatAsOf, presetRange, todayIn } from '@/lib/guide-report-range';
+import { GUIDE_SOURCE_KEYS, GUIDE_SOURCES } from '@/server/guide-report';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/utils';
 
 const t = reportsPage.guideReport;
@@ -116,17 +120,55 @@ export function GuideReportView() {
     setQuery({ from: fromInput, to: toInput });
   };
 
+  /** 所有下鑽連結共用：日期區間＋資料截至（createdBefore），清單與報表用同一個讀取上界 */
+  const linkRange = { from: report?.range.from ?? '', to: report?.range.to ?? '', asOf: report?.asOf ?? null, timeZone: report?.range.timeZone };
+
+  const cellLink = (r: GuideRankRow, m: GuideRankMetric, text: string) => (report
+    ? (
+      <Link
+        href={rankingLink(linkRange, dimension, r.id, m)}
+        className="underline" title={t.ranking.cellTitles[m](r.name)} aria-label={t.ranking.cellTitles[m](r.name)}
+      >
+        {text}
+      </Link>
+    )
+    : text);
+
   const columns: Column<GuideRankRow>[] = [
     { key: 'rank', header: t.ranking.columns.rank, width: '64px', render: (_r, i) => <Badge tone={RANK_TONE[i] ?? 'neutral'}>{i + 1}</Badge> },
-    { key: 'name', header: t.ranking.columns.name, render: (r) => r.name },
-    { key: 'orders', header: t.ranking.columns.orders, numeric: true, render: (r) => formatNumber(r.orders) },
-    { key: 'people', header: t.ranking.columns.people, numeric: true, render: (r) => formatNumber(r.people) },
-    { key: 'revenue', header: t.ranking.columns.revenue, numeric: true, render: (r) => formatCurrency(r.revenue) },
+    {
+      key: 'name', header: t.ranking.columns.name,
+      // 名稱連結固定用「訂單數」口徑（不含已取消），不隨排序分頁改變；各數字格另有自己的連結。
+      render: (r) => (report
+        ? (
+          <Link
+            href={rankingLink(linkRange, dimension, r.id, 'orders')}
+            className="underline" title={t.ranking.cellTitles.orders(r.name)}
+          >
+            {r.name}
+          </Link>
+        )
+        : r.name),
+    },
+    // 每個數字格各用該欄的口徑：訂單數、人數排除已取消（activeOnly）；實收營收含已取消訂單的已收款（不加）。
+    {
+      key: 'orders', header: t.ranking.columns.orders, numeric: true,
+      render: (r) => cellLink(r, 'orders', formatNumber(r.orders)),
+    },
+    {
+      key: 'people', header: t.ranking.columns.people, numeric: true,
+      render: (r) => cellLink(r, 'people', formatNumber(r.people)),
+    },
+    {
+      key: 'revenue', header: t.ranking.columns.revenue, numeric: true,
+      render: (r) => cellLink(r, 'revenue', formatCurrency(r.revenue)),
+    },
   ];
 
   const cardLabel = (name: string) => (report?.truncated ? `${name}（${t.truncatedHint}）` : name);
   const s = report?.summary;
   const prev = report?.previous;
+  const rangeLink = (status?: string) => (report ? buildRangeLink(linkRange, status) : '/tenant/tour-orders');
   const rows = report ? report.ranking[dimension][metric] : [];
 
   if (forbidden) {
@@ -219,12 +261,12 @@ export function GuideReportView() {
           <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               label={cardLabel(t.cards.orders)} icon={ShoppingBag} tone="primary"
-              value={`${formatNumber(s.totalOrders)} ${t.unit.orders}`}
+              value={<Link href={rangeLink()} className="underline" title={t.drilldown.viewOrders}>{`${formatNumber(s.totalOrders)} ${t.unit.orders}`}</Link>}
               hint={`${changeText(report.changes.totalOrders)}${t.sep}${t.change.previousValue(formatNumber(prev.totalOrders))}`}
             />
             <StatCard
               label={cardLabel(t.cards.revenue)} icon={DollarSign} tone="success"
-              value={formatCurrency(s.revenue)}
+              value={<Link href={rangeLink()} className="underline" title={t.drilldown.viewOrders}>{formatCurrency(s.revenue)}</Link>}
               hint={
                 <>
                   {changeText(report.changes.revenue)}
@@ -232,7 +274,9 @@ export function GuideReportView() {
                   {s.refundPendingCount > 0 ? (
                     <>
                       <br />
-                      {t.cardHints.refundPending(s.refundPendingCount)}
+                      <Link href={refundPendingLink(linkRange)} className="underline" title={t.drilldown.viewOrders}>
+                        {t.cardHints.refundPending(s.refundPendingCount)}
+                      </Link>
                     </>
                   ) : null}
                 </>
@@ -249,7 +293,7 @@ export function GuideReportView() {
             />
             <StatCard
               label={cardLabel(t.cards.cancelled)} icon={Ban} tone="danger"
-              value={s.cancellationRate === null ? t.noData : formatPercent(s.cancellationRate, 1)}
+              value={s.cancellationRate === null ? t.noData : <Link href={rangeLink('CANCELLED')} className="underline" title={t.drilldown.viewOrders}>{formatPercent(s.cancellationRate, 1)}</Link>}
               hint={`${pointsText(report.changes.cancellationRatePoints)}${t.sep}${t.cardHints.cancelledCount(s.cancelledCount, s.totalOrders)}${t.sep}${t.change.previousValue(prev.cancellationRate === null ? t.noData : formatPercent(prev.cancellationRate, 1))}`}
             />
           </div>
@@ -261,10 +305,70 @@ export function GuideReportView() {
                 {STATUSES.map((k) => (
                   <div key={k}>
                     <div className="stat-label">{t.status[k]}</div>
-                    <div className="stat-value">{formatNumber(s.byStatus[k])}</div>
+                    <div className="stat-value">
+                      <Link href={rangeLink(k)} className="underline" title={t.drilldown.viewOrders}>{formatNumber(s.byStatus[k])}</Link>
+                    </div>
                   </div>
                 ))}
               </div>
+            </CardBody>
+          </Card>
+
+          <Card className="mb-4">
+            <CardHeader><CardTitle>{t.sourceCard.title}</CardTitle></CardHeader>
+            <CardBody>
+              <p className="form-text mb-3">{t.sourceCard.description}</p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+                {GUIDE_SOURCE_KEYS.map((k) => {
+                  const name = t.sourceCard.names[k];
+                  const stat = s.bySource[k];
+                  const line = t.sourceCard.line(stat.orders, formatCurrency(stat.revenue));
+                  return (
+                    <div key={k}>
+                      <div className="stat-label">{name}</div>
+                      <div className="stat-value text-base">
+                        {(GUIDE_SOURCES as readonly string[]).includes(k)
+                          ? <Link href={sourceLink(linkRange, k)} className="underline" title={t.sourceCard.viewSourceOrders(name)}>{line}</Link>
+                          : line}
+                      </div>
+                      <div className="form-text">{t.sourceCard.previous(prev.bySource[k].orders)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardBody>
+          </Card>
+
+          <Card className="mb-4">
+            <CardHeader><CardTitle>{t.repeatCard.title}</CardTitle></CardHeader>
+            <CardBody>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <div className="stat-label">{t.repeatCard.customers}</div>
+                  <div className="stat-value">{formatNumber(report.repeat.customers)}</div>
+                </div>
+                <div>
+                  <div className="stat-label">{t.repeatCard.repeatCustomers}</div>
+                  <div className="stat-value">{formatNumber(report.repeat.repeatCustomers)}</div>
+                </div>
+                <div>
+                  <div className="stat-label">{t.repeatCard.rate}</div>
+                  <div className="stat-value">
+                    {report.repeat.ratePercent === null ? t.noData : formatPercent(report.repeat.ratePercent, 1)}
+                  </div>
+                </div>
+              </div>
+              {report.repeat.repeatOrders > 0 && !report.truncated ? (
+                <p className="mt-2 text-sm">
+                  <Link
+                    href={repeatCustomersLink(linkRange)}
+                    className="underline"
+                  >
+                    {t.repeatCard.viewOrders(report.repeat.repeatOrders)}
+                  </Link>
+                </p>
+              ) : null}
+              <p className="form-text mt-2">{t.repeatCard.unlinked(report.repeat.unlinkedOrders)}</p>
             </CardBody>
           </Card>
 
@@ -292,6 +396,7 @@ export function GuideReportView() {
                 />
               </div>
               <p className="form-text mt-2">{t.ranking.tieRule}</p>
+              <p className="form-text mt-1">{t.ranking.linkNote}</p>
             </CardBody>
           </Card>
         </>
@@ -301,7 +406,7 @@ export function GuideReportView() {
         <CardHeader><CardTitle>{t.defs.title}</CardTitle></CardHeader>
         <CardBody>
           <ul className="list-disc space-y-1 pl-5 text-sm">
-            {[t.defs.scope, t.defs.orders, t.defs.revenue, t.defs.avgOrderValue, t.defs.cancelled, t.defs.ranking, t.defs.comparison].map((line) => (
+            {[t.defs.scope, t.defs.orders, t.defs.revenue, t.defs.avgOrderValue, t.defs.cancelled, t.defs.ranking, t.defs.source, t.defs.repeat, t.defs.comparison].map((line) => (
               <li key={line}>{line}</li>
             ))}
           </ul>
@@ -324,11 +429,4 @@ export function GuideReportView() {
       </Card>
     </>
   );
-}
-
-/** 以店家時區顯示「資料截至」時間 */
-function formatAsOf(iso: string, zone: string): string {
-  return new Intl.DateTimeFormat('zh-TW', {
-    timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).format(new Date(iso));
 }

@@ -22,6 +22,9 @@ import {
   parseTourOrdersDeepLink, rejectTourOrder,
 } from '@/services/tours';
 import { ApiError } from '@/lib/api';
+import { createLatestGuard } from '@/lib/latest-request';
+import { formatAsOf } from '@/lib/guide-report-range';
+import { PUBLIC_DEFAULT_TIME_ZONE } from '@/lib/public-time-zone';
 import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
 import { useBusinessType } from '@/components/layout/BusinessTypeContext';
@@ -79,6 +82,20 @@ export default function TourOrdersPage() {
   const [statusFilter, setStatusFilter] = React.useState('');
   const [sourceFilter, setSourceFilter] = React.useState('');
   const [paymentFilter, setPaymentFilter] = React.useState('');
+  /** #45 報表下鑽：行程與建立日期區間（深連結帶入，可一鍵清除） */
+  const [tripFilter, setTripFilter] = React.useState('');
+  const [createdFrom, setCreatedFrom] = React.useState('');
+  const [createdTo, setCreatedTo] = React.useState('');
+  const [planFilter, setPlanFilter] = React.useState('');
+  const [activeOnly, setActiveOnly] = React.useState(false);
+  const [repeatOnly, setRepeatOnly] = React.useState(false);
+  const [createdBefore, setCreatedBefore] = React.useState('');
+  const [asOfZone, setAsOfZone] = React.useState('');
+  /** 深連結帶入的篩選是否已套用完成：套用前不載入，避免先送一次未篩選請求 */
+  const [ready, setReady] = React.useState(false);
+  /** 這次的篩選是否來自報表／深連結（決定是否顯示「清除」提示列） */
+  const [fromLink, setFromLink] = React.useState(false);
+  const latest = React.useRef(createLatestGuard());
 
   const [detail, setDetail] = React.useState<TourOrder | null>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -111,18 +128,45 @@ export default function TourOrdersPage() {
   const openedDeepLinkId = React.useRef('');
 
   React.useEffect(() => {
-    const { paymentStatus, orderId } = parseTourOrdersDeepLink(window.location.search);
+    const dl = parseTourOrdersDeepLink(window.location.search);
+    const { paymentStatus, orderId } = dl;
+    if (dl.status) setStatusFilter(dl.status);
+    if (dl.source) setSourceFilter(dl.source);
+    if (dl.tripId) setTripFilter(dl.tripId);
+    if (dl.createdFrom) setCreatedFrom(dl.createdFrom);
+    if (dl.createdTo) setCreatedTo(dl.createdTo);
+    if (dl.planId) setPlanFilter(dl.planId);
+    if (dl.activeOnly) setActiveOnly(true);
+    if (dl.repeatCustomers) setRepeatOnly(true);
     if (paymentStatus) setPaymentFilter(paymentStatus);
     if (orderId) setRequestedOrderId(orderId);
+    if (dl.createdBefore) setCreatedBefore(dl.createdBefore);
+    if (dl.tz) setAsOfZone(dl.tz);
+    if (dl.status || dl.source || dl.tripId || dl.planId || dl.createdFrom || dl.createdTo || dl.createdBefore
+      || dl.activeOnly || dl.repeatCustomers || paymentStatus) setFromLink(true);
+    setReady(true);
+    const guard = latest.current;
+    return () => guard.invalidate();
   }, []);
 
+  const drillExtras = React.useMemo(() => ({
+    ...(planFilter ? { planId: planFilter } : {}),
+    ...(activeOnly ? { activeOnly: '1' as const } : {}),
+    ...(repeatOnly ? { repeatCustomers: '1' as const } : {}),
+    ...(createdBefore ? { createdBefore } : {}),
+  }), [planFilter, activeOnly, repeatOnly, createdBefore]);
+
   const load = React.useCallback(async () => {
+    // 只套用最新一次請求的回應：篩選連續變更時，較慢的舊回應不得覆蓋新結果
+    const token = latest.current.next();
     setLoading(true);
     try {
       const res = await listTourOrders({
         page, size: PAGE_SIZE, keyword,
         status: statusFilter, source: sourceFilter, paymentStatus: paymentFilter,
+        tripId: tripFilter, createdFrom, createdTo, ...drillExtras,
       });
+      if (!latest.current.isLatest(token)) return;
       setRows(res.content);
       setTotal(res.totalElements);
 
@@ -137,7 +181,9 @@ export default function TourOrdersPage() {
           const exact = await listTourOrders({
             page: 0, size: 1, orderId: requestedOrderId,
             status: statusFilter, source: sourceFilter, paymentStatus: paymentFilter,
+            tripId: tripFilter, createdFrom, createdTo, ...drillExtras,
           });
+          if (!latest.current.isLatest(token)) return;
           requested = exact.content.find((o) => o.id === requestedOrderId);
         }
         if (requested) {
@@ -145,14 +191,18 @@ export default function TourOrdersPage() {
           openedDeepLinkId.current = requestedOrderId;
         }
       }
-    } catch {
-      toast.show(t.messages.loadFailed, 'danger');
+    } catch (e) {
+      if (!latest.current.isLatest(token)) return;
+      toast.show(
+        e instanceof ApiError && e.code === 'REPORT_001' ? t.messages.rangeTooLarge : t.messages.loadFailed,
+        'danger',
+      );
     } finally {
-      setLoading(false);
+      if (latest.current.isLatest(token)) setLoading(false);
     }
-  }, [page, keyword, statusFilter, sourceFilter, paymentFilter, requestedOrderId, toast]);
+  }, [page, keyword, statusFilter, sourceFilter, paymentFilter, tripFilter, createdFrom, createdTo, drillExtras, requestedOrderId, toast]);
 
-  React.useEffect(() => { void load(); }, [load]);
+  React.useEffect(() => { if (ready) void load(); }, [ready, load]);
 
   /* --------------------------------------------------------------- 統計 */
   const stats = React.useMemo(() => {
@@ -470,6 +520,39 @@ export default function TourOrdersPage() {
         <StatCard label={t.stats.monthRevenue} value={formatCurrency(stats.revenue)} icon={BadgeDollarSign} tone="success" />
       </div>
 
+      {fromLink || tripFilter || planFilter || activeOnly || repeatOnly || createdFrom || createdTo || createdBefore ? (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+          <span>
+            {t.drilldown.current(
+              [
+                createdFrom || createdTo ? t.drilldown.range(createdFrom, createdTo) : '',
+                tripFilter ? t.drilldown.trip : '',
+                planFilter ? t.drilldown.plan : '',
+                activeOnly ? t.drilldown.activeOnly : '',
+                repeatOnly ? t.drilldown.repeatCustomers : '',
+                createdBefore ? t.drilldown.asOf(formatAsOf(createdBefore, asOfZone || PUBLIC_DEFAULT_TIME_ZONE)) : '',
+                fromLink && statusFilter ? t.drilldown.status(t.status[statusFilter as TourOrderStatus] ?? statusFilter) : '',
+                fromLink && paymentFilter ? t.drilldown.payment(t.paymentStatus[paymentFilter as TourPaymentStatus] ?? paymentFilter) : '',
+                fromLink && sourceFilter ? t.drilldown.source(t.source[sourceFilter as TourOrderSource] ?? sourceFilter) : '',
+              ].filter(Boolean).join(t.drilldown.sep),
+            )}
+          </span>
+          <Button
+            variant="outline" size="sm"
+            onClick={() => {
+              // 清除所有由連結帶入的篩選（含狀態／付款／來源／行程／方案／旗標／日期／資料截至），並同步網址
+              setStatusFilter(''); setPaymentFilter(''); setSourceFilter('');
+              setTripFilter(''); setPlanFilter(''); setActiveOnly(false); setRepeatOnly(false);
+              setCreatedFrom(''); setCreatedTo(''); setCreatedBefore(''); setAsOfZone('');
+              setRequestedOrderId(''); setFromLink(false); setPage(0);
+              window.history.replaceState(null, '', window.location.pathname);
+            }}
+          >
+            {t.drilldown.clear}
+          </Button>
+        </div>
+      ) : null}
+
       <DataTableContainer>
         <DataTableHeader
           title={t.tableTitle}
@@ -481,7 +564,12 @@ export default function TourOrdersPage() {
                 placeholder={t.filters.keywordPlaceholder}
                 className="w-full sm:w-56"
               />
-              <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}>
+              <Select value={statusFilter} onChange={(e) => {
+                setStatusFilter(e.target.value);
+                // 明確選「已取消」與「排除取消」矛盾：以使用者剛選的狀態為準，移除這兩個報表下鑽旗標
+                if (e.target.value === 'CANCELLED') { setActiveOnly(false); setRepeatOnly(false); }
+                setPage(0);
+              }}>
                 <option value="">{t.filters.statusAll}</option>
                 {(Object.keys(t.status) as TourOrderStatus[]).map((k) => (
                   <option key={k} value={k}>{t.status[k]}</option>

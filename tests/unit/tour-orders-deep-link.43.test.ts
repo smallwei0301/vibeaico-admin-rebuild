@@ -51,14 +51,14 @@ import { parseTourOrdersDeepLink } from '@/services/tours';
 
 describe('parseTourOrdersDeepLink（#43 類別 5 deep link 解析，純函式）', () => {
   it('讀出合法的 paymentStatus 與 orderId', () => {
-    expect(parseTourOrdersDeepLink('?paymentStatus=REFUND_PENDING&orderId=ord-1')).toEqual({
+    expect(parseTourOrdersDeepLink('?paymentStatus=REFUND_PENDING&orderId=ord-1')).toMatchObject({
       paymentStatus: 'REFUND_PENDING',
       orderId: 'ord-1',
     });
   });
 
   it('值域外的 paymentStatus 一律忽略，不把任意字串塞進 filter（mutation：拿掉值域驗證會讓這裡回傳原始字串）', () => {
-    expect(parseTourOrdersDeepLink('?paymentStatus=NOT_A_REAL_STATUS&orderId=ord-1')).toEqual({
+    expect(parseTourOrdersDeepLink('?paymentStatus=NOT_A_REAL_STATUS&orderId=ord-1')).toMatchObject({
       paymentStatus: '',
       orderId: 'ord-1',
     });
@@ -69,14 +69,14 @@ describe('parseTourOrdersDeepLink（#43 類別 5 deep link 解析，純函式）
   });
 
   it('沒有 orderId 就回傳空字串，不是 undefined 或 null（mutation：拿掉 orderId 處理會讓這裡整個 key 消失或丟例外）', () => {
-    expect(parseTourOrdersDeepLink('?paymentStatus=REFUND_PENDING')).toEqual({
+    expect(parseTourOrdersDeepLink('?paymentStatus=REFUND_PENDING')).toMatchObject({
       paymentStatus: 'REFUND_PENDING',
       orderId: '',
     });
   });
 
   it('沒有 query string 兩者都回空值，不丟例外', () => {
-    expect(parseTourOrdersDeepLink('')).toEqual({ paymentStatus: '', orderId: '' });
+    expect(parseTourOrdersDeepLink('')).toMatchObject({ paymentStatus: '', orderId: '' });
   });
 });
 

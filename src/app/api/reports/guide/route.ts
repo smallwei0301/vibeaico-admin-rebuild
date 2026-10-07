@@ -8,10 +8,11 @@
 import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenantManager } from '@/server/tenant';
+import { fetchPriorCustomers, ID_BATCH } from '@/server/guide-report-repeat';
 import { requireEntitlement } from '@/server/features';
 import { resolvePublicTimeZone } from '@/lib/public-time-zone';
 import {
-  GuideReportRangeError, MAX_ROWS, computeGuideReport, resolveReportRange, zonedToday, addDays,
+  GuideReportRangeError, MAX_ROWS, computeGuideReport, currentCustomerIds, resolveReportRange, zonedToday, addDays,
   type GuideReportOrderRow,
 } from '@/server/guide-report';
 
@@ -23,9 +24,8 @@ const querySchema = z.object({
 
 const PAGE = 1000;
 const ORDER_COLUMNS =
-  'id, trip_id, plan_id, party_size, status, payment_status, paid_amount, refunded_amount, created_at';
+  'id, trip_id, plan_id, party_size, status, payment_status, paid_amount, refunded_amount, created_at, source, customer_id';
 
-const ID_BATCH = 200;
 
 /** 名稱查詢分批（避免 URL 過長／PostgREST 列數上限），每批都帶 tenant_id；任一批失敗就丟出（500），不退回顯示 UUID。 */
 async function fetchNames(
@@ -104,8 +104,13 @@ export const GET = handle(async (req) => {
     fetchNames(t.supabase, 'trip_plans', 'name', t.tenantId, planIds),
   ]);
 
+  const priorCustomerIds = await fetchPriorCustomers(
+    t.supabase, t.tenantId, new Date(range.curFromMs).toISOString(),
+    currentCustomerIds(rows, from, to, timeZone),
+  );
+
   return ok(computeGuideReport({
-    rows, from, to, timeZone, truncated, asOf: new Date(requestStartedAt).toISOString(),
+    rows, from, to, timeZone, truncated, priorCustomerIds, asOf: new Date(requestStartedAt).toISOString(),
     tripNames, planNames,
   }));
 });

@@ -50,6 +50,22 @@ export const tourOrdersPage = {
     paymentAll: '全部收款狀態',
   },
 
+  /** #45 報表下鑽帶入的篩選提示 */
+  drilldown: {
+    current: (desc: string) => `目前篩選：${desc}`,
+    range: (from: string, to: string) => `建立日期 ${from || '不限'} ～ ${to || '不限'}`,
+    trip: '指定行程',
+    plan: '指定方案',
+    asOf: (at: string) => `資料截至 ${at}`,
+    status: (label: string) => `狀態：${label}`,
+    payment: (label: string) => `付款：${label}`,
+    source: (label: string) => `來源：${label}`,
+    activeOnly: '不含已取消訂單',
+    repeatCustomers: '重複旅客的訂單（不含已取消）',
+    sep: '、',
+    clear: '清除報表下鑽篩選',
+  },
+
   status: {
     PENDING: '待確認',
     CONFIRMED: '已確認',
@@ -173,6 +189,7 @@ export const tourOrdersPage = {
     cancelled: '訂單已取消，名額已釋放',
     seatsUnavailable: '名額不足，請重新選擇團次',
     loadFailed: '載入失敗，請稍後再試',
+    rangeTooLarge: '資料量過大，請縮短日期區間後再試',
     accepted: '已接受申請，名額已鎖定',
     rejected: '已拒絕此申請',
     /**

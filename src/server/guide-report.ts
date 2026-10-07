@@ -20,6 +20,12 @@
  *  - 排行：行程（trip）與方案（plan）兩種維度，各自依「訂單數／人數／實收營收」三種排序。
  *    訂單數與人數排除 CANCELLED；實收營收用同一個實收口徑。同分依名稱（code unit 升冪）再依 id。
  *    指標為 0 的項目不進該排序。取前 RANK_LIMIT 名。
+ *  - 來源：非取消訂單依 tour_orders.source（MIDAO／VIBEAI_SHOP／LINE／MANUAL）分列訂單數與實收營收；
+ *    四個來源恆列（0 為真實計數），不在已知清單內的值（含空值）歸「OTHER」。
+ *  - 重複旅客：本期有非取消訂單且 customer_id 非空的旅客（以 customer_id 去重）中，
+ *    本期內有 ≥2 筆非取消訂單，或本期開始之前（任何時間）已有非取消訂單者為「重複旅客」。
+ *    重複率 = 重複旅客數 ÷ 本期旅客數（四捨五入 1 位小數；分母 0 → null）。
+ *    customer_id 為空的非取消訂單不計入分母，另以 unlinkedOrders 列出。
  *  - 上一期：與本期等長（天數相同）、緊接在本期之前。百分比變化四捨五入到 1 位小數；上一期為 0 → null。
  */
 import { resolvePublicTimeZone } from '@/lib/public-time-zone';
@@ -43,6 +49,24 @@ export type GuideReportOrderRow = {
   paid_amount: number | string | null;
   refunded_amount?: number | string | null;
   created_at: string;
+  source?: string | null;
+  customer_id?: string | null;
+};
+
+export const GUIDE_SOURCES = ['MIDAO', 'VIBEAI_SHOP', 'LINE', 'MANUAL'] as const;
+export type GuideSourceKey = (typeof GUIDE_SOURCES)[number] | 'OTHER';
+export const GUIDE_SOURCE_KEYS: GuideSourceKey[] = [...GUIDE_SOURCES, 'OTHER'];
+export type GuideSourceStat = { orders: number; revenue: number };
+export type GuideRepeatStat = {
+  /** 本期有非取消訂單且 customer_id 非空的旅客數（去重） */
+  customers: number;
+  repeatCustomers: number;
+  /** 重複旅客在本期的非取消訂單數（下鑽清單列出的筆數） */
+  repeatOrders: number;
+  /** repeatCustomers ÷ customers × 100，1 位小數；分母 0 → null */
+  ratePercent: number | null;
+  /** customer_id 為空的非取消訂單數（不計入分母） */
+  unlinkedOrders: number;
 };
 
 export type GuideRankMetric = 'orders' | 'people' | 'revenue';
@@ -66,6 +90,8 @@ export type GuideSummary = {
   cancellationRate: number | null;
   /** payment_status = REFUND_PENDING 的訂單數 */
   refundPendingCount: number;
+  /** 非取消訂單的來源分布（四個來源恆列 + OTHER） */
+  bySource: Record<GuideSourceKey, GuideSourceStat>;
 };
 
 export type GuideReportChanges = {
@@ -84,6 +110,7 @@ export type GuideReport = {
   previous: GuideSummary;
   changes: GuideReportChanges;
   ranking: Record<GuideRankDimension, GuideRanking>;
+  repeat: GuideRepeatStat;
   /** true = 查詢筆數達上限，數字可能不完整（UI 必須警示） */
   truncated: boolean;
   /** 資料截至時間（ISO）：只計入此刻以前建立的訂單；mock／未提供時為 null */
@@ -183,6 +210,21 @@ export function resolveReportRange(from: string, to: string, zoneInput: string):
   };
 }
 
+/**
+ * 訂單清單深連結用的「建立日期區間」→ UTC 瞬間界線（半開 [from 00:00, to+1 00:00)，租戶時區）。
+ * 與 resolveReportRange 的本期界線同一套 zonedMidnightMs，保證報表數字與下鑽清單口徑一致。
+ * 只給一端時另一端不設限；格式不合法丟 GuideReportRangeError。
+ */
+export function createdRangeBounds(
+  from: string | undefined, to: string | undefined, zoneInput: string,
+): { gteIso?: string; ltIso?: string } {
+  const out: { gteIso?: string; ltIso?: string } = {};
+  if (from) out.gteIso = new Date(zonedMidnightMs(from, zoneInput)).toISOString();
+  if (to) out.ltIso = new Date(zonedMidnightMs(addDays(to, 1), zoneInput)).toISOString();
+  if (from && to && to < from) throw new GuideReportRangeError('結束日期不可早於開始日期');
+  return out;
+}
+
 /* ------------------------------------------------------------------ 計算 */
 
 const num = (v: unknown): number => {
@@ -200,6 +242,7 @@ export function summarize(rows: GuideReportOrderRow[]): GuideSummary {
   let paidOrderCount = 0;
   let avgNumerator = 0;
   let refundPendingCount = 0;
+  const bySource = Object.fromEntries(GUIDE_SOURCE_KEYS.map((k) => [k, { orders: 0, revenue: 0 }])) as Record<GuideSourceKey, GuideSourceStat>;
   for (const r of rows) {
     if ((GUIDE_ORDER_STATUSES as string[]).includes(r.status)) byStatus[r.status as GuideOrderStatus] += 1;
     const net = netReceived(r);
@@ -210,6 +253,12 @@ export function summarize(rows: GuideReportOrderRow[]): GuideSummary {
       avgNumerator += net;
     }
     if (r.payment_status === 'REFUND_PENDING') refundPendingCount += 1;
+    if (r.status !== 'CANCELLED') {
+      const key: GuideSourceKey = (GUIDE_SOURCES as readonly string[]).includes(r.source ?? '')
+        ? (r.source as GuideSourceKey) : 'OTHER';
+      bySource[key].orders += 1;
+      bySource[key].revenue += net;
+    }
   }
   return {
     totalOrders: rows.length,
@@ -221,7 +270,61 @@ export function summarize(rows: GuideReportOrderRow[]): GuideSummary {
     cancelledCount: byStatus.CANCELLED,
     cancellationRate: rows.length > 0 ? round1((byStatus.CANCELLED / rows.length) * 100) : null,
     refundPendingCount,
+    bySource,
   };
+}
+
+/** 重複旅客的 customer_id 集合（定義見檔頭）。報表與訂單清單下鑽共用，口徑只此一份。 */
+export function repeatCustomerIdSet(
+  curRows: Pick<GuideReportOrderRow, 'status' | 'customer_id'>[],
+  priorCustomerIds: ReadonlySet<string>,
+): Set<string> {
+  const counts = new Map<string, number>();
+  for (const r of curRows) {
+    if (r.status === 'CANCELLED' || !r.customer_id) continue;
+    counts.set(r.customer_id, (counts.get(r.customer_id) ?? 0) + 1);
+  }
+  const out = new Set<string>();
+  for (const [id, n] of counts) if (n >= 2 || priorCustomerIds.has(id)) out.add(id);
+  return out;
+}
+
+/** 重複旅客（定義見檔頭）。curRows＝本期訂單；priorCustomerIds＝本期開始前已有非取消訂單的 customer_id。 */
+export function repeatCustomers(curRows: GuideReportOrderRow[], priorCustomerIds: ReadonlySet<string>): GuideRepeatStat {
+  const customers = new Set<string>();
+  let unlinkedOrders = 0;
+  for (const r of curRows) {
+    if (r.status === 'CANCELLED') continue;
+    if (!r.customer_id) unlinkedOrders += 1; else customers.add(r.customer_id);
+  }
+  const repeat = repeatCustomerIdSet(curRows, priorCustomerIds);
+  let repeatOrders = 0;
+  for (const r of curRows) if (r.status !== 'CANCELLED' && r.customer_id && repeat.has(r.customer_id)) repeatOrders += 1;
+  return {
+    customers: customers.size,
+    repeatCustomers: repeat.size,
+    repeatOrders,
+    ratePercent: customers.size > 0 ? round1((repeat.size / customers.size) * 100) : null,
+    unlinkedOrders,
+  };
+}
+
+function splitPeriods(rows: GuideReportOrderRow[], range: ResolvedRange) {
+  const cur: GuideReportOrderRow[] = [];
+  const prev: GuideReportOrderRow[] = [];
+  for (const r of rows) {
+    const ms = Date.parse(r.created_at);
+    if (!Number.isFinite(ms)) continue;
+    if (ms >= range.curFromMs && ms < range.curToMs) cur.push(r);
+    else if (ms >= range.prevFromMs && ms < range.curFromMs) prev.push(r);
+  }
+  return { cur, prev };
+}
+
+/** 本期有非取消訂單的 customer_id（去重）——route 用它去查「本期之前是否已有訂單」。 */
+export function currentCustomerIds(rows: GuideReportOrderRow[], from: string, to: string, timeZone: string): string[] {
+  const { cur } = splitPeriods(rows, resolveReportRange(from, to, timeZone));
+  return [...new Set(cur.filter((r) => r.status !== 'CANCELLED' && r.customer_id).map((r) => r.customer_id as string))];
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -273,16 +376,11 @@ export function computeGuideReport(input: {
   planNames: Map<string, string>;
   truncated?: boolean;
   asOf?: string;
+  /** 本期開始之前已有非取消訂單的 customer_id（route 查詢；未提供視為空集合） */
+  priorCustomerIds?: ReadonlySet<string>;
 }): GuideReport {
   const range = resolveReportRange(input.from, input.to, input.timeZone);
-  const cur: GuideReportOrderRow[] = [];
-  const prev: GuideReportOrderRow[] = [];
-  for (const r of input.rows) {
-    const ms = Date.parse(r.created_at);
-    if (!Number.isFinite(ms)) continue;
-    if (ms >= range.curFromMs && ms < range.curToMs) cur.push(r);
-    else if (ms >= range.prevFromMs && ms < range.curFromMs) prev.push(r);
-  }
+  const { cur, prev } = splitPeriods(input.rows, range);
   const summary = summarize(cur);
   const previous = summarize(prev);
   return {
@@ -292,6 +390,7 @@ export function computeGuideReport(input: {
     },
     truncated: input.truncated === true,
     asOf: input.asOf ?? null,
+    repeat: repeatCustomers(cur, input.priorCustomerIds ?? new Set<string>()),
     summary,
     previous,
     changes: {

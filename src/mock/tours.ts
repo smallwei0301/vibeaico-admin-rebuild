@@ -336,4 +336,39 @@ export const MOCK_TOUR_ORDERS: TourOrder[] = [
     source: 'MIDAO', holdExpiresAt: null, note: '想包船拍婚紗，詢問是否能配合傍晚時段',
     createdAt: '2026-08-23T14:20:00+08:00',
   },
+  // #45 報表／下鑽示範：同一位旅客的先前訂單與期間內第二筆，讓「重複旅客」與上一期比較有真實資料。
+  // 建立時間為相對基準日的種子（見 src/mock/guide-report.ts），皆非 PENDING／REFUND_PENDING，不影響行動收件匣。
+  {
+    id: 'to_10', orderNo: 'T2607130004', tripId: 'tp_1', tripTitle: '龜山島賞鯨半日遊',
+    planName: '標準團（共乘）', departsOn: '2026-07-16', startTime: '09:00',
+    customerName: '陳彥廷', customerPhone: '0912-345-678', partySize: 2,
+    unitPrice: 1280, totalAmount: 2560, depositAmount: 0, status: 'COMPLETED', paymentStatus: 'PAID',
+    paymentMethodLabel: '線上刷卡付款', paymentRef: 'ECPay 2607130004310',
+    source: 'MIDAO', holdExpiresAt: null, note: '', createdAt: '2026-07-13T10:00:00+08:00',
+  },
+  {
+    id: 'to_11', orderNo: 'T2607060009', tripId: 'tp_1', tripTitle: '龜山島賞鯨半日遊',
+    planName: '標準團（共乘）', departsOn: '2026-07-09', startTime: '09:00',
+    customerName: '林巧薇', customerPhone: '0922-118-903', partySize: 3,
+    unitPrice: 1280, totalAmount: 3840, depositAmount: 0, status: 'COMPLETED', paymentStatus: 'PAID',
+    paymentMethodLabel: '線上刷卡付款', paymentRef: 'ECPay 2607060009274',
+    source: 'VIBEAI_SHOP', holdExpiresAt: null, note: '', createdAt: '2026-07-06T15:30:00+08:00',
+  },
+  {
+    id: 'to_12', orderNo: 'T2608100006', tripId: 'tp_2', tripTitle: '九份山城夜訪散策',
+    planName: '小團導覽（4 人成行）', departsOn: '2026-08-13', startTime: '16:30',
+    customerName: '吳孟儒', customerPhone: '0955-620-114', partySize: 2,
+    unitPrice: 890, totalAmount: 1780, depositAmount: 0, status: 'CONFIRMED', paymentStatus: 'PAID',
+    paymentMethodLabel: '國泰世華銀行轉帳', paymentRef: '後五碼 20871',
+    source: 'LINE', holdExpiresAt: null, note: '', createdAt: '2026-08-10T12:15:00+08:00',
+  },
+  {
+    id: 'to_13', orderNo: 'T2607200011', tripId: 'tp_3', tripTitle: '花蓮砂婆礑溯溪體驗',
+    planName: '一日溯溪體驗', departsOn: '2026-07-23', startTime: '08:00',
+    customerName: '鄭立群', customerPhone: '0911-208-664', partySize: 2,
+    unitPrice: 2200, totalAmount: 4400, depositAmount: 0, status: 'CANCELLED', paymentStatus: 'REFUNDED',
+    paymentMethodLabel: '線上刷卡付款', paymentRef: 'ECPay 2607200011650',
+    source: 'MIDAO', holdExpiresAt: null, note: '旅客改期未成，已全額退款', createdAt: '2026-07-20T09:40:00+08:00',
+    refundedAmount: 4400,
+  },
 ];

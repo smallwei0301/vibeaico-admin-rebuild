@@ -1,9 +1,12 @@
 import { ApiError, adapt, request } from '@/lib/api';
 import type {
   DepartureConflict, Trip, TripAddon, TripDeparture, TripPlan, TripPlanSeason,
-  TourOrder, TourOrderStatus, TourPaymentStatus, Paged,
+  TourOrder, TourOrderSource, TourOrderStatus, TourPaymentStatus, Paged,
 } from '@/lib/types';
+import { resolvePublicTimeZone } from '@/lib/public-time-zone';
 import { clampGalleryForCopy } from '@/lib/trip-gallery';
+import { addDays, repeatCustomerIdSet, zonedMidnightMs } from '@/server/guide-report';
+import { mockOrderToReportRow, mockTourOrdersRelativeToNow } from '@/mock/guide-report';
 import { canRegisterDepositPayment, canRegisterFullPayment, canTransitionTourOrder, shouldReleaseSeats } from '@/server/tour-domain';
 import {
   MOCK_TOUR_ORDERS, MOCK_TRIPS, MOCK_TRIP_ADDONS,
@@ -633,6 +636,12 @@ export async function duplicateTripFully(
 export type TourOrderQuery = {
   page?: number; size?: number; status?: string; source?: string;
   paymentStatus?: string; keyword?: string;
+  /** #45 報表下鑽：行程、建立日期區間（YYYY-MM-DD，店家時區，含 createdTo 當天） */
+  tripId?: string; createdFrom?: string; createdTo?: string;
+  /** #45：只列 created_at < 此時間點（ISO-8601 瞬間；報表「資料截至」asOf），與報表同一個上界 */
+  createdBefore?: string;
+  /** #45：方案；只列非取消訂單（'1'）；只列重複旅客的訂單（'1'，需同時帶 createdFrom／createdTo） */
+  planId?: string; activeOnly?: '1'; repeatCustomers?: '1';
   /**
    * GUIDE 收件匣 REFUND_PENDING 卡片的 deep link（#43 類別 5）以 orderId 精準撈一筆，
    * 比照 `BookingQuery.bookingId`（`src/services/bookings.ts`）——不是分頁篩選條件，
@@ -641,15 +650,55 @@ export type TourOrderQuery = {
   orderId?: string;
 };
 
+const MOCK_TIME_ZONE = 'Asia/Taipei';
+
 export function listTourOrders(q: TourOrderQuery = {}): Promise<Paged<TourOrder>> {
   return adapt(
     () => {
       const page = q.page ?? 0, size = q.size ?? 20;
-      let rows = MOCK_TOUR_ORDERS;
+      // 與報表 mock 同一份資料、同一個日期基準（種子訂單日期相對今天），下鑽清單才對得上報表數字
+      const all = mockTourOrdersRelativeToNow();
+      let rows = all;
+      // 重複旅客集合先以「整個日期區間」算（與真實 API 同序），再套用其他篩選
+      let repeatIds: Set<string> | null = null;
+      if (q.repeatCustomers === '1') {
+        const lo = q.createdFrom ? zonedMidnightMs(q.createdFrom, MOCK_TIME_ZONE) : 0;
+        const hi = Math.min(
+          q.createdTo ? zonedMidnightMs(addDays(q.createdTo, 1), MOCK_TIME_ZONE) : Infinity,
+          q.createdBefore ? Date.parse(q.createdBefore) : Infinity,
+        );
+        const live = all.filter((o) => o.status !== 'CANCELLED').map(mockOrderToReportRow);
+        const cur = live.filter((r) => Date.parse(r.created_at) >= lo && Date.parse(r.created_at) < hi);
+        const curIds = new Set(cur.map((r) => r.customer_id));
+        const prior = new Set(live.filter((r) => Date.parse(r.created_at) < lo && curIds.has(r.customer_id))
+          .map((r) => r.customer_id as string));
+        repeatIds = repeatCustomerIdSet(cur, prior); // 與報表／真實 API 同一支集合運算
+      }
       if (q.orderId) rows = rows.filter((o) => o.id === q.orderId);
       if (q.status) rows = rows.filter((o) => o.status === q.status);
       if (q.source) rows = rows.filter((o) => o.source === q.source);
+      if (q.tripId) rows = rows.filter((o) => o.tripId === q.tripId);
+      // mock 訂單只存方案名稱：以方案 id → 名稱（MOCK_TRIP_PLANS）比對
+      if (q.planId) {
+        const plan = MOCK_TRIP_PLANS.find((p) => p.id === q.planId);
+        rows = rows.filter((o) => plan !== undefined && o.tripId === plan.tripId && o.planName === plan.name);
+      }
+      if (q.activeOnly === '1' || q.repeatCustomers === '1') rows = rows.filter((o) => o.status !== 'CANCELLED');
+      // mock 以 Asia/Taipei 為店家時區，界線與真實 API 同為半開 [from 00:00, to+1 00:00)
+      if (q.createdFrom) {
+        const lo = zonedMidnightMs(q.createdFrom, MOCK_TIME_ZONE);
+        rows = rows.filter((o) => Date.parse(o.createdAt) >= lo);
+      }
+      if (q.createdTo) {
+        const hi = zonedMidnightMs(addDays(q.createdTo, 1), MOCK_TIME_ZONE);
+        rows = rows.filter((o) => Date.parse(o.createdAt) < hi);
+      }
+      if (q.createdBefore) {
+        const ub = Date.parse(q.createdBefore);
+        rows = rows.filter((o) => Date.parse(o.createdAt) < ub);
+      }
       if (q.paymentStatus) rows = rows.filter((o) => o.paymentStatus === q.paymentStatus);
+      if (repeatIds) rows = rows.filter((o) => repeatIds!.has(mockOrderToReportRow(o).customer_id as string));
       if (q.keyword) {
         const k = q.keyword.toLowerCase();
         rows = rows.filter((o) => [o.orderNo, o.customerName, o.customerPhone, o.tripTitle]
@@ -686,16 +735,67 @@ export const TOUR_PAYMENT_STATUS_VALUES: TourPaymentStatus[] = [
  * 這個函式後把回傳值指定給 `paymentFilter`／`requestedOrderId` 兩個 state，那一步
  * 是機械的 pass-through，這個測試邊界涵蓋不到它——PR 報告裡如實說明。
  */
-export function parseTourOrdersDeepLink(search: string): {
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+const ISO_INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+const TOUR_ORDER_STATUS_VALUES: TourOrderStatus[] = ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'];
+
+export type TourOrdersDeepLink = {
   paymentStatus: TourPaymentStatus | ''; orderId: string;
-} {
+  /** #45 報表下鑽 */
+  status: TourOrderStatus | ''; tripId: string; createdFrom: string; createdTo: string;
+  source: TourOrderSource | '';
+  planId: string; activeOnly: boolean; repeatCustomers: boolean;
+  /** ISO-8601 瞬間（報表 asOf）；格式不合法 → '' */
+  createdBefore: string;
+  /** 顯示「資料截至」用的店家時區（報表帶入）；未帶 → ''，帶了但不合法 → 預設時區 */
+  tz: string;
+};
+const TOUR_ORDER_SOURCE_VALUES: TourOrderSource[] = ['MIDAO', 'VIBEAI_SHOP', 'LINE', 'MANUAL'];
+
+export function parseTourOrdersDeepLink(search: string): TourOrdersDeepLink {
   const params = new URLSearchParams(search);
   const ps = params.get('paymentStatus');
   const paymentStatus = ps && (TOUR_PAYMENT_STATUS_VALUES as string[]).includes(ps)
     ? (ps as TourPaymentStatus)
     : '';
   const orderId = params.get('orderId') ?? '';
-  return { paymentStatus, orderId };
+  const st = params.get('status');
+  const status = st && (TOUR_ORDER_STATUS_VALUES as string[]).includes(st) ? (st as TourOrderStatus) : '';
+  const tripId = params.get('tripId') ?? '';
+  const cf = params.get('createdFrom') ?? '';
+  const ct = params.get('createdTo') ?? '';
+  const createdFrom = YMD_RE.test(cf) ? cf : '';
+  const createdTo = YMD_RE.test(ct) ? ct : '';
+  const sr = params.get('source');
+  const source = sr && (TOUR_ORDER_SOURCE_VALUES as string[]).includes(sr) ? (sr as TourOrderSource) : '';
+  const cb = params.get('createdBefore') ?? '';
+  const createdBefore = ISO_INSTANT_RE.test(cb) && Number.isFinite(Date.parse(cb)) ? cb : '';
+  const tzRaw = params.get('tz');
+  const tz = tzRaw ? resolvePublicTimeZone(tzRaw) : '';
+  const planId = params.get('planId') ?? '';
+  // status=CANCELLED 與「排除取消」矛盾：以明確的 status 為準，忽略這兩個旗標（API 對同時帶會回 400）
+  const excl = status !== 'CANCELLED';
+  const activeOnly = excl && params.get('activeOnly') === '1';
+  const repeatCustomers = excl && params.get('repeatCustomers') === '1' && !!createdFrom && !!createdTo;
+  return { paymentStatus, orderId, status, tripId, createdFrom, createdTo, source, planId, activeOnly, repeatCustomers, createdBefore, tz };
+}
+
+/**
+ * #45 報表下鑽：組出 `/tenant/tour-orders?...` 連結（純函式）。空值不進 query；
+ * 日期區間用報表實際使用的 range.from／range.to，與 API 同一套店家時區界線。
+ */
+export function buildTourOrdersLink(f: {
+  status?: string; paymentStatus?: string; tripId?: string; createdFrom?: string; createdTo?: string; source?: string;
+  planId?: string; activeOnly?: boolean; repeatCustomers?: boolean; createdBefore?: string | null; tz?: string | null;
+}): string {
+  const p = new URLSearchParams();
+  for (const k of ['status', 'paymentStatus', 'tripId', 'createdFrom', 'createdTo', 'createdBefore', 'tz', 'source', 'planId'] as const) {
+    if (f[k]) p.set(k, f[k] as string);
+  }
+  if (f.activeOnly) p.set('activeOnly', '1');
+  if (f.repeatCustomers) p.set('repeatCustomers', '1');
+  const qs = p.toString();
+  return qs ? `/tenant/tour-orders?${qs}` : '/tenant/tour-orders';
 }
 
 /**

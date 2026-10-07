@@ -23,3 +23,15 @@ export function presetRange(
   const to = todayIn(zone || PUBLIC_DEFAULT_TIME_ZONE, nowMs);
   return { from: shiftDate(to, -(days - 1)), to };
 }
+
+/** 以指定時區顯示一個時間點，並附簡短時區名稱（例：2026/10/07 11:40 [GMT+8]） */
+export function formatAsOf(iso: string, zone: string): string {
+  const timeZone = resolvePublicTimeZone(zone);
+  const base = new Intl.DateTimeFormat('zh-TW', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).format(new Date(iso));
+  const name = new Intl.DateTimeFormat('zh-TW', { timeZone, timeZoneName: 'short' })
+    .formatToParts(new Date(iso)).find((p) => p.type === 'timeZoneName')?.value;
+  return name ? `${base} ${name}` : base;
+}
