@@ -109,7 +109,8 @@ const PAYMENT_DUE_WINDOW = 200;
 const PAYMENT_DUE_CAP = 20;
 /** 尾款／全額待付：依出發時刻分批讀團次（每批筆數、最多批數）與每批訂單上限。 */
 const PAYMENT_DUE_DEPARTURE_BATCH = 100;
-const PAYMENT_DUE_MAX_BATCHES = 10;
+/** 慢路徑安全上限（100 批 × 100 團次）；撞到時 warn 並回傳已知最佳集合，不回空。 */
+const PAYMENT_DUE_MAX_BATCHES = 100;
 const PAYMENT_DUE_ORDER_LIMIT = 1000;
 /** 快路徑單次查詢上限：回傳筆數低於此值代表已取得全部符合的訂單。 */
 const PAYMENT_DUE_FIRST_LIMIT = 200;
@@ -241,12 +242,13 @@ export const GET = handle(async () => {
     // 依期限排序取前 20。每個 query 都帶 tenant_id。
     t.supabase
       .from('tour_orders')
-      .select('id, order_no, party_size, total_amount, deposit_amount, paid_amount, status, payment_status, seats_reserved, contact, hold_expires_at, created_at, trip_plans(name), trips(title), trip_departures!inner(departs_on, start_time)')
+      .select('id, order_no, party_size, total_amount, deposit_amount, paid_amount, status, payment_status, seats_reserved, contact, hold_expires_at, created_at, trip_plans(name), trips(title), trip_departures!inner(departs_on, start_time, status)')
       .eq('tenant_id', t.tenantId)
       .eq('status', 'CONFIRMED')
       .eq('payment_status', 'UNPAID')
       .eq('seats_reserved', true)
       .not('hold_expires_at', 'is', null)
+      .neq('trip_departures.status', 'CANCELLED')
       .gte('trip_departures.departs_on', today)
       .order('hold_expires_at', { ascending: true })
       .limit(PAYMENT_DUE_WINDOW),
@@ -477,7 +479,7 @@ export const GET = handle(async () => {
         const contact = (row.contact ?? {}) as Record<string, unknown>;
         const trip = firstOf<{ title?: string | null }>(row.trips);
         const plan = firstOf<{ name?: string | null }>(row.trip_plans);
-        const departure = firstOf<{ departs_on?: string | null; start_time?: string | null }>(row.trip_departures);
+        const departure = firstOf<{ departs_on?: string | null; start_time?: string | null; status?: string | null }>(row.trip_departures);
         return buildGuideActionInboxTourPaymentDueItem({
           id: row.id,
           orderNo: row.order_no,
@@ -494,6 +496,7 @@ export const GET = handle(async () => {
           paidAmount: row.paid_amount == null ? null : Number(row.paid_amount),
           departureDate: departure?.departs_on ? String(departure.departs_on).slice(0, 10) : null,
           departureStartTime: departure?.start_time ? String(departure.start_time).slice(0, 5) : null,
+          departureStatus: (departure as { status?: string | null } | null)?.status ?? null,
           createdAt: row.created_at,
           href: `/tenant/tour-orders?orderId=${encodeURIComponent(row.id)}`,
         }, now, timeZone);
@@ -515,7 +518,8 @@ export const GET = handle(async () => {
   //     trip_departures（tenant、非 CANCELLED、departs_on >= 今天），再 `.in('departure_id', ids)` 讀
   //     該批訂單；當已有 ≥20 張卡、且第 20 張的出發日早於本批最後一個出發日（該日可能還有下一批
   //     的團次）時停止。keyset 不含 start_time，同一天內的先後交給程式內排序；跨批同日的最壞情形
-  //     由上面的停止條件涵蓋。不使用未驗證的 PostgREST 內嵌欄位排序語法。
+  //     由上面的停止條件涵蓋。慢路徑以快路徑的列為種子，並用高上限（PAYMENT_DUE_MAX_BATCHES）持續掃描，
+  //     撞到上限時 warn 並回傳已知最佳集合（種子列此時不一定是全域最早）。不使用未驗證的 PostgREST 內嵌欄位排序語法。
   // PENDING 若帶 hold，hold 理論上早於出發；慢路徑只在已讀到的批次內依有效期限排序——現行資料沒有
   // 這種列，如實記錄。訂單依 id 去重，避免團次中途異動造成重複卡片。
   // 只用 ≤0108 欄位與 0107 的 trip_plans.sales_mode；PARTIAL／PENDING 不碰 seats_reserved（0111），
@@ -544,8 +548,21 @@ export const GET = handle(async () => {
     const firstRows = first.data ?? [];
     if (firstRows.length < PAYMENT_DUE_FIRST_LIMIT) return firstRows;
 
-    const rowsById = new Map<string, any>();
+    // 以快路徑的列當種子（依 id 去重）：它們已證明存在，分類不會因為掃描沒走到而變空。
+    // 注意：撞到批次安全上限時，種子列不一定是全域最早的（快路徑沒排序）——此時只是「已知最佳集合」。
+    const rowsById = new Map<string, any>(firstRows.map((row: any) => [row.id, row]));
+    // 卡片依訂單 id 快取：每批只為新列建卡（種子列不重算），停止條件只需排序現有卡片。
+    const cardDueByRowId = new Map<string, { dueAt: string; dueLocalDate: string; id: string }>();
+    const addCards = (rows: any[]) => {
+      for (const row of rows) {
+        if (cardDueByRowId.has(row.id)) continue;
+        const [card] = buildPaymentDueCards([row]);
+        if (card) cardDueByRowId.set(row.id, card);
+      }
+    };
+    addCards(firstRows);
     let cursor: { departsOn: string; id: string } | null = null;
+    let exhausted = false;
     for (let batch = 0; batch < PAYMENT_DUE_MAX_BATCHES; batch += 1) {
       let depQuery = t.supabase
         .from('trip_departures')
@@ -564,7 +581,7 @@ export const GET = handle(async () => {
         .limit(PAYMENT_DUE_DEPARTURE_BATCH);
       if (departureWindow.error) throw departureWindow.error;
       const deps = (departureWindow.data ?? []) as Array<{ id: string; departs_on: string }>;
-      if (deps.length === 0) break;
+      if (deps.length === 0) { exhausted = true; break; }
       const last = deps[deps.length - 1];
       cursor = { departsOn: String(last.departs_on).slice(0, 10), id: last.id };
 
@@ -578,11 +595,16 @@ export const GET = handle(async () => {
         console.warn(`[guide-action-inbox] payment-due:${kind.toLowerCase()} batch hit order limit (${rows.length})`);
       }
       for (const row of rows) rowsById.set(row.id, row);
+      addCards(rows);
 
-      if (deps.length < PAYMENT_DUE_DEPARTURE_BATCH) break;
-      const cards = toPaymentDueCards([...rowsById.values()]);
+      if (deps.length < PAYMENT_DUE_DEPARTURE_BATCH) { exhausted = true; break; }
+      const cards = [...cardDueByRowId.values()]
+        .sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt) || a.id.localeCompare(b.id));
       if (cards.length >= PAYMENT_DUE_CAP
-        && cards[PAYMENT_DUE_CAP - 1].dueLocalDate < cursor.departsOn) break;
+        && cards[PAYMENT_DUE_CAP - 1].dueLocalDate < cursor.departsOn) { exhausted = true; break; }
+    }
+    if (!exhausted) {
+      console.warn(`[guide-action-inbox] payment-due:${kind.toLowerCase()} departure scan hit batch cap (${PAYMENT_DUE_MAX_BATCHES}); returning best-known set`);
     }
     return [...rowsById.values()];
   };

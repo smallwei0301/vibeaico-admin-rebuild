@@ -701,6 +701,8 @@ export type GuideActionInboxTourPaymentDueInput = {
   paidAmount: number | null | undefined;
   departureDate: string | null;
   departureStartTime: string | null;
+  /** `trip_departures.status`；有給且為 CANCELLED 時三個 stage 一律不產生卡片（防呆）。 */
+  departureStatus?: string | null;
   createdAt: string;
   href: string;
 };
@@ -716,6 +718,7 @@ export function buildGuideActionInboxTourPaymentDueItem(
   timeZone: string = DEFAULT_GUIDE_TIME_ZONE,
 ): GuideActionInboxTourPaymentDueItem | null {
   if (input.status !== 'CONFIRMED' && input.status !== 'PENDING') return null;
+  if (input.departureStatus === 'CANCELLED') return null;
   if (!isAwaitingPayment({ status: input.status, paymentStatus: input.paymentStatus })) return null;
   // PENDING 只可能是 UNPAID 全額（PARTIAL 一律是 CONFIRMED）。
   if (input.status === 'PENDING' && input.paymentStatus !== 'UNPAID') return null;

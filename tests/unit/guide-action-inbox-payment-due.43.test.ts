@@ -488,6 +488,65 @@ describe('route.ts: payment-due source filters, window and display fields (#43 �
     expect(depWindowQueries().length).toBeGreaterThanOrEqual(2); // 沒在第一批就停
   });
 
+  it('INITIAL (CONFIRMED+UNPAID) on a cancelled departure → no card; select carries departure status and the neq filter', async () => {
+    const hold = new Date(Date.now() + 3_600_000).toISOString();
+    const cancelled = { departs_on: dayStr(5), start_time: '09:00:00', status: 'CANCELLED' };
+    const due = await run([
+      mk({ id: 'init-live', payment_status: 'UNPAID', hold_expires_at: hold }),
+      mk({ id: 'init-cancelled', payment_status: 'UNPAID', hold_expires_at: hold, trip_departures: cancelled }),
+    ]);
+    expect(due.map((i) => i.id)).toEqual(['init-live']);
+    const q = recorded.find((r) => r.table === 'tour_orders'
+      && r.calls.some(([m, a]) => m === 'eq' && a[0] === 'seats_reserved'))!;
+    expect(String(q.calls.find(([m]) => m === 'select')?.[1][0])).toContain('trip_departures!inner(departs_on, start_time, status)');
+    expect(q.calls.some(([m, a]) => m === 'neq' && a[0] === 'trip_departures.status' && a[1] === 'CANCELLED')).toBe(true);
+  });
+
+  it('builder defensively returns null for CANCELLED departures in all three stages', () => {
+    expect(build({ departureStatus: 'CANCELLED' })).toBeNull(); // INITIAL
+    expect(build({ status: 'PENDING', departureStatus: 'CANCELLED' })).toBeNull(); // FULL
+    expect(build({ paymentStatus: 'PARTIAL', paidAmount: 5000, holdExpiresAt: null, departureStatus: 'CANCELLED' })).toBeNull(); // BALANCE
+    expect(build({ departureStatus: 'OPEN' })).not.toBeNull();
+  });
+
+  /** 快路徑被 200 筆遠期訂單塞滿；其前面有 emptyCount 個沒有訂單的近期團次。 */
+  async function runFarOrders(emptyCount: number) {
+    const fillers = Array.from({ length: 200 }, (_, i) => mk({
+      id: `f${i}`, departure_id: `f${String(i).padStart(3, '0')}`,
+      trip_departures: { departs_on: dayStr(400 + i), start_time: '09:00:00' },
+    }));
+    const empties: FakeRow[] = Array.from({ length: emptyCount }, (_, i) => ({
+      id: `e${String(i).padStart(5, '0')}`, tenant_id: T, status: 'OPEN', departs_on: dayStr(1 + Math.floor(i / 50)), start_time: '09:00:00',
+    }));
+    const deps: FakeRow[] = [...empties, ...fillers.map((f) => ({
+      id: f.departure_id as string, tenant_id: T, status: 'OPEN',
+      departs_on: (f.trip_departures as FakeRow).departs_on, start_time: '09:00:00' }))]
+      .sort((a, b) => String(a.departs_on).localeCompare(String(b.departs_on)) || String(a.id).localeCompare(String(b.id)));
+    recorded.length = 0;
+    requireTenantMock.mockReset();
+    requireTenantMock.mockResolvedValue({
+      supabase: fakeSupabase({ tour_orders: fillers, trip_departures: deps }), tenantId: T, user: { id: 'u' }, role: 'OWNER',
+    });
+    const res = await guideActionInboxGET(new Request('https://app.test/api/guide/action-inbox'), {});
+    return ((await res.json()).data as any[]).filter((i) => i.kind === 'TOUR_PAYMENT_DUE');
+  }
+
+  it('fast path full but all orders lie beyond the first 1000 future departures → cards still returned (continued scanning)', async () => {
+    const due = await runFarOrders(1100);
+    expect(due).toHaveLength(20);
+    expect(due[0].id).toBe('f0');
+    expect(depWindowQueries().length).toBeGreaterThan(10); // 超過舊的 10 批上限仍持續掃描
+  });
+
+  it('batch-cap hit: returns the seeded best-known set (non-empty) and warns', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const due = await runFarOrders(10_050); // 超過 100 批 × 100 團次
+    expect(due).toHaveLength(20);
+    expect(due.every((i) => i.id.startsWith('f'))).toBe(true);
+    expect(warn.mock.calls.map((c) => String(c[0])).some((m) => m.includes('payment-due:partial') && m.includes('batch cap'))).toBe(true);
+    warn.mockRestore();
+  });
+
   it('warns (no PII) when a batch hits the per-batch order limit — covered by source: only counts are logged', () => {
     const src = readFileSync('src/app/api/guide/action-inbox/route.ts', 'utf8');
     expect(src).toMatch(/batch hit order limit \(\$\{rows\.length\}\)/);
