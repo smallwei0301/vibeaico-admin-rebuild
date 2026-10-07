@@ -581,14 +581,15 @@ export const GET = handle(async () => {
         .select('id, departs_on, start_time')
         .eq('tenant_id', t.tenantId)
         .neq('status', 'CANCELLED')
-        .gte('departs_on', today)
-        // 與 keyset 的 or 是兩個獨立的 `or` 參數（PostgREST 以 AND 合併）。
-        .or(notStarted);
-      if (cursor) {
-        depQuery = depQuery.or(
-          `departs_on.gt.${cursor.departsOn},and(departs_on.eq.${cursor.departsOn},id.gt.${cursor.id})`,
-        );
-      }
+        .gte('departs_on', today);
+      // 尚未出發（notStarted）與 keyset 游標合成「單一」邏輯樹參數 `or=(and(or(...),or(...)))`
+      // （postgrest-js 沒有 `.and()`，但 `or` 的唯一元素可以是 and 群組），不依賴兩個頂層 `or=`
+      // 參數會被 PostgREST 以 AND 合併；第一批沒有游標，只需 `or(notStarted)`。
+      depQuery = cursor
+        ? depQuery.or(
+          `and(or(${notStarted}),or(departs_on.gt.${cursor.departsOn},and(departs_on.eq.${cursor.departsOn},id.gt.${cursor.id})))`,
+        )
+        : depQuery.or(notStarted);
       const departureWindow = await depQuery
         .order('departs_on', { ascending: true })
         .order('id', { ascending: true })

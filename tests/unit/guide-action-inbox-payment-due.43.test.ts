@@ -35,21 +35,34 @@ function apply(rows: FakeRow[], calls: Call[]): FakeRow[] {
     else if (m === 'or') {
       const embedded = (a[1] as { referencedTable?: string } | undefined)?.referencedTable;
       const get = (r: FakeRow, k: string) => (embedded ? field(r, `${embedded}.${k}`) : r[k]);
+      const evalOr = (expr: string): ((r: FakeRow) => boolean) => {
+        // 尚未出發：departs_on.gt.D,and(departs_on.eq.D,start_time.gt.T),and(departs_on.eq.D,start_time.is.null)
+        const ns = expr.match(/^departs_on\.gt\.([^,]+),and\(departs_on\.eq\.\1,start_time\.gt\.([^)]+)\),and\(departs_on\.eq\.\1,start_time\.is\.null\)$/);
+        // keyset：departs_on.gt.X,and(departs_on.eq.X,id.gt.Y)
+        const ks = expr.match(/^departs_on\.gt\.([^,]+),and\(departs_on\.eq\.\1,id\.gt\.(.+)\)$/);
+        if (ns) {
+          return (r) => {
+            const d = String(get(r, 'departs_on'));
+            const st = get(r, 'start_time');
+            return d > ns[1] || (d === ns[1] && (st == null || String(st) > ns[2]));
+          };
+        }
+        if (ks) {
+          return (r) => String(r.departs_on) > ks[1]
+            || (String(r.departs_on) === ks[1] && String(r.id) > ks[2]);
+        }
+        throw new Error(`unsupported or(): ${expr}`);
+      };
       const expr = String(a[0]);
-      // 尚未出發：departs_on.gt.D,and(departs_on.eq.D,start_time.gt.T),and(departs_on.eq.D,start_time.is.null)
-      const ns = expr.match(/^departs_on\.gt\.([^,]+),and\(departs_on\.eq\.\1,start_time\.gt\.([^)]+)\),and\(departs_on\.eq\.\1,start_time\.is\.null\)$/);
-      // keyset：departs_on.gt.X,and(departs_on.eq.X,id.gt.Y)
-      const ks = expr.match(/^departs_on\.gt\.([^,]+),and\(departs_on\.eq\.\1,id\.gt\.(.+)\)$/);
-      if (ns) {
-        out = out.filter((r) => {
-          const d = String(get(r, 'departs_on'));
-          const st = get(r, 'start_time');
-          return d > ns[1] || (d === ns[1] && (st == null || String(st) > ns[2]));
-        });
-      } else if (ks) {
-        out = out.filter((r) => String(r.departs_on) > ks[1]
-          || (String(r.departs_on) === ks[1] && String(r.id) > ks[2]));
-      } else throw new Error(`unsupported or(): ${expr}`);
+      // or=(and(or(X),or(Y))) → 兩個 or 都要成立
+      const both = expr.match(/^and\(or\((.+)\),or\((.+)\)\)$/);
+      if (both) {
+        const f1 = evalOr(both[1]);
+        const f2 = evalOr(both[2]);
+        out = out.filter((r) => f1(r) && f2(r));
+      } else {
+        out = out.filter(evalOr(expr));
+      }
     } else if (m === 'neq') out = out.filter((r) => field(r, f) !== a[1]);
     else if (m === 'gte') out = out.filter((r) => (field(r, f) as string) >= (a[1] as string));
     else if (m === 'in') out = out.filter((r) => (a[1] as unknown[]).includes(field(r, f)));
@@ -635,8 +648,15 @@ describe('route.ts: payment-due source filters, window and display fields (#43 �
     const dq = depWindowQueries();
     expect(dq.length).toBeGreaterThan(0);
     for (const q of dq) {
-      const ors = q.calls.filter(([m]) => m === 'or').map(([, a]) => String(a[0]));
-      expect(ors.some((x) => x.includes(`start_time.gt.`) && x.includes('start_time.is.null'))).toBe(true);
+      const filters = q.calls.filter(([m]) => m === 'or').map(([, a]) => String(a[0]));
+      expect(filters.some((x) => x.includes(`start_time.gt.`) && x.includes('start_time.is.null'))).toBe(true);
+      // 每個團次視窗查詢只有「一個」or 參數；有游標的批次是 and(or(notStarted),or(keyset)) 單一邏輯樹
+      expect(filters).toHaveLength(1);
+      if (filters[0].startsWith('and(')) expect(filters[0]).toMatch(/^and\(or\(.+\),or\(departs_on\.gt\..+\)\)$/);
+    }
+    // 之後的批次一定帶游標 → 走合併形式
+    if (dq.length > 1) {
+      expect(String(dq[1].calls.find(([m]) => m === 'or')?.[1][0])).toMatch(/^and\(or\(/);
     }
     expect(orQueries().length).toBeGreaterThan(0);
   });
