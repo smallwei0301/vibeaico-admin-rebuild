@@ -21,14 +21,14 @@ describe('summarizeFormation — 期間歸屬', () => {
 });
 
 describe('summarizeFormation — 成團率／未達門檻率', () => {
-  it('3 成團、1 未成團 → 75／25；其餘狀態只進分布、不進比率', () => {
+  it('3 成團、1 AT_RISK（計入已成團）、1 未成團 → 80／20；募集中、待導遊決定尚未結案不進比率', () => {
     const r = S([
       d('1', '2026-10-02', 'FORMED'), d('2', '2026-10-03', 'FORMED'), d('3', '2026-10-04', 'FORMED'),
       d('4', '2026-10-05', 'FAILED'),
       d('5', '2026-10-06', 'COLLECTING'), d('6', '2026-10-07', 'REVIEW_REQUIRED'), d('7', '2026-10-08', 'AT_RISK'),
     ]);
     expect(r).toMatchObject({
-      total: 7, concluded: 4, formed: 3, failed: 1, open: 3, successRatePercent: 75, failRatePercent: 25,
+      total: 7, concluded: 5, formed: 4, failed: 1, open: 2, successRatePercent: 80, failRatePercent: 20,
     });
     expect(r.byStatus).toEqual({ COLLECTING: 1, FORMED: 3, REVIEW_REQUIRED: 1, AT_RISK: 1, FAILED: 1 });
   });
@@ -41,7 +41,7 @@ describe('summarizeFormation — 成團率／未達門檻率', () => {
 
   it('分母 0（沒有團次，或只有未結案團次）→ 比率 null，不是 0', () => {
     expect(S([]).successRatePercent).toBeNull();
-    const r = S([d('1', '2026-10-02', 'COLLECTING'), d('2', '2026-10-03', 'AT_RISK')]);
+    const r = S([d('1', '2026-10-02', 'COLLECTING'), d('2', '2026-10-03', 'REVIEW_REQUIRED')]);
     expect(r).toMatchObject({ total: 2, concluded: 0, open: 2, successRatePercent: null, failRatePercent: null });
   });
 
@@ -112,10 +112,17 @@ describe('團次本身取消（status = CANCELLED）與成團狀態是兩條軸'
     expect(r.byStatus).toEqual({ COLLECTING: 1, FORMED: 2, REVIEW_REQUIRED: 0, AT_RISK: 0, FAILED: 0 });
   });
 
-  it('CANCELLED＋AT_RISK：AT_RISK 發生在 FORMED 之後（18 §3），不歸未經成團決策，維持 AT_RISK 分布、不進比率', () => {
+  it('CANCELLED＋AT_RISK：AT_RISK 發生在 FORMED 之後（18 §3），承諾已做過 → 出發日已到即算已成團，分布仍標示 AT_RISK', () => {
     const r = S([d('1', '2026-10-02', 'AT_RISK', 'CANCELLED')]);
-    expect(r).toMatchObject({ total: 1, concluded: 0, cancelledUndecided: 0, open: 1 });
+    expect(r).toMatchObject({ total: 1, concluded: 1, formed: 1, cancelledUndecided: 0, open: 0, successRatePercent: 100 });
     expect(r.byStatus.AT_RISK).toBe(1);
+  });
+
+  it('未取消的 AT_RISK：出發日已到計入已成團（不自動撤銷成團承諾）；出發日未到仍尚未結案', () => {
+    const rows = [d('1', '2026-10-05', 'AT_RISK')];
+    expect(S(rows, '2026-10-05')).toMatchObject({ concluded: 1, formed: 1, failed: 0, open: 0, successRatePercent: 100 });
+    expect(S(rows, '2026-10-04')).toMatchObject({ concluded: 0, formed: 0, open: 1, successRatePercent: null });
+    expect(S(rows, '2026-10-05').byStatus.AT_RISK).toBe(1);
   });
 
   it('CANCELLED＋FORMED 但出發日未到 → 尚未結案（照一般規則）', () => {
