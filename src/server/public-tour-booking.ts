@@ -36,7 +36,7 @@ import { z } from 'zod';
 import { bookingCandidateSeatsLeft, MAX_BOOKING_CANDIDATE_DEPARTURES } from '@/lib/public-departure-candidates';
 import { resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
 import { hasSeasonalPricing, loadPlanSeasons, seasonUnitPriceFor } from '@/server/public-plan-seasons';
-import { createTourOrderWithQuote, parsePriceChangedQuote, PRICE_UNVERIFIABLE_MESSAGE, type PriceQuote } from '@/server/public-order-quote';
+import { createTourOrderWithQuote, PRICE_UNVERIFIABLE_MESSAGE, type PriceQuote } from '@/server/public-order-quote';
 import { createAdminSupabase } from '@/server/supabase';
 import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
 import { nextTourOrderNo } from '@/server/tour-order-no';
@@ -270,7 +270,7 @@ export async function submitPublicTourBooking(
       throw queryFailed('order_no', nError);
     }
 
-    const { data, error } = await createTourOrderWithQuote(admin, {
+    const { data, error, quote } = await createTourOrderWithQuote(admin, {
       p_tenant: plan.tenantId,
       p_order_no: candidateOrderNo,
       p_departure: input.departureId,
@@ -304,7 +304,7 @@ export async function submitPublicTourBooking(
       throw new PublicTourBookingError('PRICE_UNVERIFIABLE', '線上價格暫時無法確認，請直接聯絡店家');
     }
     if (message.includes('PRICE_CHANGED')) {
-      throw new PublicTourBookingError('PRICE_CHANGED', '價格已更新，請確認新的金額後再送出', parsePriceChangedQuote(error as { details?: string | null }));
+      throw new PublicTourBookingError('PRICE_CHANGED', '價格已更新，請確認新的金額後再送出', quote);
     }
     if (message.includes('SEATS_UNAVAILABLE')) {
       throw new PublicTourBookingError('SEATS_UNAVAILABLE', '此團次名額已被搶先預約，請重新選擇日期');

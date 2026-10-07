@@ -721,23 +721,6 @@ export const PRODUCTION_DB_G3_AUTHZ_CONTRACTS = Object.freeze({
       }),
     ]),
   }),
-  '0137_issue_749_create_tour_order_quoted': Object.freeze({
-    requiredFiles: Object.freeze([
-      'tests/integration/db/create-tour-order-quoted.749.test.ts',
-    ]),
-    tenantBoundaryAssertions: Object.freeze([
-      Object.freeze({
-        file: 'tests/integration/db/create-tour-order-quoted.749.test.ts',
-        fragment: 'another tenant id for an existing departure is rejected with DEPARTURE_NOT_FOUND and leaves no order or reserved seats',
-      }),
-    ]),
-    negativeRoleAssertions: Object.freeze([
-      Object.freeze({
-        file: 'tests/integration/db/create-tour-order-quoted.749.test.ts',
-        fragment: 'anon and authenticated roles cannot execute create_tour_order_quoted directly and no order is created',
-      }),
-    ]),
-  }),
   '0132_issue_42_seasonal_price_resolution': Object.freeze({
     requiredFiles: Object.freeze([
       'tests/integration/api/tour-order-authz.447.test.ts',

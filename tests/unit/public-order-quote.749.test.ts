@@ -1,9 +1,9 @@
 /**
- * #749：公開下單金額鎖定。
- * - 有 expectedTotal → 呼叫 create_tour_order_quoted（含 p_expected_total）；沒有 → 舊 create_tour_order。
- * - RPC 回 PRICE_CHANGED（details JSON）→ 丟帶 quote 的錯誤。
- * - quoted RPC 不存在（PGRST202）→ 非原子預檢 fallback 的三個分支。
- * - route：PRICE_CHANGED → 409 + ERR.PRICE_CHANGED + data.quote。
+ * #749：公開下單金額鎖定（送出當下的伺服器端重新報價比對，純 runtime、不依賴新 schema）。
+ * - 沒有 expectedTotal → 直接 create_tour_order。
+ * - 相符 → create_tour_order（不帶 p_expected_total）；不符 → PRICE_CHANGED＋quote、不呼叫任何 rpc。
+ * - 季節價命中時以季節單價比較（PER_PERSON／PER_GROUP）；季節資料不完整 → PRICE_UNVERIFIABLE、不呼叫 rpc。
+ * - route：PRICE_CHANGED → 409 TOUR_003 + data.quote；PRICE_UNVERIFIABLE → 409 TOUR_004。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -13,6 +13,7 @@ const fx = vi.hoisted(() => ({
   seasons: [] as Array<Record<string, unknown>>,
   seasonsError: false,
   planPrice: 1000,
+  priceType: 'PER_PERSON',
   salesMode: 'FIXED_DEPARTURE',
 }));
 
@@ -34,7 +35,7 @@ vi.mock('@/server/supabase', () => ({
       const result = () => {
         if (table === 'tenants') return { data: { id: TENANT, tenant_settings: null }, error: null };
         if (table === 'trip_plans') {
-          const row = { id: PLAN, trip_id: 't1', name: 'p', description: '', price_per_person: fx.planPrice, price_type: 'PER_PERSON', min_party: 1, max_party: 8, sales_mode: fx.salesMode, request_hold_hours: 12, active: true };
+          const row = { id: PLAN, trip_id: 't1', name: 'p', description: '', price_per_person: fx.planPrice, price_type: fx.priceType, min_party: 1, max_party: 8, sales_mode: fx.salesMode, request_hold_hours: 12, active: true };
           return { data: single ? row : [row], error: null };
         }
         if (table === 'trips') return { data: { id: 't1', title: 't', status: 'PUBLISHED', refund_policy_type: 'STANDARD' }, error: null };
@@ -61,7 +62,6 @@ import {
   type SubmitPublicTourBookingInput,
 } from '@/server/public-tour-booking';
 import { PublicTourRequestError, submitPublicTourRequest, submitPublicTourRequestSchema } from '@/server/public-tour-request';
-import { parsePriceChangedQuote, isMissingFunctionError } from '@/server/public-order-quote';
 
 const baseBooking = (extra: Record<string, unknown> = {}): SubmitPublicTourBookingInput => submitPublicTourBookingSchema.parse({
   shopCode: 'demo-shop', planId: PLAN, departureId: DEPARTURE, partySize: 2,
@@ -72,14 +72,12 @@ const baseRequest = (extra: Record<string, unknown> = {}) => submitPublicTourReq
   contactName: '王小明', contactPhone: '0912345678', ...extra,
 });
 
-const priceChanged = { code: 'P0004', message: 'PRICE_CHANGED', details: JSON.stringify({ unitPrice: 1200, total: 2400 }) };
-const missingFn = { code: 'PGRST202', message: 'Could not find the function public.create_tour_order_quoted' };
-
 beforeEach(() => {
   fx.rpcCalls.length = 0;
   fx.seasons = [];
   fx.seasonsError = false;
   fx.planPrice = 1000;
+  fx.priceType = 'PER_PERSON';
   fx.salesMode = 'FIXED_DEPARTURE';
   fx.rpcImpl = () => ({ data: 'order-1', error: null });
   vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -91,22 +89,6 @@ describe('schema', () => {
     expect(baseBooking({ expectedTotal: '2000' }).expectedTotal).toBe(2000);
     expect(baseBooking({ expectedTotal: 0 }).expectedTotal).toBe(0);
     expect(submitPublicTourBookingSchema.safeParse({ shopCode: 's', planId: PLAN, departureId: DEPARTURE, partySize: 1, contactName: 'a', contactPhone: '1', expectedTotal: -1 }).success).toBe(false);
-  });
-});
-
-describe('helpers', () => {
-  it('parsePriceChangedQuote：解析 details，失敗回 undefined', () => {
-    expect(parsePriceChangedQuote(priceChanged)).toEqual({ unitPrice: 1200, total: 2400 });
-    expect(parsePriceChangedQuote({ message: 'PRICE_CHANGED', details: 'not json' })).toBeUndefined();
-    expect(parsePriceChangedQuote({ message: 'PRICE_CHANGED', details: '{}' })).toBeUndefined();
-    expect(parsePriceChangedQuote({ message: 'PRICE_CHANGED' })).toBeUndefined();
-  });
-  it('isMissingFunctionError：PGRST202／42883／訊息', () => {
-    expect(isMissingFunctionError({ code: 'PGRST202' })).toBe(true);
-    expect(isMissingFunctionError({ code: '42883' })).toBe(true);
-    expect(isMissingFunctionError({ message: 'Could not find the function x' })).toBe(true);
-    expect(isMissingFunctionError({ code: 'P0004', message: 'PRICE_CHANGED' })).toBe(false);
-    expect(isMissingFunctionError(null)).toBe(false);
   });
 });
 
@@ -122,63 +104,48 @@ describe.each([
     expect(fx.rpcCalls[0].args).not.toHaveProperty('p_expected_total');
   });
 
-  it('有 expectedTotal：呼叫 create_tour_order_quoted 並帶 p_expected_total', async () => {
+  it('expectedTotal 相符：呼叫 create_tour_order 且不帶 p_expected_total', async () => {
     await expect(submit({ expectedTotal: 2000 })).resolves.toEqual({ orderId: 'order-1', orderNo: 'ORD-749' });
-    expect(fx.rpcCalls.map((c) => c.name)).toEqual(['create_tour_order_quoted']);
-    expect(fx.rpcCalls[0].args).toMatchObject({ p_expected_total: 2000, p_departure: DEPARTURE, p_party_size: 2 });
+    expect(fx.rpcCalls.map((c) => c.name)).toEqual(['create_tour_order']);
+    expect(fx.rpcCalls[0].args).toMatchObject({ p_departure: DEPARTURE, p_party_size: 2 });
+    expect(fx.rpcCalls[0].args).not.toHaveProperty('p_expected_total');
   });
 
-  it('RPC 回 PRICE_CHANGED：丟帶 quote 的錯誤', async () => {
-    fx.rpcImpl = () => ({ data: null, error: priceChanged });
+  it('現價與 expectedTotal 不符：PRICE_CHANGED 帶現價，且不呼叫任何 rpc', async () => {
+    fx.planPrice = 1200;
     const err = await submit({ expectedTotal: 2000 }).catch((e) => e);
     expect(err).toBeInstanceOf(ErrorClass);
     expect(err.code).toBe('PRICE_CHANGED');
     expect(err.quote).toEqual({ unitPrice: 1200, total: 2400 });
+    expect(fx.rpcCalls).toEqual([]);
   });
 
-  it('PRICE_CHANGED 的 details 解析失敗：不帶 quote', async () => {
-    fx.rpcImpl = () => ({ data: null, error: { code: 'P0004', message: 'PRICE_CHANGED', details: 'x' } });
+  it('季節價命中（PER_PERSON）：以季節單價比較', async () => {
+    fx.seasons = [{ id: 's1', plan_id: PLAN, start_month: 7, start_day: 1, end_month: 7, end_day: 31, price_override: 1500, sort_order: 0 }];
     const err = await submit({ expectedTotal: 2000 }).catch((e) => e);
     expect(err.code).toBe('PRICE_CHANGED');
-    expect(err.quote).toBeUndefined();
+    expect(err.quote).toEqual({ unitPrice: 1500, total: 3000 });
+    expect(fx.rpcCalls).toEqual([]);
+    await expect(submit({ expectedTotal: 3000 })).resolves.toMatchObject({ orderId: 'order-1' });
+    expect(fx.rpcCalls.map((c) => c.name)).toEqual(['create_tour_order']);
   });
 
-  describe('quoted RPC 不存在（0137 尚未套用）的非原子 fallback', () => {
-    beforeEach(() => {
-      fx.rpcImpl = (name) => (name === 'create_tour_order_quoted'
-        ? { data: null, error: missingFn }
-        : { data: 'order-legacy', error: null });
-    });
+  it('季節價命中（PER_GROUP）：總額為單價、不乘人數', async () => {
+    fx.priceType = 'PER_GROUP';
+    fx.seasons = [{ id: 's1', plan_id: PLAN, start_month: 7, start_day: 1, end_month: 7, end_day: 31, price_override: 1500, sort_order: 0 }];
+    const err = await submit({ expectedTotal: 3000 }).catch((e) => e);
+    expect(err.code).toBe('PRICE_CHANGED');
+    expect(err.quote?.total).toBe(1500);
+    expect(fx.rpcCalls).toEqual([]);
+    await expect(submit({ expectedTotal: 1500 })).resolves.toMatchObject({ orderId: 'order-1' });
+  });
 
-    it('預檢金額相符 → 改呼叫舊 create_tour_order', async () => {
-      await expect(submit({ expectedTotal: 2000 })).resolves.toEqual({ orderId: 'order-legacy', orderNo: 'ORD-749' });
-      expect(fx.rpcCalls.map((c) => c.name)).toEqual(['create_tour_order_quoted', 'create_tour_order']);
-      expect(console.warn).toHaveBeenCalledWith('create_tour_order_quoted unavailable; using non-atomic price precheck');
-    });
-
-    it('預檢金額不符 → PRICE_CHANGED 帶現價，且不呼叫舊 RPC', async () => {
-      fx.planPrice = 1200;
-      const err = await submit({ expectedTotal: 2000 }).catch((e) => e);
-      expect(err.code).toBe('PRICE_CHANGED');
-      expect(err.quote).toEqual({ unitPrice: 1200, total: 2400 });
-      expect(fx.rpcCalls.map((c) => c.name)).toEqual(['create_tour_order_quoted']);
-    });
-
-    it('季節價生效時以季節單價預檢', async () => {
-      fx.seasons = [{ id: 's1', plan_id: PLAN, start_month: 7, start_day: 1, end_month: 7, end_day: 31, price_override: 1500, sort_order: 0 }];
-      const err = await submit({ expectedTotal: 2000 }).catch((e) => e);
-      expect(err.code).toBe('PRICE_CHANGED');
-      expect(err.quote).toEqual({ unitPrice: 1500, total: 3000 });
-      await expect(submit({ expectedTotal: 3000 })).resolves.toMatchObject({ orderId: 'order-legacy' });
-    });
-
-    it('季節資料不完整 → PRICE_UNVERIFIABLE，不建單', async () => {
-      fx.seasonsError = true;
-      const err = await submit({ expectedTotal: 2000 }).catch((e) => e);
-      expect(err).toBeInstanceOf(ErrorClass);
-      expect(err.code).toBe('PRICE_UNVERIFIABLE');
-      expect(fx.rpcCalls.map((c) => c.name)).toEqual(['create_tour_order_quoted']);
-    });
+  it('季節資料不完整：PRICE_UNVERIFIABLE，不呼叫 rpc', async () => {
+    fx.seasonsError = true;
+    const err = await submit({ expectedTotal: 2000 }).catch((e) => e);
+    expect(err).toBeInstanceOf(ErrorClass);
+    expect(err.code).toBe('PRICE_UNVERIFIABLE');
+    expect(fx.rpcCalls).toEqual([]);
   });
 });
 

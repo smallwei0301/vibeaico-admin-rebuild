@@ -30,8 +30,8 @@ describe('#755 create_tour_order SECURITY INVOKER successor', () => {
   const code = sql.split('\n').filter((line) => !line.trim().startsWith('--')).join('\n');
 
   it('is the next migration after the previous highest one', () => {
-    expect(files).toContain(SUCCESSOR);
-    expect(files[files.indexOf(SUCCESSOR) - 1].slice(0, 4)).toBe('0135');
+    expect(files.at(-1)).toBe(SUCCESSOR);
+    expect(files.at(-2)!.slice(0, 4)).toBe('0135');
   });
 
   it('only contains GRANT SELECT on trip_plan_seasons to service_role, then ALTER FUNCTION ... SECURITY INVOKER for the exact latest signature', () => {

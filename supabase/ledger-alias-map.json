@@ -669,13 +669,6 @@
       "classification": "NOT_APPLIED",
       "notAppliedReason": "PENDING_APPLY",
       "evidence": "#755 R1：0130/0132 的 create_tour_order 為 SECURITY DEFINER 且 owner 是 production_migration_owner（nobypassrls），而 public.trips 受 RLS（is_tenant_member，依 auth.uid()）保護，唯一呼叫者 service_role 沒有終端使用者 JWT，導致 refund_policy_snapshot 被靜默寫成 NULL。此不可覆寫的後續 migration 對 0132 的完整簽名執行 ALTER FUNCTION ... SECURITY INVOKER（函式本體與既有 grant/revoke 不變，沿用 0134 作法）。尚未套用 canonical TEST 或 Production；須依 shared TEST serialization 與 Production G0-G7 另行驗證／發布。"
-    },
-    {
-      "repoFile": "0137_issue_749_create_tour_order_quoted",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "PENDING_APPLY",
-      "evidence": "#749：新增 service_role-only、SECURITY INVOKER 的 create_tour_order_quoted(…, p_expected_total)，在同一交易內呼叫既有 create_tour_order 後比對旅客確認的總額，不符則 raise PRICE_CHANGED（P0004）使整筆 RPC（含鎖位）回滾。不修改 create_tour_order。必須在 0132／0136 之後。尚未套用 canonical TEST 或 Production；Production 套用屬 #755 受控 release，須依 shared TEST serialization 與 G0-G7 另行驗證／發布。"
     }
   ]
 }
