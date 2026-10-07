@@ -92,6 +92,28 @@ jobs:
       - name: Compare exact object fingerprints and fail closed
         run: |
           node scripts/agents/schema-drift-watch.mjs --command compare --expected-snapshot "$RUNNER_TEMP/expected.json" --test-snapshot "$RUNNER_TEMP/test.json" --production-snapshot "$RUNNER_TEMP/production.json" --current-main-sha "$EXPECTED_MAIN_SHA" --exceptions docs/schema-truth/schema-drift-exceptions.json --json-out "$RUNNER_TEMP/report.json"
+      - name: Preserve sanitized normalized schema snapshots
+        if: ${{ always() }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+          import { buildUnavailableSnapshot, normalizeObserverSnapshot } from './scripts/agents/schema-drift-watch.mjs';
+          const snapshots = [['expected.json', 'LOCAL_EXPECTED'], ['test.json', 'TEST'], ['production.json', 'PRODUCTION']].map(([name, environment]) => {
+            const input = `${process.env.RUNNER_TEMP}/${name}`;
+            try {
+              const normalized = normalizeObserverSnapshot(JSON.parse(readFileSync(input, 'utf8')), process.env.EXPECTED_MAIN_SHA);
+              if (normalized.environment !== environment) throw new Error('SNAPSHOT_ENVIRONMENT_MISMATCH');
+              return [name, normalized];
+            } catch (error) {
+              return [name, buildUnavailableSnapshot({ environment, observedMainSha: process.env.EXPECTED_MAIN_SHA,
+                reason: error.code === 'ENOENT' ? 'SNAPSHOT_MISSING' : 'SNAPSHOT_INVALID' })];
+            }
+          });
+          const output = `${process.env.RUNNER_TEMP}/schema-snapshots`;
+          mkdirSync(output, { recursive: true });
+          for (const [name, snapshot] of snapshots) writeFileSync(`${output}/${name}`, `${JSON.stringify(snapshot, null, 2)}\n`, { mode: 0o600 });
+          console.log(JSON.stringify({ snapshotStatuses: Object.fromEntries(snapshots.map(([name, snapshot]) => [name, snapshot.status])) }));
+          NODE
       - name: Emit sanitized drift report summary
         if: ${{ always() }}
         run: |
@@ -106,6 +128,17 @@ jobs:
         with:
           name: schema-drift-report-${{ github.run_id }}-${{ inputs.artifact_suffix }}
           path: ${{ runner.temp }}/report.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload sanitized schema snapshots
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-drift-snapshots-${{ github.run_id }}-${{ inputs.artifact_suffix }}
+          path: |
+            ${{ runner.temp }}/schema-snapshots/expected.json
+            ${{ runner.temp }}/schema-snapshots/test.json
+            ${{ runner.temp }}/schema-snapshots/production.json
           if-no-files-found: warn
           retention-days: 14
       - name: Destroy disposable local database
