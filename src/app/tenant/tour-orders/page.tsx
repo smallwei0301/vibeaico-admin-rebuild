@@ -26,7 +26,7 @@ import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
 import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { tourOrdersPage as t } from '@/i18n/zh-TW/pages/tour-orders';
-import { hasPartialDeposit } from '@/server/tour-domain';
+import { hasPartialDeposit, isAwaitingPayment } from '@/server/tour-domain';
 import { formatCurrency, formatDateTime, formatNumber } from '@/lib/utils';
 import type {
   TourOrder, TourOrderSource, TourOrderStatus, TourPaymentStatus,
@@ -160,7 +160,7 @@ export default function TourOrdersPage() {
     const in7 = new Date(now.getTime() + 7 * 86_400_000);
     return {
       pending: rows.filter((o) => o.status === 'PENDING').length,
-      unpaid: rows.filter((o) => o.paymentStatus === 'UNPAID' && o.status !== 'CANCELLED').length,
+      unpaid: rows.filter(isAwaitingPayment).length,
       upcoming: rows.filter((o) => {
         const d = new Date(o.departsOn);
         return o.status === 'CONFIRMED' && d >= now && d <= in7;

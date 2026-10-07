@@ -3,7 +3,7 @@
  * 且逾期 cron 的掃描範圍涵蓋 CONFIRMED + UNPAID。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { canRegisterDepositPayment, canRegisterFullPayment, hasPartialDeposit } from '@/server/tour-domain';
+import { canRegisterDepositPayment, canRegisterFullPayment, hasPartialDeposit, isAwaitingPayment } from '@/server/tour-domain';
 
 const state = vi.hoisted(() => ({
   current: null as Record<string, unknown> | null,
@@ -274,5 +274,17 @@ describe('GET cron tour-order-expiry（#769）', () => {
     state.rpcResults = [true, true]; // PENDING 先處理；其餘（CONFIRMED）預設回 false
     const res = await (await load())(cronReq());
     expect(await res.json()).toEqual({ scanned: 502, cancelled: 2 });
+  });
+});
+
+describe('isAwaitingPayment 待收款統計（#816 Codex P2）', () => {
+  it('UNPAID 與 PARTIAL 計入', () => {
+    expect(isAwaitingPayment({ status: 'CONFIRMED', paymentStatus: 'UNPAID' })).toBe(true);
+    expect(isAwaitingPayment({ status: 'CONFIRMED', paymentStatus: 'PARTIAL' })).toBe(true);
+  });
+  it('PAID、已取消的 UNPAID／PARTIAL 不計入', () => {
+    expect(isAwaitingPayment({ status: 'CONFIRMED', paymentStatus: 'PAID' })).toBe(false);
+    expect(isAwaitingPayment({ status: 'CANCELLED', paymentStatus: 'UNPAID' })).toBe(false);
+    expect(isAwaitingPayment({ status: 'CANCELLED', paymentStatus: 'PARTIAL' })).toBe(false);
   });
 });

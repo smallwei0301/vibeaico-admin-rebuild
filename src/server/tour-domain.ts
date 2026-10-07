@@ -439,6 +439,11 @@ export function hasPartialDeposit(order: { depositAmount: number | null | undefi
   return d > 0 && d < total;
 }
 
+/** 「待收款」統計：UNPAID 與已收訂金仍有尾款的 PARTIAL 都算，已取消的不算（#816 Codex P2）。 */
+export function isAwaitingPayment(order: { status: string; paymentStatus: string | null | undefined }): boolean {
+  return order.status !== 'CANCELLED' && (order.paymentStatus === 'UNPAID' || order.paymentStatus === 'PARTIAL');
+}
+
 /**
  * 「確認收到全額」可否執行（#769）。
  * - PENDING + UNPAID：既有路徑（PENDING → CONFIRMED）。
