@@ -34,10 +34,12 @@
  *      concluded = formed + failed；open ＝ 尚未結案：出發日未到，或今天出發仍待決策（且非未經決策取消）的團次。
  *  - 上一期：與本期等長、緊接在前，用同一個「今天」；比較以百分點（pointDiff）。
  *  - 資料可用性（availability）：正式團次建立時 departureFormationSnapshot() 只寫 COLLECTING（migration 預設值），
- *    且 src／supabase/migrations 目前沒有把團次轉 FORMED／FAILED／REVIEW_REQUIRED／AT_RISK 的 runtime 寫入（人工決策 API 尚未合併）。
+ *    轉態由兩條路徑寫入：人工決策 API（#825 已合併，POST /api/trip-departures/[id]/formation-decision，FORM／EXTEND／CONTINUE），
+ *    以及成團截止排程（Issue #41，/api/cron/formation-deadline，預設關閉，需 FORMATION_DEADLINE_SWEEP_ENABLED=true 才推進 FORMED／REVIEW_REQUIRED）。
+ *    因此仍可能出現「尚無任何決策紀錄」的期間（排程未開、也沒有人手動決策）。
  *    若本期與上一期查到的團次「全部」仍是 COLLECTING，沒有任何成團決策紀錄，比率只會是算不出的空值，卡片就誠實顯示 NOT_TRACKED。
  *    判斷只看 formation_status 是否出現過 COLLECTING 以外的值：0107 的 CHECK 約束把 formed_at／formed_by／formation_decided_at 綁在
- *    非 COLLECTING 的狀態上，formation_status 是最可靠、且不需多選欄位的單一訊號；日後轉態上線，一出現第一筆決策紀錄就自動恢復為 TRACKED。
+ *    非 COLLECTING 的狀態上，formation_status 是最可靠、且不需多選欄位的單一訊號；一旦出現第一筆決策紀錄就自動恢復為 TRACKED。
  *    REVIEW_REQUIRED 也算（它只能由系統轉態寫入，代表轉態機制已在運作）。
  *  - 這是「目前的成團狀態」：formation_status 沒有歷史快照，所以數字反映讀取當下的狀態，不是當時的狀態。
  */

@@ -15,6 +15,7 @@ const st = vi.hoisted(() => ({
   schemaError: null as string | null,
   pageCap: 1e9,
   tz: {} as Record<string, string>,
+  tzErrorTenants: new Set<string>(),
   beforeCas: null as null | (() => void),
 }));
 
@@ -38,6 +39,7 @@ const fakeDb = {
     const run = () => {
       if (table === 'tenant_settings') {
         const tid = eq.find(([k]) => k === 'tenant_id')?.[1] as string;
+        if (st.tzErrorTenants.has(tid)) return { data: null, error: { code: 'XX000', message: 'boom' } };
         return { data: st.tz[tid] ? { basic: { timezone: st.tz[tid] } } : null, error: null };
       }
       if (patch) st.beforeCas?.();
@@ -93,7 +95,7 @@ describe('formation-deadline sweep（Issue #41）', () => {
   beforeEach(() => {
     process.env.CRON_SECRET = 's3cret';
     process.env.FORMATION_DEADLINE_SWEEP_ENABLED = 'true';
-    st.tz = {}; st.beforeCas = null; st.deps = []; st.orders = []; st.updates = []; st.reads = 0; st.raceIds = new Set(); st.schemaError = null; st.pageCap = 1e9;
+    st.tz = {}; st.tzErrorTenants = new Set(); st.beforeCas = null; st.deps = []; st.orders = []; st.updates = []; st.reads = 0; st.raceIds = new Set(); st.schemaError = null; st.pageCap = 1e9;
     vi.useFakeTimers(); vi.setSystemTime(NOW);
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -220,6 +222,19 @@ describe('formation-deadline sweep（Issue #41）', () => {
     st.deps = [dep(1, { departs_on: '2026-10-06', start_time: '21:00:00' })];
     st.orders = [order(id(1), 4)];
     expect((await (await GET(req())).json()).formed).toBe(1);
+  });
+
+  it('讀店家時區（tenant_settings）回非 schema 錯誤 → 該團次不推進、不呼叫 update、計入 skipped；其他團次照常處理', async () => {
+    const T2 = '22222222-2222-4222-8222-222222222222';
+    st.tzErrorTenants.add(T);
+    st.deps = [dep(1), dep(2, { tenant_id: T2 })];
+    st.orders = [order(id(1), 4), order(id(2), 4, { tenant_id: T2 })];
+    const body = await (await GET(req())).json();
+    expect(body).toMatchObject({ scanned: 2, formed: 1, skipped: 1 });
+    expect(st.deps[0].formation_status).toBe('COLLECTING');
+    expect(st.deps[1].formation_status).toBe('FORMED');
+    expect(st.updates).toHaveLength(1);
+    expect(st.updates[0].eq).toContainEqual(['id', id(2)]);
   });
 
   it('退款中／已退款／已取消訂單不計人數', async () => {
