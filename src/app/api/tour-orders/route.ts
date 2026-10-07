@@ -127,7 +127,7 @@ export const GET = handle(async (req) => {
       if (rowsPage.length < 1000) break;
       lastId = rowsPage[rowsPage.length - 1].id;
       scanned += rowsPage.length;
-      if (scanned >= MAX_ROWS) throw new ApiHttpError(400, '區間內訂單過多，請縮短日期區間', ERR.VALIDATION);
+      if (scanned >= MAX_ROWS) throw new ApiHttpError(422, '區間內訂單過多，請縮短日期區間', ERR.REPORT_RANGE_TOO_LARGE);
     }
     cand.sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : (a.id < b.id ? 1 : -1)));
     count = cand.length;

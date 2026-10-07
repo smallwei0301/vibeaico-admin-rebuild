@@ -13,26 +13,34 @@ type Db = Awaited<ReturnType<typeof requireTenant>>['supabase'];
 export const ID_BATCH = 200;
 const PAGE = 1000;
 
-/** 本期旅客中「beforeIso 之前已有非取消訂單」者。 */
+/** 單一批次最多查幾頁（每頁至少確認 1 位旅客，正常遠低於此）；超過就明確報錯，不回傳可能錯誤的集合。 */
+export const MAX_PRIOR_PAGES_PER_BATCH = ID_BATCH + 5;
+
+/**
+ * 本期旅客中「beforeIso 之前已有非取消訂單」者。只需「是否存在」：每查到一批就把已確認的
+ * customer_id 從待查清單移除，下一次只查剩下的人（不用 offset／游標），所以單一批次的頁數
+ * 受限於旅客數、而不是他們的歷史訂單數。
+ */
 export async function fetchPriorCustomers(
   db: Db, tenantId: string, beforeIso: string, ids: string[],
 ): Promise<Set<string>> {
   const out = new Set<string>();
   for (let i = 0; i < ids.length; i += ID_BATCH) {
-    let lastId: string | null = null;
-    for (;;) {
-      let q = db.from('tour_orders').select('id, customer_id')
+    const remaining = new Set(ids.slice(i, i + ID_BATCH));
+    for (let pages = 0; remaining.size > 0; pages += 1) {
+      if (pages >= MAX_PRIOR_PAGES_PER_BATCH) throw new Error('重複旅客先前訂單查詢超過頁數上限');
+      const { data, error } = await db.from('tour_orders').select('customer_id')
         .eq('tenant_id', tenantId).neq('status', 'CANCELLED')
-        .lt('created_at', beforeIso).in('customer_id', ids.slice(i, i + ID_BATCH));
-      if (lastId) q = q.gt('id', lastId);
-      const { data, error } = await q.order('id', { ascending: true }).limit(PAGE);
+        .lt('created_at', beforeIso).in('customer_id', [...remaining])
+        .order('customer_id', { ascending: true }).limit(PAGE);
       if (error) throw error;
-      const page = (data ?? []) as { id: string; customer_id: string | null }[];
-      for (const x of page) if (x.customer_id) out.add(x.customer_id);
-      if (page.length < PAGE) break;
-      lastId = page[page.length - 1].id;
+      const page = (data ?? []) as { customer_id: string | null }[];
+      let found = 0;
+      for (const x of page) {
+        if (x.customer_id && remaining.delete(x.customer_id)) { out.add(x.customer_id); found += 1; }
+      }
+      if (page.length < PAGE || found === 0) break; // 短頁＝剩下的人確定沒有先前訂單
     }
-    if (out.size >= ids.length) break; // 全部都已確認有先前訂單，不必再查
   }
   return out;
 }
@@ -55,7 +63,7 @@ export async function loadRepeatCustomerIds(
     if (error) throw error;
     const page = (data ?? []) as { id: string; status: string; customer_id: string | null }[];
     rows.push(...page);
-    if (rows.length > MAX_ROWS) throw new ApiHttpError(400, '區間內訂單過多，請縮短日期區間', ERR.VALIDATION);
+    if (rows.length > MAX_ROWS) throw new ApiHttpError(422, '區間內訂單過多，請縮短日期區間', ERR.REPORT_RANGE_TOO_LARGE);
     if (page.length < PAGE) break;
     lastId = page[page.length - 1].id;
   }

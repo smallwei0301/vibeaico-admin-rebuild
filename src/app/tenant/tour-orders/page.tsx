@@ -169,8 +169,11 @@ export default function TourOrdersPage() {
           openedDeepLinkId.current = requestedOrderId;
         }
       }
-    } catch {
-      toast.show(t.messages.loadFailed, 'danger');
+    } catch (e) {
+      toast.show(
+        e instanceof ApiError && e.code === 'REPORT_001' ? t.messages.rangeTooLarge : t.messages.loadFailed,
+        'danger',
+      );
     } finally {
       setLoading(false);
     }

@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const OTHER = '22222222-2222-4222-8222-222222222222';
 type Row = Record<string, unknown>;
-const state = vi.hoisted(() => ({ orders: [] as Row[], priorQueries: [] as { tenant: unknown; ids: number; neq: unknown; lt: unknown }[] }));
+const state = vi.hoisted(() => ({ orders: [] as Row[], priorQueries: [] as { tenant: unknown; ids: number; neq: unknown; lt: unknown }[], idQueries: [] as unknown[] }));
 
 vi.mock('@/config/env', () => ({ USE_MOCK: false }));
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => undefined }) }));
@@ -23,6 +23,7 @@ const fakeDb = {
       if (table === 'trips') return (f.ids ?? []).map((id) => ({ id, title: id }));
       if (table === 'trip_plans') return (f.ids ?? []).map((id) => ({ id, name: id }));
       if (table !== 'tour_orders') return [];
+      if (f.inCol === 'id') state.idQueries.push(f.eq.find(([k]) => k === 'tenant_id')?.[1]);
       if (f.neq.length && f.ids && f.lt && f.gte === undefined) {
         state.priorQueries.push({ tenant: f.eq.find(([k]) => k === 'tenant_id')?.[1], ids: f.ids.length, neq: f.neq[0][1], lt: f.lt });
       }
@@ -57,6 +58,7 @@ const fakeDb = {
 };
 
 import { GET as reportGET } from '@/app/api/reports/guide/route';
+import { fetchPriorCustomers } from '@/server/guide-report-repeat';
 import { GET as ordersGET } from '@/app/api/tour-orders/route';
 
 const o = (id: string, customer: string | null, created: string, extra: Row = {}): Row => ({
@@ -68,7 +70,7 @@ const IN = '2026-10-03T02:00:00Z';
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-12-01T00:00:00Z'));
-  state.priorQueries = [];
+  state.priorQueries = []; state.idQueries = [];
   state.orders = [
     o('a1', 'A', IN), o('a2', 'A', '2026-10-04T02:00:00Z'),                // A：本期 2 筆 → 重複
     o('b1', 'B', IN), o('b0', 'B', '2026-08-01T02:00:00Z'),               // B：本期 1 筆＋先前有 → 重複
@@ -111,5 +113,42 @@ describe('報表與訂單清單下鑽共用重複旅客查詢', () => {
     ]) {
       expect((await ordersGET(new Request(`http://t/api/tour-orders${qs}`), {})).status, qs).toBe(400);
     }
+  });
+
+  it('下鑽清單最後以 id 撈整列時一定帶 tenant_id（拿掉就會失敗）', async () => {
+    await ordersGET(new Request('http://t/api/tour-orders?repeatCustomers=1&createdFrom=2026-10-01&createdTo=2026-10-10'), {});
+    expect(state.idQueries.length).toBeGreaterThan(0);
+    for (const t of state.idQueries) expect(t).toBe(TENANT);
+  });
+
+  it('分頁與穩定排序：created_at 新到舊，同時間依 id 由大到小；page=1 取第二頁', async () => {
+    // a2(10-04) 最新；b1、a1 同為 IN 時間 → id 大者在前：a2, b1, a1
+    const get = async (qs: string) => (await (await ordersGET(new Request(`http://t/api/tour-orders?repeatCustomers=1&createdFrom=2026-10-01&createdTo=2026-10-10${qs}`), {})).json()).data;
+    expect((await get('&page=0&size=2')).content.map((r: Row) => r.id)).toEqual(['a2', 'b1']);
+    const p1 = await get('&page=1&size=2');
+    expect(p1.content.map((r: Row) => r.id)).toEqual(['a1']);
+    expect(p1.totalElements).toBe(3);
+    expect((await get('&page=2&size=2')).content).toEqual([]);
+  });
+
+  it('區間內訂單超過 MAX_ROWS → 422 與 REPORT_001（不回傳不完整集合）', async () => {
+    state.orders = Array.from({ length: 20001 }, (_, i) => o(`z${String(i).padStart(6, '0')}`, `cust${i}`, IN));
+    const res = await ordersGET(new Request('http://t/api/tour-orders?repeatCustomers=1&createdFrom=2026-10-01&createdTo=2026-10-10'), {});
+    expect(res.status).toBe(422);
+    expect((await res.json()).code).toBe('REPORT_001');
+  });
+});
+
+describe('fetchPriorCustomers 只確認存在，不翻完歷史訂單', () => {
+  it('1 位旅客有 2500 筆先前訂單＋另一位 1 筆：只查 2 次（不是逐頁翻完 2500 筆），結果兩人都找到', async () => {
+    state.orders = [
+      ...Array.from({ length: 2500 }, (_, i) => o(`h${String(i).padStart(5, '0')}`, 'X', '2026-08-01T02:00:00Z')),
+      o('y1', 'Y', '2026-08-01T02:00:00Z'),
+    ];
+    state.priorQueries = [];
+    const got = await fetchPriorCustomers(fakeDb as never, TENANT, '2026-09-30T16:00:00.000Z', ['X', 'Y', 'Z']);
+    expect([...got].sort()).toEqual(['X', 'Y']);
+    expect(state.priorQueries.length).toBeLessThanOrEqual(2);
+    for (const q of state.priorQueries) expect(q.tenant).toBe(TENANT);
   });
 });

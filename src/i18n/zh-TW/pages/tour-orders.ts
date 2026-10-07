@@ -185,6 +185,7 @@ export const tourOrdersPage = {
     cancelled: '訂單已取消，名額已釋放',
     seatsUnavailable: '名額不足，請重新選擇團次',
     loadFailed: '載入失敗，請稍後再試',
+    rangeTooLarge: '資料量過大，請縮短日期區間後再試',
     accepted: '已接受申請，名額已鎖定',
     rejected: '已拒絕此申請',
     /**

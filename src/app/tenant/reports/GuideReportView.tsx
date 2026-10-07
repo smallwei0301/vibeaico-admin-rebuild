@@ -14,7 +14,9 @@ import { Tabs } from '@/components/ui/Tabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Input, Label, FormGroup } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { buildTourOrdersLink } from '@/services/tours';
+import {
+  rangeLink as buildRangeLink, rankingLink, refundPendingLink, repeatCustomersLink, sourceLink,
+} from '@/lib/guide-report-links';
 import {
   getGuideReport,
   type GuideRankDimension, type GuideRankMetric, type GuideRankRow, type GuideReport,
@@ -127,11 +129,7 @@ export function GuideReportView() {
       render: (r) => (report
         ? (
           <Link
-            href={buildTourOrdersLink({
-              ...(dimension === 'trip' ? { tripId: r.id } : { planId: r.id }),
-              activeOnly: metric !== 'revenue',
-              createdFrom: report.range.from, createdTo: report.range.to,
-            })}
+            href={rankingLink(report.range, dimension, r.id, metric)}
             className="underline" title={t.drilldown.viewTripOrders(r.name)}
           >
             {r.name}
@@ -147,9 +145,7 @@ export function GuideReportView() {
   const cardLabel = (name: string) => (report?.truncated ? `${name}（${t.truncatedHint}）` : name);
   const s = report?.summary;
   const prev = report?.previous;
-  const rangeLink = (status?: string, source?: string, paymentStatus?: string, activeOnly?: boolean) => buildTourOrdersLink({
-    status, source, paymentStatus, activeOnly, createdFrom: report?.range.from, createdTo: report?.range.to,
-  });
+  const rangeLink = (status?: string) => (report ? buildRangeLink(report.range, status) : '/tenant/tour-orders');
   const rows = report ? report.ranking[dimension][metric] : [];
 
   if (forbidden) {
@@ -255,7 +251,7 @@ export function GuideReportView() {
                   {s.refundPendingCount > 0 ? (
                     <>
                       <br />
-                      <Link href={rangeLink(undefined, undefined, 'REFUND_PENDING')} className="underline" title={t.drilldown.viewOrders}>
+                      <Link href={refundPendingLink(report.range)} className="underline" title={t.drilldown.viewOrders}>
                         {t.cardHints.refundPending(s.refundPendingCount)}
                       </Link>
                     </>
@@ -309,7 +305,7 @@ export function GuideReportView() {
                       <div className="stat-label">{name}</div>
                       <div className="stat-value text-base">
                         {(GUIDE_SOURCES as readonly string[]).includes(k)
-                          ? <Link href={rangeLink(undefined, k, undefined, true)} className="underline" title={t.sourceCard.viewSourceOrders(name)}>{line}</Link>
+                          ? <Link href={sourceLink(report.range, k)} className="underline" title={t.sourceCard.viewSourceOrders(name)}>{line}</Link>
                           : line}
                       </div>
                       <div className="form-text">{t.sourceCard.previous(prev.bySource[k].orders)}</div>
@@ -339,12 +335,10 @@ export function GuideReportView() {
                   </div>
                 </div>
               </div>
-              {report.repeat.repeatOrders > 0 ? (
+              {report.repeat.repeatOrders > 0 && !report.truncated ? (
                 <p className="mt-2 text-sm">
                   <Link
-                    href={buildTourOrdersLink({
-                      repeatCustomers: true, createdFrom: report.range.from, createdTo: report.range.to,
-                    })}
+                    href={repeatCustomersLink(report.range)}
                     className="underline"
                   >
                     {t.repeatCard.viewOrders(report.repeat.repeatOrders)}

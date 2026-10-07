@@ -5,7 +5,6 @@ import type {
 } from '@/lib/types';
 import { clampGalleryForCopy } from '@/lib/trip-gallery';
 import { addDays, zonedMidnightMs } from '@/server/guide-report';
-import { MOCK_GUIDE_PLANS } from '@/mock/guide-report';
 import { canRegisterDepositPayment, canRegisterFullPayment, canTransitionTourOrder, shouldReleaseSeats } from '@/server/tour-domain';
 import {
   MOCK_TOUR_ORDERS, MOCK_TRIPS, MOCK_TRIP_ADDONS,
@@ -654,12 +653,29 @@ export function listTourOrders(q: TourOrderQuery = {}): Promise<Paged<TourOrder>
     () => {
       const page = q.page ?? 0, size = q.size ?? 20;
       let rows = MOCK_TOUR_ORDERS;
+      // 重複旅客集合先以「整個日期區間」算（與真實 API 同序），再套用其他篩選
+      let repeatPhones: Set<string> | null = null;
+      if (q.repeatCustomers === '1') {
+        const lo = q.createdFrom ? zonedMidnightMs(q.createdFrom, MOCK_TIME_ZONE) : 0;
+        const hi = q.createdTo ? zonedMidnightMs(addDays(q.createdTo, 1), MOCK_TIME_ZONE) : Infinity;
+        const live = MOCK_TOUR_ORDERS.filter((o) => o.status !== 'CANCELLED');
+        const prior = new Set(live.filter((o) => Date.parse(o.createdAt) < lo).map((o) => o.customerPhone));
+        const counts = new Map<string, number>();
+        for (const o of live) {
+          const ms = Date.parse(o.createdAt);
+          if (ms >= lo && ms < hi) counts.set(o.customerPhone, (counts.get(o.customerPhone) ?? 0) + 1);
+        }
+        repeatPhones = new Set([...counts].filter(([ph, n]) => n >= 2 || prior.has(ph)).map(([ph]) => ph));
+      }
       if (q.orderId) rows = rows.filter((o) => o.id === q.orderId);
       if (q.status) rows = rows.filter((o) => o.status === q.status);
       if (q.source) rows = rows.filter((o) => o.source === q.source);
       if (q.tripId) rows = rows.filter((o) => o.tripId === q.tripId);
-      // mock 訂單只存方案名稱：以報表 mock 的方案 id→名稱對照比對
-      if (q.planId) rows = rows.filter((o) => o.planName === MOCK_GUIDE_PLANS.get(q.planId as string));
+      // mock 訂單只存方案名稱：以方案 id → 名稱（MOCK_TRIP_PLANS）比對
+      if (q.planId) {
+        const planName = MOCK_TRIP_PLANS.find((p) => p.id === q.planId)?.name;
+        rows = rows.filter((o) => planName !== undefined && o.planName === planName);
+      }
       if (q.activeOnly === '1' || q.repeatCustomers === '1') rows = rows.filter((o) => o.status !== 'CANCELLED');
       // mock 以 Asia/Taipei 為店家時區，界線與真實 API 同為半開 [from 00:00, to+1 00:00)
       if (q.createdFrom) {
@@ -671,15 +687,7 @@ export function listTourOrders(q: TourOrderQuery = {}): Promise<Paged<TourOrder>
         rows = rows.filter((o) => Date.parse(o.createdAt) < hi);
       }
       if (q.paymentStatus) rows = rows.filter((o) => o.paymentStatus === q.paymentStatus);
-      if (q.repeatCustomers === '1') {
-        // mock 訂單沒有 customer_id：以電話當旅客識別；本期（已套用日期）內 ≥2 筆，或本期開始前已有非取消訂單
-        const lo = q.createdFrom ? zonedMidnightMs(q.createdFrom, MOCK_TIME_ZONE) : 0;
-        const prior = new Set(MOCK_TOUR_ORDERS
-          .filter((o) => o.status !== 'CANCELLED' && Date.parse(o.createdAt) < lo).map((o) => o.customerPhone));
-        const counts = new Map<string, number>();
-        for (const o of rows) counts.set(o.customerPhone, (counts.get(o.customerPhone) ?? 0) + 1);
-        rows = rows.filter((o) => (counts.get(o.customerPhone) ?? 0) >= 2 || prior.has(o.customerPhone));
-      }
+      if (repeatPhones) rows = rows.filter((o) => repeatPhones!.has(o.customerPhone));
       if (q.keyword) {
         const k = q.keyword.toLowerCase();
         rows = rows.filter((o) => [o.orderNo, o.customerName, o.customerPhone, o.tripTitle]
