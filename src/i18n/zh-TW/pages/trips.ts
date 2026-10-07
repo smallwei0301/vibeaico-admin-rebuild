@@ -531,7 +531,7 @@ export const tripsPage = {
     planMinParticipantsInvalid: '最少人數必須是至少 1 的整數',
     planMaxParticipantsInvalid: '最多人數必須是至少 1 的整數',
     planPartyRangeInvalid: '最多人數不得小於最少人數',
-    planDepositInvalid: '請檢查訂金模式與金額',
+    planDepositInvalid: '請檢查訂金模式與金額（需為整數）',
     planAdvancedSaved: '方案進階設定已儲存',
     planSaveFailed: '方案儲存失敗，請稍後再試',
     planOrderUpdated: '方案顯示順序已更新',

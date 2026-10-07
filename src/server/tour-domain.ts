@@ -95,7 +95,7 @@ const planFields = {
   minParty: z.number().int().min(1, '最低人數必須至少為 1').optional(),
   maxParty: z.number().int().min(1, '最高人數必須至少為 1').optional(),
   depositMode: z.enum(depositModes).optional(),
-  depositValue: z.number().finite().int('定金必須為整數元').nonnegative('定金不得為負數').optional(),
+  depositValue: z.number().finite().int('定金必須為整數').nonnegative('定金不得為負數').optional(),
   sortOrder: z.number().int().optional(),
   active: z.boolean().optional(),
   /* ---- issue #42：時長／計價方式／是否全年販售，取代 mapTripPlan() 過去的假值 ---- */
