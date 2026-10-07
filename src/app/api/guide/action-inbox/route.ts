@@ -88,8 +88,9 @@ function firstOf<T>(value: T | T[] | null | undefined): T | null {
  *     補上，見 `src/lib/guide-action-inbox.ts` 對應型別上的說明。
  *     這個候選查詢跟 DEPARTURE 查詢一樣，必須排除 formation query 已經涵蓋的
  *     REVIEW_REQUIRED／AT_RISK 團次（#479 修復）——STAFF_CONFLICT／
- *     STAFF_UNASSIGNED 卡片的深連結跟 formation 卡片相同，都是
- *     `/tenant/trips/:tripId`，沒有這條排除的話，一個尚未成團、也沒有 PRIMARY
+ *     STAFF_UNASSIGNED 卡片與 DEPARTURE 卡片都連到 `/tenant/trips/{tripId}`，
+ *     formation 卡片則連到 `/tenant/trips/{tripId}?tab=departures&departureId={id}`，
+ *     兩者指向同一個團次詳情頁，沒有這條排除的話，一個尚未成團、也沒有 PRIMARY
  *     指派的團次會同時冒出 STAFF_UNASSIGNED 與 REVIEW_REQUIRED／AT_RISK 兩張卡。
  */
 const MISSING_SCHEMA_CODES = new Set(['42703', '42P01', 'PGRST200', 'PGRST204', 'PGRST205']);
@@ -219,9 +220,10 @@ export const GET = handle(async () => {
     // 餵給 STAFF_CONFLICT（有 PRIMARY，撞不撞班留給下面 loadStaffLoad()/
     // findStaffConflicts() 判斷）與 STAFF_UNASSIGNED（沒有 PRIMARY）兩種卡片。
     //
-    // #479 修復：STAFF_CONFLICT／STAFF_UNASSIGNED 卡片的深連結跟 DEPARTURE／
-    // formation 卡片完全相同（皆是 `/tenant/trips/:tripId`，見
-    // `guide-action-inbox.ts` 對應的 build*Item()），但這裡先前沒有跟 DEPARTURE
+    // #479 修復：STAFF_CONFLICT／STAFF_UNASSIGNED 卡片與 DEPARTURE 卡片的
+    // 深連結同為 `/tenant/trips/{tripId}`，formation 卡片則另帶
+    // `?tab=departures&departureId={id}`（見 `guide-action-inbox.ts` 對應的
+    // build*Item()），三者都指向同一個團次詳情頁，但這裡先前沒有跟 DEPARTURE
     // query（上面）一樣排除 formation query 已經涵蓋的 REVIEW_REQUIRED／AT_RISK
     // 團次——一個尚未成團、且沒有 PRIMARY 指派的團次，會同時被這裡判成
     // STAFF_UNASSIGNED、又被下面的 formation query 判成 REVIEW_REQUIRED／
