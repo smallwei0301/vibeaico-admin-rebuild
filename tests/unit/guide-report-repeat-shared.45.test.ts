@@ -41,6 +41,7 @@ const fakeDb = {
       neq: (k: string, v: unknown) => { f.neq.push([k, v]); return q; },
       gte: (_k: string, v: string) => { f.gte = v; return q; },
       lt: (_k: string, v: string) => { f.lt = v; return q; },
+      lte: () => q,
       gt: (_k: string, v: string) => { f.gt = v; return q; },
       in: (k: string, v: string[]) => { f.ids = v; f.inCol = k; return q; },
       order: () => q,

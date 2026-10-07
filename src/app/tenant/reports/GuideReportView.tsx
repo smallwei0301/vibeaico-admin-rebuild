@@ -24,6 +24,7 @@ import {
 import { reportsPage } from '@/i18n/zh-TW/pages/reports';
 import { formatAsOf, presetRange, todayIn } from '@/lib/guide-report-range';
 import { GUIDE_SOURCE_KEYS, GUIDE_SOURCES } from '@/server/guide-report';
+import { FORMATION_STATUSES, formationCardMode, formationShowsTruncationAlert } from '@/server/guide-report-formation';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/utils';
 
 const t = reportsPage.guideReport;
@@ -165,8 +166,10 @@ export function GuideReportView() {
     },
   ];
 
-  const cardLabel = (name: string) => (report?.truncated ? `${name}（${t.truncatedHint}）` : name);
+  const cardLabel = (name: string) => (report?.truncated ? t.withTruncatedHint(name) : name);
   const s = report?.summary;
+  const fm = report?.formation ?? null;
+  const formationMode = formationCardMode(fm);
   const prev = report?.previous;
   const rangeLink = (status?: string) => (report ? buildRangeLink(linkRange, status) : '/tenant/tour-orders');
   const rows = report ? report.ranking[dimension][metric] : [];
@@ -402,11 +405,66 @@ export function GuideReportView() {
         </>
       ) : null}
 
+      {!loading && report ? (
+        <Card className="mb-4">
+          <CardHeader><CardTitle>{t.formationCard.title}</CardTitle></CardHeader>
+          <CardBody>
+            {formationShowsTruncationAlert(fm) ? (
+              <Alert tone="warning" className="mb-4">{t.formationCard.truncatedWarning}</Alert>
+            ) : null}
+            {formationMode === 'UNAVAILABLE' || !fm ? (
+              <EmptyState icon={BarChart3} title={t.formationCard.unavailable} description={t.formationCard.unavailableHint} />
+            ) : formationMode === 'NOT_TRACKED' ? (
+              <EmptyState icon={BarChart3} title={t.formationCard.notTracked} description={t.formationCard.notTrackedHint} />
+            ) : formationMode === 'EMPTY' ? (
+              <EmptyState icon={BarChart3} title={t.formationCard.empty} />
+            ) : (
+              <>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <StatCard
+                    label={fm.truncated ? t.withTruncatedHint(t.formationCard.successRate) : t.formationCard.successRate}
+                    icon={CalendarCheck} tone="success"
+                    value={fm.summary.successRatePercent === null ? t.noData : formatPercent(fm.summary.successRatePercent, 1)}
+                    hint={`${pointsText(fm.successRatePoints)}${t.sep}${t.formationCard.concludedHint(fm.summary.concluded, fm.summary.formed, fm.summary.failed, fm.summary.formedAtRisk)}`}
+                  />
+                  <StatCard
+                    label={fm.truncated ? t.withTruncatedHint(t.formationCard.failRate) : t.formationCard.failRate}
+                    icon={Ban} tone="danger"
+                    value={fm.summary.failRatePercent === null ? t.noData : formatPercent(fm.summary.failRatePercent, 1)}
+                    hint={`${pointsText(fm.failRatePoints)}${t.sep}${t.change.previousValue(fm.previous.failRatePercent === null ? t.noData : formatPercent(fm.previous.failRatePercent, 1))}`}
+                  />
+                </div>
+                <p className="form-text mt-3">{t.formationCard.openLine(fm.summary.open)}</p>
+                {fm.summary.undecidedPast > 0 ? (
+                  <p className="form-text mt-1">{t.formationCard.undecidedPastLine(fm.summary.undecidedPast)}</p>
+                ) : null}
+                <div className="mt-3">
+                  <div className="stat-label">{t.formationCard.distributionTitle}</div>
+                  <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                    <div>
+                      <div className="stat-label">{t.formationCard.cancelledUndecided}</div>
+                      <div className="stat-value">{formatNumber(fm.summary.cancelledUndecided)} {t.formationCard.unit}</div>
+                    </div>
+                    {FORMATION_STATUSES.map((k) => (
+                      <div key={k}>
+                        <div className="stat-label">{t.formationCard.status[k]}</div>
+                        <div className="stat-value">{formatNumber(fm.summary.byStatus[k])} {t.formationCard.unit}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+            {formationMode === 'SHOWN' ? <p className="form-text mt-3">{t.formationCard.description}</p> : null}
+          </CardBody>
+        </Card>
+      ) : null}
+
       <Card className="mb-4">
         <CardHeader><CardTitle>{t.defs.title}</CardTitle></CardHeader>
         <CardBody>
           <ul className="list-disc space-y-1 pl-5 text-sm">
-            {[t.defs.scope, t.defs.orders, t.defs.revenue, t.defs.avgOrderValue, t.defs.cancelled, t.defs.ranking, t.defs.source, t.defs.repeat, t.defs.comparison].map((line) => (
+            {[t.defs.scope, t.defs.orders, t.defs.revenue, t.defs.avgOrderValue, t.defs.cancelled, t.defs.ranking, t.defs.source, t.defs.repeat, t.defs.formation, t.defs.comparison].map((line) => (
               <li key={line}>{line}</li>
             ))}
           </ul>

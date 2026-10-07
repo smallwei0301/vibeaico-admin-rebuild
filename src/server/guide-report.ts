@@ -29,6 +29,9 @@
  *  - 上一期：與本期等長（天數相同）、緊接在本期之前。百分比變化四捨五入到 1 位小數；上一期為 0 → null。
  */
 import { resolvePublicTimeZone } from '@/lib/public-time-zone';
+import {
+  computeFormation, type GuideDepartureRow, type GuideFormation,
+} from '@/server/guide-report-formation';
 
 export const RANK_LIMIT = 10;
 /** 單次報表最多讀取的訂單筆數；達上限即標 truncated */
@@ -103,6 +106,10 @@ export type GuideReportChanges = {
 };
 
 export type GuideReport = {
+  /** 成團表現（trip_departures；口徑見 guide-report-formation.ts） */
+  formation: GuideFormation | null;
+  /** formation 為 null 的原因（目前只有 SCHEMA_MISSING：Production 尚未有成團欄位／資料表）；有資料時為 null */
+  formationUnavailableReason: 'SCHEMA_MISSING' | null;
   range: {
     from: string; to: string; prevFrom: string; prevTo: string; days: number; timeZone: string;
   };
@@ -378,12 +385,24 @@ export function computeGuideReport(input: {
   asOf?: string;
   /** 本期開始之前已有非取消訂單的 customer_id（route 查詢；未提供視為空集合） */
   priorCustomerIds?: ReadonlySet<string>;
+  /** 期間內（含上一期）的團次列；未提供視為沒有團次 */
+  departures?: GuideDepartureRow[];
+  /** 團次筆數達上限（成團表現數字可能不完整） */
+  departuresTruncated?: boolean;
+  /** 成團資料暫時無法取得（schema 缺欄位）：formation 回 null，報表其餘部分照常 */
+  formationUnavailable?: 'SCHEMA_MISSING';
 }): GuideReport {
   const range = resolveReportRange(input.from, input.to, input.timeZone);
   const { cur, prev } = splitPeriods(input.rows, range);
   const summary = summarize(cur);
   const previous = summarize(prev);
+  const nowMs = input.asOf ? Date.parse(input.asOf) : Date.now();
   return {
+    formation: input.formationUnavailable ? null : computeFormation({
+      rows: input.departures ?? [], from: range.from, to: range.to, prevFrom: range.prevFrom, prevTo: range.prevTo,
+      today: zonedToday(range.timeZone, nowMs), truncated: input.departuresTruncated,
+    }),
+    formationUnavailableReason: input.formationUnavailable ?? null,
     range: {
       from: range.from, to: range.to, prevFrom: range.prevFrom, prevTo: range.prevTo,
       days: range.days, timeZone: range.timeZone,
