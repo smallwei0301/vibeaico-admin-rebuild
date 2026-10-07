@@ -217,9 +217,7 @@ export function GuideReportView() {
                   {s.refundPendingCount > 0 ? (
                     <>
                       <br />
-                      <Link href="/tenant/tour-orders?paymentStatus=REFUND_PENDING" className="underline">
-                        {t.cardHints.refundPending(s.refundPendingCount)}
-                      </Link>
+                      {t.cardHints.refundPending(s.refundPendingCount)}
                     </>
                   ) : null}
                 </>

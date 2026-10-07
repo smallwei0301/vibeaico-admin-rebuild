@@ -102,10 +102,22 @@ describe('GET /api/reports/guide', () => {
     expect(oc.lt).toBe('2026-10-10T16:00:00.000Z');
   });
 
-  it('正常筆數 truncated=false；筆數達上限仍有資料 → truncated=true（不假裝完整）', async () => {
+  const many = (n: number) => Array.from({ length: n }, (_, i) =>
+    order({ id: `x${String(i).padStart(6, '0')}`, tenant_id: TENANT, created_at: '2026-10-02T02:00:00Z' }));
+
+  it('少量資料 truncated=false', async () => {
     expect((await (await get('?from=2026-10-01&to=2026-10-10')).json()).data.truncated).toBe(false);
-    state.orders = Array.from({ length: MAX_ROWS + 5 }, (_, i) =>
-      order({ id: `x${i}`, tenant_id: TENANT, created_at: '2026-10-02T02:00:00Z' }));
+  });
+
+  it('剛好 MAX_ROWS 筆 → truncated=false，全數計入', async () => {
+    state.orders = many(MAX_ROWS);
+    const body = await (await get('?from=2026-10-01&to=2026-10-10')).json();
+    expect(body.data.truncated).toBe(false);
+    expect(body.data.summary.totalOrders).toBe(MAX_ROWS);
+  });
+
+  it('MAX_ROWS+1 筆 → truncated=true，只計前 MAX_ROWS 筆', async () => {
+    state.orders = many(MAX_ROWS + 1);
     const body = await (await get('?from=2026-10-01&to=2026-10-10')).json();
     expect(body.data.truncated).toBe(true);
     expect(body.data.summary.totalOrders).toBe(MAX_ROWS);

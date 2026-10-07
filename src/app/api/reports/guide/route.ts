@@ -68,18 +68,23 @@ export const GET = handle(async (req) => {
   // 本期＋上一等長期間一次撈回（半開區間），Node 端聚合；分頁避開 PostgREST 預設 1000 列上限。
   const rows: GuideReportOrderRow[] = [];
   let truncated = false;
-  for (let offset = 0; ; offset += PAGE) {
-    if (offset >= MAX_ROWS) { truncated = true; break; } // 還有資料但已達上限：不假裝完整
+  const fetchPage = async (offset: number, last: number) => {
     const { data, error } = await t.supabase.from('tour_orders').select(ORDER_COLUMNS)
       .eq('tenant_id', t.tenantId)
       .gte('created_at', new Date(range.prevFromMs).toISOString())
       .lt('created_at', new Date(range.curToMs).toISOString())
       .order('id', { ascending: true })
-      .range(offset, offset + PAGE - 1);
+      .range(offset, last);
     if (error) throw error;
-    rows.push(...((data ?? []) as GuideReportOrderRow[]));
-    if ((data ?? []).length < PAGE) break;
+    return (data ?? []) as GuideReportOrderRow[];
+  };
+  for (let offset = 0; offset < MAX_ROWS; offset += PAGE) {
+    const page = await fetchPage(offset, offset + PAGE - 1);
+    rows.push(...page);
+    if (page.length < PAGE) break;
   }
+  // 剛好讀滿 MAX_ROWS：多探測第 MAX_ROWS+1 筆，確實存在才標 truncated（計算只用前 MAX_ROWS 筆）
+  if (rows.length >= MAX_ROWS) truncated = (await fetchPage(MAX_ROWS, MAX_ROWS)).length > 0;
 
   const tripIds = [...new Set(rows.map((r) => r.trip_id))];
   const planIds = [...new Set(rows.map((r) => r.plan_id))];
