@@ -76,7 +76,7 @@ function apply(rows: FakeRow[], calls: Call[]): FakeRow[] {
 
 const recorded: { table: string; calls: Call[] }[] = [];
 /** 模擬遠端 PostgREST `max_rows`：每次查詢最多回這麼多筆（count 仍是未截斷的總數）。 */
-const server = { maxRows: Infinity };
+const server = { maxRows: Infinity, noCount: false /* true：模擬拿不到 count（count: null） */ };
 
 /**
  * route 現在先讀 trip_departures（依出發時刻分批）再用 `.in('departure_id', ids)` 讀訂單。
@@ -118,7 +118,7 @@ function fakeSupabase(rawTables: Record<string, FakeRow[]>) {
         const data = tables[table] ? apply(tables[table], calls) : [];
         const total = tables[table] ? apply(tables[table], calls.filter(([m]) => m !== 'limit')).length : 0;
         return Promise.resolve({
-          data: data.slice(0, server.maxRows), error: null, count: wantsCount ? total : null,
+          data: data.slice(0, server.maxRows), error: null, count: wantsCount && !server.noCount ? total : null,
         }).then(res, rej);
       };
       return b;
@@ -682,6 +682,51 @@ describe('route.ts: payment-due source filters, window and display fields (#43 �
         });
       } finally {
         guideActionInboxPaymentDueTuning.orderPage = 500;
+      }
+    });
+
+    it('慢路徑：單一團次批次內的訂單數 > 伺服器 max_rows（頁大小 10、上限 7）→ 後面頁的最近期訂單仍被納入', async () => {
+      guideActionInboxPaymentDueTuning.orderPage = 10;
+      const deps: FakeRow[] = [0, 1, 2].map((i) => ({
+        id: `bd${i}`, tenant_id: T, status: 'OPEN', departs_on: dayStr(1 + i), start_time: '09:00:00',
+      }));
+      const others = Array.from({ length: 29 }, (_, i) => mk({
+        id: `o${String(i).padStart(3, '0')}`, departure_id: `bd${1 + (i % 2)}`,
+        trip_departures: { departs_on: dayStr(2 + (i % 2)), start_time: '09:00:00' },
+      }));
+      // id 排最後 → 落在伺服器截斷後的後面頁；也不在快路徑種子（表格順序前 7 筆）內
+      const near = mk({ id: 'zz-near', departure_id: 'bd0', trip_departures: { departs_on: dayStr(1), start_time: '09:00:00' } });
+      try {
+        await withServerCap(7, async () => {
+          recorded.length = 0;
+          requireTenantMock.mockReset();
+          requireTenantMock.mockResolvedValue({
+            supabase: fakeSupabase({ tour_orders: [...others, near], trip_departures: deps }), tenantId: T, user: { id: 'u' }, role: 'OWNER',
+          });
+          const res = await guideActionInboxGET(new Request('https://app.test/api/guide/action-inbox'), {});
+          const due: any[] = ((await res.json()).data as any[]).filter((i) => i.kind === 'TOUR_PAYMENT_DUE' && i.stage === 'BALANCE');
+          expect(due).toHaveLength(20);
+          expect(due[0].id).toBe('zz-near');
+          expect(depWindowQueries()).toHaveLength(1); // 3 個團次同一批
+        });
+      } finally {
+        guideActionInboxPaymentDueTuning.orderPage = 500;
+      }
+    });
+
+    it('拿不到 count（count: null）：快路徑不當成完整，改走慢路徑得到正確卡片，且迴圈會終止', async () => {
+      const rows = Array.from({ length: 250 }, (_, i) => mk({
+        id: `q${i}`, trip_departures: { departs_on: dayStr(300 - i), start_time: '09:00:00' },
+      }));
+      server.noCount = true;
+      try {
+        const due = (await run(rows)).filter((i) => i.stage === 'BALANCE');
+        expect(due).toHaveLength(20);
+        expect(due.map((i) => i.id)).toEqual(Array.from({ length: 20 }, (_, k) => `q${249 - k}`));
+        expect(depWindowQueries().length).toBeGreaterThan(0); // 走了慢路徑
+        expect(depWindowQueries().length).toBeLessThanOrEqual(100); // 由空頁／批次上限終止
+      } finally {
+        server.noCount = false;
       }
     });
 

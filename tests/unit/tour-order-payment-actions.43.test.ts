@@ -18,6 +18,10 @@ describe('tourPaymentActions（列表列與詳情 Modal 共用）', () => {
     ['CANCELLED/UNPAID', o('CANCELLED', 'UNPAID', 300), []],
     ['CANCELLED/PARTIAL', o('CANCELLED', 'PARTIAL', 300), []],
     ['COMPLETED/PAID', o('COMPLETED', 'PAID'), []],
+    ['COMPLETED/UNPAID（route 會 409）', o('COMPLETED', 'UNPAID', 300), []],
+    ['COMPLETED/PARTIAL（route 會 409）', o('COMPLETED', 'PARTIAL', 300), []],
+    ['CANCELLED/REFUND_PENDING', o('CANCELLED', 'REFUND_PENDING', 300), []],
+    ['未知狀態/UNPAID', o('WHATEVER', 'UNPAID'), []],
     ['CONFIRMED/REFUNDED', o('CONFIRMED', 'REFUNDED'), []],
   ])('%s', (_n, order, expected) => {
     expect(tourPaymentActions(order)).toEqual(expected);
