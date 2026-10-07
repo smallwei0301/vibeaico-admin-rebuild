@@ -90,6 +90,7 @@ export default function TourOrdersPage() {
   const [activeOnly, setActiveOnly] = React.useState(false);
   const [repeatOnly, setRepeatOnly] = React.useState(false);
   const [createdBefore, setCreatedBefore] = React.useState('');
+  const [asOfZone, setAsOfZone] = React.useState('');
   /** 深連結帶入的篩選是否已套用完成：套用前不載入，避免先送一次未篩選請求 */
   const [ready, setReady] = React.useState(false);
   /** 這次的篩選是否來自報表／深連結（決定是否顯示「清除」提示列） */
@@ -140,6 +141,7 @@ export default function TourOrdersPage() {
     if (paymentStatus) setPaymentFilter(paymentStatus);
     if (orderId) setRequestedOrderId(orderId);
     if (dl.createdBefore) setCreatedBefore(dl.createdBefore);
+    if (dl.tz) setAsOfZone(dl.tz);
     if (dl.status || dl.source || dl.tripId || dl.planId || dl.createdFrom || dl.createdTo || dl.createdBefore
       || dl.activeOnly || dl.repeatCustomers || paymentStatus) setFromLink(true);
     setReady(true);
@@ -528,7 +530,7 @@ export default function TourOrdersPage() {
                 planFilter ? t.drilldown.plan : '',
                 activeOnly ? t.drilldown.activeOnly : '',
                 repeatOnly ? t.drilldown.repeatCustomers : '',
-                createdBefore ? t.drilldown.asOf(formatAsOf(createdBefore, PUBLIC_DEFAULT_TIME_ZONE)) : '',
+                createdBefore ? t.drilldown.asOf(formatAsOf(createdBefore, asOfZone || PUBLIC_DEFAULT_TIME_ZONE)) : '',
                 fromLink && statusFilter ? t.drilldown.status(t.status[statusFilter as TourOrderStatus] ?? statusFilter) : '',
                 fromLink && paymentFilter ? t.drilldown.payment(t.paymentStatus[paymentFilter as TourPaymentStatus] ?? paymentFilter) : '',
                 fromLink && sourceFilter ? t.drilldown.source(t.source[sourceFilter as TourOrderSource] ?? sourceFilter) : '',
@@ -541,7 +543,7 @@ export default function TourOrdersPage() {
               // 清除所有由連結帶入的篩選（含狀態／付款／來源／行程／方案／旗標／日期／資料截至），並同步網址
               setStatusFilter(''); setPaymentFilter(''); setSourceFilter('');
               setTripFilter(''); setPlanFilter(''); setActiveOnly(false); setRepeatOnly(false);
-              setCreatedFrom(''); setCreatedTo(''); setCreatedBefore('');
+              setCreatedFrom(''); setCreatedTo(''); setCreatedBefore(''); setAsOfZone('');
               setRequestedOrderId(''); setFromLink(false); setPage(0);
               window.history.replaceState(null, '', window.location.pathname);
             }}

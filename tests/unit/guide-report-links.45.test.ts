@@ -41,15 +41,23 @@ describe('報表下鑽連結參數（純函式）', () => {
 
   it('有 asOf 時所有連結帶 createdBefore；沒有則不帶；parse 還原且非法值忽略', () => {
     const asOf = '2026-10-07T03:40:00.000Z';
-    const R2 = { ...R, asOf };
+    const R2 = { ...R, asOf, timeZone: 'America/New_York' };
     const links = [
       rangeLink(R2), rangeLink(R2, 'CANCELLED'), sourceLink(R2, 'LINE'), rankingLink(R2, 'plan', PLAN, 'orders'),
       refundPendingLink(R2), repeatCustomersLink(R2),
     ];
-    for (const l of links) expect(params(l).get('createdBefore')).toBe(asOf);
+    for (const l of links) {
+      expect(params(l).get('createdBefore')).toBe(asOf);
+      expect(params(l).get('tz')).toBe('America/New_York');
+    }
+    // 沒有 asOf 就不帶 tz（tz 只用來顯示資料截至）
+    expect(params(rangeLink({ ...R, timeZone: 'America/New_York' })).has('tz')).toBe(false);
     expect(params(rangeLink(R)).has('createdBefore')).toBe(false);
     expect(params(rangeLink({ ...R, asOf: null })).has('createdBefore')).toBe(false);
     expect(parseTourOrdersDeepLink(repeatCustomersLink(R2).split('?')[1]).createdBefore).toBe(asOf);
     expect(parseTourOrdersDeepLink('?createdBefore=nope').createdBefore).toBe('');
+    expect(parseTourOrdersDeepLink(repeatCustomersLink(R2).split('?')[1]).tz).toBe('America/New_York');
+    expect(parseTourOrdersDeepLink('?tz=Mars/Base').tz).toBe('Asia/Taipei'); // 不合法 → 預設時區
+    expect(parseTourOrdersDeepLink('').tz).toBe('');
   });
 });

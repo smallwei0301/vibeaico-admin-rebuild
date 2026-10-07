@@ -121,7 +121,7 @@ export function GuideReportView() {
   };
 
   /** 所有下鑽連結共用：日期區間＋資料截至（createdBefore），清單與報表用同一個讀取上界 */
-  const linkRange = { from: report?.range.from ?? '', to: report?.range.to ?? '', asOf: report?.asOf ?? null };
+  const linkRange = { from: report?.range.from ?? '', to: report?.range.to ?? '', asOf: report?.asOf ?? null, timeZone: report?.range.timeZone };
 
   const columns: Column<GuideRankRow>[] = [
     { key: 'rank', header: t.ranking.columns.rank, width: '64px', render: (_r, i) => <Badge tone={RANK_TONE[i] ?? 'neutral'}>{i + 1}</Badge> },

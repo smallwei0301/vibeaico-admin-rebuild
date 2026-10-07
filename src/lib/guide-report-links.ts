@@ -8,11 +8,11 @@
 import { buildTourOrdersLink } from '@/services/tours';
 
 /** asOf＝報表「資料截至」；有值時所有連結帶 createdBefore，讓清單與報表用同一個讀取上界 */
-export type ReportRange = { from: string; to: string; asOf?: string | null };
+export type ReportRange = { from: string; to: string; asOf?: string | null; timeZone?: string };
 export type RankMetric = 'orders' | 'people' | 'revenue';
 export type RankDimension = 'trip' | 'plan';
 
-const dates = (r: ReportRange) => ({ createdFrom: r.from, createdTo: r.to, createdBefore: r.asOf });
+const dates = (r: ReportRange) => ({ createdFrom: r.from, createdTo: r.to, createdBefore: r.asOf, tz: r.asOf ? r.timeZone : undefined });
 
 /** 整個區間（含所有狀態）；可選狀態 */
 export const rangeLink = (r: ReportRange, status?: string) => buildTourOrdersLink({ status, ...dates(r) });

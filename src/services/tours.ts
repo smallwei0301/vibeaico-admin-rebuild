@@ -3,6 +3,7 @@ import type {
   DepartureConflict, Trip, TripAddon, TripDeparture, TripPlan, TripPlanSeason,
   TourOrder, TourOrderSource, TourOrderStatus, TourPaymentStatus, Paged,
 } from '@/lib/types';
+import { resolvePublicTimeZone } from '@/lib/public-time-zone';
 import { clampGalleryForCopy } from '@/lib/trip-gallery';
 import { addDays, zonedMidnightMs } from '@/server/guide-report';
 import { canRegisterDepositPayment, canRegisterFullPayment, canTransitionTourOrder, shouldReleaseSeats } from '@/server/tour-domain';
@@ -745,6 +746,8 @@ export type TourOrdersDeepLink = {
   planId: string; activeOnly: boolean; repeatCustomers: boolean;
   /** ISO-8601 瞬間（報表 asOf）；格式不合法 → '' */
   createdBefore: string;
+  /** 顯示「資料截至」用的店家時區（報表帶入）；未帶 → ''，帶了但不合法 → 預設時區 */
+  tz: string;
 };
 const TOUR_ORDER_SOURCE_VALUES: TourOrderSource[] = ['MIDAO', 'VIBEAI_SHOP', 'LINE', 'MANUAL'];
 
@@ -766,12 +769,14 @@ export function parseTourOrdersDeepLink(search: string): TourOrdersDeepLink {
   const source = sr && (TOUR_ORDER_SOURCE_VALUES as string[]).includes(sr) ? (sr as TourOrderSource) : '';
   const cb = params.get('createdBefore') ?? '';
   const createdBefore = ISO_INSTANT_RE.test(cb) && Number.isFinite(Date.parse(cb)) ? cb : '';
+  const tzRaw = params.get('tz');
+  const tz = tzRaw ? resolvePublicTimeZone(tzRaw) : '';
   const planId = params.get('planId') ?? '';
   // status=CANCELLED 與「排除取消」矛盾：以明確的 status 為準，忽略這兩個旗標（API 對同時帶會回 400）
   const excl = status !== 'CANCELLED';
   const activeOnly = excl && params.get('activeOnly') === '1';
   const repeatCustomers = excl && params.get('repeatCustomers') === '1' && !!createdFrom && !!createdTo;
-  return { paymentStatus, orderId, status, tripId, createdFrom, createdTo, source, planId, activeOnly, repeatCustomers, createdBefore };
+  return { paymentStatus, orderId, status, tripId, createdFrom, createdTo, source, planId, activeOnly, repeatCustomers, createdBefore, tz };
 }
 
 /**
@@ -780,10 +785,10 @@ export function parseTourOrdersDeepLink(search: string): TourOrdersDeepLink {
  */
 export function buildTourOrdersLink(f: {
   status?: string; paymentStatus?: string; tripId?: string; createdFrom?: string; createdTo?: string; source?: string;
-  planId?: string; activeOnly?: boolean; repeatCustomers?: boolean; createdBefore?: string | null;
+  planId?: string; activeOnly?: boolean; repeatCustomers?: boolean; createdBefore?: string | null; tz?: string | null;
 }): string {
   const p = new URLSearchParams();
-  for (const k of ['status', 'paymentStatus', 'tripId', 'createdFrom', 'createdTo', 'createdBefore', 'source', 'planId'] as const) {
+  for (const k of ['status', 'paymentStatus', 'tripId', 'createdFrom', 'createdTo', 'createdBefore', 'tz', 'source', 'planId'] as const) {
     if (f[k]) p.set(k, f[k] as string);
   }
   if (f.activeOnly) p.set('activeOnly', '1');
