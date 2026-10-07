@@ -46,6 +46,8 @@ export function DataTable<T>({
   empty,
   rowKey,
   scroll,
+  rowId,
+  rowClassName,
 }: {
   columns: Column<T>[];
   rows: T[];
@@ -54,6 +56,10 @@ export function DataTable<T>({
   rowKey: (row: T, index: number) => string;
   /** 超長清單給捲動容器 65vh 高度上限（僅桌機），避免頁尾永遠在視窗外 */
   scroll?: boolean;
+  /** 可選：為每列加上 DOM id（例如收件匣 deep link 捲動定位）。 */
+  rowId?: (row: T) => string | undefined;
+  /** 可選：為每列加上 className（例如標示被定位的列）。 */
+  rowClassName?: (row: T) => string | undefined;
 }) {
   return (
     <div className={cn('data-table-body', scroll && 'lg:max-h-[65vh] lg:overflow-y-auto')}>
@@ -83,7 +89,7 @@ export function DataTable<T>({
             </tr>
           ) : (
             rows.map((row, i) => (
-              <tr key={rowKey(row, i)}>
+              <tr key={rowKey(row, i)} id={rowId?.(row)} className={rowClassName?.(row)}>
                 {columns.map((c) => (
                   <td key={c.key} className={cn(c.numeric && 'cell-numeric')}>
                     {c.render(row, i)}

@@ -38,6 +38,7 @@ import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
 import { ApiError } from '@/lib/api';
 import { formatCurrency, formatNumber } from '@/lib/utils';
+import { resolveGuideInboxDepartureFocus } from '@/lib/guide-action-inbox';
 import { MAX_PUBLIC_GALLERY_IMAGES, omitUnchangedGallery } from '@/lib/trip-gallery';
 import {
   omitUnchangedTripTextFields, tripTextFieldErrors,
@@ -196,6 +197,9 @@ export default function TripDetailPage() {
 
   const [tab, setTab] = React.useState(searchParams?.get('tab') ?? 'basic');
   const [loading, setLoading] = React.useState(true);
+  /* 收件匣 deep link：?departureId= 指到存在的團次才定位並標示該列，之後不重複捲動。 */
+  const inboxDepartureParam = searchParams?.get('departureId') ?? null;
+  const scrolledDepartureRef = React.useRef<string | null>(null);
   const [trip, setTrip] = React.useState<Trip | null>(null);
   const [plans, setPlans] = React.useState<TripPlan[]>([]);
   const [departures, setDepartures] = React.useState<TripDeparture[]>([]);
@@ -267,6 +271,16 @@ export default function TripDetailPage() {
   }, [tripId, toast, currentTenant.id]);
 
   React.useEffect(() => { void load(); }, [load]);
+
+  const focusedDepartureId = resolveGuideInboxDepartureFocus(inboxDepartureParam, departures);
+  React.useEffect(() => {
+    if (loading || !focusedDepartureId || tab !== 'departures') return;
+    if (scrolledDepartureRef.current === focusedDepartureId) return;
+    const row = document.getElementById(`departure-row-${focusedDepartureId}`);
+    if (!row) return;
+    scrolledDepartureRef.current = focusedDepartureId;
+    row.scrollIntoView({ block: 'center' });
+  }, [loading, focusedDepartureId, tab]);
 
   /* #748：儲存被長度上限擋下時的行內錯誤；欄位一被修改就清掉該欄位的錯誤。 */
   const [textErrors, setTextErrors] = React.useState<Partial<Record<TripTextField, TripTextFieldError>>>({});
@@ -1322,6 +1336,8 @@ export default function TripDetailPage() {
             columns={departureColumns}
             rows={departures}
             rowKey={(d) => d.id}
+            rowId={(d) => `departure-row-${d.id}`}
+            rowClassName={(d) => (d.id === focusedDepartureId ? '![--row-bg:var(--primary-a10)]' : undefined)}
             scroll
             empty={
               <EmptyState

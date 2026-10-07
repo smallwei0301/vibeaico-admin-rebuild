@@ -5,7 +5,9 @@ import {
   buildGuideActionInboxStaffUnassignedItem,
   buildGuideActionInboxTourPaymentDueItem,
   buildGuideActionInboxTourRequestItem,
+  departureStillAhead,
   dropGuideActionInboxOrderCardsAlreadyCovered,
+  DEFAULT_GUIDE_TIME_ZONE,
   getGuideActionInboxDateWindow,
   getGuideDepartureDueAt,
   getGuideDepartureDay,
@@ -118,7 +120,10 @@ export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
             href: `/tenant/trips/${departure.tripId}`,
           };
         })
-        .filter((item): item is GuideActionInboxItem => item !== null);
+        .filter((item): item is GuideActionInboxItem => item !== null)
+        // 與真實 API 同一條「尚未出發」規則（店家時區）：今天已過 startTime 的團次不出卡。
+        .filter((item) => item.kind !== 'DEPARTURE'
+          || departureStillAhead(item.departureDate, item.startTime, nowDate, DEFAULT_GUIDE_TIME_ZONE));
       const formationItems: GuideActionInboxItem[] = MOCK_TRIP_DEPARTURES
         .filter((departure) =>
           departure.status !== 'CANCELLED'
@@ -151,7 +156,9 @@ export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
             formedParticipants: departure.formedParticipants ?? null,
             createdAt: new Date(now).toISOString(),
           }, nowDate);
-        });
+        })
+        // 同上：今天已過 startTime 的成團卡不保留（與真實 API 一致）。
+        .filter((item) => departureStillAhead(item.departureDate, item.startTime, nowDate, DEFAULT_GUIDE_TIME_ZONE));
       // #43 類別 5：REFUND_PENDING。獨立 fixture 表（MOCK_TOUR_ORDERS），與上面
       // MOCK_BOOKINGS 衍生的 paymentItems 天生不相交（不同的 mock 資料集、不同
       // 的 paymentStatus 值域），理由同 route.ts 檔案頂端註解。

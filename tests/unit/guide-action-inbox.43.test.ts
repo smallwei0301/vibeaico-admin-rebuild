@@ -412,7 +412,7 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
     expect(reviewWithDeadline).toMatchObject({
       kind: 'REVIEW_REQUIRED',
       dueAt: '2026-08-19T15:59:00.000Z',
-      href: '/tenant/trips/trip_1',
+      href: '/tenant/trips/trip_1?tab=departures&departureId=dp_review',
       minToDepart: 4,
       formationDeadlineAt: '2026-08-19T15:59:00.000Z',
       formedParticipants: null,
@@ -467,9 +467,9 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
     // 其餘 formation_status（COLLECTING/FORMED/FAILED）與已取消的 dp_6 都必須誠實地不
     // 出現在這兩個類別，不得為了畫面好看而多加。
     expect(reviewRequired).toHaveLength(1);
-    expect(reviewRequired[0]).toMatchObject({ id: 'dp_4', href: '/tenant/trips/tp_1' });
+    expect(reviewRequired[0]).toMatchObject({ id: 'dp_4', href: '/tenant/trips/tp_1?tab=departures&departureId=dp_4' });
     expect(atRisk).toHaveLength(1);
-    expect(atRisk[0]).toMatchObject({ id: 'dp_8', href: '/tenant/trips/tp_2' });
+    expect(atRisk[0]).toMatchObject({ id: 'dp_8', href: '/tenant/trips/tp_2?tab=departures&departureId=dp_8' });
     expect([...reviewRequired, ...atRisk].every((item) =>
       'minToDepart' in item && 'formedParticipants' in item)).toBe(true);
 

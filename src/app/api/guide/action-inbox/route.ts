@@ -65,7 +65,8 @@ function firstOf<T>(value: T | T[] | null | undefined): T | null {
  * 只讀既有 bookings_view、trip_departures、tour_orders 與 tenant timezone，不建立
  * 新狀態、不重新推算成團與否，也不觸發通知、付款或其他外部副作用。預約卡片帶
  * bookingId deep link，讓操作人直接開啟該筆詳情而不是重新搜尋列表；formation 卡片
- * 沿用既有團次深連結（`/tenant/trips/:id`），因為成團決定發生在團次詳情頁；
+ * 深連結為 `/tenant/trips/{tripId}?tab=departures&departureId={id}`（由
+ * `buildGuideActionInboxFormationHref` 產生），因為成團決定發生在團次詳情頁的出發場次分頁；
  * REFUND_PENDING 卡片帶 orderId deep link 到 `/tenant/tour-orders`——該頁已消費
  * `paymentStatus`／`orderId` query string（`src/app/tenant/tour-orders/page.tsx`：
  * `paymentStatus` 只接受 `TourPaymentStatus` 值域內的值，值域外忽略；`orderId` 比照
@@ -87,8 +88,9 @@ function firstOf<T>(value: T | T[] | null | undefined): T | null {
  *     補上，見 `src/lib/guide-action-inbox.ts` 對應型別上的說明。
  *     這個候選查詢跟 DEPARTURE 查詢一樣，必須排除 formation query 已經涵蓋的
  *     REVIEW_REQUIRED／AT_RISK 團次（#479 修復）——STAFF_CONFLICT／
- *     STAFF_UNASSIGNED 卡片的深連結跟 formation 卡片相同，都是
- *     `/tenant/trips/:tripId`，沒有這條排除的話，一個尚未成團、也沒有 PRIMARY
+ *     STAFF_UNASSIGNED 卡片與 DEPARTURE 卡片都連到 `/tenant/trips/{tripId}`，
+ *     formation 卡片則連到 `/tenant/trips/{tripId}?tab=departures&departureId={id}`，
+ *     兩者指向同一個團次詳情頁，沒有這條排除的話，一個尚未成團、也沒有 PRIMARY
  *     指派的團次會同時冒出 STAFF_UNASSIGNED 與 REVIEW_REQUIRED／AT_RISK 兩張卡。
  */
 const MISSING_SCHEMA_CODES = new Set(['42703', '42P01', 'PGRST200', 'PGRST204', 'PGRST205']);
@@ -167,8 +169,12 @@ export const GET = handle(async () => {
       .in('status', ['OPEN', 'CLOSED'])
       .gte('departs_on', today)
       .lte('departs_on', tomorrow)
-      // 一個團次不能同時是「今日／明日出發」卡片又是「成團決定」卡片：兩者的深連結
-      // 完全相同（/tenant/trips/:tripId），guide 只需要被問一次。formation query 是
+      // 今天已出發的團次不再是待辦：與 payment-due 同一條店家時區規則，在查詢層排除，
+      // 避免它們佔掉有限視窗（builder 不再另外猜測）。
+      .or(notStarted)
+      // 一個團次不能同時是「今日／明日出發」卡片又是「成團決定」卡片：兩者指向同一個
+      // 團次詳情頁（DEPARTURE 卡為 /tenant/trips/{tripId}；formation 卡另帶
+      // ?tab=departures&departureId={id}），guide 只需要被問一次。formation query 是
       // 這兩個 formation_status 值的唯一權威來源，這裡直接在來源排除，而不是把兩組
       // 結果都抓回來後在 JS 裡事後去重——排除條件在這裡是可證的（誰是權威一望即知），
       // 事後去重只會讓人猜哪一個 query 才是準的。
@@ -183,12 +189,18 @@ export const GET = handle(async () => {
       .eq('tenant_id', t.tenantId)
       .neq('status', 'CANCELLED')
       .in('formation_status', ['REVIEW_REQUIRED', 'AT_RISK'])
+      // 已出發（含今天已過 start_time）的團次不能再「前往決定」，在查詢層排除。
+      .or(notStarted)
       // 0107 還沒有 #41 §6 的自動轉態 transaction，REVIEW_REQUIRED／AT_RISK 不會在
       // 出發後自動被清掉。沒有下限的話，已經出發過的舊團次會跟現在的團次一起用
       // `.order('departs_on' asc).limit(20)` 排序，陳舊列可能擠掉還活著的列，而且
       // 永遠顯示「立即處理」。這裡只加下限，不去猜測／改寫它們的 formation_status——
       // 那是 #41 §6 要做的事，不是這個唯讀收件匣端點的責任。
       .gte('departs_on', today)
+      // 排序依據：AT_RISK 的期限即出發時刻；REVIEW_REQUIRED 的成團截止已過（皆屬
+      // 「立即處理」），決策必須在出發前完成，因此以出發先後（departs_on → start_time
+      // → created_at）代表急迫度。limit(20) 是收件匣顯示上限；今天已出發的團次已由
+      // 上方 notStarted 排除，不會佔用名額。
       .order('departs_on', { ascending: true })
       .order('start_time', { ascending: true, nullsFirst: true })
       .order('created_at', { ascending: true })
@@ -208,9 +220,10 @@ export const GET = handle(async () => {
     // 餵給 STAFF_CONFLICT（有 PRIMARY，撞不撞班留給下面 loadStaffLoad()/
     // findStaffConflicts() 判斷）與 STAFF_UNASSIGNED（沒有 PRIMARY）兩種卡片。
     //
-    // #479 修復：STAFF_CONFLICT／STAFF_UNASSIGNED 卡片的深連結跟 DEPARTURE／
-    // formation 卡片完全相同（皆是 `/tenant/trips/:tripId`，見
-    // `guide-action-inbox.ts` 對應的 build*Item()），但這裡先前沒有跟 DEPARTURE
+    // #479 修復：STAFF_CONFLICT／STAFF_UNASSIGNED 卡片與 DEPARTURE 卡片的
+    // 深連結同為 `/tenant/trips/{tripId}`，formation 卡片則另帶
+    // `?tab=departures&departureId={id}`（見 `guide-action-inbox.ts` 對應的
+    // build*Item()），三者都指向同一個團次詳情頁，但這裡先前沒有跟 DEPARTURE
     // query（上面）一樣排除 formation query 已經涵蓋的 REVIEW_REQUIRED／AT_RISK
     // 團次——一個尚未成團、且沒有 PRIMARY 指派的團次，會同時被這裡判成
     // STAFF_UNASSIGNED、又被下面的 formation query 判成 REVIEW_REQUIRED／
