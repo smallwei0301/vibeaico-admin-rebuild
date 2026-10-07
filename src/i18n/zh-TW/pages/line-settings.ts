@@ -244,6 +244,7 @@ export const lineSettingsPage = {
     qrFilename: 'LINE加好友QRcode.png',
     downloadFailed: 'QR Code 產生或下載失敗，請稍後再試',
     qrGenerating: 'QR Code 產生中',
+    qrFailed: 'QR Code 產生失敗',
     noLink: '尚未取得加好友連結',
   },
 

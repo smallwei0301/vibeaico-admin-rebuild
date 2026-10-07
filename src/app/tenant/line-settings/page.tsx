@@ -183,13 +183,15 @@ export default function LineSettingsPage() {
     : '';
 
   const [addFriendQr, setAddFriendQr] = React.useState('');
+  const [addFriendQrFailed, setAddFriendQrFailed] = React.useState(false);
   React.useEffect(() => {
     let cancelled = false;
     setAddFriendQr('');
+    setAddFriendQrFailed(false);
     if (!addFriendUrl) return;
     createQrDataUrl(addFriendUrl)
       .then((u) => { if (!cancelled) setAddFriendQr(u); })
-      .catch(() => { /* 顯示維持占位；下載時會再嘗試並回報失敗 */ });
+      .catch(() => { if (!cancelled) setAddFriendQrFailed(true); });
     return () => { cancelled = true; };
   }, [addFriendUrl]);
 
@@ -821,7 +823,9 @@ export default function LineSettingsPage() {
                 <>
                   <QrCode size={48} className="text-neutral-400" />
                   <span className="px-2 text-2xs text-secondary">
-                    {addFriendUrl ? t.botInfo.qrGenerating : t.botInfo.noQr}
+                    {addFriendUrl
+                      ? (addFriendQrFailed ? t.botInfo.qrFailed : t.botInfo.qrGenerating)
+                      : t.botInfo.noQr}
                   </span>
                 </>
               )}
