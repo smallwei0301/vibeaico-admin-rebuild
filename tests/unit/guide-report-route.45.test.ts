@@ -278,7 +278,7 @@ describe('GET /api/reports/guide', () => {
       expect(c.lte).toBe('2026-10-10');
     }
     expect(body.data.formation.summary).toMatchObject({
-      total: 3, concluded: 2, formed: 1, failed: 1, open: 1, successRatePercent: 50, failRatePercent: 50,
+      total: 3, concluded: 2, formed: 1, failed: 1, open: 0, undecidedPast: 1, successRatePercent: 50, failRatePercent: 50,
     });
     expect(body.data.formation.previous).toMatchObject({ total: 1, concluded: 1, successRatePercent: 100 });
     expect(body.data.formation.successRatePoints).toBe(-50);

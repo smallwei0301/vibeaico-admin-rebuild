@@ -429,6 +429,9 @@ export function GuideReportView() {
                   />
                 </div>
                 <p className="form-text mt-3">{t.formationCard.openLine(fm.summary.open)}</p>
+                {fm.summary.undecidedPast > 0 ? (
+                  <p className="form-text mt-1">{t.formationCard.undecidedPastLine(fm.summary.undecidedPast)}</p>
+                ) : null}
                 <div className="mt-3">
                   <div className="stat-label">{t.formationCard.distributionTitle}</div>
                   <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
