@@ -2,6 +2,7 @@ import {
   DEFAULT_TENANT_TIME_ZONE,
   isValidTenantTimeZone,
 } from '@/config/tenant-settings';
+import { hasPartialDeposit, isAwaitingPayment } from '@/server/tour-domain';
 import type {
   DepartureFormationStatus,
   GuideActionInboxDepartureDay,
@@ -186,12 +187,58 @@ export type GuideActionInboxStaffUnassignedItem = {
   href: string;
 };
 
+/*
+ * #43 類別 2：等待訂金、尾款或付款即將到期（19 分冊 §3.2）。來源只有 `tour_orders`
+ * 既有欄位，不新建狀態：
+ *   - FULL：`status = 'PENDING'` + `UNPAID` + 方案 `sales_mode <> 'REQUEST'`（0107）——一般固定團／
+ *     即時預約建單後等旅客付「全額」；期限是 hold（若有）否則出發時刻（現行建單路徑不寫 hold）（confirm-payment 對 PENDING 只有全額路徑，
+ *     訂金只對 CONFIRMED 有效，故不顯示訂金）。尚未被接受的 REQUEST（sales_mode = 'REQUEST'）
+ *     由 TOUR_REQUEST 卡處理，不在此列。
+ *   - INITIAL：`status = 'CONFIRMED'` + `payment_status = 'UNPAID'` + `seats_reserved`
+ *     + `hold_expires_at` 不為 null——導遊已接受申請（#769）、名額已鎖、等旅客付訂金
+ *     或全額；期限是 `hold_expires_at`（逾期 cron 會取消）。
+ *   - BALANCE：`status = 'CONFIRMED'` + `payment_status = 'PARTIAL'`——已收訂金、等尾款；
+ *     期限是出發時刻（租戶時區）。出發日有、但 `start_time` 缺時 `dueHasTime = false`：
+ *     不虛構午夜，卡片只顯示日期，且當天不會被判成「已逾期」。
+ * `PENDING`（TOUR_REQUEST 已涵蓋）、`CANCELLED`／`COMPLETED`、`PAID`、已出發的 PARTIAL
+ * 一律不產生卡片。同一筆訂單只會有一張卡（見 `dropGuideActionInboxOrderCardsAlreadyCovered`）。
+ */
+export type GuideActionInboxTourPaymentDueStage = 'INITIAL' | 'FULL' | 'BALANCE';
+
+export type GuideActionInboxTourPaymentDueItem = {
+  id: string;
+  kind: 'TOUR_PAYMENT_DUE';
+  stage: GuideActionInboxTourPaymentDueStage;
+  orderNo: string;
+  customerName: string;
+  tripName: string;
+  planName: string;
+  totalAmount: number;
+  /** 只有 INITIAL（CONFIRMED）且訂單有 0 < 訂金 < 總額時為訂金金額；FULL／BALANCE 為 null。 */
+  depositAmount: number | null;
+  /** BALANCE：總額 - 已收；INITIAL 為 null。 */
+  balanceAmount: number | null;
+  /** 期限的租戶時區日期（YYYY-MM-DD）；顯示一律用這個，不用瀏覽器時區換算 dueAt。 */
+  dueLocalDate: string;
+  /** 期限的租戶時區時間（HH:mm）；只知道日期（缺 start_time）時為 null。 */
+  dueLocalTime: string | null;
+  /** 期限來源：HOLD = `hold_expires_at`（付款期限）；DEPARTURE = 出發時刻（出發日）。卡片標籤依此決定。 */
+  dueKind: 'HOLD' | 'DEPARTURE';
+  /** 期限是否帶有真實時間（false = 只知道日期，例如出發日缺 start_time）。 */
+  dueHasTime: boolean;
+  priority: GuideActionInboxPriority;
+  dueAt: string;
+  createdAt: string;
+  href: string;
+};
+
 export type GuideActionInboxItem =
   | GuideActionInboxBaseItem
   | GuideActionInboxFormationItem
   | GuideActionInboxRefundPendingItem
   | GuideActionInboxStaffConflictItem
   | GuideActionInboxStaffUnassignedItem
+  | GuideActionInboxTourPaymentDueItem
   | GuideActionInboxTourRequestItem;
 
 const FORMATION_INBOX_KINDS: readonly GuideActionInboxFormationKind[] = ['REVIEW_REQUIRED', 'AT_RISK'];
@@ -607,3 +654,203 @@ export function buildGuideActionInboxTourRequestItem(
     href: input.href,
   };
 }
+
+/**
+ * PostgREST `or` 篩選字串：只留「尚未出發」的團次（租戶時區）——日期在今天之後，或今天但
+ * `start_time` 晚於現在，或今天但沒有 start_time（只知道日期，保留到當天結束）。
+ * `start_time` 是 `time` 欄位（0066），HH:MM:SS 字串比較即時間先後。與 `departureStillAhead`
+ * 同一條規則，用來在查詢層先排除今天已出發的團次，避免它們塞滿有限視窗（builder 仍保留精確檢查作防呆）。
+ */
+export function getGuideActionInboxNotStartedDepartureFilter(
+  now: Date = new Date(),
+  timeZone: string = DEFAULT_GUIDE_TIME_ZONE,
+): string {
+  const today = dateKey(now, timeZone);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: normalizeGuideTimeZone(timeZone),
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  }).formatToParts(now);
+  const v = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const time = `${v.hour}:${v.minute}:${v.second}`;
+  return `departs_on.gt.${today},and(departs_on.eq.${today},start_time.gt.${time}),and(departs_on.eq.${today},start_time.is.null)`;
+}
+
+function localTimeKey(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: normalizeGuideTimeZone(timeZone),
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.hour}:${values.minute}`;
+}
+
+/**
+ * 出發時刻是否仍在未來（租戶時區）：有 start_time 用精確 instant（`<= now` 即已出發）；
+ * 缺 start_time 只知道日期，保留到當天結束（過去日期才排除）。INITIAL／BALANCE 共用。
+ */
+function departureStillAhead(
+  departureDate: string,
+  startTime: string | null,
+  now: Date,
+  timeZone: string,
+): boolean {
+  if (startTime) {
+    const dueAt = getGuideDepartureDueAt(departureDate, startTime, timeZone);
+    return !!dueAt && Date.parse(dueAt) > now.getTime();
+  }
+  return departureDate >= dateKey(now, timeZone);
+}
+
+export type GuideActionInboxTourPaymentDueInput = {
+  id: string;
+  orderNo: string;
+  customerName: string;
+  tripName: string;
+  planName: string;
+  status: string;
+  paymentStatus: string | null | undefined;
+  /** 只有 CONFIRMED + UNPAID（INITIAL）需要（0111 欄位）；PENDING／PARTIAL 不讀。 */
+  seatsReserved: boolean | null | undefined;
+  /** `trip_plans.sales_mode`（0107）；PENDING 時 'REQUEST' 代表尚未接受的申請，排除。 */
+  salesMode?: string | null;
+  holdExpiresAt: string | null;
+  depositAmount: number | null | undefined;
+  totalAmount: number;
+  paidAmount: number | null | undefined;
+  departureDate: string | null;
+  departureStartTime: string | null;
+  /** `trip_departures.status`；有給且為 CANCELLED 時三個 stage 一律不產生卡片（防呆）。 */
+  departureStatus?: string | null;
+  createdAt: string;
+  href: string;
+};
+
+/**
+ * #43 類別 2：把一筆 `tour_orders` 轉成「等待付款」卡片；不符合條件回 `null`（誠實不顯示）。
+ * 條件與 `src/server/tour-domain.ts` 的 `isAwaitingPayment`／`hasPartialDeposit` 同源，
+ * 不另立一套「待付款」定義。
+ */
+export function buildGuideActionInboxTourPaymentDueItem(
+  input: GuideActionInboxTourPaymentDueInput,
+  now: Date = new Date(),
+  timeZone: string = DEFAULT_GUIDE_TIME_ZONE,
+): GuideActionInboxTourPaymentDueItem | null {
+  if (input.status !== 'CONFIRMED' && input.status !== 'PENDING') return null;
+  if (input.departureStatus === 'CANCELLED') return null;
+  // 零元（或非有限金額）訂單沒有待收款，與服務預約 final_price > 0 同理。
+  if (!Number.isFinite(Number(input.totalAmount)) || Number(input.totalAmount) <= 0) return null;
+  if (!isAwaitingPayment({ status: input.status, paymentStatus: input.paymentStatus })) return null;
+  // PENDING 只可能是 UNPAID 全額（PARTIAL 一律是 CONFIRMED）。
+  if (input.status === 'PENDING' && input.paymentStatus !== 'UNPAID') return null;
+
+  const base = {
+    id: input.id,
+    kind: 'TOUR_PAYMENT_DUE' as const,
+    orderNo: input.orderNo,
+    customerName: input.customerName,
+    tripName: input.tripName,
+    planName: input.planName,
+    totalAmount: input.totalAmount,
+    createdAt: input.createdAt,
+    href: input.href,
+  };
+
+  const departureDate = input.departureDate ? String(input.departureDate).slice(0, 10) : null;
+
+  /** 以出發時刻為期限（租戶時區）：BALANCE 與沒有 hold 的 FULL 共用。已出發回 null。 */
+  const departureDeadline = () => {
+    if (!departureDate) return null;
+    if (input.departureStartTime) {
+      const dueAt = getGuideDepartureDueAt(departureDate, input.departureStartTime, timeZone);
+      if (!dueAt || Date.parse(dueAt) <= now.getTime()) return null;
+      return {
+        dueAt, dueKind: 'DEPARTURE' as const, dueHasTime: true, dueLocalDate: departureDate,
+        dueLocalTime: String(input.departureStartTime).slice(0, 5),
+        priority: getGuideActionInboxPriority(dueAt, now, timeZone),
+      };
+    }
+    // 缺 start_time：只知道日期。過去日期不顯示；當天 TODAY、未來 UPCOMING，不假造午夜逾期。
+    // dueAt 僅供排序（該日起點）。
+    const dueAt = getGuideDepartureDueAt(departureDate, '00:00', timeZone);
+    if (!dueAt) return null;
+    const { today } = getGuideActionInboxDateWindow(now, timeZone);
+    if (departureDate < today) return null;
+    return {
+      dueAt, dueKind: 'DEPARTURE' as const, dueHasTime: false, dueLocalDate: departureDate, dueLocalTime: null,
+      priority: (departureDate === today ? 'TODAY' : 'UPCOMING') as GuideActionInboxPriority,
+    };
+  };
+
+  if (input.status === 'PENDING') {
+    // FULL：一般固定團／即時預約的 PENDING + UNPAID（旅客轉帳、導遊確認收款）。
+    // 尚未接受的 REQUEST（sales_mode = 'REQUEST'）由 TOUR_REQUEST 處理，這裡排除。
+    // 目前所有建單路徑都不寫 hold_expires_at，所以期限通常是出發時刻；有 hold 就用 hold。
+    // TODO：加入線上金流（ECPay）的 PENDING 流程後，經線上 provider 付款的 PENDING 訂單
+    // 必須排除（18 分冊 §5／§6：線上付款成功由 callback 自動推進，不需導遊人工確認）。
+    if (input.salesMode === 'REQUEST') return null;
+    if (departureDate
+      && !departureStillAhead(departureDate, input.departureStartTime, now, timeZone)) return null;
+    const holdOk = !!input.holdExpiresAt && !Number.isNaN(Date.parse(input.holdExpiresAt));
+    const deadline = holdOk
+      ? {
+        dueAt: input.holdExpiresAt as string, dueKind: 'HOLD' as const, dueHasTime: true,
+        dueLocalDate: dateKey(new Date(input.holdExpiresAt as string), timeZone),
+        dueLocalTime: localTimeKey(new Date(input.holdExpiresAt as string), timeZone),
+        priority: getGuideActionInboxPriority(input.holdExpiresAt as string, now, timeZone),
+      }
+      : departureDeadline();
+    if (!deadline) return null;
+    return { ...base, stage: 'FULL', depositAmount: null, balanceAmount: null, ...deadline };
+  }
+
+  if (input.paymentStatus === 'UNPAID') {
+    // INITIAL：導遊已接受的申請（CONFIRMED + UNPAID + seats_reserved + hold）。
+    if (input.seatsReserved !== true || !input.holdExpiresAt) return null;
+    if (Number.isNaN(Date.parse(input.holdExpiresAt))) return null;
+    if (departureDate
+      && !departureStillAhead(departureDate, input.departureStartTime, now, timeZone)) return null;
+    return {
+      ...base,
+      stage: 'INITIAL',
+      depositAmount: hasPartialDeposit({ depositAmount: input.depositAmount, totalAmount: input.totalAmount })
+        ? Number(input.depositAmount)
+        : null,
+      balanceAmount: null,
+      dueLocalDate: dateKey(new Date(input.holdExpiresAt), timeZone),
+      dueLocalTime: localTimeKey(new Date(input.holdExpiresAt), timeZone),
+      dueKind: 'HOLD',
+      dueHasTime: true,
+      priority: getGuideActionInboxPriority(input.holdExpiresAt, now, timeZone),
+      dueAt: input.holdExpiresAt,
+    };
+  }
+
+  // PARTIAL：等尾款，期限是出發時刻。
+  const balanceAmount = Math.max(Number(input.totalAmount) - Number(input.paidAmount ?? 0), 0);
+  if (balanceAmount <= 0) return null;
+  const deadline = departureDeadline();
+  if (!deadline) return null;
+  return { ...base, stage: 'BALANCE', depositAmount: null, balanceAmount, ...deadline };
+}
+
+/**
+ * 一筆訂單只留一張卡：`covered`（TOUR_REQUEST／REFUND_PENDING 等同樣以 tour_orders 為來源的
+ * 卡片）已含同一個訂單 id 時，丟掉等待付款卡。各來源的 status／payment_status 篩選本來就
+ * 互斥，這裡是防呆，不是靠事後去重取代來源排除。
+ */
+export function dropGuideActionInboxOrderCardsAlreadyCovered<T extends { id: string }>(
+  candidates: T[],
+  covered: { id: string }[],
+): T[] {
+  const ids = new Set(covered.map((item) => item.id));
+  return candidates.filter((item) => !ids.has(item.id));
+}
+
+/**
+ * 等待付款慢路徑的可調參數。只有測試會改（把頁大小調小以快速覆蓋「超過一頁」）；route.ts 不能匯出
+ * 額外欄位（Next route 限制），所以放在這個 lib。頁大小預設 500，低於 Supabase 預設 max_rows 1000
+ * 留出餘裕；但 route 的終止條件已不依賴 max_rows（以 count 或空頁判定讀到底），頁大小只影響查詢次數。
+ */
+export const guideActionInboxPaymentDueTuning = { orderPage: 500 };

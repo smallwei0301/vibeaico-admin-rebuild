@@ -5,8 +5,12 @@ import {
   buildGuideActionInboxRefundPendingItem,
   buildGuideActionInboxStaffConflictItem,
   buildGuideActionInboxStaffUnassignedItem,
+  buildGuideActionInboxTourPaymentDueItem,
   buildGuideActionInboxTourRequestItem,
+  dropGuideActionInboxOrderCardsAlreadyCovered,
   getGuideActionInboxDateWindow,
+  getGuideActionInboxNotStartedDepartureFilter,
+  guideActionInboxPaymentDueTuning,
   getGuideDepartureDueAt,
   getGuideDepartureDay,
   getGuideActionInboxPriority,
@@ -87,6 +91,34 @@ function firstOf<T>(value: T | T[] | null | undefined): T | null {
  *     `/tenant/trips/:tripId`，沒有這條排除的話，一個尚未成團、也沒有 PRIMARY
  *     指派的團次會同時冒出 STAFF_UNASSIGNED 與 REVIEW_REQUIRED／AT_RISK 兩張卡。
  */
+const MISSING_SCHEMA_CODES = new Set(['42703', '42P01', 'PGRST200', 'PGRST204', 'PGRST205']);
+
+/** 缺欄位／缺資料表／缺關聯 → 視為空結果；其他錯誤照舊 throw。 */
+function tolerateMissingSchema(source: string, result: { data: any[] | null; error: any }): any[] {
+  if (result.error) {
+    if (MISSING_SCHEMA_CODES.has(String(result.error.code ?? ''))) {
+      // 只記來源名稱與錯誤碼（不含訂單／旅客資料）。
+      console.warn(`[guide-action-inbox] ${source} degraded to 0 cards: schema error ${String(result.error.code)}`);
+      return [];
+    }
+    throw result.error;
+  }
+  return result.data ?? [];
+}
+
+/** 等待付款兩個查詢的有界視窗；程式內依期限排序後每類最多取 PAYMENT_DUE_CAP 張。 */
+const PAYMENT_DUE_WINDOW = 200;
+const PAYMENT_DUE_CAP = 20;
+/** 尾款／全額待付：依出發時刻分批讀團次（每批筆數、最多批數）與每批訂單上限。 */
+const PAYMENT_DUE_DEPARTURE_BATCH = 100;
+/** 慢路徑單一分類的掃描時間預算（毫秒）；超過就 warn 並回傳已知最佳集合。測試以 Date.now 注入時鐘。 */
+const PAYMENT_DUE_SCAN_BUDGET_MS = 1500;
+/** 慢路徑安全上限（100 批 × 100 團次）；撞到時 warn 並回傳已知最佳集合，不回空。 */
+const PAYMENT_DUE_MAX_BATCHES = 100;
+/** 快路徑單次查詢上限：回傳筆數低於此值代表已取得全部符合的訂單。 */
+// 同樣假設 PostgREST max-rows ≥ 200（「回傳少於上限＝全部取得」的判斷依賴這點）。
+const PAYMENT_DUE_FIRST_LIMIT = 200;
+
 export const GET = handle(async () => {
   const t = await requireTenant();
   const settingsResult = await t.supabase
@@ -103,10 +135,12 @@ export const GET = handle(async () => {
   const timeZone = normalizeGuideTimeZone(rawTimeZone);
   const now = new Date();
   const { today, tomorrow } = getGuideActionInboxDateWindow(now, timeZone);
+  // 查詢層排除今天已出發的團次（見該 helper 的說明）；內嵌在訂單查詢時走 `trip_departures.or`。
+  const notStarted = getGuideActionInboxNotStartedDepartureFilter(now, timeZone);
 
   const [
     bookingResult, paymentBookingResult, departureResult, formationResult, refundPendingResult,
-    staffAssignmentResult, tourRequestResult,
+    staffAssignmentResult, tourRequestResult, paymentDueUnpaidResult,
   ] = await Promise.all([
     t.supabase
       .from('bookings_view')
@@ -207,6 +241,25 @@ export const GET = handle(async () => {
       .eq('trip_plans.sales_mode', 'REQUEST')
       .order('created_at', { ascending: true })
       .limit(20),
+    // #43 類別 2（INITIAL）：導遊已接受的申請（CONFIRMED + UNPAID + seats_reserved +
+    // 有保留期限，訂金或全額），期限是 hold_expires_at。`seats_reserved` 來自 0111，所以這個
+    // 來源以 tolerateMissingSchema 包起來。逾期 hold 目前不會被 expiry RPC 取消，所以在來源
+    // 就用 `trip_departures!inner` + departs_on >= 租戶今天排除已出發團次；取有界視窗後於程式內
+    // 依期限排序取前 20。每個 query 都帶 tenant_id。
+    t.supabase
+      .from('tour_orders')
+      .select('id, order_no, party_size, total_amount, deposit_amount, paid_amount, status, payment_status, seats_reserved, contact, hold_expires_at, created_at, trip_plans(name), trips(title), trip_departures!inner(departs_on, start_time, status)')
+      .eq('tenant_id', t.tenantId)
+      .eq('status', 'CONFIRMED')
+      .eq('payment_status', 'UNPAID')
+      .eq('seats_reserved', true)
+      .gt('total_amount', 0) // 零元訂單無待收款，不佔 limit
+      .not('hold_expires_at', 'is', null)
+      .neq('trip_departures.status', 'CANCELLED')
+      .gte('trip_departures.departs_on', today)
+      .or(notStarted, { referencedTable: 'trip_departures' })
+      .order('hold_expires_at', { ascending: true })
+      .limit(PAYMENT_DUE_WINDOW),
   ]);
 
   if (bookingResult.error) throw bookingResult.error;
@@ -216,6 +269,9 @@ export const GET = handle(async () => {
   if (refundPendingResult.error) throw refundPendingResult.error;
   if (staffAssignmentResult.error) throw staffAssignmentResult.error;
   if (tourRequestResult.error) throw tourRequestResult.error;
+  // `seats_reserved`（0111）在尚未套用該 migration 的環境不存在：這兩個等待付款來源遇到
+  // 缺欄位／缺關聯錯誤時只貢獻 0 張卡，不拖垮其他來源；其他錯誤照舊 throw。
+  const paymentDueUnpaidRows = tolerateMissingSchema('payment-due:confirmed-unpaid', paymentDueUnpaidResult);
 
   const bookingItems: GuideActionInboxItem[] = (bookingResult.data ?? []).map((row) => ({
     id: row.id,
@@ -424,6 +480,182 @@ export const GET = handle(async () => {
     }, now, timeZone);
   });
 
+  // #43 類別 2：兩個 query 的列用同一個 builder；不符合條件（例如 UNPAID 缺期限、已出發的
+  // PARTIAL）回 null 不顯示。同一筆訂單若已有 TOUR_REQUEST／REFUND_PENDING 卡就不再疊一張。
+  const buildPaymentDueCards = (rows: any[] | null) => (rows ?? [])
+      .map((row: any) => {
+        const contact = (row.contact ?? {}) as Record<string, unknown>;
+        const trip = firstOf<{ title?: string | null }>(row.trips);
+        const plan = firstOf<{ name?: string | null }>(row.trip_plans);
+        const departure = firstOf<{ departs_on?: string | null; start_time?: string | null; status?: string | null }>(row.trip_departures);
+        return buildGuideActionInboxTourPaymentDueItem({
+          id: row.id,
+          orderNo: row.order_no,
+          customerName: String(contact.name ?? ''),
+          tripName: trip?.title ?? '',
+          planName: plan?.name ?? '',
+          status: row.status,
+          paymentStatus: row.payment_status,
+          seatsReserved: row.seats_reserved,
+          salesMode: firstOf<{ sales_mode?: string | null }>(row.trip_plans)?.sales_mode ?? null,
+          holdExpiresAt: row.hold_expires_at ?? null,
+          depositAmount: row.deposit_amount == null ? null : Number(row.deposit_amount),
+          totalAmount: Number(row.total_amount ?? 0),
+          paidAmount: row.paid_amount == null ? null : Number(row.paid_amount),
+          departureDate: departure?.departs_on ? String(departure.departs_on).slice(0, 10) : null,
+          departureStartTime: departure?.start_time ? String(departure.start_time).slice(0, 5) : null,
+          departureStatus: (departure as { status?: string | null } | null)?.status ?? null,
+          createdAt: row.created_at,
+          href: `/tenant/tour-orders?orderId=${encodeURIComponent(row.id)}`,
+        }, now, timeZone);
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null)
+      ;
+  // 依期限（instant）由近到遠取前 PAYMENT_DUE_CAP；最終跨類型排序仍只在下方 return 處做一次。
+  const toPaymentDueCards = (rows: any[] | null) => buildPaymentDueCards(rows)
+    .sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt) || a.id.localeCompare(b.id))
+    .slice(0, PAYMENT_DUE_CAP);
+  // #43 類別 2（BALANCE／FULL）：等待尾款（CONFIRMED + PARTIAL，期限＝出發時刻）與一般固定團／
+  // 即時預約的 PENDING + UNPAID 全額待付（旅客轉帳、導遊確認收款；現行所有建單路徑都不寫
+  // hold_expires_at，期限用出發時刻，有 hold 則用 hold）。兩類各自獨立處理：
+  //
+  //  1. 快路徑：一次有界查詢（`trip_departures!inner` + departs_on >= 租戶今天，上限
+  //     PAYMENT_DUE_FIRST_LIMIT），帶 `{ count: 'exact' }`。count ≤ 已取得筆數＝已拿到「全部」符合的訂單，
+  //     程式內依期限排序取前 20 即完成（一般租戶只花 1 個查詢）。**不以「回傳筆數 < 要求上限」判定完整**：
+  //     遠端 PostgREST `max_rows` 若小於要求上限會靜默截斷（N2，見 src/server/tour-order-no.ts）；
+  //     拿不到 count 時一律當作不完整、走慢路徑。
+  //  2. 慢路徑（快路徑被塞滿才走）：期限＝出發時刻，所以用 keyset（departs_on, id）分批讀
+  //     trip_departures（tenant、非 CANCELLED、departs_on >= 今天），再 `.in('departure_id', ids)` 讀
+  //     該批訂單；當已有 ≥20 張卡、且第 20 張的出發日早於本批最後一個出發日（該日可能還有下一批
+  //     的團次）時停止。團次批次與訂單分頁的「讀到底」同樣不依賴伺服器上限：每頁帶 count（keyset 條件
+  //     下的剩餘筆數），count ≤ 本頁筆數才算最後一頁，否則（含拿不到 count）繼續讀，直到空頁。keyset 不含 start_time，同一天內的先後交給程式內排序；跨批同日的最壞情形
+  //     由上面的停止條件涵蓋。慢路徑以快路徑的列為種子，並用高上限（PAYMENT_DUE_MAX_BATCHES）持續掃描，
+  //     撞到上限時 warn 並回傳已知最佳集合（種子列此時不一定是全域最早）。不使用未驗證的 PostgREST 內嵌欄位排序語法。
+  // PENDING 若帶 hold，hold 理論上早於出發；慢路徑只在已讀到的批次內依有效期限排序——現行資料沒有
+  // 這種列，如實記錄。訂單依 id 去重，避免團次中途異動造成重複卡片。
+  // 只用 ≤0108 欄位與 0107 的 trip_plans.sales_mode；PARTIAL／PENDING 不碰 seats_reserved（0111），
+  // 也不套 tolerateMissingSchema：它們不依賴 0109+ 欄位，錯誤照舊 throw。
+  // 未接受的 REQUEST（sales_mode = 'REQUEST'）由 TOUR_REQUEST 處理，這裡排除。
+  // TODO：加入線上金流（ECPay）PENDING 流程後，經線上 provider 付款的 PENDING 必須排除（18 §5／§6）。
+  const ORDER_SELECT = 'id, order_no, party_size, total_amount, deposit_amount, paid_amount, status, payment_status, contact, hold_expires_at, created_at, trips(title), trip_departures!inner(departs_on, start_time, status)';
+  const paymentDueOrderQuery = (kind: 'PARTIAL' | 'PENDING') => {
+    const base = t.supabase
+      .from('tour_orders')
+      .select(kind === 'PARTIAL'
+        ? `${ORDER_SELECT}, trip_plans(name)`
+        : `${ORDER_SELECT}, trip_plans!inner(name, sales_mode)`, { count: 'exact' })
+      .eq('tenant_id', t.tenantId)
+      .eq('status', kind === 'PARTIAL' ? 'CONFIRMED' : 'PENDING')
+      .eq('payment_status', kind === 'PARTIAL' ? 'PARTIAL' : 'UNPAID')
+      .gt('total_amount', 0); // 零元訂單無待收款，不佔 limit／count
+    // 與慢路徑的團次視窗一致：已取消的團次（trip_departures.status = 'CANCELLED'，0066）不產生卡片。
+    return (kind === 'PENDING' ? base.neq('trip_plans.sales_mode', 'REQUEST') : base)
+      .neq('trip_departures.status', 'CANCELLED')
+      .gte('trip_departures.departs_on', today)
+      .or(notStarted, { referencedTable: 'trip_departures' });
+  };
+
+  const scanPaymentDue = async (kind: 'PARTIAL' | 'PENDING'): Promise<any[]> => {
+    const first = await paymentDueOrderQuery(kind).limit(PAYMENT_DUE_FIRST_LIMIT);
+    if (first.error) throw first.error;
+    const firstRows = first.data ?? [];
+    // count 是符合條件的總筆數（不受 limit／max_rows 影響）；只有它能證明「已拿到全部」。
+    if (typeof first.count === 'number' && first.count <= firstRows.length) return firstRows;
+    if (firstRows.length === 0) return firstRows;
+
+    // 以快路徑的列當種子（依 id 去重）：它們已證明存在，分類不會因為掃描沒走到而變空。
+    // 注意：撞到批次安全上限時，種子列不一定是全域最早的（快路徑沒排序）——此時只是「已知最佳集合」。
+    const rowsById = new Map<string, any>(firstRows.map((row: any) => [row.id, row]));
+    // 卡片依訂單 id 快取：每批只為新列建卡（種子列不重算），停止條件只需排序現有卡片。
+    const cardDueByRowId = new Map<string, { dueAt: string; dueLocalDate: string; id: string }>();
+    const addCards = (rows: any[]) => {
+      for (const row of rows) {
+        if (cardDueByRowId.has(row.id)) continue;
+        const [card] = buildPaymentDueCards([row]);
+        if (card) cardDueByRowId.set(row.id, card);
+      }
+    };
+    addCards(firstRows);
+    let cursor: { departsOn: string; id: string } | null = null;
+    let exhausted = false;
+    let batchesScanned = 0;
+    const scanStartedAt = Date.now();
+    for (let batch = 0; batch < PAYMENT_DUE_MAX_BATCHES; batch += 1) {
+      // 次要界線：時間預算（主要界線是批次上限）。第一批一定會掃，之後超時就停。
+      if (batch > 0 && Date.now() - scanStartedAt > PAYMENT_DUE_SCAN_BUDGET_MS) break;
+      batchesScanned += 1;
+      let depQuery = t.supabase
+        .from('trip_departures')
+        .select('id, departs_on, start_time', { count: 'exact' })
+        .eq('tenant_id', t.tenantId)
+        .neq('status', 'CANCELLED')
+        .gte('departs_on', today);
+      // 尚未出發（notStarted）與 keyset 游標合成「單一」邏輯樹參數 `or=(and(or(...),or(...)))`
+      // （postgrest-js 沒有 `.and()`，但 `or` 的唯一元素可以是 and 群組），不依賴兩個頂層 `or=`
+      // 參數會被 PostgREST 以 AND 合併；第一批沒有游標，只需 `or(notStarted)`。
+      depQuery = cursor
+        ? depQuery.or(
+          `and(or(${notStarted}),or(departs_on.gt.${cursor.departsOn},and(departs_on.eq.${cursor.departsOn},id.gt.${cursor.id})))`,
+        )
+        : depQuery.or(notStarted);
+      const departureWindow = await depQuery
+        .order('departs_on', { ascending: true })
+        .order('id', { ascending: true })
+        .limit(PAYMENT_DUE_DEPARTURE_BATCH);
+      if (departureWindow.error) throw departureWindow.error;
+      const deps = (departureWindow.data ?? []) as Array<{ id: string; departs_on: string }>;
+      if (deps.length === 0) { exhausted = true; break; }
+      // count＝游標之後剩餘的團次總數（不受 limit／max_rows 影響）。
+      const depsRemaining = typeof departureWindow.count === 'number' ? departureWindow.count : null;
+      const last = deps[deps.length - 1];
+      cursor = { departsOn: String(last.departs_on).slice(0, 10), id: last.id };
+
+      // 同一批團次上的訂單可能超過一頁：依 id 做 keyset 分頁讀完（order by id、`gt('id', lastId)`、
+      // 頁大小 orderPage），整批讀完才算「這批已讀完」，停止條件才可據以判斷。
+      // 若讀到一半時間預算用完，這批不算讀完 → 標記為未完成，不讓停止條件宣稱完整，回傳已知最佳集合。
+      const rows: any[] = [];
+      let lastOrderId: string | null = null;
+      let batchComplete = true;
+      // 不依賴伺服器 max_rows：以 count（游標之後剩餘訂單數）≤ 本頁筆數判定最後一頁，
+      // 拿不到 count 時繼續讀到空頁為止。游標一律取「實際回傳的最後一列」。
+      const orderPage = guideActionInboxPaymentDueTuning.orderPage;
+      for (;;) {
+        let q = paymentDueOrderQuery(kind).in('departure_id', deps.map((d) => d.id));
+        if (lastOrderId) q = q.gt('id', lastOrderId);
+        const page = await q.order('id', { ascending: true }).limit(orderPage);
+        if (page.error) throw page.error;
+        const pageRows = page.data ?? [];
+        rows.push(...pageRows);
+        if (pageRows.length === 0) break;
+        if (typeof page.count === 'number' && page.count <= pageRows.length) break; // 這批最後一頁
+        lastOrderId = pageRows[pageRows.length - 1].id;
+        if (Date.now() - scanStartedAt > PAYMENT_DUE_SCAN_BUDGET_MS) { batchComplete = false; break; }
+      }
+      for (const row of rows) rowsById.set(row.id, row);
+      addCards(rows);
+      if (!batchComplete) break; // 不可宣稱完整：交給下方 warn 與已知最佳集合
+
+      if (depsRemaining !== null && depsRemaining <= deps.length) { exhausted = true; break; }
+      const cards = [...cardDueByRowId.values()]
+        .sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt) || a.id.localeCompare(b.id));
+      if (cards.length >= PAYMENT_DUE_CAP
+        && cards[PAYMENT_DUE_CAP - 1].dueLocalDate < cursor.departsOn) { exhausted = true; break; }
+    }
+    if (!exhausted) {
+      console.warn(`[guide-action-inbox] payment-due:${kind.toLowerCase()} departure scan stopped early (batches scanned: ${batchesScanned}, cap ${PAYMENT_DUE_MAX_BATCHES}, budget ${PAYMENT_DUE_SCAN_BUDGET_MS}ms); returning best-known set`);
+    }
+    return [...rowsById.values()];
+  };
+  const [partialRows, pendingRows] = await Promise.all([
+    scanPaymentDue('PARTIAL'),
+    scanPaymentDue('PENDING'),
+  ]);
+
+  const paymentDueItems: GuideActionInboxItem[] = dropGuideActionInboxOrderCardsAlreadyCovered(
+    [...toPaymentDueCards(paymentDueUnpaidRows), ...toPaymentDueCards(partialRows), ...toPaymentDueCards(pendingRows)],
+    [...tourRequestItems, ...refundPendingItems],
+  );
+
   return ok(sortGuideActionInboxItems([
     ...bookingItems,
     ...bookingPaymentItems,
@@ -433,5 +665,6 @@ export const GET = handle(async () => {
     ...staffConflictItems,
     ...staffUnassignedItems,
     ...tourRequestItems,
+    ...paymentDueItems,
   ]));
 });

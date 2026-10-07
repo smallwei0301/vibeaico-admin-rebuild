@@ -3,7 +3,9 @@ import {
   buildGuideActionInboxFormationItem,
   buildGuideActionInboxRefundPendingItem,
   buildGuideActionInboxStaffUnassignedItem,
+  buildGuideActionInboxTourPaymentDueItem,
   buildGuideActionInboxTourRequestItem,
+  dropGuideActionInboxOrderCardsAlreadyCovered,
   getGuideActionInboxDateWindow,
   getGuideDepartureDueAt,
   getGuideDepartureDay,
@@ -16,6 +18,9 @@ import {
 import { MOCK_BOOKINGS } from '@/mock';
 import { MOCK_TOUR_ORDERS, MOCK_TRIP_DEPARTURES, MOCK_TRIP_PLANS, MOCK_TRIPS } from '@/mock/tours';
 
+const isMockRequestOrder = (order: { tripId: string; planName: string }) =>
+  MOCK_TRIP_PLANS.find((candidate) =>
+    candidate.tripId === order.tripId && candidate.name === order.planName)?.salesMode === 'REQUEST';
 const refundPendingHref = (id: string) =>
   `/tenant/tour-orders?paymentStatus=REFUND_PENDING&orderId=${encodeURIComponent(id)}`;
 const tourRequestHref = (id: string) =>
@@ -205,12 +210,7 @@ export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
       // 'REQUEST'` 且訂單 `status === 'PENDING'` 才算，跟 route.ts 的
       // `.eq('trip_plans.sales_mode', 'REQUEST')` 是同一條規則。
       const tourRequestItems: GuideActionInboxItem[] = MOCK_TOUR_ORDERS
-        .filter((order) => {
-          if (order.status !== 'PENDING') return false;
-          const plan = MOCK_TRIP_PLANS.find((candidate) =>
-            candidate.tripId === order.tripId && candidate.name === order.planName);
-          return plan?.salesMode === 'REQUEST';
-        })
+        .filter((order) => order.status === 'PENDING' && isMockRequestOrder(order))
         .slice(0, 20)
         .map((order) => buildGuideActionInboxTourRequestItem({
           id: order.id,
@@ -229,9 +229,40 @@ export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
           createdAt: order.createdAt,
           href: tourRequestHref(order.id),
         }, nowDate));
+      // #43 類別 2：等待訂金／尾款／付款即將到期。mock 的 `TourOrder` 沒有
+      // `seatsReserved`／`paidAmount`——CONFIRMED + UNPAID + 有 `holdExpiresAt` 視為已接受未付款
+      // （名額已鎖），PARTIAL 的已收金額 = `depositAmount`。期限與出發日同樣改成相對於「現在」，
+      // 避免 demo 永遠顯示過期假卡片（理由同 TOUR_REQUEST）。
+      const paymentDueItems: GuideActionInboxItem[] = dropGuideActionInboxOrderCardsAlreadyCovered(
+        MOCK_TOUR_ORDERS
+          .map((order) => buildGuideActionInboxTourPaymentDueItem({
+            id: order.id,
+            orderNo: order.orderNo,
+            customerName: order.customerName,
+            tripName: order.tripTitle,
+            planName: order.planName,
+            status: order.status,
+            paymentStatus: order.paymentStatus,
+            // mock 沒有 seatsReserved；CONFIRMED + UNPAID 視為已鎖位。PENDING 由方案 sales_mode 判斷：
+            // REQUEST 是尚未接受的申請（TOUR_REQUEST 處理），其他走 FULL 卡。
+            seatsReserved: true,
+            salesMode: isMockRequestOrder(order) ? 'REQUEST' : 'FIXED_DEPARTURE',
+            holdExpiresAt: order.holdExpiresAt ? new Date(now + 5 * 60 * 60 * 1000).toISOString() : null,
+            depositAmount: order.depositAmount,
+            totalAmount: order.totalAmount,
+            paidAmount: order.paymentStatus === 'PARTIAL' ? order.depositAmount : 0,
+            departureDate: tomorrow,
+            departureStartTime: order.startTime || null,
+            createdAt: order.createdAt,
+            href: tourRequestHref(order.id),
+          }, nowDate))
+          .filter((item): item is NonNullable<typeof item> => item !== null)
+          .slice(0, 20),
+        [...tourRequestItems, ...refundPendingItems],
+      );
       return sortGuideActionInboxItems([
         ...items, ...paymentItems, ...departureItems, ...formationItems, ...refundPendingItems,
-        ...staffConflictItems, ...staffUnassignedItems, ...tourRequestItems,
+        ...staffConflictItems, ...staffUnassignedItems, ...tourRequestItems, ...paymentDueItems,
       ]);
     },
     () => request<GuideActionInboxItem[]>('/api/guide/action-inbox'),

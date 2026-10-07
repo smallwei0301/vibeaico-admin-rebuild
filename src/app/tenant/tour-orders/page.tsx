@@ -29,7 +29,8 @@ import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
 import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { tourOrdersPage as t } from '@/i18n/zh-TW/pages/tour-orders';
-import { hasPartialDeposit, isAwaitingPayment } from '@/server/tour-domain';
+import { isAwaitingPayment } from '@/server/tour-domain';
+import { isPendingTourRequest, tourPaymentActions } from '@/lib/tour-order-payment-actions';
 import { formatCurrency, formatDateTime, formatNumber } from '@/lib/utils';
 import type {
   TourOrder, TourOrderSource, TourOrderStatus, TourPaymentStatus,
@@ -271,7 +272,11 @@ export default function TourOrdersPage() {
           ? [() => rejectTourOrder(order.id), t.messages.rejected] as const
           : [() => cancelTourOrder(order.id), t.messages.cancelled] as const;
     const ok = await runOrderAction(call, message);
-    if (ok) setAction(null);
+    if (ok) {
+      setAction(null);
+      // 詳情 Modal 內的訂單資料已過期（可能不在目前列表），收款成功後一併關閉
+      if (detail?.id === order.id) setDetail(null);
+    }
   };
 
   /**
@@ -444,40 +449,17 @@ export default function TourOrdersPage() {
           >
             <Eye size={13} />
           </Button>
-          {o.status !== 'CANCELLED' && o.paymentStatus === 'UNPAID' && o.status === 'CONFIRMED' && hasPartialDeposit(o) ? (
-            <>
-              <Button
-                variant="outline" size="sm"
-                title={t.actions.confirmDeposit} aria-label={t.actions.confirmDeposit}
-                onClick={() => setAction({ kind: 'confirmDeposit', order: o })}
-              >
-                <Wallet size={13} className="text-warning" />
-              </Button>
-              <Button
-                variant="outline" size="sm"
-                title={t.actions.confirmFull} aria-label={t.actions.confirmFull}
-                onClick={() => setAction({ kind: 'confirmFull', order: o })}
-              >
-                <CheckCircle2 size={13} className="text-success" />
-              </Button>
-            </>
-          ) : o.status === 'CONFIRMED' && o.paymentStatus === 'PARTIAL' ? (
+          {tourPaymentActions(o).map((kind) => (
             <Button
-              variant="outline" size="sm"
-              title={t.actions.confirmBalance} aria-label={t.actions.confirmBalance}
-              onClick={() => setAction({ kind: 'confirmBalance', order: o })}
+              key={kind} variant="outline" size="sm"
+              title={t.actions[kind]} aria-label={t.actions[kind]}
+              onClick={() => setAction({ kind, order: o })}
             >
-              <CheckCircle2 size={13} className="text-success" />
+              {kind === 'confirmDeposit'
+                ? <Wallet size={13} className="text-warning" />
+                : <CheckCircle2 size={13} className="text-success" />}
             </Button>
-          ) : o.paymentStatus === 'UNPAID' && o.status !== 'CANCELLED' ? (
-            <Button
-              variant="outline" size="sm"
-              title={t.actions.confirmPayment} aria-label={t.actions.confirmPayment}
-              onClick={() => setAction({ kind: 'confirmPayment', order: o })}
-            >
-              <CheckCircle2 size={13} className="text-success" />
-            </Button>
-          ) : null}
+          ))}
           {o.status === 'CONFIRMED' ? (
             <Button
               variant="outline" size="sm"
@@ -611,6 +593,15 @@ export default function TourOrdersPage() {
         title={detail ? t.detail.title(detail.orderNo) : ''}
         footer={
           <>
+            {detail ? tourPaymentActions(detail).map((kind) => (
+              <Button
+                key={kind} variant={kind === 'confirmDeposit' ? 'outline' : 'primary'}
+                onClick={() => setAction({ kind, order: detail })}
+              >
+                {kind === 'confirmDeposit' ? <Wallet size={14} /> : <CheckCircle2 size={14} />}
+                {t.actions[kind]}
+              </Button>
+            )) : null}
             <Button variant="outline">
               <MessageSquareText size={14} />{t.actions.contactLine}
             </Button>
@@ -679,7 +670,7 @@ export default function TourOrdersPage() {
             </section>
 
             {/* #46：只有「還在等待導遊決定的 REQUEST 申請」才顯示這一段。 */}
-            {detail.salesMode === 'REQUEST' && detail.status === 'PENDING' ? (
+            {isPendingTourRequest(detail) ? (
               <section className="rounded-md border border-warning p-3">
                 <h4 className="mb-1 text-sm font-bold text-warning">
                   {t.detail.sections.request}

@@ -232,6 +232,7 @@ function makeFakeSupabase(tableRows: FakeRow[] | Record<string, FakeRow[]>) {
         lte: (...a: unknown[]) => { calls.push(['lte', a]); return builder; },
         in: (...a: unknown[]) => { calls.push(['in', a]); return builder; },
         not: (...a: unknown[]) => { calls.push(['not', a]); return builder; },
+        or: (...a: unknown[]) => { calls.push(['or', a]); return builder; },
         order: (...a: unknown[]) => { calls.push(['order', a]); return builder; },
         limit: (...a: unknown[]) => { calls.push(['limit', a]); return builder; },
         maybeSingle: async () => {

@@ -74,6 +74,12 @@ function actionInboxKindLabel(item: GuideActionInboxItem): string {
       return t.actionInbox.bookingPayment;
     case 'TOUR_REQUEST':
       return t.actionInbox.tourRequest;
+    case 'TOUR_PAYMENT_DUE':
+      return item.stage === 'BALANCE'
+        ? t.actionInbox.tourPaymentDueBalance
+        : item.stage === 'FULL'
+          ? t.actionInbox.tourPaymentDueFull
+          : t.actionInbox.tourPaymentDueInitial;
     case 'DEPARTURE':
       return t.actionInbox.departure;
     case 'REVIEW_REQUIRED':
@@ -101,6 +107,8 @@ function actionInboxOpenLabel(item: GuideActionInboxItem): string {
       return t.actionInbox.openPayment;
     case 'TOUR_REQUEST':
       return t.actionInbox.openTourRequest;
+    case 'TOUR_PAYMENT_DUE':
+      return t.actionInbox.openTourPaymentDue;
     case 'DEPARTURE':
       return t.actionInbox.openDeparture;
     case 'REVIEW_REQUIRED':
@@ -151,6 +159,39 @@ function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
             <span>{t.actionInbox.tourRequestSubmitted}</span>
             <span>{item.customerName}</span>
             <span>{t.actionInbox.tourRequestParty(item.partySize)}</span>
+          </div>
+        </>
+      );
+    case 'TOUR_PAYMENT_DUE':
+      return (
+        <>
+          <div className="truncate text-base font-semibold text-dark">{item.tripName}</div>
+          <div className="text-sm text-secondary">{item.planName}</div>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-secondary">
+            <span>
+              {item.stage === 'BALANCE'
+                ? t.actionInbox.tourPaymentDueBalanceDetail
+                : item.stage === 'FULL'
+                  ? t.actionInbox.tourPaymentDueFullDetail
+                  : t.actionInbox.tourPaymentDueInitialDetail}
+            </span>
+            <span>{item.customerName || item.orderNo}</span>
+            {item.stage === 'BALANCE' ? (
+              <span>{t.actionInbox.tourPaymentDueBalanceAmount(formatCurrency(item.balanceAmount ?? 0))}</span>
+            ) : (
+              <>
+                {item.depositAmount != null ? (
+                  <span>{t.actionInbox.tourPaymentDueDeposit(formatCurrency(item.depositAmount))}</span>
+                ) : null}
+                <span>{t.actionInbox.tourPaymentDueTotal(formatCurrency(item.totalAmount))}</span>
+              </>
+            )}
+            <span>
+              {item.dueKind === 'DEPARTURE'
+                ? t.actionInbox.tourPaymentDueDepartureDeadline
+                : t.actionInbox.tourPaymentDueHoldDeadline}
+              ：{item.dueLocalDate.replaceAll('-', '/')}{item.dueLocalTime ? ` ${item.dueLocalTime}` : ''}
+            </span>
           </div>
         </>
       );
