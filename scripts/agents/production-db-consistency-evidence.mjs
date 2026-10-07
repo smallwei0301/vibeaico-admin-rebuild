@@ -30,11 +30,17 @@ function plannedProductionDifferences({ report, plan, impactManifest }) {
   const normalized = normalizeProductionDbImpactManifest(impactManifest);
   const byFile = new Map(normalized.entries.map((entry) => [entry.repoFile, entry]));
   const allowed = new Map();
+  const plannedLedger = new Map();
 
   for (const migration of plan.migrations) {
     const repoFile = String(migration?.repoFile ?? '').trim();
     const entry = byFile.get(repoFile);
     if (!entry) fail('MISSING_IMPACT_MANIFEST_ENTRY', `${repoFile || '<unknown>'} has no impact manifest entry`);
+    // The observer hashes canonical ledger identities with sorted keys. Ledger
+    // omissions belong to the selected plan, not the schema impact surfaces.
+    const version = repoFile.slice(0, 4);
+    plannedLedger.set(`${version}/${repoFile}`, createHash('sha256')
+      .update(JSON.stringify({ name: repoFile, version })).digest('hex'));
     for (const impact of entry.impacts) {
       const key = `${impact.surface}:${impact.objectKey}`;
       const owner = allowed.get(key);
@@ -47,6 +53,10 @@ function plannedProductionDifferences({ report, plan, impactManifest }) {
     (item) => item.environment === 'PRODUCTION' && item.classification === 'EXPECTED_PENDING_PRODUCTION',
   );
   for (const item of pending) {
+    if (item.surface === 'migrationLedger'
+      && plannedLedger.has(item.objectKey)
+      && item.expectedFingerprint === plannedLedger.get(item.objectKey)
+      && item.observedFingerprint === null) continue;
     const key = `${item.surface}:${item.objectKey}`;
     if (!allowed.has(key)) fail('UNPLANNED_PRODUCTION_DIFF', `${key} is outside this release impact manifest`);
   }
