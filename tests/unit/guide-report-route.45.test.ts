@@ -152,11 +152,11 @@ describe('GET /api/reports/guide', () => {
 
   it('讀取上界取 min(本期終點, 請求開始時間)；asOf 回傳請求開始時間', async () => {
     try {
-      vi.setSystemTime(new Date('2026-10-05T00:00:00Z'));
-      const body = await (await get('?from=2026-10-01&to=2026-10-10')).json();
+      vi.setSystemTime(new Date('2026-10-05T00:00:00Z')); // 台北 10/05 08:00，本期終點（10/05 24:00 台北）在其後
+      const body = await (await get('?from=2026-10-01&to=2026-10-05')).json();
       const orders = state.calls.filter((c) => c.table === 'tour_orders');
       expect(orders.length).toBeGreaterThan(0);
-      for (const c of orders) expect(c.lt).toBe('2026-10-05T00:00:00.000Z'); // 早於本期終點 10-10 → 取請求時間
+      for (const c of orders) expect(c.lt).toBe('2026-10-05T00:00:00.000Z'); // 請求時間早於本期終點 → 取請求時間
       expect(body.data.asOf).toBe('2026-10-05T00:00:00.000Z');
       // 請求時間晚於本期終點時，上界仍是本期終點
       state.calls = [];
@@ -190,6 +190,12 @@ describe('GET /api/reports/guide', () => {
     const res = await get('?from=2026-10-01&to=2026-10-10');
     expect(res.status).toBe(403);
     expect(state.calls).toHaveLength(0);
+  });
+
+  it('to 或 from 晚於店家時區今天 → 400；to = 今天 → 正常（系統時間固定 2026-12-01 台北）', async () => {
+    expect((await get('?from=2026-11-20&to=2026-12-02')).status).toBe(400);
+    expect((await get('?from=2026-12-02&to=2026-12-02')).status).toBe(400);
+    expect((await get('?from=2026-11-20&to=2026-12-01')).status).toBe(200);
   });
 
   it('日期格式錯誤與結束早於開始皆 400', async () => {

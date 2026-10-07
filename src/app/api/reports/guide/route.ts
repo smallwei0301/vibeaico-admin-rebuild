@@ -56,7 +56,12 @@ export const GET = handle(async (req) => {
   if (se) throw se;
   const timeZone = resolvePublicTimeZone((settings?.basic as { timezone?: unknown } | null)?.timezone);
 
-  const to = q.to ?? zonedToday(timeZone);
+  const today = zonedToday(timeZone);
+  // 未來日期沒有資料，卻會被當成完整區間與上一期比較（如明天起 30 天 → -100%），直接拒絕。
+  if ((q.to && q.to > today) || (q.from && q.from > today)) {
+    throw new ApiHttpError(400, `日期不可晚於店家時區的今天（${today}）`, ERR.VALIDATION);
+  }
+  const to = q.to ?? today;
   const from = q.from ?? addDays(to, -29); // 預設近 30 天（含今天）
   let range;
   try {

@@ -94,7 +94,7 @@ export const reportsPage = {
       ],
     },
     forbidden: { title: '需要店長或管理者權限', description: '營運報表包含營收數字，僅店長或管理者可查看。請聯絡店家管理者開通權限。' },
-    errors: { loadFailed: '載入 GUIDE 報表失敗，請稍後再試', loadFailedHint: '可能是暫時性的網路或伺服器問題，按下重試即可重新載入，不需要整頁重新整理。', retry: '重試', invalidRange: '結束日期不可早於開始日期' },
+    errors: { loadFailed: '載入 GUIDE 報表失敗，請稍後再試', loadFailedHint: '可能是暫時性的網路或伺服器問題，按下重試即可重新載入，不需要整頁重新整理。', retry: '重試', invalidRange: '結束日期不可早於開始日期', futureDate: '日期不可晚於今天（店家時區）' },
   },
 
   /* ------------------------------------------------------------ 日期區間 */

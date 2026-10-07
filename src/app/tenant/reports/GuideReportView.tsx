@@ -19,7 +19,7 @@ import {
   type GuideRankDimension, type GuideRankMetric, type GuideRankRow, type GuideReport,
 } from '@/services/reports';
 import { reportsPage } from '@/i18n/zh-TW/pages/reports';
-import { presetRange } from '@/lib/guide-report-range';
+import { presetRange, todayIn } from '@/lib/guide-report-range';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/utils';
 
 const t = reportsPage.guideReport;
@@ -101,9 +101,16 @@ export function GuideReportView() {
     setReloadKey((k) => k + 1);
   };
 
+  /** 日期上限＝店家時區的今天（尚無報表時回退預設時區） */
+  const maxDate = todayIn(report?.range.timeZone ?? 'Asia/Taipei');
+
   const applyCustom = () => {
     if (!fromInput || !toInput || toInput < fromInput) {
       toast.show(t.errors.invalidRange, 'danger');
+      return;
+    }
+    if (fromInput > maxDate || toInput > maxDate) {
+      toast.show(t.errors.futureDate, 'danger');
       return;
     }
     setQuery({ from: fromInput, to: toInput });
@@ -144,11 +151,11 @@ export function GuideReportView() {
           <div className="flex flex-wrap items-end gap-3">
             <FormGroup className="min-w-[9rem] flex-1">
               <Label>{t.from}</Label>
-              <Input type="date" value={fromInput} onChange={(e) => setFromInput(e.target.value)} />
+              <Input type="date" max={maxDate} value={fromInput} onChange={(e) => setFromInput(e.target.value)} />
             </FormGroup>
             <FormGroup className="min-w-[9rem] flex-1">
               <Label>{t.to}</Label>
-              <Input type="date" value={toInput} onChange={(e) => setToInput(e.target.value)} />
+              <Input type="date" max={maxDate} value={toInput} onChange={(e) => setToInput(e.target.value)} />
             </FormGroup>
             <Button onClick={applyCustom}>{t.apply}</Button>
           </div>
