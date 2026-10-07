@@ -2,7 +2,7 @@
 
 > Owner 首次裁示：2026-08-28
 >
-> 最近更新：2026-10-01
+> 最近更新：2026-10-07
 >
 > 現行 Product B+ 以本文件為單一操作入口。歷史基線見
 > `docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`；後續已收斂裁示包含：
@@ -156,6 +156,36 @@ Lane A 內的優先順序為：
 
 Lane A 內改變上述優先序的例外只限：Owner 明確改優先序、P0 安全／資料損失／付款事故、或新 source 是解除同一 release 阻塞的必要前置。
 即使例外成立，也要在 Run／PR 記錄原因；不能以「Terra slot 空著」作為新增 source 的理由。
+
+#### 1.5.1 Schema release debt：TEST 通過即形成必須清掉的正式環境責任（Owner 2026-10-07）
+
+資料庫相關 Delivery Slice 一旦到達 `TEST_VERIFIED`，同一條 Environment Delivery 工作線必須持續推進到
+`PRODUCTION_SCHEMA_READY`，或留下可回讀的精確 G0–G7 stage／evidence blocker。不得因 migration/source 已 merge、
+本輪 source 任務已完成、Terra slot 空出或另一張 schema Issue 比較容易，就改做無關的新 schema source。
+
+Environment Delivery queue 只要仍存在可安全推進的 `TEST_VERIFIED`／`PRODUCTION_PENDING` schema release，
+Lane A **不得開始無關的新 migration/schema source**。唯一例外：
+1. 新 source 是解除同一 bounded release blocker 的必要前置；
+2. P0 安全、資料損失或付款事故；
+3. Owner 明確改變 release 優先序。
+
+同一 release 依賴鏈可以一起規劃，但必須在 queue 中綁定同一 bounded release plan、TEST evidence、Production stage
+與下一步；不能把「屬於同一產品」當成無上限追加 migration 的理由。
+
+#### 1.5.2 Delivery drain mode：不讓 Production Pending 只停留在報表
+
+`production_pending` 是排程訊號，不只是複盤數字。若連續兩次正式複盤都同時觀察到：
+- `production_pending` 沒有下降；且
+- 新的 Product source／main 成果仍持續增加；
+
+則 Lane A 自動進入 `DELIVERY_DRAIN_MODE`（交付清淤模式）：只處理現有 Environment Delivery queue 的
+TEST → Production → activation → authenticated acceptance，不新增無關 schema source。直到 pending 明顯下降、
+queue 只剩真實 Owner／External blocker，或 Owner 明確解除。
+
+`DELIVERY_DRAIN_MODE` **不停止 Lane B**。獨立、無相同 schema／migration ledger／auth/RLS／payment/refund／provider
+hot boundary 的 user-visible Product 仍依正常 WIP 規則 continuous refill。此模式不新增任何 G0–G7 gate、
+人工 approval、第二套 writer 或新的資料庫一致性檢查器。
+
 **continuous refill 是交付流水線補位，不是 source 產量 KPI。** 若唯一可選工作會與 shared TEST、
 同一 migration ledger、auth/RLS、payment/refund 或 mutable provider hot boundary 衝突，寧可序列化，
 不得為了把兩個 BUILD slots 填滿而製造更多 environment debt。
@@ -181,8 +211,11 @@ close 或部署。不得用記憶、舊 Session、先前下載副本代替 curre
 3. 先確認 `WORKSTREAM`；只有 `PRODUCT_MAINLINE` 才套 Product B+ lane／model／Final Risk 規則。
 4. 讀 Issue 指定 canonical 文件與直接相關的 integration／testing 章節；Playbook 只搜尋本次錯誤、Issue 或領域，不全量重讀。
 5. Product Run 建立或接續 `RUN_ID`，記錄 main、open Issue／PR、lane、TEST holder 與 raw-event 基線，並跑一次 §10 Live Scorecard readiness。
-6. Product B+ 由窄範圍 Luna/scout 盤點，再由一位 Aggregator 去重；Sol 只根據精簡包選 MAIN、可選 RESERVE 與 Closure target。
-7. 同一 Run 若有兩張 executable Guard 判定 qualified、互不衝突的 Product slices，應主動維持兩個 BUILD slots；沒有第二張安全候選、candidate cap 不足或隔離／hot-boundary 條件不成立時安全降級為一條。
+6. **選下一個 Product source 前先讀 §1.5／§2.0.3 Environment Delivery queue。** 依序檢查：
+   `TEST_VERIFIED → Production`、`PRODUCTION_SCHEMA_READY → activation`、`deployed → authenticated acceptance`；
+   Lane A 有可安全推進的既有尾項時，不得先選無關的新 migration/schema source。
+7. Product B+ 由窄範圍 Luna/scout 盤點，再由一位 Aggregator 去重；Sol 只根據精簡包選 MAIN、可選 RESERVE 與 Closure target。
+8. 同一 Run 若有兩張 executable Guard 判定 qualified、互不衝突的 Product slices，應主動維持兩個 BUILD slots；沒有第二張安全候選、candidate cap 不足或隔離／hot-boundary 條件不成立時安全降級為一條。
 
 以下文件改為 **trigger-based load**，不是每輪 mandatory read：
 
@@ -943,7 +976,9 @@ Product `NOT_GRADED`、active Run、重大 Product blocker、Gmail/provider/DB �
 active governance work、本輪 scorecard，**以及 §1.5 / §2.0.3 Environment Delivery queue**。
 只要仍有可安全自主推進的 `SOURCE_ONLY → TEST`、`TEST_VERIFIED → Production`、
 `PRODUCTION_SCHEMA_READY → activation` 或 `deployed → authenticated acceptance` 工作，就不符合停止條件；
-不得把「Production 尚未 ready」籠統寫成 blocker 後停止。最終報告不得只寫「目前進度」。
+不得把「Production 尚未 ready」籠統寫成 blocker 後停止。**同一 Environment Delivery queue 還有下一個安全階段時，
+不得以「本次 source／migration PR 已完成」作為 Session 結束理由，也不得改做無關的新 schema source。**
+最終報告不得只寫「目前進度」。
 
 符合 §3.2 的 DB 變更在 `POLICY_GATED_ACTIVE` 後不再以逐次人工批准為停止理由；automation pending 期間保留 bootstrap gate，
 技術關卡未過則保留**精確 G0–G7 stage / evidence blocker**。只有真的缺 Owner／外部人類且現有合法替代路徑不存在，
