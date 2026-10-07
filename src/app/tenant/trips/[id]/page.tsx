@@ -3,7 +3,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
-  AlertTriangle, CalendarDays, CalendarPlus, ChevronDown, ChevronUp, Clock, ExternalLink,
+  CalendarDays, CalendarPlus, ChevronDown, ChevronUp, Clock, ExternalLink,
   Image as ImageIcon, Layers, Package, Pencil, Plus, Send, Trash2, Upload, Users,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -50,16 +50,13 @@ import {
   isValidAddonPrice, isValidSeasonPriceOverride,
 } from '@/lib/trip-plan-quick-edit';
 import type {
-  DepartureConflict, DepartureFormationStatus, DepartureStatus, PlanReviewState, PriceType, Staff, Trip, TripAddon,
+  DepartureConflict, DepartureFormationStatus, DepartureStatus, PriceType, Staff, Trip, TripAddon,
   TripDeparture, TripPlan, TripPlanSeason,
 } from '@/lib/types';
 
 const GALLERY_MAX = MAX_PUBLIC_GALLERY_IMAGES;
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 0];
 
-const REVIEW_TONE: Record<PlanReviewState, 'info' | 'danger' | 'neutral'> = {
-  PENDING: 'info', CHANGES_REQUESTED: 'danger', NONE: 'neutral',
-};
 const DEPARTURE_TONE: Record<DepartureStatus, 'success' | 'neutral' | 'danger'> = {
   OPEN: 'success', CLOSED: 'neutral', CANCELLED: 'danger',
 };
@@ -818,12 +815,6 @@ export default function TripDetailPage() {
           : <span className="text-danger">{t.plans.seasonSummary.none}</span>),
     },
     {
-      key: 'review', header: t.plans.columns.review, width: '100px',
-      render: (p) => (p.reviewState === 'NONE'
-        ? <span className="text-muted">{t.plans.review.NONE}</span>
-        : <Badge tone={REVIEW_TONE[p.reviewState]}>{t.plans.review[p.reviewState]}</Badge>),
-    },
-    {
       key: 'status', header: t.plans.columns.status, width: '80px',
       render: (p) => (p.active
         ? <Badge tone="success">{common.enabled}</Badge>
@@ -1024,8 +1015,6 @@ export default function TripDetailPage() {
     },
   ];
 
-  const pendingPlans = plans.filter((p) => p.reviewState !== 'NONE');
-
   return (
     <>
       <PageHeader
@@ -1074,25 +1063,6 @@ export default function TripDetailPage() {
           </div>
         ) : null}
       </Alert>
-
-      {/* -------------------------------------------------- 方案審核中的提醒 */}
-      {pendingPlans.map((p) => (
-        <Alert
-          key={p.id}
-          tone={p.reviewState === 'PENDING' ? 'info' : 'warning'}
-          title={`${p.name}｜${t.plans.review[p.reviewState]}`}
-          className="mb-3"
-        >
-          {p.reviewState === 'PENDING'
-            ? t.plans.review.pendingHint
-            : listedPlanWritesBlocked ? t.plans.review.changesHintListed : t.plans.review.changesHint}
-          {p.reviewNote ? (
-            <div className="mt-1">
-              <span className="font-semibold">{t.plans.review.noteLabel}：</span>{p.reviewNote}
-            </div>
-          ) : null}
-        </Alert>
-      ))}
 
       <Tabs
         value={tab}
@@ -1431,12 +1401,6 @@ export default function TripDetailPage() {
               <Alert tone="info">
                 <span className="font-semibold">{t.plans.source[planDraft.source]}</span>
                 {!listedPlanWritesBlocked ? <span className="ml-1">{t.plans.source.assistedHint}</span> : null}
-              </Alert>
-            ) : null}
-
-            {planDraft.reviewState === 'CHANGES_REQUESTED' && planDraft.reviewNote ? (
-              <Alert tone="warning" icon={<AlertTriangle size={18} className="mt-0.5" />}>
-                <span className="font-semibold">{t.plans.review.noteLabel}：</span>{planDraft.reviewNote}
               </Alert>
             ) : null}
 

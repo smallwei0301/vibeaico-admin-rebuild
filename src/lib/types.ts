@@ -436,6 +436,7 @@ export type PriceType = 'PER_PERSON' | 'PER_GROUP';
 export type TripBookingType = 'INSTANT' | 'REQUEST' | 'SCHEDULED';
 
 /** 方案送審狀態（Midao 管理者審核方案內容與定價） */
+/** @deprecated Legacy contract：DB 無 trip_plans.review_state，不代表真實審核狀態，勿在 UI 使用。正式審核真相為 Trip 層 midaoListing / midaoListingNote（Issue #42）。 */
 export type PlanReviewState = 'NONE' | 'PENDING' | 'CHANGES_REQUESTED';
 
 /**
@@ -495,7 +496,9 @@ export type TripPlan = {
   /** 全年販售；false 時以 seasons 決定販售期間 */
   yearRound: boolean;
   seasons: TripPlanSeason[];
+  /** @deprecated Legacy：恆為 'NONE'，不代表真實審核狀態，勿在 UI 使用；請改用 Trip.midaoListing。 */
   reviewState: PlanReviewState;
+  /** @deprecated Legacy：恆為空字串，勿在 UI 使用；請改用 Trip.midaoListingNote。 */
   reviewNote: string;
   sortOrder: number;
   /** 來源標記；舊資料與 mock 未帶時視為 GUIDE。 */

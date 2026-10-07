@@ -148,7 +148,7 @@ export const MOCK_TRIP_PLANS: TripPlan[] = [
     minParticipants: 4, maxParticipants: 20, bookingType: 'REQUEST',
     depositMode: 'DEPOSIT_FIXED', depositValue: 5000,
     active: true, yearRound: true, seasons: [],
-    reviewState: 'PENDING', reviewNote: '', sortOrder: 2,
+    reviewState: 'NONE', reviewNote: '', sortOrder: 2,
     // #43 類別 1：先申請再確認（18 分冊 §1／0107 canonical），GUIDE 行動收件匣
     // 用這個欄位判斷「待導遊接受／拒絕的 REQUEST」，見 to_9。
     salesMode: 'REQUEST',
@@ -160,8 +160,8 @@ export const MOCK_TRIP_PLANS: TripPlan[] = [
     minParticipants: 2, maxParticipants: 6, bookingType: 'SCHEDULED',
     depositMode: 'FULL', depositValue: 0,
     active: false, yearRound: true, seasons: [],
-    reviewState: 'CHANGES_REQUESTED',
-    reviewNote: '售價高於同類方案 2 倍，請補充方案差異說明，或調整為合理級距。',
+    reviewState: 'NONE',
+    reviewNote: '',
     sortOrder: 3,
   },
   {
