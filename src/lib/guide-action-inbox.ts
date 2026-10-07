@@ -845,3 +845,10 @@ export function dropGuideActionInboxOrderCardsAlreadyCovered<T extends { id: str
   const ids = new Set(covered.map((item) => item.id));
   return candidates.filter((item) => !ids.has(item.id));
 }
+
+/**
+ * 等待付款慢路徑的可調參數。只有測試會改（把頁大小調小以快速覆蓋「超過一頁」）；route.ts 不能匯出
+ * 額外欄位（Next route 限制），所以放在這個 lib。頁大小預設 500，低於 Supabase 預設 max_rows 1000
+ * 留出餘裕：route 的「頁未滿 ⇒ 最後一頁」判斷假設 PostgREST max-rows ≥ 頁大小（快路徑的 200 同理）。
+ */
+export const guideActionInboxPaymentDueTuning = { orderPage: 500 };

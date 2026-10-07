@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import {
   buildGuideActionInboxTourPaymentDueItem,
   getGuideActionInboxNotStartedDepartureFilter,
+  guideActionInboxPaymentDueTuning,
   dropGuideActionInboxOrderCardsAlreadyCovered,
   getGuideDepartureDueAt,
   type GuideActionInboxTourPaymentDueInput,
@@ -662,9 +663,10 @@ describe('route.ts: payment-due source filters, window and display fields (#43 �
     expect(orQueries().length).toBeGreaterThan(0);
   });
 
-  /** 1101 筆 PARTIAL 都落在同一批 100 個團次內；最近出發的那筆 id 排在最後（超過第一頁 1000 筆）。 */
+  /** 頁大小調為 10：241 筆 PARTIAL 落在同一批 100 個團次內（快路徑 200 被塞滿）；最近出發的那筆 id 排在最後（超過第一頁）。 */
   async function runBigBatch() {
-    const others = Array.from({ length: 1100 }, (_, i) => mk({
+    guideActionInboxPaymentDueTuning.orderPage = 10;
+    const others = Array.from({ length: 240 }, (_, i) => mk({
       id: `o${String(i).padStart(5, '0')}`, departure_id: `d${String(1 + (i % 99)).padStart(3, '0')}`,
       trip_departures: { departs_on: dayStr(2 + (i % 99)), start_time: '09:00:00' },
     }));
@@ -678,8 +680,12 @@ describe('route.ts: payment-due source filters, window and display fields (#43 �
     requireTenantMock.mockResolvedValue({
       supabase: fakeSupabase({ tour_orders: orders, trip_departures: deps }), tenantId: T, user: { id: 'u' }, role: 'OWNER',
     });
-    const res = await guideActionInboxGET(new Request('https://app.test/api/guide/action-inbox'), {});
-    return ((await res.json()).data as any[]).filter((i) => i.kind === 'TOUR_PAYMENT_DUE' && i.stage === 'BALANCE');
+    try {
+      const res = await guideActionInboxGET(new Request('https://app.test/api/guide/action-inbox'), {});
+      return ((await res.json()).data as any[]).filter((i) => i.kind === 'TOUR_PAYMENT_DUE' && i.stage === 'BALANCE');
+    } finally {
+      guideActionInboxPaymentDueTuning.orderPage = 500; // 還原預設
+    }
   }
 
   it('a batch with >1000 qualifying orders is read page by page (keyset by id): the soonest order beyond the first 1000 is included', async () => {
@@ -697,7 +703,7 @@ describe('route.ts: payment-due source filters, window and display fields (#43 �
       expect(q.calls.filter(([m]) => m === 'order').map(([, a]) => [a[0], (a[1] as any).ascending])).toEqual([['id', true]]);
     }
     expect(pageQueries.some((q) => q.calls.some(([m, a]) => m === 'gt' && a[0] === 'id'))).toBe(true);
-  }, 30_000);
+  });
 
   it('budget hit mid-batch: warns, returns a non-empty best-known set, never claims the batch complete', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
