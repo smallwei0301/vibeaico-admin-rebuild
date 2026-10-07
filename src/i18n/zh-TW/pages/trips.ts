@@ -284,6 +284,7 @@ export const tripsPage = {
   seasons: {
     sectionTitle: '販售季節',
     sectionHint: '設定這個方案在一年中的哪些期間可以販售，並可為各季節設定不同售價。',
+    listedHint: '此行程已上架 Midao，季節與售價目前僅供檢視；如需調整請聯絡 Midao。',
     add: '新增季節',
     edit: '編輯季節',
     empty: '尚未設定季節，目前不會出現在任何日期。',
