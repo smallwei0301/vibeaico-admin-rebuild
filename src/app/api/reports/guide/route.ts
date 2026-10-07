@@ -144,6 +144,8 @@ export const GET = handle(async (req) => {
     departuresTruncated = departures.length >= MAX_ROWS && (await fetchDeps(depLast, 1)).length > 0;
   } catch (e) {
     if (!isMissingSchemaError(e)) throw e;
+    // 只記來源與錯誤碼（不含租戶或個資），讓降級在 log 裡看得到
+    console.warn('[reports/guide] formation unavailable: trip_departures', (e as { code?: string }).code);
     formationUnavailable = 'SCHEMA_MISSING';
   }
 

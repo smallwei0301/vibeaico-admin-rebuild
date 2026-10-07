@@ -88,8 +88,11 @@ export function mockDepartureRows(nowMs: number = Date.now()): GuideDepartureRow
     { id: 'mock_prev_1', departs_on: addDays(today, -40), formation_status: 'FORMED' },
     { id: 'mock_prev_2', departs_on: addDays(today, -38), formation_status: 'FAILED' },
     { id: 'mock_prev_3', departs_on: addDays(today, -35), formation_status: 'FORMED' },
-    // 團次已取消但沒有成團決策（formation_status 仍是募集中）：單獨計數，不當成未成團
+  ];
+  // 本期補充（不屬於上一期）：一筆導遊決策取消（已取消＋未成團）、一筆已取消但未經成團決策（成團狀態仍是募集中）
+  const currentPeriodExtras: GuideDepartureRow[] = [
+    { id: 'mock_failed_1', departs_on: addDays(today, -4), formation_status: 'FAILED', status: 'CANCELLED' },
     { id: 'mock_cancel_1', departs_on: addDays(today, -3), formation_status: 'COLLECTING', status: 'CANCELLED' },
   ];
-  return [...seeded, ...previousPeriod];
+  return [...seeded, ...currentPeriodExtras, ...previousPeriod];
 }

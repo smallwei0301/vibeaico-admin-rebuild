@@ -301,6 +301,7 @@ describe('GET /api/reports/guide', () => {
   });
 
   it('欄位／資料表不存在類錯誤 → 成團表現降級（formation=null＋原因），報表其餘照常 200', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     state.orders = [order({ id: 'a1', tenant_id: TENANT, created_at: '2026-10-02T02:00:00Z' })];
     for (const code of ['42703', '42P01', 'PGRST200', 'PGRST204', 'PGRST205']) {
       state.depError = code;
@@ -310,7 +311,9 @@ describe('GET /api/reports/guide', () => {
       expect(b.formation).toBeNull();
       expect(b.formationUnavailableReason).toBe('SCHEMA_MISSING');
       expect(b.summary.totalOrders).toBe(1);
+      expect(warn).toHaveBeenLastCalledWith(expect.stringContaining('formation unavailable'), code);
     }
+    warn.mockRestore();
   });
 
   it('其他團次查詢錯誤（含沒有 code、其他 code）仍是 500，不靜默降級', async () => {
