@@ -13,6 +13,8 @@ const fx = vi.hoisted(() => ({
   seasons: [] as Array<Record<string, unknown>>,
   seasonsError: false,
   planPrice: 1000,
+  recheckPrice: null as number | null,
+  recheckError: false,
   priceType: 'PER_PERSON',
   salesMode: 'FIXED_DEPARTURE',
 }));
@@ -32,8 +34,13 @@ vi.mock('@/server/supabase', () => ({
     },
     from(table: string) {
       let single = false;
+      let cols = '';
       const result = () => {
         if (table === 'tenants') return { data: { id: TENANT, tenant_settings: null }, error: null };
+        if (table === 'trip_plans' && cols.startsWith('price_per_person')) {
+          if (fx.recheckError) return { data: null, error: { message: 'boom' } };
+          return { data: { price_per_person: fx.recheckPrice ?? fx.planPrice, price_type: fx.priceType }, error: null };
+        }
         if (table === 'trip_plans') {
           const row = { id: PLAN, trip_id: 't1', name: 'p', description: '', price_per_person: fx.planPrice, price_type: fx.priceType, min_party: 1, max_party: 8, sales_mode: fx.salesMode, request_hold_hours: 12, active: true };
           return { data: single ? row : [row], error: null };
@@ -48,7 +55,8 @@ vi.mock('@/server/supabase', () => ({
         return { data: null, error: null };
       };
       const b: Record<string, unknown> = {};
-      for (const m of ['select', 'eq', 'in', 'gte', 'order', 'range']) b[m] = () => b;
+      b.select = (c: string) => { cols = c; return b; };
+      for (const m of ['eq', 'in', 'gte', 'order', 'range']) b[m] = () => b;
       b.maybeSingle = async () => { single = true; return result(); };
       b.single = async () => { single = true; return result(); };
       b.then = (resolve: (v: unknown) => unknown) => resolve(result());
@@ -77,6 +85,8 @@ beforeEach(() => {
   fx.seasons = [];
   fx.seasonsError = false;
   fx.planPrice = 1000;
+  fx.recheckPrice = null;
+  fx.recheckError = false;
   fx.priceType = 'PER_PERSON';
   fx.salesMode = 'FIXED_DEPARTURE';
   fx.rpcImpl = () => ({ data: 'order-1', error: null });
@@ -117,6 +127,23 @@ describe.each([
     expect(err).toBeInstanceOf(ErrorClass);
     expect(err.code).toBe('PRICE_CHANGED');
     expect(err.quote).toEqual({ unitPrice: 1200, total: 2400 });
+    expect(fx.rpcCalls).toEqual([]);
+  });
+
+  it('請求開頭讀到 1000、建單前重讀為 1200：PRICE_CHANGED quote 1200×人數，不呼叫 rpc', async () => {
+    fx.recheckPrice = 1200;
+    const err = await submit({ expectedTotal: 2000 }).catch((e) => e);
+    expect(err).toBeInstanceOf(ErrorClass);
+    expect(err.code).toBe('PRICE_CHANGED');
+    expect(err.quote).toEqual({ unitPrice: 1200, total: 2400 });
+    expect(fx.rpcCalls).toEqual([]);
+  });
+
+  it('建單前重讀 trip_plans 失敗：PRICE_UNVERIFIABLE，不呼叫 rpc', async () => {
+    fx.recheckError = true;
+    const err = await submit({ expectedTotal: 2000 }).catch((e) => e);
+    expect(err).toBeInstanceOf(ErrorClass);
+    expect(err.code).toBe('PRICE_UNVERIFIABLE');
     expect(fx.rpcCalls).toEqual([]);
   });
 

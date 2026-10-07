@@ -284,7 +284,7 @@ export async function submitPublicTourRequest(
       p_hold_expires: null,
     }, {
       expectedTotal: input.expectedTotal,
-      plan: { tenantId: plan.tenantId, planId: plan.planId, pricePerPerson: plan.pricePerPerson, priceType: plan.priceType },
+      plan: { tenantId: plan.tenantId, planId: plan.planId },
       departsOn: departure.departsOn,
       partySize: input.partySize,
     });
