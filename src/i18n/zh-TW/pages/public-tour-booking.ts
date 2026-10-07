@@ -23,6 +23,10 @@ export const publicTourBookingPage = {
     totalLabel: '實際金額',
     totalPerPerson: (unit: string, party: number, total: string) => `${unit} × ${party} 人 ＝ ${total}`,
     totalPerGroup: (total: string) => `${total}（整團一口價）`,
+    priceChangedTitle: '價格已更新',
+    priceChangedDescription: (unitText: string, totalText: string) =>
+      `頁面載入後店家調整了價格。目前實際金額為 ${totalText}（單價 ${unitText}），請確認新的金額後再送出。`,
+    submitConfirmNewPrice: '確認新金額並送出',
     totalUnknown: '目前無法確認此日期的金額，請聯絡店家或改選其他日期。',
     departurePlaceholder: '請選擇一個日期',
     departureOption: (dateText: string, startTime: string, seatsLeft: number) =>
@@ -55,6 +59,8 @@ export const publicTourBookingPage = {
     seatsUnavailable: '此團次名額已被搶先預約，請重新選擇日期',
     departureUnavailable: '此團次已不開放預約，請重新選擇日期',
     partySizeOutOfRange: '人數不在此方案的成團人數範圍內',
+    priceChangedNoQuote: '價格已更新，請重新整理頁面確認最新金額後再送出',
+    priceUnverifiable: '線上價格暫時無法確認，請直接聯絡店家',
     featureLocked: '此店家目前未開放線上預約，請改用 LINE 或電話聯絡',
     generic: '預約送出失敗，請稍後再試，或改用 LINE／電話聯絡店家',
   },

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { ApiError, request } from '@/lib/api';
 import { publicTourRequestPage as t } from '@/i18n/zh-TW/pages/public-tour-request';
 import { formatCurrency } from '@/lib/utils';
+import { priceChangedQuoteFromError, isPriceChangedError, type PriceChangedQuote } from '@/lib/public-price-change';
 import { canSubmitBooking, resolveBookingTotal, seasonalHeadlineKind } from '@/lib/public-booking-price';
 import type { PublicRequestPlan } from '@/server/public-tour-request';
 
@@ -22,6 +23,8 @@ function messageForError(e: unknown): string {
   if (e instanceof ApiError) {
     switch (e.code) {
       case 'TOUR_001': return t.errors.seatsUnavailable;
+      case 'TOUR_003': return t.errors.priceChangedNoQuote;
+      case 'TOUR_004': return t.errors.priceUnverifiable;
       case 'REQ_003': return t.errors.departureUnavailable;
       case 'REQ_001': return e.message || t.errors.validation;
       case 'REQ_002': return t.errors.notFound;
@@ -47,6 +50,8 @@ export function RequestForm({
   const [specialRequest, setSpecialRequest] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState('');
+  // #749：頁面金額與實際金額不符時，後端回的現價；旅客確認後以此金額再送出。改團次或人數即作廢。
+  const [confirmedQuote, setConfirmedQuote] = React.useState<PriceChangedQuote | null>(null);
 
   const hasContact = !!(contactPhone.trim() || contactLine.trim() || contactEmail.trim());
   // 實際金額摘要只使用 resolveBookingTotal 的結果（與 create_tour_order 同順序：季節單價 → PER_GROUP 一口價／PER_PERSON × 人數）。
@@ -57,6 +62,9 @@ export function RequestForm({
     seasonalPricing: plan.seasonalPricing, bookingTotal,
   });
 
+  // 送出時鎖定的金額：旅客已確認新金額就用它，否則用頁面目前顯示的金額（算不出時不帶，維持舊行為）。
+  const expectedTotal = confirmedQuote ? confirmedQuote.total : bookingTotal?.total;
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSubmit) return;
@@ -66,7 +74,7 @@ export function RequestForm({
       const res = await request<{ orderId: string; orderNo: string }>('/api/public/tour-requests', {
         method: 'POST',
         body: JSON.stringify({
-          shopCode, planId: plan.planId, departureId, partySize,
+          shopCode, planId: plan.planId, departureId, partySize, expectedTotal,
           contactName: contactName.trim(),
           contactPhone: contactPhone.trim() || undefined,
           contactLine: contactLine.trim() || undefined,
@@ -80,7 +88,14 @@ export function RequestForm({
         `/s/${shopCode}/requests/${res.orderId}?contact=${encodeURIComponent(contact)}`,
       );
     } catch (err) {
-      setError(messageForError(err));
+      const quote = priceChangedQuoteFromError(err);
+      if (quote) {
+        setConfirmedQuote(quote);
+        setError('');
+      } else {
+        if (isPriceChangedError(err)) setConfirmedQuote(null);
+        setError(messageForError(err));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -127,7 +142,7 @@ export function RequestForm({
                 id="departureId"
                 className="form-select"
                 value={departureId}
-                onChange={(e) => setDepartureId(e.target.value)}
+                onChange={(e) => { setDepartureId(e.target.value); setConfirmedQuote(null); }}
                 required
               >
                 <option value="">{t.form.departurePlaceholder}</option>
@@ -150,7 +165,7 @@ export function RequestForm({
               min={plan.minParty}
               max={plan.maxParty}
               value={partySize}
-              onChange={(e) => setPartySize(Number(e.target.value))}
+              onChange={(e) => { setPartySize(Number(e.target.value)); setConfirmedQuote(null); }}
               required
             />
           </div>
@@ -212,7 +227,19 @@ export function RequestForm({
 
           {error ? <p className="text-sm text-danger">{error}</p> : null}
 
-          {bookingTotal ? (
+          {confirmedQuote ? (
+            <div role="alert" className="flex flex-col gap-1 rounded-md border border-warning px-3 py-2 text-sm text-warning">
+              <span className="font-medium">{t.form.priceChangedTitle}</span>
+              <span>
+                {t.form.priceChangedDescription(
+                  `${formatCurrency(confirmedQuote.unitPrice)}${t.form.planPriceUnit[plan.priceType]}`,
+                  formatCurrency(confirmedQuote.total),
+                )}
+              </span>
+            </div>
+          ) : null}
+
+          {bookingTotal && !confirmedQuote ? (
             <div className="flex flex-col gap-1">
               <span className="text-sm font-medium">{t.form.totalLabel}</span>
               <span className="text-base font-semibold">
@@ -221,12 +248,12 @@ export function RequestForm({
                   : t.form.totalPerPerson(formatCurrency(bookingTotal.unitPrice), partySize, formatCurrency(bookingTotal.total))}
               </span>
             </div>
-          ) : selectedDeparture && plan.seasonalPricing ? (
+          ) : selectedDeparture && plan.seasonalPricing && !confirmedQuote ? (
             <p className="text-sm text-secondary">{t.form.totalUnknown}</p>
           ) : null}
 
           <button type="submit" className="btn btn-primary" disabled={!canSubmit}>
-            {submitting ? t.form.submitting : t.form.submit}
+            {submitting ? t.form.submitting : confirmedQuote ? t.form.submitConfirmNewPrice : t.form.submit}
           </button>
         </div>
       </form>
