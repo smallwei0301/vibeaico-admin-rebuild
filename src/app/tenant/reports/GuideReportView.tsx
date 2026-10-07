@@ -166,7 +166,7 @@ export function GuideReportView() {
     },
   ];
 
-  const cardLabel = (name: string) => (report?.truncated ? `${name}（${t.truncatedHint}）` : name);
+  const cardLabel = (name: string) => (report?.truncated ? t.withTruncatedHint(name) : name);
   const s = report?.summary;
   const fm = report?.formation ?? null;
   const prev = report?.previous;
@@ -416,13 +416,13 @@ export function GuideReportView() {
               <>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <StatCard
-                    label={fm.truncated ? `${t.formationCard.successRate}（${t.truncatedHint}）` : t.formationCard.successRate}
+                    label={fm.truncated ? t.withTruncatedHint(t.formationCard.successRate) : t.formationCard.successRate}
                     icon={CalendarCheck} tone="success"
                     value={fm.summary.successRatePercent === null ? t.noData : formatPercent(fm.summary.successRatePercent, 1)}
                     hint={`${pointsText(fm.successRatePoints)}${t.sep}${t.formationCard.concludedHint(fm.summary.concluded, fm.summary.formed, fm.summary.failed)}`}
                   />
                   <StatCard
-                    label={fm.truncated ? `${t.formationCard.failRate}（${t.truncatedHint}）` : t.formationCard.failRate}
+                    label={fm.truncated ? t.withTruncatedHint(t.formationCard.failRate) : t.formationCard.failRate}
                     icon={Ban} tone="danger"
                     value={fm.summary.failRatePercent === null ? t.noData : formatPercent(fm.summary.failRatePercent, 1)}
                     hint={`${pointsText(fm.failRatePoints)}${t.sep}${t.change.previousValue(fm.previous.failRatePercent === null ? t.noData : formatPercent(fm.previous.failRatePercent, 1))}`}

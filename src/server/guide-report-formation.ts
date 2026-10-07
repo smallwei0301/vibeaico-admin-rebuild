@@ -11,9 +11,14 @@
  *  - 成團率 = 已結案 FORMED ÷ 已結案；未達門檻率 = 已結案 FAILED ÷ 已結案；分母 0 → null。1 位小數。
  *  - 團次本身的 status（OPEN／CLOSED／CANCELLED，0066）與 formation_status 是兩條獨立的軸：
  *      · CANCELLED 且 FAILED ＝ 導遊決策取消 → 算「未成團」（已結案，進分母）；
- *      · CANCELLED 且 formation_status 不是 FAILED（例如 FORMED、COLLECTING）＝「已取消（未經成團決策）」，
- *        單獨計數，不進成團率／未達門檻率的分子與分母，也不算「尚未結案」。不推測它是成團失敗。
- *  - 各 formation_status 的團數：期間內全部團次的分布（不分是否結案；不含上述「已取消（未經成團決策）」），供對照。
+ *      · CANCELLED 且 FORMED ＝ 已成團後才取消（颱風等；18 分冊 §3 兩軸獨立、TOUR_CANCELLED_AFTER_FORMED）
+ *        → 成團結果保留，照一般規則：出發日已到即算已結案、已成團。
+ *      · CANCELLED 且 formation_status 為 COLLECTING／REVIEW_REQUIRED ＝ 尚未做出成團決策就取消 →
+ *        「已取消（未經成團決策）」，單獨計數，不進成團率／未達門檻率的分子與分母，也不算「尚未結案」。
+ *        不推測它是成團失敗。
+ *      · AT_RISK 只會發生在 FORMED 之後（18 分冊 §3 第 15、229 行：成團後人數跌破門檻才進 AT_RISK），
+ *        代表成團決策早已做過，故 CANCELLED＋AT_RISK 不歸「未經成團決策」，維持 AT_RISK 分布（不進比率，同未取消的 AT_RISK）。
+ *  - 各 formation_status 的團數：期間內全部團次的分布（不分是否結案；不含「已取消（未經成團決策）」），供對照。
  *  - 上一期：與本期等長、緊接在前，用同一個「今天」；比較以百分點（pointDiff）。
  *  - 這是「目前的成團狀態」：formation_status 沒有歷史快照，所以數字反映讀取當下的狀態，不是當時的狀態。
  */
@@ -38,7 +43,7 @@ export type GuideFormationSummary = {
   concluded: number;
   formed: number;
   failed: number;
-  /** 已取消（status = CANCELLED）但 formation_status 不是 FAILED：未經成團決策，不進比率、不算尚未結案 */
+  /** 已取消（status = CANCELLED）且 formation_status 為 COLLECTING／REVIEW_REQUIRED：未經成團決策，不進比率、不算尚未結案 */
   cancelledUndecided: number;
   /** total − concluded − cancelledUndecided：尚未結案 */
   open: number;
@@ -58,6 +63,8 @@ export type GuideFormation = {
   truncated: boolean;
 };
 
+/** 尚未做出成團決策的 formation_status（AT_RISK 只發生在 FORMED 之後，不在其中） */
+const UNDECIDED_STATUSES: readonly string[] = ['COLLECTING', 'REVIEW_REQUIRED'];
 const round1 = (n: number) => Math.round(n * 10) / 10;
 const isStatus = (s: string): s is FormationStatus => (FORMATION_STATUSES as readonly string[]).includes(s);
 
@@ -72,7 +79,7 @@ export function summarizeFormation(
   for (const r of rows) {
     if (r.departs_on < from || r.departs_on > to || !isStatus(r.formation_status)) continue;
     total += 1;
-    if (r.status === 'CANCELLED' && r.formation_status !== 'FAILED') { cancelledUndecided += 1; continue; }
+    if (r.status === 'CANCELLED' && UNDECIDED_STATUSES.includes(r.formation_status)) { cancelledUndecided += 1; continue; }
     byStatus[r.formation_status] += 1;
     if (r.departs_on <= today) {
       if (r.formation_status === 'FORMED') formed += 1;

@@ -98,22 +98,33 @@ describe('團次本身取消（status = CANCELLED）與成團狀態是兩條軸'
     expect(r).toMatchObject({ total: 2, concluded: 2, formed: 1, failed: 1, cancelledUndecided: 0, open: 0, successRatePercent: 50 });
   });
 
-  it('CANCELLED＋FORMED 不算成團（不進分子）、CANCELLED＋COLLECTING 不算尚未結案；兩者單獨計數、不進分母', () => {
+  it('CANCELLED＋FORMED 保留成團結果（已結案、進分子）；CANCELLED＋COLLECTING／REVIEW_REQUIRED 才另列、不進分母', () => {
     const r = S([
-      d('1', '2026-10-02', 'FORMED', 'CANCELLED'),
+      d('1', '2026-10-02', 'FORMED', 'CANCELLED'), // 已成團後才取消（颱風）：仍算已成團
       d('2', '2026-10-03', 'COLLECTING', 'CANCELLED'),
-      d('3', '2026-10-04', 'AT_RISK', 'CANCELLED'),
-      d('4', '2026-10-05', 'FORMED', 'CLOSED'), // CLOSED 不是取消：照常算成團
+      d('3', '2026-10-04', 'REVIEW_REQUIRED', 'CANCELLED'),
+      d('4', '2026-10-05', 'FORMED', 'CLOSED'),
       d('5', '2026-10-06', 'COLLECTING', 'OPEN'),
     ]);
-    expect(r.cancelledUndecided).toBe(3);
-    expect(r).toMatchObject({ total: 5, concluded: 1, formed: 1, failed: 0, open: 1, successRatePercent: 100, failRatePercent: 0 });
-    // 分布不含已取消（未經成團決策）者：合計 + cancelledUndecided = total
-    expect(r.byStatus).toEqual({ COLLECTING: 1, FORMED: 1, REVIEW_REQUIRED: 0, AT_RISK: 0, FAILED: 0 });
+    expect(r.cancelledUndecided).toBe(2);
+    expect(r).toMatchObject({ total: 5, concluded: 2, formed: 2, failed: 0, open: 1, successRatePercent: 100, failRatePercent: 0 });
+    // 分布不含未經成團決策者：合計 + cancelledUndecided = total
+    expect(r.byStatus).toEqual({ COLLECTING: 1, FORMED: 2, REVIEW_REQUIRED: 0, AT_RISK: 0, FAILED: 0 });
+  });
+
+  it('CANCELLED＋AT_RISK：AT_RISK 發生在 FORMED 之後（18 §3），不歸未經成團決策，維持 AT_RISK 分布、不進比率', () => {
+    const r = S([d('1', '2026-10-02', 'AT_RISK', 'CANCELLED')]);
+    expect(r).toMatchObject({ total: 1, concluded: 0, cancelledUndecided: 0, open: 1 });
+    expect(r.byStatus.AT_RISK).toBe(1);
+  });
+
+  it('CANCELLED＋FORMED 但出發日未到 → 尚未結案（照一般規則）', () => {
+    const r = S([d('1', '2026-10-09', 'FORMED', 'CANCELLED')], '2026-10-05');
+    expect(r).toMatchObject({ concluded: 0, formed: 0, open: 1, cancelledUndecided: 0 });
   });
 
   it('只有「已取消（未經成團決策）」的團次 → 比率 null（分母 0），不推測為未成團', () => {
-    const r = S([d('1', '2026-10-02', 'FORMED', 'CANCELLED')]);
+    const r = S([d('1', '2026-10-02', 'COLLECTING', 'CANCELLED')]);
     expect(r).toMatchObject({ total: 1, concluded: 0, cancelledUndecided: 1, open: 0, successRatePercent: null, failRatePercent: null });
   });
 

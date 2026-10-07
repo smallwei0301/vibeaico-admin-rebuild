@@ -327,10 +327,11 @@ describe('GET /api/reports/guide', () => {
     state.departures = [
       { id: 'c1', tenant_id: TENANT, departs_on: '2026-10-02', status: 'CANCELLED', formation_status: 'FORMED' },
       { id: 'c2', tenant_id: TENANT, departs_on: '2026-10-03', status: 'CANCELLED', formation_status: 'FAILED' },
+      { id: 'c3', tenant_id: TENANT, departs_on: '2026-10-04', status: 'CANCELLED', formation_status: 'COLLECTING' },
     ];
     const b = (await (await get('?from=2026-10-01&to=2026-10-10')).json()).data;
     expect(b.formationUnavailableReason).toBeNull();
-    expect(b.formation.summary).toMatchObject({ total: 2, cancelledUndecided: 1, concluded: 1, failed: 1, formed: 0 });
+    expect(b.formation.summary).toMatchObject({ total: 3, cancelledUndecided: 1, concluded: 2, failed: 1, formed: 1 });
   });
 });
 
