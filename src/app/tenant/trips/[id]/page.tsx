@@ -22,9 +22,10 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
-  batchCreateDepartures, deleteTripAddon, deleteTripDeparture, deleteTripPlan, deleteTripPlanSeason,
+  batchCreateDepartures, decideDepartureFormation, deleteTripAddon, deleteTripDeparture, deleteTripPlan, deleteTripPlanSeason,
   getTrip, listTripAddons, listTripDepartures, listTripPlans, requestMidaoListing,
   saveTripAddon, saveTripDeparture, saveTripPlan, saveTripPlanSeason, updateTrip,
+  type FormationDecisionPayload,
 } from '@/services/tours';
 import { getTenantSettings } from '@/services/settings';
 import { formationTimeZone, formationLocalDateTime, formationWallTimeToIso } from '@/lib/departure-formation-time';
@@ -216,6 +217,9 @@ export default function TripDetailPage() {
   const [busy, setBusy] = React.useState(false);
   const [addonDraft, setAddonDraft] = React.useState<TripAddon | null>(null);
   const [departureDraft, setDepartureDraft] = React.useState<TripDeparture | null>(null);
+  /** #41：REVIEW_REQUIRED 團次的導遊決策（仍然成團／延長募集） */
+  const [decision, setDecision] = React.useState<{ kind: 'FORM' | 'EXTEND'; departure: TripDeparture } | null>(null);
+  const [decisionLocal, setDecisionLocal] = React.useState('');
   const [departureDeadlineLocal, setDepartureDeadlineLocal] = React.useState('');
   const [departureDeadlineChanged, setDepartureDeadlineChanged] = React.useState(false);
   const [departureTimeZone, setDepartureTimeZone] = React.useState<string | null>(null);
@@ -552,6 +556,23 @@ export default function TripDetailPage() {
       ? formationLocalDateTime(departure.formationDeadlineAt, departureTimeZone).slice(0, 16) : '');
     setDepartureDraft(departure);
   };
+  const submitDecision = async () => {
+    if (!decision) return;
+    let payload: FormationDecisionPayload;
+    if (decision.kind === 'FORM') {
+      payload = { decision: 'FORM' };
+    } else {
+      const iso = departureTimeZone ? confirmedFormationDeadline(decisionLocal, departureTimeZone) : undefined;
+      if (!iso) { toast.show(t.departures.formation.decision.extendInvalid, 'danger'); return; }
+      payload = { decision: 'EXTEND', newDeadline: iso };
+    }
+    const ok = await runAction(
+      () => decideDepartureFormation(decision.departure.id, payload),
+      decision.kind === 'FORM' ? t.departures.formation.decision.formed : t.departures.formation.decision.extended,
+    );
+    if (ok) setDecision(null);
+  };
+
   const saveDeparture = async () => {
     if (!departureDraft) return;
     if (departureDraft.capacity < departureDraft.seatsBooked) {
@@ -909,6 +930,23 @@ export default function TripDetailPage() {
             >
               {t.departures.reopenAction}
             </Button>
+          ) : null}
+          {d.formationStatus === 'REVIEW_REQUIRED' && d.status !== 'CANCELLED' ? (
+            <>
+              <Button
+                size="sm" title={t.departures.formation.decision.form} aria-label={t.departures.formation.decision.form}
+                onClick={() => setDecision({ kind: 'FORM', departure: d })}
+              >
+                {t.departures.formation.decision.form}
+              </Button>
+              <Button
+                variant="outline" size="sm"
+                title={t.departures.formation.decision.extend} aria-label={t.departures.formation.decision.extend}
+                onClick={() => { setDecisionLocal(''); setDecision({ kind: 'EXTEND', departure: d }); }}
+              >
+                {t.departures.formation.decision.extend}
+              </Button>
+            </>
           ) : null}
           <Button
             variant="outlineDanger" size="sm" title={t.actions.delete} aria-label={t.actions.delete}
@@ -2028,6 +2066,39 @@ export default function TripDetailPage() {
             </div>
           </div>
         ) : null}
+      </Modal>
+
+      <ConfirmModal
+        open={decision?.kind === 'FORM'}
+        onClose={() => setDecision(null)}
+        onConfirm={submitDecision}
+        title={t.departures.formation.decision.formTitle}
+        message={decision ? t.departures.formation.decision.formMessage(decision.departure.departsOn) : ''}
+        confirmText={t.departures.formation.decision.formConfirm}
+        loading={busy}
+      />
+
+      <Modal
+        open={decision?.kind === 'EXTEND'}
+        onClose={() => setDecision(null)}
+        title={t.departures.formation.decision.extendTitle}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDecision(null)}>{common.cancel}</Button>
+            <Button onClick={submitDecision} loading={busy}>{t.departures.formation.decision.extendConfirm}</Button>
+          </>
+        }
+      >
+        <FormGroup>
+          <Label htmlFor="decision-deadline" required>
+            {t.departures.formation.decision.extendLabel(departureTimeZone ?? t.departures.formationDeadline.loading)}
+          </Label>
+          <Input
+            id="decision-deadline" type="datetime-local" value={decisionLocal}
+            onChange={(e) => setDecisionLocal(e.target.value)}
+          />
+          <FormText>{t.departures.formation.decision.extendHelp}</FormText>
+        </FormGroup>
       </Modal>
 
       <ConfirmModal

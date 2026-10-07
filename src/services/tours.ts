@@ -5,7 +5,10 @@ import type {
 } from '@/lib/types';
 import { resolvePublicTimeZone } from '@/lib/public-time-zone';
 import { clampGalleryForCopy } from '@/lib/trip-gallery';
-import { addDays, repeatCustomerIdSet, zonedMidnightMs } from '@/server/guide-report';
+import { addDays, repeatCustomerIdSet, zonedMidnightMs, zonedToday } from '@/server/guide-report';
+import {
+  FormationDecisionError, buildExtendPatch, buildFormPatch, effectiveParticipants,
+} from '@/lib/departure-formation-decision';
 import { mockOrderToReportRow, mockTourOrdersRelativeToNow } from '@/mock/guide-report';
 import { canRegisterDepositPayment, canRegisterFullPayment, canTransitionTourOrder, shouldReleaseSeats } from '@/server/tour-domain';
 import {
@@ -376,6 +379,56 @@ export const listTripDepartures = (tripId: string) =>
   adapt<TripDeparture[]>(
     () => MOCK_TRIP_DEPARTURES.filter((d) => d.tripId === tripId),
     () => request<TripDeparture[]>(`/api/trips/${tripId}/departures`),
+  );
+
+/** #41：REVIEW_REQUIRED 團次的導遊決策（仍然成團／延長募集）。取消本團走退款流程，不在此。 */
+export type FormationDecisionPayload = { decision: 'FORM' } | { decision: 'EXTEND'; newDeadline: string };
+
+export const decideDepartureFormation = (id: string, payload: FormationDecisionPayload) =>
+  adapt<TripDeparture>(
+    () => {
+      const dep = MOCK_TRIP_DEPARTURES.find((d) => d.id === id);
+      if (!dep) throw new ApiError('找不到此團次', 'REQ_002', 404);
+      if (dep.status === 'CANCELLED') throw new ApiError('此團次已取消，無法做成團決策', 'REQ_003', 409);
+      if (dep.formationStatus !== 'REVIEW_REQUIRED') {
+        throw new ApiError('此團次的成團狀態已變更，請重新整理後再確認', 'REQ_003', 409);
+      }
+      const nowMs = Date.now();
+      try {
+        if (payload.decision === 'FORM') {
+          // 與真實 API 同一支「有效成團人數」規則（mock 訂單以行程＋方案＋日期時間對回團次）
+          const orders = mockTourOrdersRelativeToNow(nowMs)
+            .filter((o) => o.tripId === dep.tripId && o.planName === dep.planName
+              && o.departsOn === dep.departsOn && o.startTime === dep.startTime)
+            .map((o) => ({
+              status: o.status, party_size: o.partySize, paid_amount: mockOrderToReportRow(o).paid_amount,
+              upfront_required_amount: o.upfrontRequiredAmount ?? 0, deposit_mode_snapshot: o.depositModeSnapshot ?? null,
+            }));
+          const patch = buildFormPatch(effectiveParticipants(orders), 'mock-user', new Date(nowMs).toISOString());
+          dep.formationStatus = 'FORMED';
+          dep.formedAt = patch.formed_at as string;
+          dep.formedBy = 'GUIDE_OVERRIDE';
+          dep.formedParticipants = patch.formed_participants as number;
+        } else {
+          // mock 團次的出發日是固定的過去日期；為了讓示範能走完整流程，延長募集的「不晚於出發」
+          // 以「出發日與今天起 30 天後取較晚者」驗證（僅 mock；真實 API 用團次實際出發時間）。
+          const demoDeparts = [dep.departsOn, addDays(zonedToday(MOCK_TIME_ZONE, nowMs), 30)].sort().pop() as string;
+          const patch = buildExtendPatch(
+            { departs_on: demoDeparts, start_time: dep.startTime || null, formation_deadline_at: dep.formationDeadlineAt ?? null },
+            payload.newDeadline, MOCK_TIME_ZONE, 'mock-user', nowMs,
+          );
+          dep.formationStatus = 'COLLECTING';
+          dep.formationDeadlineAt = patch.formation_deadline_at as string;
+        }
+      } catch (e) {
+        if (e instanceof FormationDecisionError) throw new ApiError(e.message, 'REQ_001', 400);
+        throw e;
+      }
+      return { ...dep };
+    },
+    () => request<TripDeparture>(`/api/trip-departures/${id}/formation-decision`, {
+      method: 'POST', body: JSON.stringify(payload),
+    }),
   );
 
 export const saveTripDeparture = (tripId: string, payload: DepartureMutation) =>
