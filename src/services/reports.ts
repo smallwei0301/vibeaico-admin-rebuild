@@ -438,7 +438,15 @@ function buildMockGuideReport(q: GuideReportQuery): GuideReport {
     // 台北中午 12:00（= 04:00Z），避免落在日界線上
     created_at: `${addDays(to, -dayOffset)}T04:00:00Z`,
   }));
-  return computeGuideReport({ rows, from, to, timeZone: zone, tripNames: MOCK_GUIDE_TRIPS, planNames: MOCK_GUIDE_PLANS, asOf: new Date().toISOString() });
+  // 與 real 同一口徑：本期旅客中，本期開始之前已有非取消訂單者（mock 資料內 created_at 早於 from 的列）
+  const curFromMs = resolveReportRange(from, to, zone).curFromMs;
+  const priorCustomerIds = new Set(rows
+    .filter((r) => r.status !== 'CANCELLED' && r.customer_id && Date.parse(r.created_at) < curFromMs)
+    .map((r) => r.customer_id as string));
+  return computeGuideReport({
+    rows, from, to, timeZone: zone, tripNames: MOCK_GUIDE_TRIPS, planNames: MOCK_GUIDE_PLANS, priorCustomerIds,
+    asOf: new Date().toISOString(),
+  });
 }
 
 /** GUIDE 營運報表：mock 走同一支純計算（資料為 GUIDE 專屬）；real 打 /api/reports/guide */

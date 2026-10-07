@@ -47,8 +47,23 @@ describe('parseTourOrdersDeepLink 新參數', () => {
     expect(parseTourOrdersDeepLink('?status=BOGUS&createdFrom=10/01&createdTo=x'))
       .toMatchObject({ status: '', createdFrom: '', createdTo: '' });
     expect(parseTourOrdersDeepLink('')).toEqual({
-      paymentStatus: '', orderId: '', status: '', tripId: '', createdFrom: '', createdTo: '',
+      paymentStatus: '', orderId: '', status: '', tripId: '', createdFrom: '', createdTo: '', source: '',
     });
+  });
+});
+
+describe('來源下鑽參數', () => {
+  it('parse 只接受四個合法來源；build 帶出 source 且與 parse 互逆', () => {
+    expect(parseTourOrdersDeepLink('?source=LINE').source).toBe('LINE');
+    expect(parseTourOrdersDeepLink('?source=OTHER').source).toBe('');
+    const href = buildTourOrdersLink({ source: 'MIDAO', createdFrom: '2026-10-01', createdTo: '2026-10-10' });
+    expect(href).toBe('/tenant/tour-orders?createdFrom=2026-10-01&createdTo=2026-10-10&source=MIDAO');
+    expect(parseTourOrdersDeepLink(href.split('?')[1]).source).toBe('MIDAO');
+  });
+  it('GET 帶 source → .eq(source)；非法來源 → 400', async () => {
+    expect((await get('?source=LINE')).status).toBe(200);
+    expect(ops('tour_orders.eq')).toEqual(expect.arrayContaining([['tour_orders.eq', 'source', 'LINE']]));
+    expect((await get('?source=BOGUS')).status).toBe(400);
   });
 });
 

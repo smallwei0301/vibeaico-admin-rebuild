@@ -1,7 +1,7 @@
 import { ApiError, adapt, request } from '@/lib/api';
 import type {
   DepartureConflict, Trip, TripAddon, TripDeparture, TripPlan, TripPlanSeason,
-  TourOrder, TourOrderStatus, TourPaymentStatus, Paged,
+  TourOrder, TourOrderSource, TourOrderStatus, TourPaymentStatus, Paged,
 } from '@/lib/types';
 import { clampGalleryForCopy } from '@/lib/trip-gallery';
 import { addDays, zonedMidnightMs } from '@/server/guide-report';
@@ -708,7 +708,9 @@ export type TourOrdersDeepLink = {
   paymentStatus: TourPaymentStatus | ''; orderId: string;
   /** #45 報表下鑽 */
   status: TourOrderStatus | ''; tripId: string; createdFrom: string; createdTo: string;
+  source: TourOrderSource | '';
 };
+const TOUR_ORDER_SOURCE_VALUES: TourOrderSource[] = ['MIDAO', 'VIBEAI_SHOP', 'LINE', 'MANUAL'];
 
 export function parseTourOrdersDeepLink(search: string): TourOrdersDeepLink {
   const params = new URLSearchParams(search);
@@ -724,7 +726,9 @@ export function parseTourOrdersDeepLink(search: string): TourOrdersDeepLink {
   const ct = params.get('createdTo') ?? '';
   const createdFrom = YMD_RE.test(cf) ? cf : '';
   const createdTo = YMD_RE.test(ct) ? ct : '';
-  return { paymentStatus, orderId, status, tripId, createdFrom, createdTo };
+  const sr = params.get('source');
+  const source = sr && (TOUR_ORDER_SOURCE_VALUES as string[]).includes(sr) ? (sr as TourOrderSource) : '';
+  return { paymentStatus, orderId, status, tripId, createdFrom, createdTo, source };
 }
 
 /**
@@ -732,10 +736,10 @@ export function parseTourOrdersDeepLink(search: string): TourOrdersDeepLink {
  * 日期區間用報表實際使用的 range.from／range.to，與 API 同一套店家時區界線。
  */
 export function buildTourOrdersLink(f: {
-  status?: string; paymentStatus?: string; tripId?: string; createdFrom?: string; createdTo?: string;
+  status?: string; paymentStatus?: string; tripId?: string; createdFrom?: string; createdTo?: string; source?: string;
 }): string {
   const p = new URLSearchParams();
-  for (const k of ['status', 'paymentStatus', 'tripId', 'createdFrom', 'createdTo'] as const) {
+  for (const k of ['status', 'paymentStatus', 'tripId', 'createdFrom', 'createdTo', 'source'] as const) {
     if (f[k]) p.set(k, f[k] as string);
   }
   const qs = p.toString();

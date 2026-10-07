@@ -21,6 +21,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const drilldownSchema = z.object({
   status: z.enum(['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED']).optional(),
   tripId: z.string().uuid().optional(),
+  source: z.enum(['MIDAO', 'VIBEAI_SHOP', 'LINE', 'MANUAL']).optional(),
   createdFrom: z.string().regex(DATE_RE, 'createdFrom 需為 YYYY-MM-DD').optional(),
   createdTo: z.string().regex(DATE_RE, 'createdTo 需為 YYYY-MM-DD').optional(),
 });
@@ -40,7 +41,6 @@ export const GET = handle(async (req) => {
   const url = new URL(req.url);
   const page = Math.max(0, Number(url.searchParams.get('page') ?? 0) || 0);
   const size = Math.min(100, Math.max(1, Number(url.searchParams.get('size') ?? 20) || 20));
-  const source = url.searchParams.get('source');
   const paymentStatus = url.searchParams.get('paymentStatus');
   const keyword = (url.searchParams.get('keyword') ?? '').trim();
   // GUIDE 收件匣 REFUND_PENDING 卡片的 deep link（#43 類別 5）以 orderId 精準撈一筆，
@@ -50,6 +50,7 @@ export const GET = handle(async (req) => {
   const q = drilldownSchema.parse({
     status: url.searchParams.get('status') || undefined,
     tripId: url.searchParams.get('tripId') || undefined,
+    source: url.searchParams.get('source') || undefined,
     createdFrom: url.searchParams.get('createdFrom') || undefined,
     createdTo: url.searchParams.get('createdTo') || undefined,
   });
@@ -77,7 +78,7 @@ export const GET = handle(async (req) => {
     if (bounds.gteIso) query = query.gte('created_at', bounds.gteIso);
     if (bounds.ltIso) query = query.lt('created_at', bounds.ltIso);
   }
-  if (source) query = query.eq('source', source);
+  if (q.source) query = query.eq('source', q.source);
   if (paymentStatus) query = query.eq('payment_status', paymentStatus);
   // 顧客姓名與電話存在 contact jsonb 裡，訂單編號是欄位——兩者都要搜得到。
   if (keyword) {

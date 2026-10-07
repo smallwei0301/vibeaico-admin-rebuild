@@ -21,6 +21,7 @@ import {
 } from '@/services/reports';
 import { reportsPage } from '@/i18n/zh-TW/pages/reports';
 import { presetRange, todayIn } from '@/lib/guide-report-range';
+import { GUIDE_SOURCE_KEYS, GUIDE_SOURCES } from '@/server/guide-report';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/utils';
 
 const t = reportsPage.guideReport;
@@ -141,8 +142,8 @@ export function GuideReportView() {
   const cardLabel = (name: string) => (report?.truncated ? `${name}（${t.truncatedHint}）` : name);
   const s = report?.summary;
   const prev = report?.previous;
-  const rangeLink = (status?: string) => buildTourOrdersLink({
-    status, createdFrom: report?.range.from, createdTo: report?.range.to,
+  const rangeLink = (status?: string, source?: string) => buildTourOrdersLink({
+    status, source, createdFrom: report?.range.from, createdTo: report?.range.to,
   });
   const rows = report ? report.ranking[dimension][metric] : [];
 
@@ -288,6 +289,54 @@ export function GuideReportView() {
           </Card>
 
           <Card className="mb-4">
+            <CardHeader><CardTitle>{t.sourceCard.title}</CardTitle></CardHeader>
+            <CardBody>
+              <p className="form-text mb-3">{t.sourceCard.description}</p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+                {GUIDE_SOURCE_KEYS.map((k) => {
+                  const name = t.sourceCard.names[k];
+                  const stat = s.bySource[k];
+                  const line = t.sourceCard.line(stat.orders, formatCurrency(stat.revenue));
+                  return (
+                    <div key={k}>
+                      <div className="stat-label">{name}</div>
+                      <div className="stat-value text-base">
+                        {(GUIDE_SOURCES as readonly string[]).includes(k)
+                          ? <Link href={rangeLink(undefined, k)} className="underline" title={t.sourceCard.viewSourceOrders(name)}>{line}</Link>
+                          : line}
+                      </div>
+                      <div className="form-text">{t.sourceCard.previous(prev.bySource[k].orders)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardBody>
+          </Card>
+
+          <Card className="mb-4">
+            <CardHeader><CardTitle>{t.repeatCard.title}</CardTitle></CardHeader>
+            <CardBody>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <div className="stat-label">{t.repeatCard.customers}</div>
+                  <div className="stat-value">{formatNumber(report.repeat.customers)}</div>
+                </div>
+                <div>
+                  <div className="stat-label">{t.repeatCard.repeatCustomers}</div>
+                  <div className="stat-value">{formatNumber(report.repeat.repeatCustomers)}</div>
+                </div>
+                <div>
+                  <div className="stat-label">{t.repeatCard.rate}</div>
+                  <div className="stat-value">
+                    {report.repeat.ratePercent === null ? t.noData : formatPercent(report.repeat.ratePercent, 1)}
+                  </div>
+                </div>
+              </div>
+              <p className="form-text mt-2">{t.repeatCard.unlinked(report.repeat.unlinkedOrders)}</p>
+            </CardBody>
+          </Card>
+
+          <Card className="mb-4">
             <CardHeader><CardTitle>{t.ranking.title}</CardTitle></CardHeader>
             <CardBody>
               <Tabs
@@ -320,7 +369,7 @@ export function GuideReportView() {
         <CardHeader><CardTitle>{t.defs.title}</CardTitle></CardHeader>
         <CardBody>
           <ul className="list-disc space-y-1 pl-5 text-sm">
-            {[t.defs.scope, t.defs.orders, t.defs.revenue, t.defs.avgOrderValue, t.defs.cancelled, t.defs.ranking, t.defs.comparison].map((line) => (
+            {[t.defs.scope, t.defs.orders, t.defs.revenue, t.defs.avgOrderValue, t.defs.cancelled, t.defs.ranking, t.defs.source, t.defs.repeat, t.defs.comparison].map((line) => (
               <li key={line}>{line}</li>
             ))}
           </ul>

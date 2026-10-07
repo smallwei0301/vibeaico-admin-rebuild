@@ -118,6 +118,7 @@ export default function TourOrdersPage() {
     const dl = parseTourOrdersDeepLink(window.location.search);
     const { paymentStatus, orderId } = dl;
     if (dl.status) setStatusFilter(dl.status);
+    if (dl.source) setSourceFilter(dl.source);
     if (dl.tripId) setTripFilter(dl.tripId);
     if (dl.createdFrom) setCreatedFrom(dl.createdFrom);
     if (dl.createdTo) setCreatedTo(dl.createdTo);

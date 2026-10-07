@@ -4,12 +4,14 @@ const TENANT = '11111111-1111-4111-8111-111111111111';
 const OTHER = '22222222-2222-4222-8222-222222222222';
 const state = vi.hoisted(() => ({
   denied: false,
-  calls: [] as { table: string; filters: Record<string, unknown>; gte?: unknown; lt?: unknown }[],
+  calls: [] as { table: string; filters: Record<string, unknown>; gte?: unknown; lt?: unknown; neq?: unknown }[],
   orders: [] as Record<string, unknown>[],
   timezone: undefined as string | undefined,
   pages: [] as { gt: unknown; limit: number }[],
   inCalls: [] as { table: string; size: number; tenant: unknown }[],
   nameError: '' as string,
+  priorError: false,
+  priorCalls: [] as { tenant: unknown; neq: unknown; lt: unknown; ids: string[] }[],
 }));
 
 vi.mock('@/config/env', () => ({ USE_MOCK: false }));
@@ -27,13 +29,19 @@ vi.mock('@/server/tenant', () => ({
 
 const fakeDb = {
   from: (table: string) => {
-    const call: { table: string; filters: Record<string, unknown>; gte?: unknown; lt?: unknown } = { table, filters: {} };
+    const call: { table: string; filters: Record<string, unknown>; gte?: unknown; lt?: unknown; neq?: unknown } = { table, filters: {} };
     state.calls.push(call);
     let ids: string[] | undefined;
     let gtId: string | undefined;
     let lim = Infinity;
     const rowsFor = () => {
       if (table === 'tenant_settings') return [];
+      if (table === 'tour_orders' && call.gte === undefined) { // 「本期之前」查詢：只回 customer_id
+        state.priorCalls.push({ tenant: call.filters.tenant_id, neq: call.neq, lt: call.lt, ids: ids ?? [] });
+        return state.orders.filter((r) => r.tenant_id === call.filters.tenant_id && r.status !== call.neq
+          && (r.created_at as string) < (call.lt as string) && ids?.includes(r.customer_id as string))
+          .map((r) => ({ id: r.id, customer_id: r.customer_id }));
+      }
       if (table === 'tour_orders') {
         return state.orders.filter((r) => r.tenant_id === call.filters.tenant_id
           && (r.created_at as string) >= (call.gte as string) && (r.created_at as string) < (call.lt as string));
@@ -52,6 +60,7 @@ const fakeDb = {
       },
       gte: (_k: string, v: unknown) => { call.gte = v; return q; },
       lt: (_k: string, v: unknown) => { call.lt = v; return q; },
+      neq: (_k: string, v: unknown) => { call.neq = v; return q; },
       order: () => q,
       gt: (_k: string, v: string) => { gtId = v; return q; },
       limit: (n: number) => {
@@ -63,7 +72,7 @@ const fakeDb = {
         data: table === 'tenant_settings' && state.timezone ? { basic: { timezone: state.timezone } } : null, error: null,
       }),
       then: (resolve: (v: unknown) => unknown) => resolve(
-        (table === state.nameError)
+        (table === state.nameError || (state.priorError && table === 'tour_orders' && call.gte === undefined))
           ? { data: null, error: new Error('names failed') }
           : { data: rowsFor().filter((r) => !gtId || (r.id as string) > gtId).sort((a, b) => ((a.id as string) < (b.id as string) ? -1 : 1)).slice(0, lim), error: null }),
     };
@@ -83,7 +92,7 @@ const order = (o: Record<string, unknown>) => ({
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-12-01T00:00:00Z'));
-  state.denied = false; state.calls = []; state.inCalls = []; state.pages = []; state.nameError = ''; state.timezone = undefined;
+  state.denied = false; state.calls = []; state.inCalls = []; state.pages = []; state.nameError = ''; state.priorError = false; state.priorCalls = []; state.timezone = undefined;
   state.orders = [
     order({ id: 'a1', tenant_id: TENANT, created_at: '2026-10-02T02:00:00Z' }),
     order({ id: 'b1', tenant_id: OTHER, created_at: '2026-10-02T02:00:00Z', paid_amount: 777777 }),
@@ -208,5 +217,38 @@ describe('GET /api/reports/guide', () => {
     await get('?from=2026-10-01&to=2026-10-10');
     const oc = state.calls.find((c) => c.table === 'tour_orders')!;
     expect(oc.lt).toBe('2026-10-11T04:00:00.000Z');
+  });
+
+  it('重複旅客先前訂單查詢：以 customer_id 分批 200、帶 tenant_id、排除取消、界線為本期開始（台北 10/01 00:00 = 09-30T16:00Z）', async () => {
+    // 450 位本期旅客各 1 筆；其中 c0、c449 在本期前有非取消訂單，c1 只有取消的先前訂單
+    state.orders = [
+      ...Array.from({ length: 450 }, (_, i) => order({
+        id: `n${i}`, tenant_id: TENANT, customer_id: `c${i}`, trip_id: 't', plan_id: 'p', created_at: '2026-10-02T02:00:00Z',
+      })),
+      order({ id: 'p0', tenant_id: TENANT, customer_id: 'c0', created_at: '2026-08-01T02:00:00Z' }),
+      order({ id: 'p449', tenant_id: TENANT, customer_id: 'c449', created_at: '2026-09-30T15:59:59Z' }),
+      order({ id: 'p1', tenant_id: TENANT, customer_id: 'c1', status: 'CANCELLED', created_at: '2026-08-01T02:00:00Z' }),
+      order({ id: 'px', tenant_id: OTHER, customer_id: 'c2', created_at: '2026-08-01T02:00:00Z' }),
+    ];
+    const body = await (await get('?from=2026-10-01&to=2026-10-10')).json();
+    expect(state.priorCalls.map((c) => c.ids.length)).toEqual([200, 200, 50]);
+    for (const c of state.priorCalls) {
+      expect(c.tenant).toBe(TENANT);
+      expect(c.neq).toBe('CANCELLED');
+      expect(c.lt).toBe('2026-09-30T16:00:00.000Z');
+    }
+    // p449 落在 09-30 23:59:59 台北時間 = 15:59:59Z，早於本期開始 → 算；c2 屬於其他租戶 → 不算；c1 先前只有取消 → 不算
+    expect(body.data.repeat).toEqual({ customers: 450, repeatCustomers: 2, ratePercent: 0.4, unlinkedOrders: 0 });
+  });
+
+  it('先前訂單查詢失敗 → 500，不靜默當成沒有重複', async () => {
+    state.orders = [order({ id: 'z1', tenant_id: TENANT, customer_id: 'c1', created_at: '2026-10-02T02:00:00Z' })];
+    state.priorError = true;
+    expect((await get('?from=2026-10-01&to=2026-10-10')).status).toBe(500);
+  });
+
+  it('本期沒有已綁定旅客 → 不發出先前訂單查詢', async () => {
+    await get('?from=2026-10-01&to=2026-10-10');
+    expect(state.priorCalls).toHaveLength(0);
   });
 });
