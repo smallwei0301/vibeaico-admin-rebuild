@@ -19,6 +19,7 @@ import {
   type GuideRankDimension, type GuideRankMetric, type GuideRankRow, type GuideReport,
 } from '@/services/reports';
 import { reportsPage } from '@/i18n/zh-TW/pages/reports';
+import { presetRange } from '@/lib/guide-report-range';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/utils';
 
 const t = reportsPage.guideReport;
@@ -27,12 +28,6 @@ const PRESET_DAYS = { last7: 7, last30: 30, last90: 90 } as const;
 const RANK_TONE = ['warning', 'neutral', 'info'] as const;
 const METRICS: GuideRankMetric[] = ['orders', 'people', 'revenue'];
 const DIMENSIONS: GuideRankDimension[] = ['trip', 'plan'];
-
-/** 純日曆運算（與時區無關）：YYYY-MM-DD 加減天數 */
-function shiftDate(ymd: string, days: number): string {
-  const [y, m, d] = ymd.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
-}
 
 /** 與上一期的增減說明；上一期為 0 或無資料 → 不顯示百分比 */
 function changeText(pct: number | null): string {
@@ -46,6 +41,10 @@ export function GuideReportView() {
   const [report, setReport] = React.useState<GuideReport | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [forbidden, setForbidden] = React.useState(false);
+  const [loadError, setLoadError] = React.useState(false);
+  const [reloadKey, setReloadKey] = React.useState(0);
+  /** 最近一次成功的報表；失敗時用來還原輸入框（避免在 state updater 內產生副作用） */
+  const lastReport = React.useRef<GuideReport | null>(null);
   /** null = 使用後端預設（近 30 天，店家時區） */
   const [query, setQuery] = React.useState<{ from: string; to: string } | null>(null);
   const [fromInput, setFromInput] = React.useState('');
@@ -56,10 +55,12 @@ export function GuideReportView() {
   React.useEffect(() => {
     let alive = true;
     setLoading(true);
+    setLoadError(false);
     void (async () => {
       try {
         const r = await getGuideReport(query ?? {});
         if (!alive) return;
+        lastReport.current = r;
         setReport(r);
         setFromInput(r.range.from);
         setToInput(r.range.to);
@@ -67,28 +68,30 @@ export function GuideReportView() {
         if (!alive) return;
         if (e instanceof ApiError && e.status === 403) {
           setForbidden(true);
+          lastReport.current = null;
           setReport(null);
         } else {
           toast.show(e instanceof Error ? e.message : t.errors.loadFailed, 'danger');
-          // 失敗時保留的是上一份報表：輸入框還原成該報表的區間，數字與區間才一致
-          setReport((prev) => {
-            if (prev) { setFromInput(prev.range.from); setToInput(prev.range.to); }
-            return prev;
-          });
+          // 失敗時保留的是上一份報表：輸入框還原成該報表的區間，數字與區間才一致；
+          // 沒有既有報表（首次載入失敗）則顯示錯誤狀態與重試
+          const last = lastReport.current;
+          if (last) { setFromInput(last.range.from); setToInput(last.range.to); } else setLoadError(true);
         }
       } finally {
         if (alive) setLoading(false);
       }
     })();
     return () => { alive = false; };
-  }, [query, toast]);
+  }, [query, reloadKey, toast]);
 
   const applyPreset = (days: number) => {
-    // 以目前報表的結束日為錨點會讓「近 N 天」漂移，改用後端算出的今天：
-    // 預設查詢的 range.to 即店家時區的今天，第一次載入後才會有值。
-    const anchor = report?.range.timeZone ? todayIn(report.range.timeZone) : toInput;
-    if (!anchor) return;
-    setQuery({ from: shiftDate(anchor, -(days - 1)), to: anchor });
+    // 以後端回報的店家時區算「今天」；尚無報表時回退預設時區，不再因沒有 anchor 而無反應
+    setQuery(presetRange(days, report?.range.timeZone));
+  };
+
+  const retry = () => {
+    setQuery(null);
+    setReloadKey((k) => k + 1);
   };
 
   const applyCustom = () => {
@@ -174,6 +177,19 @@ export function GuideReportView() {
                   {t.emptyAction}
                 </Link>
               }
+            />
+          </CardBody>
+        </Card>
+      ) : null}
+
+      {!loading && !report && loadError ? (
+        <Card className="mb-4">
+          <CardBody className="py-12">
+            <EmptyState
+              icon={BarChart3}
+              title={t.errors.loadFailed}
+              description={t.errors.loadFailedHint}
+              action={<Button onClick={retry}>{t.errors.retry}</Button>}
             />
           </CardBody>
         </Card>
@@ -295,9 +311,4 @@ export function GuideReportView() {
       </Card>
     </>
   );
-}
-
-/** 店家時區的今天（YYYY-MM-DD） */
-function todayIn(zone: string): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }

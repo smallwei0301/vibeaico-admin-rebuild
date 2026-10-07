@@ -32,7 +32,7 @@ describe('#45 GUIDE reporting routing (mode preset)', () => {
     const view = read('src/app/tenant/reports/GuideReportView.tsx');
     expect(view).toContain('e.status === 403');
     expect(view).toContain('t.forbidden.title');
-    expect(view).toContain('setFromInput(prev.range.from)');
+    expect(view).toContain('setFromInput(last.range.from)');
     expect(reportsCopy).toContain('需要店長或管理者權限');
   });
 });
