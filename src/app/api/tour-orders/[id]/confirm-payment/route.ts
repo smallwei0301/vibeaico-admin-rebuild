@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { handle, ok, fail, ERR, ApiHttpError, PUBLIC_JSON_BODY_LIMIT_BYTES } from '@/server/http';
+import { handle, ok, fail, ERR, readOptionalJsonBody, PUBLIC_JSON_BODY_LIMIT_BYTES } from '@/server/http';
 import { requireTenantManager } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
 import { canRegisterDepositPayment, canRegisterFullPayment, canTransitionTourOrder } from '@/server/tour-domain';
@@ -10,13 +10,10 @@ type Context = { params: Promise<{ id: string }> };
 /** #769：kind 省略 = FULL（相容既有無 body 的呼叫）。 */
 const bodySchema = z.object({ kind: z.enum(['DEPOSIT', 'FULL']).optional() });
 
-/** 空 body 合法（= FULL）；非空必須是合法 JSON 並通過 zod。 */
+/** 空 body 合法（= FULL）；非空必須是合法 JSON 並通過 zod。上限以串流位元組計（超限 413）。 */
 async function readKind(req: Request): Promise<'DEPOSIT' | 'FULL'> {
-  const text = await req.text();
-  if (!text.trim()) return 'FULL';
-  if (text.length > PUBLIC_JSON_BODY_LIMIT_BYTES) throw new ApiHttpError(413, '輸入內容過大', ERR.PAYLOAD_TOO_LARGE);
-  let raw: unknown;
-  try { raw = JSON.parse(text); } catch { throw new ApiHttpError(400, '輸入格式錯誤', ERR.VALIDATION); }
+  const raw = await readOptionalJsonBody(req, PUBLIC_JSON_BODY_LIMIT_BYTES);
+  if (raw === undefined) return 'FULL';
   return bodySchema.parse(raw).kind ?? 'FULL';
 }
 

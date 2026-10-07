@@ -221,6 +221,26 @@ describe('POST confirm-payment kind（#769 訂金／全額）', () => {
     expect(state.update).toMatchObject({ payment_status: 'PAID' });
   });
 
+  it('超大 body（content-length 與實際皆超限）→ 413，不寫入', async () => {
+    state.current = row({});
+    const big = JSON.stringify({ kind: 'FULL', pad: 'a'.repeat(17 * 1024) });
+    await expect((await load())(jsonReq(big), ctx)).rejects.toMatchObject({ status: 413 });
+    expect(state.update).toBeNull();
+  });
+
+  it('多位元組超限（字元數 < 16K、位元組 > 16K，無 content-length）→ 413', async () => {
+    state.current = row({});
+    const text = JSON.stringify({ kind: 'FULL', pad: '中'.repeat(6000) }); // ~6K 字元、~18K bytes
+    expect(text.length).toBeLessThan(16 * 1024);
+    const bytes = new TextEncoder().encode(text);
+    const body = new ReadableStream<Uint8Array>({ start(c) { c.enqueue(bytes); c.close(); } });
+    const r = new Request('http://x/api/tour-orders/o1/confirm-payment', {
+      method: 'POST', body, duplex: 'half',
+    } as RequestInit);
+    await expect((await load())(r, ctx)).rejects.toMatchObject({ status: 413 });
+    expect(state.update).toBeNull();
+  });
+
   it('kind 非法值或壞 JSON → 400，不寫入', async () => {
     state.current = row({});
     // 此檔把 handle() 換成直通，所以 zod／ApiHttpError 以 reject 呈現（真實 handle 會轉 400）。

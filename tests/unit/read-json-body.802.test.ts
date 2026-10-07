@@ -10,7 +10,7 @@ vi.mock('@/server/send-code', () => ({ dispatchVerificationCode: (...a: unknown[
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => undefined }) }));
 
 import {
-  readJsonBody, ApiHttpError, ERR, PUBLIC_JSON_BODY_LIMIT_BYTES,
+  readJsonBody, readOptionalJsonBody, ApiHttpError, ERR, PUBLIC_JSON_BODY_LIMIT_BYTES,
 } from '@/server/http';
 import { POST as sendCode } from '@/app/api/auth/send-verification-code/route';
 
@@ -195,5 +195,46 @@ describe('POST /api/auth/change-password body 上限 (#802)', () => {
     expect(res.status).toBe(413);
     expect(await res.json()).toEqual({ success: false, message: '請求內容過大', code: ERR.PAYLOAD_TOO_LARGE });
     expect(requireUser).not.toHaveBeenCalled();
+  });
+});
+
+describe('readOptionalJsonBody（#816 Codex P2）', () => {
+  it('無 body／空 body／空白字串 → undefined', async () => {
+    await expect(readOptionalJsonBody(new Request('http://localhost/x', { method: 'POST' }), 1024)).resolves.toBeUndefined();
+    await expect(readOptionalJsonBody(new Request('http://localhost/x', { method: 'POST', body: '' }), 1024)).resolves.toBeUndefined();
+    await expect(readOptionalJsonBody(new Request('http://localhost/x', { method: 'POST', body: ' \n\t ' }), 1024)).resolves.toBeUndefined();
+  });
+
+  it('合法 JSON 正常解析', async () => {
+    await expect(readOptionalJsonBody(new Request('http://localhost/x', { method: 'POST', body: '{"a":1}' }), 1024))
+      .resolves.toEqual({ a: 1 });
+  });
+
+  it('壞 JSON → 400 REQ_001', async () => {
+    await expect(readOptionalJsonBody(new Request('http://localhost/x', { method: 'POST', body: '{bad' }), 1024))
+      .rejects.toMatchObject({ status: 400, code: ERR.VALIDATION });
+  });
+
+  it('content-length 超限 → 413，不讀 body', async () => {
+    const { req, state } = streamReq([enc.encode('{}')], { 'content-length': '2048' });
+    const e = await catch413(readOptionalJsonBody(req, 1024));
+    expect(e.status).toBe(413);
+    expect(state.pulled).toBeLessThanOrEqual(1); // ReadableStream 建構時預拉一塊；預檢不再讀取
+  });
+
+  it('無 content-length 但串流超限（多位元組字元：字元數 < 上限、位元組 > 上限）→ 413 並 cancel', async () => {
+    const text = '"' + '中'.repeat(400) + '"'; // 402 字元、1202 bytes
+    expect(text.length).toBeLessThan(1024);
+    const { req, state } = streamReq([enc.encode(text)]);
+    const e = await catch413(readOptionalJsonBody(req, 1024));
+    expect(e.status).toBe(413);
+    expect(e.code).toBe(ERR.PAYLOAD_TOO_LARGE);
+    expect(state.cancelled).toBe(true);
+  });
+
+  it('readJsonBody 行為不變：空 body／無 body／空白 → 400', async () => {
+    await expect(readJsonBody(new Request('http://localhost/x', { method: 'POST' }), 1024)).rejects.toMatchObject({ status: 400 });
+    await expect(readJsonBody(new Request('http://localhost/x', { method: 'POST', body: '' }), 1024)).rejects.toMatchObject({ status: 400 });
+    await expect(readJsonBody(new Request('http://localhost/x', { method: 'POST', body: '  ' }), 1024)).rejects.toMatchObject({ status: 400 });
   });
 });
