@@ -78,11 +78,21 @@ const DEPARTURE_ANCHOR_DATE = '2026-08-23';
  */
 export function mockDepartureRows(nowMs: number = Date.now()): GuideDepartureRow[] {
   const today = zonedToday(ZONE, nowMs);
+  // 報表示範的呈現調整（不改 MOCK_TRIP_DEPARTURES，收件匣／成團決策 mock 仍用原本的種子）：
+  //  - dp_4（REVIEW_REQUIRED）設為今天出發 → 呈現「今天出發、尚待成團決策 1 團」（尚未結案）
+  //  - dp_3、dp_5（過去的 COLLECTING）改為已有決策（FORMED／FAILED），不再全都像舊資料
+  //  - dp_10 保留過去的 COLLECTING → 呈現「無成團決策紀錄 1 團」
+  const reportOverride: Record<string, { departs_on?: string; formation_status?: string }> = {
+    dp_4: { departs_on: today },
+    dp_3: { formation_status: 'FORMED' },
+    dp_5: { formation_status: 'FAILED' },
+  };
   const seeded = MOCK_TRIP_DEPARTURES.map((d) => ({
     id: d.id,
     departs_on: addDays(today, -9 + diffDays(d.departsOn, DEPARTURE_ANCHOR_DATE)),
     formation_status: d.formationStatus ?? 'COLLECTING',
     status: d.status,
+    ...reportOverride[d.id],
   }));
   const previousPeriod: GuideDepartureRow[] = [
     { id: 'mock_prev_1', departs_on: addDays(today, -40), formation_status: 'FORMED' },

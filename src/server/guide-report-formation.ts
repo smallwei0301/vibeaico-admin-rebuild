@@ -13,7 +13,7 @@
  *    0107 新增 formation_status 時 NOT NULL DEFAULT 'COLLECTING' 且未回填歷史，成團功能上線前就建立的團次會帶著這個預設值，
  *    不能把 migration default 當成真實狀態，更不能說它「還在募集中」。0107 沒有可靠的 legacy 標記
  *    （formation_deadline_at、formation_decided_at 對舊列為 NULL，但新團次也可能為 NULL；min_to_depart_snapshot 預設 1 無法區分），
- *    且不得依賴 0108 之後才有的欄位，所以只用「出發日已到＋仍無決策」判定。這些團次不進比率分子分母，也不算尚未結案，另行單獨計數。
+ *    且不得依賴 0108 之後才有的欄位，所以只用「出發日已過＋仍無決策」判定。這些團次不進比率分子分母，也不算尚未結案，另行單獨計數。
  *    AT_RISK 在各狀態團數分布中仍照實列出，呈現目前風險。
  *  - 成團率 = 已成團（FORMED＋AT_RISK）÷ 已結案；未達門檻率 = 已結案 FAILED ÷ 已結案；分母 0 → null。1 位小數。
  *  - 團次本身的 status（OPEN／CLOSED／CANCELLED，0066）與 formation_status 是兩條獨立的軸：
@@ -31,7 +31,7 @@
  *  - 不變式（summarizeFormation 的測試逐條鎖定）：
  *      total = Σ byStatus + cancelledUndecided + undecidedPast
  *      total = concluded + open + cancelledUndecided + undecidedPast
- *      concluded = formed + failed；open ＝ 出發日未到（且非未經決策取消）的團次。
+ *      concluded = formed + failed；open ＝ 尚未結案：出發日未到，或今天出發仍待決策（且非未經決策取消）的團次。
  *  - 上一期：與本期等長、緊接在前，用同一個「今天」；比較以百分點（pointDiff）。
  *  - 這是「目前的成團狀態」：formation_status 沒有歷史快照，所以數字反映讀取當下的狀態，不是當時的狀態。
  */
@@ -62,11 +62,11 @@ export type GuideFormationSummary = {
   /** 已取消（status = CANCELLED）且 formation_status 為 COLLECTING／REVIEW_REQUIRED：未經成團決策，不進比率、不算尚未結案 */
   cancelledUndecided: number;
   /**
-   * 出發日已到（≤ 店家今天）、未取消、formation_status 仍為 COLLECTING／REVIEW_REQUIRED：無成團決策紀錄
+   * 出發日已過（< 店家今天）、未取消、formation_status 仍為 COLLECTING／REVIEW_REQUIRED：無成團決策紀錄
    * （例如成團功能上線前建立的團次，migration 預設值 COLLECTING 不是真實狀態）。不進比率、不算尚未結案。
    */
   undecidedPast: number;
-  /** total − concluded − cancelledUndecided − undecidedPast：尚未結案（出發日未到） */
+  /** total − concluded − cancelledUndecided − undecidedPast：尚未結案（出發日未到，或今天出發仍待成團決策） */
   open: number;
   /** formed ÷ concluded × 100（1 位小數）；分母 0 → null */
   successRatePercent: number | null;
@@ -103,7 +103,7 @@ export function summarizeFormation(
     if (r.departs_on < from || r.departs_on > to || !isStatus(r.formation_status)) continue;
     total += 1;
     if (r.status === 'CANCELLED' && UNDECIDED_STATUSES.includes(r.formation_status)) { cancelledUndecided += 1; continue; }
-    if (r.departs_on <= today && UNDECIDED_STATUSES.includes(r.formation_status)) { undecidedPast += 1; continue; }
+    if (r.departs_on < today && UNDECIDED_STATUSES.includes(r.formation_status)) { undecidedPast += 1; continue; }
     byStatus[r.formation_status] += 1;
     if (r.departs_on <= today) {
       if (r.formation_status === 'FORMED' || r.formation_status === 'AT_RISK') formed += 1;

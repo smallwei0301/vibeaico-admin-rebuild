@@ -154,7 +154,7 @@ describe('無成團決策紀錄（出發日已過但仍是 COLLECTING／REVIEW_R
   const rows = [
     d('1', '2026-10-02', 'COLLECTING'), d('2', '2026-10-03', 'REVIEW_REQUIRED'), // 已過、無決策 → undecidedPast
     d('3', '2026-10-05', 'COLLECTING'), d('4', '2026-10-06', 'REVIEW_REQUIRED'), // today=10-04：出發日未到 → 尚未結案
-    d('5', '2026-10-04', 'COLLECTING'), // 出發日＝今天（含當天算已到）→ undecidedPast
+    d('5', '2026-10-04', 'COLLECTING'), // 出發日＝今天、仍待決策 → open（尚未結案），不是 undecidedPast
     d('6', '2026-10-01', 'FORMED'), d('7', '2026-10-01', 'FAILED'),
     d('8', '2026-10-02', 'COLLECTING', 'CANCELLED'), // 未經決策取消優先歸 cancelledUndecided
   ];
@@ -162,10 +162,15 @@ describe('無成團決策紀錄（出發日已過但仍是 COLLECTING／REVIEW_R
 
   it('不進成團率分子分母、不算尚未結案、不算募集中', () => {
     expect(r).toMatchObject({
-      total: 8, concluded: 2, formed: 1, failed: 1, undecidedPast: 3, cancelledUndecided: 1, open: 2,
+      total: 8, concluded: 2, formed: 1, failed: 1, undecidedPast: 2, cancelledUndecided: 1, open: 3,
       successRatePercent: 50, failRatePercent: 50,
     });
-    expect(r.byStatus).toEqual({ COLLECTING: 1, FORMED: 1, REVIEW_REQUIRED: 1, AT_RISK: 0, FAILED: 1 });
+    expect(r.byStatus).toEqual({ COLLECTING: 2, FORMED: 1, REVIEW_REQUIRED: 1, AT_RISK: 0, FAILED: 1 });
+  });
+
+  it('今天出發且仍 COLLECTING／REVIEW_REQUIRED（未取消）歸 open；已取消者仍歸 cancelledUndecided', () => {
+    const x = S([d('1', '2026-10-04', 'COLLECTING'), d('2', '2026-10-04', 'REVIEW_REQUIRED'), d('3', '2026-10-04', 'COLLECTING', 'CANCELLED')], '2026-10-04');
+    expect(x).toMatchObject({ total: 3, open: 2, undecidedPast: 0, cancelledUndecided: 1, concluded: 0 });
   });
 
   it('不變式：total = Σ byStatus + cancelledUndecided + undecidedPast = concluded + open + cancelledUndecided + undecidedPast', () => {
