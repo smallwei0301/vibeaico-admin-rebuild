@@ -59,9 +59,9 @@ function withDepartures(tables: Record<string, FakeRow[]>): Record<string, FakeR
   const orders = tables.tour_orders.map((o) => {
     const emb = o.trip_departures as FakeRow | undefined;
     if (!emb) return o;
-    const id = `dep:${emb.departs_on}|${emb.start_time ?? ''}`;
+    const id = `dep:${emb.departs_on}|${emb.start_time ?? ''}|${emb.status ?? ''}`;
     if (!deps.has(id)) {
-      deps.set(id, { id, tenant_id: o.tenant_id, status: 'OPEN', departs_on: emb.departs_on, start_time: emb.start_time ?? null });
+      deps.set(id, { id, tenant_id: o.tenant_id, status: (emb.status as string) ?? 'OPEN', departs_on: emb.departs_on, start_time: emb.start_time ?? null });
     }
     return { ...o, departure_id: id };
   });
@@ -431,6 +431,61 @@ describe('route.ts: payment-due source filters, window and display fields (#43 �
     expect(due[0].id).toBe('near');
     expect(due.filter((i) => i.stage === 'BALANCE')).toHaveLength(20);
     expect(depWindowQueries().length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('both fast and slow paths exclude CANCELLED departures (trip_departures.status)', async () => {
+    const cancelled = { departs_on: dayStr(2), start_time: '09:00:00', status: 'CANCELLED' };
+    // 快路徑：少量訂單
+    const fast = await run([mk({ id: 'live' }), mk({ id: 'cancelled', trip_departures: cancelled })]);
+    expect(fast.map((i) => i.id)).toEqual(['live']);
+    const fastQ = paymentOrderQueries();
+    for (const q of fastQ) {
+      expect(q.calls.some(([m, a]) => m === 'neq' && a[0] === 'trip_departures.status' && a[1] === 'CANCELLED')).toBe(true);
+    }
+    // 慢路徑：>200 筆強迫走團次掃描；已取消團次上的近期訂單仍不得出現
+    const rows = [
+      ...Array.from({ length: 250 }, (_, i) => mk({ id: `q${i}`, trip_departures: { departs_on: dayStr(300 - i), start_time: '09:00:00' } })),
+      mk({ id: 'cancelled-near', trip_departures: { ...cancelled, departs_on: dayStr(1) } }),
+    ];
+    const slow = (await run(rows)).filter((i) => i.stage === 'BALANCE');
+    expect(slow.map((i) => i.id)).not.toContain('cancelled-near');
+    expect(slow).toHaveLength(20);
+  });
+
+  it('slow path does not stop at ≥20 cards when the batch boundary cuts inside a day: a same-day earlier-start order in the next batch is included', async () => {
+    const day5 = dayStr(5);
+    // 第一批最後一個團次 dep-a（day5 10:00）上有 20 筆訂單 → 第 20 張卡的出發日 == 本批最後出發日
+    const aOrders = Array.from({ length: 20 }, (_, i) => mk({
+      id: `a${i}`, departure_id: 'dep-a', trip_departures: { departs_on: day5, start_time: '10:00:00' },
+    }));
+    // 下一批的 dep-b（同一天、id 排在後、較早 08:00）上的訂單必須被納入
+    const early = mk({ id: 'early', departure_id: 'dep-b', trip_departures: { departs_on: day5, start_time: '08:00:00' } });
+    const fillers = Array.from({ length: 200 }, (_, i) => mk({
+      id: `f${i}`, departure_id: `f${String(i).padStart(3, '0')}`,
+      trip_departures: { departs_on: dayStr(300 + i), start_time: '09:00:00' },
+    }));
+    const empties: FakeRow[] = Array.from({ length: 99 }, (_, i) => ({
+      id: `e${String(i).padStart(3, '0')}`, tenant_id: T, status: 'OPEN', departs_on: dayStr(1 + (i % 4)), start_time: '09:00:00',
+    }));
+    const deps: FakeRow[] = [
+      ...empties,
+      { id: 'dep-a', tenant_id: T, status: 'OPEN', departs_on: day5, start_time: '10:00:00' },
+      { id: 'dep-b', tenant_id: T, status: 'OPEN', departs_on: day5, start_time: '08:00:00' },
+      ...fillers.map((f) => ({ id: f.departure_id as string, tenant_id: T, status: 'OPEN',
+        departs_on: (f.trip_departures as FakeRow).departs_on, start_time: '09:00:00' })),
+    ].sort((a, b) => String(a.departs_on).localeCompare(String(b.departs_on)) || String(a.id).localeCompare(String(b.id)));
+    recorded.length = 0;
+    requireTenantMock.mockReset();
+    requireTenantMock.mockResolvedValue({
+      // 填充訂單放最前面：快路徑 limit(200) 只會拿到它們 → 被塞滿 → 走慢路徑
+      supabase: fakeSupabase({ tour_orders: [...fillers, ...aOrders, early], trip_departures: deps }),
+      tenantId: T, user: { id: 'u' }, role: 'OWNER',
+    });
+    const res = await guideActionInboxGET(new Request('https://app.test/api/guide/action-inbox'), {});
+    const due: any[] = ((await res.json()).data as any[]).filter((i) => i.kind === 'TOUR_PAYMENT_DUE' && i.stage === 'BALANCE');
+    expect(due.map((i) => i.id)).toContain('early');
+    expect(due[0].id).toBe('early'); // 08:00 早於 10:00
+    expect(depWindowQueries().length).toBeGreaterThanOrEqual(2); // 沒在第一批就停
   });
 
   it('warns (no PII) when a batch hits the per-batch order limit — covered by source: only counts are logged', () => {

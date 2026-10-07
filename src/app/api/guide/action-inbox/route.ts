@@ -522,7 +522,7 @@ export const GET = handle(async () => {
   // 也不套 tolerateMissingSchema：它們不依賴 0109+ 欄位，錯誤照舊 throw。
   // 未接受的 REQUEST（sales_mode = 'REQUEST'）由 TOUR_REQUEST 處理，這裡排除。
   // TODO：加入線上金流（ECPay）PENDING 流程後，經線上 provider 付款的 PENDING 必須排除（18 §5／§6）。
-  const ORDER_SELECT = 'id, order_no, party_size, total_amount, deposit_amount, paid_amount, status, payment_status, contact, hold_expires_at, created_at, trips(title), trip_departures!inner(departs_on, start_time)';
+  const ORDER_SELECT = 'id, order_no, party_size, total_amount, deposit_amount, paid_amount, status, payment_status, contact, hold_expires_at, created_at, trips(title), trip_departures!inner(departs_on, start_time, status)';
   const paymentDueOrderQuery = (kind: 'PARTIAL' | 'PENDING') => {
     const base = t.supabase
       .from('tour_orders')
@@ -532,7 +532,9 @@ export const GET = handle(async () => {
       .eq('tenant_id', t.tenantId)
       .eq('status', kind === 'PARTIAL' ? 'CONFIRMED' : 'PENDING')
       .eq('payment_status', kind === 'PARTIAL' ? 'PARTIAL' : 'UNPAID');
+    // 與慢路徑的團次視窗一致：已取消的團次（trip_departures.status = 'CANCELLED'，0066）不產生卡片。
     return (kind === 'PENDING' ? base.neq('trip_plans.sales_mode', 'REQUEST') : base)
+      .neq('trip_departures.status', 'CANCELLED')
       .gte('trip_departures.departs_on', today);
   };
 
