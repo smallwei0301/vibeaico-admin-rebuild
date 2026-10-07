@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { computeFormation, summarizeFormation, formationCardMode, formationShowsTruncationAlert, type GuideDepartureRow } from '@/server/guide-report-formation';
 import { computeGuideReport } from '@/server/guide-report';
+import { reportsPage } from '@/i18n/zh-TW/pages/reports';
 
 // 期望值全部手算寫死。本期 2026-10-01～10-10，上一期 09-21～09-30。
 const d = (id: string, departs_on: string, formation_status: string, status?: string): GuideDepartureRow => ({ id, departs_on, formation_status, status });
@@ -234,5 +235,27 @@ describe('computeFormation — availability（成團決策紀錄可用性）與�
     expect(formationShowsTruncationAlert(C([d('a', '2026-10-02', 'FORMED')], false))).toBe(false);
     expect(formationShowsTruncationAlert(C([d('a', '2026-10-02', 'COLLECTING')], true))).toBe(true);
     expect(formationShowsTruncationAlert(null)).toBe(false);
+  });
+});
+
+describe('EXTEND 後仍 COLLECTING（formation_decided_at 非空）— 口徑鎖定與文案', () => {
+  it('COLLECTING＋formation_decided_at 非空、出發日已過 → 仍計入 undecidedPast；取消者計入 cancelledUndecided', () => {
+    const extended = (id: string, departs_on: string, status?: string): GuideDepartureRow => ({
+      ...d(id, departs_on, 'COLLECTING', status), formation_decided_at: '2026-09-25T02:00:00Z',
+    });
+    const r = S([extended('1', '2026-10-02'), extended('2', '2026-10-03', 'CANCELLED')], '2026-10-04');
+    expect(r).toMatchObject({ total: 2, undecidedPast: 1, cancelledUndecided: 1, concluded: 0, open: 0, successRatePercent: null });
+  });
+
+  it('i18n 文案不再宣稱「沒有成團決策紀錄」「未經成團決策」', () => {
+    const t = reportsPage.guideReport;
+    const all = JSON.stringify([
+      t.formationCard.undecidedPastLine(3), t.formationCard.cancelledUndecided, t.formationCard.distributionTitle,
+      t.formationCard.truncatedWarning, t.defs.formation,
+    ]);
+    expect(all).not.toContain('沒有成團決策紀錄');
+    expect(all).not.toContain('未經成團決策');
+    expect(t.formationCard.undecidedPastLine(3)).toContain('沒有最終成團結果');
+    expect(t.formationCard.cancelledUndecided).toContain('未有最終成團結果');
   });
 });
