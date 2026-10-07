@@ -56,6 +56,7 @@ const fakeDb = {
 };
 
 import { GET } from '@/app/api/reports/guide/route';
+import { MAX_ROWS } from '@/server/guide-report';
 
 const order = (o: Record<string, unknown>) => ({
   trip_id: 'tA', plan_id: 'pA', party_size: 2, status: 'COMPLETED', payment_status: 'PAID',
@@ -89,6 +90,15 @@ describe('GET /api/reports/guide', () => {
     const oc = state.calls.find((c) => c.table === 'tour_orders')!;
     expect(oc.gte).toBe('2026-09-20T16:00:00.000Z');
     expect(oc.lt).toBe('2026-10-10T16:00:00.000Z');
+  });
+
+  it('正常筆數 truncated=false；筆數達上限仍有資料 → truncated=true（不假裝完整）', async () => {
+    expect((await (await get('?from=2026-10-01&to=2026-10-10')).json()).data.truncated).toBe(false);
+    state.orders = Array.from({ length: MAX_ROWS + 5 }, (_, i) =>
+      order({ id: `x${i}`, tenant_id: TENANT, created_at: '2026-10-02T02:00:00Z' }));
+    const body = await (await get('?from=2026-10-01&to=2026-10-10')).json();
+    expect(body.data.truncated).toBe(true);
+    expect(body.data.summary.totalOrders).toBe(MAX_ROWS);
   });
 
   it('非 manager 被拒（403），且不查任何表', async () => {

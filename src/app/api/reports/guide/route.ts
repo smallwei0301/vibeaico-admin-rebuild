@@ -11,7 +11,7 @@ import { requireTenantManager } from '@/server/tenant';
 import { requireEntitlement } from '@/server/features';
 import { resolvePublicTimeZone } from '@/lib/public-time-zone';
 import {
-  GuideReportRangeError, computeGuideReport, resolveReportRange, zonedToday, addDays,
+  GuideReportRangeError, MAX_ROWS, computeGuideReport, resolveReportRange, zonedToday, addDays,
   type GuideReportOrderRow,
 } from '@/server/guide-report';
 
@@ -22,7 +22,6 @@ const querySchema = z.object({
 });
 
 const PAGE = 1000;
-const MAX_ROWS = 20000;
 const ORDER_COLUMNS =
   'id, trip_id, plan_id, party_size, status, payment_status, paid_amount, refunded_amount, created_at';
 
@@ -48,7 +47,9 @@ export const GET = handle(async (req) => {
 
   // 本期＋上一等長期間一次撈回（半開區間），Node 端聚合；分頁避開 PostgREST 預設 1000 列上限。
   const rows: GuideReportOrderRow[] = [];
-  for (let offset = 0; offset < MAX_ROWS; offset += PAGE) {
+  let truncated = false;
+  for (let offset = 0; ; offset += PAGE) {
+    if (offset >= MAX_ROWS) { truncated = true; break; } // 還有資料但已達上限：不假裝完整
     const { data, error } = await t.supabase.from('tour_orders').select(ORDER_COLUMNS)
       .eq('tenant_id', t.tenantId)
       .gte('created_at', new Date(range.prevFromMs).toISOString())
@@ -74,7 +75,7 @@ export const GET = handle(async (req) => {
   if (plansRes.error) throw plansRes.error;
 
   return ok(computeGuideReport({
-    rows, from, to, timeZone,
+    rows, from, to, timeZone, truncated,
     tripNames: new Map((tripsRes.data ?? []).map((x: { id: string; title: string }) => [x.id, x.title])),
     planNames: new Map((plansRes.data ?? []).map((x: { id: string; name: string }) => [x.id, x.name])),
   }));

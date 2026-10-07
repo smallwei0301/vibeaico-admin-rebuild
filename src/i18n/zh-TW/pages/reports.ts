@@ -22,6 +22,10 @@ export const reportsPage = {
     compareLine: (prevFrom: string, prevTo: string) => `與上一期（${prevFrom} ～ ${prevTo}）比較`,
     timeZoneLine: (zone: string) => `日期界線採店家時區：${zone}`,
     noData: '尚無足夠資料',
+    truncatedWarning: '資料筆數超過上限，數字可能不完整，請縮短日期區間後重新查詢。',
+    truncatedHint: '數字可能不完整',
+    sep: '　',
+    reasonPrefix: '：',
     noDataPrevious: '上一期無資料可比較',
     emptyTitle: '這段期間沒有旅遊訂單',
     emptyDescription: '換一個日期區間，或先到旅遊訂單建立訂單；沒有訂單時不會顯示任何推算數字。',
@@ -42,7 +46,7 @@ export const reportsPage = {
     cardHints: {
       revenueRefunded: (amount: string) => `已退款 ${amount}（已自實收扣除）`,
       refundPending: (n: number) => `另有 ${n} 筆退款處理中（尚未退出，仍計入實收）`,
-      avgBasis: (n: number) => `分母：實收大於 0 的 ${n} 筆訂單`,
+      avgBasis: (n: number) => `分母：非取消且實收大於 0 的 ${n} 筆訂單`,
     },
     statusBreakdownTitle: '各狀態訂單數',
     status: {
@@ -65,7 +69,8 @@ export const reportsPage = {
       orders: '旅遊訂單數：期間內建立的旅遊訂單，依待確認、已確認、已完成、已取消分開計數。',
       revenue:
         '實收營收：已實際收到的金額加總，扣掉已退款金額。部分付款只算已收的部分，未收尾款不算；退款處理中尚未退出，仍算在內並另行提示。',
-      avgOrderValue: '平均客單：實收營收 ÷ 有實收的訂單數；沒有任何有實收的訂單時顯示「尚無足夠資料」，不以 0 代替。',
+      avgOrderValue:
+        '平均客單：非取消訂單的實收金額 ÷ 非取消且有實收的訂單數（已取消訂單，含退款處理中，分子分母皆不計）；分母為 0 時顯示「尚無足夠資料」，不以 0 代替。',
       cancelled:
         '取消訂單數：狀態為已取消的訂單數。目前資料沒有記錄取消是旅客、導遊或系統逾期造成，所以只顯示總數，不拆分原因。',
       ranking:

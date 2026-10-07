@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { StatCard } from '@/components/ui/StatCard';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Alert } from '@/components/ui/Alert';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Tabs } from '@/components/ui/Tabs';
@@ -93,6 +94,7 @@ export function GuideReportView() {
     { key: 'revenue', header: t.ranking.columns.revenue, numeric: true, render: (r) => formatCurrency(r.revenue) },
   ];
 
+  const cardLabel = (name: string) => (report?.truncated ? `${name}（${t.truncatedHint}）` : name);
   const s = report?.summary;
   const prev = report?.previous;
   const rows = report ? report.ranking[dimension][metric] : [];
@@ -123,11 +125,15 @@ export function GuideReportView() {
           </div>
           {report ? (
             <p className="form-text mt-3">
-              {t.compareLine(report.range.prevFrom, report.range.prevTo)}　{t.timeZoneLine(report.range.timeZone)}
+              {t.compareLine(report.range.prevFrom, report.range.prevTo)}{t.sep}{t.timeZoneLine(report.range.timeZone)}
             </p>
           ) : null}
         </CardBody>
       </Card>
+
+      {report?.truncated ? (
+        <Alert tone="warning" className="mb-4">{t.truncatedWarning}</Alert>
+      ) : null}
 
       {!loading && report && report.summary.totalOrders === 0 ? (
         <Card className="mb-4">
@@ -155,12 +161,12 @@ export function GuideReportView() {
         <>
           <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
-              label={t.cards.orders} icon={ShoppingBag} tone="primary"
+              label={cardLabel(t.cards.orders)} icon={ShoppingBag} tone="primary"
               value={`${formatNumber(s.totalOrders)} ${t.unit.orders}`}
-              hint={`${changeText(report.changes.totalOrders)}　${t.change.previousValue(formatNumber(prev.totalOrders))}`}
+              hint={`${changeText(report.changes.totalOrders)}${t.sep}${t.change.previousValue(formatNumber(prev.totalOrders))}`}
             />
             <StatCard
-              label={t.cards.revenue} icon={DollarSign} tone="success"
+              label={cardLabel(t.cards.revenue)} icon={DollarSign} tone="success"
               value={formatCurrency(s.revenue)}
               hint={
                 <>
@@ -178,18 +184,18 @@ export function GuideReportView() {
               }
             />
             <StatCard
-              label={t.cards.avgOrderValue} icon={Wallet} tone="info"
+              label={cardLabel(t.cards.avgOrderValue)} icon={Wallet} tone="info"
               value={s.avgOrderValue === null ? t.noData : formatCurrency(s.avgOrderValue)}
               hint={
                 s.avgOrderValue === null
                   ? undefined
-                  : `${changeText(report.changes.avgOrderValue)}　${t.cardHints.avgBasis(s.paidOrderCount)}`
+                  : `${changeText(report.changes.avgOrderValue)}${t.sep}${t.cardHints.avgBasis(s.paidOrderCount)}`
               }
             />
             <StatCard
-              label={t.cards.cancelled} icon={Ban} tone="danger"
+              label={cardLabel(t.cards.cancelled)} icon={Ban} tone="danger"
               value={`${formatNumber(s.cancelledCount)} ${t.unit.orders}`}
-              hint={`${changeText(report.changes.cancelledCount)}　${t.change.previousValue(formatNumber(prev.cancelledCount))}`}
+              hint={`${changeText(report.changes.cancelledCount)}${t.sep}${t.change.previousValue(formatNumber(prev.cancelledCount))}`}
             />
           </div>
 
@@ -255,7 +261,7 @@ export function GuideReportView() {
             {t.notEnabled.items.map((item) => (
               <li key={item.name}>
                 <span className="font-medium">{item.name}</span>
-                <span className="form-text">：{item.reason}</span>
+                <span className="form-text">{t.reasonPrefix}{item.reason}</span>
               </li>
             ))}
           </ul>

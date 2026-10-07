@@ -11,7 +11,8 @@
  *  - 實收營收：Σ max(0, paid_amount − refunded_amount)。PARTIAL 只算 paid_amount（已收），
  *    未收尾款不進來；已退款金額扣掉。REFUND_PENDING（退款處理中、尚未退出）仍算實收，
  *    另列為 refundPendingCount，不與「已退款」混算。
- *  - 平均客單：實收營收 ÷ 實收 > 0 的訂單數；分母 0 → null。四捨五入到整數元。
+ *  - 平均客單：非取消訂單的實收 ÷ 「非取消且實收 > 0」的訂單數；分母 0 → null。四捨五入到整數元。
+ *    取消單（含退款處理中）分子分母皆排除。
  *  - 取消數：status = CANCELLED 的訂單數。DB 只有自由文字 cancel_reason、沒有取消來源欄位，
  *    因此尚未區分旅客／導遊／系統逾期，不推測。
  *  - 排行：行程（trip）與方案（plan）兩種維度，各自依「訂單數／人數／實收營收」三種排序。
@@ -22,6 +23,8 @@
 import { resolvePublicTimeZone } from '@/lib/public-time-zone';
 
 export const RANK_LIMIT = 10;
+/** 單次報表最多讀取的訂單筆數；達上限即標 truncated */
+export const MAX_ROWS = 20000;
 export const MAX_RANGE_DAYS = 366;
 
 export type GuideOrderStatus = 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
@@ -52,7 +55,7 @@ export type GuideSummary = {
   revenue: number;
   /** Σ refunded_amount（已退出的金額，分列顯示） */
   refundedAmount: number;
-  /** 實收 > 0 的訂單數（平均客單的分母） */
+  /** 非取消且實收 > 0 的訂單數（平均客單的分母） */
   paidOrderCount: number;
   /** 實收營收 ÷ paidOrderCount；分母 0 → null */
   avgOrderValue: number | null;
@@ -76,6 +79,8 @@ export type GuideReport = {
   previous: GuideSummary;
   changes: GuideReportChanges;
   ranking: Record<GuideRankDimension, GuideRanking>;
+  /** true = 查詢筆數達上限，數字可能不完整（UI 必須警示） */
+  truncated: boolean;
 };
 
 export class GuideReportRangeError extends Error {}
@@ -172,13 +177,17 @@ export function summarize(rows: GuideReportOrderRow[]): GuideSummary {
   let revenue = 0;
   let refundedAmount = 0;
   let paidOrderCount = 0;
+  let avgNumerator = 0;
   let refundPendingCount = 0;
   for (const r of rows) {
     if ((GUIDE_ORDER_STATUSES as string[]).includes(r.status)) byStatus[r.status as GuideOrderStatus] += 1;
     const net = netReceived(r);
     revenue += net;
     refundedAmount += num(r.refunded_amount);
-    if (net > 0) paidOrderCount += 1;
+    if (r.status !== 'CANCELLED' && net > 0) {
+      paidOrderCount += 1;
+      avgNumerator += net;
+    }
     if (r.payment_status === 'REFUND_PENDING') refundPendingCount += 1;
   }
   return {
@@ -187,7 +196,7 @@ export function summarize(rows: GuideReportOrderRow[]): GuideSummary {
     revenue,
     refundedAmount,
     paidOrderCount,
-    avgOrderValue: paidOrderCount > 0 ? Math.round(revenue / paidOrderCount) : null,
+    avgOrderValue: paidOrderCount > 0 ? Math.round(avgNumerator / paidOrderCount) : null,
     cancelledCount: byStatus.CANCELLED,
     refundPendingCount,
   };
@@ -234,6 +243,7 @@ export function computeGuideReport(input: {
   timeZone: string;
   tripNames: Map<string, string>;
   planNames: Map<string, string>;
+  truncated?: boolean;
 }): GuideReport {
   const range = resolveReportRange(input.from, input.to, input.timeZone);
   const cur: GuideReportOrderRow[] = [];
@@ -251,6 +261,7 @@ export function computeGuideReport(input: {
       from: range.from, to: range.to, prevFrom: range.prevFrom, prevTo: range.prevTo,
       days: range.days, timeZone: range.timeZone,
     },
+    truncated: input.truncated === true,
     summary,
     previous,
     changes: {

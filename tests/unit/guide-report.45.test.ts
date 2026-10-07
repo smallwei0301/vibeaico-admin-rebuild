@@ -25,6 +25,7 @@ describe('computeGuideReport — 空資料', () => {
     expect(r.summary.revenue).toBe(0);
     expect(r.summary.avgOrderValue).toBeNull();
     expect(r.previous.avgOrderValue).toBeNull();
+    expect(r.truncated).toBe(false);
     expect(r.changes).toEqual({ totalOrders: null, revenue: null, avgOrderValue: null, cancelledCount: null });
     expect(r.ranking.plan.orders).toEqual([]);
     expect(r.ranking.trip.revenue).toEqual([]);
@@ -67,8 +68,24 @@ describe('實收營收與平均客單', () => {
     expect(r.summary.revenue).toBe(5000); // 0 + 4000 + 1000
     expect(r.summary.refundedAmount).toBe(2000);
     expect(r.summary.refundPendingCount).toBe(1);
+    expect(r.summary.paidOrderCount).toBe(1); // 取消單（含退款處理中）不進分母
+    expect(r.summary.avgOrderValue).toBe(1000); // 分子也只含非取消單：1000 / 1
+  });
+
+  it('平均客單排除取消單：非取消實收 3000+5000、取消且退款處理中 9000 → 4000（不是 17000/3）', () => {
+    const r = run([
+      row({ created_at: '2026-10-02T02:00:00Z', status: 'CONFIRMED', payment_status: 'PARTIAL', paid_amount: 3000 }),
+      row({ created_at: '2026-10-03T02:00:00Z', status: 'COMPLETED', payment_status: 'PAID', paid_amount: 5000 }),
+      row({ created_at: '2026-10-04T02:00:00Z', status: 'CANCELLED', payment_status: 'REFUND_PENDING', paid_amount: 9000 }),
+    ]);
+    expect(r.summary.revenue).toBe(17000);
     expect(r.summary.paidOrderCount).toBe(2);
-    expect(r.summary.avgOrderValue).toBe(2500);
+    expect(r.summary.avgOrderValue).toBe(4000);
+  });
+
+  it('只有取消的已付款單：平均客單 null', () => {
+    const r = run([row({ created_at: '2026-10-02T02:00:00Z', status: 'CANCELLED', payment_status: 'REFUND_PENDING', paid_amount: 9000 })]);
+    expect(r.summary.avgOrderValue).toBeNull();
   });
 });
 
