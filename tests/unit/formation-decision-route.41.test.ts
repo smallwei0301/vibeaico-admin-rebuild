@@ -188,4 +188,57 @@ describe('POST /api/trip-departures/[id]/formation-decision', () => {
     await post({ decision: 'FORM' });
     expect(state.updates[0].patch.formed_participants).toBe(2);
   });
+
+  describe('CONTINUE（AT_RISK 繼續出團）', () => {
+    const atRisk = (o: Row = {}) => dep({
+      formation_status: 'AT_RISK', formed_at: '2026-11-01T00:00:00.000Z', formed_by: 'SYSTEM', formed_participants: 4, ...o,
+    });
+
+    it('AT_RISK → FORMED：只寫狀態與決策證據；原成團證據不變；update 帶 tenant_id＋CAS(AT_RISK)＋非取消；不讀不寫訂單', async () => {
+      state.departures = [atRisk()];
+      state.orders = [order({ id: 'o1' })];
+      const res = await post({ decision: 'CONTINUE' });
+      expect(res.status).toBe(200);
+      const u = state.updates[0];
+      expect(u.patch).toEqual({
+        formation_status: 'FORMED', formation_decided_at: '2026-12-12T00:00:00.000Z', formation_decided_by: USER,
+      });
+      expect(u.eq).toEqual(expect.arrayContaining([['tenant_id', TENANT], ['id', DEP], ['formation_status', 'AT_RISK']]));
+      expect(u.neq).toEqual([['status', 'CANCELLED']]);
+      // 原成團證據沒有被覆寫（0107 CHECK：FORMED 需 formed_at／formed_by／formed_participants 齊全 → 仍齊全）
+      expect(state.departures[0]).toMatchObject({
+        formation_status: 'FORMED', formed_at: '2026-11-01T00:00:00.000Z', formed_by: 'SYSTEM', formed_participants: 4,
+      });
+      // 不重新計價：完全沒有查詢訂單
+      expect(state.orderQueries).toHaveLength(0);
+    });
+
+    it('狀態不是 AT_RISK（REVIEW_REQUIRED、FORMED）→ 409；已取消 → 409；讀完後被改（零列）→ 409；不寫入', async () => {
+      state.departures = [dep()]; // REVIEW_REQUIRED
+      expect((await post({ decision: 'CONTINUE' })).status).toBe(409);
+      state.departures = [atRisk({ formation_status: 'FORMED' })];
+      expect((await post({ decision: 'CONTINUE' })).status).toBe(409);
+      state.departures = [atRisk({ status: 'CANCELLED' })];
+      expect((await post({ decision: 'CONTINUE' })).status).toBe(409);
+      expect(state.updates).toHaveLength(0);
+      state.departures = [atRisk()];
+      state.raceLost = true;
+      expect((await post({ decision: 'CONTINUE' })).status).toBe(409);
+    });
+
+    it('其他決策與狀態不互通：AT_RISK 不能做 FORM／EXTEND（409）', async () => {
+      state.departures = [atRisk()];
+      expect((await post({ decision: 'FORM' })).status).toBe(409);
+      expect((await post({ decision: 'EXTEND', newDeadline: '2026-12-15T18:00:00+08:00' })).status).toBe(409);
+      expect(state.updates).toHaveLength(0);
+    });
+
+    it('他租戶的團次 → 404；多帶欄位 → 400', async () => {
+      state.departures = [atRisk({ tenant_id: OTHER })];
+      expect((await post({ decision: 'CONTINUE' })).status).toBe(404);
+      state.departures = [atRisk()];
+      expect((await post({ decision: 'CONTINUE', newDeadline: 'x' })).status).toBe(400);
+    });
+  });
 });
+

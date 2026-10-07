@@ -1,8 +1,9 @@
 // POST /api/trip-departures/[id]/formation-decision — REVIEW_REQUIRED 團次的導遊決策（Issue #41，18 分冊 §6）。
 //   { decision: 'FORM' }                          → FORMED（formed_by=GUIDE_OVERRIDE）
 //   { decision: 'EXTEND', newDeadline: ISO }      → 新截止時間、回 COLLECTING
+//   { decision: 'CONTINUE' }                      → AT_RISK 繼續出團：回 FORMED，原成團證據不變、不重新計價
 // 權限：租戶 MANAGER 以上（與其他 trip_departures 寫入相同）。tenant_id 明確帶入每個查詢；
-// 狀態轉移用 CAS（.eq('formation_status','REVIEW_REQUIRED')），被別人先改掉 → 409，不覆寫。
+// 狀態轉移用 CAS（FORM／EXTEND 要求 REVIEW_REQUIRED，CONTINUE 要求 AT_RISK），被別人先改掉 → 409，不覆寫。
 import { z } from 'zod';
 import { ApiHttpError, ERR, fail, handle, ok } from '@/server/http';
 import { requireTenantManager } from '@/server/tenant';
@@ -10,7 +11,7 @@ import { requireFeature } from '@/server/features';
 import { mapTripDeparture } from '@/server/mappers';
 import { readDepartureFormationTimeZone } from '@/server/departure-formation-snapshot';
 import {
-  FormationDecisionError, buildExtendPatch, buildFormPatch, effectiveParticipants, formationDecisionSchema, type ParticipantOrderRow,
+  DECISION_FROM_STATUS, FormationDecisionError, buildContinuePatch, buildExtendPatch, buildFormPatch, effectiveParticipants, formationDecisionSchema, type ParticipantOrderRow,
 } from '@/lib/departure-formation-decision';
 
 type Context = { params: Promise<{ id: string }> };
@@ -37,7 +38,8 @@ export const POST = handle(async (req, { params }: Context) => {
   if (readError) throw readError;
   if (!current) return fail(404, '找不到此團次', ERR.NOT_FOUND);
   if (current.status === 'CANCELLED') return fail(409, '此團次已取消，無法做成團決策', ERR.CONFLICT);
-  if (current.formation_status !== 'REVIEW_REQUIRED') {
+  const fromStatus = DECISION_FROM_STATUS[body.decision];
+  if (current.formation_status !== fromStatus) {
     return fail(409, '此團次的成團狀態已變更，請重新整理後再確認', ERR.CONFLICT);
   }
 
@@ -60,6 +62,9 @@ export const POST = handle(async (req, { params }: Context) => {
     }
     // formation_decided_by＝requireTenantManager 回傳的 auth user（代登入時是代入的平台管理者本人，仍是 auth.users 的一列）
     patch = toHttp(() => buildFormPatch(effectiveParticipants(orders), t.user.id, new Date(now).toISOString()));
+  } else if (body.decision === 'CONTINUE') {
+    // 只改團次成團狀態與決策證據；不讀、不寫 tour_orders（剩餘旅客維持各自成交價格與付款承諾，不重新計價）
+    patch = buildContinuePatch(t.user.id, new Date(now).toISOString());
   } else {
     const zone = await readDepartureFormationTimeZone(t.supabase, t.tenantId);
     patch = toHttp(() => buildExtendPatch(current, body.newDeadline, zone, t.user.id, now));
@@ -68,7 +73,7 @@ export const POST = handle(async (req, { params }: Context) => {
   // CAS：只在仍是 REVIEW_REQUIRED（且未取消）時寫入；零列 → 已被改動 → 409
   const { data: updated, error } = await t.supabase.from('trip_departures').update(patch)
     .eq('tenant_id', t.tenantId).eq('id', id)
-    .eq('formation_status', 'REVIEW_REQUIRED').neq('status', 'CANCELLED')
+    .eq('formation_status', fromStatus).neq('status', 'CANCELLED')
     .select('*, trip_plans(name)').maybeSingle();
   if (error) throw error;
   if (!updated) return fail(409, '此團次的成團狀態已變更，請重新整理後再確認', ERR.CONFLICT);

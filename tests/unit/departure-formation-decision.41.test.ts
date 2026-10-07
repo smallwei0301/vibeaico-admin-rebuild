@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  FormationDecisionError, buildExtendPatch, buildFormPatch, effectiveParticipants, formationDecisionSchema, type ParticipantOrderRow,
+  FormationDecisionError, buildContinuePatch, buildExtendPatch, buildFormPatch, effectiveParticipants, formationDecisionSchema, type ParticipantOrderRow,
 } from '@/lib/departure-formation-decision';
 
 const o = (x: Partial<ParticipantOrderRow>): ParticipantOrderRow => ({
@@ -112,3 +112,16 @@ describe('formationDecisionSchema', () => {
     expect(formationDecisionSchema.safeParse({}).success).toBe(false);
   });
 });
+
+describe('buildContinuePatch（繼續出團）', () => {
+  it('只含狀態與決策證據，不含任何成團證據欄位或金額欄位', () => {
+    const p = buildContinuePatch('user-1', '2026-10-07T00:00:00.000Z');
+    expect(p).toEqual({ formation_status: 'FORMED', formation_decided_at: '2026-10-07T00:00:00.000Z', formation_decided_by: 'user-1' });
+    for (const k of ['formed_at', 'formed_by', 'formed_participants', 'total_amount', 'balance_due']) expect(p).not.toHaveProperty(k);
+  });
+  it('schema：CONTINUE 不帶其他欄位', () => {
+    expect(formationDecisionSchema.safeParse({ decision: 'CONTINUE' }).success).toBe(true);
+    expect(formationDecisionSchema.safeParse({ decision: 'CONTINUE', newDeadline: 'x' }).success).toBe(false);
+  });
+});
+

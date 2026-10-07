@@ -218,7 +218,7 @@ export default function TripDetailPage() {
   const [addonDraft, setAddonDraft] = React.useState<TripAddon | null>(null);
   const [departureDraft, setDepartureDraft] = React.useState<TripDeparture | null>(null);
   /** #41：REVIEW_REQUIRED 團次的導遊決策（仍然成團／延長募集） */
-  const [decision, setDecision] = React.useState<{ kind: 'FORM' | 'EXTEND'; departure: TripDeparture } | null>(null);
+  const [decision, setDecision] = React.useState<{ kind: 'FORM' | 'EXTEND' | 'CONTINUE'; departure: TripDeparture } | null>(null);
   const [decisionLocal, setDecisionLocal] = React.useState('');
   const [departureDeadlineLocal, setDepartureDeadlineLocal] = React.useState('');
   const [departureDeadlineChanged, setDepartureDeadlineChanged] = React.useState(false);
@@ -561,6 +561,8 @@ export default function TripDetailPage() {
     let payload: FormationDecisionPayload;
     if (decision.kind === 'FORM') {
       payload = { decision: 'FORM' };
+    } else if (decision.kind === 'CONTINUE') {
+      payload = { decision: 'CONTINUE' };
     } else {
       const iso = departureTimeZone ? confirmedFormationDeadline(decisionLocal, departureTimeZone) : undefined;
       if (!iso) { toast.show(t.departures.formation.decision.extendInvalid, 'danger'); return; }
@@ -568,7 +570,9 @@ export default function TripDetailPage() {
     }
     const ok = await runAction(
       () => decideDepartureFormation(decision.departure.id, payload),
-      decision.kind === 'FORM' ? t.departures.formation.decision.formed : t.departures.formation.decision.extended,
+      decision.kind === 'FORM' ? t.departures.formation.decision.formed
+        : decision.kind === 'CONTINUE' ? t.departures.formation.decision.continued
+          : t.departures.formation.decision.extended,
     );
     if (ok) setDecision(null);
   };
@@ -947,6 +951,14 @@ export default function TripDetailPage() {
                 {t.departures.formation.decision.extend}
               </Button>
             </>
+          ) : null}
+          {d.formationStatus === 'AT_RISK' && d.status !== 'CANCELLED' ? (
+            <Button
+              size="sm" title={t.departures.formation.decision.continue} aria-label={t.departures.formation.decision.continue}
+              onClick={() => setDecision({ kind: 'CONTINUE', departure: d })}
+            >
+              {t.departures.formation.decision.continue}
+            </Button>
           ) : null}
           <Button
             variant="outlineDanger" size="sm" title={t.actions.delete} aria-label={t.actions.delete}
@@ -2075,6 +2087,16 @@ export default function TripDetailPage() {
         title={t.departures.formation.decision.formTitle}
         message={decision ? t.departures.formation.decision.formMessage(decision.departure.departsOn) : ''}
         confirmText={t.departures.formation.decision.formConfirm}
+        loading={busy}
+      />
+
+      <ConfirmModal
+        open={decision?.kind === 'CONTINUE'}
+        onClose={() => setDecision(null)}
+        onConfirm={submitDecision}
+        title={t.departures.formation.decision.continueTitle}
+        message={decision ? t.departures.formation.decision.continueMessage(decision.departure.departsOn) : ''}
+        confirmText={t.departures.formation.decision.continueConfirm}
         loading={busy}
       />
 

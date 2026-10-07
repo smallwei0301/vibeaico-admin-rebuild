@@ -5,7 +5,10 @@
  *     formed_participants 同時非 null；formed_by ∈ {SYSTEM, GUIDE_OVERRIDE}；formed_participants ≥ 1。
  *   - 「延長募集」→ 新 formation_deadline_at（須晚於現在、不晚於出發時間、晚於舊截止時間），回 COLLECTING。
  *   - 兩者都記 formation_decided_at／formation_decided_by（決策證據）。
- * 「取消本團」不在這裡（退款流程）。
+ * 「繼續出團」（AT_RISK → FORMED，Owner Decision 2026-09-02 已成團後價格保護）：只改狀態與決策證據；
+ *   原成團證據 formed_at／formed_by／formed_participants 一律不動（0107 CHECK 對 FORMED 與 AT_RISK 都要求證據齊全，
+ *   保留原值即滿足；那是「曾經宣布成團」的證據，不是現在的人數）；完全不碰 tour_orders——不重新計價、不產生補差額應收。
+ * 「取消本團／取消整團」不在這裡（退款流程）。
  */
 import { z } from 'zod';
 import { formationWallTimeToIso } from '@/lib/departure-formation-time';
@@ -34,7 +37,11 @@ function confirmedDeadline(value: string, departureMs: number, now: number): str
 export const formationDecisionSchema = z.discriminatedUnion('decision', [
   z.object({ decision: z.literal('FORM') }).strict(),
   z.object({ decision: z.literal('EXTEND'), newDeadline: z.string().min(1).max(40) }).strict(),
+  z.object({ decision: z.literal('CONTINUE') }).strict(),
 ]);
+
+/** 各決策允許的起始成團狀態（CAS 條件）：FORM／EXTEND 針對 REVIEW_REQUIRED，CONTINUE 針對 AT_RISK。 */
+export const DECISION_FROM_STATUS = { FORM: 'REVIEW_REQUIRED', EXTEND: 'REVIEW_REQUIRED', CONTINUE: 'AT_RISK' } as const;
 export type FormationDecisionBody = z.infer<typeof formationDecisionSchema>;
 
 export type ParticipantOrderRow = {
@@ -110,4 +117,9 @@ export function buildExtendPatch(
     formation_decided_at: new Date(now).toISOString(),
     formation_decided_by: userId,
   };
+}
+
+/** 「繼續出團」：AT_RISK → FORMED。只寫狀態與決策證據，不覆寫原成團證據、不碰任何訂單金額。 */
+export function buildContinuePatch(userId: string, nowIso: string): Record<string, unknown> {
+  return { formation_status: 'FORMED', formation_decided_at: nowIso, formation_decided_by: userId };
 }

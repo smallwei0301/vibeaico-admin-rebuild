@@ -7,7 +7,7 @@ import { resolvePublicTimeZone } from '@/lib/public-time-zone';
 import { clampGalleryForCopy } from '@/lib/trip-gallery';
 import { addDays, repeatCustomerIdSet, zonedMidnightMs, zonedToday } from '@/server/guide-report';
 import {
-  FormationDecisionError, buildExtendPatch, buildFormPatch, effectiveParticipants,
+  DECISION_FROM_STATUS, FormationDecisionError, buildContinuePatch, buildExtendPatch, buildFormPatch, effectiveParticipants,
 } from '@/lib/departure-formation-decision';
 import { mockOrderToReportRow, mockTourOrdersRelativeToNow } from '@/mock/guide-report';
 import { canRegisterDepositPayment, canRegisterFullPayment, canTransitionTourOrder, shouldReleaseSeats } from '@/server/tour-domain';
@@ -382,7 +382,8 @@ export const listTripDepartures = (tripId: string) =>
   );
 
 /** #41：REVIEW_REQUIRED 團次的導遊決策（仍然成團／延長募集）。取消本團走退款流程，不在此。 */
-export type FormationDecisionPayload = { decision: 'FORM' } | { decision: 'EXTEND'; newDeadline: string };
+export type FormationDecisionPayload =
+  | { decision: 'FORM' } | { decision: 'EXTEND'; newDeadline: string } | { decision: 'CONTINUE' };
 
 export const decideDepartureFormation = (id: string, payload: FormationDecisionPayload) =>
   adapt<TripDeparture>(
@@ -390,7 +391,7 @@ export const decideDepartureFormation = (id: string, payload: FormationDecisionP
       const dep = MOCK_TRIP_DEPARTURES.find((d) => d.id === id);
       if (!dep) throw new ApiError('找不到此團次', 'REQ_002', 404);
       if (dep.status === 'CANCELLED') throw new ApiError('此團次已取消，無法做成團決策', 'REQ_003', 409);
-      if (dep.formationStatus !== 'REVIEW_REQUIRED') {
+      if (dep.formationStatus !== DECISION_FROM_STATUS[payload.decision]) {
         throw new ApiError('此團次的成團狀態已變更，請重新整理後再確認', 'REQ_003', 409);
       }
       const nowMs = Date.now();
@@ -410,6 +411,10 @@ export const decideDepartureFormation = (id: string, payload: FormationDecisionP
           dep.formedAt = patch.formed_at as string;
           dep.formedBy = 'GUIDE_OVERRIDE';
           dep.formedParticipants = patch.formed_participants as number;
+        } else if (payload.decision === 'CONTINUE') {
+          // AT_RISK → FORMED：只改狀態；formedAt／formedBy／formedParticipants 原成團證據保持不變，不動任何訂單
+          buildContinuePatch('mock-user', new Date(nowMs).toISOString());
+          dep.formationStatus = 'FORMED';
         } else {
           // mock 團次的出發日是固定的過去日期；為了讓示範能走完整流程，延長募集的「不晚於出發」
           // 以「出發日與今天起 30 天後取較晚者」驗證（僅 mock；真實 API 用團次實際出發時間）。
