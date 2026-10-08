@@ -22,6 +22,11 @@ name: agent-schema-drift-watch
         required: false
         default: evidence
         type: string
+      release_ledger_binding:
+        description: Exact completed G3 plan/run binding from trusted orchestrator admission
+        required: false
+        default: ''
+        type: string
     secrets:
       SCHEMA_OBSERVER_TOKEN:
         required: true
@@ -90,8 +95,15 @@ jobs:
           node scripts/agents/schema-drift-watch.mjs --command capture --environment TEST --current-main-sha "$EXPECTED_MAIN_SHA" --json-out "$RUNNER_TEMP/test.json"
           node scripts/agents/schema-drift-watch.mjs --command capture --environment PRODUCTION --current-main-sha "$EXPECTED_MAIN_SHA" --json-out "$RUNNER_TEMP/production.json"
       - name: Compare exact object fingerprints and fail closed
+        env:
+          RELEASE_LEDGER_BINDING: ${{ inputs.release_ledger_binding }}
         run: |
-          node scripts/agents/schema-drift-watch.mjs --command compare --expected-snapshot "$RUNNER_TEMP/expected.json" --test-snapshot "$RUNNER_TEMP/test.json" --production-snapshot "$RUNNER_TEMP/production.json" --current-main-sha "$EXPECTED_MAIN_SHA" --exceptions docs/schema-truth/schema-drift-exceptions.json --json-out "$RUNNER_TEMP/report.json"
+          binding_args=()
+          if test -n "$RELEASE_LEDGER_BINDING"; then
+            node --input-type=module -e 'import fs from "node:fs"; fs.writeFileSync(`${process.env.RUNNER_TEMP}/release-ledger-binding.json`, JSON.stringify(JSON.parse(process.env.RELEASE_LEDGER_BINDING)));'
+            binding_args=(--release-ledger-binding "$RUNNER_TEMP/release-ledger-binding.json")
+          fi
+          node scripts/agents/schema-drift-watch.mjs --command compare --expected-snapshot "$RUNNER_TEMP/expected.json" --test-snapshot "$RUNNER_TEMP/test.json" --production-snapshot "$RUNNER_TEMP/production.json" --current-main-sha "$EXPECTED_MAIN_SHA" --exceptions docs/schema-truth/schema-drift-exceptions.json --json-out "$RUNNER_TEMP/report.json" "${binding_args[@]}"
       - name: Preserve sanitized normalized schema snapshots
         if: ${{ always() }}
         run: |
