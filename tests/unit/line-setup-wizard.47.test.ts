@@ -195,6 +195,7 @@ describe('page 接線 source-pin（page 無法在 node render，改釘原始碼�
   beforeAll(async () => {
     const { readFileSync } = await import('node:fs');
     src = readFileSync('src/app/tenant/line-settings/onboarding/page.tsx', 'utf8');
+    if (src.length < 1000 || !src.includes('retryVerify')) throw new Error('page.tsx source-pin: unexpected source');
   });
 
   it('保護：原始碼已讀入（避免負向斷言空過）', () => {
@@ -259,6 +260,8 @@ describe('DONE gating source-pin（page 無法在 node render，釘住 page.tsx 
   beforeAll(async () => {
     const { readFileSync } = await import('node:fs');
     src = readFileSync('src/app/tenant/line-settings/onboarding/page.tsx', 'utf8');
+    if (src.length < 1000 || !src.includes('const goNext') || !src.includes('const goPrev') || !src.includes("{step === 'AUTO_REPLY_CONFIRM' ? (") || !src.includes("{step === 'CAPABILITIES' ? ("))
+      throw new Error('page.tsx source-pin: unexpected source');
   });
 
   it('保護：原始碼已讀入且含 goNext／goPrev（避免負向斷言空過）', () => {
@@ -277,9 +280,20 @@ describe('DONE gating source-pin（page 無法在 node render，釘住 page.tsx 
     expect(body).toMatch(/step === 'CAPABILITIES' && !allVerifiableChecksPassed\(checks\)\) return/);
   });
 
-  it('AUTO_REPLY_CONFIRM 與 CAPABILITIES 的下一步按鈕 disabled 都用 allVerifiableChecksPassed，且不依賴 autoReplyAck', () => {
-    const gated = src.match(/<Button disabled=\{[^}]*allVerifiableChecksPassed\(checks\)[^}]*\} onClick=\{goNext\}>/g) ?? [];
-    expect(gated.length).toBe(2);
-    for (const b of gated) expect(b).not.toContain('autoReplyAck');
+  it('AUTO_REPLY_CONFIRM 與 CAPABILITIES 各自的下一步按鈕 disabled 含「否定」的 allVerifiableChecksPassed，且不依賴 autoReplyAck', () => {
+    const start = src.indexOf("{step === 'AUTO_REPLY_CONFIRM' ? (");
+    const mid = src.indexOf("{step === 'CAPABILITIES' ? (");
+    const end = src.indexOf("{step === 'DONE' ? (");
+    expect(start).toBeGreaterThan(-1);
+    expect(mid).toBeGreaterThan(start);
+    expect(end).toBeGreaterThan(mid);
+    const blocks = [src.slice(start, mid), src.slice(mid, end)];
+    for (const block of blocks) {
+      const buttons = block.match(/<Button disabled=\{[^}]*\} onClick=\{goNext\}>/g) ?? [];
+      expect(buttons.length).toBe(1);
+      expect(buttons[0]).toMatch(/!allVerifiableChecksPassed\(checks\)/);
+      expect(buttons[0]).not.toMatch(/(^|[^!])allVerifiableChecksPassed\(checks\)/);
+      expect(buttons[0]).not.toContain('autoReplyAck');
+    }
   });
 });
