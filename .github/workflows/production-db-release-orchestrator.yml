@@ -46,6 +46,8 @@ concurrency:
 
 jobs:
   admission:
+    outputs:
+      g3_ledger_binding: ${{ steps.g3-binding.outputs.binding }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -153,6 +155,61 @@ jobs:
           if (evidence.writer?.projectBoundWriterCredentialPresent !== true || evidence.writer?.writerTransport !== 'POSTGRES_PROJECT_BOUND') throw new Error('PROJECT_BOUND_WRITER_CREDENTIAL_PROOF_REQUIRED');
           NODE
 
+
+      - name: Verify G3 provenance for read-only ledger comparison
+        if: ${{ inputs.mode == 'collect' }}
+        id: g3-source
+        uses: actions/github-script@v9
+        env:
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          G3_RUN_ID: ${{ inputs.g3_run_id }}
+        with:
+          script: |
+            const run = (await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: Number(process.env.G3_RUN_ID) })).data;
+            if (String(run.id) !== process.env.G3_RUN_ID || run.repository?.full_name !== `${context.repo.owner}/${context.repo.repo}` || run.name !== 'ci'
+              || run.path !== '.github/workflows/ci.yml' || run.event !== 'workflow_dispatch' || run.head_branch !== 'main'
+              || run.head_sha !== process.env.EXPECTED_MAIN_SHA || run.status !== 'completed' || run.conclusion !== 'success'
+              || !Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) throw new Error('UNTRUSTED_G3_LEDGER_SOURCE');
+            core.setOutput('run', JSON.stringify({ repository: run.repository.full_name, workflowPath: run.path,
+              event: run.event, branch: run.head_branch, headSha: run.head_sha, id: String(run.id), attempt: run.run_attempt,
+              status: run.status, conclusion: run.conclusion }));
+
+      - name: Download G3 ledger comparison provenance
+        if: ${{ inputs.mode == 'collect' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: production-db-g3-evidence-${{ inputs.expected_main_sha }}-${{ inputs.g3_run_id }}
+          path: ${{ runner.temp }}/g3-ledger
+          run-id: ${{ inputs.g3_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Reassemble exact G3 evidence for read-only ledger mapping
+        if: ${{ inputs.mode == 'collect' }}
+        id: g3-binding
+        env:
+          G3_SOURCE_RUN: ${{ steps.g3-source.outputs.run }}
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          RELEASE_ID: ${{ inputs.release_id }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { verifyProductionDbReleasePlan } from './scripts/agents/production-db-release-plan.mjs';
+          import { buildProductionDbTestEvidence } from './scripts/agents/production-db-test-evidence.mjs';
+          const read = (name) => JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/g3-ledger/${name}.json`, 'utf8'));
+          const plan = read('production-db-release-plan');
+          const sourceRun = JSON.parse(process.env.G3_SOURCE_RUN);
+          if (plan.mainSha !== process.env.EXPECTED_MAIN_SHA || plan.releaseId !== process.env.RELEASE_ID) throw new Error('G3_PLAN_BINDING_MISMATCH');
+          verifyProductionDbReleasePlan({ plan, aliasMap: JSON.parse(fs.readFileSync('supabase/ledger-alias-map.json', 'utf8')),
+            readCanonicalSql: (path) => fs.readFileSync(path, 'utf8') });
+          const releasePlanEvidence = read('production-db-test-release-evidence');
+          const postTestSchemaEvidence = read('production-db-test-post-schema-evidence');
+          const testEvidence = buildProductionDbTestEvidence({ plan, rawRunEvidence: read('shared-test-run-evidence'),
+            releasePlanEvidence, cleanupEvidence: read('production-db-test-cleanup-evidence'),
+            coverageEvidence: read('production-db-test-coverage-evidence'), postTestSchemaEvidence });
+          if (String(testEvidence.sourceRunId) !== sourceRun.id || testEvidence.sourceRunAttempt !== sourceRun.attempt) throw new Error('G3_ATTEMPT_MISMATCH');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `binding=${JSON.stringify({ releaseId: plan.releaseId, plan, testEvidence, sourceRun, releasePlanEvidence, postTestSchemaEvidence })}\n`);
+          NODE
+
   g2:
     needs: admission
     if: ${{ inputs.mode == 'collect' }}
@@ -160,6 +217,7 @@ jobs:
     with:
       expected_main_sha: ${{ inputs.expected_main_sha }}
       artifact_suffix: g2
+      release_ledger_binding: ${{ needs.admission.outputs.g3_ledger_binding }}
     secrets:
       SCHEMA_OBSERVER_TOKEN: ${{ secrets.SCHEMA_OBSERVER_TOKEN }}
 

@@ -198,6 +198,19 @@ Automatic pending-rollout classification is limited to an exact ledger subset of
 mismatches, extra or aliased ledger identities, and missing objects with an otherwise equal ledger remain
 `DRIFT_BLOCKED` unless covered by an exact intentional exception.
 
+For the selected G2 release only, the trusted orchestrator may pass its completed exact-main G3 CI
+run/attempt and reassembled TEST evidence with the verified release plan. The comparison maps only a
+selected TEST identity to that same migration's unique local canonical identity. New applies require the
+plan's exact ledger version; replays require the exact observed version agreed by the same-run execution
+and post-TEST capture, bound to the selected canonical SQL hash. The current TEST row must still match.
+It does not infer aliases by prefix/name, rewrite a raw snapshot, normalize Production, or exempt schema
+fingerprints. The report retains the original capture digests and each exact observed/canonical mapping,
+plan digest and run/attempt; the consistency consumer rejects a different plan digest. Missing binding
+uses the original strict behavior. Wrong source/main/plan bytes/version, duplicates, skipped TEST or
+failed cleanup fail closed. Existing capture freshness and exact exception expiry still apply. This
+read-only identity comparison is not G3 execution, G7 proof, or database-write authorization.
+
+
 The live observer uses `docs/schema-truth/schema-drift-exceptions.json`, a separate contract because each
 entry binds the environment plus both expected and observed fingerprints. It does not replace #431's
 exact-entry-digest policy or create a blanket waiver. The report statuses are `MATCH`, `EXPECTED_PENDING_TEST`, `EXPECTED_PENDING_PRODUCTION`,

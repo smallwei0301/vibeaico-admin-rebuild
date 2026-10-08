@@ -66,6 +66,7 @@ function plannedProductionDifferences({ report, plan, impactManifest }) {
 export function buildProductionConsistencyEvidence({ report, plan, impactManifest, mainSha, planDigest }) {
   if (!report || report.observedMainSha !== mainSha) fail('CONSISTENCY_MAIN_MISMATCH', 'drift report is not for the selected main SHA');
   if (!plan || plan.mainSha !== mainSha || plan.planDigest !== planDigest) fail('CONSISTENCY_PLAN_MISMATCH', 'release plan is not the selected main SHA / plan digest');
+  if (report.plannedLedgerMapping && report.plannedLedgerMapping.planDigest !== planDigest) fail('CONSISTENCY_LEDGER_PLAN_MISMATCH', 'ledger mapping belongs to another release plan');
   if (report.safety?.authorizesDatabaseWrite !== false) fail('OBSERVER_SCOPE_ESCALATION', 'drift observer must stay read-only');
   if (report.status === 'DRIFT_BLOCKED' || report.status === 'EVIDENCE_UNAVAILABLE') fail('DRIFT_BLOCKED', `drift report status is ${report.status}`);
   if ((report.exceptionSummary?.expired ?? 0) > 0 || (report.exceptionSummary?.unmatched ?? 0) > 0) fail('STALE_DRIFT_EXCEPTION', 'drift exceptions must be active and matched');
