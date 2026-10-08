@@ -472,7 +472,7 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
   });
 
   it('exposes mock REVIEW_REQUIRED / AT_RISK cards from the single aggregated inbox, without inventing demo data for other statuses', async () => {
-    const items = await getGuideActionInbox();
+    const items = await getMockInboxAtEarlyMorning();
     const reviewRequired = items.filter((item) => item.kind === 'REVIEW_REQUIRED');
     const atRisk = items.filter((item) => item.kind === 'AT_RISK');
 
