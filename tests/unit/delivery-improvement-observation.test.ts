@@ -17,7 +17,7 @@ const fact = (hour = 9): any => ({
   observedMain: 'a'.repeat(40),
   observedAt: timestamp(hour),
   aliasMapBlobSha: blob(source),
-  productionLedger: { projectRef: 'egehnijjpgijmccagxac', observedAt: timestamp(hour), ledgerNames: applied },
+  productionLedger: { projectRef: 'egehnijjpgijmccagxac', observedAt: timestamp(hour), ledgerNames: [...applied] },
   testLedger: { projectRef: 'nmwhwngojosmagjuvxol', observedAt: timestamp(hour), ledgerNames: [...new Set([...applied, ...pending])] },
   product: { coverage: 'INCOMPLETE', missing: ['FULL_PRODUCT_DELIVERY_INVENTORY', 'LIVE_PRODUCTION_ACCEPTANCE'] },
   sourceProductMerges: { coverage: 'INCOMPLETE' },
