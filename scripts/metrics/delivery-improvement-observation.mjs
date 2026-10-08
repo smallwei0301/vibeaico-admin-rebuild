@@ -52,7 +52,7 @@ function readProduct(product = {}) {
     seen.add(number);
     url(item.closedEvidenceRef, 'PRODUCT_CLOSED_ISSUE');
     const stages = {};
-    for (const stage of ['testVerified', 'productionSchemaReady', 'deployed', 'authenticatedAccepted']) {
+    for (const stage of ['sourceVerified', 'mergedToMain', 'testVerified', 'productionSchemaReady', 'deployed', 'authenticatedAccepted']) {
       const state = item?.stages?.[stage];
       if (typeof state?.verified !== 'boolean') fail('PRODUCT_STAGE_' + stage + '_UNKNOWN');
       if (state.verified) url(state.evidenceRef, 'PRODUCT_STAGE_' + stage);
@@ -62,7 +62,7 @@ function readProduct(product = {}) {
   }).sort((a, b) => a.issueNumber - b.issueNumber);
   return {
     coverage, inventoryEvidenceRef: product.inventoryEvidenceRef, missing: [],
-    pendingCount: items.filter((item) => !item.stages.authenticatedAccepted.verified).length, items,
+    pendingCount: items.filter((item) => !['sourceVerified', 'mergedToMain', 'deployed', 'productionSchemaReady', 'authenticatedAccepted'].every((key) => item.stages[key].verified)).length, items,
   };
 }
 
