@@ -44,12 +44,13 @@ function readProduct(product = {}) {
     return { coverage, pendingCount: null, items: [], missing: missing.length ? missing : ['FULL_PRODUCT_DELIVERY_INVENTORY'] };
   }
   url(product.inventoryEvidenceRef, 'PRODUCT_INVENTORY');
-  if (!Array.isArray(product.items)) fail('PRODUCT_ITEMS_MISSING');
+  if (!Array.isArray(product.items) || !Number.isSafeInteger(product.totalEligibleClosed) || product.totalEligibleClosed !== product.items.length) fail('PRODUCT_INVENTORY_DENOMINATOR_MISSING_OR_INCONSISTENT');
   const seen = new Set();
   const items = product.items.map((item) => {
     const number = item?.issueNumber;
     if (!Number.isSafeInteger(number) || number <= 0 || seen.has(number)) fail('PRODUCT_ISSUE_ID_INVALID_OR_DUPLICATE');
     seen.add(number);
+    if (!['SLICE', 'STANDALONE'].includes(item.deliveryUnitType)) fail('PRODUCT_DELIVERY_UNIT_NOT_ELIGIBLE');
     url(item.closedEvidenceRef, 'PRODUCT_CLOSED_ISSUE');
     const stages = {};
     for (const stage of ['sourceVerified', 'mergedToMain', 'testVerified', 'productionSchemaReady', 'deployed', 'authenticatedAccepted']) {
@@ -58,10 +59,10 @@ function readProduct(product = {}) {
       if (state.verified) url(state.evidenceRef, 'PRODUCT_STAGE_' + stage);
       stages[stage] = { verified: state.verified, evidenceRef: state.verified ? state.evidenceRef : null };
     }
-    return { issueNumber: number, closedEvidenceRef: item.closedEvidenceRef, stages };
+    return { issueNumber: number, deliveryUnitType: item.deliveryUnitType, closedEvidenceRef: item.closedEvidenceRef, stages };
   }).sort((a, b) => a.issueNumber - b.issueNumber);
   return {
-    coverage, inventoryEvidenceRef: product.inventoryEvidenceRef, missing: [],
+    coverage, inventoryEvidenceRef: product.inventoryEvidenceRef, totalEligibleClosed: product.totalEligibleClosed, missing: [],
     pendingCount: items.filter((item) => !['sourceVerified', 'mergedToMain', 'deployed', 'productionSchemaReady', 'authenticatedAccepted'].every((key) => item.stages[key].verified)).length, items,
   };
 }
@@ -69,14 +70,19 @@ function readProduct(product = {}) {
 function readProductMerges(source = {}) {
   if (source.coverage !== 'COMPLETE') return { coverage: 'INCOMPLETE', count: null, prs: [] };
   url(source.inventoryEvidenceRef, 'PRODUCT_MERGE_INVENTORY');
+  const since = utc(source.since, 'PRODUCT_MERGE_SINCE');
+  const until = utc(source.until, 'PRODUCT_MERGE_UNTIL');
+  if (Date.parse(since) >= Date.parse(until)) fail('PRODUCT_MERGE_WINDOW_INVALID');
   if (!Array.isArray(source.prs)) fail('PRODUCT_MERGE_LIST_MISSING');
   const prs = source.prs.map((pr) => {
     if (!Number.isSafeInteger(pr?.number) || pr.number <= 0) fail('PRODUCT_MERGE_NUMBER_INVALID');
     url(pr.evidenceRef, 'PRODUCT_MERGE');
-    return { number: pr.number, evidenceRef: pr.evidenceRef };
+    const mergedAt = utc(pr.mergedAt, 'PRODUCT_MERGED_AT');
+    if (Date.parse(mergedAt) < Date.parse(since) || Date.parse(mergedAt) > Date.parse(until)) fail('PRODUCT_MERGE_OUTSIDE_WINDOW');
+    return { number: pr.number, evidenceRef: pr.evidenceRef, mergedAt };
   });
   if (new Set(prs.map((pr) => pr.number)).size !== prs.length) fail('PRODUCT_MERGE_DUPLICATE');
-  return { coverage: 'COMPLETE', count: prs.length, inventoryEvidenceRef: source.inventoryEvidenceRef, prs };
+  return { coverage: 'COMPLETE', since, until, count: prs.length, inventoryEvidenceRef: source.inventoryEvidenceRef, prs };
 }
 
 export function captureDeliveryObservation(facts, aliasMap, aliasMapBytes) {
@@ -101,6 +107,8 @@ export function captureDeliveryObservation(facts, aliasMap, aliasMapBytes) {
   }
   const testNames = new Set(test.ledgerNames);
   const product = readProduct(facts.product);
+  const sourceProductMerges = readProductMerges(facts.sourceProductMerges);
+  if (sourceProductMerges.coverage === 'COMPLETE' && sourceProductMerges.until !== observedAt) fail('PRODUCT_MERGE_WINDOW_NOT_AT_OBSERVATION');
   return {
     schemaVersion: 1, repo: REPO, observedMain: facts.observedMain, observedAt,
     aliasMapBlobSha: facts.aliasMapBlobSha,
@@ -117,7 +125,7 @@ export function captureDeliveryObservation(facts, aliasMap, aliasMapBytes) {
       testLedgerIsNotTestVerified: true,
     },
     product,
-    sourceProductMerges: readProductMerges(facts.sourceProductMerges),
+    sourceProductMerges,
   };
 }
 
@@ -145,8 +153,12 @@ function checkPair(previous, current) {
       Array.isArray(oldProduct.items) && Array.isArray(newProduct.items)) {
     const oldItems = new Map(oldProduct.items.map((item) => [item.issueNumber, item]));
     const newItems = new Map(newProduct.items.map((item) => [item.issueNumber, item]));
+    const expectedOldPending = oldProduct.items.filter((item) => !['sourceVerified', 'mergedToMain', 'deployed', 'productionSchemaReady', 'authenticatedAccepted'].every((key) => item.stages?.[key]?.verified)).length;
+    const expectedNewPending = newProduct.items.filter((item) => !['sourceVerified', 'mergedToMain', 'deployed', 'productionSchemaReady', 'authenticatedAccepted'].every((key) => item.stages?.[key]?.verified)).length;
     if ([...oldItems.keys()].every((number) => newItems.has(number)) &&
-        newItems.size === newProduct.items.length && oldItems.size === oldProduct.items.length) {
+        newItems.size === newProduct.items.length && oldItems.size === oldProduct.items.length &&
+        expectedOldPending === oldProduct.pendingCount && expectedNewPending === newProduct.pendingCount &&
+        oldProduct.totalEligibleClosed === oldItems.size && newProduct.totalEligibleClosed === newItems.size) {
       pendingDelta = newProduct.pendingCount - oldProduct.pendingCount;
       productTrend = pendingDelta < 0 ? 'DOWN' : pendingDelta > 0 ? 'UP' : 'FLAT';
       toReady = 0;
@@ -178,7 +190,9 @@ export function compareDeliveryObservations(previous, current, older = null) {
   if (older) {
     const first = checkPair(older, previous);
     const complete = [first, latest].every((item) => item.productPending.trend !== 'DATA_INSUFFICIENT') &&
-      [previous, current].every((item) => item.sourceProductMerges?.coverage === 'COMPLETE');
+      [previous, current].every((item) => item.sourceProductMerges?.coverage === 'COMPLETE') &&
+      previous.sourceProductMerges.since === older.observedAt && previous.sourceProductMerges.until === previous.observedAt &&
+      current.sourceProductMerges.since === previous.observedAt && current.sourceProductMerges.until === current.observedAt;
     if (complete) {
       const notDown = [first, latest].every((item) => item.productPending.delta >= 0);
       const sourceAdvanced = [previous, current].every((item) => item.sourceProductMerges.count > 0);
