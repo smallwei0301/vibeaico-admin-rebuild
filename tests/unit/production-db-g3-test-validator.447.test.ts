@@ -338,7 +338,7 @@ describe('G3 atomic SQL admission #755', () => {
     expect(built.sql.indexOf('pg_try_advisory_xact_lock')).toBeLessThan(built.sql.indexOf(transport.trim()));
     expect(built.sql.indexOf('G3_TEST_POST_LEDGER_MISSING')).toBeGreaterThan(built.sql.indexOf(transport.trim()));
   });
-
+https://github.com/smallwei0301/vibeaico-admin-rebuild/blob/main/tests/unit/production-db-g3-test-validator.447.test.ts
   it.each(['direct', 'management'])('never sends an unsafe migration to the %s mutation transport', async (transport) => {
     const repoRoot = sourceFixture(`BEGIN; ${SQL} COMMIT;`);
     const releasePlan = buildTestReleasePlanFromCheckout({
