@@ -210,7 +210,7 @@ describe('#530 schema staged-release policy', () => {
     const blob = (value: string) => ({
       encoding: 'base64',
       content: Buffer.from(value).toString('base64'),
-      sha: createHash('sha1').update(`blob ${Buffer.byteLength(value)}\\0`).update(value).digest('hex'),
+      sha: createHash('sha1').update(`blob ${Buffer.byteLength(value)}\0`).update(value).digest('hex'),
       size: Buffer.byteLength(value),
     });
     const input: any = {
@@ -265,7 +265,7 @@ describe('#530 schema staged-release policy', () => {
     ];
     const blob = (value: string) => ({
       encoding: 'base64', content: Buffer.from(value).toString('base64'),
-      sha: createHash('sha1').update(`blob ${Buffer.byteLength(value)}\\0`).update(value).digest('hex'),
+      sha: createHash('sha1').update(`blob ${Buffer.byteLength(value)}\0`).update(value).digest('hex'),
       size: Buffer.byteLength(value),
     });
     for (const after of sources) {
