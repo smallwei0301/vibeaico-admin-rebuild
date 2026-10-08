@@ -290,20 +290,17 @@ describe('DONE gating source-pin（page 無法在 node render，釘住 page.tsx 
     // setStep 識別字總數 = 1 個宣告（useState 解構）+ 呼叫數；以 callback 傳遞／別名都會讓總數變多
     const identifiers = src.match(/\bsetStep\b/g) ?? [];
     expect(identifiers.length, MSG + '（偵測到非呼叫的 setStep 引用，如別名或當 callback 傳遞）').toBe(1 + calls.length);
-    const key = (a: string) =>
-      a.startsWith('deriveStartingStep(') ? 'deriveStartingStep('
-        : a.startsWith('(cur) => stepAfterVerifyRetry(cur,') ? '(cur) => stepAfterVerifyRetry(cur,'
-        : a;
+    const DERIVE = 'deriveStartingStep( { channelId: true, channelSecret: true, channelAccessToken: true }, realChecks, )';
     const allow = [
       "configured ? 'CONNECTION' : 'CREDENTIALS_INPUT'",
-      'deriveStartingStep(',
-      'deriveStartingStep(',
-      '(cur) => stepAfterVerifyRetry(cur,',
+      DERIVE, // ~line 151（儲存前已設定）
+      DERIVE, // ~line 235（儲存憑證後）
+      '(cur) => stepAfterVerifyRetry(cur, { channelId: !!settings?.line.channelId, channelSecret: !!settings?.line.channelSecret, channelAccessToken: !!settings?.line.channelAccessToken, }, realChecks)',
       'WIZARD_STEP_KEYS[idx + 1]',
       'WIZARD_STEP_KEYS[idx - 1]',
       "'CREDENTIALS_INPUT'",
     ].sort();
-    expect(calls.map(key).sort(), MSG).toEqual(allow);
+    expect([...calls].sort(), MSG).toEqual(allow);
   });
 
   it('WIZARD_STEP_KEYS[idx + 1] 只出現在 goNext，且位於 allVerifiableChecksPassed gate 之後', () => {
@@ -338,6 +335,7 @@ describe('DONE gating source-pin（page 無法在 node render，釘住 page.tsx 
       expect(buttons.length).toBe(1);
       expect(buttons[0]).toBe(EXPECTED);
       expect(buttons[0]).not.toContain('autoReplyAck');
+      expect((block.match(/\bgoNext\b/g) ?? []).length, 'block 內 goNext 只能出現一次').toBe(1);
     }
   });
 });
