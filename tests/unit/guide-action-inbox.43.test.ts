@@ -279,6 +279,18 @@ const bookingsApiSource = readFileSync(
 // 真正的 route handler——下面兩個行為測試直接呼叫它，不重新實作一份過濾邏輯。
 import { GET as guideActionInboxGET } from '@/app/api/guide/action-inbox/route';
 
+const PINNED_TAIPEI_MORNING = new Date('2026-10-07T22:00:00.000Z'); // 台北 06:00，早於任何 mock 團次 startTime
+async function getMockInboxAtEarlyMorning() {
+  // 只假 Date、不假 timer：mock adapter 用真 setTimeout 模擬延遲。
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(PINNED_TAIPEI_MORNING);
+  try {
+    return await getGuideActionInbox();
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
 describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => {
   it('prioritizes overdue, tenant-today, and future pending work', () => {
     const now = new Date('2026-09-02T04:00:00.000Z'); // 12:00 Asia/Taipei
@@ -365,7 +377,8 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
   });
 
   it('keeps mock GUIDE mode useful by exposing two actionable departures', async () => {
-    const items = await getGuideActionInbox();
+    // 收件匣排除「今日已過 startTime」的團次（#826），mock 也套用；固定在台北清晨避免時間相依。
+    const items = await getMockInboxAtEarlyMorning();
     const departures = items.filter((item) => item.kind === 'DEPARTURE');
     const payments = items.filter((item) => item.kind === 'BOOKING_PAYMENT');
 
@@ -459,7 +472,7 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
   });
 
   it('exposes mock REVIEW_REQUIRED / AT_RISK cards from the single aggregated inbox, without inventing demo data for other statuses', async () => {
-    const items = await getGuideActionInbox();
+    const items = await getMockInboxAtEarlyMorning();
     const reviewRequired = items.filter((item) => item.kind === 'REVIEW_REQUIRED');
     const atRisk = items.filter((item) => item.kind === 'AT_RISK');
 
@@ -1306,8 +1319,8 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
     it('mock service applies the same exclusivity rule (demo mode must not reproduce the duplicate-card bug)', async () => {
       // 這條留下行為斷言而非文字斷言：直接讀 mock 服務的真實輸出，確認同一顆
       // trip_departure 不會同時以 DEPARTURE 與 REVIEW_REQUIRED/AT_RISK 兩種
-      // kind 出現。
-      const items = await getGuideActionInbox();
+      // kind 出現。固定台北清晨，避免今日團次過 startTime 後成團卡消失而時間相依。
+      const items = await getMockInboxAtEarlyMorning();
       const departureIds = new Set(items.filter((i) => i.kind === 'DEPARTURE').map((i) => i.id));
       const formationIds = items
         .filter((i) => i.kind === 'REVIEW_REQUIRED' || i.kind === 'AT_RISK')
@@ -1345,9 +1358,9 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
   // violation on `min_to_depart_snapshot`, not as a value silently defaulting to 1.
 
   it('mock formation cards are remapped to today/tomorrow, not left on the stale fixture date (LOW finding: past-dated formation departures must not sit in the inbox forever)', async () => {
-    const now = new Date();
+    const now = PINNED_TAIPEI_MORNING;
     const { today, tomorrow } = getGuideActionInboxDateWindow(now);
-    const items = await getGuideActionInbox();
+    const items = await getMockInboxAtEarlyMorning();
     const formationItems = items.filter(
       (item) => item.kind === 'REVIEW_REQUIRED' || item.kind === 'AT_RISK',
     );

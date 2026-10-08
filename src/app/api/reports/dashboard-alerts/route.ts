@@ -4,7 +4,8 @@ import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { taipeiTodayDateString, taipeiCurrentMonthKey } from '@/server/tz';
 import { businessSettingsSchema } from '@/config/tenant-settings';
-import { LINE_FREE_PUSH_QUOTA, FEATURE_EXPIRY_WARNING_DAYS } from '@/config/features';
+import { FEATURE_EXPIRY_WARNING_DAYS } from '@/config/features';
+import { pushQuotaLimit } from '@/server/line';
 import type { DashboardAlerts } from '@/lib/types';
 
 export const GET = handle(async () => {
@@ -19,6 +20,7 @@ export const GET = handle(async () => {
     { data: settingsRow, error: e4 },
     { data: quotaRow, error: e5 },
     { data: featureRows, error: e6 },
+    pushQuota,
   ] = await Promise.all([
     t.supabase.from('bookings').select('id', { count: 'exact', head: true })
       .eq('tenant_id', t.tenantId).eq('status', 'PENDING'),
@@ -32,6 +34,7 @@ export const GET = handle(async () => {
       .eq('tenant_id', t.tenantId).eq('month', taipeiCurrentMonthKey()).maybeSingle(),
     t.supabase.from('feature_subscriptions').select('code, active, expires_at')
       .eq('tenant_id', t.tenantId),
+    pushQuotaLimit(t.tenantId),
   ]);
   if (e1) throw e1;
   if (e2) throw e2;
@@ -50,7 +53,7 @@ export const GET = handle(async () => {
   const bookingCutoffDate = business.bookingCutoffDate || null;
   const bookingCutoffPassed = bookingCutoffDate !== null && bookingCutoffDate < taipeiTodayDateString();
 
-  const pushQuotaExhausted = (quotaRow?.used ?? 0) >= LINE_FREE_PUSH_QUOTA;
+  const pushQuotaExhausted = (quotaRow?.used ?? 0) >= pushQuota;  // 上限與發送端一致（EXTRA_PUSH → 700）
 
   const now = Date.now();
   const warnMs = FEATURE_EXPIRY_WARNING_DAYS * 24 * 60 * 60 * 1000;
