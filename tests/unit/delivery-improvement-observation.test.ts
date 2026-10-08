@@ -18,7 +18,7 @@ const fact = (hour = 9): any => ({
   observedAt: timestamp(hour),
   aliasMapBlobSha: blob(source),
   productionLedger: { projectRef: 'egehnijjpgijmccagxac', observedAt: timestamp(hour), ledgerNames: applied },
-  testLedger: { projectRef: 'nmwhwngojosmagjuvxol', observedAt: timestamp(hour), ledgerNames: [...applied, ...pending] },
+  testLedger: { projectRef: 'nmwhwngojosmagjuvxol', observedAt: timestamp(hour), ledgerNames: [...new Set([...applied, ...pending])] },
   product: { coverage: 'INCOMPLETE', missing: ['FULL_PRODUCT_DELIVERY_INVENTORY', 'LIVE_PRODUCTION_ACCEPTANCE'] },
   sourceProductMerges: { coverage: 'INCOMPLETE' },
 });
