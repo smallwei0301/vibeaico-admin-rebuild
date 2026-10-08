@@ -393,4 +393,3 @@ You can turn strict checking back off and ship; every fix you made is a genuine 
 | A temporarily broken test          | `withKnownIssue`                | `.disabled`, or commenting it out         |
 | Diagnostics in shipping code       | `Logger` + a correlation ID     | `print`                                   |
 | Deciding to optimize               | Instruments on a profiled test  | intuition                                 |
-
