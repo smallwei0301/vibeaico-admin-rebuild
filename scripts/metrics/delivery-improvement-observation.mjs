@@ -184,6 +184,7 @@ function checkPair(previous, current) {
   };
 }
 
+/** @param {any} previous @param {any} current @param {any} [older] */
 export function compareDeliveryObservations(previous, current, older = null) {
   const latest = checkPair(previous, current);
   let drainMode = 'DATA_INSUFFICIENT';
