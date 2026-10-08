@@ -18,8 +18,9 @@
  *   → monthRevenue=800（本月 COMPLETED 的 final_price 加總，只有 1 筆）
  *   → totalCustomers=3（customerA1/A2/A3）
  *   → linePlatformStatus='NOT_CONFIGURED'（seed 沒有設定過 LINE token）
- *   → pushQuotaUsed=0／pushQuotaTotal=200（push_quota_usage 沒有任何列、
- *     LINE_FREE_PUSH_QUOTA=200，見 src/config/features.ts）
+ *   → pushQuotaUsed=0／pushQuotaTotal=700（push_quota_usage 沒有任何列；
+ *     seed 給 SHOP_A 永久有效的 EXTRA_PUSH GRANTED，04 §A-5／09 §2、§5
+ *     規定有效訂閱為 700、否則 200；beforeAll 另以原始訂閱列核對此種子前提）
  *   → unprocessedBookings=1（＝pendingBookings）
  *   → lowStockProducts=0（seed 沒有任何 products 列）
  *   → staffA1：bookingCount=4（全部 4 筆都掛 staffA1）、
@@ -95,6 +96,17 @@ beforeAll(async () => {
   if (error) throw error;
   seedBookings = (data ?? []) as SeedBookingRow[];
   expect(seedBookings.length).toBe(4); // 前提檢查：清理紀律沒被破壞
+
+  // 標準種子永久贈送 EXTRA_PUSH；先驗原始前提，再固定斷言 700。
+  // 不引用受測的 pushQuotaLimit() 算期望值，避免實作與神諭一起算錯。
+  const { data: extraPush, error: extraPushError } = await admin
+    .from('feature_subscriptions')
+    .select('active, expires_at, source')
+    .eq('tenant_id', SHOP_A.id)
+    .eq('code', 'EXTRA_PUSH')
+    .maybeSingle();
+  expect(extraPushError).toBeNull();
+  expect(extraPush).toEqual({ active: true, expires_at: null, source: 'GRANTED' });
 });
 
 describe('GET /api/reports/dashboard（04 §A-5）', () => {
@@ -124,7 +136,7 @@ describe('GET /api/reports/dashboard（04 §A-5）', () => {
     expect(data.totalCustomers).toBe(3);
     expect(data.linePlatformStatus).toBe('NOT_CONFIGURED');
     expect(data.pushQuotaUsed).toBe(0);
-    expect(data.pushQuotaTotal).toBe(200);
+    expect(data.pushQuotaTotal).toBe(700);
   });
 
   it('未登入 → 401 AUTH_001', async () => {

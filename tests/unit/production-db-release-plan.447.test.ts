@@ -663,4 +663,72 @@ describe('#46/#755 reviewed eight-migration closure', () => {
       expect(()=>selectedProductionMigrations(map,scope)).toThrow(/APPLIED_PREREQUISITE_MISSING/);
     }
   });
+
+  // #755 的新 finite9 計畫只多 canonical 0137；計畫建構不是 DB 執行授權。
+  const quotedScope = 'ISSUE_755_0110_0137_CLOSURE';
+  const quoted = '0137_issue_749_create_tour_order_quoted';
+  function quotedFixture() {
+    const map = fixture();
+    return { ...map, entries: [...map.entries,
+      { repoFile: quoted, classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', ledgerNames: [] }] };
+  }
+  const quotedPlan = (map = quotedFixture()) => buildProductionDbReleasePlan({
+    releaseId: 'release-755-quoted-closure', mainSha: MAIN, plannedAt: PLANNED_AT,
+    migrationScope: quotedScope, aliasMap: map, readCanonicalSql: (path: string) => readFileSync(path, 'utf8'),
+  });
+
+  it('adds exactly canonical 0137 after 0132/0136 and preserves the old eight/default selection', () => {
+    const map = quotedFixture();
+    expect(selectedProductionMigrations(map, quotedScope)).toEqual({ migrationScope: quotedScope, migrations: [...targets, quoted] });
+    expect(selectedProductionMigrations(map, scope)).toEqual({ migrationScope: scope, migrations: targets });
+    expect(selectedProductionMigrations(map)).toEqual({ migrationScope: 'FULL_PENDING_SET', migrations: [...targets, quoted, '0133_unrelated'].sort() });
+    const built = quotedPlan(map);
+    expect(built.riskTier).toBe('AUTHZ');
+    expect(built.migrations.at(-1)).toMatchObject({ repoFile: quoted, riskTier: 'AUTHZ', sha256: '62b1384e405d6f2657c68534aff406069f33070fbaefc98cf38f8d72a327890a' });
+    const old = (aliases: typeof map) => buildProductionDbReleasePlan({
+      releaseId: 'release-755-quoted-closure', mainSha: MAIN, plannedAt: PLANNED_AT,
+      migrationScope: scope, aliasMap: aliases, readCanonicalSql: (path: string) => readFileSync(path, 'utf8'),
+    });
+    expect(old(map)).toEqual(old(fixture()));
+    expect(built.migrations.slice(0, 8)).toEqual(old(map).migrations);
+    expect(verifyProductionDbReleasePlan({ plan: built, aliasMap: map, readCanonicalSql: (path: string) => readFileSync(path, 'utf8') }).planDigest).toBe(built.planDigest);
+  });
+
+  it('requires all existing exact prerequisites, the sole reviewed 0099 alias, and 0132/0136/0137 pending', () => {
+    for (const name of prerequisites) {
+      for (const variant of ['missing', 'alias', 'duplicate', 'wrongLedger']) {
+        const map = quotedFixture(); const row = map.entries.find(entry => entry.repoFile === name)!;
+        if (variant === 'missing') map.entries = map.entries.filter(entry => entry !== row);
+        if (variant === 'alias') row.classification = 'ALIAS';
+        if (variant === 'duplicate') map.entries.push({ ...row });
+        if (variant === 'wrongLedger') row.ledgerNames = ['other'];
+        expect(() => selectedProductionMigrations(map, quotedScope)).toThrow(/APPLIED_PREREQUISITE_MISSING/);
+      }
+    }
+    for (const name of ['0132_issue_42_seasonal_price_resolution', '0136_issue_755_create_tour_order_invoker', quoted]) {
+      const map = quotedFixture(); map.entries = map.entries.filter(row => row.repoFile !== name);
+      expect(() => selectedProductionMigrations(map, quotedScope)).toThrow(/DEPENDENCY_NOT_PENDING/);
+    }
+    for (const variant of ['missing', 'wrongAlias', 'wrongClassification', 'duplicate']) {
+      const map = quotedFixture(); const row = map.entries.find(entry => entry.repoFile.startsWith('0099'))!;
+      if (variant === 'missing') map.entries = map.entries.filter(entry => entry !== row);
+      if (variant === 'wrongAlias') row.ledgerNames = ['other_alias'];
+      if (variant === 'wrongClassification') row.classification = 'EXACT';
+      if (variant === 'duplicate') map.entries.push({ ...row });
+      expect(() => selectedProductionMigrations(map, quotedScope)).toThrow(/APPLIED_PREREQUISITE_MISSING/);
+    }
+  });
+
+  it('rejects missing/extra nine-plan identities, stale 0137 pins, old-eight relabeling and unlisted scopes', () => {
+    const map = quotedFixture(); const built = quotedPlan(map);
+    const verify = (mutated: typeof built) => {
+      mutated.planDigest = releasePlanDigestOf(mutated);
+      return verifyProductionDbReleasePlan({ plan: mutated, aliasMap: map, readCanonicalSql: (path: string) => readFileSync(path, 'utf8') });
+    };
+    expect(() => verify({ ...built, migrations: built.migrations.slice(0, 8) })).toThrow(/PENDING_SET_MISMATCH/);
+    expect(() => verify({ ...built, migrations: [...built.migrations, { ...built.migrations.at(-1)!, repoFile: '0133_unrelated', path: 'supabase/migrations/0133_unrelated.sql' }] })).toThrow(/PENDING_SET_MISMATCH/);
+    expect(() => verify({ ...built, migrations: built.migrations.map(row => row.repoFile === quoted ? { ...row, sha256: '0'.repeat(64) } : row) })).toThrow(/MIGRATION_BYTES_MISMATCH/);
+    expect(() => verify({ ...built, migrationScope: scope })).toThrow(/PENDING_SET_MISMATCH/);
+    expect(() => selectedProductionMigrations(map, 'ISSUE_755_0110_0138_CLOSURE')).toThrow(/UNSUPPORTED_MIGRATION_SCOPE/);
+  });
 });
