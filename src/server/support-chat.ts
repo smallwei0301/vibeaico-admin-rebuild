@@ -51,6 +51,7 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { taipeiCurrentMonthKey } from './tz';
+import { LINE_FREE_PUSH_QUOTA, LINE_EXTRA_PUSH_QUOTA } from '@/config/features';
 
 /** 這一版真的回答得了的問題種類。`UNSUPPORTED` 是「我看不懂」，不是錯誤。 */
 export type SupportIntent = 'LINE_STATUS' | 'PUSH_QUOTA' | 'ENTITLEMENT' | 'UNSUPPORTED';
@@ -109,8 +110,8 @@ export function resolveSupportIntent(question: string): SupportIntent {
 }
 
 /** 免費 200 則／月；訂閱 `EXTRA_PUSH` 後 700（09 分冊 §5，與 `consumePushQuota` 同一組數字）。 */
-export const PUSH_QUOTA_FREE = 200;
-export const PUSH_QUOTA_EXTRA = 700;
+export const PUSH_QUOTA_FREE = LINE_FREE_PUSH_QUOTA;
+export const PUSH_QUOTA_EXTRA = LINE_EXTRA_PUSH_QUOTA;
 
 const yes = (v: boolean) => (v ? '已設定' : '尚未設定');
 

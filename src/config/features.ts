@@ -123,3 +123,6 @@ export const FEATURE_EXPIRY_WARNING_DAYS = 10;
 
 /** LINE 官方帳號免費方案每月推播上限（原站文案寫死 200 則） */
 export const LINE_FREE_PUSH_QUOTA = 200;
+
+/** 訂閱 EXTRA_PUSH 後每月推播上限（09 分冊 §5）。上限的唯一真相見 src/server/line.ts `pushQuotaLimit`。 */
+export const LINE_EXTRA_PUSH_QUOTA = 700;
