@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import {
   allVerifiableChecksPassed, canAdvanceFromStep, credentialsConfigured,
-  deriveStartingStep, stepAfterVerifyRetry, stepStatus, type VerifyCheck,
+  deriveStartingStep, stepAfterVerifyRetry, stepStatus, WIZARD_STEP_KEYS, type VerifyCheck,
 } from '@/lib/line-setup-wizard';
 
 function check(key: string, status: 'PASS' | 'FAIL' | 'INFO', message = ''): VerifyCheck {
@@ -303,22 +303,35 @@ describe('DONE gating source-pin（page 無法在 node render，釘住 page.tsx 
     expect([...calls].sort(), MSG).toEqual(allow);
   });
 
-  it('WIZARD_STEP_KEYS[idx + 1] 只出現在 goNext，且位於 allVerifiableChecksPassed gate 之後', () => {
+  // goNext 本體（去除 /* */ 與 // 註解後），讓「被註解掉的 gate」無法通過整行比對
+  const goNextCode = () => {
+    const raw = src.slice(src.indexOf('const goNext'), src.indexOf('const goPrev'));
+    return raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  };
+  const GATE_RE = /^\s*if \(step === 'CAPABILITIES' && !allVerifiableChecksPassed\(checks\)\) return;\s*$/gm;
+  const GUARD_RE = /^\s*if \(verifying \|\| verifyError \|\| !canAdvanceFromStep\(step, checks\)\) return;\s*$/gm;
+
+  it('WIZARD_STEP_KEYS[idx + 1] 只出現在 goNext，且位於未註解的 allVerifiableChecksPassed gate 之後', () => {
     const occ = src.split('setStep(WIZARD_STEP_KEYS[idx + 1])').length - 1;
     expect(occ).toBe(1);
-    const gs = src.indexOf('const goNext');
-    const ge = src.indexOf('const goPrev');
-    const gate = src.indexOf("if (step === 'CAPABILITIES' && !allVerifiableChecksPassed(checks)) return;");
-    const adv = src.indexOf('setStep(WIZARD_STEP_KEYS[idx + 1])');
-    expect(gate).toBeGreaterThan(gs);
-    expect(adv).toBeGreaterThan(gate);
-    expect(adv).toBeLessThan(ge);
+    const body = goNextCode();
+    const gates = [...body.matchAll(GATE_RE)];
+    expect(gates.length, 'gate 必須是未註解的獨立整行，且恰好一行').toBe(1);
+    const adv = body.indexOf('setStep(WIZARD_STEP_KEYS[idx + 1])');
+    expect(adv, 'goNext（去註解後）仍須含 idx + 1 推進').toBeGreaterThan(-1);
+    expect(adv).toBeGreaterThan(gates[0].index!);
   });
 
-  it('goNext 仍使用 canAdvanceFromStep，且 CAPABILITIES→DONE 以 allVerifiableChecksPassed 擋住', () => {
-    const body = src.slice(src.indexOf('const goNext'), src.indexOf('const goPrev'));
-    expect(body).toContain('canAdvanceFromStep(step, checks)');
-    expect(body).toMatch(/step === 'CAPABILITIES' && !allVerifiableChecksPassed\(checks\)\) return/);
+  it('goNext 以未註解整行使用 canAdvanceFromStep，且 CAPABILITIES→DONE 以 allVerifiableChecksPassed 擋住', () => {
+    const body = goNextCode();
+    expect([...body.matchAll(GUARD_RE)].length, 'canAdvanceFromStep guard 須為未註解整行').toBe(1);
+    expect([...body.matchAll(GATE_RE)].length, 'CAPABILITIES gate 須為未註解整行').toBe(1);
+  });
+
+  it('WIZARD_STEP_KEYS 尾端順序：AUTO_REPLY_CONFIRM → CAPABILITIES → DONE', () => {
+    expect(WIZARD_STEP_KEYS.slice(-2)).toEqual(['CAPABILITIES', 'DONE']);
+    const i = WIZARD_STEP_KEYS.indexOf('CAPABILITIES');
+    expect(WIZARD_STEP_KEYS[i - 1]).toBe('AUTO_REPLY_CONFIRM');
   });
 
   it('AUTO_REPLY_CONFIRM 與 CAPABILITIES 的 goNext 按鈕 disabled 運算式必須完整等於預期', () => {
