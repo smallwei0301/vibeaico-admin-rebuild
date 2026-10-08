@@ -9,7 +9,7 @@
  *   3. `stepStatus` / `allVerifiableChecksPassed` 必須把 AUTO_REPLY 的 INFO
  *      跟六項可查證檢查的 PASS/FAIL 分開算，永遠不能把 INFO 算成失敗。
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import {
   allVerifiableChecksPassed, canAdvanceFromStep, credentialsConfigured,
   deriveStartingStep, stepAfterVerifyRetry, stepStatus, type VerifyCheck,
@@ -191,9 +191,18 @@ describe('stepAfterVerifyRetry — 儲存成功後 verify 失敗的重試（只�
 });
 
 describe('page 接線 source-pin（page 無法在 node render，改釘原始碼）', () => {
-  it('錯誤提示的重試鈕走 retryVerify（會更新 step），不是裸 runVerify', async () => {
+  let src = '';
+  beforeAll(async () => {
     const { readFileSync } = await import('node:fs');
-    const src = readFileSync('src/app/tenant/line-settings/onboarding/page.tsx', 'utf8');
+    src = readFileSync('src/app/tenant/line-settings/onboarding/page.tsx', 'utf8');
+  });
+
+  it('保護：原始碼已讀入（避免負向斷言空過）', () => {
+    expect(src.length).toBeGreaterThan(1000);
+    expect(src).toContain('retryVerify');
+  });
+
+  it('錯誤提示的重試鈕走 retryVerify（會更新 step），不是裸 runVerify', () => {
     expect(src).toMatch(/onClick=\{\(\) => void retryVerify\(\)\}>\{t\.nav\.retryCheck\}[\s\S]{0,40}<\/Alert>/);
     expect(src).toContain('stepAfterVerifyRetry(cur');
   });
@@ -247,10 +256,15 @@ describe('DONE gating — verify 未全 PASS 不得抵達 DONE', () => {
 
 describe('DONE gating source-pin（page 無法在 node render，釘住 page.tsx 接線；source-pin 非行為測試）', () => {
   let src = '';
-  it('讀取 page.tsx', async () => {
+  beforeAll(async () => {
     const { readFileSync } = await import('node:fs');
     src = readFileSync('src/app/tenant/line-settings/onboarding/page.tsx', 'utf8');
-    expect(src.length).toBeGreaterThan(0);
+  });
+
+  it('保護：原始碼已讀入且含 goNext／goPrev（避免負向斷言空過）', () => {
+    expect(src.length).toBeGreaterThan(1000);
+    expect(src).toContain('const goNext');
+    expect(src).toContain('const goPrev');
   });
 
   it("沒有任何地方直接 setStep('DONE')／setStep('CAPABILITIES')，DONE 只能經 goNext 逐步抵達", () => {
