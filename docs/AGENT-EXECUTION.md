@@ -398,6 +398,11 @@ RECOVERY_BLOCKED、IMPLEMENTATION_BLOCKED／EXECUTION_BLOCKED。automation pendi
   trusted guard 重新查 canonical `ci` 的 integration + E2E 真實成功，以及 read-only
   `agent-schema-drift-watch` 成功；兩者 head 必須是 receipt 的 schema-prep commit，並驗證該 commit 是目前 base 祖先。
 - 單純 schema prep、migration 加文件／測試、或明確 `SCHEMA_DEPENDENCY: none` 的普通 runtime 不因本規則誤擋。
+  除此之外，runtime-only PR 如果**首次加入直接呼叫某個資料庫 RPC 的程式**（例如 `client.rpc('create_tour_order_quoted')`），
+  即使填寫 `SCHEMA_DEPENDENCY: none`，既有 `Agent WIP Policy` 仍會從 exact base/head 程式內容辨識新增 RPC 名稱，
+  並要求 `RPC_TEST_RUN_ID` 指向該 PR exact head 的真實 canonical TEST `ci`，其 integration 與 E2E 必須實際執行成功。
+  `POLICY_SKIP`、只有 typecheck/build 綠燈、舊 SHA 或口頭說明不算證據。已宣告 schema 相依的 PREPARE／ACTIVATE 仍走原本的分段發布與正式環境驗證，不另造放行關卡；
+  未新增 RPC 名稱的一般 runtime／Lane B 不受此額外要求。動態組合 RPC 名稱與非字面呼叫仍需 Final Risk 人工審查。
 
 Production release 也不得因 pending migration 很多就「照編號整批套」。先依 §2.0.3 的 queue 與相依／風險建立 bounded release plan：
 已 `TEST_VERIFIED` 的項目優先進 G0–G7；main-only 項目先取得唯一 canonical TEST holder；
