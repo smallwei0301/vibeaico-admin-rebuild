@@ -25,6 +25,7 @@ const fact = (hour = 9): any => ({
 const captured = (hour = 9) => captureDeliveryObservation(fact(hour), aliasMap, source);
 const issue = (accepted = false): any => ({
   issueNumber: 42,
+  deliveryUnitType: 'SLICE',
   closedEvidenceRef: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/42',
   stages: Object.fromEntries(['sourceVerified','mergedToMain','testVerified','productionSchemaReady','deployed','authenticatedAccepted'].map((key) =>
     [key, { verified: key === 'authenticatedAccepted' ? accepted : true,
@@ -33,11 +34,15 @@ const issue = (accepted = false): any => ({
 const complete = (packet: any, accepted = false, prs: number[] = []) => {
   packet.product = { coverage: 'COMPLETE',
     inventoryEvidenceRef: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/42',
+    totalEligibleClosed: 1,
     items: [issue(accepted)] };
+  const hour = Number(packet.observedAt.slice(11, 13));
   packet.sourceProductMerges = { coverage: 'COMPLETE',
     inventoryEvidenceRef: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/pulls',
+    since: timestamp(hour - 1), until: timestamp(hour),
     prs: prs.map((number) => ({
       number, evidenceRef: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/' + number,
+      mergedAt: timestamp(hour),
     })),
   };
   return captureDeliveryObservation(packet, aliasMap, source);
