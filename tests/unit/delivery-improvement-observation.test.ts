@@ -26,7 +26,7 @@ const captured = (hour = 9) => captureDeliveryObservation(fact(hour), aliasMap, 
 const issue = (accepted = false): any => ({
   issueNumber: 42,
   closedEvidenceRef: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/42',
-  stages: Object.fromEntries(['testVerified','productionSchemaReady','deployed','authenticatedAccepted'].map((key) =>
+  stages: Object.fromEntries(['sourceVerified','mergedToMain','testVerified','productionSchemaReady','deployed','authenticatedAccepted'].map((key) =>
     [key, { verified: key === 'authenticatedAccepted' ? accepted : true,
       evidenceRef: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/42' } ])),
 });
