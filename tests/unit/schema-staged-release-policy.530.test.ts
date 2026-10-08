@@ -201,6 +201,88 @@ describe('#530 schema staged-release policy', () => {
     assert.match((await validateGithubSchemaStagedRelease(input)).join('\n'), /SCHEMA_RELEASE_STAGE=PREPARE/);
   });
 
+
+  it('requires actual exact-head TEST steps when a runtime introduces a new literal RPC without a declared migration dependency', async () => {
+    const headSha = 'd'.repeat(40);
+    const baseSha = 'e'.repeat(40);
+    const before = "export async function save(client) { return null; }\n";
+    const after = "export async function save(client) { return client.rpc('create_tour_order_quoted'); }\n";
+    const blob = (value: string) => ({
+      encoding: 'base64',
+      content: Buffer.from(value).toString('base64'),
+      sha: createHash('sha1').update(`blob ${Buffer.byteLength(value)}\\0`).update(value).digest('hex'),
+      size: Buffer.byteLength(value),
+    });
+    const input: any = {
+      github: {
+        paginate: async () => [{
+          name: 'integration', conclusion: 'success', steps: [
+            { name: 'Run integration tests', conclusion: 'success' },
+            { name: 'Run E2E tests', conclusion: 'success' },
+          ],
+        }],
+        rest: {
+          git: { getBlob: async () => ({ data: blob(after) }) },
+          repos: { getContent: async () => ({ data: blob(before) }) },
+          actions: { getWorkflowRun: async () => ({
+            data: { name: 'ci', conclusion: 'success', head_sha: headSha },
+          }) },
+        },
+      },
+      owner: 'owner', repo: 'repo',
+      current: {
+        body: 'MIGRATION_TOUCH: false\nSCHEMA_DEPENDENCY: none',
+        changed_files: 1, head: { sha: headSha }, base: { sha: baseSha },
+      },
+      changedFiles: [{ filename: runtime, status: 'modified', sha: blob(after).sha }],
+    };
+    assert.match((await validateGithubSchemaStagedRelease(input)).join('\n'), /RPC_TEST_RUN_ID/);
+    input.current.body += '\nRPC_TEST_RUN_ID: 321';
+    assert.deepEqual(await validateGithubSchemaStagedRelease(input), []);
+
+    input.github.rest.actions.getWorkflowRun = async () => ({
+      data: { name: 'ci', conclusion: 'success', head_sha: baseSha },
+    });
+    assert.match((await validateGithubSchemaStagedRelease(input)).join('\n'), /exact-head successful CI/);
+
+    input.github.rest.actions.getWorkflowRun = async () => ({
+      data: { name: 'ci', conclusion: 'success', head_sha: headSha },
+    });
+    input.github.paginate = async () => [{
+      name: 'integration', conclusion: 'success', steps: [
+        { name: 'Source-only policy skip evidence', conclusion: 'success' },
+      ],
+    }];
+    assert.match((await validateGithubSchemaStagedRelease(input)).join('\n'), /not a policy skip/);
+  });
+
+  it('does not require another TEST run for unchanged literal RPC usage or comment-only samples', async () => {
+    const headSha = 'd'.repeat(40);
+    const base = "export async function save(client) { return client.rpc('existing_rpc'); }\n";
+    const sources = [
+      "export async function save(client) { return client.rpc('existing_rpc', { id: 1 }); }\n",
+      "// client.rpc('new_rpc')\nexport async function save() { return null; }\n",
+    ];
+    const blob = (value: string) => ({
+      encoding: 'base64', content: Buffer.from(value).toString('base64'),
+      sha: createHash('sha1').update(`blob ${Buffer.byteLength(value)}\\0`).update(value).digest('hex'),
+      size: Buffer.byteLength(value),
+    });
+    for (const after of sources) {
+      const input: any = {
+        github: { rest: {
+          git: { getBlob: async () => ({ data: blob(after) }) },
+          repos: { getContent: async () => ({ data: blob(base) }) },
+        } },
+        owner: 'owner', repo: 'repo',
+        current: { body: 'MIGRATION_TOUCH: false\nSCHEMA_DEPENDENCY: none',
+          changed_files: 1, head: { sha: headSha }, base: { sha: 'e'.repeat(40) } },
+        changedFiles: [{ filename: runtime, status: 'modified', sha: blob(after).sha }],
+      };
+      assert.deepEqual(await validateGithubSchemaStagedRelease(input), []);
+    }
+  });
+
   it('wires the same helper into local preflight and the trusted required guard', () => {
     const preflight = readFileSync(path.resolve('scripts/agents/agent-wip-preflight.mjs'), 'utf8');
     const workflow = readFileSync(path.resolve('.github/workflows/agent-wip-guard.yml'), 'utf8');
