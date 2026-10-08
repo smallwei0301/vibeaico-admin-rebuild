@@ -270,8 +270,52 @@ describe('DONE gating source-pin（page 無法在 node render，釘住 page.tsx 
     expect(src).toContain('const goPrev');
   });
 
-  it("沒有任何地方直接 setStep('DONE')／setStep('CAPABILITIES')，DONE 只能經 goNext 逐步抵達", () => {
-    expect(src).not.toMatch(/setStep\(\s*['"](DONE|CAPABILITIES)['"]/);
+  it('setStep 呼叫點白名單：任何新增或修改都必須重新審查 DONE gating', () => {
+    const MSG = '新增或修改 setStep 呼叫點須重新審查 DONE gating 並更新白名單';
+    const norm = (x: string) => x.replace(/\s+/g, ' ').trim();
+    const calls: string[] = [];
+    const re = /\bsetStep\(/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(src))) {
+      let i = m.index + m[0].length;
+      let depth = 1;
+      const from = i;
+      while (i < src.length && depth > 0) {
+        const c = src[i++];
+        if (c === '(') depth++;
+        else if (c === ')') depth--;
+      }
+      calls.push(norm(src.slice(from, i - 1)));
+    }
+    // setStep 識別字總數 = 1 個宣告（useState 解構）+ 呼叫數；以 callback 傳遞／別名都會讓總數變多
+    const identifiers = src.match(/\bsetStep\b/g) ?? [];
+    expect(identifiers.length, MSG + '（偵測到非呼叫的 setStep 引用，如別名或當 callback 傳遞）').toBe(1 + calls.length);
+    const key = (a: string) =>
+      a.startsWith('deriveStartingStep(') ? 'deriveStartingStep('
+        : a.startsWith('(cur) => stepAfterVerifyRetry(cur,') ? '(cur) => stepAfterVerifyRetry(cur,'
+        : a;
+    const allow = [
+      "configured ? 'CONNECTION' : 'CREDENTIALS_INPUT'",
+      'deriveStartingStep(',
+      'deriveStartingStep(',
+      '(cur) => stepAfterVerifyRetry(cur,',
+      'WIZARD_STEP_KEYS[idx + 1]',
+      'WIZARD_STEP_KEYS[idx - 1]',
+      "'CREDENTIALS_INPUT'",
+    ].sort();
+    expect(calls.map(key).sort(), MSG).toEqual(allow);
+  });
+
+  it('WIZARD_STEP_KEYS[idx + 1] 只出現在 goNext，且位於 allVerifiableChecksPassed gate 之後', () => {
+    const occ = src.split('setStep(WIZARD_STEP_KEYS[idx + 1])').length - 1;
+    expect(occ).toBe(1);
+    const gs = src.indexOf('const goNext');
+    const ge = src.indexOf('const goPrev');
+    const gate = src.indexOf("if (step === 'CAPABILITIES' && !allVerifiableChecksPassed(checks)) return;");
+    const adv = src.indexOf('setStep(WIZARD_STEP_KEYS[idx + 1])');
+    expect(gate).toBeGreaterThan(gs);
+    expect(adv).toBeGreaterThan(gate);
+    expect(adv).toBeLessThan(ge);
   });
 
   it('goNext 仍使用 canAdvanceFromStep，且 CAPABILITIES→DONE 以 allVerifiableChecksPassed 擋住', () => {
@@ -280,7 +324,8 @@ describe('DONE gating source-pin（page 無法在 node render，釘住 page.tsx 
     expect(body).toMatch(/step === 'CAPABILITIES' && !allVerifiableChecksPassed\(checks\)\) return/);
   });
 
-  it('AUTO_REPLY_CONFIRM 與 CAPABILITIES 各自的下一步按鈕 disabled 含「否定」的 allVerifiableChecksPassed，且不依賴 autoReplyAck', () => {
+  it('AUTO_REPLY_CONFIRM 與 CAPABILITIES 的 goNext 按鈕 disabled 運算式必須完整等於預期', () => {
+    const EXPECTED = '<Button disabled={verifying || !!verifyError || !allVerifiableChecksPassed(checks)} onClick={goNext}>';
     const start = src.indexOf("{step === 'AUTO_REPLY_CONFIRM' ? (");
     const mid = src.indexOf("{step === 'CAPABILITIES' ? (");
     const end = src.indexOf("{step === 'DONE' ? (");
@@ -289,10 +334,9 @@ describe('DONE gating source-pin（page 無法在 node render，釘住 page.tsx 
     expect(end).toBeGreaterThan(mid);
     const blocks = [src.slice(start, mid), src.slice(mid, end)];
     for (const block of blocks) {
-      const buttons = block.match(/<Button disabled=\{[^}]*\} onClick=\{goNext\}>/g) ?? [];
+      const buttons = (block.match(/<Button\b[^>]*onClick=\{goNext\}[^>]*>/g) ?? []).map((b) => b.replace(/\s+/g, ' '));
       expect(buttons.length).toBe(1);
-      expect(buttons[0]).toMatch(/!allVerifiableChecksPassed\(checks\)/);
-      expect(buttons[0]).not.toMatch(/(^|[^!])allVerifiableChecksPassed\(checks\)/);
+      expect(buttons[0]).toBe(EXPECTED);
       expect(buttons[0]).not.toContain('autoReplyAck');
     }
   });
