@@ -804,7 +804,7 @@ export default function LineSetupWizardPage() {
                       ? t.capabilities.pushQuota.usage(quotaSummary.used, quotaSummary.total, quotaSummary.remaining)
                       : t.capabilities.pushQuota.noQuota}
                 </div>
-                <Link className="btn btn-outline btn-sm mt-2" href="/tenant/campaigns">
+                <Link className="btn btn-outline btn-sm mt-2" href="/tenant/marketing">
                   {t.capabilities.pushQuota.cta}
                 </Link>
               </div>
