@@ -219,7 +219,7 @@ export const POST = handle(async (_req, { params }) => {
 
 | 端點 | data 組法（皆以租戶時區 Asia/Taipei 計「今天／本月」） |
 |---|---|
-| GET `/api/reports/dashboard` | `DashboardStats`：todayBookings=start_at 在今日的 bookings count；pendingBookings=status PENDING count；monthRevenue=本月 COMPLETED sum(final_price)；totalCustomers=customers count；pushQuota{Used,Total}=push_quota_usage 本月 used / 200（或加購額度）；linePlatformStatus=token 未設 `NOT_CONFIGURED`，設了取 `/v2/bot/info` 快取結果 `CONNECTED`/`ERROR` |
+| GET `/api/reports/dashboard` | `DashboardStats`：todayBookings=start_at 在今日的 bookings count；pendingBookings=status PENDING count；monthRevenue=本月 COMPLETED sum(final_price)；totalCustomers=customers count；pushQuotaUsed=push_quota_usage 本月 used；pushQuotaTotal=有效 EXTRA_PUSH 訂閱為 700，否則 200（依 09 分冊 §2 有效性與 §5 額度規則，與發送端一致）；linePlatformStatus=token 未設 `NOT_CONFIGURED`，設了取 `/v2/bot/info` 快取結果 `CONNECTED`/`ERROR` |
 | GET `/api/reports/dashboard-alerts` | `DashboardAlerts`：unprocessedBookings=PENDING count；lowStockProducts=stock<=safety_stock count；atRiskCustomers=customers_view at_risk count；bookingCutoff*=business 設定比對今天；pushQuotaExhausted=used>=total；expired/expiringFeatures 依 `FEATURE_EXPIRY_WARNING_DAYS` |
 | GET `/api/reports/staff-performance` | query `?from&to`（預設本月）：group by staff → bookingCount(全部)、completionRate(COMPLETED/全部)、revenue(COMPLETED sum) |
 

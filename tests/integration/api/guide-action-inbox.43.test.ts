@@ -293,7 +293,7 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
       kind: 'REVIEW_REQUIRED',
       tripId: TRIP_A.id,
       minToDepart: 4,
-      href: `/tenant/trips/${TRIP_A.id}`,
+      href: `/tenant/trips/${TRIP_A.id}?tab=departures&departureId=${reviewId}`,
     });
     // PostgREST 回傳 timestamptz 是 `...541+00:00`，`futureDeadline` 是
     // `toISOString()` 產出的 `...541Z`——兩者是同一個 instant 的不同字面表示法，
@@ -308,7 +308,7 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
       tripId: TRIP_A.id,
       minToDepart: 4,
       formedParticipants: 5,
-      href: `/tenant/trips/${TRIP_A.id}`,
+      href: `/tenant/trips/${TRIP_A.id}?tab=departures&departureId=${atRiskId}`,
     });
     // AT_RISK 的下一個真正期限是出發時刻，不是舊的 formation_deadline_at（本例根本沒設）。
     expect(atRiskItem?.dueAt).not.toBe(futureDeadline);

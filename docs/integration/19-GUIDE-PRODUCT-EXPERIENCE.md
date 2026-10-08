@@ -177,6 +177,11 @@ LINE 圖文選單／公開網址
 - 一個主要操作。
 - 直接開到對應資料的深層連結（deep link）。
 
+`REVIEW_REQUIRED`／`AT_RISK` 成團決策卡的深層連結為
+`/tenant/trips/{tripId}?tab=departures&departureId={departureId}`，直接開啟團次分頁；
+載入的團次清單確實包含該 id 才定位並標示該列，不存在的 id 不猜測、不定位。
+一般 `DEPARTURE` 與人員待辦卡仍連到 `/tenant/trips/{tripId}`。
+
 無待辦時顯示誠實空狀態，不放示範資料。
 
 ---
