@@ -149,6 +149,87 @@ function writerFixture(existingVersion?: string) {
 }
 
 describe('#755 trusted G3 writer to observer identity binding', () => {
+  it.each([undefined, '0136'])('accepts CLI replay short names with verified TEST version %s in a comparison-only view', (version) => {
+    const { args, plan, rows } = writerFixture(version);
+    const cliIdentity = { version: '0136', name: MIGRATION.slice(5) };
+    args.expectedSnapshot = snapshot('LOCAL_EXPECTED', [], [MIGRATION], [BASELINE, cliIdentity]);
+    const original = structuredClone({ expected: args.expectedSnapshot, test: args.testSnapshot, production: args.productionSnapshot });
+    const report = compareObserverSnapshots(args);
+    expect(report).toMatchObject({ status: 'EXPECTED_PENDING_PRODUCTION', environmentStatuses: { TEST: 'MATCH' },
+      plannedLedgerMapping: { canonicalReplayMappings: [{ observed: cliIdentity, canonical: identity(MIGRATION) }] } });
+    expect(report.differences).toEqual([expect.objectContaining({
+      surface: 'migrationLedger', objectKey: `0136/${MIGRATION}`, observedFingerprint: null, classification: 'EXPECTED_PENDING_PRODUCTION',
+    })]);
+    expect(buildProductionConsistencyEvidence({ ...fixture(), report, plan, planDigest: plan.planDigest })).toMatchObject({
+      status: 'CONSISTENCY_VERIFIED', databaseMutationAuthorized: false,
+    });
+    expect({ expected: args.expectedSnapshot, test: args.testSnapshot, production: args.productionSnapshot }).toEqual(original);
+    expect(report.environments.expected.captureDigest).toEqual(original.expected.captureDigest);
+    expect(report.environments.expected.migrationLedger).toEqual(original.expected.migrationLedger.digest);
+    expect(report.environments.TEST.captureDigest).toEqual(original.test.captureDigest);
+    expect(report.environments.PRODUCTION.captureDigest).toEqual(original.production.captureDigest);
+    expect(rows[0].name).toBe(MIGRATION);
+  });
+
+  it.each([
+    ['full name with wrong version', [{ version: '0135', name: MIGRATION }]],
+    ['short name with wrong version', [{ version: '0135', name: MIGRATION.slice(5) }]],
+    ['writer timestamp as canonical version', [{ version: '20261007000000', name: MIGRATION.slice(5) }]],
+    ['wrong name at the same version', [{ version: '0136', name: 'issue_755_wrong_name' }]],
+    ['another prefix in the name', [{ version: '0136', name: `0135_${MIGRATION.slice(5)}` }]],
+    ['doubled prefix', [{ version: '0136', name: `0136_${MIGRATION}` }]],
+    ['SQL extension', [{ version: '0136', name: `${MIGRATION}.sql` }]],
+    ['full and short names', [identity(MIGRATION), { version: '0136', name: MIGRATION.slice(5) }]],
+    ['full name plus wrong-version short name', [identity(MIGRATION), { version: '0135', name: MIGRATION.slice(5) }]],
+    ['short name plus wrong-version full name', [{ version: '0136', name: MIGRATION.slice(5) }, { version: '0135', name: MIGRATION }]],
+  ])('rejects canonical replay %s', (_name, ledger) => {
+    const { args } = writerFixture();
+    args.expectedSnapshot = snapshot('LOCAL_EXPECTED', [], [MIGRATION], [BASELINE, ...ledger]);
+    expect(() => compareObserverSnapshots(args)).toThrow(/CANONICAL_LEDGER_IDENTITY_REQUIRED/);
+  });
+
+  it('rejects duplicate canonical replay rows before resolving either name format', () => {
+    const { args } = writerFixture();
+    const row = { version: '0136', name: MIGRATION.slice(5) };
+    expect(() => {
+      args.expectedSnapshot = snapshot('LOCAL_EXPECTED', [], [MIGRATION], [BASELINE, row, row]);
+      compareObserverSnapshots(args);
+    }).toThrow(/DUPLICATE_LEDGER_IDENTITY/);
+  });
+
+  it('leaves CLI versus writer names unexplained without the trusted binding', () => {
+    const { args } = writerFixture('0136');
+    args.expectedSnapshot = snapshot('LOCAL_EXPECTED', [], [MIGRATION], [BASELINE, { version: '0136', name: MIGRATION.slice(5) }]);
+    const { releaseLedgerBinding: _binding, ...unbound } = args;
+    const report = compareObserverSnapshots(unbound);
+    expect(report.status).toBe('DRIFT_BLOCKED');
+    expect(report).not.toHaveProperty('plannedLedgerMapping');
+    expect(report.differences).toContainEqual(expect.objectContaining({ objectKey: `0136/${MIGRATION.slice(5)}` }));
+  });
+
+  it.each([OTHER, '0137_issue_749_create_tour_order_quoted'])('does not normalize unselected CLI identity %s', (unselected) => {
+    const { args } = writerFixture('0136');
+    args.expectedSnapshot = snapshot('LOCAL_EXPECTED', [], [MIGRATION], [BASELINE,
+      { version: '0136', name: MIGRATION.slice(5) }, { version: unselected.slice(0, 4), name: unselected.slice(5) }]);
+    args.testSnapshot = snapshot('TEST', [], [MIGRATION, unselected]);
+    const report = compareObserverSnapshots(args);
+    expect(report.status).toBe('DRIFT_BLOCKED');
+    expect(report).toHaveProperty('plannedLedgerMapping.canonicalReplayMappings.length', 1);
+    expect(report.differences).toContainEqual(expect.objectContaining({
+      environment: 'TEST', objectKey: `${unselected.slice(0, 4)}/${unselected.slice(5)}`, classification: null,
+    }));
+  });
+
+  it.each(['short-only', 'both-forms'])('does not invent a verified TEST alias for %s', (variant) => {
+    const { args } = writerFixture('0136');
+    const short = { version: '0136', name: MIGRATION.slice(5) };
+    args.expectedSnapshot = snapshot('LOCAL_EXPECTED', [], [MIGRATION], [BASELINE, short]);
+    args.testSnapshot = snapshot('TEST', [], [MIGRATION], [BASELINE, short, ...(variant === 'both-forms' ? [identity(MIGRATION)] : [])]);
+    const report = compareObserverSnapshots(args);
+    expect(report.status).toBe('DRIFT_BLOCKED');
+    expect(report).toMatchObject({ environmentStatuses: { TEST: 'DRIFT_BLOCKED' } });
+  });
+
   it('accepts the exact real writer identity without changing any captured ledger or digest', () => {
     const { args, plan, rows } = writerFixture();
     const original = structuredClone(args.testSnapshot);
@@ -190,6 +271,9 @@ describe('#755 trusted G3 writer to observer identity binding', () => {
     ['failed cleanup', (x: any) => { x.releaseLedgerBinding.testEvidence.cleanup = 'FAILED'; }],
     ['policy skip', (x: any) => { x.releaseLedgerBinding.testEvidence.policySkip = true; }],
     ['wrong TEST plan', (x: any) => { x.releaseLedgerBinding.testEvidence.planDigest = '0'.repeat(64); }],
+    ['wrong TEST project', (x: any) => { x.releaseLedgerBinding.testEvidence.testProjectRef = 'egehnijjpgijmccagxac'; }],
+    ['wrong execution project', (x: any) => { x.releaseLedgerBinding.releasePlanEvidence.testProjectRef = 'egehnijjpgijmccagxac'; }],
+    ['wrong post-TEST project', (x: any) => { x.releaseLedgerBinding.postTestSchemaEvidence.testProjectRef = 'egehnijjpgijmccagxac'; }],
     ['missing execution proof', (x: any) => { delete x.releaseLedgerBinding.releasePlanEvidence; }],
     ['missing post-TEST proof', (x: any) => { delete x.releaseLedgerBinding.postTestSchemaEvidence; }],
     ['execution hash', (x: any) => { x.releaseLedgerBinding.releasePlanEvidence.migrations[0].sha256 = '0'.repeat(64); }],
