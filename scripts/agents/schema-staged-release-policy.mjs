@@ -127,6 +127,37 @@ function readinessReceipt(content) {
   return null;
 }
 
+
+/** Direct, literal RPC calls newly introduced by this PR need real TEST proof,
+ * even when their PR body says SCHEMA_DEPENDENCY: none. A comment or string
+ * containing a sample call is not executable evidence. */
+function literalRpcNames(content) {
+  const source = String(content ?? '');
+  const executable = executableSource(source);
+  const names = new Set();
+  for (const match of source.matchAll(/\.\s*rpc\s*\(\s*(['"`])([A-Za-z_]\w*)\1/g)) {
+    if (executable[match.index] === '.') names.add(match[2]);
+  }
+  return names;
+}
+
+function verifiedIntegrationAndE2e(jobs) {
+  const integration = jobs.find((job) => job?.name === 'integration');
+  const steps = new Map((integration?.steps ?? []).map((step) => [step.name, step.conclusion]));
+  return integration?.conclusion === 'success'
+    && steps.get('Run integration tests') === 'success'
+    && steps.get('Run E2E tests') === 'success';
+}
+
+async function verifiedRpcTestRun({ github, owner, repo, runId, headSha }) {
+  const { data } = await github.rest.actions.getWorkflowRun({ owner, repo, run_id: runId });
+  if (data?.name !== 'ci' || data?.conclusion !== 'success' || data?.head_sha !== headSha) return false;
+  const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+    owner, repo, run_id: runId, filter: 'latest', per_page: 100,
+  });
+  return verifiedIntegrationAndE2e(jobs);
+}
+
 /**
  * #530/#659 policy: the changed-file inventory remains the primary trigger, but
  * runtime that explicitly depends on schema prepared in another PR/migration is
@@ -264,7 +295,62 @@ export async function validateGithubSchemaStagedRelease({ github, owner, repo, c
     changedFiles: paths,
     readFile: (name) => contents.get(name),
   });
-  // A receipt is only useful when its prepared commit is actually in the base history,
+
+  // Compare immutable PR head blobs against the exact base. Only *new* literal
+  // RPC targets require extra verification; unchanged RPC consumers and schema-
+  // preparation PRs remain governed by their existing policies. This plugs the
+  // undeclared cross-PR dependency bypass, without serializing unrelated UI PRs.
+  if (!paths.some(migrationPath)
+    && upper(readField(body, 'MIGRATION_TOUCH')) !== 'TRUE'
+    && upper(readField(body, 'SCHEMA_RELEASE_STAGE')) !== 'ACTIVATE'
+    && !declaredSchemaDependency(body)) {
+    const newNames = new Set();
+    for (const file of changedFiles) {
+      if (!runtimePath(file.filename) || !['added', 'modified', 'renamed'].includes(file.status)) continue;
+      const headText = contents.get(file.filename);
+      if (typeof headText !== 'string') {
+        if (/\.\s*rpc\s*\(/.test(String(file.patch ?? ''))) {
+          errors.push(failure(`new RPC source bytes are unavailable: ${file.filename}`));
+        }
+        continue;
+      }
+      const headNames = literalRpcNames(headText);
+      if (!headNames.size) continue;
+      let baseText = '';
+      if (file.status !== 'added') {
+        try {
+          const previousPath = file.previous_filename ?? file.filename;
+          const { data } = await github.rest.repos.getContent({
+            owner, repo, path: previousPath, ref: current.base?.sha,
+          });
+          baseText = Array.isArray(data) ? null : blobText(data, data?.sha);
+        } catch { baseText = null; }
+        if (baseText === null) {
+          errors.push(failure(`exact-base RPC source bytes are unavailable: ${file.filename}`));
+          continue;
+        }
+      }
+      const baseNames = literalRpcNames(baseText);
+      for (const name of headNames) if (!baseNames.has(name)) newNames.add(name);
+    }
+    if (newNames.size) {
+      const rawRunId = String(readField(body, 'RPC_TEST_RUN_ID') ?? '').trim();
+      const runId = /^\d+$/.test(rawRunId) ? Number(rawRunId) : 0;
+      if (!Number.isSafeInteger(runId) || runId <= 0) {
+        errors.push(failure(`new RPC call ${[...newNames].sort().join(', ')} requires RPC_TEST_RUN_ID from executed canonical TEST CI; POLICY_SKIP is not verification`));
+      } else {
+        try {
+          if (!(await verifiedRpcTestRun({ github, owner, repo, runId, headSha: current.head.sha }))) {
+            errors.push(failure('RPC_TEST_RUN_ID must point to exact-head successful CI with executed integration and E2E, not a policy skip'));
+          }
+        } catch {
+          errors.push(failure('RPC_TEST_RUN_ID could not be verified against live GitHub CI'));
+        }
+      }
+    }
+  }
+
+  // A receipt is only useful when its prepared commit is actually in the base history:
   // and the two named workflow runs really succeeded for that exact source.
   const receipt = contents.get(receiptPath);
   let preparedCommit = '';
@@ -286,11 +372,7 @@ export async function validateGithubSchemaStagedRelease({ github, owner, repo, c
           const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
             owner, repo, run_id: runId, filter: 'latest', per_page: 100,
           });
-          const integration = jobs.find((job) => job?.name === 'integration');
-          const steps = new Map((integration?.steps ?? []).map((step) => [step.name, step.conclusion]));
-          if (integration?.conclusion !== 'success'
-            || steps.get('Run integration tests') !== 'success'
-            || steps.get('Run E2E tests') !== 'success') {
+          if (!verifiedIntegrationAndE2e(jobs)) {
             errors.push(failure('canonicalTest workflow did not execute successful integration and E2E steps'));
           }
         }
