@@ -15,6 +15,8 @@ import { useToast } from '@/components/ui/Toast';
 import {
   getTenantSettings, saveLineSettings, syncLineWebhook, verifyLineSetup,
 } from '@/services/settings';
+import { getDashboardStats } from '@/services/reports';
+import { summarizePushQuota } from '@/lib/push-quota-summary';
 import { buildWebhookUrl, maskSecret } from '@/config/tenant-settings';
 import type { TenantSettings } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
@@ -70,6 +72,24 @@ export default function LineSetupWizardPage() {
   const verifyGate = React.useRef(createWizardRequestGate());
   const [settings, setSettings] = React.useState<TenantSettings | null>(null);
   const [step, setStep] = React.useState<WizardStepKey>('CREDENTIALS_INPUT');
+
+  /* 本月平台推播額度（僅供能力摘要顯示；失敗不阻擋精靈、不跳 toast） */
+  const [quotaState, setQuotaState] = React.useState<
+    { status: 'loading' } | { status: 'error' } | { status: 'ready'; used: number; total: number }
+  >({ status: 'loading' });
+  React.useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const stats = await getDashboardStats();
+        if (alive) setQuotaState({ status: 'ready', used: stats.pushQuotaUsed, total: stats.pushQuotaTotal });
+      } catch {
+        if (alive) setQuotaState({ status: 'error' });
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+  const quotaSummary = quotaState.status === 'ready' ? summarizePushQuota(quotaState.used, quotaState.total) : null;
 
   /* --- 步驟一：憑證表單（沿用既有 LINE 設定頁的「重新輸入」語意，見該頁檔頭） --- */
   const [channelId, setChannelId] = React.useState('');
@@ -767,6 +787,26 @@ export default function LineSetupWizardPage() {
                   <Badge tone="neutral">{t.capabilities.testMessage.notReadyTitle}</Badge>
                 </div>
                 <div className="form-text mt-1">{t.capabilities.testMessage.notReadyBody}</div>
+              </div>
+
+              <div className="rounded-md border border-neutral-250 p-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-base font-semibold text-dark">{t.capabilities.pushQuota.title}</span>
+                  {quotaSummary && quotaSummary.level !== 'unknown' ? (
+                    <Badge tone={quotaSummary.tone}>{t.capabilities.pushQuota.badge[quotaSummary.level]}</Badge>
+                  ) : null}
+                </div>
+                <div className="form-text mt-1">{t.capabilities.pushQuota.body}</div>
+                <div className="form-text mt-1">
+                  {quotaState.status === 'loading' ? common.loading
+                    : quotaState.status === 'error' ? t.capabilities.pushQuota.loadFailed
+                    : quotaSummary && quotaSummary.level !== 'unknown'
+                      ? t.capabilities.pushQuota.usage(quotaSummary.used, quotaSummary.total, quotaSummary.remaining)
+                      : t.capabilities.pushQuota.noQuota}
+                </div>
+                <Link className="btn btn-outline btn-sm mt-2" href="/tenant/campaigns">
+                  {t.capabilities.pushQuota.cta}
+                </Link>
               </div>
 
               <div className="rounded-md border border-neutral-250 p-3">
