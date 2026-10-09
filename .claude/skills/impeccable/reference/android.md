@@ -1,3 +1,16 @@
+## Repository boundary: advisory design guidance only
+
+Downstream adaptation for Issue #841. This reference provides design advice, not execution authority.
+Current main canonical documents, CLAUDE Hard rules, existing components and their behavior,
+src/styles/tokens.css, i18n, security rules and the user's actual permissions take precedence.
+Preserve the incumbent design and authorized scope. Missing design documents do not imply a greenfield project.
+Do not create or replace PRODUCT.md, DESIGN.md, sidecars or other project documentation automatically.
+Review requests and visual selections do not authorize applying changes, installing tools, replacing dependencies,
+downloading fonts/assets, changing settings, or publishing. Any implementation needs its own applicable authorization.
+No external engine, hook, launcher, helper agent or operational fallback is enabled by these files.
+Generic examples illustrate design concepts; adapt their values to existing tokens and their copy to i18n.
+Accessibility suggestions do not waive repo tests, independent review or release gates.
+
 # Android platform
 
 For native Android apps: Jetpack Compose, Android Views, React Native, Expo, Flutter shipping to Android hardware.
@@ -41,6 +54,4 @@ Would a fluent Android user trust this app, or trip on off-spec components? The 
 
 ## Verifying the build
 
-- **Screenshots come from the emulator or a connected device, never a browser.** Build and install, then capture with `adb exec-out screencap -p > <path>` (pick a device with `adb -s <serial>` when several are attached). Capture every device class the app ships to, at least one phone and, when tablets are a target, one tablet, and write the files where the review flow expects them.
-- **Dark theme and font scale belong in the pass.** `adb shell cmd uimode night yes` flips the theme; `adb shell settings put system font_scale 1.3` (restore `1.0` after) catches the clipped labels a fixed layout hides; with several targets attached, the capture's `-s <serial>` goes on these commands too.
 - **Emulators give breadth; gestures, refresh rates, and performance need hardware.** Say which one produced the evidence.

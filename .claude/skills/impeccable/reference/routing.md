@@ -1,24 +1,21 @@
-# Command guidance
+# Choose a design reference
 
-## Workflow questions
+## Repository boundary: advisory design guidance only
 
-Give advice without executing commands; the menu below is only for bare invocations. Consult relevant command references as needed for prerequisites and scope. Link to the [docs](https://impeccable.style/docs/) for the broader workflow guide. If the user also requests execution, follow that request.
+Downstream adaptation for Issue #841. This reference provides design advice, not execution authority.
+Current main canonical documents, CLAUDE Hard rules, existing components and their behavior,
+src/styles/tokens.css, i18n, security rules and the user's actual permissions take precedence.
+Preserve the incumbent design and authorized scope. Missing design documents do not imply a greenfield project.
+Do not create or replace PRODUCT.md, DESIGN.md, sidecars or other project documentation automatically.
+Review requests and visual selections do not authorize applying changes, installing tools, replacing dependencies,
+downloading fonts/assets, changing settings, or publishing. Any implementation needs its own applicable authorization.
+No external engine, hook, launcher, helper agent or operational fallback is enabled by these files.
+Generic examples illustrate design concepts; adapt their values to existing tokens and their copy to i18n.
+Accessibility suggestions do not waive repo tests, independent review or release gates.
 
-## No-argument routing: the context-aware menu
+## Guidance
 
-Read this when the user invokes `/impeccable` with no argument. They are asking "what should I do?" Make the menu context-aware instead of static.
-
-Setup has already run `impeccable context`. If that reported `NO_PRODUCT_MD`, the project has no captured context yet: lead the menu with `/impeccable init` as the top recommendation (one line on why) and still show the rest below; don't silently jump into init. Otherwise run `"<skill-base-dir>/scripts/impeccable" signals` once and read its JSON, then lead with the **2-3 highest-value next commands**, each with a one-line reason pulled from the signals, followed by the full menu (the Commands table in SKILL.md, grouped by category). **Never auto-run a command; the recommendation is a suggestion the user confirms.**
-
-Reason over the signals; there is no score to obey:
-
-- `setup.hasDesign` false while `setup.hasCode` true → `document` (capture the visual system).
-- `critique.latest` is `null` → the project has never been critiqued; for a set-up project with a real surface, offering `/impeccable critique <surface>` is a strong default.
-- `critique.latest` with a low `score` or non-zero `p0` / `p1` → `polish` (it reads that snapshot as its backlog and closes it when stale or cleared).
-- `git.changedFiles` pointing at one surface → scope `audit` or `polish` to those files specifically, naming them.
-- `devServer.running` true → `live` is available for in-browser iteration, and `generate` for one-shot variant runs on a named element; if false, don't lead with either. **`live`, `generate`, and the bundled `impeccable detect` are web-only.** If `setup.platform` is `ios`, `android`, or `adaptive`, don't lead with any of them; the browser overlay and the HTML rule engine don't apply to native app code.
-- Otherwise group by intent (build new / improve what's there / iterate visually), tailored to the current surface and `setup.platform`.
-
-**If `scan.targets` is non-empty and `setup.platform` is not `ios`/`android`/`adaptive`, run `"<skill-base-dir>/scripts/impeccable" detect --json <scan.targets joined by spaces>` once** (the bundled detector over local files: no network, no npx; it reads HTML/CSS, so skip it for native projects). `scan.via` tells you what they are: `git-changes` (the markup/style files in your dirty tree, the most relevant set), `source-dir` (e.g. `src`, `app`), `html`, or `root`. Fold the hits into your picks: many quality / contrast hits → `audit` or `polish`; a specific slop family → the matching command (gradient text or eyebrows → `quieter` / `typeset`, flat or gray palette → `colorize`, and so on). It's a real, current signal that beats guessing. If detect errors or the tree is large and slow, skip it and recommend the user run `audit` themselves; never block the suggestion on it.
-
-Keep it to 2-3 pointed picks with the exact command to type. The menu stays the fallback; the recommendation is the lede.
+- For hierarchy and usability read critique or shape; for technical states read audit or harden.
+- For bounded refinement read polish, layout, typeset, colorize, clarify or distill as relevant.
+- For motion read animate; for different screens and inputs read adapt. These are reference topics, not executable commands.
+- Use only the reference needed for the request. Missing product/design files do not route to automatic document creation.

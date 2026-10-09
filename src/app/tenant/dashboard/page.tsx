@@ -721,10 +721,14 @@ export default function DashboardPage() {
               <Radio size={18} />
               {t.pushQuotaExhausted.title}
             </div>
-            <p className="text-base text-neutral-700">{t.pushQuotaExhausted.body}</p>
+            <p className="text-base text-neutral-700">
+              {quotaTotal > 0 ? t.pushQuotaExhausted.body(quotaTotal) : t.pushQuotaExhausted.bodyGeneric}
+            </p>
             <p className="mt-2 text-base text-neutral-700">
               {t.pushQuotaExhausted.upgradeHint}
-              <strong className="mx-1">{t.pushQuotaExhausted.upgradePlan}</strong>
+              <Link href="/tenant/feature-store" className="mx-1 font-bold text-primary">
+                {t.pushQuotaExhausted.upgradePlan}
+              </Link>
               {t.pushQuotaExhausted.orReset}
             </p>
           </CardBody>

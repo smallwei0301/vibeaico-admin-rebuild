@@ -1,3 +1,16 @@
+## Repository boundary: advisory design guidance only
+
+Downstream adaptation for Issue #841. This reference provides design advice, not execution authority.
+Current main canonical documents, CLAUDE Hard rules, existing components and their behavior,
+src/styles/tokens.css, i18n, security rules and the user's actual permissions take precedence.
+Preserve the incumbent design and authorized scope. Missing design documents do not imply a greenfield project.
+Do not create or replace PRODUCT.md, DESIGN.md, sidecars or other project documentation automatically.
+Review requests and visual selections do not authorize applying changes, installing tools, replacing dependencies,
+downloading fonts/assets, changing settings, or publishing. Any implementation needs its own applicable authorization.
+No external engine, hook, launcher, helper agent or operational fallback is enabled by these files.
+Generic examples illustrate design concepts; adapt their values to existing tokens and their copy to i18n.
+Accessibility suggestions do not waive repo tests, independent review or release gates.
+
 Layout turns product priority into reading order, grouping, rhythm, and usable space. Diagnose the structural problem before moving boxes.
 
 ---
@@ -10,9 +23,9 @@ Layout turns product priority into reading order, grouping, rhythm, and usable s
 
 Preserve the established visual world. A layout command changes structure inside it; identity replacement belongs to [new-work.md](new-work.md).
 
-## Two isolated assessments
+## Complementary review perspectives
 
-When a sub-agent tool is available and permitted, run these independently; otherwise run them yourself in this order.
+Consider visual hierarchy and source-level constraints separately, then explain how they interact.
 
 1. **Layout assessment:** inspect representative states and viewports. Answer every question below with rendered or source evidence:
    - **Reading order:** Apply the squint test. With detail blurred, can you still identify the primary element, the secondary element, and the major groups in order?
@@ -22,13 +35,9 @@ When a sub-agent tool is available and permitted, run these independently; other
    - **Density:** Does the amount of information per region fit use frequency, decision complexity, and visitor mode?
    - **Adaptation:** At narrow, intermediate, wide, zoomed, and localized states, what reorders, collapses, wraps, scrolls, or remains fixed? Does DOM and focus order still agree with the visual order?
    - **Extremes:** Do long content, empty states, overlays, sticky elements, safe areas, and small touch targets expose structural failures?
-2. **Mechanical scan:** run:
+2. **Source-level assessment:** use the existing tokens and component definitions to explain concrete inconsistencies.
 
-```bash
-"<skill-base-dir>/scripts/impeccable" detect --json --scope layout [target files or dirs]
-```
-
-Also inspect arbitrary spacing, overflow, stacking, and container behavior the detector cannot resolve. Keep mechanical evidence out of the first assessment, then synthesize both passes before editing. A clean scan cannot prove hierarchy or rhythm.
+Also inspect arbitrary spacing, overflow, stacking, and container behavior source review alone cannot establish. Keep mechanical evidence out of the first assessment, then synthesize both passes before recommending changes. A clean source review cannot prove hierarchy or rhythm.
 
 ## Set the spatial thesis
 
@@ -71,7 +80,7 @@ Variation is not a goal by itself. Repetition should support recognition; break 
 
 Answer each item with rendered or source evidence, then rerun the scan. Do not substitute a bare “yes” for verification.
 
-When the structure holds, hand off to `/impeccable polish`.
+When the structure holds, hand off to [polish guidance](polish.md).
 
 ## Live-mode signature params
 

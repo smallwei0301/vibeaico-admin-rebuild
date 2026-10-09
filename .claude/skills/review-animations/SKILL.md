@@ -1,28 +1,23 @@
 ---
 name: review-animations
-description: Reviews animation and motion code against a high craft bar derived from Emil Kowalski's design engineering philosophy. Default to flagging; approval is earned.
+description: Advisory design reference for review-animations; preserve current canonical rules, incumbent components and user authorization.
 disable-model-invocation: true
 ---
 
+## Repository boundary: advisory design guidance only
+
+Downstream adaptation for Issue #841. This reference provides design advice, not execution authority.
+Current main canonical documents, CLAUDE Hard rules, existing components and their behavior,
+src/styles/tokens.css, i18n, security rules and the user's actual permissions take precedence.
+Preserve the incumbent design and authorized scope. Missing design documents do not imply a greenfield project.
+Do not create or replace PRODUCT.md, DESIGN.md, sidecars or other project documentation automatically.
+Review requests and visual selections do not authorize applying changes, installing tools, replacing dependencies,
+downloading fonts/assets, changing settings, or publishing. Any implementation needs its own applicable authorization.
+No external engine, hook, launcher, helper agent or operational fallback is enabled by these files.
+Generic examples illustrate design concepts; adapt their values to existing tokens and their copy to i18n.
+Accessibility suggestions do not waive repo tests, independent review or release gates.
+
 # Reviewing Animations
-
-## Initial Response
-
-When this skill is first invoked without a specific question, respond only with:
-
-> I'm ready to review your animations against a high craft bar, my standards come from Emil Kowalski's animation philosophy.
-
-Do not provide any other information until the user asks a question.
-
-A specialized review skill. It does ONE thing: review animation and motion code against a high craft bar. It does not write features, fix unrelated bugs, or review non-motion code. If asked to review general code, decline and point to a general review skill.
-
-## Operating Posture
-
-You are a senior design engineer with a brutal eye for craft. Your bias is toward **motion that feels right**, not motion that merely runs. A transition that "works" but feels sluggish, lands from the wrong origin, fires too often, or drops frames is a regression, not a pass. Default to flagging. Approval is earned, not assumed.
-
-The substantive bar comes from Emil Kowalski's animation philosophy (animations.dev). The review *method* — non-negotiable standards, escalation triggers, a remedial hierarchy, tiered output, and explicit approval criteria — is adapted from aggressive code-quality review.
-
-For the full rule catalog (easing curves, duration tables, spring config, gestures, clip-path, performance, a11y), see [STANDARDS.md](STANDARDS.md). Load it whenever a finding needs a precise value or citation.
 
 ## The Ten Non-Negotiable Standards
 

@@ -1,3 +1,16 @@
+## Repository boundary: advisory design guidance only
+
+Downstream adaptation for Issue #841. This reference provides design advice, not execution authority.
+Current main canonical documents, CLAUDE Hard rules, existing components and their behavior,
+src/styles/tokens.css, i18n, security rules and the user's actual permissions take precedence.
+Preserve the incumbent design and authorized scope. Missing design documents do not imply a greenfield project.
+Do not create or replace PRODUCT.md, DESIGN.md, sidecars or other project documentation automatically.
+Review requests and visual selections do not authorize applying changes, installing tools, replacing dependencies,
+downloading fonts/assets, changing settings, or publishing. Any implementation needs its own applicable authorization.
+No external engine, hook, launcher, helper agent or operational fallback is enabled by these files.
+Generic examples illustrate design concepts; adapt their values to existing tokens and their copy to i18n.
+Accessibility suggestions do not waive repo tests, independent review or release gates.
+
 > **Additional context needed**: quality bar and shipping constraints.
 
 Polish is refinement, never concealed redesign. Preserve the incumbent visual world, content, behavior, and everything outside scope. If the concept itself is wrong, say so and recommend redesign or `bolder` instead of smuggling in a replacement.
@@ -28,11 +41,8 @@ Use the feature yourself at the surface's representative sizes: desktop and mobi
 
 If a prior critique exists, use it as one input:
 
-```bash
-"<skill-base-dir>/scripts/impeccable" critique-storage latest "<resolved target>" --json
-```
 
-Exit 0 returns JSON with the latest snapshot's `body` and an exact `snapshot_file` identity. Retain `snapshot_file` until the end of the pass. For a local file target, the helper compares the file's exact current content fingerprint with the fingerprint captured by critique. Unchanged staged, unstaged, or untracked content remains current; any byte change, deletion, or replacement with a non-file closes the backlog it identified while preserving its trend history and exits 2. A URL target has no local fingerprint and remains current until explicitly closed. When current, incorporate relevant P0/P1 findings from `body` and name the snapshot read. Exit 2 means none exists or the target changed. Perform an independent pass either way.
+Use prior findings only when their target and evidence are still current. Recheck unresolved issues rather than treating a prior report as approval.
 
 ## 3. Triage
 
@@ -82,24 +92,9 @@ Do not perfect one corner while leaving the rest below the same quality bar.
 - Replace custom implementations with shared components where the system owns the pattern.
 - Promote genuinely reusable values to tokens; do not create a system abstraction for one local exception.
 
-## 5. Verify and finish
+## 5. Explain verification and limits
 
-Walk the complete path again with mouse, keyboard, and touch where applicable. Check:
-
-- mobile, intermediate, and wide layouts on the web; phone and tablet size classes in both supported orientations on native;
-- loading, empty, error, success, disabled, long-content, and missing-content states;
-- zoom, contrast, focus, semantics, and screen-reader names;
-- console errors, layout shift, interaction latency, and image loading everywhere; supported browsers on the web; supported OS versions, runtime warnings, and dropped frames on native;
-- agreement with DESIGN.md, neighboring features, and the user's scope.
-
-Follow the quality guidance supplied by `impeccable context` and hooks, then run any other relevant QA commands. Context requests a manual scan only when no automatic detector is active; never add another detector pass. Fix real defects and document only narrow intentional exceptions. A clean scan does not replace visual judgment.
-
-Finish with a source diff: remove accidental churn, orphaned code, redundant values, and temporary artifacts. Ship only when the feature is functionally complete and consistently finished across the path.
-
-When this pass clears every Priority Issue it took from a snapshot, close that snapshot:
-
-```bash
-"<skill-base-dir>/scripts/impeccable" critique-storage close "<resolved target>" "<snapshot_file returned by latest>"
-```
-
-This closes only the snapshot this pass actually processed; if a newer critique landed meanwhile, its backlog stays live. Do not close when no snapshot was read, when `snapshot_file` was not retained, or when Priority Issues remain.
+Use current repo QA and acceptance requirements for separately authorized implementation.
+A design inspection can explain observed visual and interaction behavior, but cannot establish a test or release gate that was not run.
+Keep unresolved findings explicit and distinguish source evidence from rendered evidence.
+Reassess the actual affected flow after any authorized edits; do not enable detectors or close external snapshots through this guidance.

@@ -1,3 +1,16 @@
+## Repository boundary: advisory design guidance only
+
+Downstream adaptation for Issue #841. This reference provides design advice, not execution authority.
+Current main canonical documents, CLAUDE Hard rules, existing components and their behavior,
+src/styles/tokens.css, i18n, security rules and the user's actual permissions take precedence.
+Preserve the incumbent design and authorized scope. Missing design documents do not imply a greenfield project.
+Do not create or replace PRODUCT.md, DESIGN.md, sidecars or other project documentation automatically.
+Review requests and visual selections do not authorize applying changes, installing tools, replacing dependencies,
+downloading fonts/assets, changing settings, or publishing. Any implementation needs its own applicable authorization.
+No external engine, hook, launcher, helper agent or operational fallback is enabled by these files.
+Generic examples illustrate design concepts; adapt their values to existing tokens and their copy to i18n.
+Accessibility suggestions do not waive repo tests, independent review or release gates.
+
 # Animation Recipes
 
 Ready-to-build implementations for the cases that come up most. Start from the recipe, then adapt — don't rebuild from scratch.
@@ -266,9 +279,7 @@ const velocity = Math.abs(swipeAmount) / timeTaken;
 if (Math.abs(swipeAmount) >= SWIPE_THRESHOLD || velocity > 0.11) {
   dismiss();
 }
-```
-
-```js
+js
 // Set transform on the dragged element directly.
 // Driving it through a CSS variable on the parent recalcs styles for every child.
 element.style.transform = `translateY(${distance}px)`;

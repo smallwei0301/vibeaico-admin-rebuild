@@ -1,6 +1,19 @@
+## Repository boundary: advisory design guidance only
+
+Downstream adaptation for Issue #841. This reference provides design advice, not execution authority.
+Current main canonical documents, CLAUDE Hard rules, existing components and their behavior,
+src/styles/tokens.css, i18n, security rules and the user's actual permissions take precedence.
+Preserve the incumbent design and authorized scope. Missing design documents do not imply a greenfield project.
+Do not create or replace PRODUCT.md, DESIGN.md, sidecars or other project documentation automatically.
+Review requests and visual selections do not authorize applying changes, installing tools, replacing dependencies,
+downloading fonts/assets, changing settings, or publishing. Any implementation needs its own applicable authorization.
+No external engine, hook, launcher, helper agent or operational fallback is enabled by these files.
+Generic examples illustrate design concepts; adapt their values to existing tokens and their copy to i18n.
+Accessibility suggestions do not waive repo tests, independent review or release gates.
+
 Run systematic **technical** quality checks on a native app (`ios` / `android` / `adaptive`) and generate a comprehensive report. Don't fix issues; document them for other commands to address.
 
-This is a code-level audit, not a design critique. Audit from source (SwiftUI / UIKit / Compose / React Native / Flutter); no browser tooling or `impeccable detect` applies. Score against the platform reference(s): [ios.md](ios.md) / [android.md](android.md), both for `adaptive`. Read them before scoring if Setup hasn't already. The report skeleton mirrors [audit.md](audit.md); keep the two in sync when changing it.
+This is a code-level audit, not a design critique. Audit from source (SwiftUI / UIKit / Compose / React Native / Flutter); browser-only evidence does not establish native behavior. Score against the platform reference(s): [ios.md](ios.md) / [android.md](android.md), both for `adaptive`. Consult the applicable platform reference before scoring. The report skeleton mirrors [audit.md](audit.md); keep the two in sync when changing it.
 
 ## Diagnostic Scan
 
@@ -102,7 +115,7 @@ For each issue, document:
 - **Impact**: How it affects users
 - **Guideline**: The HIG / Material rule it violates (if applicable)
 - **Recommendation**: How to fix it
-- **Suggested command**: Which command to use (prefer: /impeccable adapt, /impeccable animate, /impeccable audit, /impeccable bolder, /impeccable clarify, /impeccable colorize, /impeccable critique, /impeccable delight, /impeccable distill, /impeccable document, /impeccable harden, /impeccable layout, /impeccable onboard, /impeccable optimize, /impeccable overdrive, /impeccable polish, /impeccable quieter, /impeccable shape, /impeccable typeset)
+- **Suggested design change**: Explain the target, tradeoff and relevant written reference, without executing a command.
 
 ### Patterns & Systemic Issues
 
@@ -116,18 +129,18 @@ Note what's working well: good practices to maintain and replicate.
 
 ## Recommended Actions
 
-List recommended commands in priority order (P0 first, then P1, then P2):
+List recommended design changes in priority order (P0 first, then P1, then P2):
 
-1. **[P?] `/command-name`**: Brief description (specific context from audit findings)
-2. **[P?] `/command-name`**: Brief description (specific context)
+1. **[P?] Design change**: Brief description (specific context from audit findings)
+2. **[P?] Design change**: Brief description (specific context)
 
-**Rules**: Only recommend commands from: /impeccable adapt, /impeccable animate, /impeccable audit, /impeccable bolder, /impeccable clarify, /impeccable colorize, /impeccable critique, /impeccable delight, /impeccable distill, /impeccable document, /impeccable harden, /impeccable layout, /impeccable onboard, /impeccable optimize, /impeccable overdrive, /impeccable polish, /impeccable quieter, /impeccable shape, /impeccable typeset. Map findings to the most appropriate command. End with `/impeccable polish` as the final step if any fixes were recommended.
+Recommend specific design changes in priority order. Relevant written topics include [adapt](adapt.md), [animate](animate.md), [clarify](clarify.md), [harden](harden.md), [layout](layout.md), [optimize](optimize.md) and [polish](polish.md). These links are advisory references, not executable commands.
 
 After presenting the summary, tell the user:
 
-> You can ask me to run these one at a time, all at once, or in any order you prefer.
+> These suggestions are advisory. Any implementation follows the approved scope and existing repo workflow.
 >
-> Re-run `/impeccable audit` after fixes to see your score improve.
+> Reassess observed findings after separately authorized fixes; any score is limited to the evidence and does not replace repo acceptance gates.
 
 **IMPORTANT**: Be thorough but actionable. Too many P3 issues creates noise. Focus on what actually matters.
 

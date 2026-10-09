@@ -1,3 +1,16 @@
+## Repository boundary: advisory design guidance only
+
+Downstream adaptation for Issue #841. This reference provides design advice, not execution authority.
+Current main canonical documents, CLAUDE Hard rules, existing components and their behavior,
+src/styles/tokens.css, i18n, security rules and the user's actual permissions take precedence.
+Preserve the incumbent design and authorized scope. Missing design documents do not imply a greenfield project.
+Do not create or replace PRODUCT.md, DESIGN.md, sidecars or other project documentation automatically.
+Review requests and visual selections do not authorize applying changes, installing tools, replacing dependencies,
+downloading fonts/assets, changing settings, or publishing. Any implementation needs its own applicable authorization.
+No external engine, hook, launcher, helper agent or operational fallback is enabled by these files.
+Generic examples illustrate design concepts; adapt their values to existing tokens and their copy to i18n.
+Accessibility suggestions do not waive repo tests, independent review or release gates.
+
 > **Additional context needed**: which section is the target, and what must stay untouched.
 
 An open direction round owns the word first: "bolder" said while a direction decision is on the table is the Bolder hand register steer, a fresh deal of foreign forms (see new-work.md), not this command. This command refines a surface whose world already shipped.
@@ -30,4 +43,4 @@ Strip the copy out of your planned section and study the bare structure. Does th
 - The conventions the section carried, including anything that drives an action, still work the same way.
 - The section is unmistakably the same brand, only more sure of itself.
 
-When the target holds its own without pulling the page apart, hand off to `/impeccable polish` for the final pass.
+When the target holds its own without pulling the page apart, hand off to [polish guidance](polish.md) for the final pass.

@@ -156,15 +156,18 @@ export const dashboardPage = {
     expiresInDays: (n: number) => `${n} 天後到期`,
   },
 
-  /** LINE 官方帳號免費推播額度用盡（原站 border-danger 卡片） */
+  /** 平台每月推播額度用盡（原站 border-danger 卡片；非 LINE 官方帳號自身訊息則數） */
   pushQuotaExhausted: {
-    title: 'LINE 推送額度已用盡',
-    body:
-      '您的 LINE 官方帳號本月免費推播額度（200 則）已用完，預約通知、行銷推播等將無法送達顧客。',
-    upgradeHint:
-      '請到 LINE 官方帳號管理後台 →「設定」→「帳務專區」→「推廣方案」升級方案：',
-    upgradePlan: '中用量 NT$800/月（3,000 則）',
-    orReset: '或等下個月 1 號重置。',
+    title: '本月平台推播額度已用盡',
+    /** 取得實際上限時顯示數字（訂閱 EXTRA_PUSH 為 700，否則 200） */
+    body: (total: number) =>
+      `本月平台推播額度（${total} 則）已用完，預約通知、行銷推播等將無法送達顧客。`,
+    /** stats 尚未載入、取不到上限時的保底文案（不帶數字） */
+    bodyGeneric:
+      '本月平台推播額度已用完，預約通知、行銷推播等將無法送達顧客。',
+    upgradeHint: '可至功能商店加購：',
+    upgradePlan: '加購推播額度',
+    orReset: '，或等待下月 1 日重置。',
   },
 
   /** 系統推送額度警示（pushQuotaWarningCard） */

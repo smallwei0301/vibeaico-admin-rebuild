@@ -1,3 +1,16 @@
+## Repository boundary: advisory design guidance only
+
+Downstream adaptation for Issue #841. This reference provides design advice, not execution authority.
+Current main canonical documents, CLAUDE Hard rules, existing components and their behavior,
+src/styles/tokens.css, i18n, security rules and the user's actual permissions take precedence.
+Preserve the incumbent design and authorized scope. Missing design documents do not imply a greenfield project.
+Do not create or replace PRODUCT.md, DESIGN.md, sidecars or other project documentation automatically.
+Review requests and visual selections do not authorize applying changes, installing tools, replacing dependencies,
+downloading fonts/assets, changing settings, or publishing. Any implementation needs its own applicable authorization.
+No external engine, hook, launcher, helper agent or operational fallback is enabled by these files.
+Generic examples illustrate design concepts; adapt their values to existing tokens and their copy to i18n.
+Accessibility suggestions do not waive repo tests, independent review or release gates.
+
 Typography carries information, hierarchy, and voice. Improve it inside the established visual world; do not replace the identity unless the user asked to.
 
 ---
@@ -8,11 +21,11 @@ Typography carries information, hierarchy, and voice. Improve it inside the esta
 - **Operate + Read:** stability, scanability, and measure come first. A single well-tuned family and fixed role scale are often right.
 - **Native:** follow [ios.md](ios.md) or [android.md](android.md), including platform scaling and accessibility behavior.
 
-If typography replacement would create a new identity, route through [new-work.md](new-work.md) and update DESIGN.md. Otherwise preserve confirmed families and improve their use.
+If typography replacement would create a new identity, route through [new-work.md](new-work.md) and propose an update through current documentation governance. Otherwise preserve confirmed families and improve their use.
 
-## Two isolated assessments
+## Complementary review perspectives
 
-When a sub-agent tool is available and permitted, run these independently; otherwise run them yourself in this order. Do not let detector findings anchor the design assessment.
+Consider visual hierarchy and source-level constraints separately, then explain how they interact.
 
 1. **Typographic assessment:** inspect representative pages and styles. Answer every question below with a file, selector, or computed value:
    - **Authority and fit:** Which faces, weights, and roles are established? Do they fit the product and selected world, or are they unexamined defaults? Is every family necessary?
@@ -21,13 +34,9 @@ When a sub-agent tool is available and permitted, run these independently; other
    - **Reading:** Does body copy stay within a comfortable 45–75 character measure? Are line height, paragraph rhythm, contrast, and tracking tuned to the actual face, width, language, and surface?
    - **Stress:** What happens with long headings, localization expansion, zoom, narrow containers, missing weights, and font fallback?
    - **Delivery:** Are only used assets loaded? Do fallback metrics, loading strategy, and variable-font settings avoid invisible text and disruptive reflow?
-2. **Mechanical scan:** run:
+2. **Source-level assessment:** use the existing tokens and component definitions to explain concrete inconsistencies.
 
-```bash
-"<skill-base-dir>/scripts/impeccable" detect --json --scope type [target files or dirs]
-```
-
-Also inspect dynamic or arbitrary font values the detector cannot interpret. Synthesize both assessments before editing, noting what each caught alone. A clean scan is a floor, not proof of good typography.
+Also inspect dynamic or arbitrary font values source review alone cannot establish. Synthesize both assessments before recommending changes, noting what each caught alone. A clean source review is a floor, not proof of good typography.
 
 ## Set the system
 
@@ -67,7 +76,7 @@ Do not make type decorative at the expense of comprehension, or introduce a seco
 
 Answer each item with rendered or source evidence, then rerun the scan. Do not substitute a bare “yes” for verification.
 
-When the hierarchy holds, hand off to `/impeccable polish`.
+When the hierarchy holds, hand off to [polish guidance](polish.md).
 
 ## Live-mode signature params
 

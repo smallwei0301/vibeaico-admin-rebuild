@@ -18,6 +18,7 @@ import { createAdminSupabase } from './supabase';
 import { decryptSecret } from './crypto';
 import { ApiHttpError, ERR } from './http';
 import { isFeatureActive } from './features';
+import { LINE_FREE_PUSH_QUOTA, LINE_EXTRA_PUSH_QUOTA } from '@/config/features';
 import { taipeiCurrentMonthKey } from './tz';
 
 /** api.line.me 基底；測試以 LINE_API_BASE 指向本地 mock（12 分冊 Phase 6） */
@@ -120,7 +121,16 @@ export const lineProfile = (token: string, userId: string) =>
   lineFetch(token, `/v2/bot/profile/${userId}`);
 
 /**
- * 額度控管（免費 200 則/月；EXTRA_PUSH 訂閱 → 700，09 分冊 §5）。
+ * 每月推播上限的唯一真相：EXTRA_PUSH 生效 → 700，否則 200（09 分冊 §5）。
+ * 發送端（consumePushQuota）、儀表板、儀表板警示共用。
+ */
+export async function pushQuotaLimit(tenantId: string): Promise<number> {
+  // isFeatureActive 讀不到列（含查詢錯誤）一律視為未訂閱 → 免費額度；不另外丟錯。
+  return (await isFeatureActive(tenantId, 'EXTRA_PUSH')) ? LINE_EXTRA_PUSH_QUOTA : LINE_FREE_PUSH_QUOTA;
+}
+
+/**
+ * 額度控管（上限見 pushQuotaLimit）。
  * push/multicast 前先過；**reply 不佔額度**（LINE 規則），webhook 內能用 reply 就用 reply。
  */
 export async function consumePushQuota(tenantId: string, count: number): Promise<boolean> {
@@ -129,7 +139,7 @@ export async function consumePushQuota(tenantId: string, count: number): Promise
   const { data } = await admin.from('push_quota_usage').select('used')
     .eq('tenant_id', tenantId).eq('month', month).maybeSingle();
   const used = data?.used ?? 0;
-  const quota = (await isFeatureActive(tenantId, 'EXTRA_PUSH')) ? 700 : 200;  // 09 分冊 §5
+  const quota = await pushQuotaLimit(tenantId);                // 09 分冊 §5
   if (used + count > quota) return false;
   await admin.from('push_quota_usage')
     .upsert({ tenant_id: tenantId, month, used: used + count });

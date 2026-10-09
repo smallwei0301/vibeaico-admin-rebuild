@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Historical DB/model semantics replay only: this mocked caller has no trusted role-context
@@ -669,4 +670,32 @@ it('current enabled role policy still rejects this historical DB fixture without
   const enabledPolicy = { ...currentPolicy, openaiBuilderDecision: { ...currentPolicy.openaiBuilderDecision, independentReviewerRequired: true } };
   expect(checkRoles({ requestedModel: 'claude-fable-5-1', actualModel: 'claude-fable-5-1' }, enabledPolicy))
     .toContain('Missing independently read-back builder/reviewer role evidence');
+});
+
+
+describe('canonical 0135 transport in Production SQL builder #755 (no execution)', () => {
+  const repoFile = '0135_issue_46_guide_interval_availability';
+  const path = `supabase/migrations/${repoFile}.sql`;
+  const source = readFileSync(path, 'utf8');
+  const aliases = { schemaVersion: 1, entries: [{ repoFile, classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', ledgerNames: [] }] };
+  const makePlan = (sql = source) => buildProductionDbReleasePlan({ releaseId: 'pure-0135', mainSha: MAIN, plannedAt: PLANNED_AT, aliasMap: aliases, readCanonicalSql: () => sql });
+  it('preserves pinned source identity and puts adapted body, ledger and postcheck within one locked transaction', () => {
+    const p = makePlan();
+    const sql = buildAtomicProductionApplySql({ plan: p, aliasMap: aliases, liveLedgerRows: [], readCanonicalSql: () => source });
+    expect(sql.match(/^begin;$/gm)).toHaveLength(1);
+    expect(sql.match(/^commit;$/gm)).toHaveLength(1);
+    expect(sql).toContain(source.replace('begin;', '').replace(/commit;\n$/, '\n').trim());
+    const at = sql.indexOf(`-- controlled migration ${repoFile}`);
+    expect(sql.indexOf('pg_try_advisory_xact_lock')).toBeLessThan(at);
+    expect(sql.indexOf('PRODUCTION_DB_LIVE_LEDGER_CHANGED_AFTER_LOCK')).toBeLessThan(at);
+    expect(sql.indexOf('insert into supabase_migrations.schema_migrations')).toBeGreaterThan(at);
+    expect(sql.indexOf('PRODUCTION_DB_POST_LEDGER_MISMATCH')).toBeGreaterThan(sql.indexOf('insert into supabase_migrations.schema_migrations'));
+    expect(sql.lastIndexOf('commit;')).toBeGreaterThan(sql.indexOf('PRODUCTION_DB_POST_LEDGER_MISMATCH'));
+    expect(p.migrations[0].sha256).toBe('c798b1596d149d1f866553bf8736bea7214fc7bd0531ea750f2511a17d39a59d');
+  });
+  it('rejects altered 0135 even when the plan is recalculated for those bytes', () => {
+    const changed = source + '\n';
+    expect(() => buildAtomicProductionApplySql({ plan: makePlan(changed), aliasMap: aliases, liveLedgerRows: [], readCanonicalSql: () => changed }))
+      .toThrow(/CANONICAL_TRANSPORT_PIN_MISMATCH/);
+  });
 });

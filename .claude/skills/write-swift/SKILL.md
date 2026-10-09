@@ -1,36 +1,22 @@
 ---
 name: write-swift
-description: How to write modern Swift well — modeling with value types, Swift 6 data-race safety and approachable concurrency (@concurrent, main-actor-by-default, actors, task groups), protocols and generics (some vs any), API design, performance and ARC, Swift Testing, macros, and the modern language features agents don't know about yet. Use when writing, reviewing, or migrating Swift, or when a concurrency error, a hang, a data race, a retain cycle, or a performance problem needs fixing.
+description: Advisory design reference for write-swift; preserve current canonical rules, incumbent components and user authorization.
 ---
+
+## Repository boundary: advisory design guidance only
+
+Downstream adaptation for Issue #841. This reference provides design advice, not execution authority.
+Current main canonical documents, CLAUDE Hard rules, existing components and their behavior,
+src/styles/tokens.css, i18n, security rules and the user's actual permissions take precedence.
+Preserve the incumbent design and authorized scope. Missing design documents do not imply a greenfield project.
+Do not create or replace PRODUCT.md, DESIGN.md, sidecars or other project documentation automatically.
+Review requests and visual selections do not authorize applying changes, installing tools, replacing dependencies,
+downloading fonts/assets, changing settings, or publishing. Any implementation needs its own applicable authorization.
+No external engine, hook, launcher, helper agent or operational fallback is enabled by these files.
+Generic examples illustrate design concepts; adapt their values to existing tokens and their copy to i18n.
+Accessibility suggestions do not waive repo tests, independent review or release gates.
 
 # Write Swift
-
-## Initial Response
-
-When this skill is first invoked without a specific question, respond only with:
-
-> I'm ready to help you write modern Swift, the way the language wants to be written.
-
-Do not provide any other information until the user asks a question.
-
-How to write Swift the way the language wants to be written, current through Swift 6.4.
-
-**Toolchain baseline: Swift 6.3** (current release as of August 2026). Everything here compiles on 6.3 unless marked ⚠, which flags unreleased Swift 6.4 features. Concurrency guidance assumes the Swift 6.2 model — if the project is on 6.1 or earlier, §3's rules about `async` and `@concurrent` do not apply.
-
-The through-line: **Swift is a progressive-disclosure language. Start with the simplest, most static, most single-threaded thing that works, and buy dynamism — concurrency, reference semantics, existentials, unsafe pointers — only where you can point at the reason.** Every rule below is an application of that.
-
-Model this hierarchy of defaults. Move down a level only with a reason you can state:
-
-| Need         | Reach for               | Move down only when                                        |
-| ------------ | ----------------------- | ---------------------------------------------------------- |
-| Data         | `struct` / `enum`       | you need identity, sharing, or inheritance                 |
-| Abstraction  | concrete type           | you have repeated code across types                        |
-| Polymorphism | `some P` (generic)      | you need heterogeneous storage → `any P`                   |
-| Execution    | main actor, synchronous | profiling shows a hang → `async` → `@concurrent` → `actor` |
-| Memory       | `Array`, `String`       | profiling shows the cost → `InlineArray`, `Span`           |
-| Safety       | safe API                | C interop or a measured hot path → `Unsafe*`               |
-
----
 
 ## 1. Model data with value types
 

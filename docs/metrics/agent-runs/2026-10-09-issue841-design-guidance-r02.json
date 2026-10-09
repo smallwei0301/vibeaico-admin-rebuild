@@ -1,0 +1,532 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-10-09-issue841-design-guidance-r02",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-10-09T07:38:56.325Z",
+  "endedAt": null,
+  "sources": [
+    {
+      "ref": "issue/841"
+    },
+    {
+      "ref": "pr/836"
+    },
+    {
+      "ref": "origin/main",
+      "sha": "0ca511ff9f45b825794653b6eb1a609cec661a37"
+    },
+    {
+      "ref": "historical-missing/2026-10-09-issue841-design-guidance-r01",
+      "note": "MISSING_CURRENT_ENV; no original event or test/review adoption"
+    },
+    {
+      "ref": "source-review/freeze1",
+      "sha256": "107dc0253636ea0c9b691d49d7e882f360e84555969d10013c9915a8421de136",
+      "observedAt": "2026-10-09T07:57:47Z",
+      "note": "First frozen-source audit touch: P2 FIX_REQUIRED for prototype invocation consent; not release approval."
+    },
+    {
+      "ref": "source-review/freeze2",
+      "sha256": "ea1ddfb1e09d06b9847ef256f0c2a1e421239cdea70c040bcafb0e2ab1805e86",
+      "observedAt": "2026-10-09T08:02:15Z",
+      "note": "Second audit touch in the same continuing task: P2 verified repaired; SOURCE_GUIDANCE_REVIEW_PASS_WITH_PENDING_GATES. Independent Node24 diagnostics passed 15/15. No Node22/full gate or final release approval."
+    },
+    {
+      "ref": "source-review/freeze2-integrity",
+      "sha256": "0ca496448bf9e7b95e84e539536d3e95261def62a87a871455eac8485e195204",
+      "observedAt": "2026-10-09T08:01:44Z",
+      "note": "Independent frozen 72-file manifest/tree binding and 1574 unchanged base files."
+    },
+    {
+      "ref": "source-license-review",
+      "sha256": "311d94ce8e8381f517bc04e8aadd64d8bcc2458cd6df949fe05b2c058eac20c9",
+      "observedAt": "2026-10-09T07:59:36Z",
+      "note": "One separate source-only provenance/license audit touch: 85/85 immutable source mappings, 81 exact/four whitespace-only, exact Apache/MIT/NOTICE/ehmo bytes; not legal advice or final release approval."
+    },
+    {
+      "ref": "source-review/freeze3-run-delta",
+      "sha256": "3870191f6782d8572d902cbac36ccc3057382bcb8b4d8ac445bdb913e8f221ee",
+      "observedAt": "2026-10-09T08:10:22Z",
+      "note": "Existing independent continuing source task accepted the freeze3 Run-only capture delta; guidance unchanged. Metadata rebind is not another semantic audit touch or final release approval."
+    },
+    {
+      "ref": "node22-installation",
+      "sha256": "cb9315ca464dbafc6cd0603c3d169fb81ab4007a3a197e493a644d209ba7a36e",
+      "artifactFile": "install-receipt.json",
+      "observedAt": "2026-10-09T10:08:18.119Z",
+      "result": "NPM_CI_EXIT_0",
+      "runtime": {
+        "node": "v22.23.3",
+        "npm": "10.9.9"
+      },
+      "sourceFilesChecked": 1646,
+      "installedLockEntries": 334,
+      "heavyProcessReleased": true,
+      "note": "Separately authorized installation task. Requested model was not explicitly selected; actual model and runtime start remain unknown. Lockfile and all 1646 source bytes were preserved; no test or final approval is inferred from installation."
+    },
+    {
+      "ref": "node22-prior-tree-source-verification",
+      "sha256": "965f00c8bd7aacc1d2d7d5b6f1a9005fdf64d4af0d2ccd3f7ca02db73c7a67c3",
+      "artifactFile": "source-sequence-receipt.json",
+      "observedAt": "2026-10-09T10:15:07.445Z",
+      "candidateTree": "ce98b993ad1ad496c93fe3271b8fc6e73f36ce08",
+      "manifestSHA256": "cedf04c8369a6fc604639fd446c468ce20b366ce19b30eb1ff4dac045c3ed0e9",
+      "result": "UNCOMMITTED_EXACT_TREE_SOURCE_CHECKS_PASS_COMMIT_CLI_PENDING",
+      "runtime": {
+        "node": "v22.23.3",
+        "npm": "10.9.9"
+      },
+      "sourceFiles": 1646,
+      "fullCliGate": false,
+      "binding": {
+        "all1646BytesAndModesMatchBeforeAndAfter": true,
+        "all72ManifestFilesMatch": true,
+        "normalIndexUnchanged": true,
+        "candidateIndexUnchanged": true,
+        "refsUnchanged": true,
+        "headUnchanged": true,
+        "manifestUnchanged": true,
+        "unexpectedUntrackedCandidateIndexFiles": []
+      },
+      "unit": {
+        "filesPassed": 376,
+        "testsPassed": 5610,
+        "config": "vitest.config.mts",
+        "globalSetup": "ABSENT",
+        "setupMs": 0
+      },
+      "heavyProcessReleased": true,
+      "note": "Actual local source sequence on freeze3 before this Run-only capture delta. Stock commit-bound integrity CLI and required remote exact-head CI remain pending. No new-tree full gate, integration/E2E, DB/TEST, commit, publication or final approval is claimed."
+    },
+    {
+      "ref": "publication-source-review/current-touch",
+      "observedAt": "2026-10-09T10:15:24Z",
+      "taskId": "issue841-r02-publication-source-review",
+      "result": "IN_PROGRESS_PENDING_FINAL_RUN_DELTA",
+      "note": "One actual independent read-only source/publication audit touch has begun, requested gpt-6.1-sol; outcome remains pending. Later metadata binding within this same touch does not create a new task or audit touch."
+    },
+    {
+      "ref": "capture-gap/r02-build-exit",
+      "observedAt": "2026-10-09T10:21:34.122Z",
+      "status": "NEEDS_CAPTURE",
+      "note": "Precise original BUILD_EXIT transition time was not captured. Prior writer-stop/frozen-source evidence and current source-verifier heavy-process release do not establish canonical AUDIT_READY qualification or authorize backfilling a missing lifecycle exit. Existing WIP events and recorded peaks are preserved."
+    },
+    {
+      "ref": "node22-prior-tree-stage/integrity",
+      "sha256": "7e1b24d6b478aced605bcd1e9585b8e8167bed2ec836ae7f0f9dd9e4748493b7",
+      "artifactFile": "integrity-receipt.json",
+      "candidateTree": "ce98b993ad1ad496c93fe3271b8fc6e73f36ce08",
+      "startedAt": "2026-10-09T10:10:56.743Z",
+      "completedAt": "2026-10-09T10:10:59.383Z",
+      "durationSeconds": 2.64,
+      "command": [
+        "node",
+        "evaluate-exact-index-tree.mjs"
+      ],
+      "exitCode": 0,
+      "terminalResult": "PASS",
+      "heavyProcessReleased": true,
+      "fullCliGate": false
+    },
+    {
+      "ref": "node22-prior-tree-stage/ledger-alias",
+      "sha256": "125c751c57299d22bbf5d663d1304fcee82696ebf9ef266ce056d8a6ea980570",
+      "artifactFile": "ledger-alias-receipt.json",
+      "candidateTree": "ce98b993ad1ad496c93fe3271b8fc6e73f36ce08",
+      "startedAt": "2026-10-09T10:10:59.415Z",
+      "completedAt": "2026-10-09T10:10:59.572Z",
+      "durationSeconds": 0.158,
+      "command": [
+        "npm",
+        "run",
+        "guard:ledger-alias-map"
+      ],
+      "exitCode": 0,
+      "terminalResult": "PASS",
+      "heavyProcessReleased": true
+    },
+    {
+      "ref": "node22-prior-tree-stage/skill-symlinks",
+      "sha256": "7450fea212aa67ccf287a6ba62ed672803ed8657d0c5afb094475415f403fe42",
+      "artifactFile": "skill-symlinks-receipt.json",
+      "candidateTree": "ce98b993ad1ad496c93fe3271b8fc6e73f36ce08",
+      "startedAt": "2026-10-09T10:10:59.612Z",
+      "completedAt": "2026-10-09T10:10:59.630Z",
+      "durationSeconds": 0.018,
+      "command": [
+        "bash",
+        "-c",
+        "if [ -d .claude/skills ] && find .claude/skills -type l ! -exec test -e {} \\; -print -quit | grep -q .; then echo \"A .claude/skills symlink target is missing.\" >&2; exit 1; fi"
+      ],
+      "exitCode": 0,
+      "terminalResult": "PASS",
+      "heavyProcessReleased": true
+    },
+    {
+      "ref": "node22-prior-tree-stage/diff-check",
+      "sha256": "9ba39ae3194a8988a55f87767ddd2553347ab0b6dd4ac7a877fbd0c60bb30cf4",
+      "artifactFile": "diff-check-receipt.json",
+      "candidateTree": "ce98b993ad1ad496c93fe3271b8fc6e73f36ce08",
+      "startedAt": "2026-10-09T10:11:42.766Z",
+      "completedAt": "2026-10-09T10:11:42.782Z",
+      "durationSeconds": 0.015,
+      "command": [
+        "git",
+        "diff",
+        "--check",
+        "0ca511ff9f45b825794653b6eb1a609cec661a37",
+        "ce98b993ad1ad496c93fe3271b8fc6e73f36ce08"
+      ],
+      "exitCode": 0,
+      "terminalResult": "PASS",
+      "heavyProcessReleased": true
+    },
+    {
+      "ref": "node22-prior-tree-stage/typecheck",
+      "sha256": "48cf62d27c324dc08696898d4bc880f3502b101cee65826f3393588a5883778f",
+      "artifactFile": "typecheck-receipt.json",
+      "candidateTree": "ce98b993ad1ad496c93fe3271b8fc6e73f36ce08",
+      "startedAt": "2026-10-09T10:11:08.285Z",
+      "completedAt": "2026-10-09T10:11:35.524Z",
+      "durationSeconds": 27.239,
+      "command": [
+        "npm",
+        "run",
+        "typecheck"
+      ],
+      "exitCode": 0,
+      "terminalResult": "PASS",
+      "heavyProcessReleased": true
+    },
+    {
+      "ref": "node22-prior-tree-stage/unit",
+      "sha256": "f00a2fbb3dd7007ac8508fee994236b1fafe431ff007de28ed27aa0dbc1d1cc9",
+      "artifactFile": "unit-receipt.json",
+      "candidateTree": "ce98b993ad1ad496c93fe3271b8fc6e73f36ce08",
+      "startedAt": "2026-10-09T10:12:03.530Z",
+      "completedAt": "2026-10-09T10:12:35.426Z",
+      "durationSeconds": 31.896,
+      "command": [
+        "npm",
+        "test",
+        "--",
+        "--config",
+        "vitest.config.mts"
+      ],
+      "exitCode": 0,
+      "terminalResult": "PASS",
+      "heavyProcessReleased": true,
+      "filesPassed": 376,
+      "testsPassed": 5610
+    },
+    {
+      "ref": "node22-prior-tree-stage/build",
+      "sha256": "dfbc966f1ace0449395d80efe1655faf5b7bc08abf362926cccf4786656228dd",
+      "artifactFile": "build-receipt.json",
+      "candidateTree": "ce98b993ad1ad496c93fe3271b8fc6e73f36ce08",
+      "startedAt": "2026-10-09T10:12:49.198Z",
+      "completedAt": "2026-10-09T10:14:06.107Z",
+      "durationSeconds": 76.909,
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "exitCode": 0,
+      "terminalResult": "PASS",
+      "heavyProcessReleased": true,
+      "staticPagesGenerated": 170
+    },
+    {
+      "ref": "routing-limitation/owning-run-capture",
+      "observedAt": "2026-10-09T10:21:56Z",
+      "status": "SCOUT_ROUTING_DEVIATION_UNRESOLVED",
+      "expectedRole": "scout",
+      "expectedRequestedModelId": "gpt-6-luna",
+      "observedTaskId": "issue841-r02-build",
+      "observedRequestedModelId": "gpt-6.1-sol",
+      "observedActualModelId": "unknown",
+      "predeclaredException": false,
+      "note": "CLAUDE.md Product docs/metrics path rule assigns scout. Current same builder performs required owning-Run same-turn capture under AGENT-EXECUTION sections10.2/10.3; no explicit builder exemption was found. This is an unresolved routing limitation for independent publication review, not a new task, a claimed scout execution, a proven served-Sol audit substitution or a retroactive exception."
+    }
+  ],
+  "main": {
+    "startSha": "0ca511ff9f45b825794653b6eb1a609cec661a37",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": 65,
+    "openIssuesEnd": null,
+    "openPrsStart": 10,
+    "openPrsEnd": null,
+    "mainTerraPeak": 1,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 1,
+    "sharedTestPeak": 0,
+    "closureSweeps": 0,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [
+      {
+        "id": "issue841-r02-build",
+        "role": "build",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "count": 1,
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "requestedModelId": "gpt-6.1-sol",
+        "actualModelId": "unknown",
+        "evidenceRef": "local:841-admission-provenance/immutable-source-observations.json",
+        "note": "Observed builder task for the new r02 source attempt. Requested model gpt-6.1-sol; served model and token usage unavailable. Earlier research before Run initialization is outside this Run window."
+      },
+      {
+        "id": "issue841-r02-source-review",
+        "role": "independent source-only audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "unknown",
+        "count": 1,
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "requestedModelId": "gpt-6.1-sol",
+        "actualModelId": "unknown",
+        "identityEvidence": "UNKNOWN",
+        "observedActivityAt": "2026-10-09T07:48:20Z",
+        "actualRuntimeStartedAt": null,
+        "evidenceRef": "source-review:sha256:ea1ddfb1e09d06b9847ef256f0c2a1e421239cdea70c040bcafb0e2ab1805e86",
+        "note": "One actually assigned continuing source-only task; this records observed activity, not provider-verified runtime start or final release approval."
+      },
+      {
+        "id": "issue841-r02-provenance-review",
+        "role": "independent source-only provenance/license audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "unknown",
+        "count": 1,
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "requestedModelId": "gpt-6.1-sol",
+        "actualModelId": "unknown",
+        "identityEvidence": "UNKNOWN",
+        "observedActivityAt": "2026-10-09T07:59:36Z",
+        "actualRuntimeStartedAt": null,
+        "evidenceRef": "source-review:sha256:311d94ce8e8381f517bc04e8aadd64d8bcc2458cd6df949fe05b2c058eac20c9",
+        "note": "One actually assigned continuing source-only task; this records observed activity, not provider-verified runtime start or final release approval."
+      },
+      {
+        "id": "issue841-r02-node22-installation",
+        "role": "authorized runtime/dependency installation",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "contextClass": "unknown",
+        "count": 1,
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "requestedModelId": "not_requested",
+        "actualModelId": "unknown",
+        "identityEvidence": "UNKNOWN",
+        "observedAssignedAt": "2026-10-09T10:05:48Z",
+        "observedActivityAt": "2026-10-09T10:08:18.119Z",
+        "actualRuntimeStartedAt": null,
+        "result": "NPM_CI_EXIT_0",
+        "evidenceRef": "verification:sha256:cb9315ca464dbafc6cd0603c3d169fb81ab4007a3a197e493a644d209ba7a36e",
+        "note": "One actually assigned installation task. Model selector was not explicitly supplied (inherited request unknown); backend runtime start and served identity are unavailable. Source verification was a separate task."
+      },
+      {
+        "id": "issue841-r02-node22-source-verification",
+        "role": "local Node22 source verification",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "unknown",
+        "count": 1,
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "requestedModelId": "gpt-6.1-sol",
+        "actualModelId": "unknown",
+        "identityEvidence": "UNKNOWN",
+        "observedAssignedAt": "2026-10-09T10:08:40Z",
+        "observedActivityAt": "2026-10-09T10:10:56.743Z",
+        "actualRuntimeStartedAt": null,
+        "result": "PRIOR_TREE_SOURCE_CHECKS_PASS_COMMIT_CLI_PENDING",
+        "evidenceRef": "verification:sha256:965f00c8bd7aacc1d2d7d5b6f1a9005fdf64d4af0d2ccd3f7ca02db73c7a67c3",
+        "note": "One actually assigned source-verification task, requested reasoning xhigh; commands have observed execution times, but those are not provider-verified model runtime start. Final preservation report received 2026-10-09T10:15:36Z. Local source sequence is not remote full CI or a triage/audit touch."
+      },
+      {
+        "id": "issue841-r02-publication-source-review",
+        "role": "independent read-only source/publication audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "unknown",
+        "count": 1,
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "requestedModelId": "gpt-6.1-sol",
+        "actualModelId": "unknown",
+        "identityEvidence": "UNKNOWN",
+        "observedAssignedAt": "2026-10-09T10:15:13Z",
+        "observedActivityAt": "2026-10-09T10:15:24Z",
+        "actualRuntimeStartedAt": null,
+        "result": "IN_PROGRESS_PENDING_FINAL_RUN_DELTA",
+        "evidenceRef": "task:issue841-r02-publication-source-review",
+        "note": "Actual independent fresh-context review activity; requested reasoning xhigh, actual model/runtime start unknown. This is one continuing audit touch and is not a release approval."
+      }
+    ],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 1,
+    "issuesClosed": 0,
+    "auditReady": 0,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 0,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 0,
+    "lunaAccepted": 0,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 4,
+    "solIssues": 1
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
+  "notes": [
+    "Fresh r02 source attempt for existing issue/841, initialized by canonical tool. No history reconstruction, no old test/review transfer, no second delivery outcome or shipped-unit claim.",
+    "r01 source and Run unavailable; preserve historical NEEDS_CAPTURE. No historical counter is guessed.",
+    "All zero counters concern only the new Run observation window. Requested model is gpt-6.1-sol; actual remains unknown. Node24 diagnostic validation is not Node22 acceptance.",
+    "Two real admission attempts occurred before source editing: first corrected an unsupported SELECTION_REASON value, then repaired duplicate local event IDs. Both rejection observations are preserved with distinct IDs; no CI was dispatched.",
+    "NEW candidate first actual materialization at 2026-10-09T07:45:21.332843214Z, from filesystem birth metadata and builder tool execution; original remote head remains unchanged.",
+    "Fresh static validation passed after repairing pre-freeze independent observations: plan-document defaults, residual engine snapshot/detector prose, and prototype token/consent conflicts. This is not independent final approval.",
+    "Exact temporary-index tree was checked by unchanged canonical exported repository-integrity evaluator on Node24. Full CLI gate, Node22 runtime CI and publication verification remain pending.",
+    "No source publication, real commit, ref move, Work task launch, DB/TEST, dependency installation, external engine execution or paid resource change occurred.",
+    "At 2026-10-09T07:58:55.364Z, fresh independent source review of freeze1 manifest 78b69f23b34e29b2a31db9103798a2a7965333f587656b5524bf178312659df2 returned P2 FIX_REQUIRED: prototype invocation table still implied promotion/deletion from selecting a variant. Writer reopened with IN_PROGRESS; old freeze1 evidence preserved, table repaired and regression check expanded. No final review or publication gate is claimed.",
+    "Prototype P2 repair completed at 2026-10-09T07:59:58.562Z. The preceding event timestamp records reopening, not repair completion. Initial literal row replacements did not match actual table wording and were caught by immediate readback; the entire five-row advisory table was then explicitly repaired before validation.",
+    "At 2026-10-09T08:06:11.545Z, owning Run capture was reconciled with the actually observed independent source audit and separate provenance/license subreview. Three accepted task records total: one builder, one continuing source reviewer, one provenance reviewer. source-review activity is not a new final review dispatch.",
+    "flow.solTouches=3 records two distinct frozen-source audit touches in one source-review task plus one separate provenance/license audit touch; flow.solIssues=1 is the single issue/841 touched. No runtime start, served model, token count or historical event is inferred.",
+    "Public repo-scoped task IDs replace coordination-only identifiers. The role mapping is verified separately and does not publish private coordination paths or messages.",
+    "Fresh independent source review accepted only freeze2 guidance with pending gates. Historical P2 FIX_REQUIRED and its repair remain visible; current strict-live form validity alone does not establish capture completeness or full delivery acceptance.",
+    "At this continuation, prior freeze-time statements about unavailable Node22/dependencies and no installation are historical observations. Separately authorized Node22 v22.23.3/npm10.9.9 installation and source checks have now actually completed on prior freeze3 tree ce98b993ad1ad496c93fe3271b8fc6e73f36ce08, manifest cedf04c8369a6fc604639fd446c468ce20b366ce19b30eb1ff4dac045c3ed0e9.",
+    "Actual prior-tree typecheck exit0 in27.239s; 376 unit files/5610 tests exit0 in31.896s; production build 170 static pages exit0 in76.909s. All1646 source bytes/modes and72 prior manifest files match before/after; normal/candidate indices, refs and HEAD unchanged. Command-specific receipts and the aggregate source receipt are SHA256-bound in sources.",
+    "Three actually assigned task records were added: Node22 installation, Node22 source verification, and the currently ongoing independent source/publication review. This continuation uses the existing builder task and does not count another delivered Issue. Backend model identities, runtime starts, tokens and inherited installation model are unknown.",
+    "flow.solTouches=4 adds exactly the one current independent source/publication audit touch to the prior three. Installation and source-verification execution are not triage/audit touches; solIssues remains1 for issue/841. Metadata rebinds within this ongoing review must not add touches.",
+    "ci.fullCiRuns remains0: local npm commands and a temporary-index exported evaluator are not canonical remote CI. Completion Truth remains NOT_CHECKED; auditReady remains0; Run remains IN_PROGRESS/OPEN. Stock commit-bound CLI, pre-push checks and applicable exact-head remote/publication gates are pending.",
+    "Current-main classify-changes.mjs explicitly treats docs/metrics/** as runtime fixtures. This Run-only JSON/generated Markdown delta is docsOnly=false and does not inherit a full acceptance result for the new tree. Minimum capture checks are canonical schema/readiness/report regeneration and affected fixture checks; full pre-push type/unit and required remote CI remain a later exact-head gate. No ignored generated build artifact or dependency is included in the candidate.",
+    "NEEDS_CAPTURE: precise original BUILD_EXIT lifecycle time was not observed. Existing events/peaks are preserved rather than guessed. The prior source verification task reports heavy-process release, which does not itself satisfy canonical AUDIT_READY qualification. Final metadata validation may be structurally LIVE_CAPTURE_READY while this explicit raw lifecycle gap remains.",
+    "SCOUT_ROUTING_DEVIATION_UNRESOLVED: Product docs/metrics output is canonically scout-owned. This actual continuation is the existing requested gpt-6.1-sol builder recording owning Run facts; served model remains unknown. Same-turn owning capture is mandatory but no explicit exemption to the path-routing rule was found. No scout was dispatched, no requested/actual field is relabeled, and no retrospective exception or successful scout routing is claimed. Independent publication review must assess this limitation before release."
+  ],
+  "deliveryTruthVersion": 4,
+  "closeout": {
+    "contractVersion": 1,
+    "ownerRole": "PRODUCT_MAIN_SESSION",
+    "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
+    "state": "OPEN",
+    "closedAt": null,
+    "evidenceRef": null
+  },
+  "wipLifecycle": {
+    "schemaVersion": 1,
+    "events": [
+      {
+        "id": "r02-observed-prior-binding-rejection-1",
+        "at": "2026-10-09T07:40:22.958Z",
+        "kind": "REFILL_REJECTED",
+        "pr": 836,
+        "issue": 841,
+        "head": "cc44b2c445065466bc42ff28ea6b6fd50f7a8635",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Actual fresh canonical preflight rejected missing historical r01 ledger; this event records the current rejection only, not a historical event."
+      },
+      {
+        "id": "r02-observed-prior-binding-rejection-2",
+        "at": "2026-10-09T07:40:38.166Z",
+        "kind": "REFILL_REJECTED",
+        "pr": 836,
+        "issue": 841,
+        "head": "cc44b2c445065466bc42ff28ea6b6fd50f7a8635",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Actual fresh canonical preflight rejected missing historical r01 ledger; this event records the current rejection only, not a historical event."
+      },
+      {
+        "id": "r02-refill-admitted",
+        "at": "2026-10-09T07:42:31.168Z",
+        "kind": "REFILL_ADMITTED",
+        "pr": 836,
+        "issue": 841,
+        "head": "cc44b2c445065466bc42ff28ea6b6fd50f7a8635",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Fresh canonical preflight/global WIP/new Run/ownership pass for one local new guidance source candidate; remote body remains unchanged."
+      },
+      {
+        "id": "r02-build-enter",
+        "at": "2026-10-09T07:42:31.168Z",
+        "kind": "BUILD_ENTER",
+        "pr": 836,
+        "issue": 841,
+        "head": "cc44b2c445065466bc42ff28ea6b6fd50f7a8635",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Current local BUILD admitted; original head identifies source lineage, not a new remote commit."
+      }
+    ]
+  },
+  "completionTruth": {
+    "status": "NOT_CHECKED",
+    "checkedAt": null,
+    "claims": []
+  }
+}

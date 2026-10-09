@@ -8,6 +8,7 @@ import {
   sha256, stableStringify,
 } from './schema-truth-evidence.mjs';
 import { isMigrationLedgerVersion } from './schema-truth-proof-policy.mjs';
+import { verifyProductionDbReleasePlan } from './production-db-release-plan.mjs';
 // Version 2 is intentionally separate from schema-truth-evidence's v1 packet:
 // it adds LOCAL_EXPECTED and object-level fingerprints for the live observer.
 export const DRIFT_WATCH_SCHEMA_VERSION = 2;
@@ -373,6 +374,98 @@ function itemsByKey(items) { return new Map(items.map((item) => [item.key, item.
 function ledgerItems(snapshot) {
   return snapshot.migrationLedger.identities.map((item) => ({ key: `${item.version}/${item.name}`, fingerprint: sha256(stableStringify(item)) }));
 }
+// Compare a view only: capture identities/digests remain immutable evidence.
+// The workflow supplies this binding only after trusted GitHub G3 provenance and
+// reassembly of the existing TEST evidence contract. Callers must supply the
+// exact-main alias map and canonical SQL reader; payload flags cannot prove it.
+function plannedTestLedgerView({ expected, test, binding, mainSha, aliasMap, readCanonicalSql }) {
+  if (binding === undefined || binding === null) return { expected, test, trace: null };
+  const { plan, testEvidence, sourceRun, releaseId, releasePlanEvidence, postTestSchemaEvidence } = binding;
+  if (!plan || plan.mainSha !== mainSha || plan.releaseId !== releaseId) fail('LEDGER_PLAN_BINDING_MISMATCH', 'selected release/main differs');
+  verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
+  if (!sourceRun || sourceRun.repository !== plan.repository || sourceRun.workflowPath !== '.github/workflows/ci.yml'
+    || sourceRun.event !== 'workflow_dispatch' || sourceRun.branch !== 'main' || sourceRun.headSha !== mainSha
+    || sourceRun.status !== 'completed' || sourceRun.conclusion !== 'success'
+    || !/^[1-9][0-9]*$/.test(String(sourceRun.id)) || !Number.isSafeInteger(sourceRun.attempt) || sourceRun.attempt < 1) {
+    fail('UNTRUSTED_G3_LEDGER_SOURCE', 'G3 run must be the completed exact-main CI dispatch');
+  }
+  if (!testEvidence || testEvidence.status !== 'TEST_VERIFIED' || testEvidence.policySkip !== false
+    || testEvidence.mainSha !== mainSha || testEvidence.planDigest !== plan.planDigest
+    || testEvidence.testProjectRef !== EXPECTED_PROJECT_REFS.TEST || testEvidence.databaseMutationAuthorized !== false
+    || testEvidence.cleanup !== 'PASSED' || testEvidence.integrationStep !== 'PASSED' || testEvidence.e2eStep !== 'PASSED'
+    || !Number.isSafeInteger(testEvidence.executedTests) || testEvidence.executedTests < 1
+    || String(testEvidence.sourceRunId) !== String(sourceRun.id) || testEvidence.sourceRunAttempt !== sourceRun.attempt) {
+    fail('G3_LEDGER_TEST_EVIDENCE_MISMATCH', 'TEST receipt must bind exact plan/run/attempt and successful execution/cleanup');
+  }
+  for (const proof of [releasePlanEvidence, postTestSchemaEvidence]) {
+    if (!proof || proof.repository !== plan.repository || proof.testProjectRef !== EXPECTED_PROJECT_REFS.TEST
+      || proof.mainSha !== mainSha || proof.planDigest !== plan.planDigest || proof.releaseId !== releaseId
+      || String(proof.sourceRunId) !== String(sourceRun.id) || proof.sourceRunAttempt !== sourceRun.attempt
+      || proof.databaseMutationAuthorized !== false || proof.productionMutationPerformed !== false) {
+      fail('G3_LEDGER_IDENTITY_PROOF_MISMATCH', 'execution and post-TEST capture must bind exact release/main/plan/run/attempt');
+    }
+  }
+  if (releasePlanEvidence.status !== 'TEST_RELEASE_PLAN_VERIFIED' || releasePlanEvidence.testMutationPerformed !== true
+    || postTestSchemaEvidence.status !== 'TEST_POST_APPLY_SCHEMA_CAPTURED' || postTestSchemaEvidence.readOnly !== true
+    || postTestSchemaEvidence.comparisonClaim !== 'CAPTURE_ONLY_G2_COMPARISON_REQUIRED'
+    || !DIGEST.test(postTestSchemaEvidence.captureDigest) || !DIGEST.test(postTestSchemaEvidence.migrationLedgerDigest)
+    || !Number.isFinite(Date.parse(postTestSchemaEvidence.observedAt))) {
+    fail('G3_LEDGER_IDENTITY_PROOF_REQUIRED', 'verified execution and read-only post-TEST capture are required');
+  }
+  const executions = releasePlanEvidence.migrations;
+  const captured = postTestSchemaEvidence.plannedMigrations;
+  if (!Array.isArray(executions) || !Array.isArray(captured)
+    || executions.length !== plan.migrations.length || captured.length !== plan.migrations.length) {
+    fail('G3_LEDGER_IDENTITY_COUNT_MISMATCH', 'selected identities must be complete and unique');
+  }
+  const selected = new Map();
+  for (const migration of plan.migrations) {
+    const execution = executions.filter((row) => row.repoFile === migration.repoFile);
+    const capture = captured.filter((row) => row.repoFile === migration.repoFile);
+    if (execution.length !== 1 || capture.length !== 1 || execution[0].sha256 !== migration.sha256
+      || execution[0].riskTier !== migration.riskTier || !['APPLIED_VERIFIED', 'REPLAY_VERIFIED'].includes(execution[0].execution)
+      || !isMigrationLedgerVersion(execution[0].ledgerVersion) || execution[0].ledgerVersion !== capture[0].ledgerVersion
+      || (execution[0].execution === 'APPLIED_VERIFIED' && execution[0].ledgerVersion !== migration.ledgerVersion)) {
+      fail('G3_LEDGER_IDENTITY_MISMATCH', 'selected execution bytes and observed ledger identities disagree');
+    }
+    selected.set(migration.repoFile, { ...migration, verifiedLedgerVersion: execution[0].ledgerVersion });
+  }
+  const canonical = new Map();
+  const canonicalReplayMappings = [];
+  for (const migration of plan.migrations) {
+    // Supabase CLI replay stores the name without its exact version prefix;
+    // the trusted G3 writer stores repoFile. Admit only this selected identity,
+    // never a suffix match or an ambiguous pair of either spelling.
+    const version = migration.repoFile.slice(0, 4);
+    const shortName = migration.repoFile.slice(5);
+    const matches = expected.migrationLedger.identities.filter((row) => row.name === migration.repoFile || row.name === shortName);
+    if (matches.length !== 1 || matches[0].version !== version) {
+      fail('CANONICAL_LEDGER_IDENTITY_REQUIRED', 'selected migration must have one canonical replay identity');
+    }
+    const target = { version, name: migration.repoFile };
+    canonical.set(migration.repoFile, target);
+    if (matches[0].name !== target.name) canonicalReplayMappings.push({ observed: matches[0], canonical: target,
+      observedFingerprint: sha256(stableStringify(matches[0])), canonicalFingerprint: sha256(stableStringify(target)) });
+  }
+  const expectedIdentities = expected.migrationLedger.identities.map((item) =>
+    canonicalReplayMappings.find((mapping) => mapping.observed === item)?.canonical ?? item);
+  const mappings = [];
+  const seenNames = new Set();
+  const identities = test.migrationLedger.identities.map((item) => {
+    const migration = selected.get(item.name);
+    if (!migration) return item;
+    if (seenNames.has(item.name)) fail('AMBIGUOUS_PLANNED_LEDGER', 'selected TEST migration has multiple identities');
+    seenNames.add(item.name);
+    const target = canonical.get(item.name);
+    if (item.version !== migration.verifiedLedgerVersion) fail('UNPLANNED_LEDGER_VERSION', 'TEST version is not the selected G3 verified identity');
+    if (item.version === target.version && item.name === target.name) return item;
+    mappings.push({ observed: item, canonical: target, observedFingerprint: sha256(stableStringify(item)), canonicalFingerprint: sha256(stableStringify(target)) });
+    return target;
+  });
+  return { expected: { ...expected, migrationLedger: { ...expected.migrationLedger, identities: expectedIdentities } },
+    test: { ...test, migrationLedger: { ...test.migrationLedger, identities } },
+    trace: { planDigest: plan.planDigest, sourceRunId: String(sourceRun.id), sourceRunAttempt: sourceRun.attempt, environment: 'TEST', postTestCaptureDigest: postTestSchemaEvidence.captureDigest, postTestLedgerDigest: postTestSchemaEvidence.migrationLedgerDigest, canonicalReplayMappings, mappings } };
+}
 function ledgerRelation(expected, actual) {
   const expectedKeys = new Set(ledgerItems(expected).map((item) => item.key));
   const actualKeys = new Set(ledgerItems(actual).map((item) => item.key));
@@ -436,7 +529,8 @@ function evidenceUnavailableReport({ mainSha, environments, normalizedExceptions
     exceptionSummary: { provided: normalizedExceptions.length, matched: 0, expired: 0, unmatched: 0 },
     safety: { fullEnvironmentParityProven: false, authorizesDatabaseWrite: false, rawDataIncluded: false } };
 }
-export function compareObserverSnapshots({ expectedSnapshot, testSnapshot, productionSnapshot, currentMainSha, exceptions = [], now = Date.now(), maxEvidenceAgeMinutes = 60 }) {
+/** @param {any} input */
+export function compareObserverSnapshots({ expectedSnapshot, testSnapshot, productionSnapshot, currentMainSha, exceptions = [], now = Date.now(), maxEvidenceAgeMinutes = 60, releaseLedgerBinding, aliasMap, readCanonicalSql }) {
   const mainSha = validSha(currentMainSha, 'currentMainSha');
   const compareTime = typeof now === 'number' ? now : Date.parse(now);
   if (!Number.isFinite(compareTime)) fail('INVALID_COMPARE_TIME', 'comparison time must be finite');
@@ -456,14 +550,21 @@ export function compareObserverSnapshots({ expectedSnapshot, testSnapshot, produ
     .filter(([, snapshot]) => evidenceAgeStatus(snapshot, compareTime, maxAgeMs)).map(([label]) => label);
   if (staleEnvironments.length) return evidenceUnavailableReport({ mainSha, environments, normalizedExceptions, reason: 'EVIDENCE_STALE', affectedEnvironments: staleEnvironments });
   if (expected.queryDigest.value !== test.queryDigest.value || expected.queryDigest.value !== production.queryDigest.value) fail('QUERY_CONTRACT_MISMATCH', 'snapshot query contracts differ');
-  const testLedger = ledgerRelation(expected, test);
-  const productionLedger = ledgerRelation(expected, production);
-  const testResult = compareEnvironment({ expected, actual: test, environment: 'TEST', exceptions: normalizedExceptions, now: compareTime,
+  const planned = plannedTestLedgerView({ expected, test, binding: releaseLedgerBinding, mainSha, aliasMap, readCanonicalSql });
+  // A trusted pre-apply plan selects NOT_APPLIED migrations. Comparison-only
+  // canonical aliases must not hide a selected migration already in Production.
+  if (planned.trace && releaseLedgerBinding.plan.migrations.some((migration) =>
+    production.migrationLedger.identities.some((row) => row.name === migration.repoFile || row.name === migration.repoFile.slice(5)))) {
+    fail('PLANNED_PRODUCTION_LEDGER_PRESENT', 'selected pending migration already exists in the raw Production ledger');
+  }
+  const testLedger = ledgerRelation(planned.expected, planned.test);
+  const productionLedger = ledgerRelation(planned.expected, production);
+  const testResult = compareEnvironment({ expected: planned.expected, actual: planned.test, environment: 'TEST', exceptions: normalizedExceptions, now: compareTime,
     pendingClassification: testLedger.strictSubset ? 'EXPECTED_PENDING_TEST' : null });
   const productionPendingClassification = productionLedger.strictSubset
     ? testLedger.exact ? 'EXPECTED_PENDING_PRODUCTION' : testLedger.strictSubset ? 'EXPECTED_PENDING_TEST' : null
     : null;
-  const productionResult = compareEnvironment({ expected, actual: production, environment: 'PRODUCTION', exceptions: normalizedExceptions, now: compareTime,
+  const productionResult = compareEnvironment({ expected: planned.expected, actual: production, environment: 'PRODUCTION', exceptions: normalizedExceptions, now: compareTime,
     pendingClassification: productionPendingClassification });
   const allDifferences = [...testResult.differences, ...productionResult.differences];
   const blocked = testResult.status === 'DRIFT_BLOCKED' || productionResult.status === 'DRIFT_BLOCKED';
@@ -471,6 +572,7 @@ export function compareObserverSnapshots({ expectedSnapshot, testSnapshot, produ
   const status = blocked ? 'DRIFT_BLOCKED' : statuses.length === 0 ? 'MATCH' : new Set(statuses).size === 1 ? statuses[0] : 'INTENTIONAL_DIFFERENCE';
   return {
     schemaVersion: DRIFT_WATCH_SCHEMA_VERSION, observedMainSha: mainSha, status, differenceCount: allDifferences.length,
+    ...(planned.trace ? { plannedLedgerMapping: planned.trace } : {}),
     differences: allDifferences, environments, environmentStatuses: { TEST: testResult.status, PRODUCTION: productionResult.status },
     exceptionSummary: { provided: normalizedExceptions.length, matched: new Set([...testResult.usedExceptions, ...productionResult.usedExceptions]).size,
       expired: new Set([...testResult.expired, ...productionResult.expired]).size, unmatched: new Set([...testResult.unmatched, ...productionResult.unmatched]).size },
@@ -557,7 +659,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       const result = buildObserverSnapshotFromRaw({ environment: input.environment, projectRef: input['project-ref'], observedAt: input['observed-at'] ?? new Date().toISOString(), observedMainSha: input['current-main-sha'], evidenceRef: input['evidence-ref'] ?? 'local:fresh-install', raw: readJson(input['raw-json']) });
       writeJson(input['json-out'], result);
     } else if (input.command === 'compare') {
-      const result = compareObserverSnapshots({ expectedSnapshot: readJson(input['expected-snapshot']), testSnapshot: readJson(input['test-snapshot']), productionSnapshot: readJson(input['production-snapshot']), currentMainSha: input['current-main-sha'], exceptions: input.exceptions ? readJson(input.exceptions).exceptions : [], maxEvidenceAgeMinutes: input['max-evidence-age-minutes'] ? Number(input['max-evidence-age-minutes']) : undefined });
+      const result = compareObserverSnapshots({ expectedSnapshot: readJson(input['expected-snapshot']), testSnapshot: readJson(input['test-snapshot']), productionSnapshot: readJson(input['production-snapshot']), currentMainSha: input['current-main-sha'], exceptions: input.exceptions ? readJson(input.exceptions).exceptions : [], maxEvidenceAgeMinutes: input['max-evidence-age-minutes'] ? Number(input['max-evidence-age-minutes']) : undefined,
+        releaseLedgerBinding: input['release-ledger-binding'] ? readJson(input['release-ledger-binding']) : undefined,
+        aliasMap: input['release-ledger-binding'] ? readJson('supabase/ledger-alias-map.json') : undefined,
+        readCanonicalSql: (path) => readFileSync(resolve(path), 'utf8') });
       writeJson(input['json-out'], result);
       if (result.status === 'DRIFT_BLOCKED' || result.status === 'EVIDENCE_UNAVAILABLE') process.exitCode = 2;
     } else fail('INVALID_ARGUMENT', 'command must be capture, normalize, or compare');

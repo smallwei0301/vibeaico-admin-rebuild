@@ -3,7 +3,7 @@
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { taipeiTodayRange, taipeiMonthRange, taipeiCurrentMonthKey } from '@/server/tz';
-import { LINE_FREE_PUSH_QUOTA } from '@/config/features';
+import { pushQuotaLimit } from '@/server/line';
 import type { DashboardStats } from '@/lib/types';
 
 export const GET = handle(async () => {
@@ -18,6 +18,7 @@ export const GET = handle(async () => {
     { count: totalCustomers, error: e4 },
     { data: quotaRow, error: e5 },
     { data: settingsRow, error: e6 },
+    pushQuotaTotal,
   ] = await Promise.all([
     t.supabase.from('bookings').select('id', { count: 'exact', head: true })
       .eq('tenant_id', t.tenantId).gte('start_at', todayFrom).lt('start_at', todayTo),
@@ -35,6 +36,7 @@ export const GET = handle(async () => {
       .eq('tenant_id', t.tenantId).eq('month', taipeiCurrentMonthKey()).maybeSingle(),
     t.supabase.from('tenant_settings').select('line_channel_access_token_enc')
       .eq('tenant_id', t.tenantId).maybeSingle(),
+    pushQuotaLimit(t.tenantId),
   ]);
   if (e1) throw e1;
   if (e2) throw e2;
@@ -52,9 +54,8 @@ export const GET = handle(async () => {
     monthRevenue,
     totalCustomers: totalCustomers ?? 0,
     pushQuotaUsed: quotaRow?.used ?? 0,
-    // Phase 3 先固定回免費額度；EXTRA_PUSH（features.ts FEATURE_CODES）加購推播
-    // 額度的疊加屬 Phase 5.5，那時要把已生效的 EXTRA_PUSH 訂閱額度加進來。
-    pushQuotaTotal: LINE_FREE_PUSH_QUOTA,
+    // 與發送端同一來源：EXTRA_PUSH 生效 700，否則 200（line.ts pushQuotaLimit）。
+    pushQuotaTotal,
     // Phase 3 先只用「token 是否已設定」判斷：*_enc 空字串 → NOT_CONFIGURED，
     // 非空 → 直接回 CONNECTED。真正打 LINE `/v2/bot/info` 驗證＋結果快取
     // （才會出現 ERROR 狀態）屬 Phase 6，這裡不打外部 API，避免每次載入

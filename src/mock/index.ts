@@ -250,7 +250,7 @@ const CLINIC: ModeDataset = {
   },
   dashboardStats: {
     todayBookings: 42, pendingBookings: 6, monthRevenue: 486300, totalCustomers: 1864,
-    pushQuotaUsed: 96, pushQuotaTotal: 200, linePlatformStatus: 'CONNECTED',
+    pushQuotaUsed: 96, pushQuotaTotal: 700, linePlatformStatus: 'CONNECTED',
   },
   dashboardAlerts: {
     unprocessedBookings: 6, lowStockProducts: 2, atRiskCustomers: 41,

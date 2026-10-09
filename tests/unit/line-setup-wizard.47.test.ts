@@ -9,10 +9,10 @@
  *   3. `stepStatus` / `allVerifiableChecksPassed` 必須把 AUTO_REPLY 的 INFO
  *      跟六項可查證檢查的 PASS/FAIL 分開算，永遠不能把 INFO 算成失敗。
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import {
   allVerifiableChecksPassed, canAdvanceFromStep, credentialsConfigured,
-  deriveStartingStep, stepAfterVerifyRetry, stepStatus, type VerifyCheck,
+  deriveStartingStep, stepAfterVerifyRetry, stepStatus, WIZARD_STEP_KEYS, type VerifyCheck,
 } from '@/lib/line-setup-wizard';
 
 function check(key: string, status: 'PASS' | 'FAIL' | 'INFO', message = ''): VerifyCheck {
@@ -191,10 +191,164 @@ describe('stepAfterVerifyRetry — 儲存成功後 verify 失敗的重試（只�
 });
 
 describe('page 接線 source-pin（page 無法在 node render，改釘原始碼）', () => {
-  it('錯誤提示的重試鈕走 retryVerify（會更新 step），不是裸 runVerify', async () => {
+  let src = '';
+  beforeAll(async () => {
     const { readFileSync } = await import('node:fs');
-    const src = readFileSync('src/app/tenant/line-settings/onboarding/page.tsx', 'utf8');
+    src = readFileSync('src/app/tenant/line-settings/onboarding/page.tsx', 'utf8');
+    if (src.length < 1000 || !src.includes('retryVerify')) throw new Error('page.tsx source-pin: unexpected source');
+  });
+
+  it('保護：原始碼已讀入（避免負向斷言空過）', () => {
+    expect(src.length).toBeGreaterThan(1000);
+    expect(src).toContain('retryVerify');
+  });
+
+  it('錯誤提示的重試鈕走 retryVerify（會更新 step），不是裸 runVerify', () => {
     expect(src).toMatch(/onClick=\{\(\) => void retryVerify\(\)\}>\{t\.nav\.retryCheck\}[\s\S]{0,40}<\/Alert>/);
     expect(src).toContain('stepAfterVerifyRetry(cur');
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * DONE gating（Issue #47，#714 審查缺口）。
+ * 進入 DONE 的唯一路徑是 page.tsx goNext 由 CAPABILITIES 往下一步；
+ * deriveStartingStep / stepAfterVerifyRetry 最遠只會落在 AUTO_REPLY_CONFIRM。
+ * AUTO_REPLY 為 INFO 人工提示，不計入失敗，autoReplyAck 僅 UI 便利、不是關卡（Issue #47 本文）。
+ * ------------------------------------------------------------------------- */
+describe('DONE gating — verify 未全 PASS 不得抵達 DONE', () => {
+  const saved = { channelId: true, channelSecret: true, channelAccessToken: true };
+  const VERIFIABLE = ['CREDENTIALS', 'TOKEN', 'ID_SECRET_PAIR', 'BOT_MODE', 'WEBHOOK', 'WEBHOOK_TEST'];
+
+  it('六項全 PASS 才通過；任一項 FAIL／INFO／缺漏／重複矛盾都不通過', () => {
+    expect(allVerifiableChecksPassed(ALL_PASS)).toBe(true);
+    for (const key of VERIFIABLE) {
+      expect(allVerifiableChecksPassed(ALL_PASS.map((c) => (c.key === key ? check(key, 'FAIL') : c)))).toBe(false);
+      expect(allVerifiableChecksPassed(ALL_PASS.map((c) => (c.key === key ? check(key, 'INFO') : c)))).toBe(false);
+      expect(allVerifiableChecksPassed(ALL_PASS.filter((c) => c.key !== key))).toBe(false);
+      expect(allVerifiableChecksPassed([...ALL_PASS, check(key, 'FAIL')])).toBe(false);
+    }
+    expect(allVerifiableChecksPassed([])).toBe(false);
+    expect(allVerifiableChecksPassed(null)).toBe(false);
+  });
+
+  it('AUTO_REPLY（INFO）不阻擋：有、無、甚至標成 FAIL 都不影響六項判斷', () => {
+    expect(allVerifiableChecksPassed(ALL_PASS.filter((c) => c.key !== 'AUTO_REPLY'))).toBe(true);
+    expect(allVerifiableChecksPassed(ALL_PASS.map((c) => (c.key === 'AUTO_REPLY' ? check('AUTO_REPLY', 'FAIL') : c)))).toBe(true);
+  });
+
+  it('deriveStartingStep / stepAfterVerifyRetry 永遠不會直接落在 CAPABILITIES 或 DONE', () => {
+    const variants: (VerifyCheck[] | null)[] = [null, [], ALL_PASS];
+    for (const key of VERIFIABLE) {
+      variants.push(ALL_PASS.map((c) => (c.key === key ? check(key, 'FAIL') : c)));
+      variants.push(ALL_PASS.filter((c) => c.key !== key));
+    }
+    for (const checks of variants) {
+      for (const step of [deriveStartingStep(saved, checks), stepAfterVerifyRetry('CREDENTIALS_INPUT', saved, checks)]) {
+        expect(['CAPABILITIES', 'DONE']).not.toContain(step);
+        if (!allVerifiableChecksPassed(checks)) expect(step).not.toBe('AUTO_REPLY_CONFIRM');
+      }
+    }
+  });
+
+  it('全 PASS 時 deriveStartingStep 落在 AUTO_REPLY_CONFIRM（不跳過人工提醒、也不直達 DONE）', () => {
+    expect(deriveStartingStep(saved, ALL_PASS)).toBe('AUTO_REPLY_CONFIRM');
+  });
+});
+
+describe('DONE gating source-pin（page 無法在 node render，釘住 page.tsx 接線；source-pin 非行為測試）', () => {
+  let src = '';
+  beforeAll(async () => {
+    const { readFileSync } = await import('node:fs');
+    src = readFileSync('src/app/tenant/line-settings/onboarding/page.tsx', 'utf8');
+    if (src.length < 1000 || !src.includes('const goNext') || !src.includes('const goPrev') || !src.includes("{step === 'AUTO_REPLY_CONFIRM' ? (") || !src.includes("{step === 'CAPABILITIES' ? ("))
+      throw new Error('page.tsx source-pin: unexpected source');
+  });
+
+  it('保護：原始碼已讀入且含 goNext／goPrev（避免負向斷言空過）', () => {
+    expect(src.length).toBeGreaterThan(1000);
+    expect(src).toContain('const goNext');
+    expect(src).toContain('const goPrev');
+  });
+
+  it('setStep 呼叫點白名單：任何新增或修改都必須重新審查 DONE gating', () => {
+    const MSG = '新增或修改 setStep 呼叫點須重新審查 DONE gating 並更新白名單';
+    const norm = (x: string) => x.replace(/\s+/g, ' ').trim();
+    const calls: string[] = [];
+    const re = /\bsetStep\(/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(src))) {
+      let i = m.index + m[0].length;
+      let depth = 1;
+      const from = i;
+      while (i < src.length && depth > 0) {
+        const c = src[i++];
+        if (c === '(') depth++;
+        else if (c === ')') depth--;
+      }
+      calls.push(norm(src.slice(from, i - 1)));
+    }
+    // setStep 識別字總數 = 1 個宣告（useState 解構）+ 呼叫數；以 callback 傳遞／別名都會讓總數變多
+    const identifiers = src.match(/\bsetStep\b/g) ?? [];
+    expect(identifiers.length, MSG + '（偵測到非呼叫的 setStep 引用，如別名或當 callback 傳遞）').toBe(1 + calls.length);
+    const DERIVE = 'deriveStartingStep( { channelId: true, channelSecret: true, channelAccessToken: true }, realChecks, )';
+    const allow = [
+      "configured ? 'CONNECTION' : 'CREDENTIALS_INPUT'",
+      DERIVE, // ~line 151（儲存前已設定）
+      DERIVE, // ~line 235（儲存憑證後）
+      '(cur) => stepAfterVerifyRetry(cur, { channelId: !!settings?.line.channelId, channelSecret: !!settings?.line.channelSecret, channelAccessToken: !!settings?.line.channelAccessToken, }, realChecks)',
+      'WIZARD_STEP_KEYS[idx + 1]',
+      'WIZARD_STEP_KEYS[idx - 1]',
+      "'CREDENTIALS_INPUT'",
+    ].sort();
+    expect([...calls].sort(), MSG).toEqual(allow);
+  });
+
+  // goNext 本體（去除 /* */ 與 // 註解後），讓「被註解掉的 gate」無法通過整行比對
+  const goNextCode = () => {
+    const raw = src.slice(src.indexOf('const goNext'), src.indexOf('const goPrev'));
+    return raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  };
+  const GATE_RE = /^\s*if \(step === 'CAPABILITIES' && !allVerifiableChecksPassed\(checks\)\) return;\s*$/gm;
+  const GUARD_RE = /^\s*if \(verifying \|\| verifyError \|\| !canAdvanceFromStep\(step, checks\)\) return;\s*$/gm;
+
+  it('WIZARD_STEP_KEYS[idx + 1] 只出現在 goNext，且位於未註解的 allVerifiableChecksPassed gate 之後', () => {
+    const occ = src.split('setStep(WIZARD_STEP_KEYS[idx + 1])').length - 1;
+    expect(occ).toBe(1);
+    const body = goNextCode();
+    const gates = [...body.matchAll(GATE_RE)];
+    expect(gates.length, 'gate 必須是未註解的獨立整行，且恰好一行').toBe(1);
+    const adv = body.indexOf('setStep(WIZARD_STEP_KEYS[idx + 1])');
+    expect(adv, 'goNext（去註解後）仍須含 idx + 1 推進').toBeGreaterThan(-1);
+    expect(adv).toBeGreaterThan(gates[0].index!);
+  });
+
+  it('goNext 以未註解整行使用 canAdvanceFromStep，且 CAPABILITIES→DONE 以 allVerifiableChecksPassed 擋住', () => {
+    const body = goNextCode();
+    expect([...body.matchAll(GUARD_RE)].length, 'canAdvanceFromStep guard 須為未註解整行').toBe(1);
+    expect([...body.matchAll(GATE_RE)].length, 'CAPABILITIES gate 須為未註解整行').toBe(1);
+  });
+
+  it('WIZARD_STEP_KEYS 尾端順序：AUTO_REPLY_CONFIRM → CAPABILITIES → DONE', () => {
+    expect(WIZARD_STEP_KEYS.slice(-2)).toEqual(['CAPABILITIES', 'DONE']);
+    const i = WIZARD_STEP_KEYS.indexOf('CAPABILITIES');
+    expect(WIZARD_STEP_KEYS[i - 1]).toBe('AUTO_REPLY_CONFIRM');
+  });
+
+  it('AUTO_REPLY_CONFIRM 與 CAPABILITIES 的 goNext 按鈕 disabled 運算式必須完整等於預期', () => {
+    const EXPECTED = '<Button disabled={verifying || !!verifyError || !allVerifiableChecksPassed(checks)} onClick={goNext}>';
+    const start = src.indexOf("{step === 'AUTO_REPLY_CONFIRM' ? (");
+    const mid = src.indexOf("{step === 'CAPABILITIES' ? (");
+    const end = src.indexOf("{step === 'DONE' ? (");
+    expect(start).toBeGreaterThan(-1);
+    expect(mid).toBeGreaterThan(start);
+    expect(end).toBeGreaterThan(mid);
+    const blocks = [src.slice(start, mid), src.slice(mid, end)];
+    for (const block of blocks) {
+      const buttons = (block.match(/<Button\b[^>]*onClick=\{goNext\}[^>]*>/g) ?? []).map((b) => b.replace(/\s+/g, ' '));
+      expect(buttons.length).toBe(1);
+      expect(buttons[0]).toBe(EXPECTED);
+      expect(buttons[0]).not.toContain('autoReplyAck');
+      expect((block.match(/\bgoNext\b/g) ?? []).length, 'block 內 goNext 只能出現一次').toBe(1);
+    }
   });
 });

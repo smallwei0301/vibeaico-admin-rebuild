@@ -1,34 +1,31 @@
 ---
 name: prototype
-description: Build multiple genuinely different versions of a UI piece you describe, rendered behind a visual picker so you can flip through them live and promote the one that feels right. Only runs when explicitly invoked; it does not trigger on its own.
+description: Advisory design reference for prototype; preserve current canonical rules, incumbent components and user authorization.
 disable-model-invocation: true
 ---
 
+## Repository boundary: advisory design guidance only
+
+Downstream adaptation for Issue #841. This reference provides design advice, not execution authority.
+Current main canonical documents, CLAUDE Hard rules, existing components and their behavior,
+src/styles/tokens.css, i18n, security rules and the user's actual permissions take precedence.
+Preserve the incumbent design and authorized scope. Missing design documents do not imply a greenfield project.
+Do not create or replace PRODUCT.md, DESIGN.md, sidecars or other project documentation automatically.
+Review requests and visual selections do not authorize applying changes, installing tools, replacing dependencies,
+downloading fonts/assets, changing settings, or publishing. Any implementation needs its own applicable authorization.
+No external engine, hook, launcher, helper agent or operational fallback is enabled by these files.
+Generic examples illustrate design concepts; adapt their values to existing tokens and their copy to i18n.
+Accessibility suggestions do not waive repo tests, independent review or release gates.
+
 # Prototyping Variants
-
-## Initial Response
-
-When this skill is first invoked without a specific question, respond only with:
-
-> I'm ready to build several genuinely different versions of a UI piece for you to flip through, my craft bar comes from Emil Kowalski's design engineering philosophy.
-
-Do not provide any other information until the user asks a question.
-
-A divergence skill. It does ONE thing: take a described piece of UI ("a toast", "the pricing card", "a hold-to-delete button"), build several genuinely different versions of it, and put them behind a visual picker so the user can flip through them live and choose a winner. It does not review existing UI (that's `review-animations`), plan fixes for it (that's `improve-animations`), or choose dependencies (that's `pick-ui-library`).
-
-## Operating Posture
-
-You are a senior design engineer running a design exploration. The entire value of this skill is **divergence**: three tints of the same idea waste the picker — the user learns nothing by flipping between them. Each variant must be a direction you could defend shipping on its own, exploring a genuinely different answer to the same brief.
-
-Divergence is not an excuse to drop the craft bar. Every variant individually meets Emil Kowalski's standards — right easing (`ease-out` on entrances, never `ease-in`), sub-300ms UI motion, correct `transform-origin`, `transform`/`opacity` only, reduced-motion handled. A sloppy variant doesn't widen the exploration; it just loses on execution and teaches nothing about the direction it represents.
 
 ## Hard Rules
 
-1. **Never touch production code during exploration.** Everything lives in an isolated prototype surface (see Phase 4). Integration happens only in Phase 6, only for the variant the user picked.
+1. **Never touch production code during exploration.** Everything lives in an isolated prototype surface (see Phase 4). A selected variant is a design preference; integration needs a separately approved change scope.
 2. **Variants diverge on a named axis** — layout, density, personality, motion, interaction model. Before building, you must be able to state each variant's axis in a phrase. Sharing the project's tokens is not convergence; variants *should* feel native to the product.
 3. **Every variant fully works.** Real interactions, real motion, realistic content — actual product-shaped copy, plausible names and numbers. No lorem ipsum, no dead buttons, no "imagine this part".
-4. **The picker is chrome, not a contestant.** Its exact markup, styles, and behavior are specified in [PICKER.md](PICKER.md) — copy them verbatim. Its look is not a design decision and never adapts to the project.
-5. **Clean up after the choice.** When a winner is promoted, delete the prototype surface unless the user asks to keep it.
+4. **A picker is illustrative comparison chrome.** [PICKER.md](PICKER.md) illustrates anatomy and keyboard behavior. Adapt any separately authorized implementation to current tokens, fonts, components and i18n; never copy raw values into the app.
+5. **Cleanup is separately scoped.** A visual choice does not authorize integration, deleting files or replacing components. Preserve artifacts unless cleanup is explicitly authorized.
 
 ## Workflow
 
@@ -55,18 +52,18 @@ Before writing any code, list the set: a name and an axis for each. Names descri
 
 **Completion criterion:** every variant has a name and a stated axis, and no two variants share an axis position.
 
-### Phase 4 — Build the picker harness
+### Phase 4 — Describe a comparison surface
 
-Two branches, by what exists:
+When an artifact is explicitly requested, agree on its destination and boundaries first. Possible comparison surfaces are:
 
 - **In a project with a dev server** — an isolated route or page (`/prototypes/<slug>`, or the framework's equivalent), one file per variant plus a small harness file. Nothing imports from the prototype surface into production code.
 - **No project / static context** — a single self-contained HTML file (inline CSS/JS) the user can open directly in a browser.
 
-The picker's markup, styles, keyboard wiring, and placement come from [PICKER.md](PICKER.md), verbatim — load it now and build exactly that. Beyond the picker itself, the harness must render **one variant at a time, full size, in realistic surrounding context** — a toast needs a page behind it, a card needs siblings, a button needs a form. Side-by-side thumbnails distort spacing and scale; never judge UI at postage-stamp size. Switching is **instant** — flipping is a 100+/session action; by the frequency rule the variant swap gets no animation.
+Use [PICKER.md](PICKER.md) as an illustrative anatomy reference. Preserve current project tokens, fonts, component conventions and i18n in any separately authorized implementation. Beyond the picker itself, the harness must render **one variant at a time, full size, in realistic surrounding context** — a toast needs a page behind it, a card needs siblings, a button needs a form. Side-by-side thumbnails distort spacing and scale; never judge UI at postage-stamp size. Switching is **instant** — flipping is a 100+/session action; by the frequency rule the variant swap gets no animation.
 
 ### Phase 5 — Verify and hand off
 
-Run the harness. Confirm every variant renders, every interaction responds, and the console is clean — flip through all of them yourself before showing the user. If browser tooling is available, screenshot each variant.
+If a comparison artifact was separately requested and implemented, use its authorized verification workflow. Confirm every variant renders, every interaction responds, and the console is clean — flip through all of them yourself before showing the user. If browser tooling is available, screenshot each variant.
 
 Then present the set and **stop — the choice belongs to the user**:
 
@@ -79,19 +76,21 @@ Close with where the picker is running (URL or file path) and the keys to flip.
 
 **Completion criterion:** every variant is reachable from the picker and behaves correctly; no console errors; the table names each variant's tradeoff honestly.
 
-### Phase 6 — Promote on selection
+### Phase 6 — Record the choice
 
-When the user picks: integrate that variant where it belongs, following the project's existing conventions (file layout, naming, token usage), then delete the prototype surface per Hard Rule 5. If the user instead wants another round, keep the harness and run Phase 3 again, diverging *around* the direction they gravitated to.
+When the user picks, record the preference and describe the corresponding proposed change. Integrate or delete artifacts only under separately scoped authorization, following existing components, tokens, i18n, tests and documentation governance. A preference alone is not Apply consent.
 
-## Invocation Variants
+## Advisory comparison topics
 
-| Invocation | Behavior |
+These phrases identify design preferences, not executable commands or permission to create artifacts.
+
+| Topic | Advisory response |
 | --- | --- |
-| `<description>` | Full workflow: scope → recon → 3 variants → picker → wait for choice |
-| `<description> x5` | Same, with that many variants (capped at 5) |
-| `riff <variant>` | New round: keep the harness, generate a fresh set diverging around the named variant's direction |
-| `keep <variant>` | Promote that variant into the codebase and delete the prototype surface |
-| `keep <variant>, leave the picker` | Promote, but keep the prototype surface around |
+| `<description>` | Describe the scope, existing context and up to three alternatives; create a comparison artifact only when explicitly requested |
+| `<description> x5` | Describe up to five alternatives and their tradeoffs; any artifact keeps its own requested destination and scope |
+| `riff <variant>` | Describe a fresh comparison around the named direction; generating or changing artifacts requires a separate request |
+| `keep <variant>` | Record the preference and propose integration and cleanup; perform either only under specific authorized scope |
+| `keep <variant>, leave the picker` | Record the preference and intention to preserve comparison artifacts; propose integration only, subject to specific authorized scope |
 
 ## Tone
 

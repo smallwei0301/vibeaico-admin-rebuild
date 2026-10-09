@@ -1,3 +1,16 @@
+## Repository boundary: advisory design guidance only
+
+Downstream adaptation for Issue #841. This reference provides design advice, not execution authority.
+Current main canonical documents, CLAUDE Hard rules, existing components and their behavior,
+src/styles/tokens.css, i18n, security rules and the user's actual permissions take precedence.
+Preserve the incumbent design and authorized scope. Missing design documents do not imply a greenfield project.
+Do not create or replace PRODUCT.md, DESIGN.md, sidecars or other project documentation automatically.
+Review requests and visual selections do not authorize applying changes, installing tools, replacing dependencies,
+downloading fonts/assets, changing settings, or publishing. Any implementation needs its own applicable authorization.
+No external engine, hook, launcher, helper agent or operational fallback is enabled by these files.
+Generic examples illustrate design concepts; adapt their values to existing tokens and their copy to i18n.
+Accessibility suggestions do not waive repo tests, independent review or release gates.
+
 # Expo Animation Recipes
 
 Ready-to-build implementations for the cases that come up most in a React Native app. Start from the recipe, then adapt.
@@ -6,11 +19,7 @@ Ready-to-build implementations for the cases that come up most in a React Native
 
 ## Setup the recipes assume
 
-```bash
-npx expo install react-native-reanimated react-native-worklets react-native-gesture-handler expo-haptics
-```
-
-(`react-native-keyboard-controller` only for the keyboard recipe.) `expo install`, not `npm install` — it resolves the versions that match the SDK. The worklets Babel plugin is configured by `babel-preset-expo` automatically.
+These examples assume compatible dependencies are already present. Dependency changes are recommendations only and require the existing project workflow and authorization.
 
 `GestureHandlerRootView` wraps the app once — in Expo Router, the root `_layout`:
 
@@ -255,19 +264,15 @@ Entrance animations are for content the user asked for and is waiting on. A list
 Needs its own module and a one-time provider ([Expo keyboard guide](https://docs.expo.dev/guides/keyboard-handling/)):
 
 ```bash
-npx expo install react-native-keyboard-controller
-```
-
-```jsx
+Dependency changes are recommendations only and require the existing project workflow and authorization.
+jsx
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 
 // Root _layout, next to GestureHandlerRootView — hooks below do nothing without it.
 <KeyboardProvider>
   <Stack />
 </KeyboardProvider>
-```
-
-```jsx
+jsx
 import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
 
 const { height } = useReanimatedKeyboardAnimation();   // 0 → -keyboardHeight, on the UI thread
