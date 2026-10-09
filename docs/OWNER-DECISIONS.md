@@ -2,7 +2,16 @@
 
 > 本檔是跨領域 Owner 決策索引，讓 Agent 在開工前快速知道哪些題目已經裁示，避免重複詢問。
 > 正式領域規格仍以各 `docs/integration/**` canonical 文件為準；Issue 負責施工範圍與驗收。
-> 最後更新：2026-10-01。
+> 最後更新：2026-10-09。
+> 模型版本決策最後更新：2026-10-01；本次只新增有界角色證據政策，未變更模型型號。
+
+## 2026-10-09 已裁示
+
+Owner 15:48:34 UTC 同意僅對 #843 exact head `07d360c50c6eb60486fa4f3bc21d0f713d6e2bbb`、六檔 digest
+`8da954f36f1e6ea03bac4be9c24f203f75273494dab11b8f49829fca2d7664a3`，依正常治理流程實作可信操作者親見原生任務的角色證據試行。
+明確接受平台未公開 actor/session、程式無法獨立證明操作者 spawn／隔離背書真偽的限制；未知仍未知。
+只限 Product source Final Risk，不適用 #836、其他版本或 DB release／G5；不直接批准 merge，不改其他 gates。
+操作契約回併 `AGENT-EXECUTION.md` §7.2；branch-only 文件／設定未生效，正常治理 CI／獨立審查／main 合併與回讀後才能使用。
 
 ## 2026-10-01 已裁示
 

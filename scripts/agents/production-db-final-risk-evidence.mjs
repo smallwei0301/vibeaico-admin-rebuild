@@ -51,7 +51,9 @@ export function buildProductionDbFinalRiskEvidence({
   if (!DIGEST.test(planDigest)) fail('INVALID_PLAN_DIGEST', 'planDigest must be SHA-256');
   const evidenceDigest = releaseEvidenceDigestOf(releasePacket);
 
-  const evaluated = evaluateAstra({ body, changedFiles, context, reviews }, policy);
+  // Source-only native-task admission must never leak through this generic context.
+  const evaluated = evaluateAstra({ body, changedFiles, context: { ...context,
+    reviewSurface: 'PRODUCTION_DB_RELEASE', nativeCanonical: false, nativePolicyEvidence: undefined }, reviews }, policy);
   if (evaluated.status !== 'ASTRA_APPROVED') {
     fail('FINAL_RISK_NOT_APPROVED', `trusted Final Risk status is ${evaluated.status}`);
   }

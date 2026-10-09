@@ -606,6 +606,39 @@ OpenAI premium 只 Astra、Anthropic premium 只 Fable；audit 只同 provider �
 
 DB release preflight 尚未接入可信 role context；enabled policy 下缺此證據安全拒絕，不把本節 source review 當 Production 操作許可。
 
+#### 有界原生任務身分試行（Owner 2026-10-09）
+
+只有 trusted-main `model-routing.json.nativeRolePilot` 已啟用且 repo／PR／exact head／六檔 digest／
+`PRODUCT_SOURCE_FINAL_RISK` 全相符時，可用 `executionIdentityKind=NATIVE_TASK`。初版只限 #843 的
+`07d360c50c6eb60486fa4f3bc21d0f713d6e2bbb`／`8da954f36f1e6ea03bac4be9c24f203f75273494dab11b8f49829fca2d7664a3`；
+#836、其他 head、歷史未知 BUILD、DB release／G5／writer 不適用。治理 bootstrap PR 不能用此規則自批。
+BUILD／REVIEW 仍是原角色；actorId／sessionId 必須 null、backendIdentityAvailability=UNEXPOSED，
+actualModel=unknown、identityEvidence=UNKNOWN、servedVerified=false。task_name／executionRef 是操作者限定範圍內的
+識別，不是平台 actor/session，也不宣稱全球唯一。舊完整 backend 來源契約維持不變。
+
+同一 canonical 角色 comment 內的 `nativeTaskEvidence` schemaVersion=1 保存 operatorLogin/id、namespace、
+captureGeneration、taskName、executionRefBasis=OPERATOR_SCOPED_NATIVE_TASK、performedWorkScope、compiledAt，
+以及 spawn（親見 request/result、角色與 UTC）、work（親見或明標 WORKER_REPORTED、起點與成果 hash）、
+completion（親見 BOUNDED_WORK_COMPLETED、停筆、head/digest 與 UTC）。時間以 OBSERVED_ROLE_WORK 表示真實
+工作區段，不冒稱精確 first/last-write 或 backend session 起訖；CI 結束不能代替角色完成。
+REVIEW 另需不同 task/execution/comment、reviewPhase=FINAL、participatedInBuild=false、contextIsolationAttested=true；
+原 spawn request 必須 fork_turns=none，freshContext=true 是 receipt 背書，**不是 spawn 參數**。
+新 final REVIEW 必須在 BUILD 完成及 canonical receipt／已啟用 main 政策回讀後才新建，保留 builderReadback 的 URL／body hash／updatedAt／
+observedAt，以及已啟用 main 的 policyReadback（version／mainSha／observedAt）；兩項均明標親見。
+canonical review 另綁 nativeRolePolicyVersion；既有 EARLY 不重命名為 final。初版完整欄位由 shared
+`nativeRoleShapeErrors` 與 synthetic regression 定義；local preflight 永遠 canonicalReadbackVerified=false。
+
+這是 Owner 明確接受的**可信操作者親見背書**。GitHub 回讀核實 comment 提交者權限、bytes、時間與一致性，
+無法獨立認證內嵌工具摘錄、原 spawn 或隱藏 session 是否真的不同；完整不實背書仍可能無法辨識。
+沒有親見必要事實就 pending，不補造來源、時間或身份。新 reviewer 必須親見政策已進 main 後才開始工作。
+adapter 重新核 current-main policy bytes、當前 config generation 與所錄 main 的 ancestry；branch-only 設定不能啟用。
+config generation 改變（含中間 disable／re-enable）後須重新留證；無關 main 前進但 config 不變不強迫重審。
+policy 關閉、source 漂移、證據缺漏或矛盾即無 native 准入資格。沿既有同 PR comment edit/delete、review 及 main
+wake-up 重查；來源定位／讀取／status 寫入失敗記 REFRESH_UNVERIFIED，舊綠可能仍可見，不能聲稱已撤回。
+合併前必須核 live policy、有效 guard、body/files/base/head publication receipt 及其他全部 gates。
+#552 成本／provider／模型身份、source GOVERNANCE_GATE、最新 finding、ownership／容量、CI／TEST、發布保護不變。
+source-only transport 的 canonical TEST 仍是合併後另依授權執行；本試行不新增前置 TEST、不授予 DB／Production 權限。
+
 Product 高後果範圍才需要 Final Risk，例如：
 
 - `PAYMENT_CONSISTENCY`

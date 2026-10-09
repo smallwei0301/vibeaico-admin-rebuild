@@ -277,8 +277,12 @@ export function parseAstraReviews(reviews = [], evidenceType = 'astra-review') {
     const match = body.match(evidenceType === 'sol-review' ? /```sol-review\s*\n([\s\S]*?)\n```/ : /```astra-review\s*\n([\s\S]*?)\n```/);
     try {
       if (!match) throw new Error('Malformed attestation');
+      const payload = JSON.parse(match[1]);
+      if (payload?.nativeRolePolicyVersion !== undefined
+        && [...body.matchAll(/```(?:astra-review|sol-review)\s*\n([\s\S]*?)\n```/g)].length !== 1)
+        throw new Error('Native final review requires one unambiguous review block');
       // Candidate payloads cannot manufacture a trusted source readback receipt.
-      return [{ ...JSON.parse(match[1]), fallbackSourceEvidence: undefined, ...record }];
+      return [{ ...payload, fallbackSourceEvidence: undefined, ...record }];
     } catch { return [{ ...record, parseError: true }]; }
   }).sort((a, b) => String(b.submittedAt).localeCompare(String(a.submittedAt)) || Number(b.reviewId) - Number(a.reviewId));
 }
@@ -406,6 +410,32 @@ export function evaluateOrdinaryReview(reviews = [], context = {}, policy = {}) 
   return { status: errors.length ? 'SOL_REVIEW_PENDING' : 'SOL_REVIEW_APPROVED', errors };
 }
 
+/** A native source pilot is never enabled by branch config or evidence payloads. */
+async function loadNativePolicyEvidence({ github, owner, repo, reviewer }, policy) {
+  try {
+    const { data: main } = await github.rest.repos.getCommit({ owner, repo, ref: 'main' });
+    const reviewedMainSha = reviewer?.nativeTaskEvidence?.policyReadback?.mainSha;
+    if (!SHA.test(main.sha) || !SHA.test(reviewedMainSha ?? '')) return undefined;
+    const { data: file } = await github.rest.repos.getContent({ owner, repo, ref: main.sha, path: 'scripts/agents/model-routing.json' });
+    if (Array.isArray(file) || file.type !== 'file' || file.encoding !== 'base64') return undefined;
+    const bytes = Buffer.from(file.content, 'base64');
+    if (createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex') !== file.sha) return undefined;
+    const pilot = JSON.parse(bytes.toString('utf8')).nativeRolePilot;
+    if (pilot?.enabled !== true || JSON.stringify(pilot) !== JSON.stringify(policy.nativeRolePilot)) return undefined;
+    // A readback must contain the current config generation. This also rejects a
+    // prior enabled generation after an intervening disable/re-enable, without a TTL.
+    const { data: commits } = await github.rest.repos.listCommits({ owner, repo, sha: main.sha, path: 'scripts/agents/model-routing.json', per_page: 1 });
+    if (!Array.isArray(commits) || commits.length !== 1 || !SHA.test(commits[0].sha)) return undefined;
+    for (const [base, head] of [[commits[0].sha, reviewedMainSha], [reviewedMainSha, main.sha]]) {
+      if (base === head) continue;
+      const { data } = await github.rest.repos.compareCommitsWithBasehead({ owner, repo, basehead: `${base}...${head}` });
+      if (!['ahead', 'identical'].includes(data.status)) return undefined;
+    }
+    const { data: after } = await github.rest.repos.getCommit({ owner, repo, ref: 'main' });
+    return after.sha === main.sha ? { pilot, currentMainSha: main.sha, reviewedMainSha, policyCommitSha: commits[0].sha } : undefined;
+  } catch { return undefined; }
+}
+
 // REST calls are read-only. Never load policy/code from a PR or execute evidence content.
 export async function evaluateGithubAstra({ github, owner, repo, current }, policy = routing) {
   const files = await github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number: current.number, per_page: 100 });
@@ -444,7 +474,7 @@ export async function evaluateGithubAstra({ github, owner, repo, current }, poli
   }
   const digest = changeDigestOf(files);
   const fallbackSourceEvidence = await loadFallbackSourceEvidence({ github, owner, repo, reviews, prNumber: current.number }, policy);
-  let roleEvidence;
+  let roleEvidence, nativePolicyEvidence;
   if (ordinaryReviewRequired || (classification.required && policy.openaiBuilderDecision?.independentReviewerRequired === true)) {
     const latest = parseAstraReviews(reviews, evidenceType)[0];
     const roleHead = ordinaryReviewRequired ? current.head.sha : semanticRoleHead(latest, {
@@ -471,12 +501,19 @@ export async function evaluateGithubAstra({ github, owner, repo, current }, poli
         || !Number.isFinite(Date.parse(latest?.submittedAt))
         || Date.parse(data.updated_at) > Date.parse(latest?.submittedAt)
         || Date.parse(receipt.completedAt) > Date.parse(data.updated_at)) throw new Error('Role receipt is stale or recorded after its review');
-      return { ...receipt, sourceRef }; // authoritative sourceRef wins over payload claims
+      return { ...receipt, sourceRef,
+        sourceActor: { login: data.user.login, id: data.user.id }, sourceUpdatedAt: data.updated_at,
+        sourceBodySha256: createHash('sha256').update(String(data.body)).digest('hex') }; // authoritative fields override payload claims
     };
     try {
       roleEvidence = { trusted: true,
         builder: await readRole(readField(body, 'BUILDER_EXECUTION_RECEIPT'), 'BUILD'),
         reviewer: await readRole(latest?.reviewerExecutionReceipt, 'REVIEW') };
+      if ([roleEvidence.builder, roleEvidence.reviewer].some(record => record.executionIdentityKind === 'NATIVE_TASK')) {
+        if (!shouldEnforceFinalRisk({ pullRequestState: current.state, draft: current.draft, laneState: readField(body, 'LANE_STATE') }))
+          throw new Error('Native source review is deferred for this lifecycle');
+        nativePolicyEvidence = await loadNativePolicyEvidence({ github, owner, repo, reviewer: roleEvidence.reviewer }, policy);
+      }
     } catch { roleEvidence = undefined; } // missing runtime capture stays pending, never manufacture historical actors
   }
   const result = evaluateAstra({ body, changedFiles, reviews, context: {
@@ -485,6 +522,8 @@ export async function evaluateGithubAstra({ github, owner, repo, current }, poli
     policyVersion: policy.version, testBaseline: readField(body, 'ASTRA_TEST_BASELINE'),
     schemaBaseline: readField(body, 'ASTRA_SCHEMA_BASELINE'),
     changeDigest: digest, createdAt: current.created_at, roleEvidence, ordinaryReviewRequired,
+    reviewSurface: 'PRODUCT_SOURCE_FINAL_RISK', prNumber: current.number, currentHeadSha: current.head.sha,
+    nativeCanonical: true, nativePolicyEvidence,
   } }, policy);
   return { ...result, changeDigest: digest };
 }

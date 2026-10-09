@@ -18,6 +18,7 @@ import { parseGovernanceScopeException } from './governance-scope-budget.mjs';
 import { decideLocalIsolatedTest } from '../ci/local-isolated-test-policy.mjs';
 
 import { changeDigestOf, classifyAstra, evaluateAstra, routing, shouldEnforceFinalRisk } from './astra-review-policy.mjs';
+import { nativeRoleShapeErrors } from './final-risk-cost-policy.mjs';
 
 import { validateDeliveryUnitBoundary, validateBookkeepingWorkstream } from './governance-workstream-boundary.mjs';
 export { validateDeliveryUnitBoundary } from './governance-workstream-boundary.mjs';
@@ -215,6 +216,22 @@ export function validatePublicationMetadata(input = {}) {
   return { valid: errors.length === 0, errors: [...new Set(errors)], metadata };
 }
 
+/** Optional native source packet shape only: never enables branch policy or canonical approval. */
+export function validateNativeRolePreflight(packet, currentPr, policy = routing) {
+  const result = { status: 'LOCAL_NOT_VERIFIABLE', canonicalReadbackVerified: false, errors: [] };
+  if (!packet) return result;
+  const context = { repository: packet.repository, headSha: packet.headSha, currentHeadSha: currentPr?.head?.sha,
+    changeDigest: packet.changeDigest, prNumber: currentPr?.number, reviewSurface: 'PRODUCT_SOURCE_FINAL_RISK',
+    roleEvidence: { builder: packet.builder, reviewer: packet.reviewer } };
+  result.errors.push(...nativeRoleShapeErrors(packet.review, context, policy.nativeRolePilot));
+  if (!currentPr || !shouldEnforceFinalRisk({ pullRequestState: currentPr.state, draft: currentPr.draft,
+    laneState: readField(currentPr.body ?? '', 'LANE_STATE') })) result.errors.push('Native final packet requires current active non-draft PR snapshot');
+  if (packet.builder?.sourceRef !== readField(currentPr?.body ?? '', 'BUILDER_EXECUTION_RECEIPT')
+    || packet.review?.reviewerExecutionReceipt !== packet.reviewer?.sourceRef) result.errors.push('Native packet locators differ from current metadata');
+  result.status = result.errors.length ? 'LOCAL_CONTRACT_PENDING' : 'NEEDS_CANONICAL_READBACK';
+  return result;
+}
+
 export function validateWipPreflight(input = {}) {
   const {
     body = '',
@@ -228,6 +245,9 @@ export function validateWipPreflight(input = {}) {
   const errors = [];
   const ordinary = ordinaryLocalContract(input, text, changedFiles);
   errors.push(...ordinary.errors);
+  const nativeRole = validateNativeRolePreflight(input.nativeRoleEvidence, input.currentPr);
+  errors.push(...nativeRole.errors);
+  if (input.nativeRoleEvidence && input.currentPr?.body !== text) errors.push('Native packet current PR body differs from preflight body');
   let headSha = '';
   if (upper(readField(text, 'COMPLETION_CLAIM')) === 'AUDIT_READY'
     && upper(readField(text, 'AGENT_LANE')) === 'TERRA_BUILD') {
@@ -315,6 +335,7 @@ export function validateWipPreflight(input = {}) {
     rawCaptureChecked: Array.isArray(changedFiles),
     ordinaryReviewRequired: ordinary.ordinaryReviewRequired,
     ordinaryReviewStatus: ordinary.ordinaryReviewStatus,
+    nativeRoleStatus: nativeRole.status,
     canonicalReadbackVerified: false,
   };
 }
@@ -341,6 +362,7 @@ function runCli(argv = process.argv.slice(2)) {
     currentPr: args['current-pr-json'] ? JSON.parse(readFileSync(args['current-pr-json'], 'utf8')) : undefined,
     prospectiveFinal: args['prospective-final'] === 'true',
     ordinaryEvidence: args['ordinary-evidence'] ? JSON.parse(readFileSync(args['ordinary-evidence'], 'utf8')) : undefined,
+    nativeRoleEvidence: args['native-role-evidence'] ? JSON.parse(readFileSync(args['native-role-evidence'], 'utf8')) : undefined,
     requireAstraClassification: true,
     prNumber: args.number ?? 1,
     action: args.action ?? 'opened',
