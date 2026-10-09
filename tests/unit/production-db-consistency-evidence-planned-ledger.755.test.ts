@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { buildProductionDbReleasePlan } from '../../scripts/agents/production-db-release-plan.mjs';
+import { assertLiveLedgerMatchesAliasMap } from '../../scripts/db/controlled-production-db-release.mjs';
 import { buildAtomicTestReleaseValidationSql } from '../../scripts/db/validate-production-db-release-on-test.mjs';
 import { buildProductionConsistencyEvidence } from '../../scripts/agents/production-db-consistency-evidence.mjs';
 import { buildObserverSnapshotFromRaw, compareObserverSnapshots } from '../../scripts/agents/schema-drift-watch.mjs';
@@ -149,6 +150,44 @@ function writerFixture(existingVersion?: string) {
 }
 
 describe('#755 trusted G3 writer to observer identity binding', () => {
+  it.each([
+    ['0136', MIGRATION], ['20261007220000', MIGRATION], ['0135', MIGRATION],
+    ['0136', MIGRATION.slice(5)], ['20261007220000', MIGRATION.slice(5)],
+  ])('rejects selected pending migration already in Production as %s/%s', (version, name) => {
+    const { args, plan } = writerFixture('0136');
+    args.expectedSnapshot = snapshot('LOCAL_EXPECTED', [], [MIGRATION], [BASELINE, { version: '0136', name: MIGRATION.slice(5) }]);
+    const liveLedgerRows = [BASELINE, { version, name }];
+    args.productionSnapshot = snapshot('PRODUCTION', [], [MIGRATION], liveLedgerRows);
+    const original = structuredClone({ expected: args.expectedSnapshot, test: args.testSnapshot, production: args.productionSnapshot });
+    const aliasMap = { ...args.aliasMap, entries: [
+      { repoFile: BASELINE.name, ledgerNames: [BASELINE.name], classification: 'EXACT' }, ...args.aliasMap.entries,
+    ] };
+    expect(() => assertLiveLedgerMatchesAliasMap({ aliasMap, liveLedgerRows: [BASELINE] })).not.toThrow();
+    expect(() => assertLiveLedgerMatchesAliasMap({ aliasMap, liveLedgerRows })).toThrow(/LIVE_LEDGER_DRIFT/);
+    expect(() => {
+      const report = compareObserverSnapshots(args);
+      buildProductionConsistencyEvidence({ ...fixture(), report, plan, planDigest: plan.planDigest });
+    }).toThrow(/PLANNED_PRODUCTION_LEDGER_PRESENT/);
+    expect({ expected: args.expectedSnapshot, test: args.testSnapshot, production: args.productionSnapshot }).toEqual(original);
+  });
+
+  it('rejects already-present selected Production identity with a full canonical expected name too', () => {
+    const { args } = writerFixture('0136');
+    args.productionSnapshot = snapshot('PRODUCTION');
+    expect(() => compareObserverSnapshots(args)).toThrow(/PLANNED_PRODUCTION_LEDGER_PRESENT/);
+  });
+
+  it.each([MIGRATION, MIGRATION.slice(5)])('preserves unbound post-apply parity with name %s', (name) => {
+    const { args } = writerFixture('0136');
+    const ledger = [BASELINE, { version: '0136', name }];
+    args.expectedSnapshot = snapshot('LOCAL_EXPECTED', [], [MIGRATION], ledger);
+    args.testSnapshot = snapshot('TEST', [], [MIGRATION], ledger);
+    args.productionSnapshot = snapshot('PRODUCTION', [], [MIGRATION], ledger);
+    const { releaseLedgerBinding: _binding, ...unbound } = args;
+    expect(compareObserverSnapshots(unbound)).toMatchObject({ status: 'MATCH', differenceCount: 0 });
+    expect(compareObserverSnapshots(unbound)).not.toHaveProperty('plannedLedgerMapping');
+  });
+
   it.each([undefined, '0136'])('accepts CLI replay short names with verified TEST version %s in a comparison-only view', (version) => {
     const { args, plan, rows } = writerFixture(version);
     const cliIdentity = { version: '0136', name: MIGRATION.slice(5) };
@@ -324,7 +363,7 @@ describe('#755 trusted G3 writer to observer identity binding', () => {
     const report = compareObserverSnapshots(args);
     expect(() => buildProductionConsistencyEvidence({ ...fixture(), report })).toThrow(/CONSISTENCY_LEDGER_PLAN_MISMATCH/);
     args.productionSnapshot = snapshot('PRODUCTION', [], [MIGRATION], [BASELINE, ...rows]);
-    expect(compareObserverSnapshots(args).status).toBe('DRIFT_BLOCKED');
+    expect(() => compareObserverSnapshots(args)).toThrow(/PLANNED_PRODUCTION_LEDGER_PRESENT/);
     expect(plan.mainSha).toBe(MAIN);
   });
 });

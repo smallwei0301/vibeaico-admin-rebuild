@@ -551,6 +551,12 @@ export function compareObserverSnapshots({ expectedSnapshot, testSnapshot, produ
   if (staleEnvironments.length) return evidenceUnavailableReport({ mainSha, environments, normalizedExceptions, reason: 'EVIDENCE_STALE', affectedEnvironments: staleEnvironments });
   if (expected.queryDigest.value !== test.queryDigest.value || expected.queryDigest.value !== production.queryDigest.value) fail('QUERY_CONTRACT_MISMATCH', 'snapshot query contracts differ');
   const planned = plannedTestLedgerView({ expected, test, binding: releaseLedgerBinding, mainSha, aliasMap, readCanonicalSql });
+  // A trusted pre-apply plan selects NOT_APPLIED migrations. Comparison-only
+  // canonical aliases must not hide a selected migration already in Production.
+  if (planned.trace && releaseLedgerBinding.plan.migrations.some((migration) =>
+    production.migrationLedger.identities.some((row) => row.name === migration.repoFile || row.name === migration.repoFile.slice(5)))) {
+    fail('PLANNED_PRODUCTION_LEDGER_PRESENT', 'selected pending migration already exists in the raw Production ledger');
+  }
   const testLedger = ledgerRelation(planned.expected, planned.test);
   const productionLedger = ledgerRelation(planned.expected, production);
   const testResult = compareEnvironment({ expected: planned.expected, actual: planned.test, environment: 'TEST', exceptions: normalizedExceptions, now: compareTime,
