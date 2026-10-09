@@ -888,6 +888,15 @@ normal prepare 的 reviewer packet 亦須列出獨立角色收據，正例以 cu
 
 ### PB-034 — 用 CI 當規則查詢器：靠一次次被退來湊出正確的 PR 中繼資料
 
+#### 2026-10-09 — #844 驗證入口與 native receipt 契約覆蓋
+
+- 本次新增兩件可核對同根因事件：Git Data API clean-install 入口遺漏、native 准入契約覆蓋不足；F1／F2／F3 是後者的 findings，不按每次重測累加事件。較早日期的次數及失敗結果保留。
+- clean-install：#844 初版以相同 lockfile 的既有 dependency installation 跑 type/unit/build，卻在 connector final commit `2a1ecd53` 後漏掉 §8 必要的乾淨 `npm ci`。舊結果只屬局部證據；Draft 保持阻塞後，按 integrity → clean install → type/unit/build 補跑。最終修正版 `e1cf2896` 亦完整實跑該序列；[最新 source CI 37964119760](https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/37964119760) 成功不消除原遺漏。
+- 已實跑反例：[獨立審查紀錄](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/844#issuecomment-6085019638) 的 F1 是 REVIEW spawn 可早於 BUILD 完成／必要回讀；F2 是 canonical／replacement review 多 JSON block 或 replacement served 身分矛盾仍採第一個 PASS；[F3](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/844#discussion_r4232476564) 是 BUILD 只驗兩個 model 欄位相同，跨 provider／錯 tier／任意型號仍可放行。修正均在 #844 完成反例拒絕與合法正例回歸；原批准曾被新 finding 取代的歷史保留。
+- 後續真實 packet 組裝又發現：批准契約要求親見的 spawn 角色／model／fork／UTC／work／completion／hash，helper 卻額外要求未保存的歷史 BUILD message。缺 prompt bytes 不得以後來摘要填造；修正只為已固定 #843 BUILD 表達 null／NOT_CAPTURED，REVIEW 與所有必要親見事實保持原 gate。新 compatibility suite 在未修 helper 上 3 failed／108 passed，修正後 111 passed；synthetic fixture 只證明判定，不認證歷史事件。
+- #845 後續 P2：[4233055855](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/845#discussion_r4233055855) 實跑發現只綁source scope＋taskName，換namespace／generation／executionRef與合法較晚時間仍ASTRA_APPROVED；9424896的早期source批准因此被取代。修正只用已保存的executionRef、spawn14:28:16Z、worker起點14:32:26Z及父方完成15:32:00Z exact instants，歷史scope值未保存仍UNKNOWN，不造UUID。五個ref／時間單項及later-task反例在舊helper為5 FAIL／112 PASS，修後117 PASS；每一拒絕案換回CAPTURED原文即PASS，證明不是被其他舊gate誤擋。完整倒填舊值仍屬已批准的operator信任限制，非機器身份認證。本段是同一native准入覆蓋事件的後續finding，不按重測累加事件；新SHA完整驗證、獨立delta審查與remote gates另核。
+- 預防：先固定最終 connector SHA，再執行該 SHA 的 §8 clean-install 有序鏈與原版 verify-only；切換傳輸方式不沿用局部 gate 作完整准入。新 receipt 以真實可取得欄位逐項比對批准契約，shared／local／GitHub 三入口同跑正反例，且測實際時序、consumer、重複來源與 provider-local tier；機器無法認證的操作者背書限制明列。發布、main 生效、#843 Final Risk 與 DB／TEST 仍分開驗證。
+
 #### 2026-10-01 — #711／#717／#729：局部准入綠燈沒有覆蓋角色、原收據與 review lifecycle
 
 - 證據／根因：[#711 finding 4154750603](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/711#discussion_r4154750603) 指出普通 `ASTRA_RISK: NONE` 在角色檢查前早退，普通 Sol 自審仍可通過；[#717 finding 4154669781](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/717#discussion_r4154669781) 指出 pure-rebase 正向 fixture 把原 role receipt 改成新 head，未測到真正 carryover；[#729 finding 4155090298](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/729#discussion_r4155090298) 指出只監聽 source／comment 事件，較新 submitted／edited／dismissed review 不會刷新 stable status。這些是治理准入／測試覆蓋缺口，不增加 PB-036 歷史 Product 模型違規 5 次，也沒有證據宣稱 Production 事故。
@@ -1549,6 +1558,12 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 狀態：監看中。下一輪若 `modelUsage.tasks` 仍為空而該輪確實有委派，視為第二次。
 
 ### PB-044 — 破壞性動作前的查證，有效期只有幾分鐘
+
+#### 2026-10-09 — #844 CI recovery 沿用舊空清單，重複喚醒已受理的工作
+
+- 本次同根因新增 1 件 lifecycle recovery 事件，較早的 2 件歷史不改写。17:04:57Z 查無 source run，但原 [37963734489](https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/37963734489) 已於 17:05:04Z 建立；17:08:07Z close/reopen 前未再次讀完整 exact-head run inventory，因而新增 [37964119760](https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/37964119760)。這證明延遲排程／可見性，沒有證據稱原 trigger 永久失效。
+- 修正／驗證：保留兩個 run 與浪費，不再重複 recovery、不造 no-op commit、不取消 run 藏證據；latest applicable 37964119760 真正 completed/success 才採其 source 結果，SOURCE_ONLY 的 integration／E2E skip 不當 TEST_VERIFIED。
+- 預防：任何事件恢復／retry 的最後寫入前，重新回讀 exact head 全部 run 與已受理工作；較早 diagnosis 的空快照不能當 action-time truth。新的 queued／running 結果已存在就接續觀察，狀態未知則保留未知，不增加 CI。此 lesson 不授予新的 close/reopen 或 workflow dispatch 權限。
 
 - 首次／最近：2026-09-14／2026-10-02
 - 發生次數：2（#720／#735 審查發現同一快照過期家族；不推定已造成線上錯誤）

@@ -92,6 +92,130 @@ describe('bounded native source-role pilot; structure and operator trust only', 
     const r = await run(f); expect(r.status).toBe('ASTRA_APPROVED'); expect(r.risks).toContain('GOVERNANCE_GATE');
     expect(validateNativeRolePreflight(f.packet, f.current)).toMatchObject({ status: 'NEEDS_CANONICAL_READBACK', canonicalReadbackVerified: false, errors: [] });
   });
+  // The pinned historical shape is synthetic here; a passing fixture does not authenticate the real spawn.
+  const uncapturedBuild = () => {
+    const f = fixture(), e = f.builder.nativeTaskEvidence;
+    e.taskName = '/root/implement_843_pg_harness';
+    e.spawn.request.task_name = 'implement_843_pg_harness'; e.spawn.result.task_name = e.taskName;
+    e.spawn.request.message = null; e.spawn.requestMessageAvailability = 'NOT_CAPTURED';
+    // Existing build-start checkpoint and parent-observed completion; not backend lifetime.
+    f.builder.executionRef = 'native-task:/root/implement_843_pg_harness';
+    e.spawn.observedAt = '2026-10-09T14:28:16Z';
+    f.builder.startedAt = e.work.startedAt = e.work.observedAt = '2026-10-09T14:32:26Z';
+    f.builder.completedAt = e.completion.observedAt = e.compiledAt = '2026-10-09T15:32:00Z';
+    f.reviewer.startedAt = f.reviewer.nativeTaskEvidence.spawn.observedAt = f.reviewer.nativeTaskEvidence.work.startedAt =
+      f.reviewer.nativeTaskEvidence.work.observedAt = '2026-10-09T16:04:00Z';
+    f.reviewer.completedAt = f.reviewer.nativeTaskEvidence.completion.observedAt = f.reviewer.nativeTaskEvidence.compiledAt = '2026-10-09T16:05:00Z';
+    f.reviewer.nativeTaskEvidence.builderReadback.updatedAt = '2026-10-09T15:33:00Z';
+    f.reviewer.nativeTaskEvidence.builderReadback.observedAt = f.reviewer.nativeTaskEvidence.policyReadback.observedAt = '2026-10-09T16:03:00Z';
+    f.review.submittedAt = '2026-10-09T16:07:00Z';
+    Object.assign(f.context.roleEvidence.reviewer, f.reviewer, { sourceUpdatedAt: '2026-10-09T16:06:00Z' });
+    f.context.roleEvidence.builder.sourceUpdatedAt = '2026-10-09T15:33:00Z';
+    const getComment = f.github.rest.issues.getComment.getMockImplementation();
+    f.github.rest.issues.getComment.mockImplementation(async (args: any) => {
+      const result = await getComment(args);
+      result.data.updated_at = args.comment_id === 101 ? '2026-10-09T15:33:00Z' : '2026-10-09T16:06:00Z'; return result;
+    });
+    return f;
+  };
+  const expectMessageAdmission = async (f: ReturnType<typeof fixture>, valid: boolean) => {
+    const bodySha256 = hash(block(f.builder));
+    f.reviewer.nativeTaskEvidence.builderReadback.bodySha256 = bodySha256;
+    Object.assign(f.context.roleEvidence.builder, f.builder, { sourceBodySha256: bodySha256 });
+    expect(nativeRoleShapeErrors(f.review, f.context, pilot).length === 0).toBe(valid);
+    expect(validateNativeRolePreflight(f.packet, f.current).errors.length === 0).toBe(valid);
+    expect((await run(f)).status).toBe(valid ? 'ASTRA_APPROVED' : 'ASTRA_PENDING');
+  };
+  it('T05 accepts explicit historical BUILD message NOT_CAPTURED without manufacturing a prompt', async () => {
+    const f = uncapturedBuild(); await expectMessageAdmission(f, true);
+    expect(f.builder.nativeTaskEvidence.spawn.request.message).toBeNull();
+    expect(f.builder).toMatchObject({ actorId: null, sessionId: null, actualModel: 'unknown', identityEvidence: 'UNKNOWN', servedVerified: false });
+  });
+  it.each(['execution-ref', 'spawn-instant', 'work-instant', 'completion-instant', 'later-same-name'])('P2 binds uncaptured BUILD to historical observations: %s', async mode => {
+    const f = uncapturedBuild(), e = f.builder.nativeTaskEvidence;
+    if (mode === 'execution-ref') f.builder.executionRef = 'operator-scoped:another-build';
+    if (mode === 'spawn-instant') e.spawn.observedAt = '2026-10-09T14:28:17Z';
+    if (mode === 'work-instant') f.builder.startedAt = e.work.startedAt = e.work.observedAt = '2026-10-09T14:32:27Z';
+    if (mode === 'completion-instant') f.builder.completedAt = e.completion.observedAt = e.compiledAt = '2026-10-09T15:32:01Z';
+    if (mode === 'later-same-name') {
+      // Reused strings are legal synthetic data, not historical platform identities.
+      const seen = new Set<any>();
+      const later = (value: any): void => {
+        if (!value || typeof value !== 'object' || seen.has(value)) return;
+        seen.add(value);
+        for (const [key, item] of Object.entries(value)) {
+          if (typeof item === 'string' && /^2026-10-09T/.test(item)) value[key] = new Date(Date.parse(item) + 60_000).toISOString();
+          else later(item);
+        }
+      };
+      later(f.builder); later(f.reviewer); later(f.review); later(f.context);
+      for (const role of [f.builder, f.reviewer]) {
+        role.nativeTaskEvidence.namespace = 'synthetic-later-task-tree'; role.nativeTaskEvidence.captureGeneration = 'synthetic-later-capture';
+      }
+      const getComment = f.github.rest.issues.getComment.getMockImplementation();
+      f.github.rest.issues.getComment.mockImplementation(async (args: any) => {
+        const result = await getComment(args); result.data.updated_at = new Date(Date.parse(result.data.updated_at) + 60_000).toISOString(); return result;
+      });
+    }
+    await expectMessageAdmission(f, false);
+    // The same later/different task is otherwise valid when its prompt was genuinely captured.
+    e.spawn.request.message = 'Synthetic captured assignment for the different task'; e.spawn.requestMessageAvailability = 'CAPTURED';
+    await expectMessageAdmission(f, true);
+  });
+  it('P2 compares recorded instants, without inventing historical namespace/generation', async () => {
+    const f = uncapturedBuild(), e = f.builder.nativeTaskEvidence;
+    e.spawn.observedAt = '2026-10-09T14:28:16.000Z';
+    f.builder.startedAt = e.work.startedAt = e.work.observedAt = '2026-10-09T14:32:26.000Z';
+    f.builder.completedAt = e.completion.observedAt = e.compiledAt = '2026-10-09T15:32:00.000Z';
+    for (const role of [f.builder, f.reviewer]) {
+      role.nativeTaskEvidence.namespace = 'synthetic-operator-compilation-scope';
+      role.nativeTaskEvidence.captureGeneration = 'synthetic-current-compilation';
+    }
+    await expectMessageAdmission(f, true);
+  });
+  it.each([
+    ['missing-availability', (f: any) => { delete f.builder.nativeTaskEvidence.spawn.requestMessageAvailability; }],
+    ['unknown-availability', (f: any) => { f.builder.nativeTaskEvidence.spawn.requestMessageAvailability = 'UNKNOWN'; }],
+    ['missing-message-key', (f: any) => { delete f.builder.nativeTaskEvidence.spawn.request.message; }],
+    ['empty-message', (f: any) => { f.builder.nativeTaskEvidence.spawn.request.message = ''; }],
+    ['summary-instead-of-null', (f: any) => { f.builder.nativeTaskEvidence.spawn.request.message = 'Later reconstructed assignment summary'; }],
+    ['different-task', (f: any) => { const e = f.builder.nativeTaskEvidence; e.taskName = e.spawn.result.task_name = '/root/other_builder'; e.spawn.request.task_name = 'other_builder'; }],
+    ['unwitnessed-spawn', (f: any) => { f.builder.nativeTaskEvidence.spawn.sourceKind = 'WORKER_REPORTED'; }],
+    ['missing-model', (f: any) => { delete f.builder.nativeTaskEvidence.spawn.request.model; }],
+    ['missing-fork', (f: any) => { delete f.builder.nativeTaskEvidence.spawn.request.fork_turns; }],
+    ['missing-reasoning', (f: any) => { delete f.builder.nativeTaskEvidence.spawn.request.reasoning_effort; }],
+    ['missing-spawn-time', (f: any) => { delete f.builder.nativeTaskEvidence.spawn.observedAt; }],
+    ['missing-work-hash', (f: any) => { delete f.builder.nativeTaskEvidence.work.artifactSha256; }],
+    ['missing-completion', (f: any) => { delete f.builder.nativeTaskEvidence.completion; }],
+    ['wrong-provider', (f: any) => { f.builder.provider = 'ANTHROPIC'; }],
+    ['wrong-tier', (f: any) => { f.builder.requestedModel = f.builder.nativeTaskEvidence.spawn.request.model = 'gpt-6-luna'; }],
+    ['forged-backend', (f: any) => { f.builder.actorId = f.builder.nativeTaskEvidence.taskName; }],
+    ['review-message-missing', (f: any) => { f.reviewer.nativeTaskEvidence.spawn.request.message = null; f.reviewer.nativeTaskEvidence.spawn.requestMessageAvailability = 'NOT_CAPTURED'; }],
+    ['review-message-undefined', (f: any) => { delete f.reviewer.nativeTaskEvidence.spawn.request.message; }],
+  ])('T05 historical message availability never waives %s', async (_name, mutate) => {
+    const f = uncapturedBuild(); (mutate as (f: any) => void)(f); await expectMessageAdmission(f, false);
+  });
+  it.each(['other-pr', 'other-head', 'other-digest', 'other-repo', 'DB-surface'])('T02 historical message compatibility stays exact-scope: %s', async mode => {
+    const f = uncapturedBuild();
+    if (mode === 'other-pr') f.current.number = f.context.prNumber = 836;
+    if (mode === 'other-head') f.current.head.sha = f.context.currentHeadSha = 'b'.repeat(40);
+    if (mode === 'other-digest') f.review.changeDigest = 'b'.repeat(64);
+    if (mode === 'other-repo') f.review.repository = f.packet.repository = f.context.repository = 'foreign/repo';
+    if (mode === 'DB-surface') {
+      f.context.reviewSurface = 'PRODUCTION_DB_RELEASE';
+      expect(nativeRoleShapeErrors(f.review, f.context, pilot).length).toBeGreaterThan(0);
+      expect(finalRiskReviewerErrors(f.review, routing, f.context).length).toBeGreaterThan(0);
+      await expect(buildProductionDbFinalRiskEvidenceFromGithub({ github: f.github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild',
+        prNumber: 843, releasePacket: { releaseId: 'synthetic-release', planDigest: 'b'.repeat(64), repository } })).rejects.toThrow('FINAL_RISK_NOT_APPROVED');
+      return;
+    }
+    await expectMessageAdmission(f, false);
+  });
+  it('T05 captured messages remain compatible but reject contradictory availability', async () => {
+    const f = fixture(); f.builder.nativeTaskEvidence.spawn.requestMessageAvailability = 'CAPTURED';
+    f.reviewer.nativeTaskEvidence.spawn.requestMessageAvailability = 'CAPTURED'; await expectMessageAdmission(f, true);
+    f.reviewer.nativeTaskEvidence.spawn.requestMessageAvailability = 'NOT_CAPTURED'; await expectMessageAdmission(f, false);
+  });
   it.each([
     ['OPENAI', 'gpt-6.1-sol', true], ['ANTHROPIC', 'claude-sonnet-5-5', true],
     ['ANTHROPIC', 'gpt-6.1-sol', false], ['OPENAI', 'claude-sonnet-5-5', false],
