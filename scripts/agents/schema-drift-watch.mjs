@@ -379,7 +379,7 @@ function ledgerItems(snapshot) {
 // reassembly of the existing TEST evidence contract. Callers must supply the
 // exact-main alias map and canonical SQL reader; payload flags cannot prove it.
 function plannedTestLedgerView({ expected, test, binding, mainSha, aliasMap, readCanonicalSql }) {
-  if (binding === undefined || binding === null) return { test, trace: null };
+  if (binding === undefined || binding === null) return { expected, test, trace: null };
   const { plan, testEvidence, sourceRun, releaseId, releasePlanEvidence, postTestSchemaEvidence } = binding;
   if (!plan || plan.mainSha !== mainSha || plan.releaseId !== releaseId) fail('LEDGER_PLAN_BINDING_MISMATCH', 'selected release/main differs');
   verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
@@ -430,14 +430,25 @@ function plannedTestLedgerView({ expected, test, binding, mainSha, aliasMap, rea
     }
     selected.set(migration.repoFile, { ...migration, verifiedLedgerVersion: execution[0].ledgerVersion });
   }
-  const canonical = new Map(expected.migrationLedger.identities.map((item) => [item.name, item]));
+  const canonical = new Map();
+  const canonicalReplayMappings = [];
   for (const migration of plan.migrations) {
-    const target = canonical.get(migration.repoFile);
-    if (!target || target.version !== migration.repoFile.slice(0, 4)
-      || expected.migrationLedger.identities.filter((row) => row.name === migration.repoFile).length !== 1) {
+    // Supabase CLI replay stores the name without its exact version prefix;
+    // the trusted G3 writer stores repoFile. Admit only this selected identity,
+    // never a suffix match or an ambiguous pair of either spelling.
+    const version = migration.repoFile.slice(0, 4);
+    const shortName = migration.repoFile.slice(5);
+    const matches = expected.migrationLedger.identities.filter((row) => row.name === migration.repoFile || row.name === shortName);
+    if (matches.length !== 1 || matches[0].version !== version) {
       fail('CANONICAL_LEDGER_IDENTITY_REQUIRED', 'selected migration must have one canonical replay identity');
     }
+    const target = { version, name: migration.repoFile };
+    canonical.set(migration.repoFile, target);
+    if (matches[0].name !== target.name) canonicalReplayMappings.push({ observed: matches[0], canonical: target,
+      observedFingerprint: sha256(stableStringify(matches[0])), canonicalFingerprint: sha256(stableStringify(target)) });
   }
+  const expectedIdentities = expected.migrationLedger.identities.map((item) =>
+    canonicalReplayMappings.find((mapping) => mapping.observed === item)?.canonical ?? item);
   const mappings = [];
   const seenNames = new Set();
   const identities = test.migrationLedger.identities.map((item) => {
@@ -447,12 +458,13 @@ function plannedTestLedgerView({ expected, test, binding, mainSha, aliasMap, rea
     seenNames.add(item.name);
     const target = canonical.get(item.name);
     if (item.version !== migration.verifiedLedgerVersion) fail('UNPLANNED_LEDGER_VERSION', 'TEST version is not the selected G3 verified identity');
-    if (item.version === target.version) return item;
+    if (item.version === target.version && item.name === target.name) return item;
     mappings.push({ observed: item, canonical: target, observedFingerprint: sha256(stableStringify(item)), canonicalFingerprint: sha256(stableStringify(target)) });
     return target;
   });
-  return { test: { ...test, migrationLedger: { ...test.migrationLedger, identities } },
-    trace: { planDigest: plan.planDigest, sourceRunId: String(sourceRun.id), sourceRunAttempt: sourceRun.attempt, environment: 'TEST', postTestCaptureDigest: postTestSchemaEvidence.captureDigest, postTestLedgerDigest: postTestSchemaEvidence.migrationLedgerDigest, mappings } };
+  return { expected: { ...expected, migrationLedger: { ...expected.migrationLedger, identities: expectedIdentities } },
+    test: { ...test, migrationLedger: { ...test.migrationLedger, identities } },
+    trace: { planDigest: plan.planDigest, sourceRunId: String(sourceRun.id), sourceRunAttempt: sourceRun.attempt, environment: 'TEST', postTestCaptureDigest: postTestSchemaEvidence.captureDigest, postTestLedgerDigest: postTestSchemaEvidence.migrationLedgerDigest, canonicalReplayMappings, mappings } };
 }
 function ledgerRelation(expected, actual) {
   const expectedKeys = new Set(ledgerItems(expected).map((item) => item.key));
@@ -539,14 +551,20 @@ export function compareObserverSnapshots({ expectedSnapshot, testSnapshot, produ
   if (staleEnvironments.length) return evidenceUnavailableReport({ mainSha, environments, normalizedExceptions, reason: 'EVIDENCE_STALE', affectedEnvironments: staleEnvironments });
   if (expected.queryDigest.value !== test.queryDigest.value || expected.queryDigest.value !== production.queryDigest.value) fail('QUERY_CONTRACT_MISMATCH', 'snapshot query contracts differ');
   const planned = plannedTestLedgerView({ expected, test, binding: releaseLedgerBinding, mainSha, aliasMap, readCanonicalSql });
-  const testLedger = ledgerRelation(expected, planned.test);
-  const productionLedger = ledgerRelation(expected, production);
-  const testResult = compareEnvironment({ expected, actual: planned.test, environment: 'TEST', exceptions: normalizedExceptions, now: compareTime,
+  // A trusted pre-apply plan selects NOT_APPLIED migrations. Comparison-only
+  // canonical aliases must not hide a selected migration already in Production.
+  if (planned.trace && releaseLedgerBinding.plan.migrations.some((migration) =>
+    production.migrationLedger.identities.some((row) => row.name === migration.repoFile || row.name === migration.repoFile.slice(5)))) {
+    fail('PLANNED_PRODUCTION_LEDGER_PRESENT', 'selected pending migration already exists in the raw Production ledger');
+  }
+  const testLedger = ledgerRelation(planned.expected, planned.test);
+  const productionLedger = ledgerRelation(planned.expected, production);
+  const testResult = compareEnvironment({ expected: planned.expected, actual: planned.test, environment: 'TEST', exceptions: normalizedExceptions, now: compareTime,
     pendingClassification: testLedger.strictSubset ? 'EXPECTED_PENDING_TEST' : null });
   const productionPendingClassification = productionLedger.strictSubset
     ? testLedger.exact ? 'EXPECTED_PENDING_PRODUCTION' : testLedger.strictSubset ? 'EXPECTED_PENDING_TEST' : null
     : null;
-  const productionResult = compareEnvironment({ expected, actual: production, environment: 'PRODUCTION', exceptions: normalizedExceptions, now: compareTime,
+  const productionResult = compareEnvironment({ expected: planned.expected, actual: production, environment: 'PRODUCTION', exceptions: normalizedExceptions, now: compareTime,
     pendingClassification: productionPendingClassification });
   const allDifferences = [...testResult.differences, ...productionResult.differences];
   const blocked = testResult.status === 'DRIFT_BLOCKED' || productionResult.status === 'DRIFT_BLOCKED';
