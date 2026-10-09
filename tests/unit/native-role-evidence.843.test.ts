@@ -93,6 +93,25 @@ describe('bounded native source-role pilot; structure and operator trust only', 
     expect(validateNativeRolePreflight(f.packet, f.current)).toMatchObject({ status: 'NEEDS_CANONICAL_READBACK', canonicalReadbackVerified: false, errors: [] });
   });
   it.each([
+    ['OPENAI', 'gpt-6.1-sol', true], ['ANTHROPIC', 'claude-sonnet-5-5', true],
+    ['ANTHROPIC', 'gpt-6.1-sol', false], ['OPENAI', 'claude-sonnet-5-5', false],
+    ['OPENAI', 'arbitrary-long-model', false], ['ANTHROPIC', 'arbitrary-long-model', false],
+    ['OPENAI', 'gpt-6-luna', false], ['OPENAI', 'gpt-6-astra', false], ['OPENAI', 'gpt-5.6-sol', false],
+    ['ANTHROPIC', 'claude-opus-5-5', false], ['ANTHROPIC', 'claude-haiku-4-5', false],
+    ['OPENAI', 'not_requested', false], ['ANTHROPIC', 'not_requested', false],
+  ])('T04/T13 native BUILD requires current provider-local tier: %s / %s', async (provider, requestedModel, valid) => {
+    const f = fixture(); Object.assign(f.builder, { provider, requestedModel });
+    if (requestedModel === 'not_requested') delete f.builder.nativeTaskEvidence.spawn.request.model;
+    else f.builder.nativeTaskEvidence.spawn.request.model = requestedModel;
+    const bodySha256 = hash(block(f.builder));
+    f.reviewer.nativeTaskEvidence.builderReadback.bodySha256 = bodySha256;
+    Object.assign(f.context.roleEvidence.builder, { provider, requestedModel, sourceBodySha256: bodySha256 });
+    expect(nativeRoleShapeErrors(f.review, f.context, pilot).length === 0).toBe(valid);
+    expect(validateNativeRolePreflight(f.packet, f.current).errors.length === 0).toBe(valid);
+    expect((await run(f)).status).toBe(valid ? 'ASTRA_APPROVED' : 'ASTRA_PENDING');
+    expect(f.builder).toMatchObject({ actorId: null, sessionId: null, actualModel: 'unknown', identityEvidence: 'UNKNOWN', servedVerified: false });
+  });
+  it.each([
     ['disabled', { enabled: false }], ['unknown-version', { version: 'future' }], ['other-pr', { prNumber: 836 }],
     ['other-head', { headSha: 'b'.repeat(40) }], ['other-digest', { changeDigest: 'b'.repeat(64) }], ['DB-surface', { surface: 'PRODUCTION_DB_RELEASE' }],
   ])('T02 rejects pilot %s', (_name, patch) => {

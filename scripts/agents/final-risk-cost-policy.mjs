@@ -1,5 +1,8 @@
 // Owner #552: consultation cost is bounded; review quality and source binding are not waived.
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+
+const nativeBuildRouting = JSON.parse(readFileSync(new URL('./model-routing.json', import.meta.url), 'utf8'));
 
 function hasCanonicalPlaybookAnchor(fragment, evidence, repository) {
   if (!/^[a-z0-9-]+$/.test(fragment)) return false;
@@ -153,6 +156,11 @@ export function nativeRoleShapeErrors(review = {}, context = {}, pilot = {}) {
     || !Number.isFinite(now)) errors.push('Native role pilot is not enabled for this exact source scope');
   for (const [record, role] of [[builder, 'BUILD'], [reviewer, 'REVIEW']]) {
     const e = record?.nativeTaskEvidence, spawn = e?.spawn, work = e?.work, done = e?.completion;
+    const buildModel = record?.provider === 'OPENAI' ? nativeBuildRouting.models?.build
+      : record?.provider === 'ANTHROPIC' ? nativeBuildRouting.anthropicEquivalents?.build : null;
+    if (role === 'BUILD' && (typeof buildModel !== 'string' || record.requestedModel !== buildModel
+      || !(record.provider === 'OPENAI' ? buildModel.startsWith('gpt-') : buildModel.startsWith('claude-'))))
+      errors.push('Native BUILD requires the current provider-local BUILD model request');
     const started = millis(record?.startedAt), completed = millis(record?.completedAt), compiled = millis(e?.compiledAt);
     const spawned = millis(spawn?.observedAt), workObserved = millis(work?.observedAt), doneObserved = millis(done?.observedAt);
     const ref = fallbackReference(record?.sourceRef, context.repository);
