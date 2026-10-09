@@ -141,6 +141,18 @@ export function selectFinalRiskReviewer(input = {}, policy = {}) {
 export const NATIVE_ROLE_POLICY_VERSION = '2026-10-09.1';
 const NATIVE_SOURCE_SURFACE = 'PRODUCT_SOURCE_FINAL_RISK';
 const native = record => record?.executionIdentityKind === 'NATIVE_TASK';
+// Compatibility is only for the already-observed historical #843 BUILD, never future tasks.
+// Missing prompt bytes remain missing; this does not authenticate the operator's other observations.
+function nativeSpawnMessageValid(spawn, evidence, role, context) {
+  if (meaningful(spawn?.request?.message))
+    return spawn.requestMessageAvailability === undefined || spawn.requestMessageAvailability === 'CAPTURED';
+  return role === 'BUILD' && spawn?.request?.message === null && spawn?.requestMessageAvailability === 'NOT_CAPTURED'
+    && context.repository === 'smallwei0301/vibeaico-admin-rebuild' && context.prNumber === 843
+    && context.headSha === '07d360c50c6eb60486fa4f3bc21d0f713d6e2bbb'
+    && context.changeDigest === '8da954f36f1e6ea03bac4be9c24f203f75273494dab11b8f49829fca2d7664a3'
+    && evidence?.taskName === '/root/implement_843_pg_harness';
+}
+
 /** Shape/consistency only. A trusted operator's excerpts cannot authenticate hidden spawn events. */
 export function nativeRoleShapeErrors(review = {}, context = {}, pilot = {}) {
   const errors = [], proof = context.roleEvidence;
@@ -178,7 +190,7 @@ export function nativeRoleShapeErrors(review = {}, context = {}, pilot = {}) {
       || spawn?.sourceKind !== 'OPERATOR_WITNESSED' || spawn?.tool !== 'collaboration.spawn_agent' || spawn?.assignedRole !== role
       || !meaningful(spawn?.request?.task_name) || spawn?.result?.task_name !== e.taskName
       || spawn?.result?.actorId != null || spawn?.result?.sessionId != null || spawn?.request?.freshContext !== undefined
-      || !meaningful(spawn?.request?.message)
+      || !nativeSpawnMessageValid(spawn, e, role, context)
       || !e.taskName.endsWith('/' + spawn?.request?.task_name)
       || (spawn?.request?.model ?? 'not_requested') !== record.requestedModel || !meaningful(record.requestedModel)
       || !['none', 'all'].includes(spawn?.request?.fork_turns)

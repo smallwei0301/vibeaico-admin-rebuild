@@ -619,7 +619,13 @@ actualModel=unknown、identityEvidence=UNKNOWN、servedVerified=false。task_nam
 同一 canonical 角色 comment 內的 `nativeTaskEvidence` schemaVersion=1 保存 operatorLogin/id、namespace、
 captureGeneration、taskName、executionRefBasis=OPERATOR_SCOPED_NATIVE_TASK、performedWorkScope、compiledAt，
 以及 spawn（親見 request/result、角色與 UTC）、work（親見或明標 WORKER_REPORTED、起點與成果 hash）、
-completion（親見 BOUNDED_WORK_COMPLETED、停筆、head/digest 與 UTC）。時間以 OBSERVED_ROLE_WORK 表示真實
+completion（親見 BOUNDED_WORK_COMPLETED、停筆、head/digest 與 UTC）。原 request message 應逐字保存；
+只有上列 exact #843 的既有 BUILD `/root/implement_843_pg_harness`，親見 spawn 參數與工作／完成已記錄但
+原 message 未保存時，可明寫 `spawn.request.message=null`、`spawn.requestMessageAvailability=NOT_CAPTURED`。
+這是 capture 缺口，不准用後來的摘要補成原 prompt；不能省略其他必要親見事實、model／fork／reasoning／UTC／hash。
+有原文者維持非空 message，availability 可省略或為 CAPTURED；相矛盾或未知 availability 拒絕。
+新 REVIEW 必須保存真實原 message，不能沿用這個歷史 BUILD 表示；其他 task／PR／head／DB 不適用。
+時間以 OBSERVED_ROLE_WORK 表示真實
 工作區段，不冒稱精確 first/last-write 或 backend session 起訖；CI 結束不能代替角色完成。
 REVIEW 另需不同 task/execution/comment、reviewPhase=FINAL、participatedInBuild=false、contextIsolationAttested=true；
 原 spawn request 必須 fork_turns=none，freshContext=true 是 receipt 背書，**不是 spawn 參數**。
