@@ -98,6 +98,24 @@ describe('bounded native source-role pilot; structure and operator trust only', 
     e.taskName = '/root/implement_843_pg_harness';
     e.spawn.request.task_name = 'implement_843_pg_harness'; e.spawn.result.task_name = e.taskName;
     e.spawn.request.message = null; e.spawn.requestMessageAvailability = 'NOT_CAPTURED';
+    // Existing build-start checkpoint and parent-observed completion; not backend lifetime.
+    f.builder.executionRef = 'native-task:/root/implement_843_pg_harness';
+    e.spawn.observedAt = '2026-10-09T14:28:16Z';
+    f.builder.startedAt = e.work.startedAt = e.work.observedAt = '2026-10-09T14:32:26Z';
+    f.builder.completedAt = e.completion.observedAt = e.compiledAt = '2026-10-09T15:32:00Z';
+    f.reviewer.startedAt = f.reviewer.nativeTaskEvidence.spawn.observedAt = f.reviewer.nativeTaskEvidence.work.startedAt =
+      f.reviewer.nativeTaskEvidence.work.observedAt = '2026-10-09T16:04:00Z';
+    f.reviewer.completedAt = f.reviewer.nativeTaskEvidence.completion.observedAt = f.reviewer.nativeTaskEvidence.compiledAt = '2026-10-09T16:05:00Z';
+    f.reviewer.nativeTaskEvidence.builderReadback.updatedAt = '2026-10-09T15:33:00Z';
+    f.reviewer.nativeTaskEvidence.builderReadback.observedAt = f.reviewer.nativeTaskEvidence.policyReadback.observedAt = '2026-10-09T16:03:00Z';
+    f.review.submittedAt = '2026-10-09T16:07:00Z';
+    Object.assign(f.context.roleEvidence.reviewer, f.reviewer, { sourceUpdatedAt: '2026-10-09T16:06:00Z' });
+    f.context.roleEvidence.builder.sourceUpdatedAt = '2026-10-09T15:33:00Z';
+    const getComment = f.github.rest.issues.getComment.getMockImplementation();
+    f.github.rest.issues.getComment.mockImplementation(async (args: any) => {
+      const result = await getComment(args);
+      result.data.updated_at = args.comment_id === 101 ? '2026-10-09T15:33:00Z' : '2026-10-09T16:06:00Z'; return result;
+    });
     return f;
   };
   const expectMessageAdmission = async (f: ReturnType<typeof fixture>, valid: boolean) => {
@@ -112,6 +130,48 @@ describe('bounded native source-role pilot; structure and operator trust only', 
     const f = uncapturedBuild(); await expectMessageAdmission(f, true);
     expect(f.builder.nativeTaskEvidence.spawn.request.message).toBeNull();
     expect(f.builder).toMatchObject({ actorId: null, sessionId: null, actualModel: 'unknown', identityEvidence: 'UNKNOWN', servedVerified: false });
+  });
+  it.each(['execution-ref', 'spawn-instant', 'work-instant', 'completion-instant', 'later-same-name'])('P2 binds uncaptured BUILD to historical observations: %s', async mode => {
+    const f = uncapturedBuild(), e = f.builder.nativeTaskEvidence;
+    if (mode === 'execution-ref') f.builder.executionRef = 'operator-scoped:another-build';
+    if (mode === 'spawn-instant') e.spawn.observedAt = '2026-10-09T14:28:17Z';
+    if (mode === 'work-instant') f.builder.startedAt = e.work.startedAt = e.work.observedAt = '2026-10-09T14:32:27Z';
+    if (mode === 'completion-instant') f.builder.completedAt = e.completion.observedAt = e.compiledAt = '2026-10-09T15:32:01Z';
+    if (mode === 'later-same-name') {
+      // Reused strings are legal synthetic data, not historical platform identities.
+      const seen = new Set<any>();
+      const later = (value: any): void => {
+        if (!value || typeof value !== 'object' || seen.has(value)) return;
+        seen.add(value);
+        for (const [key, item] of Object.entries(value)) {
+          if (typeof item === 'string' && /^2026-10-09T/.test(item)) value[key] = new Date(Date.parse(item) + 60_000).toISOString();
+          else later(item);
+        }
+      };
+      later(f.builder); later(f.reviewer); later(f.review); later(f.context);
+      for (const role of [f.builder, f.reviewer]) {
+        role.nativeTaskEvidence.namespace = 'synthetic-later-task-tree'; role.nativeTaskEvidence.captureGeneration = 'synthetic-later-capture';
+      }
+      const getComment = f.github.rest.issues.getComment.getMockImplementation();
+      f.github.rest.issues.getComment.mockImplementation(async (args: any) => {
+        const result = await getComment(args); result.data.updated_at = new Date(Date.parse(result.data.updated_at) + 60_000).toISOString(); return result;
+      });
+    }
+    await expectMessageAdmission(f, false);
+    // The same later/different task is otherwise valid when its prompt was genuinely captured.
+    e.spawn.request.message = 'Synthetic captured assignment for the different task'; e.spawn.requestMessageAvailability = 'CAPTURED';
+    await expectMessageAdmission(f, true);
+  });
+  it('P2 compares recorded instants, without inventing historical namespace/generation', async () => {
+    const f = uncapturedBuild(), e = f.builder.nativeTaskEvidence;
+    e.spawn.observedAt = '2026-10-09T14:28:16.000Z';
+    f.builder.startedAt = e.work.startedAt = e.work.observedAt = '2026-10-09T14:32:26.000Z';
+    f.builder.completedAt = e.completion.observedAt = e.compiledAt = '2026-10-09T15:32:00.000Z';
+    for (const role of [f.builder, f.reviewer]) {
+      role.nativeTaskEvidence.namespace = 'synthetic-operator-compilation-scope';
+      role.nativeTaskEvidence.captureGeneration = 'synthetic-current-compilation';
+    }
+    await expectMessageAdmission(f, true);
   });
   it.each([
     ['missing-availability', (f: any) => { delete f.builder.nativeTaskEvidence.spawn.requestMessageAvailability; }],

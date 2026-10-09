@@ -625,6 +625,11 @@ completion（親見 BOUNDED_WORK_COMPLETED、停筆、head/digest 與 UTC）。�
 這是 capture 缺口，不准用後來的摘要補成原 prompt；不能省略其他必要親見事實、model／fork／reasoning／UTC／hash。
 有原文者維持非空 message，availability 可省略或為 CAPTURED；相矛盾或未知 availability 拒絕。
 新 REVIEW 必須保存真實原 message，不能沿用這個歷史 BUILD 表示；其他 task／PR／head／DB 不適用。
+此分支另綁既有 `executionRef=native-task:/root/implement_843_pg_harness`，以及2026-10-09 UTC的
+spawn觀測14:28:16Z、work起點14:32:26Z、bounded完成15:32:00Z；比較相同瞬間，不接受較晚同名任務或寬時間窗。
+起點來自既有 worker checkpoint、完成來自父方親見完成回報，仍不是精確first/last-write或backend生命週期。
+歷史namespace／capture generation未保存，保持UNKNOWN；receipt的scope labels只限定當次operator整理範圍，
+不補造歷史UUID。這組ref／時間只拒絕已表達的不同事件，仍不能認證完整倒填舊值的操作者背書真偽。
 時間以 OBSERVED_ROLE_WORK 表示真實
 工作區段，不冒稱精確 first/last-write 或 backend session 起訖；CI 結束不能代替角色完成。
 REVIEW 另需不同 task/execution/comment、reviewPhase=FINAL、participatedInBuild=false、contextIsolationAttested=true；
