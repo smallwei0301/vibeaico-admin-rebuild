@@ -1,5 +1,8 @@
 // Owner #552: consultation cost is bounded; review quality and source binding are not waived.
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+
+const nativeBuildRouting = JSON.parse(readFileSync(new URL('./model-routing.json', import.meta.url), 'utf8'));
 
 function hasCanonicalPlaybookAnchor(fragment, evidence, repository) {
   if (!/^[a-z0-9-]+$/.test(fragment)) return false;
@@ -135,6 +138,93 @@ export function selectFinalRiskReviewer(input = {}, policy = {}) {
   return next ? result('PREMIUM', 'RESERVE_ONE_PREMIUM_CONSULTATION', next, 'FIRST_CONSULTATION') : downgrade('MODEL_UNAVAILABLE');
 }
 
+export const NATIVE_ROLE_POLICY_VERSION = '2026-10-09.1';
+const NATIVE_SOURCE_SURFACE = 'PRODUCT_SOURCE_FINAL_RISK';
+const native = record => record?.executionIdentityKind === 'NATIVE_TASK';
+/** Shape/consistency only. A trusted operator's excerpts cannot authenticate hidden spawn events. */
+export function nativeRoleShapeErrors(review = {}, context = {}, pilot = {}) {
+  const errors = [], proof = context.roleEvidence;
+  const builder = proof?.builder, reviewer = proof?.reviewer;
+  const now = millis(context.now ?? new Date().toISOString());
+  if (pilot.enabled !== true || pilot.version !== NATIVE_ROLE_POLICY_VERSION
+    || context.reviewSurface !== NATIVE_SOURCE_SURFACE || pilot.surface !== NATIVE_SOURCE_SURFACE
+    || context.repository !== pilot.repository || context.prNumber !== pilot.prNumber
+    || context.headSha !== pilot.headSha || context.currentHeadSha !== pilot.headSha
+    || context.changeDigest !== pilot.changeDigest || review.nativeRolePolicyVersion !== pilot.version
+    || review.repository !== context.repository || review.headSha !== context.headSha || review.changeDigest !== context.changeDigest
+    || review.actualModel !== 'unknown' || review.identityEvidence !== 'UNKNOWN' || review.servedVerified !== false
+    || !Number.isFinite(now)) errors.push('Native role pilot is not enabled for this exact source scope');
+  for (const [record, role] of [[builder, 'BUILD'], [reviewer, 'REVIEW']]) {
+    const e = record?.nativeTaskEvidence, spawn = e?.spawn, work = e?.work, done = e?.completion;
+    const buildModel = record?.provider === 'OPENAI' ? nativeBuildRouting.models?.build
+      : record?.provider === 'ANTHROPIC' ? nativeBuildRouting.anthropicEquivalents?.build : null;
+    if (role === 'BUILD' && (typeof buildModel !== 'string' || record.requestedModel !== buildModel
+      || !(record.provider === 'OPENAI' ? buildModel.startsWith('gpt-') : buildModel.startsWith('claude-'))))
+      errors.push('Native BUILD requires the current provider-local BUILD model request');
+    const started = millis(record?.startedAt), completed = millis(record?.completedAt), compiled = millis(e?.compiledAt);
+    const spawned = millis(spawn?.observedAt), workObserved = millis(work?.observedAt), doneObserved = millis(done?.observedAt);
+    const ref = fallbackReference(record?.sourceRef, context.repository);
+    if (!native(record) || record.actorId !== null || record.sessionId !== null
+      || record.backendIdentityAvailability !== 'UNEXPOSED' || record.timingBasis !== 'OBSERVED_ROLE_WORK'
+      || record.role !== role || record.repository !== context.repository || record.headSha !== context.headSha
+      || record.changeDigest !== context.changeDigest || record.executionEvidence !== 'OPERATOR_ATTESTED'
+      || !meaningful(record.executionRef) || ref?.number !== context.prNumber || ref?.kind !== 'issuecomment'
+      || record.actualModel !== 'unknown' || record.identityEvidence !== 'UNKNOWN' || record.servedVerified !== false
+      || !['OPENAI', 'ANTHROPIC'].includes(record.provider) || !meaningful(record.providerEvidenceRef)
+      || e?.schemaVersion !== 1 || e?.executionRefBasis !== 'OPERATOR_SCOPED_NATIVE_TASK'
+      || !meaningful(e?.namespace) || !meaningful(e?.captureGeneration) || !meaningful(e?.taskName)
+      || !meaningful(e?.performedWorkScope) || !meaningful(e?.operatorLogin)
+      || !Number.isSafeInteger(e?.operatorId) || e.operatorId < 1
+      || spawn?.sourceKind !== 'OPERATOR_WITNESSED' || spawn?.tool !== 'collaboration.spawn_agent' || spawn?.assignedRole !== role
+      || !meaningful(spawn?.request?.task_name) || spawn?.result?.task_name !== e.taskName
+      || spawn?.result?.actorId != null || spawn?.result?.sessionId != null || spawn?.request?.freshContext !== undefined
+      || !meaningful(spawn?.request?.message)
+      || !e.taskName.endsWith('/' + spawn?.request?.task_name)
+      || (spawn?.request?.model ?? 'not_requested') !== record.requestedModel || !meaningful(record.requestedModel)
+      || !['none', 'all'].includes(spawn?.request?.fork_turns)
+      || !['low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(spawn?.request?.reasoning_effort)
+      || !['OPERATOR_WITNESSED', 'WORKER_REPORTED'].includes(work?.sourceKind)
+      || !meaningful(work?.evidenceRef) || !/^[a-f0-9]{64}$/.test(work?.artifactSha256 ?? '')
+      || work?.event !== 'ROLE_WORK_STARTED' || work?.startedAt !== record.startedAt
+      || done?.sourceKind !== 'OPERATOR_WITNESSED' || done?.event !== 'BOUNDED_WORK_COMPLETED'
+      || done?.stoppedWriting !== true || done?.headSha !== record.headSha || done?.changeDigest !== record.changeDigest
+      || !meaningful(done?.evidenceRef)
+      || ![started, completed, compiled, spawned, workObserved, doneObserved].every(Number.isFinite)
+      || spawned > started || started > workObserved || workObserved > completed || completed !== doneObserved
+      || completed > compiled || compiled > now) errors.push(`Invalid native ${role} operator observation receipt`);
+    if (record?.sourceActor && (record.sourceActor.login !== e?.operatorLogin || record.sourceActor.id !== e?.operatorId))
+      errors.push('Native operator differs from canonical submitting actor');
+    if (context.nativeCanonical === true && (!record?.sourceActor
+      || !Number.isFinite(millis(record.sourceUpdatedAt)) || compiled > millis(record.sourceUpdatedAt)))
+      errors.push('Native canonical source metadata is missing or inconsistent');
+  }
+  const b = builder?.nativeTaskEvidence, r = reviewer?.nativeTaskEvidence;
+  if (!b || !r) return errors;
+  if (b.operatorLogin !== r.operatorLogin || b.operatorId !== r.operatorId
+    || b.namespace !== r.namespace || b.captureGeneration !== r.captureGeneration
+    || b.taskName === r.taskName || builder.executionRef === reviewer.executionRef
+    || builder.sourceRef === reviewer.sourceRef || reviewer.executionRef !== review.executionRef
+    || reviewer.requestedModel !== review.requestedModel
+    || reviewer.freshContext !== true || r.contextIsolationAttested !== true || r.participatedInBuild !== false
+    || r.reviewPhase !== 'FINAL' || r.spawn?.request?.fork_turns !== 'none'
+    || millis(r.spawn?.observedAt) < millis(builder.completedAt)) errors.push('Native review must be a separate fresh final task after BUILD');
+  const readback = r.builderReadback, policyReadback = r.policyReadback;
+  if (readback?.sourceKind !== 'OPERATOR_WITNESSED' || policyReadback?.sourceKind !== 'OPERATOR_WITNESSED'
+    || readback?.sourceRef !== builder.sourceRef || !/^[a-f0-9]{64}$/.test(readback?.bodySha256 ?? '')
+    || !Number.isFinite(millis(readback?.observedAt)) || !Number.isFinite(millis(readback?.updatedAt))
+    || millis(builder.completedAt) > millis(readback.updatedAt) || millis(readback.updatedAt) > millis(readback.observedAt)
+    || millis(readback.observedAt) > millis(r.spawn?.observedAt)
+    || policyReadback?.version !== pilot.version || !/^[a-f0-9]{40}$/.test(policyReadback?.mainSha ?? '')
+    || !Number.isFinite(millis(policyReadback?.observedAt)) || millis(policyReadback.observedAt) > millis(r.spawn?.observedAt))
+    errors.push('Native final review requires prior BUILD and enabled-main policy readback');
+  if (context.nativeCanonical === true && (builder.sourceBodySha256 !== readback?.bodySha256
+    || builder.sourceUpdatedAt !== readback?.updatedAt || context.nativePolicyEvidence?.reviewedMainSha !== policyReadback?.mainSha
+    || !Number.isFinite(millis(review.submittedAt)) || millis(review.submittedAt) > now
+    || millis(reviewer.completedAt) > millis(review.submittedAt)))
+    errors.push('Native final readback does not match authoritative source bytes');
+  return errors;
+}
+
 /** Shared current role proof; independent of premium pricing/model identity. */
 export function independentRoleErrors(review = {}, context = {}) {
   const errors = [];
@@ -143,9 +233,14 @@ export function independentRoleErrors(review = {}, context = {}) {
   const source = value => typeof value === 'string' && value.startsWith(`https://github.com/${context.repository}/`)
     && /^https:\/\/github\.com\/[^/]+\/[^/]+\/(issues|pull)\/\d+#issuecomment-\d+$/.test(value);
   if (proof?.trusted !== true || !builder || !reviewer) errors.push('Missing independently read-back builder/reviewer role evidence');
-  else {
+  else if (native(builder) || native(reviewer)) {
+    if (context.nativeCanonical !== true || !/^[a-f0-9]{40}$/.test(context.nativePolicyEvidence?.currentMainSha ?? ''))
+      errors.push('Native role evidence needs current trusted-main source admission');
+    errors.push(...nativeRoleShapeErrors(review, context, context.nativePolicyEvidence?.pilot));
+  } else {
     for (const [record, role] of [[builder, 'BUILD'], [reviewer, 'REVIEW']]) {
       if (record.role !== role || record.repository !== context.repository || record.headSha !== context.headSha
+        || (record.executionIdentityKind !== undefined && record.executionIdentityKind !== 'BACKEND_SESSION') || record.nativeTaskEvidence
         || record.changeDigest !== context.changeDigest || !source(record.sourceRef)
         || !['actorId', 'sessionId', 'executionRef'].every(key => meaningful(record[key]))
         || record.executionEvidence !== 'OPERATOR_ATTESTED' || !Number.isFinite(millis(record.startedAt))
@@ -229,14 +324,17 @@ export function finalRiskReviewerErrors(review = {}, policy = {}, context = {}) 
     try {
       replacementPayload = JSON.parse(replacement?.body.match(/```astra-review\s*\n([\s\S]*?)\n```/)?.[1] ?? 'null');
     } catch { replacementPayload = null; }
+    const nativeReplacementInvalid = review.nativeRolePolicyVersion &&
+      ([...(replacement?.body ?? '').matchAll(/```(?:astra|sol)-review\s*\n/g)].length !== 1 ||
+        replacementPayload?.servedVerified !== false || replacementPayload?.servedVerified !== review.servedVerified);
     if (!meaningful(review.failureDiagnosis) || !failure?.body.includes(review.failureDiagnosis) ||
-        !replacementPayload || replacementPayload.verdict !== 'PASS' ||
+        !replacementPayload || replacementPayload.verdict !== 'PASS' || nativeReplacementInvalid ||
         ['repository', 'changeDigest', 'executionRef', 'adversarialEvidence', 'actualModel', 'requestedModel']
           .some(key => !review[key] || replacementPayload[key] !== review[key]) ||
         ['baseSha', 'headSha', 'policyVersion', 'testBaseline', 'schemaBaseline', 'reviewerTier', 'identityEvidence', 'executionEvidence', 'modelSelectionAvailable',
           'costPolicyVersion', 'fallbackPolicyVersion', 'downgradeReason', 'downgradeEvidenceRef',
           'reviewLineage', 'failureClass', 'failureEvidenceRef', 'failureDiagnosis', 'replacementReviewRef',
-          'playbookEvidenceRef', 'reviewerExecutionReceipt']
+          'playbookEvidenceRef', 'reviewerExecutionReceipt', 'nativeRolePolicyVersion']
           .some(key => replacementPayload[key] !== review[key]) ||
         replacementPayload.priorFindingsReviewed !== true || replacementPayload.unresolvedFindingCount !== 0) {
       errors.push('Missing durable failure diagnosis/replacement review');
