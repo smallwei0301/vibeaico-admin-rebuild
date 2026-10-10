@@ -61,15 +61,26 @@ export function parseProjectBoundTestDbReleaseUrl(connectionString) {
     fail('TEST_RELEASE_URL_PROJECT_MISMATCH', 'TEST release URL must bind the canonical postgres TEST pooler user');
   }
   if (!parsed.password) fail('TEST_RELEASE_URL_PASSWORD_REQUIRED', 'TEST release URL requires a password');
+  let password;
+  try { password = decodeURIComponent(parsed.password); } catch {
+    fail('MALFORMED_TEST_RELEASE_URL', 'TEST release password is not valid URL encoding');
+  }
   const entries = [...parsed.searchParams.entries()];
   if (parsed.hash || entries.length !== 1 || entries[0][0] !== 'sslmode' || String(entries[0][1]).toLowerCase() !== 'verify-full') {
     fail('TEST_RELEASE_TLS_VERIFICATION_REQUIRED', 'TEST release URL must use exactly sslmode=verify-full');
   }
-  return { projectRef: TEST_PROJECT_REF, role: 'postgres', transportMode: 'SUPAVISOR_SESSION', connectionString: raw };
+  return { projectRef: TEST_PROJECT_REF, role: 'postgres', transportMode: 'SUPAVISOR_SESSION', connectionString: raw,
+    host: parsed.hostname, port: 5432, database: 'postgres', username: `postgres.${TEST_PROJECT_REF}`, password };
+}
+/** Pass admitted fields, never a raw URL for postgres.js to reinterpret. */
+export function buildProjectBoundTestDbReleaseClientOptions(connectionString) {
+  const target = parseProjectBoundTestDbReleaseUrl(connectionString);
+  return { host: [target.host], port: [target.port], database: target.database,
+    username: target.username, password: target.password, ssl: 'verify-full',
+    max: 1, prepare: false, connect_timeout: 15, idle_timeout: 5 };
 }
 async function queryViaTestDbReleaseUrl({ connectionString, sql: statement, readOnly }) {
-  parseProjectBoundTestDbReleaseUrl(connectionString);
-  const client = postgres(connectionString, { max: 1, prepare: false, connect_timeout: 15, idle_timeout: 5 });
+  const client = postgres(buildProjectBoundTestDbReleaseClientOptions(connectionString));
   try {
     if (readOnly) {
       return await client.begin(async (transaction) => {

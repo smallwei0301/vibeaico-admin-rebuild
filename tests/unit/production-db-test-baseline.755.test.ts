@@ -1,9 +1,10 @@
-import { afterAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildAtomic0098TestBaselineSql, validate0098TestBaselineFromCheckout } from '../../scripts/db/validate-production-db-release-on-test.mjs';
+import postgres from 'postgres';
+import { buildAtomic0098TestBaselineSql, buildProjectBoundTestDbReleaseClientOptions, parseProjectBoundTestDbReleaseUrl, validate0098TestBaselineFromCheckout } from '../../scripts/db/validate-production-db-release-on-test.mjs';
 
 const FILE = '0098_reconcile_tour_orders_legacy_contact_columns';
 const PATH = `supabase/migrations/${FILE}.sql`;
@@ -35,6 +36,73 @@ git('remote', 'add', 'origin', remote);
 git('fetch', 'origin', 'main');
 const mainSha = git('rev-parse', 'HEAD');
 afterAll(() => rmSync(fixture, { recursive: true, force: true }));
+afterEach(() => vi.unstubAllEnvs());
+
+describe('canonical TEST driver target projection #755', () => {
+  const host = 'aws-1-ap-northeast-1.pooler.supabase.com';
+  const url = (password: string) => `postgres://postgres.${TEST}:${password}@${host}:5432/postgres?sslmode=verify-full`;
+
+  it.each([
+    ['fake@attacker.example.invalid,unused', 'fake@attacker.example.invalid,unused'],
+    ['fake%40attacker.example.invalid%2Cunused', 'fake@attacker.example.invalid,unused'],
+    ['fake,word:with;symbols', 'fake,word:with;symbols'],
+    ['fake%40word%3Awith%2Fsymbols%3F%23%25%5C', 'fake@word:with/symbols?#%\\'],
+    ['fake%2540word%252Cmore', 'fake%40word%2Cmore'],
+    ['fake-%E6%B8%AC%E8%A9%A6', 'fake-測試'],
+  ])('keeps admitted fields in actual lazy driver options for %s', async (encoded, decoded) => {
+    const options = buildProjectBoundTestDbReleaseClientOptions(url(encoded));
+    // Lazy construction plus options inspection/end makes no DNS/DB request.
+    // postgres 3.4.9 supports host/port arrays at runtime; Options narrows them.
+    const client = postgres(options as unknown as postgres.Options<{}>);
+    try {
+      expect(client.options.host).toEqual([host]);
+      expect(client.options.port).toEqual([5432]);
+      expect(client.options.database).toBe('postgres');
+      expect(client.options.user).toBe(`postgres.${TEST}`);
+      expect(client.options.pass).toBe(decoded);
+      expect(client.options.ssl).toBe('verify-full');
+      expect(client.options).toMatchObject({ max: 1, prepare: false, connect_timeout: 15, idle_timeout: 5 });
+      expect(options).not.toHaveProperty('connectionString');
+    } finally { await client.end(); }
+  });
+
+  it('overrides inherited PG target/TLS/password settings with the admitted explicit values', async () => {
+    for (const [key, value] of Object.entries({ PGHOST: 'attacker.example.invalid', PGPORT: '6543',
+      PGDATABASE: 'other', PGUSER: 'other', PGUSERNAME: 'other', PGPASSWORD: 'wrong-fake',
+      PGSSL: 'disable', PGSSLMODE: 'disable', PGCONNECT_TIMEOUT: '999', PGIDLE_TIMEOUT: '999' })) {
+      vi.stubEnv(key, value);
+    }
+    const client = postgres(buildProjectBoundTestDbReleaseClientOptions(url('fake-pass')) as unknown as postgres.Options<{}>);
+    try {
+      expect(client.options.host).toEqual([host]);
+      expect(client.options.port).toEqual([5432]);
+      expect(client.options).toMatchObject({ user: `postgres.${TEST}`, database: 'postgres', pass: 'fake-pass',
+        ssl: 'verify-full', max: 1, prepare: false, connect_timeout: 15, idle_timeout: 5 });
+    } finally { await client.end(); }
+  });
+
+  it.each(['%', '%zz', '%FF', '%E0%A4'])('rejects malformed password encoding before constructing a client: %s', (password) => {
+    for (const admit of [parseProjectBoundTestDbReleaseUrl, buildProjectBoundTestDbReleaseClientOptions]) {
+      expect(() => admit(url(password))).toThrow(/MALFORMED_TEST_RELEASE_URL/);
+      try { admit(url(password)); } catch (error) {
+        expect((error as Error).message).not.toContain(url(password));
+        expect((error as Error).message).not.toContain(password);
+      }
+    }
+  });
+
+  it('keeps existing target/TLS admission strict and uses the projection in the shared query transport', () => {
+    for (const unsafe of [url('fake').replace(TEST, 'egehnijjpgijmccagxac'),
+      url('fake').replace(host, 'attacker.example.invalid'), url('fake').replace(':5432', ':6543'),
+      url('fake').replace('/postgres?', '/other?'), url('fake').replace('verify-full', 'disable'),
+      `${url('fake')}&sslmode=verify-full`, `${url('fake')}&options=-csearch_path%3Dpublic`, `${url('fake')}#fragment`]) {
+      expect(() => buildProjectBoundTestDbReleaseClientOptions(unsafe)).toThrow(/TEST_RELEASE_/);
+    }
+    const source = readFileSync('scripts/db/validate-production-db-release-on-test.mjs', 'utf8');
+    expect(source).toContain('postgres(buildProjectBoundTestDbReleaseClientOptions(connectionString))');
+    expect(source).not.toContain('postgres(connectionString');
+  });
+});
 
 function transport(options: { failApply?: boolean; afterLedger?: any[]; afterColumns?: any } = {}) {
   const calls: { readOnly: boolean; query: string }[] = [];
