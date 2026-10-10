@@ -141,11 +141,36 @@ export function selectFinalRiskReviewer(input = {}, policy = {}) {
 export const NATIVE_ROLE_POLICY_VERSION = '2026-10-09.1';
 const NATIVE_SOURCE_SURFACE = 'PRODUCT_SOURCE_FINAL_RISK';
 const native = record => record?.executionIdentityKind === 'NATIVE_TASK';
-// Compatibility matches only the claimed, already-observed #843 BUILD ref/instants; later tasks fail.
-// Missing prompt bytes remain missing; this does not authenticate the operator's other observations.
-function nativeSpawnMessageValid(spawn, evidence, record, role, context) {
+// Privacy is a distinct exact-source operator attestation, not public authentication of raw bytes.
+function privateNativeMessageValid(spawn, evidence, record, role, context, pilot) {
+  const p = spawn?.privateMessage;
+  if (pilot.privateMessageMode !== 'PR843_RETAINED_ORIGINAL_V1'
+    || context.repository !== 'smallwei0301/vibeaico-admin-rebuild' || context.prNumber !== 843
+    || context.headSha !== '47f259db7b2f4ab50b08c0962cc8d6f676575fd0'
+    || context.changeDigest !== '18ee75322cafca9148e043cee7ba518ea767ab4f8449fd6eb655c8cb5192b6ba'
+    || !['BUILD', 'REVIEW'].includes(role) || spawn?.request?.message !== null
+    || p?.schemaVersion !== 1 || typeof p.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(p.sha256)
+    || /^0+$/.test(p.sha256) || p.sha256 === createHash('sha256').update('').digest('hex')
+    || !Number.isSafeInteger(p.byteLength) || p.byteLength < 1
+    || p.encoding !== 'UTF-8' || p.retention !== 'ORIGINAL_VERBATIM_RETAINED_PRIVATELY'
+    || p.attestation !== 'OPERATOR_ATTESTS_ORIGINAL_CAPTURE_HASH_AND_SCOPE'
+    || typeof p.publicWorkScope !== 'string' || !meaningful(p.publicWorkScope)
+    || p.publicWorkScope !== evidence?.performedWorkScope) return false;
+  const bindings = { repository: context.repository, prNumber: context.prNumber, headSha: context.headSha,
+    changeDigest: context.changeDigest, role, taskName: evidence?.taskName, executionRef: record?.executionRef,
+    operatorLogin: evidence?.operatorLogin, operatorId: evidence?.operatorId,
+    spawnObservedAt: spawn.observedAt, workStartedAt: record?.startedAt, workCompletedAt: record?.completedAt,
+    workArtifactSha256: evidence?.work?.artifactSha256, attestedAt: evidence?.compiledAt };
+  return Object.entries(bindings).every(([key, value]) => value !== undefined && p[key] === value);
+}
+function nativeSpawnMessageValid(spawn, evidence, record, role, context, pilot) {
+  if (spawn?.requestMessageAvailability === 'WITHHELD_PRIVATE')
+    return privateNativeMessageValid(spawn, evidence, record, role, context, pilot);
+  if (spawn?.privateMessage !== undefined) return false;
   if (meaningful(spawn?.request?.message))
     return spawn.requestMessageAvailability === undefined || spawn.requestMessageAvailability === 'CAPTURED';
+// Compatibility matches only the claimed, already-observed #843 BUILD ref/instants; later tasks fail.
+// Missing prompt bytes remain missing; this does not authenticate the operator's other observations.
   return role === 'BUILD' && spawn?.request?.message === null && spawn?.requestMessageAvailability === 'NOT_CAPTURED'
     && context.repository === 'smallwei0301/vibeaico-admin-rebuild' && context.prNumber === 843
     && context.headSha === '07d360c50c6eb60486fa4f3bc21d0f713d6e2bbb'
@@ -194,7 +219,7 @@ export function nativeRoleShapeErrors(review = {}, context = {}, pilot = {}) {
       || spawn?.sourceKind !== 'OPERATOR_WITNESSED' || spawn?.tool !== 'collaboration.spawn_agent' || spawn?.assignedRole !== role
       || !meaningful(spawn?.request?.task_name) || spawn?.result?.task_name !== e.taskName
       || spawn?.result?.actorId != null || spawn?.result?.sessionId != null || spawn?.request?.freshContext !== undefined
-      || !nativeSpawnMessageValid(spawn, e, record, role, context)
+      || !nativeSpawnMessageValid(spawn, e, record, role, context, pilot)
       || !e.taskName.endsWith('/' + spawn?.request?.task_name)
       || (spawn?.request?.model ?? 'not_requested') !== record.requestedModel || !meaningful(record.requestedModel)
       || !['none', 'all'].includes(spawn?.request?.fork_turns)

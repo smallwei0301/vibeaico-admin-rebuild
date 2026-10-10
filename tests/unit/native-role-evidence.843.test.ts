@@ -8,20 +8,29 @@ import { buildProductionDbFinalRiskEvidence, buildProductionDbFinalRiskEvidenceF
 
 // Every event/identity below is SYNTHETIC. These tests cannot certify real native tasks.
 const pilot = routing.nativeRolePilot, repository = pilot.repository, head = pilot.headSha, main = 'a'.repeat(40);
+// Historical policy is a synthetic regression input, never the current enabled policy.
+const historicalPilot = { ...pilot, headSha: '07d360c50c6eb60486fa4f3bc21d0f713d6e2bbb',
+  changeDigest: '8da954f36f1e6ea03bac4be9c24f203f75273494dab11b8f49829fca2d7664a3' };
+const historicalRouting = { ...routing, nativeRolePilot: historicalPilot };
 const actor = { login: 'operator-fixture', id: 12345678, type: 'User' };
 const ref = (id: number) => `https://github.com/${repository}/pull/843#issuecomment-${id}`;
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
 const block = (value: unknown, kind = 'agent-role-execution') => '```' + kind + '\n' + JSON.stringify(value) + '\n```';
 const files = [
   ['.github/workflows/ci.yml', 'modified', 'c67a55a0ed4e7d6e15e88366f1644c535b8edd5b'],
-  ['scripts/db/validate-production-db-release-on-test.mjs', 'modified', 'cbbd394ee0150e20d81ed88aecaffb357c96180f'],
+  ['scripts/db/validate-production-db-release-on-test.mjs', 'modified', 'a21c85801c8b169921eb3f50b345e5dbfcdb7fe4'],
   ['scripts/test/production-db-test-baseline-0098-postgres.mjs', 'added', 'ea2cd17bdf46e6d40ecd82f42536b13b354c2ecd'],
   ['tests/unit/production-db-test-baseline-postgres-runner.755.test.ts', 'added', '48b402d82bcd1ec781a0a0207e09e198f3c9fffc'],
   ['tests/unit/production-db-test-baseline-workflow.755.test.ts', 'added', 'ac17a66acbb3cc695ba1710b82674c67ffb48f37'],
-  ['tests/unit/production-db-test-baseline.755.test.ts', 'added', 'd755c8ccc229bdc87c3e32e8fd716e3eb267dbca'],
+  ['tests/unit/production-db-test-baseline.755.test.ts', 'added', '04d89bb9c514f2ab725187ae72b935a642c46e24'],
 ].map(([filename, status, sha]) => ({ filename, status, sha }));
+const historicalFiles = files.map(file => ({ ...file, sha: file.filename === 'scripts/db/validate-production-db-release-on-test.mjs'
+  ? 'cbbd394ee0150e20d81ed88aecaffb357c96180f' : file.filename === 'tests/unit/production-db-test-baseline.755.test.ts'
+    ? 'd755c8ccc229bdc87c3e32e8fd716e3eb267dbca' : file.sha }));
 const body = `WORKSTREAM: PRODUCT_MAINLINE\nAGENT_LANE: TERRA_BUILD\nLANE_STATE: ACTIVE\nASTRA_RISK: GOVERNANCE_GATE\nASTRA_RATIONALE: Synthetic source admission fixture only\nASTRA_TEST_BASELINE: Synthetic source tests complete\nASTRA_SCHEMA_BASELINE: Synthetic unchanged canonical SQL\nBUILDER_EXECUTION_RECEIPT: ${ref(101)}`;
-function fixture() {
+function fixture(policy = routing) {
+  const pilot = policy.nativeRolePilot, head = pilot.headSha;
+  const fixtureFiles = head === historicalPilot.headSha ? historicalFiles : files;
   const role = (kind: string): any => {
     const build = kind === 'BUILD', start = build ? '2026-10-09T15:00:00Z' : '2026-10-09T15:04:00Z';
     const end = build ? '2026-10-09T15:01:00Z' : '2026-10-09T15:05:00Z';
@@ -52,7 +61,7 @@ function fixture() {
     modelSelectionAvailable: false, downgradeEvidenceRef: ref(104), reviewLineage: 'synthetic-lineage', executionEvidence: 'OPERATOR_ATTESTED',
     adversarialEvidence: 'Synthetic negative cases, not real work', priorFindingsReviewed: true, unresolvedFindingCount: 0,
     testBaseline: 'Synthetic source tests complete', schemaBaseline: 'Synthetic unchanged canonical SQL', submittedAt: '2026-10-09T15:07:00Z' };
-  const current: any = { number: 843, state: 'open', draft: false, body, changed_files: files.length, created_at: '2026-10-09T12:00:00Z',
+  const current: any = { number: 843, state: 'open', draft: false, body, changed_files: fixtureFiles.length, created_at: '2026-10-09T12:00:00Z',
     head: { sha: head }, base: { sha: main, repo: { full_name: repository } } };
   const record = () => ({ id: 201, state: 'COMMENTED', user: actor, commit_id: head, submitted_at: review.submittedAt, body: block(review, 'astra-review'), trusted: true });
   const listFiles = vi.fn(), listReviews = vi.fn(), listPulls = vi.fn();
@@ -61,18 +70,18 @@ function fixture() {
       updated_at: comment_id === 101 ? '2026-10-09T15:02:00Z' : '2026-10-09T15:06:00Z', body: block(comment_id === 101 ? builder : reviewer) } })) },
     repos: { getCollaboratorPermissionLevel: vi.fn(async () => ({ data: { permission: 'write' } })),
       getCommit: vi.fn(async () => ({ data: { sha: main } })),
-      getContent: vi.fn(async () => { const bytes = Buffer.from(JSON.stringify(routing)); return { data: { type: 'file', encoding: 'base64', content: bytes.toString('base64'), sha: createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex') } }; }),
+      getContent: vi.fn(async () => { const bytes = Buffer.from(JSON.stringify(policy)); return { data: { type: 'file', encoding: 'base64', content: bytes.toString('base64'), sha: createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex') } }; }),
       listCommits: vi.fn(async () => ({ data: [{ sha: main }] })), compareCommitsWithBasehead: vi.fn(async () => ({ data: { status: 'ahead' } })) } },
-    paginate: vi.fn(async (method: any) => method === listFiles ? files : method === listReviews ? [record()] : method === listPulls ? [current] : []) };
+    paginate: vi.fn(async (method: any) => method === listFiles ? fixtureFiles : method === listReviews ? [record()] : method === listPulls ? [current] : []) };
   const context: any = { repository, baseSha: main, headSha: head, currentHeadSha: head, changeDigest: pilot.changeDigest, prNumber: 843,
     policyVersion: routing.version, testBaseline: review.testBaseline, schemaBaseline: review.schemaBaseline,
     reviewSurface: pilot.surface, nativeCanonical: true, nativePolicyEvidence: { pilot, currentMainSha: main, reviewedMainSha: main },
     roleEvidence: { trusted: true, builder: { ...builder, sourceActor: actor, sourceUpdatedAt: '2026-10-09T15:02:00Z', sourceBodySha256: hash(block(builder)) },
       reviewer: { ...reviewer, sourceActor: actor, sourceUpdatedAt: '2026-10-09T15:06:00Z' } } };
-  return { builder, reviewer, review, current, context, github, record, listFiles, listReviews,
+  return { policy, pilot, builder, reviewer, review, current, context, github, record, listFiles, listReviews,
     packet: { repository, headSha: head, changeDigest: pilot.changeDigest, builder, reviewer, review } };
 }
-const run = (f: ReturnType<typeof fixture>, policy = routing) => evaluateGithubAstra({ github: f.github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', current: f.current }, policy);
+const run = (f: ReturnType<typeof fixture>, policy = f.policy) => evaluateGithubAstra({ github: f.github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', current: f.current }, policy);
 
 describe('bounded native source-role pilot; structure and operator trust only', () => {
   it('T01 preserves complete backend proof and rejects old missing IDs/unknown kinds', () => {
@@ -93,8 +102,8 @@ describe('bounded native source-role pilot; structure and operator trust only', 
     expect(validateNativeRolePreflight(f.packet, f.current)).toMatchObject({ status: 'NEEDS_CANONICAL_READBACK', canonicalReadbackVerified: false, errors: [] });
   });
   // The pinned historical shape is synthetic here; a passing fixture does not authenticate the real spawn.
-  const uncapturedBuild = () => {
-    const f = fixture(), e = f.builder.nativeTaskEvidence;
+  const uncapturedBuild = (policy = historicalRouting) => {
+    const f = fixture(policy), e = f.builder.nativeTaskEvidence;
     e.taskName = '/root/implement_843_pg_harness';
     e.spawn.request.task_name = 'implement_843_pg_harness'; e.spawn.result.task_name = e.taskName;
     e.spawn.request.message = null; e.spawn.requestMessageAvailability = 'NOT_CAPTURED';
@@ -122,10 +131,103 @@ describe('bounded native source-role pilot; structure and operator trust only', 
     const bodySha256 = hash(block(f.builder));
     f.reviewer.nativeTaskEvidence.builderReadback.bodySha256 = bodySha256;
     Object.assign(f.context.roleEvidence.builder, f.builder, { sourceBodySha256: bodySha256 });
-    expect(nativeRoleShapeErrors(f.review, f.context, pilot).length === 0).toBe(valid);
-    expect(validateNativeRolePreflight(f.packet, f.current).errors.length === 0).toBe(valid);
+    expect(nativeRoleShapeErrors(f.review, f.context, f.pilot).length === 0).toBe(valid);
+    expect(validateNativeRolePreflight(f.packet, f.current, f.policy).errors.length === 0).toBe(valid);
     expect((await run(f)).status).toBe(valid ? 'ASTRA_APPROVED' : 'ASTRA_PENDING');
   };
+  const withhold = (f: ReturnType<typeof fixture>) => {
+    for (const record of [f.builder, f.reviewer]) {
+      const e = record.nativeTaskEvidence, spawn = e.spawn, original = spawn.request.message;
+      spawn.request.message = null; spawn.requestMessageAvailability = 'WITHHELD_PRIVATE';
+      spawn.privateMessage = { schemaVersion: 1, sha256: hash(original), byteLength: Buffer.byteLength(original, 'utf8'),
+        encoding: 'UTF-8', retention: 'ORIGINAL_VERBATIM_RETAINED_PRIVATELY',
+        attestation: 'OPERATOR_ATTESTS_ORIGINAL_CAPTURE_HASH_AND_SCOPE', publicWorkScope: e.performedWorkScope,
+        repository, prNumber: 843, headSha: record.headSha, changeDigest: record.changeDigest,
+        role: record.role, taskName: e.taskName, executionRef: record.executionRef,
+        operatorLogin: e.operatorLogin, operatorId: e.operatorId,
+        spawnObservedAt: spawn.observedAt, workStartedAt: record.startedAt,
+        workCompletedAt: record.completedAt, workArtifactSha256: e.work.artifactSha256, attestedAt: e.compiledAt };
+    }
+    return f;
+  };
+  it('P18 admits private retained prompts through shape, local and canonical paths without publishing original bytes', async () => {
+    const f = withhold(fixture()); await expectMessageAdmission(f, true);
+    expect(block(f.builder)).not.toContain('Synthetic BUILD assignment');
+    expect(block(f.reviewer)).not.toContain('Synthetic REVIEW assignment');
+    expect(validateNativeRolePreflight(f.packet, f.current).canonicalReadbackVerified).toBe(false);
+  });
+  it.each(['BUILD', 'REVIEW'])('P18 supports mixed captured/private %s without changing original captured mode', async role => {
+    const f = fixture(), other = role === 'BUILD' ? f.reviewer : f.builder;
+    const saved = structuredClone(other.nativeTaskEvidence.spawn);
+    withhold(f); other.nativeTaskEvidence.spawn = saved;
+    await expectMessageAdmission(f, true);
+  });
+  it.each([
+    ['sha256', 'a'.repeat(63)], ['sha256', '0'.repeat(64)], ['sha256', 123], ['sha256', hash('')],
+    ['byteLength', 0], ['byteLength', -1], ['byteLength', 1.2], ['byteLength', '24'], ['byteLength', Number.MAX_SAFE_INTEGER + 1],
+    ['encoding', 'UTF-16'], ['retention', 'NOT_CAPTURED'], ['attestation', false],
+    ['publicWorkScope', 'different public scope'], ['repository', 'other/repository'], ['prNumber', 836],
+    ['headSha', 'b'.repeat(40)], ['changeDigest', 'c'.repeat(64)], ['role', 'OTHER'],
+    ['taskName', '/root/another_task'], ['executionRef', 'native-task:another'],
+    ['operatorLogin', 'other-operator'], ['operatorId', 987654321],
+    ['spawnObservedAt', '2026-10-09T14:59:59Z'], ['workStartedAt', '2026-10-09T14:59:59Z'],
+    ['workCompletedAt', '2026-10-09T15:59:59Z'], ['attestedAt', '2026-10-09T15:59:59Z'],
+    ['schemaVersion', 2], ['workArtifactSha256', 'b'.repeat(64)], ['publicWorkScope', ''], ['publicWorkScope', '        '], ['publicWorkScope', {}],
+    ['publicWorkScope', ['synthetic scope']], ['publicWorkScope', 123456789],
+  ])('P18 rejects private proof mismatch %s=%s for each role', async (key, value) => {
+    for (const role of ['builder', 'reviewer'] as const) {
+      const f = withhold(fixture()); f[role].nativeTaskEvidence.spawn.privateMessage[key] = value;
+      await expectMessageAdmission(f, false);
+    }
+  });
+  it.each(['missing-proof', 'raw-also-present', 'unknown-availability', 'captured-with-private', 'missing-field'])('P18 rejects ambiguous private evidence: %s', async mode => {
+    const f = withhold(fixture()), spawn = f.builder.nativeTaskEvidence.spawn;
+    if (mode === 'missing-proof') delete spawn.privateMessage;
+    if (mode === 'raw-also-present') spawn.request.message = 'Synthetic raw bytes must not coexist';
+    if (mode === 'unknown-availability') spawn.requestMessageAvailability = 'HASH_ONLY';
+    if (mode === 'captured-with-private') { spawn.request.message = 'Synthetic captured content'; spawn.requestMessageAvailability = 'CAPTURED'; }
+    if (mode === 'missing-field') delete spawn.privateMessage.retention;
+    await expectMessageAdmission(f, false);
+  });
+  it('P18 rejects private evidence under old exact source and disabled/missing policy mode', async () => {
+    await expectMessageAdmission(withhold(fixture(historicalRouting)), false);
+    for (const mode of [undefined, 'DISABLED']) {
+      const policy = { ...routing, nativeRolePilot: { ...pilot, privateMessageMode: mode } };
+      await expectMessageAdmission(withhold(fixture(policy)), false);
+    }
+  });
+  it('P18 rejects cross-role commitment replay and unapproved scope even when pilot is changed consistently', async () => {
+    const replay = withhold(fixture());
+    replay.reviewer.nativeTaskEvidence.spawn.privateMessage = structuredClone(replay.builder.nativeTaskEvidence.spawn.privateMessage);
+    await expectMessageAdmission(replay, false);
+    const policy = { ...routing, nativeRolePilot: { ...pilot, headSha: 'b'.repeat(40) } };
+    await expectMessageAdmission(withhold(fixture(policy)), false);
+  });
+  it('P18 explicitly remains operator attestation, not authentication of unavailable private bytes', async () => {
+    const f = withhold(fixture()); f.builder.nativeTaskEvidence.spawn.privateMessage.sha256 = hash('different private bytes');
+    // Public validation cannot recompute withheld bytes. Canonical operator identity and all bindings still apply.
+    await expectMessageAdmission(f, true);
+    f.github.rest.repos.getCollaboratorPermissionLevel.mockResolvedValue({ data: { permission: 'read' } });
+    expect((await run(f)).status).toBe('ASTRA_PENDING');
+  });
+  it('T17 binds the approved frozen driver repair, with current six-file blobs and captured tasks', async () => {
+    expect(pilot.headSha).toBe('47f259db7b2f4ab50b08c0962cc8d6f676575fd0');
+    expect(changeDigestOf(files)).toBe('18ee75322cafca9148e043cee7ba518ea767ab4f8449fd6eb655c8cb5192b6ba');
+    expect(changeDigestOf(historicalFiles)).toBe(historicalPilot.changeDigest);
+    const f = fixture(); await expectMessageAdmission(f, true);
+  });
+  it.each(['captured', 'uncaptured'])('T17 current policy rejects prior source even with valid %s roles', async mode => {
+    const f = mode === 'captured' ? fixture(historicalRouting) : uncapturedBuild();
+    expect(nativeRoleShapeErrors(f.review, f.context, pilot).length).toBeGreaterThan(0);
+    expect(validateNativeRolePreflight(f.packet, f.current, routing).errors.length).toBeGreaterThan(0);
+    expect((await run(f, routing)).status).toBe('ASTRA_PENDING');
+  });
+  it('T17 cannot move historical missing-prompt compatibility onto the repaired source', async () => {
+    const f = uncapturedBuild(routing); await expectMessageAdmission(f, false);
+    f.builder.nativeTaskEvidence.spawn.request.message = 'Synthetic genuinely captured new BUILD assignment';
+    f.builder.nativeTaskEvidence.spawn.requestMessageAvailability = 'CAPTURED';
+    await expectMessageAdmission(f, true);
+  });
   it('T05 accepts explicit historical BUILD message NOT_CAPTURED without manufacturing a prompt', async () => {
     const f = uncapturedBuild(); await expectMessageAdmission(f, true);
     expect(f.builder.nativeTaskEvidence.spawn.request.message).toBeNull();
