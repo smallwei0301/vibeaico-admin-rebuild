@@ -135,6 +135,81 @@ describe('bounded native source-role pilot; structure and operator trust only', 
     expect(validateNativeRolePreflight(f.packet, f.current, f.policy).errors.length === 0).toBe(valid);
     expect((await run(f)).status).toBe(valid ? 'ASTRA_APPROVED' : 'ASTRA_PENDING');
   };
+  const withhold = (f: ReturnType<typeof fixture>) => {
+    for (const record of [f.builder, f.reviewer]) {
+      const e = record.nativeTaskEvidence, spawn = e.spawn, original = spawn.request.message;
+      spawn.request.message = null; spawn.requestMessageAvailability = 'WITHHELD_PRIVATE';
+      spawn.privateMessage = { schemaVersion: 1, sha256: hash(original), byteLength: Buffer.byteLength(original, 'utf8'),
+        encoding: 'UTF-8', retention: 'ORIGINAL_VERBATIM_RETAINED_PRIVATELY',
+        attestation: 'OPERATOR_ATTESTS_ORIGINAL_CAPTURE_HASH_AND_SCOPE', publicWorkScope: e.performedWorkScope,
+        repository, prNumber: 843, headSha: record.headSha, changeDigest: record.changeDigest,
+        role: record.role, taskName: e.taskName, executionRef: record.executionRef,
+        operatorLogin: e.operatorLogin, operatorId: e.operatorId,
+        spawnObservedAt: spawn.observedAt, workStartedAt: record.startedAt,
+        workCompletedAt: record.completedAt, workArtifactSha256: e.work.artifactSha256, attestedAt: e.compiledAt };
+    }
+    return f;
+  };
+  it('P18 admits private retained prompts through shape, local and canonical paths without publishing original bytes', async () => {
+    const f = withhold(fixture()); await expectMessageAdmission(f, true);
+    expect(block(f.builder)).not.toContain('Synthetic BUILD assignment');
+    expect(block(f.reviewer)).not.toContain('Synthetic REVIEW assignment');
+    expect(validateNativeRolePreflight(f.packet, f.current).canonicalReadbackVerified).toBe(false);
+  });
+  it.each(['BUILD', 'REVIEW'])('P18 supports mixed captured/private %s without changing original captured mode', async role => {
+    const f = fixture(), other = role === 'BUILD' ? f.reviewer : f.builder;
+    const saved = structuredClone(other.nativeTaskEvidence.spawn);
+    withhold(f); other.nativeTaskEvidence.spawn = saved;
+    await expectMessageAdmission(f, true);
+  });
+  it.each([
+    ['sha256', 'a'.repeat(63)], ['sha256', '0'.repeat(64)], ['sha256', 123], ['sha256', hash('')],
+    ['byteLength', 0], ['byteLength', -1], ['byteLength', 1.2], ['byteLength', '24'], ['byteLength', Number.MAX_SAFE_INTEGER + 1],
+    ['encoding', 'UTF-16'], ['retention', 'NOT_CAPTURED'], ['attestation', false],
+    ['publicWorkScope', 'different public scope'], ['repository', 'other/repository'], ['prNumber', 836],
+    ['headSha', 'b'.repeat(40)], ['changeDigest', 'c'.repeat(64)], ['role', 'OTHER'],
+    ['taskName', '/root/another_task'], ['executionRef', 'native-task:another'],
+    ['operatorLogin', 'other-operator'], ['operatorId', 987654321],
+    ['spawnObservedAt', '2026-10-09T14:59:59Z'], ['workStartedAt', '2026-10-09T14:59:59Z'],
+    ['workCompletedAt', '2026-10-09T15:59:59Z'], ['attestedAt', '2026-10-09T15:59:59Z'],
+    ['schemaVersion', 2], ['workArtifactSha256', 'b'.repeat(64)], ['publicWorkScope', ''], ['publicWorkScope', '        '], ['publicWorkScope', {}],
+    ['publicWorkScope', ['synthetic scope']], ['publicWorkScope', 123456789],
+  ])('P18 rejects private proof mismatch %s=%s for each role', async (key, value) => {
+    for (const role of ['builder', 'reviewer'] as const) {
+      const f = withhold(fixture()); f[role].nativeTaskEvidence.spawn.privateMessage[key] = value;
+      await expectMessageAdmission(f, false);
+    }
+  });
+  it.each(['missing-proof', 'raw-also-present', 'unknown-availability', 'captured-with-private', 'missing-field'])('P18 rejects ambiguous private evidence: %s', async mode => {
+    const f = withhold(fixture()), spawn = f.builder.nativeTaskEvidence.spawn;
+    if (mode === 'missing-proof') delete spawn.privateMessage;
+    if (mode === 'raw-also-present') spawn.request.message = 'Synthetic raw bytes must not coexist';
+    if (mode === 'unknown-availability') spawn.requestMessageAvailability = 'HASH_ONLY';
+    if (mode === 'captured-with-private') { spawn.request.message = 'Synthetic captured content'; spawn.requestMessageAvailability = 'CAPTURED'; }
+    if (mode === 'missing-field') delete spawn.privateMessage.retention;
+    await expectMessageAdmission(f, false);
+  });
+  it('P18 rejects private evidence under old exact source and disabled/missing policy mode', async () => {
+    await expectMessageAdmission(withhold(fixture(historicalRouting)), false);
+    for (const mode of [undefined, 'DISABLED']) {
+      const policy = { ...routing, nativeRolePilot: { ...pilot, privateMessageMode: mode } };
+      await expectMessageAdmission(withhold(fixture(policy)), false);
+    }
+  });
+  it('P18 rejects cross-role commitment replay and unapproved scope even when pilot is changed consistently', async () => {
+    const replay = withhold(fixture());
+    replay.reviewer.nativeTaskEvidence.spawn.privateMessage = structuredClone(replay.builder.nativeTaskEvidence.spawn.privateMessage);
+    await expectMessageAdmission(replay, false);
+    const policy = { ...routing, nativeRolePilot: { ...pilot, headSha: 'b'.repeat(40) } };
+    await expectMessageAdmission(withhold(fixture(policy)), false);
+  });
+  it('P18 explicitly remains operator attestation, not authentication of unavailable private bytes', async () => {
+    const f = withhold(fixture()); f.builder.nativeTaskEvidence.spawn.privateMessage.sha256 = hash('different private bytes');
+    // Public validation cannot recompute withheld bytes. Canonical operator identity and all bindings still apply.
+    await expectMessageAdmission(f, true);
+    f.github.rest.repos.getCollaboratorPermissionLevel.mockResolvedValue({ data: { permission: 'read' } });
+    expect((await run(f)).status).toBe('ASTRA_PENDING');
+  });
   it('T17 binds the approved frozen driver repair, with current six-file blobs and captured tasks', async () => {
     expect(pilot.headSha).toBe('47f259db7b2f4ab50b08c0962cc8d6f676575fd0');
     expect(changeDigestOf(files)).toBe('18ee75322cafca9148e043cee7ba518ea767ab4f8449fd6eb655c8cb5192b6ba');

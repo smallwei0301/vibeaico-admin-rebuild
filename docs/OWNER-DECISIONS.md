@@ -16,6 +16,12 @@ exact head `47f259db7b2f4ab50b08c0962cc8d6f676575fd0`、完整六檔 digest
 依正常治理 PR／必要測試／獨立審查合入 main 並回讀後才生效；新 final REVIEW 須在 BUILD canonical receipt
 及新版 main policy 回讀後才開始。不是豁免 source／CI／latest findings／ownership／publication／merge gates。
 
+Owner 02:25:29 UTC 另同意只對上述 #843 exact47f／完整六檔 digest：原文私下保留，公開角色收據使用
+WITHHELD_PRIVATE、完整 UTF-8 SHA256／byteLength、公開工作範圍及操作者背書，逐項綁角色／任務／來源／工作時間。
+不把 hash／摘要冒充原文，不擴張舊 NOT_CAPTURED；缺原文保存、任一綁定不符即拒絕。
+Owner 接受公開審查者無法直接查看私下原文或核實 retention／hash 真偽、仍須信任操作者的限制。
+補防偽一致性反例與獨立審查，正常治理 main 生效後才准入；其他 gates、DB／Production 邊界維持原樣。
+
 ## 2026-10-09 已裁示
 
 Owner 15:48:34 UTC 同意僅對 #843 exact head `07d360c50c6eb60486fa4f3bc21d0f713d6e2bbb`、六檔 digest

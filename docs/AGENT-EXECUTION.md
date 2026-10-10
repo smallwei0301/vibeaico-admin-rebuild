@@ -611,7 +611,7 @@ DB release preflight 尚未接入可信 role context；enabled policy 下缺此�
 只有 trusted-main `model-routing.json.nativeRolePilot` 已啟用且 repo／PR／exact head／六檔 digest／
 `PRODUCT_SOURCE_FINAL_RISK` 全相符時，可用 `executionIdentityKind=NATIVE_TASK`。Owner 2026-10-10 僅將 #843
 已凍結兩檔 driver projection 修正版更新為 `47f259db7b2f4ab50b08c0962cc8d6f676575fd0`／
-`18ee75322cafca9148e043cee7ba518ea767ab4f8449fd6eb655c8cb5192b6ba`。本次只更新精確 source 綁定，BUILD／REVIEW 必須保存原 request message；
+`18ee75322cafca9148e043cee7ba518ea767ab4f8449fd6eb655c8cb5192b6ba`。BUILD／REVIEW 必須保存原 request message；Owner 02:25:29 UTC 另批准下列精確範圍的私下保留模式；
 原初版 `07d360c50c6eb60486fa4f3bc21d0f713d6e2bbb`／`8da954f36f1e6ea03bac4be9c24f203f75273494dab11b8f49829fca2d7664a3` 留作歷史，
 不再是當前 pilot 准入版本。#836、其他 head、歷史未知 BUILD、DB release／G5／writer 不適用。治理 bootstrap PR 不能用此規則自批。
 BUILD／REVIEW 仍是原角色；actorId／sessionId 必須 null、backendIdentityAvailability=UNEXPOSED，
@@ -626,12 +626,29 @@ completion（親見 BOUNDED_WORK_COMPLETED、停筆、head/digest 與 UTC）。�
 原 message 未保存時，可明寫 `spawn.request.message=null`、`spawn.requestMessageAvailability=NOT_CAPTURED`。
 這是 capture 缺口，不准用後來的摘要補成原 prompt；不能省略其他必要親見事實、model／fork／reasoning／UTC／hash。
 有原文者維持非空 message，availability 可省略或為 CAPTURED；相矛盾或未知 availability 拒絕。
-新版本 BUILD 與所有新 REVIEW 必須保存真實原 message，不能沿用這個歷史 BUILD 表示；其他 task／PR／head／DB 不適用。
+新版本 BUILD 與所有新 REVIEW 必須保存真實原 message（公開 CAPTURED 或下列私下保留模式），不能沿用這個歷史 BUILD 表示；其他 task／PR／head／DB 不適用。
 此分支另綁既有 `executionRef=native-task:/root/implement_843_pg_harness`，以及2026-10-09 UTC的
 spawn觀測14:28:16Z、work起點14:32:26Z、bounded完成15:32:00Z；比較相同瞬間，不接受較晚同名任務或寬時間窗。
 起點來自既有 worker checkpoint、完成來自父方親見完成回報，仍不是精確first/last-write或backend生命週期。
 歷史namespace／capture generation未保存，保持UNKNOWN；receipt的scope labels只限定當次operator整理範圍，
 不補造歷史UUID。這組ref／時間只拒絕已表達的不同事件，仍不能認證完整倒填舊值的操作者背書真偽。
+
+Owner 2026-10-10 02:25:29 UTC 的隱私補充只適用上述 #843 exact47f／digest18ee。
+trusted-main pilot 必須明開 `privateMessageMode=PR843_RETAINED_ORIGINAL_V1`；BUILD／REVIEW 可用
+`spawn.requestMessageAvailability=WITHHELD_PRIVATE`、`spawn.request.message=null`，另放 `spawn.privateMessage`：
+- schemaVersion=1、encoding=UTF-8、sha256 為逐字原 message UTF-8 bytes 的完整 SHA256、byteLength 為正安全整數。
+- retention=ORIGINAL_VERBATIM_RETAINED_PRIVATELY；操作者必須確實私下保留原文，不公布私密原文或內部路徑。
+- attestation=OPERATOR_ATTESTS_ORIGINAL_CAPTURE_HASH_AND_SCOPE；publicWorkScope 是可公開的工作範圍，
+  必須等於 performedWorkScope，不是原始 message 或其逐字替代品。
+- repository／prNumber／headSha／changeDigest／role 綁精確來源；taskName／executionRef／operatorLogin／operatorId
+  綁該角色操作者；spawnObservedAt／workStartedAt／workCompletedAt／workArtifactSha256／attestedAt
+  分別逐字等於該角色的 spawn.observedAt／startedAt／completedAt／work.artifactSha256／compiledAt。
+原文與私密 commitment 不可混用；CAPTURED／NOT_CAPTURED 不得帶 privateMessage。沒有保存原文者不能使用此模式。
+GitHub 公開讀取端只驗格式、提交者及上述一致性，**無法重算私下原文的 hash、證明 byteLength、retention 或工作範圍背書真實**；
+完整偽造且自洽的操作者背書仍可能通過。Owner 明確接受此限制；hash 不冒充原文，也不宣稱防止所有偽造。
+既有 separate fresh FINAL REVIEW、BUILD 完成後及 main 政策／canonical BUILD 回讀後才 spawn 的時間關卡不變。
+其他 repo／PR／head／digest、DB／Production、治理 bootstrap 均不適用；歷史 NOT_CAPTURED 的精確條件完全不擴張。
+
 時間以 OBSERVED_ROLE_WORK 表示真實
 工作區段，不冒稱精確 first/last-write 或 backend session 起訖；CI 結束不能代替角色完成。
 REVIEW 另需不同 task/execution/comment、reviewPhase=FINAL、participatedInBuild=false、contextIsolationAttested=true；
