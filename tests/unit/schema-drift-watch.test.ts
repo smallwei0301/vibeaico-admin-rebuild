@@ -7,7 +7,10 @@ import { fileURLToPath } from 'node:url';
 import {
   READ_ONLY_SNAPSHOT_SQL, buildObserverSnapshotFromRaw, buildUnavailableSnapshot,
   captureEnvironmentSnapshot, compareObserverSnapshots, normalizeObserverSnapshot,
+  verifyTestBaseline0098Binding,
 } from '../../scripts/agents/schema-drift-watch.mjs';
+import { buildProductionDbReleasePlan } from '../../scripts/agents/production-db-release-plan.mjs';
+import { sha256 } from '../../scripts/agents/schema-truth-evidence.mjs';
 const MAIN = 'a'.repeat(40);
 const raw = (value = 'uuid|false|') => ({
   metadata: { counts: { columns: 1, constraints: 0, indexes: 0, views: 0, policies: 0, routines: 0, triggers: 0 }, items: [{ surface: 'columns', key: 'public.tours.id', value }] },
@@ -199,4 +202,196 @@ describe('schema observer workflow snapshot retention', () => {
     expect(executeStep(RETAIN, dir, mutant).status).toBe(0);
     expect(saved(dir, 'expected').rawRows).toEqual([{ token: 'secret-fixture' }]);
   }));
+});
+
+// Synthetic read-only consumer cases. Historical provenance is a receipt claim;
+// fresh observer packets deliberately retain version/name only.
+const B0098 = '0098_reconcile_tour_orders_legacy_contact_columns';
+const B0098_HASH = 'f0bd13dcf2226143d90dc1ca3431df7a3020e3d3f9eabd446b640b03261193e5';
+const HISTORICAL = 'a7368f05c4f8c3c6e2901b2387139b90e2ef3ef2';
+function baselineFixture() {
+  const readSourceAt = (_sha: string, path: string) => readFileSync(join(ROOT, path), 'utf8');
+  const baseline: any = {
+    receipt: { schemaVersion: 1, status: 'TEST_BASELINE_0098_VERIFIED', repository: 'smallwei0301/vibeaico-admin-rebuild',
+      testProjectRef: 'nmwhwngojosmagjuvxol', mainSha: HISTORICAL, sourceRunId: '38025747318', sourceRunAttempt: 1,
+      migration: { repoFile: B0098, sha256: B0098_HASH, ledger: { version: '0098', name: B0098,
+        created_by: 'vibeaico-test-baseline-0098', idempotency_key: `test-baseline-0098:${B0098_HASH}` } },
+      columnFingerprints: { before: 'b'.repeat(64), after: 'c'.repeat(64) },
+      testMutationPerformed: true, productionMutationPerformed: false, databaseMutationAuthorized: false },
+    sourceRun: { repository: 'smallwei0301/vibeaico-admin-rebuild', workflowPath: '.github/workflows/ci.yml', event: 'workflow_dispatch',
+      branch: 'main', headSha: HISTORICAL, id: '38025747318', attempt: 1, status: 'completed', conclusion: 'success',
+      baselineStep: 'success', integrationStep: 'success', e2eStep: 'success' },
+    artifact: { id: '11659019044', name: `test-baseline-0098-evidence-${HISTORICAL}-38025747318`,
+      runId: '38025747318', headSha: HISTORICAL, expired: false },
+  };
+  const sourceOptions = { currentMainSha: MAIN, readSourceAt, isAncestor: () => true };
+  const aliasMap = { schemaVersion: 1, entries: [{ repoFile: '0136_issue_755_create_tour_order_invoker', ledgerNames: [], classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY' }] };
+  const readCanonicalSql = (path: string) => readFileSync(join(ROOT, path), 'utf8');
+  const plan = buildProductionDbReleasePlan({ releaseId: 'issue755-baseline-consumer-fixture', mainSha: MAIN,
+    plannedAt: '2026-09-14T01:00:00Z', aliasMap, readCanonicalSql });
+  const migration = plan.migrations[0];
+  const sourceRun = { repository: plan.repository, workflowPath: '.github/workflows/ci.yml', event: 'workflow_dispatch', branch: 'main',
+    headSha: MAIN, id: '123', attempt: 1, status: 'completed', conclusion: 'success' };
+  const common = { repository: plan.repository, releaseId: plan.releaseId, mainSha: MAIN, planDigest: plan.planDigest,
+    testProjectRef: 'nmwhwngojosmagjuvxol', sourceRunId: '123', sourceRunAttempt: 1, databaseMutationAuthorized: false, productionMutationPerformed: false };
+  const releaseLedgerBinding: any = { releaseId: plan.releaseId, plan, sourceRun,
+    testEvidence: { status: 'TEST_VERIFIED', policySkip: false, executedTests: 1, cleanup: 'PASSED', mainSha: MAIN, planDigest: plan.planDigest,
+      testProjectRef: 'nmwhwngojosmagjuvxol', sourceRunId: '123', sourceRunAttempt: 1, integrationStep: 'PASSED', e2eStep: 'PASSED', databaseMutationAuthorized: false },
+    releasePlanEvidence: { ...common, status: 'TEST_RELEASE_PLAN_VERIFIED', testMutationPerformed: true,
+      migrations: [{ repoFile: migration.repoFile, sha256: migration.sha256, riskTier: migration.riskTier, execution: 'APPLIED_VERIFIED', ledgerVersion: migration.ledgerVersion }] },
+    postTestSchemaEvidence: { ...common, status: 'TEST_POST_APPLY_SCHEMA_CAPTURED', readOnly: true, comparisonClaim: 'CAPTURE_ONLY_G2_COMPARISON_REQUIRED',
+      captureDigest: 'c'.repeat(64), migrationLedgerDigest: 'd'.repeat(64), observedAt: '2026-09-14T01:18:00Z', plannedMigrations: [{ repoFile: migration.repoFile, ledgerVersion: migration.ledgerVersion }] },
+    testBaseline0098: verifyTestBaseline0098Binding({ binding: baseline, ...sourceOptions }),
+  };
+  const packet = (environment: 'LOCAL_EXPECTED' | 'TEST' | 'PRODUCTION', ledger: any[], value = 'uuid|false|') => buildObserverSnapshotFromRaw({
+    environment, projectRef: environment === 'LOCAL_EXPECTED' ? 'local-fresh' : environment === 'TEST' ? 'nmwhwngojosmagjuvxol' : 'egehnijjpgijmccagxac',
+    observedMainSha: MAIN, observedAt: '2026-09-14T01:18:00Z', evidenceRef: 'local:baseline-consumer-fixture', raw: { ...raw(value), ledger } });
+  const previous = { version: '0105', name: '0105_previous_migration' };
+  const canonical = { version: '0098', name: B0098.slice(5) };
+  const args: any = { currentMainSha: MAIN, now: NOW, readCanonicalSql, readSourceAt, isAncestor: sourceOptions.isAncestor, aliasMap, releaseLedgerBinding,
+    expectedSnapshot: packet('LOCAL_EXPECTED', [previous, canonical, { version: '0136', name: migration.repoFile }]),
+    testSnapshot: packet('TEST', [previous, { version: '0098', name: B0098 }, { version: migration.ledgerVersion, name: migration.repoFile }]),
+    productionSnapshot: packet('PRODUCTION', [previous, canonical]) };
+  return { args, baseline, sourceOptions, packet, previous, canonical };
+}
+
+describe('#755 separately verified historical TEST 0098 comparison binding', () => {
+  it('independently reads real historical Git source and ancestry, while consumer-only source changes remain irrelevant', () => {
+    const { baseline, sourceOptions } = baselineFixture();
+    const verified = verifyTestBaseline0098Binding({ binding: baseline, currentMainSha: HISTORICAL });
+    expect(verified.sourceEvidence).toMatchObject({ historicalMainSha: HISTORICAL, currentMainSha: HISTORICAL,
+      ancestorVerified: true, canonicalSqlSha256: B0098_HASH });
+    expect(verified.sourceEvidence.producerBlobs.map((blob: any) => blob.path)).not.toContain('.github/workflows/production-db-release-orchestrator.yml');
+    expect(() => verifyTestBaseline0098Binding({ binding: baseline, ...sourceOptions, readSourceAt: (head: string, path: string) =>
+      sourceOptions.readSourceAt(head, path) + (head === MAIN && ['.github/workflows/production-db-release-orchestrator.yml', 'scripts/agents/schema-drift-watch.mjs'].includes(path) ? '\nconsumer change' : '') })).not.toThrow();
+  });
+  it('maps TEST only and preserves historical source, raw packets, expected and Production views', () => {
+    const { args } = baselineFixture();
+    const before = structuredClone({ expected: args.expectedSnapshot, test: args.testSnapshot, production: args.productionSnapshot, binding: args.releaseLedgerBinding });
+    const report = compareObserverSnapshots(args);
+    if (!('testBaseline0098Mapping' in report) || !report.testBaseline0098Mapping) throw new Error('verified baseline mapping required');
+    expect(report.testBaseline0098Mapping).toMatchObject({ environment: 'TEST', sourceMainSha: HISTORICAL, currentMainSha: MAIN,
+      sourceRunId: '38025747318', sourceRunAttempt: 1, artifactId: '11659019044', freshLedgerFields: ['version', 'name'],
+      observed: { version: '0098', name: B0098 }, canonical: { version: '0098', name: B0098.slice(5) } });
+    expect(report.differences).toHaveLength(1);
+    expect(report.differences[0]).toMatchObject({ environment: 'PRODUCTION', objectKey: '0136/0136_issue_755_create_tour_order_invoker' });
+    expect({ expected: args.expectedSnapshot, test: args.testSnapshot, production: args.productionSnapshot, binding: args.releaseLedgerBinding }).toEqual(before);
+    expect(report.environments.expected.captureDigest).toEqual(before.expected.captureDigest);
+    expect(report.environments.TEST.migrationLedger).toEqual(before.test.migrationLedger.digest);
+    expect(report.environments.PRODUCTION.captureDigest).toEqual(before.production.captureDigest);
+    expect(report.safety.authorizesDatabaseWrite).toBe(false);
+  });
+  it('leaves absence of baseline binding unchanged and never adds 0098 to the plan', () => {
+    const { args } = baselineFixture();
+    delete args.releaseLedgerBinding.testBaseline0098;
+    const planBefore = structuredClone(args.releaseLedgerBinding.plan);
+    const report = compareObserverSnapshots(args);
+    expect(report.status).toBe('DRIFT_BLOCKED');
+    expect(report.differences.filter((d: any) => d.environment === 'TEST' && d.objectKey.startsWith('0098/'))).toHaveLength(2);
+    expect(report).not.toHaveProperty('testBaseline0098Mapping');
+    expect(args.releaseLedgerBinding.plan).toEqual(planBefore);
+    expect(planBefore.migrations.some((m: any) => m.repoFile === B0098)).toBe(false);
+  });
+  it('does not change any Production classification/status when the baseline makes TEST ledger exact', () => {
+    const { args } = baselineFixture();
+    const unbound = { ...args.releaseLedgerBinding };
+    delete unbound.testBaseline0098;
+    const before = compareObserverSnapshots({ ...args, releaseLedgerBinding: unbound });
+    const after = compareObserverSnapshots(args);
+    if (!('environmentStatuses' in before) || !('environmentStatuses' in after)) throw new Error('captured comparison required');
+    expect(before.differences.filter((d: any) => d.environment === 'TEST')).toHaveLength(2);
+    expect(after.differences.filter((d: any) => d.environment === 'TEST')).toHaveLength(0);
+    expect(after.differences.filter((d: any) => d.environment === 'PRODUCTION')).toEqual(before.differences.filter((d: any) => d.environment === 'PRODUCTION'));
+    expect(after.environmentStatuses.PRODUCTION).toBe(before.environmentStatuses.PRODUCTION);
+    expect(after.status).toBe('DRIFT_BLOCKED');
+  });
+  it.each([false, true])('preserves every unrelated TEST row/classification when another ledger is missing (missing object: %s)', (missingObject) => {
+    const { args, packet } = baselineFixture();
+    const unselected = { version: '0106', name: 'unselected_missing_migration' };
+    args.expectedSnapshot = packet('LOCAL_EXPECTED', [...args.expectedSnapshot.migrationLedger.identities, unselected]);
+    if (missingObject) args.testSnapshot = buildObserverSnapshotFromRaw({ environment: 'TEST', projectRef: 'nmwhwngojosmagjuvxol',
+      observedMainSha: MAIN, observedAt: '2026-09-14T01:18:00Z', evidenceRef: 'local:baseline-consumer-fixture',
+      raw: { ...rawWithoutColumn(), ledger: args.testSnapshot.migrationLedger.identities } });
+    const unbound = { ...args.releaseLedgerBinding };
+    delete unbound.testBaseline0098;
+    const before = compareObserverSnapshots({ ...args, releaseLedgerBinding: unbound });
+    const after = compareObserverSnapshots(args);
+    if (!('environmentStatuses' in before) || !('environmentStatuses' in after)) throw new Error('captured comparison required');
+    const residual = before.differences.filter((d: any) => !(d.environment === 'TEST' && d.surface === 'migrationLedger' && d.objectKey.startsWith('0098/')));
+    expect(after.differences).toEqual(residual);
+    expect(after.differences).toContainEqual(expect.objectContaining({ environment: 'TEST', objectKey: '0106/unselected_missing_migration', classification: null }));
+    expect(after.environmentStatuses.TEST).toBe(before.environmentStatuses.TEST);
+    expect(after.environmentStatuses.PRODUCTION).toBe(before.environmentStatuses.PRODUCTION);
+  });
+  it.each(['repository', 'workflowPath', 'event', 'branch', 'headSha', 'id', 'attempt', 'status', 'conclusion', 'baselineStep', 'integrationStep', 'e2eStep'])('rejects wrong run %s', (field) => {
+    const { baseline, sourceOptions } = baselineFixture();
+    baseline.sourceRun[field] = field === 'attempt' ? 2 : 'wrong';
+    expect(() => verifyTestBaseline0098Binding({ binding: baseline, ...sourceOptions })).toThrow();
+  });
+  it.each(['id', 'name', 'runId', 'headSha', 'expired'])('rejects invalid artifact %s', (field) => {
+    const { baseline, sourceOptions } = baselineFixture();
+    baseline.artifact[field] = field === 'expired' ? true : field === 'id' ? '' : 'wrong';
+    expect(() => verifyTestBaseline0098Binding({ binding: baseline, ...sourceOptions })).toThrow();
+  });
+  it.each(['schemaVersion', 'status', 'repository', 'testProjectRef', 'mainSha', 'sourceRunId', 'sourceRunAttempt', 'testMutationPerformed', 'productionMutationPerformed', 'databaseMutationAuthorized'])('rejects wrong receipt %s', (field) => {
+    const { baseline, sourceOptions } = baselineFixture();
+    baseline.receipt[field] = typeof baseline.receipt[field] === 'boolean' ? !baseline.receipt[field] : 'wrong';
+    expect(() => verifyTestBaseline0098Binding({ binding: baseline, ...sourceOptions })).toThrow();
+  });
+  it.each(['version', 'name', 'created_by', 'idempotency_key'])('rejects historical ledger provenance %s', (field) => {
+    const { baseline, sourceOptions } = baselineFixture();
+    baseline.receipt.migration.ledger[field] = 'wrong';
+    expect(() => verifyTestBaseline0098Binding({ binding: baseline, ...sourceOptions })).toThrow();
+  });
+  it('rejects changed SQL, changed producer/CI, nonancestor and a forged source evidence digest', () => {
+    const { baseline, sourceOptions, args } = baselineFixture();
+    baseline.receipt.migration.sha256 = '0'.repeat(64);
+    expect(() => verifyTestBaseline0098Binding({ binding: baseline, ...sourceOptions })).toThrow();
+    baseline.receipt.migration.sha256 = B0098_HASH;
+    expect(() => verifyTestBaseline0098Binding({ binding: baseline, ...sourceOptions, isAncestor: () => false })).toThrow(/ANCESTOR/);
+    for (const changed of ['supabase/migrations/0098_reconcile_tour_orders_legacy_contact_columns.sql',
+      ...args.releaseLedgerBinding.testBaseline0098.sourceEvidence.producerBlobs.map((blob: any) => blob.path)]) {
+      expect(() => verifyTestBaseline0098Binding({ binding: baseline, ...sourceOptions, readSourceAt: (head: string, path: string) =>
+        sourceOptions.readSourceAt(head, path) + (head === MAIN && path === changed ? '\nchanged' : '') })).toThrow(/SOURCE/);
+    }
+    args.releaseLedgerBinding.testBaseline0098.sourceEvidence.producerBlobs[0].sha256 = '0'.repeat(64);
+    expect(() => compareObserverSnapshots(args)).toThrow(/SOURCE/);
+  });
+  it('rejects an absent source binding and a changed migration identity instead of silently omitting the baseline', () => {
+    const { args, baseline, sourceOptions } = baselineFixture();
+    delete args.releaseLedgerBinding.testBaseline0098.sourceEvidence;
+    expect(() => compareObserverSnapshots(args)).toThrow(/TEST_BASELINE_BINDING_REQUIRED/);
+    baseline.receipt.migration.repoFile = '0098_wrong';
+    expect(() => verifyTestBaseline0098Binding({ binding: baseline, ...sourceOptions })).toThrow(/IDENTITY/);
+  });
+  it.each(['missing', 'duplicate', 'short plus full', 'same version wrong name', 'wrong version'])('rejects ambiguous/missing TEST 0098: %s', (fault) => {
+    const { args, packet, previous } = baselineFixture();
+    const row = { version: '0098', name: B0098 };
+    const ledger = fault === 'missing' ? [] : fault === 'duplicate' ? [row, row] : fault === 'short plus full' ? [row, { ...row, name: B0098.slice(5) }]
+      : [{ ...row, ...(fault === 'wrong version' ? { version: '0097' } : { name: 'wrong_name' }) }];
+    expect(() => { args.testSnapshot = packet('TEST', [previous, ...ledger]); compareObserverSnapshots(args); }).toThrow();
+  });
+  it.each(['missing', 'duplicate', 'short plus full', 'same version wrong name', 'full only', 'wrong version'])('rejects ambiguous/missing expected 0098: %s', (fault) => {
+    const { args, packet, previous, canonical } = baselineFixture();
+    const ledger = fault === 'missing' ? [] : fault === 'duplicate' ? [canonical, canonical] : fault === 'short plus full' ? [canonical, { ...canonical, name: B0098 }]
+      : [{ ...canonical, ...(fault === 'wrong version' ? { version: '0097' } : { name: fault === 'full only' ? B0098 : 'wrong_name' }) }];
+    expect(() => { args.expectedSnapshot = packet('LOCAL_EXPECTED', [previous, ...ledger]); compareObserverSnapshots(args); }).toThrow();
+  });
+  it('preserves columns, unrelated TEST names and Production 0098 drift', () => {
+    const { args, packet, previous } = baselineFixture();
+    const originalReport = compareObserverSnapshots(args);
+    const ledger = args.testSnapshot.migrationLedger.identities;
+    args.testSnapshot = packet('TEST', [...ledger, { version: '0106', name: '0106_other_full_name' }], 'text|false|');
+    args.productionSnapshot = packet('PRODUCTION', [previous, { version: '0098', name: B0098 }]);
+    const report = compareObserverSnapshots(args);
+    expect(report.status).toBe('DRIFT_BLOCKED');
+    expect(report.differences).toEqual(expect.arrayContaining([
+      expect.objectContaining({ environment: 'TEST', surface: 'columns' }),
+      expect.objectContaining({ environment: 'TEST', objectKey: '0106/0106_other_full_name' }),
+      expect.objectContaining({ environment: 'PRODUCTION', objectKey: `0098/${B0098}` }),
+      ...originalReport.differences.map(({ classification: _classification, ...difference }: any) => expect.objectContaining(difference)),
+    ]));
+    if (!('testBaseline0098Mapping' in report) || !report.testBaseline0098Mapping) throw new Error('verified baseline mapping required');
+    expect(report.testBaseline0098Mapping.observedFingerprint).toBe(sha256(JSON.stringify({ name: B0098, version: '0098' })));
+  });
 });

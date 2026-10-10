@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import postgres from 'postgres';
 import {
   ACL_METADATA_SQL, EXPECTED_PROJECT_REFS, METADATA_QUERY_DIGEST, METADATA_QUERY_VERSION,
@@ -374,6 +375,106 @@ function itemsByKey(items) { return new Map(items.map((item) => [item.key, item.
 function ledgerItems(snapshot) {
   return snapshot.migrationLedger.identities.map((item) => ({ key: `${item.version}/${item.name}`, fingerprint: sha256(stableStringify(item)) }));
 }
+const BASELINE_0098 = Object.freeze({
+  repository: 'smallwei0301/vibeaico-admin-rebuild', version: '0098',
+  repoFile: '0098_reconcile_tour_orders_legacy_contact_columns',
+  sha256: 'f0bd13dcf2226143d90dc1ca3431df7a3020e3d3f9eabd446b640b03261193e5',
+});
+// Producer entry and its direct source helpers, plus the canonical CI entry.
+// Consumer orchestrator/observer changes are deliberately outside this set.
+const BASELINE_PRODUCER_PATHS = Object.freeze([
+  '.github/workflows/ci.yml', 'scripts/db/validate-production-db-release-on-test.mjs',
+  'scripts/db/canonical-migration-transport.mjs', 'scripts/agents/schema-truth-guardrails.mjs',
+  'scripts/agents/production-db-release-plan.mjs',
+]);
+function readGitSourceAt(head, path) {
+  const result = spawnSync('git', ['show', `${head}:${path}`], { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
+  if (result.status !== 0) fail('TEST_BASELINE_SOURCE_UNAVAILABLE', 'immutable baseline/current source is unavailable');
+  return result.stdout;
+}
+function gitIsAncestor(before, after) {
+  return spawnSync('git', ['merge-base', '--is-ancestor', before, after]).status === 0;
+}
+/**
+ * GitHub run/jobs/artifact facts must come from trusted orchestrator admission,
+ * not this pure receipt checker. Recheck ancestry and immutable source bytes
+ * here and in the fresh observer; never relabel the historical receipt's SHA.
+ */
+export function verifyTestBaseline0098Binding({ binding, currentMainSha, readSourceAt = readGitSourceAt, isAncestor = gitIsAncestor }) {
+  const mainSha = validSha(currentMainSha, 'currentMainSha');
+  const { receipt, sourceRun, artifact } = binding ?? {};
+  const spec = BASELINE_0098;
+  if (!receipt || receipt.schemaVersion !== 1 || receipt.status !== 'TEST_BASELINE_0098_VERIFIED'
+    || receipt.repository !== spec.repository || receipt.testProjectRef !== EXPECTED_PROJECT_REFS.TEST
+    || !SHA.test(receipt.mainSha) || receipt.testMutationPerformed !== true
+    || receipt.productionMutationPerformed !== false || receipt.databaseMutationAuthorized !== false) {
+    fail('TEST_BASELINE_RECEIPT_INVALID', 'the closed TEST-only baseline receipt is required');
+  }
+  const migration = receipt.migration;
+  if (!migration || migration.repoFile !== spec.repoFile || migration.sha256 !== spec.sha256
+    || migration.ledger?.version !== spec.version || migration.ledger?.name !== spec.repoFile
+    || migration.ledger?.created_by !== 'vibeaico-test-baseline-0098'
+    || migration.ledger?.idempotency_key !== `test-baseline-0098:${spec.sha256}`
+    || !DIGEST.test(receipt.columnFingerprints?.before) || !DIGEST.test(receipt.columnFingerprints?.after)) {
+    fail('TEST_BASELINE_IDENTITY_INVALID', '0098 SQL/ledger identity and historical provenance must match the producer');
+  }
+  if (!sourceRun || sourceRun.repository !== spec.repository || sourceRun.workflowPath !== '.github/workflows/ci.yml'
+    || sourceRun.event !== 'workflow_dispatch' || sourceRun.branch !== 'main' || sourceRun.headSha !== receipt.mainSha
+    || sourceRun.status !== 'completed' || sourceRun.conclusion !== 'success'
+    || !/^[1-9][0-9]*$/.test(String(sourceRun.id)) || String(receipt.sourceRunId) !== String(sourceRun.id)
+    || !Number.isSafeInteger(sourceRun.attempt) || sourceRun.attempt < 1 || receipt.sourceRunAttempt !== sourceRun.attempt
+    || sourceRun.baselineStep !== 'success' || sourceRun.integrationStep !== 'success' || sourceRun.e2eStep !== 'success') {
+    fail('UNTRUSTED_TEST_BASELINE_SOURCE', 'successful main CI dispatch and baseline/integration/E2E execution must bind the exact run/attempt');
+  }
+  if (!artifact || !/^[1-9][0-9]*$/.test(String(artifact.id)) || artifact.expired !== false
+    || artifact.name !== `test-baseline-0098-evidence-${receipt.mainSha}-${sourceRun.id}`
+    || artifact.runId !== String(sourceRun.id) || artifact.headSha !== receipt.mainSha) {
+    fail('TEST_BASELINE_ARTIFACT_MISMATCH', 'the unique immutable baseline artifact must bind the same run and source');
+  }
+  if (isAncestor(receipt.mainSha, mainSha) !== true) fail('TEST_BASELINE_SOURCE_NOT_ANCESTOR', 'historical source must be an ancestor of current main');
+  const sqlPath = `supabase/migrations/${spec.repoFile}.sql`;
+  if (sha256(readSourceAt(receipt.mainSha, sqlPath)) !== spec.sha256 || sha256(readSourceAt(mainSha, sqlPath)) !== spec.sha256) {
+    fail('TEST_BASELINE_SOURCE_CHANGED', 'historical and current canonical 0098 SQL must retain the closed hash');
+  }
+  const producerBlobs = BASELINE_PRODUCER_PATHS.map((path) => {
+    const before = sha256(readSourceAt(receipt.mainSha, path));
+    if (before !== sha256(readSourceAt(mainSha, path))) fail('TEST_BASELINE_SOURCE_CHANGED', `baseline producer source changed: ${path}`);
+    return { path, sha256: before };
+  });
+  const sourceEvidence = { historicalMainSha: receipt.mainSha, currentMainSha: mainSha,
+    ancestorVerified: true, canonicalSqlSha256: spec.sha256, producerBlobs };
+  if (binding.sourceEvidence && stableStringify(binding.sourceEvidence) !== stableStringify(sourceEvidence)) {
+    fail('TEST_BASELINE_SOURCE_BINDING_MISMATCH', 'source evidence differs from independently read immutable source');
+  }
+  return { receipt, sourceRun, artifact, sourceEvidence };
+}
+function baseline0098TestLedgerView({ expected, test, binding, mainSha, readSourceAt, isAncestor }) {
+  const baseline = binding?.testBaseline0098;
+  if (baseline === undefined) return { test, trace: null };
+  if (!baseline?.sourceEvidence || binding.plan.migrations.some((entry) => entry.repoFile === BASELINE_0098.repoFile)) {
+    fail('TEST_BASELINE_BINDING_REQUIRED', 'baseline is a separately source-bound prerequisite, never a Production-plan migration');
+  }
+  const verified = verifyTestBaseline0098Binding({ binding: baseline, currentMainSha: mainSha, readSourceAt, isAncestor });
+  const spec = BASELINE_0098;
+  const shortName = spec.repoFile.slice(5);
+  // Include any same-version row or either spelling at another version so
+  // duplicate, full+short, wrong-name and wrong-version identities fail closed.
+  const relevant = (rows) => rows.filter((row) => row.version === spec.version || row.name === spec.repoFile || row.name === shortName);
+  const expectedRows = relevant(expected.migrationLedger.identities);
+  const testRows = relevant(test.migrationLedger.identities);
+  if (expectedRows.length !== 1 || expectedRows[0].version !== spec.version || expectedRows[0].name !== shortName
+    || testRows.length !== 1 || testRows[0].version !== spec.version || testRows[0].name !== spec.repoFile) {
+    fail('TEST_BASELINE_LEDGER_IDENTITY_REQUIRED', 'one fresh TEST full name and one canonical short name at 0098 are required');
+  }
+  const observed = testRows[0]; const canonical = expectedRows[0];
+  return { test: { ...test, migrationLedger: { ...test.migrationLedger,
+    identities: test.migrationLedger.identities.map((row) => row === observed ? canonical : row) } },
+  trace: { environment: 'TEST', sourceMainSha: verified.receipt.mainSha, currentMainSha: mainSha,
+    sourceRunId: String(verified.sourceRun.id), sourceRunAttempt: verified.sourceRun.attempt, artifactId: String(verified.artifact.id),
+    receiptDigest: sha256(stableStringify(verified.receipt)), sourceEvidence: verified.sourceEvidence,
+    freshLedgerFields: ['version', 'name'], historicalProvenance: 'VERIFIED_RECEIPT_ONLY_NOT_FRESH_READBACK',
+    observed, canonical, observedFingerprint: sha256(stableStringify(observed)), canonicalFingerprint: sha256(stableStringify(canonical)) } };
+}
 // Compare a view only: capture identities/digests remain immutable evidence.
 // The workflow supplies this binding only after trusted GitHub G3 provenance and
 // reassembly of the existing TEST evidence contract. Callers must supply the
@@ -530,7 +631,7 @@ function evidenceUnavailableReport({ mainSha, environments, normalizedExceptions
     safety: { fullEnvironmentParityProven: false, authorizesDatabaseWrite: false, rawDataIncluded: false } };
 }
 /** @param {any} input */
-export function compareObserverSnapshots({ expectedSnapshot, testSnapshot, productionSnapshot, currentMainSha, exceptions = [], now = Date.now(), maxEvidenceAgeMinutes = 60, releaseLedgerBinding, aliasMap, readCanonicalSql }) {
+export function compareObserverSnapshots({ expectedSnapshot, testSnapshot, productionSnapshot, currentMainSha, exceptions = [], now = Date.now(), maxEvidenceAgeMinutes = 60, releaseLedgerBinding, aliasMap, readCanonicalSql, readSourceAt, isAncestor }) {
   const mainSha = validSha(currentMainSha, 'currentMainSha');
   const compareTime = typeof now === 'number' ? now : Date.parse(now);
   if (!Number.isFinite(compareTime)) fail('INVALID_COMPARE_TIME', 'comparison time must be finite');
@@ -551,15 +652,18 @@ export function compareObserverSnapshots({ expectedSnapshot, testSnapshot, produ
   if (staleEnvironments.length) return evidenceUnavailableReport({ mainSha, environments, normalizedExceptions, reason: 'EVIDENCE_STALE', affectedEnvironments: staleEnvironments });
   if (expected.queryDigest.value !== test.queryDigest.value || expected.queryDigest.value !== production.queryDigest.value) fail('QUERY_CONTRACT_MISMATCH', 'snapshot query contracts differ');
   const planned = plannedTestLedgerView({ expected, test, binding: releaseLedgerBinding, mainSha, aliasMap, readCanonicalSql });
+  const baseline = baseline0098TestLedgerView({ expected, test: planned.test, binding: releaseLedgerBinding, mainSha, readSourceAt, isAncestor });
   // A trusted pre-apply plan selects NOT_APPLIED migrations. Comparison-only
   // canonical aliases must not hide a selected migration already in Production.
   if (planned.trace && releaseLedgerBinding.plan.migrations.some((migration) =>
     production.migrationLedger.identities.some((row) => row.name === migration.repoFile || row.name === migration.repoFile.slice(5)))) {
     fail('PLANNED_PRODUCTION_LEDGER_PRESENT', 'selected pending migration already exists in the raw Production ledger');
   }
+  // Only the two 0098 name rows change. Preserve pre-baseline pending decisions
+  // for every other TEST/Production difference, including missing objects.
   const testLedger = ledgerRelation(planned.expected, planned.test);
   const productionLedger = ledgerRelation(planned.expected, production);
-  const testResult = compareEnvironment({ expected: planned.expected, actual: planned.test, environment: 'TEST', exceptions: normalizedExceptions, now: compareTime,
+  const testResult = compareEnvironment({ expected: planned.expected, actual: baseline.test, environment: 'TEST', exceptions: normalizedExceptions, now: compareTime,
     pendingClassification: testLedger.strictSubset ? 'EXPECTED_PENDING_TEST' : null });
   const productionPendingClassification = productionLedger.strictSubset
     ? testLedger.exact ? 'EXPECTED_PENDING_PRODUCTION' : testLedger.strictSubset ? 'EXPECTED_PENDING_TEST' : null
@@ -573,6 +677,7 @@ export function compareObserverSnapshots({ expectedSnapshot, testSnapshot, produ
   return {
     schemaVersion: DRIFT_WATCH_SCHEMA_VERSION, observedMainSha: mainSha, status, differenceCount: allDifferences.length,
     ...(planned.trace ? { plannedLedgerMapping: planned.trace } : {}),
+    ...(baseline.trace ? { testBaseline0098Mapping: baseline.trace } : {}),
     differences: allDifferences, environments, environmentStatuses: { TEST: testResult.status, PRODUCTION: productionResult.status },
     exceptionSummary: { provided: normalizedExceptions.length, matched: new Set([...testResult.usedExceptions, ...productionResult.usedExceptions]).size,
       expired: new Set([...testResult.expired, ...productionResult.expired]).size, unmatched: new Set([...testResult.unmatched, ...productionResult.unmatched]).size },
