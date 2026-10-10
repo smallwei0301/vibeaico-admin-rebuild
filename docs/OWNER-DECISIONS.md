@@ -14,9 +14,15 @@ active singleton 移至 repo `smallwei0301/vibeaico-admin-rebuild`、PR848、exa
 以 `PR848_RETAINED_ORIGINAL_V1` 保存真實原 prompt 的私下保留 commitment，沿用原 UTF-8 hash／byteLength、
 retention、operator attestation 及公開端不能認證私下原文的限制；hash 不是原文。
 新 BUILD 是既有 exact source 的 adoption／full verification，不冒原作者、不補造原 spawn UTC 或 backend 身分；
+#848 BUILD 的 policy `buildWorkScope` 與角色 `performedWorkScope` 須固定為
+`Fresh adoption and full verification of existing PR #848 exact source; no original authorship claimed.`
+private `publicWorkScope` 仍必須相等；普通施工、原作者、缺欄位及追加矛盾聲明均拒絕。
+新兩角色公開原 message 只接受 string；不以 object／array 的隱式轉字串冒充原文，private 限制不變。
+這是可機驗聲明／綁定，不是對隱藏 prompt 語義、實際工作完成或操作者背書真偽的獨立認證。
 批准 UTC 以完整小數秒保存；新 BUILD 先親見 enabled-main policy，再 spawn／開始工作，不准用批准前或缺政策回讀的角色補位。
 BUILD／REVIEW policyReadback 須同一 main/version，canonical 路徑核 trusted policy evidence／ancestry／generation；
 兩角色 spawn 不得早於批准，BUILD readback 不得晚於 spawn，既有完成後 fresh FINAL 順序不變。
+#848 其餘原有 role/work/completion/readback/canonical source 時序也保留完整 UTC 小數，比較順序與完成同瞬間，不允許 1ns 矛盾被毫秒截斷。
 新 FINAL 仍須 BUILD 完成及 canonical receipt／已啟用 main policy 回讀後才另建獨立任務。
 依正常治理 source CI／反例／獨立審查／main 合併及回讀生效，不以治理 bootstrap 自批。
 不啟動 Work、不含 DB／TEST／Production、G5、writer、credentials／permissions；#552／#700 成本、

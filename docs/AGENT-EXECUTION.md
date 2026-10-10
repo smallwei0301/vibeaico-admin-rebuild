@@ -615,6 +615,12 @@ repository=`smallwei0301/vibeaico-admin-rebuild`、PR=848、exact head
 `PRODUCT_SOURCE_FINAL_RISK` 全相符，才可用 `executionIdentityKind=NATIVE_TASK`。
 Owner `2026-10-10T12:46:54.792160Z` 批准此有界治理改動；正常治理測試／獨立審查／main 合併及回讀後才生效。
 新的 BUILD 任務必須新鮮接手並完整驗證上述既有 source，明寫 adoption／full verification，不能冒稱原作者。
+#848 的 `nativeRolePilot.buildWorkScope` 與 BUILD `nativeTaskEvidence.performedWorkScope` 均須逐字等於：
+`Fresh adoption and full verification of existing PR #848 exact source; no original authorship claimed.`
+缺欄位、普通施工／原作者宣稱、改字／截短或追加矛盾字句均拒絕；private `publicWorkScope` 仍須逐字相等。
+這是固定公開聲明，不是原 spawn prompt；不能把它補填成未捕獲原文。兩角色 CAPTURED 原 message 必須是 string，
+不接受可被 String() 轉換的 object／array／number；WITHHELD_PRIVATE 的 null／commitment 契約不變。
+機械驗證只核聲明與證據一致性，不認證操作者真的完成全驗證、自然語言原 prompt 的語義或原作者身分真偽。
 不得重用或重建原 BUILD 缺失的 spawn UTC／actor/session，也沒有新增歷史身分或時間豁免。
 #848 的 `adoptionApprovedAt` 必須保留上述精確 UTC；BUILD／REVIEW spawn 均不得早於批准，
 以完整小數秒比較，不向下截成毫秒。BUILD 另保存親見 `nativeTaskEvidence.policyReadback`：
@@ -622,6 +628,9 @@ Owner `2026-10-10T12:46:54.792160Z` 批准此有界治理改動；正常治理�
 BUILD 與 REVIEW 的 policyReadback.mainSha 必須相同；canonical 路徑另比對既有 trusted
 `nativePolicyEvidence.reviewedMainSha`，沿 adapter 的真實 main bytes／ancestry／config generation 驗證。
 候選自填 main 或公開摘要不能自行啟用；缺回讀、不同 main/version、回讀晚於 spawn 均 pending。
+#848 也以完整 UTC 小數鏡映既有順序：兩角色 spawn ≤ started ≤ work.observed ≤ completed ≤ compiled ≤ now，
+completion.observed 與 completed 必須同一瞬間；BUILD completed ≤ builderReadback.updated ≤ observed ≤ FINAL spawn。
+canonical 路徑另核 compiled ≤ source.updated ≤ review.submitted ≤ now；不新增 REVIEW policy 回讀必須晚於 BUILD 完成的條件。
 這個精確採用時間窗只限 #848，#843 歷史時序／NOT_CAPTURED 條件不變。
 新 FINAL 必須另建獨立任務，沿下列原有完成、canonical BUILD 與 enabled-main 回讀順序執行。
 
