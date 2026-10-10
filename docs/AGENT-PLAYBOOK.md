@@ -906,6 +906,14 @@ normal prepare 的 reviewer packet 亦須列出獨立角色收據，正例以 cu
 - 預防：source pin變更前，先拿真實可取得的角色材料核對完整public receipt欄位與可公開性；缺失、私密、已公開是不同狀態，不互相冒充。需要新增披露模式時先取得精確範圍裁示，shared/local/canonical入口與拒絕反例一起改，正常治理main生效並回讀後才使用。新增source邏輯使舊head的clean／CI／review證據失效，必須對最終GitHub SHA重新跑完整鏈。
 - 驗證：#846 exact3e86466重新 integrity→clean npmci→type→377 suites／5775 tests→mock170→原stock VERIFY_PASS，獨立source review5477187866與Codex exact3e無findings；[source CI38017757393](https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/38017757393) SUCCESS。protected squash為0c6ea49，main五檔blob與已審查source相同。舊587d source CI及初次環境FAIL保留；main CI、#843 Product Final Risk與DB／TEST效力仍分別按真實終態核驗。
 
+#### 2026-10-10 — #849：完整採用契約不能只測已修的單一 finding
+
+- 接續同一 native receipt 覆蓋事件，保留本條歷史 6 次，不按 finding／反例／重跑加次數。兩項 P1 分別是 [4237757692](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/849#discussion_r4237757692) 的批准／enabled-main 回讀下限缺漏，以及 [4237831425](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/849#discussion_r4237831425) 的普通施工 scope 仍可冒充新 adoption；先前獨審與完整測試 PASS 都曾被新 finding 推翻，舊 PASS、原 FAIL 與中斷 UNKNOWN 均保留，不能沿用作新 head 放行。
+- 修正／預防：把批准契約逐項對上實際 predicate、shared／local／canonical 入口與正反例矩陣，不只重測上一個漏洞。#848 BUILD 固定聲明 adoption／full verification／不冒原作者，private publicWorkScope 必須相等；兩角色 CAPTURED prompt 必須是真 string，不能用 object／array／number 隱式轉字串。所有既有角色、完成、回讀及 canonical source 時序保留奈秒精度與完成同瞬間；不額外規定 REVIEW policy 回讀必須晚於 BUILD 完成。
+- 真實 capture：先回讀已啟用 main policy，再新建 BUILD；GO／work 前即時保存親見的 spawn request／result／UTC 與真實原 prompt，不事後補造。固定公開 scope 不是原 prompt，hash 也不是原文。另建 FINAL 仍須在 BUILD 停筆完成、canonical BUILD 與 enabled-main 回讀後；未知 backend／served identity 保持未知。
+- 驗證：獨立完整契約審查實跑 565 tests＋32 個 adapter probes（31 個非法反例拒絕、1 個合法控制通過），零新 finding；最終 exact `381b050` 重新 integrity→真 clean npm ci→type→380 suites／6031 tests→mock170/170→原 stock VERIFY_PASS，[source CI38058794103](https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/38058794103) 亦實跑成功。fresh Codex 無新 finding，兩 P1 已正常解決；protected squash `1e1e3dd0` 的五檔 bytes 與已審查 tree 相符。main CI 與 #848 新 BUILD／FINAL 效力仍各自按真實終態核驗。
+- 信任／授權邊界不變：機械檢查只能驗公開聲明、格式、來源與一致性，不能認證私下原文、實際工作完成或完全自洽的不實操作者背書。只限現行 #848 exact source 的有界試行，不擴 #843 歷史例外，不新增 DB／TEST／Production／Work 權限，也不宣稱成熟自動化；正式契約仍以 `AGENT-EXECUTION.md` §7.2 為準。
+
 #### 2026-10-01 — #711／#717／#729：局部准入綠燈沒有覆蓋角色、原收據與 review lifecycle
 
 - 證據／根因：[#711 finding 4154750603](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/711#discussion_r4154750603) 指出普通 `ASTRA_RISK: NONE` 在角色檢查前早退，普通 Sol 自審仍可通過；[#717 finding 4154669781](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/717#discussion_r4154669781) 指出 pure-rebase 正向 fixture 把原 role receipt 改成新 head，未測到真正 carryover；[#729 finding 4155090298](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/729#discussion_r4155090298) 指出只監聽 source／comment 事件，較新 submitted／edited／dismissed review 不會刷新 stable status。這些是治理准入／測試覆蓋缺口，不增加 PB-036 歷史 Product 模型違規 5 次，也沒有證據宣稱 Production 事故。
@@ -951,7 +959,7 @@ normal prepare 的 reviewer packet 亦須列出獨立角色收據，正例以 cu
 
 - 首次／最近：2026-09-11／2026-10-10
 - 發生次數：6（#352、#361、#370、#553、#586，加 #713 paired-scorecard reproduction；次數是事件，不是 CI 執行總數）
-- Issue／PR／CI：PR #352、#361、#370；PR #713／exact-head workflows `36810577964` and `36810825595`；#844／#845 native receipt 覆蓋與 #846 隱私延伸／source CI `38017757393`；#847 summary 索引修正 finding `4236151821`（不新增事件次數）
+- Issue／PR／CI：PR #352、#361、#370；PR #713／exact-head workflows `36810577964` and `36810825595`；#844／#845 native receipt 覆蓋與 #846 隱私延伸／source CI `38017757393`；#847 summary 索引修正 finding `4236151821`（不新增事件次數）；#849 兩項採用契約 P1 `4237757692`／`4237831425` 與 source CI `38058794103`（同事件續例）
 - 分類：Agent
 - 事件：#352 開出後被守門與 CI 連退四次，**四次都是中繼資料填錯，沒有一次是程式碼問題**：
   1. `FINAL_CANONICAL_REQUIRED: false` —— `TEST_PROFILE: LOCAL_ISOLATED` 強制要求 `true`
