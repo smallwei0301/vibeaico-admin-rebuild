@@ -949,9 +949,9 @@ normal prepare 的 reviewer packet 亦須列出獨立角色收據，正例以 cu
   驗證以 #566 對應版本的 focused mutation、preflight、required source CI 與合併後分類事件為準；
   SOURCE_ONLY 不宣稱資料庫或產品驗收通過，舊失敗通知不覆寫。
 
-- 首次／最近：2026-09-11／2026-10-01
+- 首次／最近：2026-09-11／2026-10-10
 - 發生次數：6（#352、#361、#370、#553、#586，加 #713 paired-scorecard reproduction；次數是事件，不是 CI 執行總數）
-- Issue／PR／CI：PR #352、#361、#370；PR #713／exact-head workflows `36810577964` and `36810825595`
+- Issue／PR／CI：PR #352、#361、#370；PR #713／exact-head workflows `36810577964` and `36810825595`；#844／#845 native receipt 覆蓋與 #846 隱私延伸／source CI `38017757393`；#847 summary 索引修正 finding `4236151821`（不新增事件次數）
 - 分類：Agent
 - 事件：#352 開出後被守門與 CI 連退四次，**四次都是中繼資料填錯，沒有一次是程式碼問題**：
   1. `FINAL_CANONICAL_REQUIRED: false` —— `TEST_PROFILE: LOCAL_ISOLATED` 強制要求 `true`
