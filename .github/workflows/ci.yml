@@ -38,6 +38,11 @@ on:
         default: FULL_PENDING_SET
         type: choice
         options: [FULL_PENDING_SET, ISSUES_17_680, ISSUE_37_0131_0134, ISSUE_46_0135, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE]
+      test_baseline_0098:
+        description: Explicit TEST-only 0098 baseline; main_manual only, mutually exclusive with Production release inputs
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -223,8 +228,22 @@ jobs:
           RELEASE_SCOPE: ${{ inputs.production_db_release_scope }}
           DISPATCH_REASON: ${{ inputs.dispatch_reason }}
           EXPECTED_HEAD: ${{ inputs.expected_head }}
+          BASELINE_0098: ${{ inputs.test_baseline_0098 }}
+          RUN_TEST_VALIDATION: ${{ needs.classify-changes.outputs.run_test_validation }}
+          TEST_LANE_HOLDERS: ${{ needs.classify-changes.outputs.test_lane_holders }}
         run: |
           set -euo pipefail
+          case "${BASELINE_0098:-}" in ''|false|true) ;; *) exit 1 ;; esac
+          if [ "${BASELINE_0098:-}" = 'true' ]; then
+            test "$RUN_TEST_VALIDATION" = 'true'
+            test -z "$TEST_LANE_HOLDERS"
+            test -z "$RELEASE_ID"
+            test -z "$PLANNED_AT"
+            test "$RELEASE_SCOPE" = 'FULL_PENDING_SET'
+            test "$GITHUB_REF" = 'refs/heads/main'
+            test "$DISPATCH_REASON" = 'main_manual'
+            test "$GITHUB_SHA" = "$EXPECTED_HEAD"
+          fi
           if [ -n "$RELEASE_ID" ] || [ -n "$PLANNED_AT" ]; then
             test -n "$RELEASE_ID"
             test -n "$PLANNED_AT"
@@ -271,6 +290,28 @@ jobs:
           node scripts/db/validate-production-db-release-on-test.mjs apply \
             "$RUNNER_TEMP/production-db-release-plan.json" \
             "$RUNNER_TEMP/production-db-test-release-evidence.json"
+      - name: Apply explicit canonical TEST 0098 baseline
+        if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.dispatch_reason == 'main_manual' && inputs.expected_head == github.sha && inputs.test_baseline_0098 == true && inputs.production_db_release_id == '' && inputs.production_db_planned_at == '' }}
+        shell: bash
+        env:
+          MAIN_SHA: ${{ github.sha }}
+          TEST_PROJECT_REF: nmwhwngojosmagjuvxol
+          TEST_DB_RELEASE_TOKEN: ${{ secrets.TEST_DB_RELEASE_TOKEN }}
+          NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/config/supabase-production-root-bundle.crt
+        run: |
+          set -euo pipefail
+          test -n "$TEST_DB_RELEASE_TOKEN"
+          test -s "$NODE_EXTRA_CA_CERTS"
+          node scripts/db/validate-production-db-release-on-test.mjs test-baseline-0098 \
+            "$MAIN_SHA" "$RUNNER_TEMP/test-baseline-0098-evidence.json"
+      - name: Upload canonical TEST 0098 baseline evidence
+        if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.dispatch_reason == 'main_manual' && inputs.expected_head == github.sha && inputs.test_baseline_0098 == true && inputs.production_db_release_id == '' && inputs.production_db_planned_at == '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-baseline-0098-evidence-${{ github.sha }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/test-baseline-0098-evidence.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Run integration tests
         if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' }}
         shell: bash

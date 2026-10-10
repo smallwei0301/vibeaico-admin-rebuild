@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import process from 'node:process';
 import postgres from 'postgres';
+import { admitCanonicalMigrationSource, sha256, stableStringify } from '../agents/schema-truth-guardrails.mjs';
 
 import {
   buildProductionDbReleasePlan,
@@ -22,7 +23,23 @@ const CREATED_BY = 'vibeaico-g3-test-validator';
 const LOCK_KEY = `vibeaico-g3-test-release:${TEST_PROJECT_REF}`;
 const SHA = /^[0-9a-f]{40}$/;
 const TEST_SESSION_POOLER_HOST = /^aws-\d+-ap-northeast-1\.pooler\.supabase\.com$/i;
+// #755's TEST baseline prerequisite is separate from every Production plan.
+// This is an apply-only, closed selection; an existing identity needs read-only
+// reconciliation, never replay or a manually repaired ledger.
+const TEST_BASELINE_0098 = Object.freeze({
+  repoFile: '0098_reconcile_tour_orders_legacy_contact_columns',
+  path: 'supabase/migrations/0098_reconcile_tour_orders_legacy_contact_columns.sql',
+  sha256: 'f0bd13dcf2226143d90dc1ca3431df7a3020e3d3f9eabd446b640b03261193e5',
+  version: '0098',
+  created_by: 'vibeaico-test-baseline-0098',
+});
+const BASELINE_COLUMNS_QUERY = `select pg_catalog.to_regclass('public.tour_orders') is not null as table_exists,
+  coalesce((select jsonb_agg(jsonb_build_object('column_name', column_name, 'data_type', data_type,
+    'is_nullable', is_nullable, 'column_default', column_default) order by column_name)
+    from information_schema.columns where table_schema='public' and table_name='tour_orders'
+    and column_name in ('customer_name', 'customer_phone')), '[]'::jsonb) as columns`;
 
+/** @returns {never} */
 function fail(code, message) {
   const error = new Error(`${code}: ${message}`);
   error.code = code;
@@ -44,15 +61,26 @@ export function parseProjectBoundTestDbReleaseUrl(connectionString) {
     fail('TEST_RELEASE_URL_PROJECT_MISMATCH', 'TEST release URL must bind the canonical postgres TEST pooler user');
   }
   if (!parsed.password) fail('TEST_RELEASE_URL_PASSWORD_REQUIRED', 'TEST release URL requires a password');
+  let password;
+  try { password = decodeURIComponent(parsed.password); } catch {
+    fail('MALFORMED_TEST_RELEASE_URL', 'TEST release password is not valid URL encoding');
+  }
   const entries = [...parsed.searchParams.entries()];
   if (parsed.hash || entries.length !== 1 || entries[0][0] !== 'sslmode' || String(entries[0][1]).toLowerCase() !== 'verify-full') {
     fail('TEST_RELEASE_TLS_VERIFICATION_REQUIRED', 'TEST release URL must use exactly sslmode=verify-full');
   }
-  return { projectRef: TEST_PROJECT_REF, role: 'postgres', transportMode: 'SUPAVISOR_SESSION', connectionString: raw };
+  return { projectRef: TEST_PROJECT_REF, role: 'postgres', transportMode: 'SUPAVISOR_SESSION', connectionString: raw,
+    host: parsed.hostname, port: 5432, database: 'postgres', username: `postgres.${TEST_PROJECT_REF}`, password };
+}
+/** Pass admitted fields, never a raw URL for postgres.js to reinterpret. */
+export function buildProjectBoundTestDbReleaseClientOptions(connectionString) {
+  const target = parseProjectBoundTestDbReleaseUrl(connectionString);
+  return { host: [target.host], port: [target.port], database: target.database,
+    username: target.username, password: target.password, ssl: 'verify-full',
+    max: 1, prepare: false, connect_timeout: 15, idle_timeout: 5 };
 }
 async function queryViaTestDbReleaseUrl({ connectionString, sql: statement, readOnly }) {
-  parseProjectBoundTestDbReleaseUrl(connectionString);
-  const client = postgres(connectionString, { max: 1, prepare: false, connect_timeout: 15, idle_timeout: 5 });
+  const client = postgres(buildProjectBoundTestDbReleaseClientOptions(connectionString));
   try {
     if (readOnly) {
       return await client.begin(async (transaction) => {
@@ -402,6 +430,144 @@ export async function validateProductionDbReleasePlanOnTest({
   };
 }
 
+function baselineLedgerSnapshot(rows) {
+  if (!Array.isArray(rows)) fail('INVALID_TEST_BASELINE_LEDGER', 'ledger rows are required');
+  const snapshot = {};
+  for (const row of rows) {
+    if (!row || typeof row.version !== 'string' || !/^\d{4,14}$/.test(row.version)
+      || typeof row.name !== 'string' || !row.name
+      || ![row.created_by, row.idempotency_key].every((value) => value === null || typeof value === 'string')
+      || Object.hasOwn(snapshot, row.version)) {
+      fail('INVALID_TEST_BASELINE_LEDGER', 'ledger identities and provenance must be complete and unique');
+    }
+    snapshot[row.version] = { version: row.version, name: row.name,
+      created_by: row.created_by, idempotency_key: row.idempotency_key };
+  }
+  return snapshot;
+}
+
+function assertBaselineColumns(state) {
+  const columns = state?.columns;
+  if (state?.table_exists !== true || !Array.isArray(columns)
+    || ![0, 2].includes(columns.length)
+    || (columns.length === 2 && columns.map((column) => column?.column_name).join(',') !== 'customer_name,customer_phone')
+    || columns.some((column) => column.data_type !== 'text' || !['YES', 'NO'].includes(column.is_nullable)
+      || (column.column_default !== null && typeof column.column_default !== 'string'))) {
+    fail('TEST_BASELINE_COLUMN_SHAPE_NOT_ADMITTED', 'tour_orders must exist with both legacy text columns or neither');
+  }
+  return { table_exists: true, columns: columns.map(({ column_name, data_type, is_nullable, column_default }) =>
+    ({ column_name, data_type, is_nullable, column_default })) };
+}
+
+/** Pure construction only: only the pinned canonical 0098 bytes are accepted. */
+export function buildAtomic0098TestBaselineSql({ sql, liveLedgerRows, liveColumns } = {}) {
+  if (typeof sql !== 'string' || sha256(sql) !== TEST_BASELINE_0098.sha256) {
+    fail('TEST_BASELINE_SOURCE_PIN_MISMATCH', 'only the reviewed canonical 0098 bytes are admitted');
+  }
+  assertAtomicCompatibleSql(sql, TEST_BASELINE_0098.repoFile);
+  const beforeLedger = baselineLedgerSnapshot(liveLedgerRows);
+  if (liveLedgerRows.some((row) => row.version === TEST_BASELINE_0098.version
+    || row.name === 'reconcile_tour_orders_legacy_contact_columns' || /^0098(?:_|$)/.test(row.name)
+    || row.idempotency_key?.startsWith('test-baseline-0098:'))) {
+    fail('TEST_BASELINE_0098_HISTORY_PRESENT', '0098 history already exists; stop and reconcile without replay');
+  }
+  const beforeColumns = assertBaselineColumns(liveColumns);
+  const expectedColumns = { table_exists: true, columns: beforeColumns.columns.map((column) =>
+    ({ ...column, is_nullable: 'YES', column_default: "''::text" })) };
+  const ledger = { version: TEST_BASELINE_0098.version, name: TEST_BASELINE_0098.repoFile,
+    created_by: TEST_BASELINE_0098.created_by, idempotency_key: `test-baseline-0098:${TEST_BASELINE_0098.sha256}` };
+  const expectedLedger = { ...beforeLedger, [ledger.version]: ledger };
+  const ledgerQuery = `select coalesce(jsonb_object_agg(version, jsonb_build_object('version', version,
+    'name', name, 'created_by', created_by, 'idempotency_key', idempotency_key)), '{}'::jsonb)
+    from supabase_migrations.schema_migrations`;
+  // Single-quote escaping cannot protect an outer DO dollar-quote delimiter.
+  // Encode metadata as UTF8 hex so even a stored $baselineledger$ stays data.
+  const check = (tag, query, expected, code) => {
+    const hex = Buffer.from(stableStringify(expected), 'utf8').toString('hex');
+    return `do $${tag}$ declare actual jsonb; begin ${query};
+      if actual is distinct from pg_catalog.convert_from(pg_catalog.decode(${sqlLiteral(hex)}, 'hex'), 'UTF8')::jsonb
+      then raise exception '${code}'; end if; end $${tag}$;`;
+  };
+  // Wrap each SELECT to reuse the readback query inside the locked transaction.
+  const ledgerCheck = (tag, expected, code) => check(tag, `select value into actual from (${ledgerQuery}) as s(value)`, expected, code);
+  const columnsCheck = (tag, expected, code) => check(tag, `select to_jsonb(s) into actual from (${BASELINE_COLUMNS_QUERY}) s`, expected, code);
+  const statements = [
+    'begin;', "set local lock_timeout = '5s';", "set local statement_timeout = '60s';",
+    `do $lock$ begin if not pg_try_advisory_xact_lock(hashtextextended(${sqlLiteral(LOCK_KEY)}, 0)) then raise exception 'G3_TEST_RELEASE_LOCK_BUSY'; end if; end $lock$;`,
+    ledgerCheck('baselineledger', beforeLedger, 'TEST_BASELINE_LEDGER_CHANGED_AFTER_LOCK'),
+    columnsCheck('baselinecolumns', beforeColumns, 'TEST_BASELINE_COLUMNS_CHANGED_AFTER_LOCK'),
+    sql,
+    `insert into supabase_migrations.schema_migrations(version, statements, name, created_by, idempotency_key)
+      values (${sqlLiteral(ledger.version)}, null, ${sqlLiteral(ledger.name)}, ${sqlLiteral(ledger.created_by)}, ${sqlLiteral(ledger.idempotency_key)});`,
+    ledgerCheck('postledger', expectedLedger, 'TEST_BASELINE_POST_LEDGER_MISMATCH'),
+    columnsCheck('postcolumns', expectedColumns, 'TEST_BASELINE_POST_COLUMNS_MISMATCH'),
+    'commit;',
+  ];
+  return { sql: statements.join('\n\n'), expectedLedger, expectedColumns, ledger };
+}
+
+async function capture0098TestColumns({ token, connectionString, directQuery, projectRef, fetchImpl }) {
+  let rows;
+  if (connectionString) {
+    rows = await directQuery({ connectionString, sql: BASELINE_COLUMNS_QUERY, readOnly: true });
+  } else {
+    const response = await fetchImpl(`${API}/v1/projects/${projectRef}/database/query/read-only`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: BASELINE_COLUMNS_QUERY }),
+    });
+    rows = await response.json().catch(() => null);
+    if (!response.ok) fail('TEST_BASELINE_COLUMN_READ_FAILED', 'TEST column metadata read failed');
+  }
+  if (!Array.isArray(rows) || rows.length !== 1) fail('TEST_BASELINE_COLUMN_READ_FAILED', 'one column metadata snapshot is required');
+  return assertBaselineColumns(rows[0]);
+}
+
+/** TEST-only baseline evidence, not a Production plan, G3 or G2 approval. */
+export async function validate0098TestBaselineFromCheckout({
+  mainSha, token, connectionString = null, directQuery = queryViaTestDbReleaseUrl,
+  projectRef = TEST_PROJECT_REF, sourceRunId, sourceRunAttempt,
+  repoRoot = process.cwd(), fetchImpl = fetch,
+} = /** @type {any} */ ({})) {
+  const target = assertTestReleaseTarget(projectRef);
+  const directConnectionString = connectionString || directTestConnectionString(token);
+  if (directConnectionString) parseProjectBoundTestDbReleaseUrl(directConnectionString);
+  else if (!String(token ?? '').trim()) fail('MISSING_TEST_RELEASE_TOKEN', 'existing TEST release credential is required');
+  const runId = String(sourceRunId ?? '');
+  const runAttempt = Number(sourceRunAttempt);
+  if (!/^\d+$/.test(runId) || !Number.isSafeInteger(runAttempt) || runAttempt < 1) fail('INVALID_TEST_RUN_IDENTITY', 'GitHub run id/attempt are required');
+  const exactMain = exactSha(mainSha);
+  assertTrustedMainCheckout(exactMain, repoRoot);
+  const source = admitCanonicalMigrationSource({ repoRoot, migrationPath: TEST_BASELINE_0098.path,
+    targetEnvironment: 'TEST', expectedSha256: TEST_BASELINE_0098.sha256 });
+  if (source.currentMainSha !== exactMain) fail('TRUSTED_MAIN_CHECKOUT_MISMATCH', 'source admission must match expected main');
+  const sql = canonicalReader(repoRoot)(TEST_BASELINE_0098.path);
+  if (sha256(sql) !== source.migrationSha256) fail('TEST_BASELINE_SOURCE_PIN_MISMATCH', 'source bytes changed after admission');
+  const capture = { token, connectionString: directConnectionString, directQuery, projectRef: target, fetchImpl };
+  const beforeLedger = await captureTestProviderLedger(capture);
+  const beforeColumns = await capture0098TestColumns(capture);
+  const built = buildAtomic0098TestBaselineSql({ sql, liveLedgerRows: beforeLedger, liveColumns: beforeColumns });
+  try {
+    await executeAtomicTestRelease({ ...capture, sql: built.sql });
+  } catch {
+    fail('TEST_BASELINE_APPLY_UNKNOWN', 'mutable request outcome is unverified; read back before any further action, do not retry');
+  }
+  try {
+    const afterLedger = baselineLedgerSnapshot(await captureTestProviderLedger(capture));
+    const afterColumns = await capture0098TestColumns(capture);
+    if (stableStringify(afterLedger) !== stableStringify(built.expectedLedger)
+      || stableStringify(afterColumns) !== stableStringify(built.expectedColumns)) {
+      fail('TEST_BASELINE_POSTCHECK_MISMATCH', 'actual ledger or column metadata differs from the atomic baseline result');
+    }
+    return { schemaVersion: 1, status: 'TEST_BASELINE_0098_VERIFIED', repository: REPOSITORY,
+      testProjectRef: target, mainSha: exactMain, sourceRunId: runId, sourceRunAttempt: runAttempt,
+      migration: { repoFile: TEST_BASELINE_0098.repoFile, sha256: source.migrationSha256, ledger: built.ledger },
+      columnFingerprints: { before: sha256(stableStringify(beforeColumns)), after: sha256(stableStringify(afterColumns)) },
+      testMutationPerformed: true, productionMutationPerformed: false, databaseMutationAuthorized: false };
+  } catch {
+    fail('TEST_BASELINE_POSTCHECK_UNKNOWN', 'post-apply evidence is unverified; stop and reconcile, do not retry');
+  }
+}
+
 async function main() {
   const [command, ...args] = process.argv.slice(2);
   try {
@@ -427,7 +593,17 @@ async function main() {
       writeFileSync(outputPath, `${JSON.stringify(evidence, null, 2)}\n`);
       return;
     }
-    fail('USAGE', 'use plan or apply');
+    if (command === 'test-baseline-0098') {
+      const [mainSha, outputPath] = args;
+      if (!mainSha || !outputPath || args.length !== 2) fail('USAGE', 'test-baseline-0098 <mainSha> <evidence.json>');
+      const evidence = await validate0098TestBaselineFromCheckout({ mainSha,
+        token: process.env.TEST_DB_RELEASE_TOKEN, connectionString: process.env.TEST_DB_RELEASE_URL,
+        projectRef: process.env.TEST_PROJECT_REF || TEST_PROJECT_REF,
+        sourceRunId: process.env.GITHUB_RUN_ID, sourceRunAttempt: Number(process.env.GITHUB_RUN_ATTEMPT) });
+      writeFileSync(outputPath, `${JSON.stringify(evidence, null, 2)}\n`);
+      return;
+    }
+    fail('USAGE', 'use plan, apply or test-baseline-0098');
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
