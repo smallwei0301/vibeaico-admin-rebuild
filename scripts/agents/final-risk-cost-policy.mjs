@@ -187,6 +187,35 @@ function nativeSpawnMessageValid(spawn, evidence, record, role, context, pilot) 
     && millis(record?.completedAt) === millis('2026-10-09T15:32:00Z');
 }
 
+// Only #848's fresh-adoption window uses exact UTC fractions; historical timing stays unchanged.
+const PR848_ADOPTION_APPROVED_AT = '2026-10-10T12:46:54.792160Z';
+function adoptionUtcNanos(value) {
+  if (typeof value !== 'string') return null;
+  const match = /^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.(\d{1,9}))?Z$/.exec(value);
+  if (!match) return null;
+  const seconds = Date.parse(`${match[1]}Z`);
+  if (!Number.isFinite(seconds) || new Date(seconds).toISOString() !== `${match[1]}.000Z`) return null;
+  return BigInt(seconds) * 1_000_000n + BigInt((match[2] ?? '').padEnd(9, '0'));
+}
+function native848AdoptionErrors(builder, reviewer, context, pilot) {
+  if (context.repository !== 'smallwei0301/vibeaico-admin-rebuild' || context.prNumber !== 848) return [];
+  const b = builder?.nativeTaskEvidence, r = reviewer?.nativeTaskEvidence, readback = b?.policyReadback;
+  const ordered = (...values) => {
+    const times = values.map(adoptionUtcNanos);
+    return times.every((value, index) => value !== null && (index === 0 || times[index - 1] <= value));
+  };
+  if (pilot.adoptionApprovedAt !== PR848_ADOPTION_APPROVED_AT
+    || readback?.sourceKind !== 'OPERATOR_WITNESSED' || readback?.version !== pilot.version
+    || !/^[a-f0-9]{40}$/.test(readback?.mainSha ?? '') || readback.mainSha !== r?.policyReadback?.mainSha
+    || (context.nativeCanonical === true && readback.mainSha !== context.nativePolicyEvidence?.reviewedMainSha)
+    || !ordered(PR848_ADOPTION_APPROVED_AT, readback?.observedAt, b?.spawn?.observedAt, builder?.startedAt)
+    || !ordered(PR848_ADOPTION_APPROVED_AT, r?.policyReadback?.observedAt, r?.spawn?.observedAt, reviewer?.startedAt)
+    || !ordered(builder?.startedAt, builder?.completedAt, r?.spawn?.observedAt)
+    || !ordered(r?.builderReadback?.observedAt, r?.spawn?.observedAt))
+    return ['Native #848 requires fresh post-approval BUILD adoption after the same enabled-main policy readback'];
+  return [];
+}
+
 /** Shape/consistency only. A trusted operator's excerpts cannot authenticate hidden spawn events. */
 export function nativeRoleShapeErrors(review = {}, context = {}, pilot = {}) {
   const errors = [], proof = context.roleEvidence;
@@ -246,6 +275,7 @@ export function nativeRoleShapeErrors(review = {}, context = {}, pilot = {}) {
   }
   const b = builder?.nativeTaskEvidence, r = reviewer?.nativeTaskEvidence;
   if (!b || !r) return errors;
+  errors.push(...native848AdoptionErrors(builder, reviewer, context, pilot));
   if (b.operatorLogin !== r.operatorLogin || b.operatorId !== r.operatorId
     || b.namespace !== r.namespace || b.captureGeneration !== r.captureGeneration
     || b.taskName === r.taskName || builder.executionRef === reviewer.executionRef

@@ -7,13 +7,16 @@
 
 ## 2026-10-10 已裁示
 
-Owner 12:46:54 UTC 確認只針對 #848 修改原生角色准入，之後由新執行者接手完整驗證、再另做獨立正式審查。
+Owner `2026-10-10T12:46:54.792160Z` 確認只針對 #848 修改原生角色准入，之後由新執行者接手完整驗證、再另做獨立正式審查。
 active singleton 移至 repo `smallwei0301/vibeaico-admin-rebuild`、PR848、exact head
 `8e85baf04a3e9a8d556ed8abd71c2ad789be468b`、完整四檔 changeDigest
 `d9c1f7cffeeed4436e4bd31ea211e1235d70e83294c12a876c249793b1539790`、`PRODUCT_SOURCE_FINAL_RISK`。
 以 `PR848_RETAINED_ORIGINAL_V1` 保存真實原 prompt 的私下保留 commitment，沿用原 UTF-8 hash／byteLength、
 retention、operator attestation 及公開端不能認證私下原文的限制；hash 不是原文。
 新 BUILD 是既有 exact source 的 adoption／full verification，不冒原作者、不補造原 spawn UTC 或 backend 身分；
+批准 UTC 以完整小數秒保存；新 BUILD 先親見 enabled-main policy，再 spawn／開始工作，不准用批准前或缺政策回讀的角色補位。
+BUILD／REVIEW policyReadback 須同一 main/version，canonical 路徑核 trusted policy evidence／ancestry／generation；
+兩角色 spawn 不得早於批准，BUILD readback 不得晚於 spawn，既有完成後 fresh FINAL 順序不變。
 新 FINAL 仍須 BUILD 完成及 canonical receipt／已啟用 main policy 回讀後才另建獨立任務。
 依正常治理 source CI／反例／獨立審查／main 合併及回讀生效，不以治理 bootstrap 自批。
 不啟動 Work、不含 DB／TEST／Production、G5、writer、credentials／permissions；#552／#700 成本、

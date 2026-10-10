@@ -20,6 +20,7 @@ const adoptionRouting = { ...currentRouting, nativeRolePilot: {
   headSha: '8e85baf04a3e9a8d556ed8abd71c2ad789be468b',
   changeDigest: 'd9c1f7cffeeed4436e4bd31ea211e1235d70e83294c12a876c249793b1539790',
   privateMessageMode: 'PR848_RETAINED_ORIGINAL_V1',
+  adoptionApprovedAt: '2026-10-10T12:46:54.792160Z',
 } };
 const adoptionFiles = [
   ['.github/workflows/production-db-release-orchestrator.yml', 'modified', '86e86707a76eabd065053281f3ee1aa6a2e62e59'],
@@ -51,11 +52,13 @@ const body = `WORKSTREAM: PRODUCT_MAINLINE\nAGENT_LANE: TERRA_BUILD\nLANE_STATE:
 function fixture(policy = routing) {
   const pilot = policy.nativeRolePilot, head = pilot.headSha;
   const ref = (id: number) => `https://github.com/${repository}/pull/${pilot.prNumber}#issuecomment-${id}`;
+  const fixtureTime = (value: string) => pilot.prNumber === 848
+    ? new Date(Date.parse(value) + Date.parse('2026-10-10T12:47:00Z') - Date.parse('2026-10-09T15:00:00Z')).toISOString() : value;
   const fixtureBody = body.replace('/843#', `/${pilot.prNumber}#`);
   const fixtureFiles = pilot.prNumber === 848 ? adoptionFiles : head === historicalPilot.headSha ? historicalFiles : files;
   const role = (kind: string): any => {
-    const build = kind === 'BUILD', start = build ? '2026-10-09T15:00:00Z' : '2026-10-09T15:04:00Z';
-    const end = build ? '2026-10-09T15:01:00Z' : '2026-10-09T15:05:00Z';
+    const build = kind === 'BUILD', start = build ? fixtureTime('2026-10-09T15:00:00Z') : fixtureTime('2026-10-09T15:04:00Z');
+    const end = build ? fixtureTime('2026-10-09T15:01:00Z') : fixtureTime('2026-10-09T15:05:00Z');
     const task = build ? 'synthetic_builder' : 'synthetic_reviewer';
     return { role: kind, repository, headSha: head, changeDigest: pilot.changeDigest, sourceRef: ref(build ? 101 : 102),
       actorId: null, sessionId: null, executionIdentityKind: 'NATIVE_TASK', backendIdentityAvailability: 'UNEXPOSED',
@@ -70,26 +73,28 @@ function fixture(policy = routing) {
         work: { sourceKind: 'WORKER_REPORTED', event: 'ROLE_WORK_STARTED', startedAt: start, observedAt: start, evidenceRef: ref(103), artifactSha256: 'f'.repeat(64) },
         completion: { sourceKind: 'OPERATOR_WITNESSED', event: 'BOUNDED_WORK_COMPLETED', observedAt: end, stoppedWriting: true,
           headSha: head, changeDigest: pilot.changeDigest, evidenceRef: ref(103) },
+        ...(build && pilot.prNumber === 848 ? { policyReadback: { sourceKind: 'OPERATOR_WITNESSED',
+          version: pilot.version, mainSha: main, observedAt: '2026-10-10T12:46:59Z' } } : {}),
         ...(!build ? { contextIsolationAttested: true, participatedInBuild: false, reviewPhase: 'FINAL',
-          policyReadback: { sourceKind: 'OPERATOR_WITNESSED', version: pilot.version, mainSha: main, observedAt: '2026-10-09T15:03:00Z' } } : {}) } };
+          policyReadback: { sourceKind: 'OPERATOR_WITNESSED', version: pilot.version, mainSha: main, observedAt: fixtureTime('2026-10-09T15:03:00Z') } } : {}) } };
   };
   const builder = role('BUILD'), reviewer = role('REVIEW');
   reviewer.nativeTaskEvidence.builderReadback = { sourceKind: 'OPERATOR_WITNESSED', sourceRef: ref(101), bodySha256: hash(block(builder)),
-    updatedAt: '2026-10-09T15:02:00Z', observedAt: '2026-10-09T15:03:00Z' };
+    updatedAt: fixtureTime('2026-10-09T15:02:00Z'), observedAt: fixtureTime('2026-10-09T15:03:00Z') };
   const review: any = { repository, baseSha: main, headSha: head, changeDigest: pilot.changeDigest, policyVersion: routing.version,
     nativeRolePolicyVersion: pilot.version, requestedModel: 'not_requested', actualModel: 'unknown', identityEvidence: 'UNKNOWN', servedVerified: false,
     executionRef: reviewer.executionRef, reviewerExecutionReceipt: ref(102), verdict: 'PASS', report: ref(103), findings: 'Synthetic counterexamples checked, no unresolved findings',
     reviewerTier: 'CURRENT_AGENT', costPolicyVersion: routing.finalRiskCostControl.version, downgradeReason: 'MODEL_SELECTION_UNAVAILABLE',
     modelSelectionAvailable: false, downgradeEvidenceRef: ref(104), reviewLineage: 'synthetic-lineage', executionEvidence: 'OPERATOR_ATTESTED',
     adversarialEvidence: 'Synthetic negative cases, not real work', priorFindingsReviewed: true, unresolvedFindingCount: 0,
-    testBaseline: 'Synthetic source tests complete', schemaBaseline: 'Synthetic unchanged canonical SQL', submittedAt: '2026-10-09T15:07:00Z' };
-  const current: any = { number: pilot.prNumber, state: 'open', draft: false, body: fixtureBody, changed_files: fixtureFiles.length, created_at: '2026-10-09T12:00:00Z',
+    testBaseline: 'Synthetic source tests complete', schemaBaseline: 'Synthetic unchanged canonical SQL', submittedAt: fixtureTime('2026-10-09T15:07:00Z') };
+  const current: any = { number: pilot.prNumber, state: 'open', draft: false, body: fixtureBody, changed_files: fixtureFiles.length, created_at: fixtureTime('2026-10-09T12:00:00Z'),
     head: { sha: head }, base: { sha: main, repo: { full_name: repository } } };
   const record = () => ({ id: 201, state: 'COMMENTED', user: actor, commit_id: head, submitted_at: review.submittedAt, body: block(review, 'astra-review'), trusted: true });
   const listFiles = vi.fn(), listReviews = vi.fn(), listPulls = vi.fn();
   const github: any = { rest: { pulls: { listFiles, listReviews, list: listPulls, get: vi.fn(async () => ({ data: current })) },
     issues: { getComment: vi.fn(async ({ comment_id }: any) => ({ data: { id: comment_id, html_url: ref(comment_id), user: actor,
-      updated_at: comment_id === 101 ? '2026-10-09T15:02:00Z' : '2026-10-09T15:06:00Z', body: block(comment_id === 101 ? builder : reviewer) } })) },
+      updated_at: comment_id === 101 ? fixtureTime('2026-10-09T15:02:00Z') : fixtureTime('2026-10-09T15:06:00Z'), body: block(comment_id === 101 ? builder : reviewer) } })) },
     repos: { getCollaboratorPermissionLevel: vi.fn(async () => ({ data: { permission: 'write' } })),
       getCommit: vi.fn(async () => ({ data: { sha: main } })),
       getContent: vi.fn(async () => { const bytes = Buffer.from(JSON.stringify(policy)); return { data: { type: 'file', encoding: 'base64', content: bytes.toString('base64'), sha: createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex') } }; }),
@@ -98,8 +103,8 @@ function fixture(policy = routing) {
   const context: any = { repository, baseSha: main, headSha: head, currentHeadSha: head, changeDigest: pilot.changeDigest, prNumber: pilot.prNumber,
     policyVersion: routing.version, testBaseline: review.testBaseline, schemaBaseline: review.schemaBaseline,
     reviewSurface: pilot.surface, nativeCanonical: true, nativePolicyEvidence: { pilot, currentMainSha: main, reviewedMainSha: main },
-    roleEvidence: { trusted: true, builder: { ...builder, sourceActor: actor, sourceUpdatedAt: '2026-10-09T15:02:00Z', sourceBodySha256: hash(block(builder)) },
-      reviewer: { ...reviewer, sourceActor: actor, sourceUpdatedAt: '2026-10-09T15:06:00Z' } } };
+    roleEvidence: { trusted: true, builder: { ...builder, sourceActor: actor, sourceUpdatedAt: fixtureTime('2026-10-09T15:02:00Z'), sourceBodySha256: hash(block(builder)) },
+      reviewer: { ...reviewer, sourceActor: actor, sourceUpdatedAt: fixtureTime('2026-10-09T15:06:00Z') } } };
   return { policy, pilot, builder, reviewer, review, current, context, github, record, listFiles, listReviews,
     packet: { repository, headSha: head, changeDigest: pilot.changeDigest, builder, reviewer, review } };
 }
@@ -233,6 +238,99 @@ describe('bounded native source-role pilot; structure and operator trust only', 
     f.github.rest.repos.getCollaboratorPermissionLevel.mockResolvedValue({ data: { permission: 'read' } });
     expect((await run(f)).status).toBe('ASTRA_PENDING');
   });
+  });
+  const adoptionAdmission = async (f: ReturnType<typeof fixture>) => {
+    const bodySha256 = hash(block(f.builder));
+    f.reviewer.nativeTaskEvidence.builderReadback.bodySha256 = bodySha256;
+    Object.assign(f.context.roleEvidence.builder, f.builder, { sourceBodySha256: bodySha256 });
+    Object.assign(f.context.roleEvidence.reviewer, f.reviewer);
+    return { shape: nativeRoleShapeErrors(f.review, f.context, f.pilot).length === 0,
+      local: validateNativeRolePreflight(f.packet, f.current, f.policy).errors.length === 0,
+      canonical: (await run(f)).status === 'ASTRA_APPROVED' };
+  };
+  it.each(['before-approval', 'missing-readback', 'wrong-kind', 'wrong-version', 'wrong-main', 'late-readback', 'submillisecond-late-readback', 'submillisecond-early-work'])(
+    'P1 adoption rejects pre-policy or unbound BUILD: %s', async mode => {
+      const f = fixture(adoptionRouting), b = f.builder, e = b.nativeTaskEvidence;
+      expect(await adoptionAdmission(f)).toEqual({ shape: true, local: true, canonical: true });
+      if (mode === 'before-approval') e.policyReadback.observedAt = e.spawn.observedAt = '2026-10-10T12:46:54Z';
+      if (mode === 'missing-readback') delete e.policyReadback;
+      if (mode === 'wrong-kind') e.policyReadback.sourceKind = 'WORKER_REPORTED';
+      if (mode === 'wrong-version') e.policyReadback.version = 'stale';
+      if (mode === 'wrong-main') e.policyReadback.mainSha = 'b'.repeat(40);
+      if (mode === 'late-readback') e.policyReadback.observedAt = '2026-10-10T12:53:00Z';
+      if (mode === 'submillisecond-late-readback') e.policyReadback.observedAt = '2026-10-10T12:47:00.000001Z';
+      if (mode === 'submillisecond-early-work') {
+        e.spawn.observedAt = '2026-10-10T12:47:00.000002Z';
+        b.startedAt = e.work.startedAt = e.work.observedAt = '2026-10-10T12:47:00.000001Z';
+      }
+      expect(await adoptionAdmission(f)).toEqual({ shape: false, local: false, canonical: false });
+    });
+  it.each([
+    ['2026-10-10T12:46:54.792000Z', false], ['2026-10-10T12:46:54.792159Z', false],
+    ['2026-10-10T12:46:54.792160Z', true], ['2026-10-10T12:46:54.793000Z', true],
+  ])('P1 adoption preserves exact fractional approval boundary %s', async (time, valid) => {
+    const f = fixture(adoptionRouting), b = f.builder, e = b.nativeTaskEvidence;
+    e.policyReadback.observedAt = e.spawn.observedAt = b.startedAt = e.work.startedAt = e.work.observedAt = time;
+    expect(await adoptionAdmission(f)).toEqual({ shape: valid, local: valid, canonical: valid });
+  });
+  it.each([undefined, null, 123, {}, [], 'invalid-utc', '2026-02-30T12:00:00Z', '2026-10-10T12:46:54.7921600000Z'])(
+    'P1 malformed adoption readback fails closed without throwing: %j', async observedAt => {
+      const f = fixture(adoptionRouting); f.builder.nativeTaskEvidence.policyReadback.observedAt = observedAt;
+      expect(await adoptionAdmission(f)).toEqual({ shape: false, local: false, canonical: false });
+    });
+  it.each([undefined, '2026-10-10T12:46:54Z', '2026-10-10T12:46:54.792000Z'])(
+    'P1 policy cannot omit or round down the approval boundary: %s', async adoptionApprovedAt => {
+      const policy = { ...adoptionRouting, nativeRolePilot: { ...adoptionRouting.nativeRolePilot, adoptionApprovedAt } };
+      expect(await adoptionAdmission(fixture(policy))).toEqual({ shape: false, local: false, canonical: false });
+    });
+  it('P1 neither BUILD start nor REVIEW spawn can slip below approval within the same millisecond', async () => {
+    for (const earlier of ['build-start', 'review-spawn']) {
+      const f = fixture(adoptionRouting), b = f.builder, r = f.reviewer, be = b.nativeTaskEvidence, re = r.nativeTaskEvidence;
+      const approved = '2026-10-10T12:46:54.792160Z', before = '2026-10-10T12:46:54.792159Z';
+      be.policyReadback.observedAt = be.spawn.observedAt = b.startedAt = be.work.startedAt = be.work.observedAt = approved;
+      b.completedAt = be.completion.observedAt = be.compiledAt = approved;
+      re.builderReadback.updatedAt = re.builderReadback.observedAt = re.policyReadback.observedAt = re.spawn.observedAt = approved;
+      f.context.roleEvidence.builder.sourceUpdatedAt = approved;
+      const read = f.github.rest.issues.getComment.getMockImplementation();
+      f.github.rest.issues.getComment.mockImplementation(async (args: any) => {
+        const result = await read(args); if (args.comment_id === 101) result.data.updated_at = approved; return result;
+      });
+      expect(await adoptionAdmission(f)).toEqual({ shape: true, local: true, canonical: true });
+      if (earlier === 'build-start') b.startedAt = be.work.startedAt = be.work.observedAt = before;
+      else re.spawn.observedAt = before;
+      expect(await adoptionAdmission(f)).toEqual({ shape: false, local: false, canonical: false });
+    }
+  });
+  it('P1 unrelated main advance preserves the same verified BUILD/REVIEW policy generation', async () => {
+    const f = fixture(adoptionRouting);
+    f.github.rest.repos.getCommit.mockResolvedValue({ data: { sha: 'c'.repeat(40) } });
+    expect(await adoptionAdmission(f)).toEqual({ shape: true, local: true, canonical: true });
+  });
+  it('P1 adoption rejects the original pre-approval synthetic timeline without rewriting 843 history', async () => {
+    const f = fixture(adoptionRouting), seen = new Set<any>();
+    const beforeApproval = (value: any): void => {
+      if (!value || typeof value !== 'object' || seen.has(value)) return;
+      seen.add(value);
+      for (const [key, item] of Object.entries(value)) {
+        if (key !== 'adoptionApprovedAt' && typeof item === 'string' && /^2026-10-10T/.test(item))
+          value[key] = new Date(Date.parse(item) - 86400000).toISOString();
+        else beforeApproval(item);
+      }
+    };
+    beforeApproval(f.builder); beforeApproval(f.reviewer); beforeApproval(f.review); beforeApproval(f.context.roleEvidence);
+    const getComment = f.github.rest.issues.getComment.getMockImplementation();
+    f.github.rest.issues.getComment.mockImplementation(async (args: any) => {
+      const result = await getComment(args); result.data.updated_at = new Date(Date.parse(result.data.updated_at) - 86400000).toISOString(); return result;
+    });
+    expect(await adoptionAdmission(f)).toEqual({ shape: false, local: false, canonical: false });
+  });
+  it('P1 BUILD policy evidence cannot enable branch-only or a different canonical generation', async () => {
+    const f = fixture(adoptionRouting);
+    expect(await adoptionAdmission(f)).toEqual({ shape: true, local: true, canonical: true });
+    f.context.nativePolicyEvidence.reviewedMainSha = 'b'.repeat(40);
+    expect(nativeRoleShapeErrors(f.review, f.context, f.pilot).length).toBeGreaterThan(0);
+    f.github.rest.repos.getContent.mockRejectedValue(new Error('enabled main policy unavailable'));
+    expect((await run(f)).status).toBe('ASTRA_PENDING');
   });
   it('A848 activates only the exact four-file adoption scope, with truthful unknown identity', async () => {
     expect(currentRouting.nativeRolePilot).toEqual(adoptionRouting.nativeRolePilot);
