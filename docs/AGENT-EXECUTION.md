@@ -606,14 +606,24 @@ OpenAI premium 只 Astra、Anthropic premium 只 Fable；audit 只同 provider �
 
 DB release preflight 尚未接入可信 role context；enabled policy 下缺此證據安全拒絕，不把本節 source review 當 Production 操作許可。
 
-#### 有界原生任務身分試行（Owner 2026-10-09）
+#### 有界原生任務身分試行（Owner 2026-10-09；2026-10-10 精確範圍更新）
 
-只有 trusted-main `model-routing.json.nativeRolePilot` 已啟用且 repo／PR／exact head／六檔 digest／
-`PRODUCT_SOURCE_FINAL_RISK` 全相符時，可用 `executionIdentityKind=NATIVE_TASK`。Owner 2026-10-10 僅將 #843
-已凍結兩檔 driver projection 修正版更新為 `47f259db7b2f4ab50b08c0962cc8d6f676575fd0`／
-`18ee75322cafca9148e043cee7ba518ea767ab4f8449fd6eb655c8cb5192b6ba`。BUILD／REVIEW 必須保存原 request message；Owner 02:25:29 UTC 另批准下列精確範圍的私下保留模式；
-原初版 `07d360c50c6eb60486fa4f3bc21d0f713d6e2bbb`／`8da954f36f1e6ea03bac4be9c24f203f75273494dab11b8f49829fca2d7664a3` 留作歷史，
-不再是當前 pilot 准入版本。#836、其他 head、歷史未知 BUILD、DB release／G5／writer 不適用。治理 bootstrap PR 不能用此規則自批。
+當前 active singleton 只限 #848：trusted-main `model-routing.json.nativeRolePilot` 已啟用且
+repository=`smallwei0301/vibeaico-admin-rebuild`、PR=848、exact head
+`8e85baf04a3e9a8d556ed8abd71c2ad789be468b`、完整四檔 changeDigest
+`d9c1f7cffeeed4436e4bd31ea211e1235d70e83294c12a876c249793b1539790`、
+`PRODUCT_SOURCE_FINAL_RISK` 全相符，才可用 `executionIdentityKind=NATIVE_TASK`。
+Owner 2026-10-10 12:46:54 UTC 批准此有界治理改動；正常治理測試／獨立審查／main 合併及回讀後才生效。
+新的 BUILD 任務必須新鮮接手並完整驗證上述既有 source，明寫 adoption／full verification，不能冒稱原作者。
+不得重用或重建原 BUILD 缺失的 spawn UTC／actor/session，也沒有新增歷史身分或時間豁免。
+新 FINAL 必須另建獨立任務，沿下列原有完成、canonical BUILD 與 enabled-main 回讀順序執行。
+
+#843 的 exact47f `47f259db7b2f4ab50b08c0962cc8d6f676575fd0`／六檔 digest
+`18ee75322cafca9148e043cee7ba518ea767ab4f8449fd6eb655c8cb5192b6ba`（Owner 2026-10-10 01:09:48 UTC），以及
+原初版 exact07d `07d360c50c6eb60486fa4f3bc21d0f713d6e2bbb`／六檔 digest
+`8da954f36f1e6ea03bac4be9c24f203f75273494dab11b8f49829fca2d7664a3`（Owner 2026-10-09）保留為歷史設定／shape fixtures；
+兩者都不是當前准入範圍。沒有 multi-scope allowlist；其他 repo／PR／head／digest／surface、
+#836、DB release／G5／writer 均不適用。治理 bootstrap PR 不能用此規則自批。
 BUILD／REVIEW 仍是原角色；actorId／sessionId 必須 null、backendIdentityAvailability=UNEXPOSED，
 actualModel=unknown、identityEvidence=UNKNOWN、servedVerified=false。task_name／executionRef 是操作者限定範圍內的
 識別，不是平台 actor/session，也不宣稱全球唯一。舊完整 backend 來源契約維持不變。
@@ -633,8 +643,11 @@ spawn觀測14:28:16Z、work起點14:32:26Z、bounded完成15:32:00Z；比較相�
 歷史namespace／capture generation未保存，保持UNKNOWN；receipt的scope labels只限定當次operator整理範圍，
 不補造歷史UUID。這組ref／時間只拒絕已表達的不同事件，仍不能認證完整倒填舊值的操作者背書真偽。
 
-Owner 2026-10-10 02:25:29 UTC 的隱私補充只適用上述 #843 exact47f／digest18ee。
-trusted-main pilot 必須明開 `privateMessageMode=PR843_RETAINED_ORIGINAL_V1`；BUILD／REVIEW 可用
+當前 #848 exact8e85／完整四檔 digestd9c 的私下保留模式，須由 trusted-main pilot 明開
+`privateMessageMode=PR848_RETAINED_ORIGINAL_V1`。BUILD／REVIEW 必須確實保存新任務的真實原 request message；可公開 CAPTURED，或使用下列 private commitment。
+歷史 #843 exact47f／digest18ee 的 `PR843_RETAINED_ORIGINAL_V1`（Owner 2026-10-10 02:25:29 UTC）
+只保留原精確 shape 回播，不是現行 active scope；舊模式不能接受 #848，新模式不能接受 #843。
+兩個模式共用以下真實保留／格式／角色綁定限制，不以 hash 冒充原文。私下保留時使用
 `spawn.requestMessageAvailability=WITHHELD_PRIVATE`、`spawn.request.message=null`，另放 `spawn.privateMessage`：
 - schemaVersion=1、encoding=UTF-8、sha256 為逐字原 message UTF-8 bytes 的完整 SHA256、byteLength 為正安全整數。
 - retention=ORIGINAL_VERBATIM_RETAINED_PRIVATELY；操作者必須確實私下保留原文，不公布私密原文或內部路徑。

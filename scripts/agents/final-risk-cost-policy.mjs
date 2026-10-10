@@ -144,10 +144,15 @@ const native = record => record?.executionIdentityKind === 'NATIVE_TASK';
 // Privacy is a distinct exact-source operator attestation, not public authentication of raw bytes.
 function privateNativeMessageValid(spawn, evidence, record, role, context, pilot) {
   const p = spawn?.privateMessage;
-  if (pilot.privateMessageMode !== 'PR843_RETAINED_ORIGINAL_V1'
-    || context.repository !== 'smallwei0301/vibeaico-admin-rebuild' || context.prNumber !== 843
-    || context.headSha !== '47f259db7b2f4ab50b08c0962cc8d6f676575fd0'
-    || context.changeDigest !== '18ee75322cafca9148e043cee7ba518ea767ab4f8449fd6eb655c8cb5192b6ba'
+  // The historical #843 mode is shape-replay only when the active singleton is #848.
+  const exactPrivateScope = context.repository === 'smallwei0301/vibeaico-admin-rebuild' && (
+    (pilot.privateMessageMode === 'PR843_RETAINED_ORIGINAL_V1' && context.prNumber === 843
+      && context.headSha === '47f259db7b2f4ab50b08c0962cc8d6f676575fd0'
+      && context.changeDigest === '18ee75322cafca9148e043cee7ba518ea767ab4f8449fd6eb655c8cb5192b6ba')
+    || (pilot.privateMessageMode === 'PR848_RETAINED_ORIGINAL_V1' && context.prNumber === 848
+      && context.headSha === '8e85baf04a3e9a8d556ed8abd71c2ad789be468b'
+      && context.changeDigest === 'd9c1f7cffeeed4436e4bd31ea211e1235d70e83294c12a876c249793b1539790'));
+  if (!exactPrivateScope
     || !['BUILD', 'REVIEW'].includes(role) || spawn?.request?.message !== null
     || p?.schemaVersion !== 1 || typeof p.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(p.sha256)
     || /^0+$/.test(p.sha256) || p.sha256 === createHash('sha256').update('').digest('hex')

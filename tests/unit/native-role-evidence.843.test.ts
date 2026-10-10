@@ -1,12 +1,32 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import { changeDigestOf, evaluateAstra, evaluateGithubAstra, routing, resolveRoleReceiptWakeup, parseAstraReviews } from '../../scripts/agents/astra-review-policy.mjs';
+import { changeDigestOf, evaluateAstra, evaluateGithubAstra, routing as currentRouting, resolveRoleReceiptWakeup, parseAstraReviews } from '../../scripts/agents/astra-review-policy.mjs';
 import { independentRoleErrors, nativeRoleShapeErrors, finalRiskReviewerErrors } from '../../scripts/agents/final-risk-cost-policy.mjs';
 import { validateNativeRolePreflight, validateWipPreflight } from '../../scripts/agents/agent-wip-preflight.mjs';
 import { buildProductionDbFinalRiskEvidence, buildProductionDbFinalRiskEvidenceFromGithub } from '../../scripts/agents/production-db-final-risk-evidence.mjs';
 
 // Every event/identity below is SYNTHETIC. These tests cannot certify real native tasks.
+// Preserve #843's exact historical configuration independently of the active singleton.
+const routing = { ...currentRouting, nativeRolePilot: {
+  version: '2026-10-09.1', enabled: true, surface: 'PRODUCT_SOURCE_FINAL_RISK',
+  repository: 'smallwei0301/vibeaico-admin-rebuild', prNumber: 843,
+  headSha: '47f259db7b2f4ab50b08c0962cc8d6f676575fd0',
+  changeDigest: '18ee75322cafca9148e043cee7ba518ea767ab4f8449fd6eb655c8cb5192b6ba',
+  privateMessageMode: 'PR843_RETAINED_ORIGINAL_V1',
+} };
+const adoptionRouting = { ...currentRouting, nativeRolePilot: {
+  ...routing.nativeRolePilot, prNumber: 848,
+  headSha: '8e85baf04a3e9a8d556ed8abd71c2ad789be468b',
+  changeDigest: 'd9c1f7cffeeed4436e4bd31ea211e1235d70e83294c12a876c249793b1539790',
+  privateMessageMode: 'PR848_RETAINED_ORIGINAL_V1',
+} };
+const adoptionFiles = [
+  ['.github/workflows/production-db-release-orchestrator.yml', 'modified', '86e86707a76eabd065053281f3ee1aa6a2e62e59'],
+  ['scripts/agents/schema-drift-watch.mjs', 'modified', '6dec0d948b15b468b3fad4e74a74ac5373e57a4c'],
+  ['tests/unit/production-db-release-orchestrator-workflow.447.test.ts', 'modified', 'd0a21229567a3886e7a8f96e9383a6f661c6500e'],
+  ['tests/unit/schema-drift-watch.test.ts', 'modified', 'f7eb4f0954b39254fa53a7be011d0443ff83b2eb'],
+].map(([filename, status, sha]) => ({ filename, status, sha }));
 const pilot = routing.nativeRolePilot, repository = pilot.repository, head = pilot.headSha, main = 'a'.repeat(40);
 // Historical policy is a synthetic regression input, never the current enabled policy.
 const historicalPilot = { ...pilot, headSha: '07d360c50c6eb60486fa4f3bc21d0f713d6e2bbb',
@@ -30,7 +50,9 @@ const historicalFiles = files.map(file => ({ ...file, sha: file.filename === 'sc
 const body = `WORKSTREAM: PRODUCT_MAINLINE\nAGENT_LANE: TERRA_BUILD\nLANE_STATE: ACTIVE\nASTRA_RISK: GOVERNANCE_GATE\nASTRA_RATIONALE: Synthetic source admission fixture only\nASTRA_TEST_BASELINE: Synthetic source tests complete\nASTRA_SCHEMA_BASELINE: Synthetic unchanged canonical SQL\nBUILDER_EXECUTION_RECEIPT: ${ref(101)}`;
 function fixture(policy = routing) {
   const pilot = policy.nativeRolePilot, head = pilot.headSha;
-  const fixtureFiles = head === historicalPilot.headSha ? historicalFiles : files;
+  const ref = (id: number) => `https://github.com/${repository}/pull/${pilot.prNumber}#issuecomment-${id}`;
+  const fixtureBody = body.replace('/843#', `/${pilot.prNumber}#`);
+  const fixtureFiles = pilot.prNumber === 848 ? adoptionFiles : head === historicalPilot.headSha ? historicalFiles : files;
   const role = (kind: string): any => {
     const build = kind === 'BUILD', start = build ? '2026-10-09T15:00:00Z' : '2026-10-09T15:04:00Z';
     const end = build ? '2026-10-09T15:01:00Z' : '2026-10-09T15:05:00Z';
@@ -61,7 +83,7 @@ function fixture(policy = routing) {
     modelSelectionAvailable: false, downgradeEvidenceRef: ref(104), reviewLineage: 'synthetic-lineage', executionEvidence: 'OPERATOR_ATTESTED',
     adversarialEvidence: 'Synthetic negative cases, not real work', priorFindingsReviewed: true, unresolvedFindingCount: 0,
     testBaseline: 'Synthetic source tests complete', schemaBaseline: 'Synthetic unchanged canonical SQL', submittedAt: '2026-10-09T15:07:00Z' };
-  const current: any = { number: 843, state: 'open', draft: false, body, changed_files: fixtureFiles.length, created_at: '2026-10-09T12:00:00Z',
+  const current: any = { number: pilot.prNumber, state: 'open', draft: false, body: fixtureBody, changed_files: fixtureFiles.length, created_at: '2026-10-09T12:00:00Z',
     head: { sha: head }, base: { sha: main, repo: { full_name: repository } } };
   const record = () => ({ id: 201, state: 'COMMENTED', user: actor, commit_id: head, submitted_at: review.submittedAt, body: block(review, 'astra-review'), trusted: true });
   const listFiles = vi.fn(), listReviews = vi.fn(), listPulls = vi.fn();
@@ -73,7 +95,7 @@ function fixture(policy = routing) {
       getContent: vi.fn(async () => { const bytes = Buffer.from(JSON.stringify(policy)); return { data: { type: 'file', encoding: 'base64', content: bytes.toString('base64'), sha: createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex') } }; }),
       listCommits: vi.fn(async () => ({ data: [{ sha: main }] })), compareCommitsWithBasehead: vi.fn(async () => ({ data: { status: 'ahead' } })) } },
     paginate: vi.fn(async (method: any) => method === listFiles ? fixtureFiles : method === listReviews ? [record()] : method === listPulls ? [current] : []) };
-  const context: any = { repository, baseSha: main, headSha: head, currentHeadSha: head, changeDigest: pilot.changeDigest, prNumber: 843,
+  const context: any = { repository, baseSha: main, headSha: head, currentHeadSha: head, changeDigest: pilot.changeDigest, prNumber: pilot.prNumber,
     policyVersion: routing.version, testBaseline: review.testBaseline, schemaBaseline: review.schemaBaseline,
     reviewSurface: pilot.surface, nativeCanonical: true, nativePolicyEvidence: { pilot, currentMainSha: main, reviewedMainSha: main },
     roleEvidence: { trusted: true, builder: { ...builder, sourceActor: actor, sourceUpdatedAt: '2026-10-09T15:02:00Z', sourceBodySha256: hash(block(builder)) },
@@ -99,7 +121,7 @@ describe('bounded native source-role pilot; structure and operator trust only', 
     expect(nativeRoleShapeErrors(f.review, f.context, pilot)).toEqual([]);
     expect(independentRoleErrors(f.review, f.context)).toEqual([]);
     const r = await run(f); expect(r.status).toBe('ASTRA_APPROVED'); expect(r.risks).toContain('GOVERNANCE_GATE');
-    expect(validateNativeRolePreflight(f.packet, f.current)).toMatchObject({ status: 'NEEDS_CANONICAL_READBACK', canonicalReadbackVerified: false, errors: [] });
+    expect(validateNativeRolePreflight(f.packet, f.current, f.policy)).toMatchObject({ status: 'NEEDS_CANONICAL_READBACK', canonicalReadbackVerified: false, errors: [] });
   });
   // The pinned historical shape is synthetic here; a passing fixture does not authenticate the real spawn.
   const uncapturedBuild = (policy = historicalRouting) => {
@@ -142,7 +164,7 @@ describe('bounded native source-role pilot; structure and operator trust only', 
       spawn.privateMessage = { schemaVersion: 1, sha256: hash(original), byteLength: Buffer.byteLength(original, 'utf8'),
         encoding: 'UTF-8', retention: 'ORIGINAL_VERBATIM_RETAINED_PRIVATELY',
         attestation: 'OPERATOR_ATTESTS_ORIGINAL_CAPTURE_HASH_AND_SCOPE', publicWorkScope: e.performedWorkScope,
-        repository, prNumber: 843, headSha: record.headSha, changeDigest: record.changeDigest,
+        repository, prNumber: f.current.number, headSha: record.headSha, changeDigest: record.changeDigest,
         role: record.role, taskName: e.taskName, executionRef: record.executionRef,
         operatorLogin: e.operatorLogin, operatorId: e.operatorId,
         spawnObservedAt: spawn.observedAt, workStartedAt: record.startedAt,
@@ -150,14 +172,15 @@ describe('bounded native source-role pilot; structure and operator trust only', 
     }
     return f;
   };
+  describe.each([routing, adoptionRouting])('private prompt scope PR$nativeRolePilot.prNumber', privateRouting => {
   it('P18 admits private retained prompts through shape, local and canonical paths without publishing original bytes', async () => {
-    const f = withhold(fixture()); await expectMessageAdmission(f, true);
+    const f = withhold(fixture(privateRouting)); await expectMessageAdmission(f, true);
     expect(block(f.builder)).not.toContain('Synthetic BUILD assignment');
     expect(block(f.reviewer)).not.toContain('Synthetic REVIEW assignment');
-    expect(validateNativeRolePreflight(f.packet, f.current).canonicalReadbackVerified).toBe(false);
+    expect(validateNativeRolePreflight(f.packet, f.current, f.policy).canonicalReadbackVerified).toBe(false);
   });
   it.each(['BUILD', 'REVIEW'])('P18 supports mixed captured/private %s without changing original captured mode', async role => {
-    const f = fixture(), other = role === 'BUILD' ? f.reviewer : f.builder;
+    const f = fixture(privateRouting), other = role === 'BUILD' ? f.reviewer : f.builder;
     const saved = structuredClone(other.nativeTaskEvidence.spawn);
     withhold(f); other.nativeTaskEvidence.spawn = saved;
     await expectMessageAdmission(f, true);
@@ -176,12 +199,12 @@ describe('bounded native source-role pilot; structure and operator trust only', 
     ['publicWorkScope', ['synthetic scope']], ['publicWorkScope', 123456789],
   ])('P18 rejects private proof mismatch %s=%s for each role', async (key, value) => {
     for (const role of ['builder', 'reviewer'] as const) {
-      const f = withhold(fixture()); f[role].nativeTaskEvidence.spawn.privateMessage[key] = value;
+      const f = withhold(fixture(privateRouting)); f[role].nativeTaskEvidence.spawn.privateMessage[key] = value;
       await expectMessageAdmission(f, false);
     }
   });
   it.each(['missing-proof', 'raw-also-present', 'unknown-availability', 'captured-with-private', 'missing-field'])('P18 rejects ambiguous private evidence: %s', async mode => {
-    const f = withhold(fixture()), spawn = f.builder.nativeTaskEvidence.spawn;
+    const f = withhold(fixture(privateRouting)), spawn = f.builder.nativeTaskEvidence.spawn;
     if (mode === 'missing-proof') delete spawn.privateMessage;
     if (mode === 'raw-also-present') spawn.request.message = 'Synthetic raw bytes must not coexist';
     if (mode === 'unknown-availability') spawn.requestMessageAvailability = 'HASH_ONLY';
@@ -192,23 +215,104 @@ describe('bounded native source-role pilot; structure and operator trust only', 
   it('P18 rejects private evidence under old exact source and disabled/missing policy mode', async () => {
     await expectMessageAdmission(withhold(fixture(historicalRouting)), false);
     for (const mode of [undefined, 'DISABLED']) {
-      const policy = { ...routing, nativeRolePilot: { ...pilot, privateMessageMode: mode } };
+      const policy = { ...privateRouting, nativeRolePilot: { ...privateRouting.nativeRolePilot, privateMessageMode: mode } };
       await expectMessageAdmission(withhold(fixture(policy)), false);
     }
   });
   it('P18 rejects cross-role commitment replay and unapproved scope even when pilot is changed consistently', async () => {
-    const replay = withhold(fixture());
+    const replay = withhold(fixture(privateRouting));
     replay.reviewer.nativeTaskEvidence.spawn.privateMessage = structuredClone(replay.builder.nativeTaskEvidence.spawn.privateMessage);
     await expectMessageAdmission(replay, false);
-    const policy = { ...routing, nativeRolePilot: { ...pilot, headSha: 'b'.repeat(40) } };
+    const policy = { ...privateRouting, nativeRolePilot: { ...privateRouting.nativeRolePilot, headSha: 'b'.repeat(40) } };
     await expectMessageAdmission(withhold(fixture(policy)), false);
   });
   it('P18 explicitly remains operator attestation, not authentication of unavailable private bytes', async () => {
-    const f = withhold(fixture()); f.builder.nativeTaskEvidence.spawn.privateMessage.sha256 = hash('different private bytes');
+    const f = withhold(fixture(privateRouting)); f.builder.nativeTaskEvidence.spawn.privateMessage.sha256 = hash('different private bytes');
     // Public validation cannot recompute withheld bytes. Canonical operator identity and all bindings still apply.
     await expectMessageAdmission(f, true);
     f.github.rest.repos.getCollaboratorPermissionLevel.mockResolvedValue({ data: { permission: 'read' } });
     expect((await run(f)).status).toBe('ASTRA_PENDING');
+  });
+  });
+  it('A848 activates only the exact four-file adoption scope, with truthful unknown identity', async () => {
+    expect(currentRouting.nativeRolePilot).toEqual(adoptionRouting.nativeRolePilot);
+    expect(changeDigestOf(adoptionFiles)).toBe(adoptionRouting.nativeRolePilot.changeDigest);
+    for (const privatePrompt of [false, true]) {
+      const f = fixture(currentRouting);
+      if (privatePrompt) withhold(f);
+      for (const record of [f.builder, f.reviewer]) record.nativeTaskEvidence.performedWorkScope = record.role === 'BUILD'
+        ? 'Synthetic fresh adoption and full verification of existing four-file source; no original authorship claim'
+        : 'Synthetic independent final review of all four existing source files';
+      if (privatePrompt) for (const record of [f.builder, f.reviewer])
+        record.nativeTaskEvidence.spawn.privateMessage.publicWorkScope = record.nativeTaskEvidence.performedWorkScope;
+      await expectMessageAdmission(f, true);
+      expect(validateNativeRolePreflight(f.packet, f.current).canonicalReadbackVerified).toBe(false);
+      expect(f.builder).toMatchObject({ actorId: null, sessionId: null, actualModel: 'unknown', identityEvidence: 'UNKNOWN', servedVerified: false });
+    }
+  });
+  it.each([routing, historicalRouting])('A848 current singleton rejects historical PR843 even when its captured shape is valid', async policy => {
+    const f = fixture(policy);
+    expect(nativeRoleShapeErrors(f.review, f.context, f.pilot)).toEqual([]);
+    expect(nativeRoleShapeErrors(f.review, f.context, currentRouting.nativeRolePilot).length).toBeGreaterThan(0);
+    expect(validateNativeRolePreflight(f.packet, f.current).errors.length).toBeGreaterThan(0);
+    expect((await run(f, currentRouting)).status).toBe('ASTRA_PENDING');
+  });
+  it.each([
+    ['repository', 'foreign/repository'], ['prNumber', 843], ['headSha', 'b'.repeat(40)],
+    ['changeDigest', 'b'.repeat(64)], ['surface', 'PRODUCTION_DB_RELEASE'], ['surface', 'G5'], ['surface', 'WRITER'],
+  ])('A848 rejects nonmatching active scope %s=%s', async (key, value) => {
+    const f = fixture(adoptionRouting), wrong = { ...adoptionRouting, nativeRolePilot: { ...adoptionRouting.nativeRolePilot, [key]: value } };
+    expect(nativeRoleShapeErrors(f.review, f.context, wrong.nativeRolePilot).length).toBeGreaterThan(0);
+    expect(validateNativeRolePreflight(f.packet, f.current, wrong).errors.length).toBeGreaterThan(0);
+    expect((await run(f, wrong)).status).toBe('ASTRA_PENDING');
+  });
+  it.each([{ policy: adoptionRouting, mode: 'PR843_RETAINED_ORIGINAL_V1' }, { policy: routing, mode: 'PR848_RETAINED_ORIGINAL_V1' }])(
+    'A848 private modes cannot be exchanged across exact source scopes', async ({ policy, mode }) => {
+      const wrong = { ...policy, nativeRolePilot: { ...policy.nativeRolePilot, privateMessageMode: mode } };
+      await expectMessageAdmission(withhold(fixture(wrong)), false);
+    });
+  it.each(['BUILD', 'REVIEW'])('A848 requires fresh complete %s capture, never historical NOT_CAPTURED', async role => {
+    for (const field of ['message', 'model', 'fork_turns', 'reasoning_effort', 'observedAt', 'result', 'NOT_CAPTURED']) {
+      const f = fixture(adoptionRouting), record = role === 'BUILD' ? f.builder : f.reviewer;
+      // Selected REVIEW must retain its actual request too; no-selector fallback is a separate existing mode.
+      if (role === 'REVIEW') {
+        record.requestedModel = record.nativeTaskEvidence.spawn.request.model = f.review.requestedModel = 'gpt-6.1-sol';
+      }
+      const spawn = record.nativeTaskEvidence.spawn;
+      if (field === 'NOT_CAPTURED') { spawn.request.message = null; spawn.requestMessageAvailability = 'NOT_CAPTURED'; }
+      else if (['observedAt', 'result'].includes(field)) delete spawn[field];
+      else delete spawn.request[field];
+      await expectMessageAdmission(f, false);
+    }
+    await expectMessageAdmission(uncapturedBuild(adoptionRouting), false);
+  });
+  it.each(['same-task', 'same-execution', 'same-comment', 'participated', 'early', 'before-readback', 'old-policy-readback', 'edited-body', 'edited-comment'])(
+    'A848 rejects self/early/stale final review: %s', async mode => {
+      const f = withhold(fixture(adoptionRouting)), b = f.builder, r = f.reviewer, e = r.nativeTaskEvidence;
+      await expectMessageAdmission(f, true); // Establish valid canonical private proof before each mutation.
+      if (mode === 'same-task') e.taskName = b.nativeTaskEvidence.taskName;
+      if (mode === 'same-execution') r.executionRef = b.executionRef;
+      if (mode === 'same-comment') r.sourceRef = f.review.reviewerExecutionReceipt = b.sourceRef;
+      if (mode === 'participated') e.participatedInBuild = true;
+      if (mode === 'early') e.reviewPhase = 'EARLY';
+      if (mode === 'before-readback') e.spawn.observedAt = '2026-10-09T15:02:30Z';
+      if (mode === 'old-policy-readback') e.policyReadback.version = 'stale';
+      if (mode === 'edited-body') e.builderReadback.bodySha256 = 'c'.repeat(64);
+      if (mode === 'edited-comment') {
+        const read = f.github.rest.issues.getComment.getMockImplementation();
+        f.github.rest.issues.getComment.mockImplementation(async (args: any) => {
+          const result = await read(args); result.data.updated_at = '2026-10-09T15:08:00Z'; return result;
+        });
+      }
+      expect((await run(f)).status).toBe('ASTRA_PENDING');
+    });
+  it('A848 source admission never authorizes DB release, G5 or writer', async () => {
+    const f = fixture(adoptionRouting), releasePacket = { releaseId: 'synthetic-release', planDigest: 'b'.repeat(64), repository };
+    expect((await run(f)).status).toBe('ASTRA_APPROVED');
+    for (const reviewSurface of ['PRODUCTION_DB_RELEASE', 'G5', 'WRITER'])
+      expect(finalRiskReviewerErrors(f.review, adoptionRouting, { ...f.context, reviewSurface }).length).toBeGreaterThan(0);
+    expect(() => buildProductionDbFinalRiskEvidence({ body: f.current.body, changedFiles: adoptionFiles.map(file => file.filename), context: f.context, reviews: [f.record()], releasePacket })).toThrow('FINAL_RISK_NOT_APPROVED');
+    await expect(buildProductionDbFinalRiskEvidenceFromGithub({ github: f.github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', prNumber: 848, releasePacket })).rejects.toThrow('FINAL_RISK_NOT_APPROVED');
   });
   it('T17 binds the approved frozen driver repair, with current six-file blobs and captured tasks', async () => {
     expect(pilot.headSha).toBe('47f259db7b2f4ab50b08c0962cc8d6f676575fd0');
@@ -333,7 +437,7 @@ describe('bounded native source-role pilot; structure and operator trust only', 
     f.reviewer.nativeTaskEvidence.builderReadback.bodySha256 = bodySha256;
     Object.assign(f.context.roleEvidence.builder, { provider, requestedModel, sourceBodySha256: bodySha256 });
     expect(nativeRoleShapeErrors(f.review, f.context, pilot).length === 0).toBe(valid);
-    expect(validateNativeRolePreflight(f.packet, f.current).errors.length === 0).toBe(valid);
+    expect(validateNativeRolePreflight(f.packet, f.current, f.policy).errors.length === 0).toBe(valid);
     expect((await run(f)).status).toBe(valid ? 'ASTRA_APPROVED' : 'ASTRA_PENDING');
     expect(f.builder).toMatchObject({ actorId: null, sessionId: null, actualModel: 'unknown', identityEvidence: 'UNKNOWN', servedVerified: false });
   });
@@ -344,7 +448,7 @@ describe('bounded native source-role pilot; structure and operator trust only', 
     const f = fixture(); expect(nativeRoleShapeErrors(f.review, f.context, { ...pilot, ...(patch as object) }).length).toBeGreaterThan(0);
   });
   it.each([{ repository: 'foreign/repository' }, { headSha: 'b'.repeat(40) }, { changeDigest: 'b'.repeat(64) }])('T02 local review payload binding rejects %j', patch => {
-    const f = fixture(); Object.assign(f.review, patch); expect(validateNativeRolePreflight(f.packet, f.current).errors.length).toBeGreaterThan(0);
+    const f = fixture(); Object.assign(f.review, patch); expect(validateNativeRolePreflight(f.packet, f.current, f.policy).errors.length).toBeGreaterThan(0);
   });
   it('T12 full local preflight rejects a different current body without claiming canonical verification', () => {
     const f = fixture(); const result = validateWipPreflight({ body: body + '\nChanged metadata', nativeRoleEvidence: f.packet, currentPr: f.current });
@@ -374,7 +478,7 @@ describe('bounded native source-role pilot; structure and operator trust only', 
   ])('T04–T09 rejects declared %s in shared and local shape checks', (_name, mutate) => {
     const f = fixture(); (mutate as (r: any) => void)(f.reviewer);
     expect(nativeRoleShapeErrors(f.review, { ...f.context, roleEvidence: f.packet }, pilot).length).toBeGreaterThan(0);
-    expect(validateNativeRolePreflight(f.packet, f.current).errors.length).toBeGreaterThan(0);
+    expect(validateNativeRolePreflight(f.packet, f.current, f.policy).errors.length).toBeGreaterThan(0);
   });
   it.each(['same-task', 'different-generation', 'wrong-operator', 'old-policy', 'old-head', 'early-time', 'edit-hash'])('T06/T09/T10 rejects %s', mode => {
     const f = fixture(), b = f.context.roleEvidence.builder, r = f.context.roleEvidence.reviewer;
@@ -411,7 +515,7 @@ describe('bounded native source-role pilot; structure and operator trust only', 
   });
   it.each(['2026-10-09T15:00:00Z', '2026-10-09T15:02:30Z'])('T07 independently reproduced early final spawn %s is rejected remotely and locally', async observedAt => {
     const f = fixture(); f.reviewer.nativeTaskEvidence.spawn.observedAt = observedAt;
-    expect((await run(f)).status).toBe('ASTRA_PENDING'); expect(validateNativeRolePreflight(f.packet, f.current).errors.length).toBeGreaterThan(0);
+    expect((await run(f)).status).toBe('ASTRA_PENDING'); expect(validateNativeRolePreflight(f.packet, f.current, f.policy).errors.length).toBeGreaterThan(0);
   });
   it.each(['astra-review', 'sol-review'])('T10 rejects conflicting second native final %s block without changing legacy parser', async kind => {
     const f = fixture(); const review = { ...f.record(), body: f.record().body + '\n' + block({ ...f.review, verdict: 'FIX_REQUIRED', unresolvedFindingCount: 1 }, kind) };
@@ -453,7 +557,7 @@ describe('bounded native source-role pilot; structure and operator trust only', 
   });
   it.each([{ draft: true }, { state: 'closed' }, { body: body.replace('LANE_STATE: ACTIVE', 'LANE_STATE: PARKED') }])('T12 lifecycle does not approve or publish native final %j', async patch => {
     const f = fixture(); Object.assign(f.current, patch); expect((await run(f)).status).not.toBe('ASTRA_APPROVED');
-    expect(validateNativeRolePreflight(f.packet, f.current).errors.length).toBeGreaterThan(0);
+    expect(validateNativeRolePreflight(f.packet, f.current, f.policy).errors.length).toBeGreaterThan(0);
   });
   it('T13 rejects DB entrypoints even when caller injects fully valid source context', async () => {
     const f = fixture(), releasePacket = { releaseId: 'synthetic-release', planDigest: 'b'.repeat(64), repository };
@@ -490,6 +594,6 @@ describe('bounded native source-role pilot; structure and operator trust only', 
     expect(pilot.surface).toBe('PRODUCT_SOURCE_FINAL_RISK');
     const source = readFileSync('scripts/agents/final-risk-cost-policy.mjs', 'utf8');
     expect(source).not.toContain('child_process'); expect(source).not.toContain('TEST_VERIFIED');
-    const f = fixture(); expect(evaluateAstra({ body, changedFiles: files.map(f => f.filename), context: f.context, reviews: [f.record()] }).status).toBe('ASTRA_APPROVED');
+    const f = fixture(); expect(evaluateAstra({ body, changedFiles: files.map(f => f.filename), context: f.context, reviews: [f.record()] }, routing).status).toBe('ASTRA_APPROVED');
   });
 });
