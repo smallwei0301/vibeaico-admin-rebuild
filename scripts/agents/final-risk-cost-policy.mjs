@@ -144,10 +144,15 @@ const native = record => record?.executionIdentityKind === 'NATIVE_TASK';
 // Privacy is a distinct exact-source operator attestation, not public authentication of raw bytes.
 function privateNativeMessageValid(spawn, evidence, record, role, context, pilot) {
   const p = spawn?.privateMessage;
-  if (pilot.privateMessageMode !== 'PR843_RETAINED_ORIGINAL_V1'
-    || context.repository !== 'smallwei0301/vibeaico-admin-rebuild' || context.prNumber !== 843
-    || context.headSha !== '47f259db7b2f4ab50b08c0962cc8d6f676575fd0'
-    || context.changeDigest !== '18ee75322cafca9148e043cee7ba518ea767ab4f8449fd6eb655c8cb5192b6ba'
+  // The historical #843 mode is shape-replay only when the active singleton is #848.
+  const exactPrivateScope = context.repository === 'smallwei0301/vibeaico-admin-rebuild' && (
+    (pilot.privateMessageMode === 'PR843_RETAINED_ORIGINAL_V1' && context.prNumber === 843
+      && context.headSha === '47f259db7b2f4ab50b08c0962cc8d6f676575fd0'
+      && context.changeDigest === '18ee75322cafca9148e043cee7ba518ea767ab4f8449fd6eb655c8cb5192b6ba')
+    || (pilot.privateMessageMode === 'PR848_RETAINED_ORIGINAL_V1' && context.prNumber === 848
+      && context.headSha === '8e85baf04a3e9a8d556ed8abd71c2ad789be468b'
+      && context.changeDigest === 'd9c1f7cffeeed4436e4bd31ea211e1235d70e83294c12a876c249793b1539790'));
+  if (!exactPrivateScope
     || !['BUILD', 'REVIEW'].includes(role) || spawn?.request?.message !== null
     || p?.schemaVersion !== 1 || typeof p.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(p.sha256)
     || /^0+$/.test(p.sha256) || p.sha256 === createHash('sha256').update('').digest('hex')
@@ -180,6 +185,50 @@ function nativeSpawnMessageValid(spawn, evidence, record, role, context, pilot) 
     && millis(spawn?.observedAt) === millis('2026-10-09T14:28:16Z')
     && millis(record?.startedAt) === millis('2026-10-09T14:32:26Z')
     && millis(record?.completedAt) === millis('2026-10-09T15:32:00Z');
+}
+
+// Only #848's fresh-adoption window uses exact UTC fractions; historical timing stays unchanged.
+const PR848_ADOPTION_APPROVED_AT = '2026-10-10T12:46:54.792160Z';
+const PR848_BUILD_WORK_SCOPE = 'Fresh adoption and full verification of existing PR #848 exact source; no original authorship claimed.';
+function adoptionUtcNanos(value) {
+  if (typeof value !== 'string') return null;
+  const match = /^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.(\d{1,9}))?Z$/.exec(value);
+  if (!match) return null;
+  const seconds = Date.parse(`${match[1]}Z`);
+  if (!Number.isFinite(seconds) || new Date(seconds).toISOString() !== `${match[1]}.000Z`) return null;
+  return BigInt(seconds) * 1_000_000n + BigInt((match[2] ?? '').padEnd(9, '0'));
+}
+function native848AdoptionErrors(builder, reviewer, review, context, pilot) {
+  if (context.repository !== 'smallwei0301/vibeaico-admin-rebuild' || context.prNumber !== 848) return [];
+  const b = builder?.nativeTaskEvidence, r = reviewer?.nativeTaskEvidence, readback = b?.policyReadback;
+  // Exact public declaration, not a claim that hidden work or prompt contents were authenticated.
+  if (pilot.buildWorkScope !== PR848_BUILD_WORK_SCOPE || b?.performedWorkScope !== PR848_BUILD_WORK_SCOPE)
+    return ['Native #848 BUILD must declare only fresh adoption/full verification, with no original authorship'];
+  if ([b, r].some(e => e?.spawn?.requestMessageAvailability !== 'WITHHELD_PRIVATE'
+    && typeof e?.spawn?.request?.message !== 'string'))
+    return ['Native #848 captured original request message must be text'];
+  const ordered = (...values) => {
+    const times = values.map(adoptionUtcNanos);
+    return times.every((value, index) => value !== null && (index === 0 || times[index - 1] <= value));
+  };
+  const now = context.now ?? new Date().toISOString();
+  for (const record of [builder, reviewer]) {
+    const e = record.nativeTaskEvidence;
+    if (!ordered(e.spawn?.observedAt, record.startedAt, e.work?.observedAt, record.completedAt, e.compiledAt, now)
+      || adoptionUtcNanos(record.completedAt) !== adoptionUtcNanos(e.completion?.observedAt)
+      || (context.nativeCanonical === true && !ordered(e.compiledAt, record.sourceUpdatedAt, review.submittedAt, now)))
+      return ['Native #848 role and canonical source timing must preserve exact UTC ordering and completion equality'];
+  }
+  if (pilot.adoptionApprovedAt !== PR848_ADOPTION_APPROVED_AT
+    || readback?.sourceKind !== 'OPERATOR_WITNESSED' || readback?.version !== pilot.version
+    || !/^[a-f0-9]{40}$/.test(readback?.mainSha ?? '') || readback.mainSha !== r?.policyReadback?.mainSha
+    || (context.nativeCanonical === true && readback.mainSha !== context.nativePolicyEvidence?.reviewedMainSha)
+    || !ordered(PR848_ADOPTION_APPROVED_AT, readback?.observedAt, b?.spawn?.observedAt, builder?.startedAt)
+    || !ordered(PR848_ADOPTION_APPROVED_AT, r?.policyReadback?.observedAt, r?.spawn?.observedAt, reviewer?.startedAt)
+    || !ordered(builder?.startedAt, builder?.completedAt, r?.spawn?.observedAt)
+    || !ordered(builder?.completedAt, r?.builderReadback?.updatedAt, r?.builderReadback?.observedAt, r?.spawn?.observedAt))
+    return ['Native #848 requires fresh post-approval BUILD adoption after the same enabled-main policy readback'];
+  return [];
 }
 
 /** Shape/consistency only. A trusted operator's excerpts cannot authenticate hidden spawn events. */
@@ -241,6 +290,7 @@ export function nativeRoleShapeErrors(review = {}, context = {}, pilot = {}) {
   }
   const b = builder?.nativeTaskEvidence, r = reviewer?.nativeTaskEvidence;
   if (!b || !r) return errors;
+  errors.push(...native848AdoptionErrors(builder, reviewer, review, context, pilot));
   if (b.operatorLogin !== r.operatorLogin || b.operatorId !== r.operatorId
     || b.namespace !== r.namespace || b.captureGeneration !== r.captureGeneration
     || b.taskName === r.taskName || builder.executionRef === reviewer.executionRef

@@ -6,10 +6,12 @@
     "enabled": true,
     "surface": "PRODUCT_SOURCE_FINAL_RISK",
     "repository": "smallwei0301/vibeaico-admin-rebuild",
-    "prNumber": 843,
-    "headSha": "47f259db7b2f4ab50b08c0962cc8d6f676575fd0",
-    "changeDigest": "18ee75322cafca9148e043cee7ba518ea767ab4f8449fd6eb655c8cb5192b6ba",
-    "privateMessageMode": "PR843_RETAINED_ORIGINAL_V1"
+    "prNumber": 848,
+    "headSha": "8e85baf04a3e9a8d556ed8abd71c2ad789be468b",
+    "changeDigest": "d9c1f7cffeeed4436e4bd31ea211e1235d70e83294c12a876c249793b1539790",
+    "privateMessageMode": "PR848_RETAINED_ORIGINAL_V1",
+    "adoptionApprovedAt": "2026-10-10T12:46:54.792160Z",
+    "buildWorkScope": "Fresh adoption and full verification of existing PR #848 exact source; no original authorship claimed."
   },
   "openaiBuilderDecision": {
     "effectiveAt": "2026-10-01T00:01:00Z",
