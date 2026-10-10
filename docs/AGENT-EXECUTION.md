@@ -609,9 +609,11 @@ DB release preflight 尚未接入可信 role context；enabled policy 下缺此�
 #### 有界原生任務身分試行（Owner 2026-10-09）
 
 只有 trusted-main `model-routing.json.nativeRolePilot` 已啟用且 repo／PR／exact head／六檔 digest／
-`PRODUCT_SOURCE_FINAL_RISK` 全相符時，可用 `executionIdentityKind=NATIVE_TASK`。初版只限 #843 的
-`07d360c50c6eb60486fa4f3bc21d0f713d6e2bbb`／`8da954f36f1e6ea03bac4be9c24f203f75273494dab11b8f49829fca2d7664a3`；
-#836、其他 head、歷史未知 BUILD、DB release／G5／writer 不適用。治理 bootstrap PR 不能用此規則自批。
+`PRODUCT_SOURCE_FINAL_RISK` 全相符時，可用 `executionIdentityKind=NATIVE_TASK`。Owner 2026-10-10 僅將 #843
+已凍結兩檔 driver projection 修正版更新為 `47f259db7b2f4ab50b08c0962cc8d6f676575fd0`／
+`18ee75322cafca9148e043cee7ba518ea767ab4f8449fd6eb655c8cb5192b6ba`。本次只更新精確 source 綁定，BUILD／REVIEW 必須保存原 request message；
+原初版 `07d360c50c6eb60486fa4f3bc21d0f713d6e2bbb`／`8da954f36f1e6ea03bac4be9c24f203f75273494dab11b8f49829fca2d7664a3` 留作歷史，
+不再是當前 pilot 准入版本。#836、其他 head、歷史未知 BUILD、DB release／G5／writer 不適用。治理 bootstrap PR 不能用此規則自批。
 BUILD／REVIEW 仍是原角色；actorId／sessionId 必須 null、backendIdentityAvailability=UNEXPOSED，
 actualModel=unknown、identityEvidence=UNKNOWN、servedVerified=false。task_name／executionRef 是操作者限定範圍內的
 識別，不是平台 actor/session，也不宣稱全球唯一。舊完整 backend 來源契約維持不變。
@@ -620,11 +622,11 @@ actualModel=unknown、identityEvidence=UNKNOWN、servedVerified=false。task_nam
 captureGeneration、taskName、executionRefBasis=OPERATOR_SCOPED_NATIVE_TASK、performedWorkScope、compiledAt，
 以及 spawn（親見 request/result、角色與 UTC）、work（親見或明標 WORKER_REPORTED、起點與成果 hash）、
 completion（親見 BOUNDED_WORK_COMPLETED、停筆、head/digest 與 UTC）。原 request message 應逐字保存；
-只有上列 exact #843 的既有 BUILD `/root/implement_843_pg_harness`，親見 spawn 參數與工作／完成已記錄但
+下列相容性只描述原初版 exact07d／原 digest 的既有 BUILD `/root/implement_843_pg_harness`，不移植至新版本。其親見 spawn 參數與工作／完成已記錄但
 原 message 未保存時，可明寫 `spawn.request.message=null`、`spawn.requestMessageAvailability=NOT_CAPTURED`。
 這是 capture 缺口，不准用後來的摘要補成原 prompt；不能省略其他必要親見事實、model／fork／reasoning／UTC／hash。
 有原文者維持非空 message，availability 可省略或為 CAPTURED；相矛盾或未知 availability 拒絕。
-新 REVIEW 必須保存真實原 message，不能沿用這個歷史 BUILD 表示；其他 task／PR／head／DB 不適用。
+新版本 BUILD 與所有新 REVIEW 必須保存真實原 message，不能沿用這個歷史 BUILD 表示；其他 task／PR／head／DB 不適用。
 此分支另綁既有 `executionRef=native-task:/root/implement_843_pg_harness`，以及2026-10-09 UTC的
 spawn觀測14:28:16Z、work起點14:32:26Z、bounded完成15:32:00Z；比較相同瞬間，不接受較晚同名任務或寬時間窗。
 起點來自既有 worker checkpoint、完成來自父方親見完成回報，仍不是精確first/last-write或backend生命週期。

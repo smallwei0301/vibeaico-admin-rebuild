@@ -7,8 +7,8 @@
     "surface": "PRODUCT_SOURCE_FINAL_RISK",
     "repository": "smallwei0301/vibeaico-admin-rebuild",
     "prNumber": 843,
-    "headSha": "07d360c50c6eb60486fa4f3bc21d0f713d6e2bbb",
-    "changeDigest": "8da954f36f1e6ea03bac4be9c24f203f75273494dab11b8f49829fca2d7664a3"
+    "headSha": "47f259db7b2f4ab50b08c0962cc8d6f676575fd0",
+    "changeDigest": "18ee75322cafca9148e043cee7ba518ea767ab4f8449fd6eb655c8cb5192b6ba"
   },
   "openaiBuilderDecision": {
     "effectiveAt": "2026-10-01T00:01:00Z",

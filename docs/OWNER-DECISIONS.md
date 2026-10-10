@@ -2,8 +2,19 @@
 
 > 本檔是跨領域 Owner 決策索引，讓 Agent 在開工前快速知道哪些題目已經裁示，避免重複詢問。
 > 正式領域規格仍以各 `docs/integration/**` canonical 文件為準；Issue 負責施工範圍與驗收。
-> 最後更新：2026-10-09。
+> 最後更新：2026-10-10。
 > 模型版本決策最後更新：2026-10-01；本次只新增有界角色證據政策，未變更模型型號。
+
+## 2026-10-10 已裁示
+
+Owner 01:09:48 UTC 批准僅將 #843 原生角色試行延伸至這次已凍結的兩檔 driver projection 修正版：
+exact head `47f259db7b2f4ab50b08c0962cc8d6f676575fd0`、完整六檔 digest
+`18ee75322cafca9148e043cee7ba518ea767ab4f8449fd6eb655c8cb5192b6ba`。舊版範圍依下節保留為歷史，不自動涵蓋其他版本。
+新 BUILD／REVIEW 保存真實原 request message；原 exact07d 的 NOT_CAPTURED 例外不擴大、既有 ref／UTC 不改寫。
+仍接受平台未公開 actor/session、程式無法獨立認證操作者原生任務與 context 隔離背書的限制。
+只限 Product source Final Risk；#836、DB／Production、其他版本及安裝授權均不在本次延伸。
+依正常治理 PR／必要測試／獨立審查合入 main 並回讀後才生效；新 final REVIEW 須在 BUILD canonical receipt
+及新版 main policy 回讀後才開始。不是豁免 source／CI／latest findings／ownership／publication／merge gates。
 
 ## 2026-10-09 已裁示
 
