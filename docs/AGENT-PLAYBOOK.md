@@ -141,6 +141,14 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 驗證：Run 172 已精確分類並回填 PR #53；0038／0039 各自完成 post-DDL live ACL 驗證，但未知 0040 尚待來源與 schema 稽核。
 - 狀態：仍待處理
 
+#### 2026-10-11 — #851：reset／seed 還須在 client 前鎖定 canonical target
+
+- 本次 target-binding 缺口一件，保留 PB-002 原事件次數；沒有實際跨專案誤刪證據。接續 #848 驗證時發現 helper 只排除 Production／平台同 URL，仍接受其他遠端 Supabase 專案；序列化本身不能保證目標正確。
+- 修正：[#851](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/851) 使用既有 EXPECTED_PROJECT_REFS；shared 只接受 canonical TEST HTTPS origin，explicit LOCAL_ISOLATED 只接受 loopback；拒絕 userinfo、非根 path、query、fragment 及不支援的 profile。createTestAdminClient 自行重驗，既有 env identity／Production／platform equality lock 保留。
+- 預防：有效目標驗證須位於首次 client／mutation 之前；直接呼叫 client 也 fail closed。target guard 不替代 shared TEST serialization、local instance 身分或必要授權。PR POLICY_SKIP 與 main 自然 TEST 分開核對（PB-032）。
+- 驗證：原 RED16failed/23passed、direct-client RED1failed/39passed 均保留；最終 scoped57pass、full380suites/6056tests、獨立15個 offline probes。真實 reset／seed entrypoint 只以 deny-all SDK 驗控制流程；[source CI38110590346](https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/38110590346) 成功，其 integration/E2E 是 policy skip，不能冒充實際 TEST。
+- main merge `6a2e18251c4802ae40e875ddd5617be2b98e94d8` 的 guard blob 與已審 source 相同；[自然 main CI38149309813](https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/38149309813) 已 SUCCESS：integration806passed/58skipped、E2E24passed/3skipped；reset/seed、next dev teardown 與 runner cleanup 有 log，未另做全庫零殘留稽核。Vercel 同 SHA 被 Ignored Build Step 取消，不是新部署 READY；#848 G2／Production 驗收不因此完成。
+
 ### PB-003 — seed 把缺欄位誤判成 optional table
 
 - 首次／最近：2026-08-28／2026-08-28
