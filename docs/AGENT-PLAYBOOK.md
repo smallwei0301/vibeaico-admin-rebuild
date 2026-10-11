@@ -116,7 +116,6 @@
 | PB-077 | 共用 worktree 上，reviewer 在 builder/pusher 進行 verify-before-push 時運行寫入操作，會造成 HEAD 改變或測試干擾 | Reviewer 應使用 `git show/diff` 或獨立 worktree，不在同一 clone 上運行突變；builder/pusher 確認 verify 無誤前，不允許同時進行 mutation。 | PR #791 review phase；verify-before-push 拒絕 VERIFY_FAILED。 |
 | PB-078 | canonical TEST 執行中若推送 ledger-only commit，會讓 exact-head TEST 證據失效（本次已避免） | 推送 ledger-only commit 前先查同 PR 是否有 pending／running canonical TEST；有就留在本機，隨下一個實質修正一併推送。 | PR #795；f9f31534 → 273fa1c3；run 37429766960 |
 | PB-079 | ISSUE_CLOSE_READY 的 CI 證據必須是 current main exact SHA；main 在送出後前進，close guard 會重開 | 送 ISSUE_CLOSE_READY 前立刻 `gh api repos/<repo>/commits/main` 確認 SHA 與證據 run 的 head 相同；被重開時以新 main 的 CI 重送新一輪，不重用舊 approval。 | Issue 760、PR #795；close guard 重開 issuecomment-6013786314；分類：close admission |
-
 | PB-080 | reset／seed 必須在 client 前鎖定 canonical target | 排除 Production 不代表遠端目標就是 TEST；shared 使用 canonical allowlist，local 需明確 profile，client 邊界再次檢查。目標身分與 PB-002 的併發鎖是不同根因。 | PR #851／#852；scripts/test/_supabase-admin.mjs |
 
 ## 事件紀錄
