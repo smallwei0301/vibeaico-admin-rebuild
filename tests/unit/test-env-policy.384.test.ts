@@ -29,13 +29,16 @@ function child(root: string, code: string, overrides: Record<string, string | un
     env: {
       ...env, SETTINGS_ENCRYPTION_KEY: inheritedKey,
       TEST_SUPABASE_URL: testUrl, TEST_SUPABASE_SERVICE_ROLE_KEY: 'synthetic-service-key',
+      TEST_PROFILE: 'LOCAL_ISOLATED',
       NEXT_PUBLIC_SUPABASE_URL: 'https://platform.invalid', ...overrides,
     },
   });
 }
 function entryFixture(root: string, hasFile = true) {
   if (hasFile) write(root, '.env.test', `SETTINGS_ENCRYPTION_KEY=${fileKey}\nTEST_SUPABASE_URL=${testUrl}\nTEST_SUPABASE_SERVICE_ROLE_KEY=synthetic-service-key\n`);
-  write(root, 'scripts/agents/test-env-policy.mjs', source('scripts/agents/test-env-policy.mjs'));
+  for (const name of ['test-env-policy', 'schema-truth-evidence', 'schema-truth-proof-policy']) {
+    write(root, `scripts/agents/${name}.mjs`, source(`scripts/agents/${name}.mjs`));
+  }
   write(root, 'scripts/test/_supabase-admin.mjs', source('scripts/test/_supabase-admin.mjs'));
   // The unused SDK import is a deny-all stub. It cannot create a real client.
   write(root, 'node_modules/@supabase/supabase-js/package.json', '{"type":"module","exports":"./index.js"}');
@@ -175,4 +178,79 @@ describe('test environment identity gate (#384)', () => {
     assert.match(result.stderr, /安全鎖/);
     assert.equal(result.stdout.includes('ENV_READY'), false);
   }));
+});
+
+
+const canonicalUrl = 'https://nmwhwngojosmagjuvxol.supabase.co';
+describe('reset/seed canonical target safety', () => {
+  const rejected: [string, string, string | undefined][] = [
+    ['other remote project', 'https://other-project.supabase.co', undefined],
+    ['production', 'https://egehnijjpgijmccagxac.supabase.co', undefined],
+    ['hostname suffix', canonicalUrl + '.attacker.invalid', undefined],
+    ['userinfo', 'https://private-user:private-password@nmwhwngojosmagjuvxol.supabase.co', undefined],
+    ['invalid URL', 'private-invalid-target', undefined],
+    ['query', canonicalUrl + '?token=private-token', undefined],
+    ['fragment', canonicalUrl + '#private-token', undefined],
+    ['path', canonicalUrl + '/private-path', undefined],
+    ['insecure remote', canonicalUrl.replace('https:', 'http:'), undefined],
+    ['alternate remote port', canonicalUrl + ':8443', undefined],
+    ['unqualified loopback', testUrl, undefined],
+    ['remote in local profile', canonicalUrl, 'LOCAL_ISOLATED'],
+    ['other remote in local profile', 'https://other-project.supabase.co', 'LOCAL_ISOLATED'],
+    ['unknown profile', canonicalUrl, 'TYPO'],
+    ['source-only profile', canonicalUrl, 'SOURCE_ONLY'],
+  ];
+  it.each(rejected)('rejects %s without leaking the supplied URL', (_name, url, profile) => fixture(root => {
+    entryFixture(root, false);
+    const result = child(root, adminEntry, { TEST_SUPABASE_URL: url, TEST_PROFILE: profile });
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /安全鎖/);
+    assert.equal((result.stdout + result.stderr).includes(url), false);
+    assert.equal(result.stdout.includes('ENV_READY'), false);
+  }));
+
+  it.each([
+    ['canonical default', canonicalUrl, undefined],
+    ['canonical shared', canonicalUrl, 'SHARED_CANONICAL'],
+    ['local IP', testUrl, 'LOCAL_ISOLATED'],
+    ['local hostname', 'http://localhost:54321', 'LOCAL_ISOLATED'],
+  ])('accepts %s', (_name, url, profile) => fixture(root => {
+    entryFixture(root, false);
+    const result = child(root, adminEntry, { TEST_SUPABASE_URL: url, TEST_PROFILE: profile });
+    assert.equal(result.status, 0, result.stderr);
+  }));
+
+  it('retains the independent platform URL equality lock', () => fixture(root => {
+    entryFixture(root, false);
+    const result = child(root, adminEntry, { TEST_PROFILE: undefined, TEST_SUPABASE_URL: canonicalUrl, NEXT_PUBLIC_SUPABASE_URL: canonicalUrl });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /NEXT_PUBLIC_SUPABASE_URL/);
+  }));
+
+  it('direct client construction cannot bypass the target guard', () => fixture(root => {
+    entryFixture(root, false);
+    const result = child(root, 'import { createTestAdminClient } from "./scripts/test/_supabase-admin.mjs"; createTestAdminClient();',
+      { TEST_SUPABASE_URL: 'https://other-project.supabase.co', TEST_PROFILE: undefined });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /安全鎖/);
+    assert.equal(result.stderr.includes('SDK_CLIENT_FORBIDDEN'), false);
+  }));
+
+  for (const entry of ['reset-db', 'seed']) {
+    it.each([['reject', 'https://other-project.supabase.co'], ['accept', canonicalUrl]])(
+      `${entry} %s reaches no real client or database`, (expected, url) => fixture(root => {
+        entryFixture(root, false);
+        for (const name of ['reset-db', 'seed', 'tour-seed-profile']) {
+          write(root, `scripts/test/${name}.mjs`, source(`scripts/test/${name}.mjs`));
+        }
+        write(root, 'node_modules/@supabase/supabase-js/index.js',
+          'import { writeFileSync } from "node:fs"; export function createClient() { writeFileSync("client-reached", "yes"); throw new Error("DENY_ALL_CLIENT_BOUNDARY"); }');
+        const file = join(root, `scripts/test/${entry}.mjs`);
+        const result = child(root, `process.argv[1] = ${JSON.stringify(file)}; await import(${JSON.stringify(file)});`,
+          { TEST_SUPABASE_URL: url, TEST_PROFILE: undefined });
+        assert.equal(result.status, 1, result.stderr);
+        assert.equal(existsSync(join(root, 'client-reached')), expected === 'accept');
+        assert.match(result.stderr, expected === 'accept' ? /DENY_ALL_CLIENT_BOUNDARY/ : /安全鎖/);
+      }));
+  }
 });

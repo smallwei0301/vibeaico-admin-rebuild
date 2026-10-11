@@ -16,6 +16,7 @@ import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { loadCheckedTestEnv } from '../agents/test-env-policy.mjs';
+import { EXPECTED_PROJECT_REFS } from '../agents/schema-truth-evidence.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..');
@@ -25,7 +26,7 @@ const REPO_ROOT = resolve(__dirname, '..', '..');
  * 見任務指示 / docs/integration/02-SUPABASE-SCHEMA.md 導言、.env.example 註解
  * 「Supabase 專案：Vibe ai backend（production/dev 用，ref: egehnijjpgijmccagxac）」。
  */
-const PRODUCTION_SUPABASE_HOSTNAME = 'egehnijjpgijmccagxac.supabase.co';
+const PRODUCTION_SUPABASE_HOSTNAME = `${EXPECTED_PROJECT_REFS.PRODUCTION}.supabase.co`;
 
 /**
  * 載入 .env.test 前先驗證測試身分一致；即使 DB 變數已存在也不能跳過。
@@ -81,7 +82,7 @@ export function assertSafeTestUrl() {
   try {
     parsed = new URL(rawUrl);
   } catch {
-    console.error(`[test-db] 安全鎖：TEST_SUPABASE_URL 不是合法的 URL（"${rawUrl}"），拒絕執行。`);
+    console.error('[test-db] 安全鎖：TEST_SUPABASE_URL 不是合法的 URL，拒絕執行。');
     process.exit(1);
   }
 
@@ -104,15 +105,32 @@ export function assertSafeTestUrl() {
     process.exit(1);
   }
 
+  // Shared TEST and disposable local runs have disjoint targets. Validate before
+  // callers create a client or enter reset/seed; never echo an untrusted URL.
+  const profile = process.env.TEST_PROFILE ?? '';
+  const local = profile === 'LOCAL_ISOLATED';
+  const shared = profile === '' || profile === 'SHARED_CANONICAL';
+  const plainUrl = !parsed.username && !parsed.password && !parsed.search && !parsed.hash
+    && parsed.pathname === '/';
+  const allowedTarget = local
+    ? ['localhost', '127.0.0.1'].includes(parsed.hostname)
+      && ['http:', 'https:'].includes(parsed.protocol)
+    : shared && parsed.hostname === `${EXPECTED_PROJECT_REFS.TEST}.supabase.co`
+      && parsed.protocol === 'https:' && parsed.port === '';
+  if (!plainUrl || !allowedTarget) {
+    console.error('[test-db] 安全鎖：TEST profile 或目標不符合 canonical TEST／local isolated 契約，拒絕執行。');
+    process.exit(1);
+  }
+
   return rawUrl;
 }
 
 /**
  * 建立 service role Supabase client，接到已通過安全鎖檢查的 TEST 專案。
- * 一定要先呼叫 assertSafeTestUrl()，這個函式本身不重複做安全檢查。
+ * 在 client 邊界再次驗證目標，避免新呼叫端忘記 reset/seed 的前置檢查。
  */
 export function createTestAdminClient() {
-  const url = process.env.TEST_SUPABASE_URL;
+  const url = assertSafeTestUrl();
   const serviceRoleKey = process.env.TEST_SUPABASE_SERVICE_ROLE_KEY;
 
   if (!serviceRoleKey) {
