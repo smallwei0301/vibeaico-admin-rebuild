@@ -1,8 +1,42 @@
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
 const source = readFileSync('.github/workflows/production-db-release-orchestrator.yml', 'utf8');
+
+async function verifyBaselineRun(patch: any = {}, jobsPatch?: (jobs: any[]) => void, artifactsPatch?: (artifacts: any[]) => void) {
+  const step = parse(source).jobs.admission.steps.find((s: any) => s.name === 'Verify separate TEST 0098 baseline run and artifact provenance');
+  expect(step).toBeDefined();
+  const head = 'a7368f05c4f8c3c6e2901b2387139b90e2ef3ef2';
+  const run: any = { id: 38025747318, repository: { full_name: 'smallwei0301/vibeaico-admin-rebuild' }, name: 'ci',
+    path: '.github/workflows/ci.yml', event: 'workflow_dispatch', head_branch: 'main', head_sha: head, run_attempt: 1,
+    status: 'completed', conclusion: 'success', ...patch };
+  const jobs = [{ name: 'integration', run_attempt: 1, status: 'completed', conclusion: 'success', steps: [
+    'Apply explicit canonical TEST 0098 baseline', 'Upload canonical TEST 0098 baseline evidence', 'Run integration tests', 'Run E2E tests',
+  ].map(name => ({ name, status: 'completed', conclusion: 'success' })) }];
+  const artifacts = [{ id: 11659019044, name: `test-baseline-0098-evidence-${head}-38025747318`, expired: false,
+    workflow_run: { id: 38025747318, head_sha: head } }];
+  jobsPatch?.(jobs); artifactsPatch?.(artifacts);
+  const output: any = {};
+  const previous = process.env.TEST_BASELINE_RUN_ID;
+  process.env.TEST_BASELINE_RUN_ID = '38025747318';
+  try {
+    const github: any = { rest: { actions: { getWorkflowRun: async () => ({ data: run }),
+      listJobsForWorkflowRunAttempt: Symbol('jobs'), listWorkflowRunArtifacts: Symbol('artifacts') } },
+      paginate: async (method: symbol, args: any) => {
+        expect(args.run_id).toBe(38025747318);
+        if (method === github.rest.actions.listJobsForWorkflowRunAttempt) { expect(args.attempt_number).toBe(1); return jobs; }
+        return artifacts;
+      } };
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+    await new AsyncFunction('github', 'context', 'core', step.with.script)(github,
+      { repo: { owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild' } }, { setOutput: (key: string, value: any) => { output[key] = value; } });
+    return output;
+  } finally { if (previous === undefined) delete process.env.TEST_BASELINE_RUN_ID; else process.env.TEST_BASELINE_RUN_ID = previous; }
+}
 
 function position(text: string) {
   const index = source.indexOf(text);
@@ -11,6 +45,82 @@ function position(text: string) {
 }
 
 describe('Production DB trusted-main release orchestrator workflow #447', () => {
+  it('binds the separate historical baseline run, successful steps and unique artifact without changing the G3 plan', async () => {
+    const output = await verifyBaselineRun();
+    expect(JSON.parse(output.source)).toMatchObject({ sourceRun: { id: '38025747318', attempt: 1,
+      headSha: 'a7368f05c4f8c3c6e2901b2387139b90e2ef3ef2', baselineStep: 'success', integrationStep: 'success', e2eStep: 'success' }, artifact: { id: '11659019044' } });
+    expect(output.artifact_id).toBe('11659019044');
+    const workflow = parse(source);
+    expect(workflow.on.workflow_dispatch.inputs.test_baseline_run_id.required).toBe(false);
+    const steps = workflow.jobs.admission.steps;
+    const download = steps.find((s: any) => s.name === 'Download exact separate TEST 0098 baseline artifact');
+    expect(download.with['artifact-ids']).toBe('${{ steps.baseline-source.outputs.artifact_id }}');
+    expect(download.with['run-id']).toBe('${{ inputs.test_baseline_run_id }}');
+    const assemble = steps.find((s: any) => s.name === 'Reassemble exact G3 evidence for read-only ledger mapping').run;
+    expect(assemble).toContain('testBaseline0098');
+    expect(assemble).toContain('verifyTestBaseline0098Binding');
+    expect(assemble).not.toMatch(/plan\.migrations\.(?:push|splice)|plan\.mainSha\s*=/);
+  });
+  it('downloads the exact ID to the consumer path and detects the default artifact-name subdirectory layout', async () => {
+    const steps = parse(source).jobs.admission.steps;
+    const download = steps.find((s: any) => s.name === 'Download exact separate TEST 0098 baseline artifact');
+    const assemble = steps.find((s: any) => s.name === 'Reassemble exact G3 evidence for read-only ledger mapping').run;
+    const body = assemble.slice(assemble.indexOf('let testBaseline0098;'), assemble.indexOf('fs.appendFileSync', assemble.indexOf('let testBaseline0098;')));
+    const output = await verifyBaselineRun();
+    const facts = JSON.parse(output.source);
+    const repoFile = '0098_reconcile_tour_orders_legacy_contact_columns';
+    const hash = 'f0bd13dcf2226143d90dc1ca3431df7a3020e3d3f9eabd446b640b03261193e5';
+    const receipt = { schemaVersion: 1, status: 'TEST_BASELINE_0098_VERIFIED', repository: facts.sourceRun.repository,
+      testProjectRef: 'nmwhwngojosmagjuvxol', mainSha: facts.sourceRun.headSha, sourceRunId: facts.sourceRun.id, sourceRunAttempt: 1,
+      migration: { repoFile, sha256: hash, ledger: { version: '0098', name: repoFile, created_by: 'vibeaico-test-baseline-0098', idempotency_key: `test-baseline-0098:${hash}` } },
+      columnFingerprints: { before: 'b'.repeat(64), after: 'c'.repeat(64) }, testMutationPerformed: true, productionMutationPerformed: false, databaseMutationAuthorized: false };
+    const execute = (mergeMultiple: boolean) => {
+      const root = mkdtempSync(join(tmpdir(), 'baseline-artifact-layout-'));
+      try {
+        // download-artifact v4 with artifact-ids and no name uses a per-artifact
+        // directory unless merge-multiple=true, even for a single exact ID.
+        const destination = join(root, 'test-baseline-0098', ...(mergeMultiple ? [] : [facts.artifact.name]));
+        mkdirSync(destination, { recursive: true });
+        writeFileSync(join(destination, 'test-baseline-0098-evidence.json'), JSON.stringify(receipt));
+        return spawnSync(process.execPath, ['--input-type=module', '-e', `import fs from 'node:fs';\n${body}\nconsole.log(testBaseline0098.receipt.mainSha);`], {
+          encoding: 'utf8', timeout: 10_000, env: { ...process.env, RUNNER_TEMP: root, EXPECTED_MAIN_SHA: facts.sourceRun.headSha, TEST_BASELINE_SOURCE: output.source },
+        });
+      } finally { rmSync(root, { recursive: true, force: true }); }
+    };
+    const valid = execute(download.with['merge-multiple'] === true);
+    expect(valid.status, valid.stderr).toBe(0);
+    expect(valid.stdout).toContain(facts.sourceRun.headSha);
+    const defaultLayout = execute(false);
+    expect(defaultLayout.status).toBe(1);
+    expect(defaultLayout.stderr).toContain('ENOENT');
+  });
+  it.each(['id', 'repository', 'name', 'path', 'event', 'head_branch', 'head_sha', 'run_attempt', 'status', 'conclusion'])('rejects actual baseline GitHub provenance mismatch: %s', async (field) => {
+    const value = field === 'id' ? 38025747319 : field === 'repository' ? { full_name: 'other/repo' } : field === 'run_attempt' ? 0 : 'wrong';
+    await expect(verifyBaselineRun({ [field]: value })).rejects.toThrow(/UNTRUSTED_TEST_BASELINE_SOURCE/);
+  });
+  it.each(['missing job', 'duplicate job', 'failed job', 'wrong job attempt', 'missing baseline', 'skipped baseline', 'failed integration', 'skipped E2E', 'duplicate step'])('rejects unexecuted or ambiguous baseline jobs: %s', async (fault) => {
+    await expect(verifyBaselineRun({}, jobs => {
+      if (fault === 'missing job') jobs.length = 0;
+      if (fault === 'duplicate job') jobs.push(structuredClone(jobs[0]));
+      if (fault === 'failed job') jobs[0].conclusion = 'failure';
+      if (fault === 'wrong job attempt') jobs[0].run_attempt = 2;
+      if (fault === 'missing baseline') jobs[0].steps.shift();
+      if (fault === 'skipped baseline') jobs[0].steps[0].conclusion = 'skipped';
+      if (fault === 'failed integration') jobs[0].steps[2].conclusion = 'failure';
+      if (fault === 'skipped E2E') jobs[0].steps[3].conclusion = 'skipped';
+      if (fault === 'duplicate step') jobs[0].steps.push(structuredClone(jobs[0].steps[0]));
+    })).rejects.toThrow(/TEST_BASELINE_EXECUTION_REQUIRED/);
+  });
+  it.each(['missing', 'duplicate', 'expired', 'wrong run', 'wrong head', 'wrong id'])('rejects baseline artifact %s', async (fault) => {
+    await expect(verifyBaselineRun({}, undefined, artifacts => {
+      if (fault === 'missing') artifacts.length = 0;
+      if (fault === 'duplicate') artifacts.push(structuredClone(artifacts[0]));
+      if (fault === 'expired') artifacts[0].expired = true;
+      if (fault === 'wrong run') artifacts[0].workflow_run.id++;
+      if (fault === 'wrong head') artifacts[0].workflow_run.head_sha = 'b'.repeat(40);
+      if (fault === 'wrong id') artifacts[0].id = 0;
+    })).rejects.toThrow(/TEST_BASELINE_ARTIFACT_MISMATCH/);
+  });
   it('defaults to a collect graph without writer credentials or receipt creation', () => {
     const workflow = parse(source);
     expect(workflow.on.workflow_dispatch.inputs.mode.default).toBe('collect');

@@ -29,6 +29,10 @@ on:
         description: Trusted main_manual ci run ID containing the G3 TEST_VERIFIED bundle
         required: true
         type: string
+      test_baseline_run_id:
+        description: Optional successful main CI dispatch with the separate TEST-only 0098 baseline receipt
+        required: false
+        type: string
       final_risk_pr:
         description: PR number whose live reviews contain the release-bound Final Risk decision
         required: false
@@ -64,6 +68,7 @@ jobs:
           EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
           READINESS_RUN_ID: ${{ inputs.readiness_run_id }}
           G3_RUN_ID: ${{ inputs.g3_run_id }}
+          TEST_BASELINE_RUN_ID: ${{ inputs.test_baseline_run_id }}
           FINAL_RISK_PR: ${{ inputs.final_risk_pr }}
           MODE: ${{ inputs.mode }}
           EVIDENCE_RUN_ID: ${{ inputs.evidence_run_id }}
@@ -75,6 +80,10 @@ jobs:
           test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN_SHA"
           [[ "$READINESS_RUN_ID" =~ ^[0-9]+$ ]]
           [[ "$G3_RUN_ID" =~ ^[0-9]+$ ]]
+          if [ -n "$TEST_BASELINE_RUN_ID" ]; then
+            [[ "$TEST_BASELINE_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+            test "$MODE" = collect
+          fi
           [[ "$MODE" = collect || "$MODE" = execute ]]
           if [ "$MODE" = execute ]; then
             [[ "$FINAL_RISK_PR" =~ ^[0-9]+$ ]]
@@ -183,6 +192,65 @@ jobs:
           run-id: ${{ inputs.g3_run_id }}
           github-token: ${{ github.token }}
 
+      - name: Verify separate TEST 0098 baseline run and artifact provenance
+        if: ${{ inputs.mode == 'collect' && inputs.test_baseline_run_id != '' }}
+        id: baseline-source
+        uses: actions/github-script@v9
+        env:
+          TEST_BASELINE_RUN_ID: ${{ inputs.test_baseline_run_id }}
+        with:
+          script: |
+            const runId = Number(process.env.TEST_BASELINE_RUN_ID);
+            const run = (await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: runId })).data;
+            if (!Number.isSafeInteger(runId) || String(runId) !== process.env.TEST_BASELINE_RUN_ID
+              || String(run.id) !== process.env.TEST_BASELINE_RUN_ID
+              || run.repository?.full_name !== 'smallwei0301/vibeaico-admin-rebuild'
+              || `${context.repo.owner}/${context.repo.repo}` !== run.repository.full_name || run.name !== 'ci'
+              || run.path !== '.github/workflows/ci.yml' || run.event !== 'workflow_dispatch' || run.head_branch !== 'main'
+              || !/^[0-9a-f]{40}$/.test(run.head_sha) || run.status !== 'completed' || run.conclusion !== 'success'
+              || !Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) throw new Error('UNTRUSTED_TEST_BASELINE_SOURCE');
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRunAttempt,
+              { ...context.repo, run_id: runId, attempt_number: run.run_attempt, per_page: 100 });
+            const integration = jobs.filter(job => job.name === 'integration');
+            if (integration.length !== 1 || integration[0].run_attempt !== run.run_attempt
+              || integration[0].status !== 'completed' || integration[0].conclusion !== 'success') throw new Error('TEST_BASELINE_EXECUTION_REQUIRED');
+            for (const name of ['Apply explicit canonical TEST 0098 baseline', 'Upload canonical TEST 0098 baseline evidence', 'Run integration tests', 'Run E2E tests']) {
+              const steps = (integration[0].steps || []).filter(step => step.name === name);
+              if (steps.length !== 1 || steps[0].status !== 'completed' || steps[0].conclusion !== 'success') throw new Error('TEST_BASELINE_EXECUTION_REQUIRED');
+            }
+            const name = `test-baseline-0098-evidence-${run.head_sha}-${run.id}`;
+            const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts,
+              { ...context.repo, run_id: runId, per_page: 100 });
+            const selected = artifacts.filter(artifact => artifact.name === name);
+            if (selected.length !== 1 || selected[0].expired !== false || !Number.isSafeInteger(selected[0].id) || selected[0].id < 1
+              || selected[0].workflow_run?.id !== runId || selected[0].workflow_run?.head_sha !== run.head_sha) throw new Error('TEST_BASELINE_ARTIFACT_MISMATCH');
+            core.setOutput('artifact_id', String(selected[0].id));
+            core.setOutput('source', JSON.stringify({
+              sourceRun: { repository: run.repository.full_name, workflowPath: run.path, event: run.event, branch: run.head_branch,
+                headSha: run.head_sha, id: String(run.id), attempt: run.run_attempt, status: run.status, conclusion: run.conclusion,
+                baselineStep: 'success', integrationStep: 'success', e2eStep: 'success' },
+              artifact: { id: String(selected[0].id), name, runId: String(run.id), headSha: run.head_sha, expired: false },
+            }));
+
+      - name: Download exact separate TEST 0098 baseline artifact
+        if: ${{ inputs.mode == 'collect' && inputs.test_baseline_run_id != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ steps.baseline-source.outputs.artifact_id }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/test-baseline-0098
+          run-id: ${{ inputs.test_baseline_run_id }}
+          github-token: ${{ github.token }}
+
+      - uses: actions/setup-node@v4
+        if: ${{ inputs.mode == 'collect' && inputs.test_baseline_run_id != '' }}
+        with:
+          node-version: 22
+
+      - name: Install locked read-only baseline consumer dependencies
+        if: ${{ inputs.mode == 'collect' && inputs.test_baseline_run_id != '' }}
+        run: npm ci
+
       - name: Reassemble exact G3 evidence for read-only ledger mapping
         if: ${{ inputs.mode == 'collect' }}
         id: g3-binding
@@ -190,6 +258,7 @@ jobs:
           G3_SOURCE_RUN: ${{ steps.g3-source.outputs.run }}
           EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
           RELEASE_ID: ${{ inputs.release_id }}
+          TEST_BASELINE_SOURCE: ${{ steps.baseline-source.outputs.source }}
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
@@ -207,7 +276,15 @@ jobs:
             releasePlanEvidence, cleanupEvidence: read('production-db-test-cleanup-evidence'),
             coverageEvidence: read('production-db-test-coverage-evidence'), postTestSchemaEvidence });
           if (String(testEvidence.sourceRunId) !== sourceRun.id || testEvidence.sourceRunAttempt !== sourceRun.attempt) throw new Error('G3_ATTEMPT_MISMATCH');
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `binding=${JSON.stringify({ releaseId: plan.releaseId, plan, testEvidence, sourceRun, releasePlanEvidence, postTestSchemaEvidence })}\n`);
+          let testBaseline0098;
+          if (process.env.TEST_BASELINE_SOURCE) {
+            const { verifyTestBaseline0098Binding } = await import('./scripts/agents/schema-drift-watch.mjs');
+            const receipt = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/test-baseline-0098/test-baseline-0098-evidence.json`, 'utf8'));
+            testBaseline0098 = verifyTestBaseline0098Binding({ binding: { ...JSON.parse(process.env.TEST_BASELINE_SOURCE), receipt },
+              currentMainSha: process.env.EXPECTED_MAIN_SHA });
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `binding=${JSON.stringify({ releaseId: plan.releaseId, plan, testEvidence, sourceRun, releasePlanEvidence, postTestSchemaEvidence,
+            ...(testBaseline0098 ? { testBaseline0098 } : {}) })}\n`);
           NODE
 
   g2:
