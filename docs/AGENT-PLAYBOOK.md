@@ -116,6 +116,7 @@
 | PB-077 | 共用 worktree 上，reviewer 在 builder/pusher 進行 verify-before-push 時運行寫入操作，會造成 HEAD 改變或測試干擾 | Reviewer 應使用 `git show/diff` 或獨立 worktree，不在同一 clone 上運行突變；builder/pusher 確認 verify 無誤前，不允許同時進行 mutation。 | PR #791 review phase；verify-before-push 拒絕 VERIFY_FAILED。 |
 | PB-078 | canonical TEST 執行中若推送 ledger-only commit，會讓 exact-head TEST 證據失效（本次已避免） | 推送 ledger-only commit 前先查同 PR 是否有 pending／running canonical TEST；有就留在本機，隨下一個實質修正一併推送。 | PR #795；f9f31534 → 273fa1c3；run 37429766960 |
 | PB-079 | ISSUE_CLOSE_READY 的 CI 證據必須是 current main exact SHA；main 在送出後前進，close guard 會重開 | 送 ISSUE_CLOSE_READY 前立刻 `gh api repos/<repo>/commits/main` 確認 SHA 與證據 run 的 head 相同；被重開時以新 main 的 CI 重送新一輪，不重用舊 approval。 | Issue 760、PR #795；close guard 重開 issuecomment-6013786314；分類：close admission |
+| PB-080 | reset／seed 必須在 client 前鎖定 canonical target | 排除 Production 不代表遠端目標就是 TEST；shared 使用 canonical allowlist，local 需明確 profile，client 邊界再次檢查。目標身分與 PB-002 的併發鎖是不同根因。 | PR #851／#852；scripts/test/_supabase-admin.mjs |
 
 ## 事件紀錄
 
@@ -2357,3 +2358,20 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 預防：送 ISSUE_CLOSE_READY 前立刻 `gh api repos/<repo>/commits/main` 確認 SHA 與證據 run 的 head 相同，三個寫入（CLOSE_APPROVED、READY、close）連續送出；被重開時以新 main 的 CI 重送新一輪，不重用舊 approval。
 - 狀態：已記錄（程序面預防）
 
+### PB-080 — reset／seed 必須在 client 前鎖定 canonical target
+
+- 首次／最近：2026-10-11／2026-10-11。
+- 發生次數：1（實際發現的 target-binding 缺口；沒有跨專案誤刪證據）。
+- Issue／PR／CI：#848 接續驗證；修正 #851；文件收尾 #852；[source CI38110590346](https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/38110590346)、[main CI38149309813](https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/38149309813)。
+- 分類：TEST DB
+- 事件：#848 接續驗證時發現 shared reset／seed helper 仍接受其他遠端 Supabase 專案；沒有跨專案誤刪證據。
+- 證據：離線拒絕目標案例的首次 RED 為 16 failed／23 passed；直接 client 的首次 RED 為 1 failed／39 passed，原始輸出由 #851 保留。
+- 根因：shared helper 只排除 Production／平台同 URL，缺少 canonical TEST allowlist；直接 client 呼叫也沒有獨立 target check。即使完全序列化仍可能操作錯誤專案，因此不是 PB-002 的併發鎖根因。
+- 影響：reset／seed 與直接 admin client 的目標身分無法由既有排除條件保證；#848 的接續驗證必須先補齊此安全缺口。
+- 修正：#851 使用既有 EXPECTED_PROJECT_REFS；shared 只接受 canonical TEST HTTPS origin，explicit LOCAL_ISOLATED 只接受 loopback；拒絕 userinfo、非根 path、query、fragment 及不支援的 profile。createTestAdminClient 自行重驗，既有 env identity／Production／platform equality lock 保留。
+- 預防：有效目標驗證須位於首次 client／mutation 之前；直接呼叫 client 也 fail closed。target guard 不替代 shared TEST serialization、local instance 身分或必要授權。PR POLICY_SKIP 與 main 自然 TEST 分開核對（PB-032）。
+- 驗證：原 RED16failed/23passed、direct-client RED1failed/39passed 均保留；最終 scoped57pass、full380suites/6056tests、獨立15個 offline probes。真實 reset／seed entrypoint 只以 deny-all SDK 驗控制流程；source CI 成功，其 integration/E2E 是 policy skip，不能冒充實際 TEST。
+- main merge `6a2e18251c4802ae40e875ddd5617be2b98e94d8` 的 guard blob 與已審 source 相同；自然 main CI SUCCESS：integration806passed/58skipped、E2E24passed/3skipped；reset/seed、next dev teardown 與 runner cleanup 有 log，未另做全庫零殘留稽核。Vercel 同 SHA 被 Ignored Build Step 取消，不是新部署 READY；#848 G2／Production 驗收不因此完成。
+- 文件審查更正：#852 初稿把此事件掛於 PB-002，獨審 PASS 漏掉不同根因；[Codex P2](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/852#discussion_r4242163115) 指出後改為獨立索引與 PB-080。本事件仍只計一次，旧 review／finding 保留，新 source 須重新審查。
+- 文件格式更正：上述根因拆分後的獨審仍漏查必填欄位；[第二項 Codex P2](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/852#discussion_r4242194747) 指出後補齊獨立欄位與允許的狀態值，保留歷次 review／finding。
+- 狀態：已防止
