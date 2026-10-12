@@ -121,6 +121,18 @@ describe('Controlled Production DB writer #447', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(NOW)); });
   afterEach(() => { vi.useRealTimers(); });
 
+  it('rejects a changed G2 catalog at the existing PREPARE boundary before any mutable request', async () => {
+    const p = plan(), evidence = packet(p);
+    evidence.consistency.productionCatalogFingerprint = 'a'.repeat(64);
+    evidence.finalRisk.evidenceDigest = releaseEvidenceDigestOf(evidence);
+    const fetchSpy = vi.fn(async () => new Response(JSON.stringify(beforeRows), { status: 200 }));
+    const transport = { ...testTransport(fetchSpy), captureCatalogFingerprint: async () => 'b'.repeat(64) };
+    await expect(prepareControlledProductionReleaseAttempt({ plan: p, releasePacket: evidence,
+      journal: journal(p), receipt: receipt(p), aliasMap: aliasMap(), readCanonicalSql, transport,
+    })).rejects.toThrow(/PRODUCTION_DB_G2_CATALOG_CHANGED/);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
   it.each(['btree', 'hash'])('builds ADDITIVE %s indexes while refusing embedded routines', async (method) => {
     const sql = `create index orders_id_idx on public.orders using ${method} (id) where id > 0;`;
     const p = buildProductionDbReleasePlan({

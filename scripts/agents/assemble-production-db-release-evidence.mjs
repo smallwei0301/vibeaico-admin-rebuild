@@ -20,8 +20,8 @@ function fail(code, message) {
   throw error;
 }
 
-/** @param {{plan?: any, report?: any, impactManifest?: any}} [input] */
-export function assembleProductionDbConsistencyEvidence({ plan, report, impactManifest } = {}) {
+/** @param {any} [input] */
+export function assembleProductionDbConsistencyEvidence({ plan, report, impactManifest, releaseCatalog, ...options } = /** @type {any} */ ({})) {
   if (!plan || typeof plan !== 'object' || Array.isArray(plan)) fail('PLAN_REQUIRED', 'release plan is required');
   return buildProductionConsistencyEvidence({
     report,
@@ -29,6 +29,8 @@ export function assembleProductionDbConsistencyEvidence({ plan, report, impactMa
     impactManifest,
     mainSha: plan.mainSha,
     planDigest: plan.planDigest,
+    releaseCatalog,
+    ...options,
   });
 }
 
@@ -51,14 +53,21 @@ function main() {
   const [command, ...args] = process.argv.slice(2);
   try {
     if (command === 'consistency') {
-      const [planPath, reportPath, impactPath, outputPath] = args;
+      const [planPath, reportPath, impactPath, outputPath, captureDirectory, bindingPath] = args;
       if (!planPath || !reportPath || !impactPath || !outputPath) {
-        fail('USAGE', 'consistency <plan.json> <drift-report.json> <impact-manifest.json> <output.json>');
+        fail('USAGE', 'consistency <plan.json> <drift-report.json> <impact-manifest.json> <output.json> [catalog-directory binding.json]');
       }
+      if (captureDirectory && !bindingPath) fail('USAGE', 'release catalogs require the existing G3 ledger binding');
       writeJson(outputPath, assembleProductionDbConsistencyEvidence({
         plan: readJson(planPath),
         report: readJson(reportPath),
         impactManifest: readJson(impactPath),
+        ...(captureDirectory ? { releaseCatalog: {
+          LOCAL_EXPECTED: readJson(`${captureDirectory}/expected-catalog.json`),
+          TEST: readJson(`${captureDirectory}/test-catalog.json`),
+          PRODUCTION: readJson(`${captureDirectory}/production-catalog.json`),
+          binding: readJson(bindingPath),
+        } } : {}),
       }));
       return;
     }

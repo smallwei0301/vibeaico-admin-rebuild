@@ -379,6 +379,13 @@ jobs:
           name: schema-drift-report-${{ github.run_id }}-g2
           path: ${{ runner.temp }}/g2
 
+      - name: Download G2 source-bound metadata catalogs
+        if: ${{ fromJSON(needs.admission.outputs.g3_ledger_binding).plan.migrationScope == 'ISSUE_46_0110_0136_CLOSURE' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: schema-release-catalogs-${{ github.run_id }}-g2
+          path: ${{ runner.temp }}/g2
+
       - name: Download G4 backup evidence
         uses: actions/download-artifact@v4
         with:
@@ -422,13 +429,21 @@ jobs:
 
       - name: Assemble G2 CONSISTENCY_VERIFIED
         shell: bash
+        env:
+          RELEASE_LEDGER_BINDING: ${{ needs.admission.outputs.g3_ledger_binding }}
         run: |
           set -euo pipefail
+          node --input-type=module -e 'import fs from "node:fs"; fs.writeFileSync(`${process.env.RUNNER_TEMP}/g2/release-ledger-binding.json`, JSON.stringify(JSON.parse(process.env.RELEASE_LEDGER_BINDING)));'
+          capture_args=()
+          if node --input-type=module -e 'import fs from "node:fs"; import { ISSUE_46_0110_0136_CLOSURE } from "./scripts/agents/production-db-release-plan.mjs"; process.exit(JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/g3/production-db-release-plan.json`)).migrationScope === ISSUE_46_0110_0136_CLOSURE ? 0 : 1)'; then
+            capture_args=("$RUNNER_TEMP/g2" "$RUNNER_TEMP/g2/release-ledger-binding.json")
+          fi
           node scripts/agents/assemble-production-db-release-evidence.mjs consistency \
             "$RUNNER_TEMP/g3/production-db-release-plan.json" \
             "$RUNNER_TEMP/g2/report.json" \
             supabase/production-db-impact-manifest.json \
-            "$RUNNER_TEMP/production-db-consistency-evidence.json"
+            "$RUNNER_TEMP/production-db-consistency-evidence.json" \
+            "${capture_args[@]}"
 
       - name: Assemble G4 RECOVERY_VERIFIED
         shell: bash

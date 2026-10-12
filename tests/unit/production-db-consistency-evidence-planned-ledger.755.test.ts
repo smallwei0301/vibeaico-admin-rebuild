@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
+import { assembleProductionDbConsistencyEvidence } from '../../scripts/agents/assemble-production-db-release-evidence.mjs';
+import { buildReleaseCatalogCapture } from '../../scripts/agents/schema-drift-watch.mjs';
 import { readFileSync } from 'node:fs';
 import { buildProductionDbReleasePlan } from '../../scripts/agents/production-db-release-plan.mjs';
 import { assertLiveLedgerMatchesAliasMap } from '../../scripts/db/controlled-production-db-release.mjs';
@@ -413,4 +416,80 @@ describe('#755 exact trusted G3 workflow wiring', () => {
     expect(OBSERVER_WORKFLOW).toContain('binding_args=(--release-ledger-binding "$RUNNER_TEMP/release-ledger-binding.json")');
     expect(OBSERVER_WORKFLOW).toContain('"${binding_args[@]}"');
   });
+});
+
+// Captured metadata subset: complete fixed closure, no business data or release authority.
+const capturedFixture = JSON.parse(readFileSync('tests/fixtures/production-db-original8-catalog.755.json', 'utf8'));
+function hydrateCaptured(value: any): any {
+  if (Array.isArray(value)) return value.map(hydrateCaptured);
+  if (value && typeof value === 'object') {
+    if (value.fixtureRef) return hydrateCaptured(capturedFixture.sharedMetadata[value.fixtureRef]);
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, hydrateCaptured(item)]));
+  }
+  return value;
+}
+function scopedCapturedInput(): any {
+  const fixture = hydrateCaptured(capturedFixture);
+  const plan = fixture.plan;
+  const input: any = {plan, impactManifest: JSON.parse(readFileSync('supabase/production-db-impact-manifest.json', 'utf8')), now: '2026-10-12T15:56:00Z', releaseCatalog: {...fixture.packets, binding: fixture.binding}};
+  for (const [environment, capture] of Object.entries(input.releaseCatalog) as any) {
+    if (environment === 'binding') continue;
+    Object.assign(capture, {projectRef: environment === 'LOCAL_EXPECTED' ? 'local-fresh' : environment === 'TEST' ? 'nmwhwngojosmagjuvxol' : 'egehnijjpgijmccagxac', observedAt: '2026-10-12T15:55:08Z'});
+  }
+  resealCaptured(input);
+  return input;
+}
+function resealCaptured(i: any) {
+  const snapshots: any = {};
+  for (const environment of ['LOCAL_EXPECTED', 'TEST', 'PRODUCTION']) {
+    const c = i.releaseCatalog[environment];
+    c.raw.metadata.counts = null;
+    const snapshot = buildObserverSnapshotFromRaw({environment, projectRef: c.projectRef, observedAt: c.observedAt, observedMainSha: i.plan.mainSha, evidenceRef: environment === 'LOCAL_EXPECTED' ? 'local:fresh-install' : `supabase:${environment.toLowerCase()}/schema-observer`, raw: c.raw});
+    snapshots[environment] = snapshot;
+    i.releaseCatalog[environment] = buildReleaseCatalogCapture({snapshot, raw: c.raw, catalog: c.catalog});
+  }
+  i.report = compareObserverSnapshots({expectedSnapshot: snapshots.LOCAL_EXPECTED, testSnapshot: snapshots.TEST, productionSnapshot: snapshots.PRODUCTION, currentMainSha: i.plan.mainSha, now: i.now, releaseLedgerBinding: i.releaseCatalog.binding, aliasMap: JSON.parse(readFileSync('supabase/ledger-alias-map.json', 'utf8')), readCanonicalSql: (path: string) => readFileSync(path, 'utf8')});
+}
+function capturedMetadata(i: any, key: string, surface: string) { return i.releaseCatalog.TEST.raw.metadata.items.find((x: any) => x.key === key && x.surface === surface); }
+function capturedRoutine(i: any, name: string, mutate: (r: any) => void) {
+ const c = i.releaseCatalog.TEST, r = c.catalog.routines.find((r: any) => r.name === `public.${name}`);
+ mutate(r);
+ c.raw.metadata.items.find((x: any) => x.surface === 'routines' && x.key === `${r.name}(${r.args})`).value = `f|${r.volatility}|${r.securityDefiner}|${(r.config ?? []).join(',')}|${createHash('md5').update(r.definition).digest('hex')}`;
+}
+describe('#755 complete captured original-eight closure', () => {
+ it('verifies source-attributed scoped consistency while retaining raw drift failure', () => {
+  const input = scopedCapturedInput();
+  expect(input.report.status).toBe('DRIFT_BLOCKED');
+  expect(assembleProductionDbConsistencyEvidence(input)).toMatchObject({status: 'CONSISTENCY_VERIFIED', databaseMutationAuthorized: false});
+ });
+const mutations: [string, (i: any) => void, RegExp][] = [
+ ['return_shape',i=>capturedRoutine(i,'guide_staff_interval_available',(r: any) =>r.definition=r.definition.replace('RETURNS boolean','RETURNS text')),/RELEASE_ROUTINE_SOURCE_MISMATCH/],
+ ['language',i=>capturedRoutine(i,'guide_staff_interval_available',(r: any) =>r.definition=r.definition.replace('LANGUAGE plpgsql','LANGUAGE sql')),/RELEASE_ROUTINE_SOURCE_MISMATCH/],
+ ['strict',i=>capturedRoutine(i,'guide_staff_interval_available',(r: any) =>r.definition=r.definition.replace('LANGUAGE plpgsql','LANGUAGE plpgsql\n STRICT')),/RELEASE_ROUTINE_SOURCE_MISMATCH/],
+ ['leakproof',i=>capturedRoutine(i,'guide_staff_interval_available',(r: any) =>r.definition=r.definition.replace('LANGUAGE plpgsql','LANGUAGE plpgsql\n LEAKPROOF')),/RELEASE_ROUTINE_SOURCE_MISMATCH/],
+ ['parallel',i=>capturedRoutine(i,'guide_staff_interval_available',(r: any) =>r.definition=r.definition.replace('LANGUAGE plpgsql','LANGUAGE plpgsql\n PARALLEL SAFE')),/RELEASE_ROUTINE_SOURCE_MISMATCH/],
+ ['argument_default',i=>capturedRoutine(i,'guide_staff_interval_available',(r: any) =>r.definition=r.definition.replace('p_end timestamp with time zone)','p_end timestamp with time zone DEFAULT NULL::timestamp with time zone)')),/RELEASE_ROUTINE_SOURCE_MISMATCH/],
+ ['body',i=>capturedRoutine(i,'create_tour_order',(r: any) =>{const old=r.body;r.body+='\n-- altered body';r.definition=r.definition.replace(old,r.body)}),/RELEASE_ROUTINE_SOURCE_MISMATCH/],
+ ['nested_helper',i=>capturedRoutine(i,'is_tenant_member',(r: any) =>{const old=r.body;r.body=r.body.replace('tenant_users','customers');r.definition=r.definition.replace(old,r.body)}),/RELEASE_ROUTINE_SOURCE_MISMATCH/],
+ ['planned_trigger_helper',i=>capturedRoutine(i,'set_updated_at',(r: any) =>{const old=r.body;r.body+='\n-- altered body';r.definition=r.definition.replace(old,r.body)}),/RELEASE_ROUTINE_SOURCE_MISMATCH/],
+ ['rls_predicate',i=>capturedMetadata(i,'public.trip_departure_staff.p_trip_departure_staff_s','policies').value='true|r|public|true|',/RELEASE_RLS_PREDICATE_MISMATCH/],
+ ['app_grant',i=>i.releaseCatalog.TEST.raw.acl.tables.find((t: any) =>t.name==='tour_orders').privileges.find((p: any) =>p.grantee==='anon'&&p.privilege==='TRIGGER').grantable=true,/RELEASE_APP_GRANT_MISMATCH/],
+ ['fk_target',i=>{const fk=i.releaseCatalog.TEST.catalog.foreignKeys.find((f: any) =>f.table==='public.tour_orders'&&f.columns.includes('customer_id'));fk.definition=fk.definition.replace('customers','staff');fk.target='public.staff';capturedMetadata(i,`${fk.table}.${fk.name}`,'constraints').value=`f|${fk.definition}`;},/RELEASE_FK_SOURCE_MISMATCH/],
+ ['missing_fk',i=>{const c=i.releaseCatalog.TEST,fk=c.catalog.foreignKeys.find((f: any) =>f.table==='public.tour_orders'&&f.columns.includes('customer_id'));c.catalog.foreignKeys=c.catalog.foreignKeys.filter((f: any) =>f!==fk);c.raw.metadata.items=c.raw.metadata.items.filter((x: any) =>x.key!==`${fk.table}.${fk.name}`)},/RELEASE_EXPECTED_CONTRACT_MISSING/],
+ ['paid_default',i=>{capturedMetadata(i,'public.tour_orders.paid_amount','columns').value='numeric|true|1';i.releaseCatalog.TEST.catalog.defaults.find((x: any) =>x.table==='public.tour_orders'&&x.column==='paid_amount').expression='1'},/RELEASE_DEPENDENCY_COLUMN_MISMATCH/],
+ ['legacy_check',i=>capturedMetadata(i,'public.tour_orders.tour_orders_balance_due_nonnegative_check','constraints').value='c|CHECK (balance_due >= 10::numeric)',/RELEASE_WRITE_CONSTRAINT_UNEXPLAINED/],
+ ['json_null_key_default',i=>{capturedMetadata(i,'public.tour_orders.cancellation_policy_snapshot','columns').value="jsonb|true|jsonb_build_object(NULL, 'bad')";i.releaseCatalog.TEST.catalog.defaults.find((x: any) =>x.table==='public.tour_orders'&&x.column==='cancellation_policy_snapshot').expression="jsonb_build_object(NULL, 'bad')"},/RELEASE_INSERT_DEFAULT_UNEXPLAINED/],
+ ['enum_label',i=>i.releaseCatalog.TEST.catalog.enums.find((e: any) =>e.name==='tour_payment_status').labels.push('UNKNOWN'),/RELEASE_ENUM_MISMATCH/],
+ ['write_trigger',i=>i.releaseCatalog.TEST.raw.metadata.items.push({surface:'triggers',key:'public.tour_orders.forged_write_trigger',value:'O|CREATE TRIGGER forged_write_trigger BEFORE INSERT ON tour_orders FOR EACH ROW EXECUTE FUNCTION set_updated_at()'}),/RELEASE_WRITE_TRIGGER_MISMATCH/],
+ ['write_unique_index',i=>i.releaseCatalog.TEST.raw.metadata.items.push({surface:'indexes',key:'public.tour_orders.forged_unique',value:'CREATE UNIQUE INDEX forged_unique ON public.tour_orders USING btree (party_size)'}),/RELEASE_UNIQUE_INDEX_UNEXPLAINED/],
+ ['write_expression_index',i=>i.releaseCatalog.TEST.raw.metadata.items.push({surface:'indexes',key:'public.tour_orders.forged_expression',value:'CREATE INDEX forged_expression ON public.tour_orders USING btree (public.evil(party_size))'}),/RELEASE_INDEX_EXPRESSION_UNEXPLAINED/],
+ ['platform_auth_header',i=>i.releaseCatalog.TEST.catalog.routines.find((r: any) =>r.name==='auth.uid').definition=i.releaseCatalog.TEST.catalog.routines.find((r: any) =>r.name==='auth.uid').definition.replace('RETURNS uuid','RETURNS text'),/RELEASE_AUTH_UID_MISMATCH/],
+];
+
+ it.each(mutations)('rejects resealed %s in a valid complete capture', (_name, mutate, expected) => {
+  const input = scopedCapturedInput();
+  mutate(input);
+  resealCaptured(input);
+  expect(() => assembleProductionDbConsistencyEvidence(input)).toThrow(expected);
+ });
 });

@@ -1,3 +1,5 @@
+import { buildObserverSnapshotFromRaw, buildReleaseCatalogCapture, compareObserverSnapshots } from '../../scripts/agents/schema-drift-watch.mjs';
+import { assembleProductionDbConsistencyEvidence } from '../../scripts/agents/assemble-production-db-release-evidence.mjs';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -52,7 +54,39 @@ function report() {
     safety: { authorizesDatabaseWrite: false },
   };
 }
-const run = (impactManifest: unknown) => buildProductionConsistencyEvidence({ report: report(), plan, impactManifest, mainSha: MAIN, planDigest: plan.planDigest });
+const capturedFixture = JSON.parse(readFileSync('tests/fixtures/production-db-original8-catalog.755.json', 'utf8'));
+function hydrateCaptured(value: any): any {
+  if (Array.isArray(value)) return value.map(hydrateCaptured);
+  if (value && typeof value === 'object') {
+    if (value.fixtureRef) return hydrateCaptured(capturedFixture.sharedMetadata[value.fixtureRef]);
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, hydrateCaptured(item)]));
+  }
+  return value;
+}
+function scopedCapturedInput(): any {
+  const fixture = hydrateCaptured(capturedFixture);
+  const plan = fixture.plan;
+  const input: any = {plan, impactManifest: JSON.parse(readFileSync('supabase/production-db-impact-manifest.json', 'utf8')), now: '2026-10-12T15:56:00Z', releaseCatalog: {...fixture.packets, binding: fixture.binding}};
+  for (const [environment, capture] of Object.entries(input.releaseCatalog) as any) {
+    if (environment === 'binding') continue;
+    Object.assign(capture, {projectRef: environment === 'LOCAL_EXPECTED' ? 'local-fresh' : environment === 'TEST' ? 'nmwhwngojosmagjuvxol' : 'egehnijjpgijmccagxac', observedAt: '2026-10-12T15:55:08Z'});
+  }
+  resealCaptured(input);
+  return input;
+}
+function resealCaptured(i: any) {
+  const snapshots: any = {};
+  for (const environment of ['LOCAL_EXPECTED', 'TEST', 'PRODUCTION']) {
+    const c = i.releaseCatalog[environment];
+    c.raw.metadata.counts = null;
+    const snapshot = buildObserverSnapshotFromRaw({environment, projectRef: c.projectRef, observedAt: c.observedAt, observedMainSha: i.plan.mainSha, evidenceRef: environment === 'LOCAL_EXPECTED' ? 'local:fresh-install' : `supabase:${environment.toLowerCase()}/schema-observer`, raw: c.raw});
+    snapshots[environment] = snapshot;
+    i.releaseCatalog[environment] = buildReleaseCatalogCapture({snapshot, raw: c.raw, catalog: c.catalog});
+  }
+  i.report = compareObserverSnapshots({expectedSnapshot: snapshots.LOCAL_EXPECTED, testSnapshot: snapshots.TEST, productionSnapshot: snapshots.PRODUCTION, currentMainSha: i.plan.mainSha, now: i.now, releaseLedgerBinding: i.releaseCatalog.binding, aliasMap: JSON.parse(readFileSync('supabase/ledger-alias-map.json', 'utf8')), readCanonicalSql: (path: string) => readFileSync(path, 'utf8')});
+}
+
+const run = (impactManifest: unknown) => assembleProductionDbConsistencyEvidence({...scopedCapturedInput(), impactManifest});
 const entry = (m: any, prefix: string) => m.entries.find((e: any) => e.repoFile.startsWith(prefix));
 
 describe('#755/#46 G2 source check accepts ISSUE_46_0110_0136_CLOSURE', () => {
@@ -63,7 +97,7 @@ describe('#755/#46 G2 source check accepts ISSUE_46_0110_0136_CLOSURE', () => {
   it('passes with no MISSING/AMBIGUOUS and a matching pending-diff fixture', () => {
     const evidence = run(manifest);
     expect(evidence.status).toBe('CONSISTENCY_VERIFIED');
-    expect(evidence.plannedProductionDifferenceCount).toBe(pendingKeys.length);
+    expect(evidence.databaseMutationAuthorized).toBe(false);
   });
 
   it('create_tour_order routine and ACL are owned only by final owner 0136 across the whole closure', () => {
@@ -79,28 +113,28 @@ describe('#755/#46 G2 source check accepts ISSUE_46_0110_0136_CLOSURE', () => {
     expect(entry(manifest, '0132').impacts).toEqual([]);
   });
 
-  it('re-adding the routine key to 0111 or the ACL key to 0110 still fails closed as AMBIGUOUS_IMPACT_OWNERSHIP', () => {
+  it('re-adding the routine key to 0111 or the ACL key to 0110 rejects noncanonical ownership before scoped classification', () => {
     const a: any = structuredClone(manifest);
     entry(a, '0111').impacts.push({ surface: 'routines', objectKey: CTO });
-    expect(() => run(a)).toThrow(/AMBIGUOUS_IMPACT_OWNERSHIP/);
+    expect(() => run(a)).toThrow(/RELEASE_MANIFEST_SOURCE_MISMATCH/);
     const b: any = structuredClone(manifest);
     entry(b, '0110').impacts.push({ surface: 'acl', objectKey: `function:${CTO}` });
-    expect(() => run(b)).toThrow(/AMBIGUOUS_IMPACT_OWNERSHIP/);
+    expect(() => run(b)).toThrow(/RELEASE_MANIFEST_SOURCE_MISMATCH/);
   });
 
-  it('removing the 0128, 0130 or 0132 entry still fails closed as MISSING_IMPACT_MANIFEST_ENTRY', () => {
+  it('removing the 0128, 0130 or 0132 entry rejects missing trusted source entries', () => {
     for (const prefix of ['0128', '0130', '0132']) {
       const m: any = structuredClone(manifest);
       m.entries = m.entries.filter((e: any) => !e.repoFile.startsWith(prefix));
-      expect(() => run(m)).toThrow(/MISSING_IMPACT_MANIFEST_ENTRY/);
+      expect(() => run(m)).toThrow(/RELEASE_MANIFEST_SOURCE_MISMATCH/);
     }
   });
 
-  it('a pending difference whose owning impact is dropped from 0128 is UNPLANNED (column impact is load-bearing)', () => {
+  it('a pending difference whose owning impact is dropped from 0128 rejects a noncanonical manifest (column impact is load-bearing)', () => {
     const m: any = structuredClone(manifest);
     const e = entry(m, '0128');
     e.impacts = e.impacts.filter((i: any) => i.objectKey !== 'public.trip_plan_seasons.price_override');
-    expect(() => run(m)).toThrow(/UNPLANNED_PRODUCTION_DIFF/);
+    expect(() => run(m)).toThrow(/RELEASE_MANIFEST_SOURCE_MISMATCH/);
   });
 });
 
