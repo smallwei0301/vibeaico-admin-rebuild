@@ -55,11 +55,18 @@ export type ModePreset = {
   richMenuCells: readonly { label: string; text: string }[];
   /**
    * 儀表板「設定進度」每一步的前往頁面；null＝該模式側邊欄隱藏此頁，不提供連結。
-   * 判定條件見 api/settings/setup-status（SERVICE 計 services 表；GUIDE 隱藏 services 頁）。
+   * 判定條件見 api/settings/setup-status（SERVICE 依 setupInventory 計「公開頁可預約」的庫存）。
    */
   setupStepRoutes: Record<SetupStepKey, string | null>;
-  /** 設定進度 SERVICE 步驟計算哪種庫存（services 與 trips 資料表分開，見 10 分冊 §0） */
-  setupInventoryTable: 'services' | 'trips';
+  /**
+   * 設定進度 SERVICE 步驟計算哪種庫存（services 與 trips 資料表分開，見 10 分冊 §0）。
+   * `filter` 與公開商店頁（server/public-shop.ts）的可見條件一致：只有顧客真的看得到、
+   * 訂得到的庫存才算完成——GUIDE 草稿行程不算，LOCAL_SHOP／CLINIC 停用服務不算。
+   */
+  setupInventory: {
+    table: 'services' | 'trips';
+    filter: { column: string; value: string | boolean };
+  };
 };
 
 const COMMON_SETUP_ROUTES = {
@@ -82,7 +89,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     showActionInbox: false,
     reportingMode: 'GENERAL',
     setupStepRoutes: { ...COMMON_SETUP_ROUTES, SERVICE: '/tenant/services' },
-    setupInventoryTable: 'services',
+    setupInventory: { table: 'services', filter: { column: 'active', value: true } },
     richMenuCells: [
       { label: '立即預約', text: '預約' },
       { label: '我的預約', text: '我的預約' },
@@ -108,7 +115,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     showActionInbox: true,
     reportingMode: 'GUIDE_TOUR',
     setupStepRoutes: { ...COMMON_SETUP_ROUTES, SERVICE: '/tenant/trips' },
-    setupInventoryTable: 'trips',
+    setupInventory: { table: 'trips', filter: { column: 'status', value: 'PUBLISHED' } },
     richMenuCells: [
       { label: '所有行程', text: '行程' },
       { label: '近期團次', text: '團次' },
@@ -130,7 +137,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     showActionInbox: false,
     reportingMode: 'GENERAL',
     setupStepRoutes: { ...COMMON_SETUP_ROUTES, SERVICE: '/tenant/services' },
-    setupInventoryTable: 'services',
+    setupInventory: { table: 'services', filter: { column: 'active', value: true } },
     richMenuCells: [
       { label: '線上掛號', text: '預約' },
       { label: '我的掛號', text: '我的預約' },

@@ -1,4 +1,5 @@
 import { nav } from '@/i18n/zh-TW/nav';
+import type { BusinessType, SetupStepKey } from '@/config/modes';
 
 /**
  * 儀表板（/tenant/dashboard）文案
@@ -42,11 +43,10 @@ export const dashboardPage = {
     },
     /** 模式專屬步驟文案（沒列的沿用 steps） */
     stepsByMode: {
-      GUIDE: { SERVICE: '建立第一個行程' },
-    } as Record<string, Partial<Record<'SHOP_INFO' | 'STAFF' | 'SERVICE' | 'BUSINESS_HOURS' | 'LINE_BOT', string>>>,
+      GUIDE: { SERVICE: '發布第一個行程' },
+    } as Partial<Record<BusinessType, Partial<Record<SetupStepKey, string>>>>,
     done: '已完成',
     todo: '尚未完成',
-    goSetup: '前往設定',
     goSetupLabel: (step: string) => `${step}，前往設定`,
   },
 
