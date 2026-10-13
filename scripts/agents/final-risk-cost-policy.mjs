@@ -348,6 +348,26 @@ export function independentRoleErrors(review = {}, context = {}) {
 }
 
 /** Shared identity contract for WIP/merge, semantic reuse and DB release evidence. */
+export function sourceIdentityDataDeferred(review = {}, policy = {}, context = {}) {
+  const scope = policy.sourceIdentityDataDeferral, proof = context.sourceIdentityDataDeferralEvidence;
+  return scope?.enabled === true && scope.version === '2026-10-13.1'
+    && /^[\w.-]+\/[\w.-]+$/.test(scope.repository ?? '')
+    && Number.isSafeInteger(scope.prNumber) && scope.prNumber > 0
+    && /^[a-f0-9]{40}$/.test(scope.headSha ?? '') && /^[a-f0-9]{64}$/.test(scope.changeDigest ?? '')
+    && /^[a-f0-9]{64}$/.test(scope.approvalBodySha256 ?? '')
+    && context.reviewSurface === 'PRODUCT_SOURCE_FINAL_RISK' && scope.surface === context.reviewSurface
+    && context.repository === scope.repository && context.prNumber === scope.prNumber
+    && context.currentHeadSha === scope.headSha && context.headSha === scope.headSha
+    && context.changeDigest === scope.changeDigest && proof?.trusted === true
+    && /^[a-f0-9]{40}$/.test(proof.currentMainSha ?? '')
+    && JSON.stringify(proof.scope) === JSON.stringify(scope)
+    && proof.approvalBodySha256 === scope.approvalBodySha256
+    && review.reviewerTier === 'AUDIT' && review.requestedModel === policy.models?.audit
+    && review.actualModel === 'unknown' && review.identityEvidence === 'UNKNOWN'
+    && review.executionEvidence === 'OPERATOR_ATTESTED'
+    && (review.servedVerified === undefined || review.servedVerified === false);
+}
+
 export function finalRiskReviewerErrors(review = {}, policy = {}, context = {}) {
   const sourceEvidence = context.fallbackSourceEvidence ?? review.fallbackSourceEvidence;
   const tier = review.reviewerTier ?? 'PREMIUM';
@@ -358,7 +378,8 @@ export function finalRiskReviewerErrors(review = {}, policy = {}, context = {}) 
   const validPremium = validModels(allowed) && validModels(catalog) &&
     allowed.every(model => catalog.includes(model)) && allowed.includes(policy.models?.finalRisk);
   const errors = [];
-  if (policy.openaiBuilderDecision?.independentReviewerRequired === true) {
+  const identityDeferred = sourceIdentityDataDeferred(review, policy, context);
+  if (policy.openaiBuilderDecision?.independentReviewerRequired === true && !identityDeferred) {
     errors.push(...independentRoleErrors(review, context));
   }
   if (tier === 'PREMIUM') {
@@ -449,10 +470,11 @@ export function finalRiskReviewerErrors(review = {}, policy = {}, context = {}) 
         (actual !== 'unknown' && review.identityEvidence !== 'OPERATOR_ATTESTED')) errors.push('Replacement identity is overstated');
   } else if (tier === 'AUDIT') {
     const models = list(policy.models?.finalRiskDowngradeAllowedModels);
-    if (!validModels(models) || !validModels(catalog) || models.some(model => !catalog.includes(model)) || requested !== actual || !models.includes(actual)) {
+    if (!validModels(models) || !validModels(catalog) || models.some(model => !catalog.includes(model))
+      || (identityDeferred ? !models.includes(requested) : requested !== actual || !models.includes(actual))) {
       errors.push('Unverified audit-tier reviewer identity');
     }
-    if (review.identityEvidence !== 'OPERATOR_ATTESTED') errors.push('Missing audit model attestation');
+    if (!identityDeferred && review.identityEvidence !== 'OPERATOR_ATTESTED') errors.push('Missing audit model attestation');
   } else {
     if (review.modelSelectionAvailable !== false || review.downgradeReason !== 'MODEL_SELECTION_UNAVAILABLE') {
       errors.push('Current-agent review requires unavailable model selection');
