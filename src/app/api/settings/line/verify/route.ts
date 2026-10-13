@@ -209,7 +209,9 @@ export const POST = handle(async () => {
             'WEBHOOK_TEST',
             'FAIL',
             test.ok
-              ? 'LINE 無法連到 Webhook，請先按「一鍵幫我設定並開啟 Webhook」（或設定頁的「自動修正網址」）後再檢查'
+              ? webhookPassed
+                ? 'Webhook 網址已設定，但 LINE 測試請求未通過驗證；最常見原因是 Channel Secret 不正確，請確認 Secret 與 Channel ID 來自同一個 Channel，重新貼上並儲存後，再按「完整檢查」'
+                : 'LINE 無法連到 Webhook，請先按「一鍵幫我設定並開啟 Webhook」（或設定頁的「自動修正網址」）後再檢查'
               : 'Webhook 測試請求失敗',
           ),
     );

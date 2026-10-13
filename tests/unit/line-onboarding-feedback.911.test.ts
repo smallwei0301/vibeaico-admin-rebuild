@@ -42,4 +42,21 @@ describe('#911 LINE 開通精靈回饋', () => {
     expect(text).toContain(lineSettingsPage.verifyReport.webhookSync.action);
     expect(text).toContain(lineSetupWizardPage.botWebhook.fixWebhook);
   });
+  it('WEBHOOK_TEST 失敗訊息依 WEBHOOK 檢查結果分流', () => {
+    const src = read('src/app/api/settings/line/verify/route.ts');
+    const seg = src.slice(src.indexOf("// WEBHOOK_TEST"), src.indexOf("// AUTO_REPLY"));
+    expect(seg).toMatch(/test\.ok\s*\?\s*webhookPassed/);
+    expect(seg).toContain('Channel Secret 不正確');
+    expect(seg).toContain('一鍵幫我設定並開啟 Webhook');
+    expect(seg).toContain('Webhook 測試請求失敗');
+    expect(seg.indexOf('Channel Secret 不正確')).toBeLessThan(seg.indexOf('一鍵幫我設定並開啟 Webhook'));
+  });
+
+  it('FAQ／verifyWebhook 不無條件指向自動修正網址，網址正確時提示檢查 Channel Secret', () => {
+    const items = [lineSettingsPage.tutorial.verifyWebhook.body, lineSettingsPage.help.faq.map((f) => f.a).find((a) => a.includes('收到 200')) ?? ''];
+    for (const text of items) {
+      expect(text).toContain('Webhook 網址」項目失敗');
+      expect(text).toContain('Channel Secret');
+    }
+  });
 });

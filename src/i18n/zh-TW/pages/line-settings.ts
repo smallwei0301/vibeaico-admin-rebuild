@@ -112,7 +112,7 @@ export const lineSettingsPage = {
 
     verifyWebhook: {
       title: '驗證 Webhook：',
-      body: '「儲存設定」只保存憑證。請按「完整檢查」讓系統請 LINE 向 Webhook URL 發送測試訊號，收到 200 回應即代表驗證成功；若失敗，請按「自動修正網址」後再檢查一次。',
+      body: '「儲存設定」只保存憑證。請按「完整檢查」讓系統請 LINE 向 Webhook URL 發送測試訊號，收到 200 回應即代表驗證成功；若「Webhook 網址」項目失敗，請按「自動修正網址」後再檢查；若網址項目已通過但測試失敗，請確認 Channel Secret 與 Channel ID 來自同一個 Channel，重新貼上並儲存後再檢查。',
     },
 
     consoleLink: '前往 LINE Developers Console',
@@ -406,7 +406,7 @@ export const lineSettingsPage = {
       },
       {
         q: 'Q: Webhook 驗證是什麼？',
-        a: '「儲存設定」只保存憑證。請按「完整檢查」讓系統請 LINE 向 Webhook URL 發送測試訊號，收到 200 回應即代表驗證成功；若失敗，請按「自動修正網址」（精靈內為「一鍵幫我設定並開啟 Webhook」）後再檢查一次。',
+        a: '「儲存設定」只保存憑證。請按「完整檢查」讓系統請 LINE 向 Webhook URL 發送測試訊號，收到 200 回應即代表驗證成功；若「Webhook 網址」項目失敗，請按「自動修正網址」（精靈內為「一鍵幫我設定並開啟 Webhook」）後再檢查；若網址項目已通過但測試失敗，最常見原因是 Channel Secret 不正確，請確認 Secret 與 Channel ID 來自同一個 Channel，重新貼上並儲存後再按「完整檢查」。',
       },
       {
         q: 'Q: 按選單沒反應？',
