@@ -46,21 +46,17 @@ type DisplayStatus = keyof typeof t.status;
  * `lastRedeemedCode` 由 GET /api/coupons 依 coupon_instances 即時計算。
  * 票券層級 `code` 與服務適用範圍沒有可靠的設定／寫入入口，因此不再渲染。
  *
- * `addonItem` / `addonPrice` 與 `imageUrl` 仍是未接線的表單草稿欄位，留待各自的
+ * `imageUrl` 仍是未接線的表單草稿欄位，留待各自的
  * 業務規則／上傳鏈路處理；本 slice 不把它們冒充成持久資料。
  */
 type CouponExtras = {
   type: CouponType;
-  addonItem: string;
-  addonPrice: number;
   imageUrl: string;
   displayStatus: DisplayStatus;
 };
 
 const DEFAULT_EXTRAS: CouponExtras = {
   type: 'DISCOUNT_AMOUNT',
-  addonItem: '',
-  addonPrice: 0,
   imageUrl: '',
   displayStatus: 'DRAFT',
 };
@@ -109,7 +105,6 @@ const STATUS_TONE: Record<DisplayStatus, 'neutral' | 'success' | 'warning' | 'da
 const discountText = (c: CouponRow): string => {
   if (c.type === 'DISCOUNT_PERCENT') return t.labels.percentOff(c.discountValue);
   if (c.type === 'GIFT') return t.labels.gift(c.giftItem || t.labels.giftItem);
-  if (c.type === 'ADDON') return `${t.detail.addonPrice}${formatCurrency(c.addonPrice)}`;
   return t.labels.discountAmount(formatCurrency(c.discountValue));
 };
 
@@ -668,7 +663,7 @@ function CouponFormModal({
             onChange={(e) => patch({ type: e.target.value as CouponType })}
           >
             {t.typeOptions.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+              <option key={o.value} value={o.value} disabled={o.value === 'ADDON'}>{o.label}</option>
             ))}
           </Select>
         </FormGroup>
@@ -744,30 +739,6 @@ function CouponFormModal({
           </FormGroup>
         ) : null}
 
-        {draft.type === 'ADDON' ? (
-          <>
-            <FormGroup>
-              <Label required htmlFor="couponAddonItem">{t.form.addonItem}</Label>
-              <Input
-                id="couponAddonItem" value={draft.addonItem} disabled={locked}
-                placeholder={t.form.addonItemPlaceholder}
-                onChange={(e) => patch({ addonItem: e.target.value })}
-              />
-            </FormGroup>
-
-            <FormGroup>
-              <Label required htmlFor="couponAddonPrice">{t.form.addonPrice}</Label>
-              <div className="input-group">
-                <span className="form-control w-auto flex-none">{t.form.currencyUnit}</span>
-                <Input
-                  id="couponAddonPrice" type="number" value={draft.addonPrice} disabled={locked}
-                  onChange={(e) => patch({ addonPrice: Number(e.target.value) })}
-                />
-              </div>
-            </FormGroup>
-          </>
-        ) : null}
-
         <FormGroup>
           <Label htmlFor="couponValidStartAt">{t.form.validStartAt}</Label>
           <Input
@@ -833,15 +804,8 @@ function CouponFormModal({
 
       <FormGroup>
         <Label htmlFor="couponImageInput">{t.form.image}</Label>
-        <div className="flex items-center gap-2">
-          <Input id="couponImageInput" type="file" accept="image/*" />
-          {draft.imageUrl ? (
-            <Button variant="outline" size="sm" onClick={() => patch({ imageUrl: '' })}>
-              {t.form.imageRemove}
-            </Button>
-          ) : null}
-        </div>
-        <FormText>{t.form.imageUpload}</FormText>
+        <Input id="couponImageInput" type="file" accept="image/*" disabled />
+        <FormText>{t.form.imageUnavailable}</FormText>
       </FormGroup>
 
       {errors.map((err) => <FormError key={err}>{err}</FormError>)}
@@ -1353,17 +1317,6 @@ function CouponDetailModal({
             <div>
               <strong>{t.detail.giftItem}</strong>{coupon.giftItem || t.labels.giftItem}
             </div>
-          ) : null}
-
-          {coupon.type === 'ADDON' ? (
-            <>
-              <div>
-                <strong>{t.detail.addonItem}</strong>{coupon.addonItem || t.labels.giftItem}
-              </div>
-              <div>
-                <strong>{t.detail.addonPrice}</strong>{formatCurrency(coupon.addonPrice)}
-              </div>
-            </>
           ) : null}
 
           <div>

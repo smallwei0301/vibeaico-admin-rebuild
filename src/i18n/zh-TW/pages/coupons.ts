@@ -60,7 +60,7 @@ export const couponsPage = {
     { value: 'DISCOUNT_AMOUNT', label: '折價券（固定金額）' },
     { value: 'DISCOUNT_PERCENT', label: '折扣券（百分比）' },
     { value: 'GIFT', label: '兌換券' },
-    { value: 'ADDON', label: '加購券' },
+    { value: 'ADDON', label: '加購券（尚未開放保存）' },
   ],
 
   labels: {
@@ -115,9 +115,6 @@ export const couponsPage = {
     maxDiscountAmountHelp: '不填則無上限',
     giftItem: '兌換項目',
     giftItemPlaceholder: '例如：免費護髮一次',
-    addonItem: '加購項目',
-    addonItemPlaceholder: '例如：精油護理',
-    addonPrice: '加購價',
     currencyUnit: 'NT$',
     validStartAt: '使用期限開始',
     validStartAtHelp: '不填則從發放時開始',
@@ -133,9 +130,7 @@ export const couponsPage = {
       '開啟後這張票券不會出現在公開頁與 LINE 領券清單、顧客無法自行領取，只能由您在票券列表按「發放」指定顧客發送（適合失誤補償券、熟客專屬券）',
     description: '使用說明',
     image: '票券圖片',
-    imageUpload: '點擊上傳圖片（最大 2MB）',
-    imageRemove: '移除圖片',
-    imageTooLarge: '圖片大小不可超過 2MB',
+    imageUnavailable: '票券圖片尚未開放',
     endBeforeStart: '使用期限結束必須晚於開始時間',
   },
 
@@ -246,8 +241,6 @@ export const couponsPage = {
     discountPercent: '折扣：',
     maxDiscountAmount: '最高折抵：',
     giftItem: '兌換項目：',
-    addonItem: '加購項目：',
-    addonPrice: '加購價：',
     applicableServices: '適用服務：',
     usageDescription: '使用說明：',
     visibility: '可見性：',
