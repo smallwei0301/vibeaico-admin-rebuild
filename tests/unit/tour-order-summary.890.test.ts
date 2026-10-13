@@ -36,7 +36,7 @@ function applyOps(rows: Row[], calls: Call[], tables: Record<string, Row[]> = {}
   return out;
 }
 
-function fakeSupabase(tables: Record<string, Row[]>) {
+function fakeSupabase(tables: Record<string, Row[]>, maxRows = Infinity) {
   return {
     from(table: string) {
       const calls: Call[] = [];
@@ -46,11 +46,13 @@ function fakeSupabase(tables: Record<string, Row[]>) {
       const b: any = {
         select: (cols: string, opts?: { head?: boolean }) => { head = !!opts?.head; calls.push(['select', [cols]]); return b; },
         order: () => b,
+        maybeSingle: () => { calls.push(['maybeSingle', []]); return b; },
         range: (x: number, y: number) => { rng = [x, y]; return b; },
         then(resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) {
           const all = applyOps(tables[table] ?? [], calls, tables);
-          const data = rng ? all.slice(rng[0], rng[1] + 1) : all;
-          return Promise.resolve({ data: head ? null : data, error: null, count: all.length }).then(resolve, reject);
+          const data = (rng ? all.slice(rng[0], Math.min(rng[1] + 1, rng[0] + maxRows)) : all);
+          const isSingle = calls.some(([m]) => m === 'maybeSingle');
+          return Promise.resolve({ data: head ? null : isSingle ? (data[0] ?? null) : data, error: null, count: all.length }).then(resolve, reject);
         },
       };
       for (const m of ['eq', 'neq', 'in', 'gte', 'lte', 'lt']) b[m] = (...a: unknown[]) => { calls.push([m, a]); return b; };
@@ -114,8 +116,8 @@ describe('GET /api/tour-orders/summary（#890）', () => {
 
   it('每一個查詢都帶 tenant_id 過濾', async () => {
     await call();
-    expect(queries.length).toBe(4);
-    expect(queries.every((q) => q.table === 'tour_orders')).toBe(true);
+    expect(queries.length).toBe(6); // tenant_settings + 3 count + 2 營收分頁（資料頁＋空頁）
+    expect(queries.every((q) => q.table === 'tour_orders' || q.table === 'tenant_settings')).toBe(true);
     for (const q of queries) {
       expect(q.calls.some(([m, a]) => m === 'eq' && a[0] === 'tenant_id' && a[1] === A), `${q.table} 缺 tenant_id`).toBe(true);
     }
@@ -139,6 +141,41 @@ describe('GET /api/tour-orders/summary（#890）', () => {
     expect(status).toBe(422);
     expect(body.code).toBe('REPORT_001');
     expect(body.data).toBeUndefined();
+  });
+
+  it('日期界線用店家時區：LA 10/31 晚上（台北已是 11/1）仍算十月，7 天窗用 LA 日期', async () => {
+    vi.setSystemTime(new Date('2026-11-01T03:00:00.000Z')); // 台北 11/1 11:00；LA(PDT) 10/31 20:00
+    const tables: Record<string, Row[]> = {
+      tenant_settings: [{ tenant_id: A, basic: { timezone: 'America/Los_Angeles' } }],
+      tour_orders: [
+        order({ id: 'oct', status: 'COMPLETED', payment_status: 'PAID', total_amount: 40, created_at: '2026-10-31T20:00:00.000Z' }), // LA 10/31 13:00
+        order({ id: 'oct-start', status: 'COMPLETED', payment_status: 'PAID', total_amount: 2, created_at: '2026-10-01T07:00:00.000Z' }), // LA 10/1 00:00
+        order({ id: 'sep', status: 'COMPLETED', payment_status: 'PAID', total_amount: 900, created_at: '2026-10-01T06:59:59.000Z' }), // LA 9/30 23:59
+        order({ id: 'nov', status: 'COMPLETED', payment_status: 'PAID', total_amount: 800, created_at: '2026-11-01T07:00:00.000Z' }), // LA 11/1 00:00，屬十一月不計入
+        order({ id: 'u1', status: 'CONFIRMED', departure_id: 'd1' }),
+        order({ id: 'u2', status: 'CONFIRMED', departure_id: 'd2' }),
+        order({ id: 'u3', status: 'CONFIRMED', departure_id: 'd3' }),
+      ],
+      trip_departures: [
+        { id: 'd1', tenant_id: A, departs_on: '2026-10-31' }, // LA 今天（台北基準會被當成過去）
+        { id: 'd2', tenant_id: A, departs_on: '2026-11-07' }, // LA 今天+7
+        { id: 'd3', tenant_id: A, departs_on: '2026-11-08' }, // 超出
+      ],
+    };
+    requireTenantMock.mockResolvedValue({ supabase: fakeSupabase(tables), tenantId: A, user: { id: 'u' }, role: 'OWNER' });
+    const { body } = await call();
+    expect(body.data.monthRevenue).toBe(42);
+    expect(body.data.upcoming7d).toBe(2);
+    const ts = queries.find((q) => q.table === 'tenant_settings')!;
+    expect(ts.calls).toContainEqual(['eq', ['tenant_id', A]]);
+  });
+
+  it('遠端 max_rows(500) 小於 PAGE：以實際回傳筆數推進，800 筆全數加總不提早停', async () => {
+    const rows = Array.from({ length: 800 }, (_, i) => order({ id: `m${String(i).padStart(4, '0')}`, status: 'COMPLETED', payment_status: 'PAID', total_amount: 2 }));
+    requireTenantMock.mockResolvedValue({ supabase: fakeSupabase({ tour_orders: rows, trip_departures: [] }, 500), tenantId: A, user: { id: 'u' }, role: 'OWNER' });
+    const { status, body } = await call();
+    expect(status).toBe(200);
+    expect(body.data.monthRevenue).toBe(1600);
   });
 
   it('別的租戶的資料完全不計入', async () => {
