@@ -218,6 +218,7 @@ export default function TripDetailPage() {
   const [savingPlan, setSavingPlan] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [coverBusy, setCoverBusy] = React.useState(false);
+  const [confirmRemoveCover, setConfirmRemoveCover] = React.useState(false);
   const coverInputRef = React.useRef<HTMLInputElement>(null);
   const [addonDraft, setAddonDraft] = React.useState<TripAddon | null>(null);
   const [departureDraft, setDepartureDraft] = React.useState<TripDeparture | null>(null);
@@ -354,6 +355,7 @@ export default function TripDetailPage() {
 
   const onRemoveCover = async () => {
     if (coverBusy || busy) return;
+    setConfirmRemoveCover(false);
     setCoverBusy(true);
     try {
       await removeTripCover(tripId);
@@ -1263,7 +1265,7 @@ export default function TripDetailPage() {
                   {form.coverImageUrl ? (
                     <Button
                       variant="outline" size="sm" className="min-h-11"
-                      disabled={coverBusy || busy} onClick={() => void onRemoveCover()}
+                      disabled={coverBusy || busy} onClick={() => setConfirmRemoveCover(true)}
                     >
                       <Trash2 size={14} />{t.form.removeImage}
                     </Button>
@@ -2179,6 +2181,17 @@ export default function TripDetailPage() {
           <FormText>{t.departures.formation.decision.extendHelp}</FormText>
         </FormGroup>
       </Modal>
+
+      <ConfirmModal
+        open={confirmRemoveCover}
+        onClose={() => setConfirmRemoveCover(false)}
+        onConfirm={() => void onRemoveCover()}
+        title={t.confirm.removeCoverTitle}
+        message={t.confirm.removeCoverMessage}
+        confirmText={t.form.removeImage}
+        danger
+        loading={coverBusy}
+      />
 
       <ConfirmModal
         open={!!deleteTarget}

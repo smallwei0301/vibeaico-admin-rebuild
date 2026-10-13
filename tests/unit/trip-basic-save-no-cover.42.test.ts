@@ -25,4 +25,14 @@ describe('#42 基本資料儲存不帶封面', () => {
     expect(src).toContain('onClick={saveBasic} loading={busy} disabled={coverBusy}');
     expect(src).toContain('accept="image/jpeg,image/png,image/webp"');
   });
+  it('頁面來源：封面「移除」先開確認，確認後才呼叫 removeTripCover', () => {
+    const src = readFileSync('src/app/tenant/trips/[id]/page.tsx', 'utf8');
+    expect(src).toContain('onClick={() => setConfirmRemoveCover(true)}');
+    expect(src).not.toContain('onClick={() => void onRemoveCover()}\n                    >');
+    expect(src).toContain('open={confirmRemoveCover}');
+    expect(src).toContain('onConfirm={() => void onRemoveCover()}');
+    expect(src).toContain('t.confirm.removeCoverTitle');
+    expect(src.match(/removeTripCover\(tripId\)/g)).toHaveLength(1);
+    expect(src).toMatch(/const onRemoveCover = async \(\) => \{\n    if \(coverBusy \|\| busy\) return;/);
+  });
 });

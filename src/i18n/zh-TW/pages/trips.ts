@@ -481,6 +481,8 @@ export const tripsPage = {
   /* ------------------------------------------------------------ 確認 / 訊息 */
   confirm: {
     deleteTitle: '刪除行程',
+    removeCoverTitle: '移除封面圖片',
+    removeCoverMessage: '確定要移除這張封面圖片嗎？移除後商店頁與 LINE 訊息將不再顯示封面。',
     delete: (name: string) => `確定要刪除行程「${name}」嗎？已有訂單的行程會改為封存而不是刪除。`,
     deletePlan: (name: string) => `確定要刪除方案「${name}」嗎？`,
     deleteAddon: (name: string) => `確定要刪除加購項目「${name}」嗎？`,
