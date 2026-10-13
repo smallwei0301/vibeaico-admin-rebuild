@@ -16,7 +16,6 @@ export function MyOrdersSearch({
   shopCode,
 }: {
   shopCode: string;
-  initialContact?: string;
 }) {
   return (
     <>
