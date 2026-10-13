@@ -91,7 +91,10 @@
   "notes": [
     "Pure governance CI time-budget candidate; no Product credit, no Product Run membership, no Production authorization.",
     "Requested model not_requested; actual model unknown/unexposed. Backend actor/session not fabricated. Token telemetry unavailable.",
-    "Run created at recorded startedAt; issue registration predates this run. Live implementation/CI/closeout capture remains pending; default counters are not a completed scorecard. Frozen Product/Environment ledgers untouched."
+    "Run created at recorded startedAt; issue registration predates this run. Live implementation/CI/closeout capture remains pending; default counters are not a completed scorecard. Frozen Product/Environment ledgers untouched.",
+    "2026-10-13T17:23:44.874Z: live GET independently reverified #905 SOURCE merge and exact-head pull_request CI. Source integration/E2E were SOURCE_ONLY skipped; not TEST_VERIFIED. Actual current60s integration recovery remains pending; #901 stays OPEN.",
+    "Capture gap retained: implementation/source-CI events were not written to this ledger at occurrence. No historical counters, actor/session, requested/served identity or task times reconstructed. Initial default counters are not evidence of observed zero; report remains NOT_GRADED and this Run remains IN_PROGRESS/OPEN.",
+    "Playbook paired-report lesson follow-up is prepared locally; no new validator/framework, no Product delivery credit and no DB G5/writer/Production authorization."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -107,8 +110,25 @@
     "events": []
   },
   "completionTruth": {
-    "status": "NOT_CHECKED",
-    "checkedAt": null,
-    "claims": []
+    "status": "VERIFIED",
+    "checkedAt": "2026-10-13T17:23:44.874Z",
+    "claims": [
+      {
+        "type": "PR_MERGED",
+        "subject": "pr#905",
+        "claimedState": "merged",
+        "observedState": "merged",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/905",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "CI_GREEN",
+        "subject": "pr#905 source head e5a1b333d9524fa47b4baaf9a45e7b3fbcd9a02e",
+        "claimedState": "success",
+        "observedState": "success",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/38433095286",
+        "verification": "VERIFIED"
+      }
+    ]
   }
 }
