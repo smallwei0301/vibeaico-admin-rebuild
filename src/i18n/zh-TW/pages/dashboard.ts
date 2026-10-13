@@ -42,6 +42,8 @@ export const dashboardPage = {
     },
     done: '已完成',
     todo: '尚未完成',
+    goSetup: '前往設定',
+    goSetupLabel: (step: string) => `${step}，前往設定`,
   },
 
   /* ---------------------------------------------------------- GUIDE 待處理事項 */

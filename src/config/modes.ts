@@ -1,4 +1,7 @@
 import { Compass, Hospital, Store, type LucideIcon } from 'lucide-react';
+import type { SetupStatus } from '@/lib/types';
+
+export type SetupStepKey = SetupStatus['steps'][number]['key'];
 
 /**
  * 業態模式（Business Modes）— 規格見 docs/integration/13-BUSINESS-MODES.md
@@ -50,7 +53,19 @@ export type ModePreset = {
    * 以程式化列舉守住這條，改了 cells 卻少 handler 會自動轉紅。
    */
   richMenuCells: readonly { label: string; text: string }[];
+  /**
+   * 儀表板「設定進度」每一步的前往頁面；null＝該模式側邊欄隱藏此頁，不提供連結。
+   * 判定條件見 api/settings/setup-status（SERVICE 計 services 表；GUIDE 隱藏 services 頁）。
+   */
+  setupStepRoutes: Record<SetupStepKey, string | null>;
 };
+
+const COMMON_SETUP_ROUTES = {
+  SHOP_INFO: '/tenant/settings#basic',
+  STAFF: '/tenant/staff',
+  BUSINESS_HOURS: '/tenant/settings#business',
+  LINE_BOT: '/tenant/line-settings',
+} as const;
 
 export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
   LOCAL_SHOP: {
@@ -64,6 +79,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     shopSections: ['SERVICES', 'PRODUCTS', 'PORTFOLIO'],
     showActionInbox: false,
     reportingMode: 'GENERAL',
+    setupStepRoutes: { ...COMMON_SETUP_ROUTES, SERVICE: '/tenant/services' },
     richMenuCells: [
       { label: '立即預約', text: '預約' },
       { label: '我的預約', text: '我的預約' },
@@ -88,6 +104,8 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     shopSections: ['TRIPS', 'PORTFOLIO'],
     showActionInbox: true,
     reportingMode: 'GUIDE_TOUR',
+    // services 頁在 GUIDE 側邊欄隱藏（hiddenNavKeys），不給連結
+    setupStepRoutes: { ...COMMON_SETUP_ROUTES, SERVICE: null },
     richMenuCells: [
       { label: '所有行程', text: '行程' },
       { label: '近期團次', text: '團次' },
@@ -108,6 +126,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     shopSections: ['SERVICES'],
     showActionInbox: false,
     reportingMode: 'GENERAL',
+    setupStepRoutes: { ...COMMON_SETUP_ROUTES, SERVICE: '/tenant/services' },
     richMenuCells: [
       { label: '線上掛號', text: '預約' },
       { label: '我的掛號', text: '我的預約' },
