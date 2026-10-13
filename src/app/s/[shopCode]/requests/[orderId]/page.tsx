@@ -24,7 +24,7 @@ import type { TourOrder } from '@/lib/types';
 
 type Params = {
   params: Promise<{ shopCode: string; orderId: string }>;
-  searchParams: Promise<{ contact?: string }>;
+  searchParams: Promise<{ contact?: string; created?: string }>;
 };
 
 export const metadata: Metadata = { title: t.status.metaTitle };
@@ -42,7 +42,11 @@ function StatusBody({ order }: { order: TourOrder }) {
             {locked ? t.status.pendingLockedTitle : t.status.pendingTitle}
           </h1>
           <p className="text-sm text-secondary">
-            {locked ? t.status.pendingLockedDescription : t.status.pendingDescription}
+            {locked
+              ? order.paymentStatus === 'UNPAID'
+                ? t.status.pendingLockedDescription
+                : t.status.pendingLockedPaymentDescription
+              : t.status.pendingDescription}
           </p>
         </div>
       </section>
@@ -54,9 +58,11 @@ function StatusBody({ order }: { order: TourOrder }) {
         <div className="card-body flex flex-col gap-2">
           <h1 className="text-xl font-semibold text-success">{t.status.confirmedTitle}</h1>
           <p className="text-sm text-secondary">
-            {order.holdExpiresAt
-              ? t.status.confirmedDescription(formatDateTime(order.holdExpiresAt))
-              : t.status.confirmedNoDeadlineDescription}
+            {order.paymentStatus === 'UNPAID'
+              ? order.holdExpiresAt
+                ? t.status.confirmedDescription(formatDateTime(order.holdExpiresAt))
+                : t.status.confirmedNoDeadlineDescription
+              : t.status.confirmedPaymentDescription}
           </p>
         </div>
       </section>
@@ -84,7 +90,7 @@ function StatusBody({ order }: { order: TourOrder }) {
 
 export default async function PublicTourRequestStatusPage({ params, searchParams }: Params) {
   const { shopCode, orderId } = await params;
-  const { contact } = await searchParams;
+  const { contact, created } = await searchParams;
 
   if (!contact) notFound();
   const order = await loadPublicTourRequestStatus(shopCode, orderId, contact);
@@ -92,7 +98,27 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
 
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-6">
+      {created === '1' && order.status === 'PENDING' ? (
+        <section className="card border border-success" role="status">
+          <div className="card-body flex flex-col gap-1">
+            <h2 className="text-base font-semibold text-success">
+              {order.salesMode === 'REQUEST' ? t.status.createdRequestTitle : t.status.createdBookingTitle}
+            </h2>
+            <p className="text-sm text-secondary">
+              {order.salesMode === 'REQUEST' ? t.status.createdRequestDescription : t.status.createdBookingDescription}
+            </p>
+          </div>
+        </section>
+      ) : null}
       <StatusBody order={order} />
+
+      <section className="card">
+        <div className="card-body flex flex-col gap-2">
+          <h2 className="text-base font-medium">{t.status.paymentTitle}</h2>
+          <p className="text-sm font-medium">{t.status.paymentState[order.paymentStatus]}</p>
+          <p className="text-sm text-secondary">{t.status.paymentDescription[order.paymentStatus]}</p>
+        </div>
+      </section>
 
       <section className="card">
         <div className="card-body flex flex-col gap-1">

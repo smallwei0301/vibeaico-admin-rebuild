@@ -72,6 +72,16 @@ const MOCK_PAYMENT_METHODS = [
 
 export default function TourOrdersPage() {
   const toast = useToast();
+  const copyLine = (lineId: string) => {
+    try {
+      navigator.clipboard.writeText(lineId).then(
+        () => toast.show(t.messages.lineCopied),
+        () => toast.show(t.messages.lineCopyFailed, 'danger'),
+      );
+    } catch {
+      toast.show(t.messages.lineCopyFailed, 'danger');
+    }
+  };
   const businessType = useBusinessType();
 
   const [rows, setRows] = React.useState<TourOrder[]>([]);
@@ -400,7 +410,7 @@ export default function TourOrdersPage() {
       render: (o) => (
         <div>
           <div className="font-medium text-dark">{o.customerName}</div>
-          <div className="text-2xs text-secondary">{o.customerPhone}</div>
+          <div className="text-2xs text-secondary">{o.customerPhone || o.customerLine || o.customerEmail || ''}</div>
         </div>
       ),
     },
@@ -602,9 +612,11 @@ export default function TourOrdersPage() {
                 {t.actions[kind]}
               </Button>
             )) : null}
-            <Button variant="outline">
-              <MessageSquareText size={14} />{t.actions.contactLine}
-            </Button>
+            {detail?.customerLine ? (
+              <Button variant="outline" onClick={() => copyLine(detail.customerLine ?? '')}>
+                <MessageSquareText size={14} />{t.actions.contactLine}
+              </Button>
+            ) : null}
             <Button variant="secondary" onClick={() => setDetail(null)}>{common.close}</Button>
           </>
         }
@@ -631,7 +643,9 @@ export default function TourOrdersPage() {
               <h4 className="mb-1 text-sm font-bold text-dark">{t.detail.sections.customer}</h4>
               <dl className="grid grid-cols-[8.5rem_1fr] gap-y-1 text-sm">
                 <dt className="text-secondary">{t.detail.fields.name}</dt><dd>{detail.customerName}</dd>
-                <dt className="text-secondary">{t.detail.fields.phone}</dt><dd>{detail.customerPhone}</dd>
+                <dt className="text-secondary">{t.detail.fields.phone}</dt><dd>{detail.customerPhone || '—'}</dd>
+                {detail.customerLine ? (<><dt className="text-secondary">{t.detail.fields.line}</dt><dd>{detail.customerLine}</dd></>) : null}
+                {detail.customerEmail ? (<><dt className="text-secondary">{t.detail.fields.email}</dt><dd>{detail.customerEmail}</dd></>) : null}
                 <dt className="text-secondary">{t.detail.fields.party}</dt>
                 <dd>{t.detail.partyUnit(detail.partySize)}</dd>
               </dl>
