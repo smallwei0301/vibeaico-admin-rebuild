@@ -212,6 +212,9 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
                               </Link>
                             </>
                           ) : null}
+                          {plan.bookingCta === 'none' ? (
+                            <span className="text-2xs text-secondary">{t.trips.instantHint}</span>
+                          ) : null}
                           {plan.bookingCta === 'request-unavailable' ? (
                             <span className="text-2xs text-secondary">{t.trips.noRequestableHint}</span>
                           ) : null}
