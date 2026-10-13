@@ -115,6 +115,10 @@
     {
       "ref": "issue/7",
       "title": "作品集主圖真實上傳"
+    },
+    {
+      "ref": "issue/864",
+      "title": "行銷推播／限時活動圖片真實上傳"
     }
   ],
   "main": {
@@ -7368,13 +7372,30 @@
         "issue": 7,
         "count": 1,
         "evidenceRef": "PR #863 Codex P2"
+      },
+      {
+        "id": "20261013-luna-scout-864-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModel": "unknown",
+        "startedAt": "2026-10-13T08:18:49Z",
+        "completedAt": "2026-10-13T08:18:54Z",
+        "note": "Luna metrics capture 綁定 issue/864 至本 Run：補 sources、delivery.issuesStarted 31→32、flow.lunaTasks/lunaAccepted +1。自報 runtime claude-haiku-5-5，actual 未經平台驗證。",
+        "issue": 864,
+        "count": 1,
+        "evidenceRef": "commit a8498d6b"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 31,
+    "issuesStarted": 32,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -7401,8 +7422,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 100,
-    "lunaAccepted": 91,
+    "lunaTasks": 101,
+    "lunaAccepted": 92,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -7615,7 +7636,8 @@
     "2026-10-06 PR #791 Codex P2：ISSUE_CLOSED evidenceRef 改為 scorer 可解析的 issue URL；production-stage claim subject 改為單一 canonical issue#N（複合 subject 拆成每個 Issue 一筆，原 subject 保留在 evidenceRef）；補 #781 ISSUE_CLOSED（close-guard capture issuecomment-6007682712）與 issuesClosed 10、#790 main push CI。只改格式與補記已觀測事件，未改驗證結果。",
     "2026-10-07 session_018ZuhUGeBPHKDk3uZJ92KDj scout層次的事後補記任務未即時埋點（11筆 modelUsage.tasks 已移除）；依CLAUDE.md規則「未埋點的量維持null，不回填推算值」復原至origin/main。相關執行紀錄見branch日誌與PR審查。",
     "Capture path correction: the first temporary Run edit was mistakenly made in /workspace/vibeaico-admin-rebuild on clean branch work; both files were restored to HEAD before this authorized write. Final capture is only in /workspace/goal46, with no commit or push.",
-    "2026-10-13 非計分紀錄：issue/7 的兩筆 build（commit 137f46b7 06:12:52Z→06:20:22Z、commit 15646fa0 06:31:28Z→06:36:03Z）為事後依 commit 時間戳補記，非即時埋點，已自 modelUsage.tasks 移除，依 CLAUDE.md「未埋點的量維持 null，不回填推算值」不計入觀測用量。兩次 commit 的 Sonnet 施工事實仍以 git 歷史與 PR #863 本文揭露為準。"
+    "2026-10-13 非計分紀錄：issue/7 的兩筆 build（commit 137f46b7 06:12:52Z→06:20:22Z、commit 15646fa0 06:31:28Z→06:36:03Z）為事後依 commit 時間戳補記，非即時埋點，已自 modelUsage.tasks 移除，依 CLAUDE.md「未埋點的量維持 null，不回填推算值」不計入觀測用量。兩次 commit 的 Sonnet 施工事實仍以 git 歷史與 PR #863 本文揭露為準。",
+    "2026-10-13 非計分紀錄（issue/864）：builder 施工 07:21:13Z–07:27:27Z（commit 7fd474ed，cherry-pick 為 87caa521）與強化 08:13:01Z–08:18:25Z（commit a8498d6b）為事後補記，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量；Luna scout 較早已找到候選，其事件同樣未即時埋點，僅記於此。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
