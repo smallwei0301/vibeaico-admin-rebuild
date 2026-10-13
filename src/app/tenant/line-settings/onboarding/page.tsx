@@ -15,7 +15,7 @@ import { useToast } from '@/components/ui/Toast';
 import {
   getTenantSettings, saveLineSettings, syncLineWebhook, verifyLineSetup,
 } from '@/services/settings';
-import { getDashboardStats } from '@/services/reports';
+import { usePushQuota } from '@/lib/use-line-onboarding-quota';
 import { summarizePushQuota } from '@/lib/push-quota-summary';
 import { buildWebhookUrl, maskSecret } from '@/config/tenant-settings';
 import type { TenantSettings } from '@/config/tenant-settings';
@@ -73,22 +73,8 @@ export default function LineSetupWizardPage() {
   const [settings, setSettings] = React.useState<TenantSettings | null>(null);
   const [step, setStep] = React.useState<WizardStepKey>('CREDENTIALS_INPUT');
 
-  /* 本月平台推播額度（僅供能力摘要顯示；失敗不阻擋精靈、不跳 toast） */
-  const [quotaState, setQuotaState] = React.useState<
-    { status: 'loading' } | { status: 'error' } | { status: 'ready'; used: number; total: number }
-  >({ status: 'loading' });
-  React.useEffect(() => {
-    let alive = true;
-    void (async () => {
-      try {
-        const stats = await getDashboardStats();
-        if (alive) setQuotaState({ status: 'ready', used: stats.pushQuotaUsed, total: stats.pushQuotaTotal });
-      } catch {
-        if (alive) setQuotaState({ status: 'error' });
-      }
-    })();
-    return () => { alive = false; };
-  }, []);
+  /* 本月平台推播額度只更新能力卡片，不影響精靈狀態。 */
+  const { quotaState, retryQuota } = usePushQuota();
   const quotaSummary = quotaState.status === 'ready' ? summarizePushQuota(quotaState.used, quotaState.total) : null;
 
   /* --- 步驟一：憑證表單（沿用既有 LINE 設定頁的「重新輸入」語意，見該頁檔頭） --- */
@@ -797,13 +783,22 @@ export default function LineSetupWizardPage() {
                   ) : null}
                 </div>
                 <div className="form-text mt-1">{t.capabilities.pushQuota.body}</div>
-                <div className="form-text mt-1">
+                <div className="form-text mt-1" role="status" aria-live="polite">
                   {quotaState.status === 'loading' ? common.loading
                     : quotaState.status === 'error' ? t.capabilities.pushQuota.loadFailed
                     : quotaSummary && quotaSummary.level !== 'unknown'
                       ? t.capabilities.pushQuota.usage(quotaSummary.used, quotaSummary.total, quotaSummary.remaining)
                       : t.capabilities.pushQuota.noQuota}
                 </div>
+                {quotaState.status !== 'ready' ? (
+                  <Button
+                    variant="outline" className="mt-2 min-h-11"
+                    loading={quotaState.status === 'loading'} loadingText={common.loading}
+                    onClick={() => { void retryQuota(); }}
+                  >
+                    {t.capabilities.pushQuota.retry}
+                  </Button>
+                ) : null}
                 <Link className="btn btn-outline btn-sm mt-2" href="/tenant/marketing">
                   {t.capabilities.pushQuota.cta}
                 </Link>

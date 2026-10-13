@@ -191,7 +191,8 @@ export const lineSetupWizardPage = {
     pushQuota: {
       title: '本月平台推播額度',
       body: '這是本系統每月提供給你的推播額度（預約通知、行銷推播等會用到），不是 LINE 官方帳號本身的訊息則數。',
-      loadFailed: '暫時無法取得推播額度，不影響開通流程，稍後可到行銷推播頁查看。',
+      loadFailed: '暫時無法取得推播額度，不影響開通流程。請重新讀取，或稍後到行銷推播頁查看。',
+      retry: '重新讀取額度',
       usage: (used: number, total: number, remaining: number) =>
         `已使用 ${used} / ${total} 則，剩餘 ${remaining} 則`,
       noQuota: '目前沒有取得本月推播額度資料。',
