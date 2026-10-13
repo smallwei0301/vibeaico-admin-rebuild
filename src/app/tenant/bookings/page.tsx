@@ -25,6 +25,7 @@ import {
   listBookingAddons, listBookings, markBookingPaidOffline, markNoShow, revertBookingComplete,
   updateBooking,
 } from '@/services/bookings';
+import { unprocessedUpperBound } from '@/lib/bookings-query-range';
 import { createCustomer, listCustomers } from '@/services/customers';
 import { listServices, listStaff } from '@/services/catalog';
 import { exportBookingsCsv, exportBookingsXlsx } from '@/services/reports';
@@ -155,7 +156,7 @@ export default function BookingsPage() {
         paymentStatus: paymentStatusFilter || undefined,
         keyword,
         from: startDate || undefined,
-        to: endDate || undefined,
+        to: endDate || unprocessedUpperBound(status, endDate),
       });
 
       const applyClientFilters = (items: Booking[]) => {
