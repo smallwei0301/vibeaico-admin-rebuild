@@ -28,6 +28,7 @@ import {
   type FormationDecisionPayload,
 } from '@/services/tours';
 import { getTenantSettings } from '@/services/settings';
+import { resyncAfterFailure } from '@/lib/trip-plan-resync';
 import { formationTimeZone, formationLocalDateTime, formationWallTimeToIso, tryFormationLocalToIso } from '@/lib/departure-formation-time';
 import { listStaff } from '@/services/catalog';
 import { common } from '@/i18n/zh-TW/common';
@@ -602,6 +603,8 @@ export default function TripDetailPage() {
         error instanceof Error && error.message ? error.message : t.messages.planOrderFailed,
         'danger',
       );
+      // 多筆更新可能部分成功：非 mock 時重讀清單與伺服器對齊，重讀失敗則保留原狀（#930）
+      if (!USE_MOCK) await resyncAfterFailure(() => listTripPlans(tripId), setPlans);
     }
   };
 

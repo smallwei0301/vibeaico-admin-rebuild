@@ -1,4 +1,8 @@
 import { NextResponse } from 'next/server';
+import { installZhErrorMap } from '@/server/zod-zh';
+
+// #930：zod 預設訊息一律繁中（schema 自訂 message 仍優先）。模組載入即生效，涵蓋所有經 handle() 的 route。
+installZhErrorMap();
 
 /** 統一錯誤碼。前端只認 message 顯示、code 做分支，新增碼時同步更新 04 分冊表格 */
 export const ERR = {
