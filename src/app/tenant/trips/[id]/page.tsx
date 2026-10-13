@@ -39,7 +39,7 @@ import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
 import { ApiError } from '@/lib/api';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import { resolveGuideInboxDepartureFocus } from '@/lib/guide-action-inbox';
-import { removeTripCover, uploadTripCover, validateTripCoverFile } from '@/lib/trip-cover';
+import { omitTripCover, removeTripCover, uploadTripCover, validateTripCoverFile } from '@/lib/trip-cover';
 import { MAX_PUBLIC_GALLERY_IMAGES, omitUnchangedGallery } from '@/lib/trip-gallery';
 import {
   omitUnchangedTripTextFields, tripTextFieldErrors,
@@ -333,7 +333,7 @@ export default function TripDetailPage() {
   const onPickCover = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (!file || coverBusy) return;
+    if (!file || coverBusy || busy) return;
     const invalid = validateTripCoverFile(file);
     if (invalid) {
       toast.show(invalid === 'type' ? t.messages.coverTypeInvalid : t.messages.coverTooLarge, 'danger');
@@ -353,7 +353,7 @@ export default function TripDetailPage() {
   };
 
   const onRemoveCover = async () => {
-    if (coverBusy) return;
+    if (coverBusy || busy) return;
     setCoverBusy(true);
     try {
       await removeTripCover(tripId);
@@ -370,7 +370,7 @@ export default function TripDetailPage() {
   const saveBasic = async () => {
     if (!form) return;
     // 相簿與五個文字欄位未變更就不送：舊資料超過寫入上限時，只改其他欄位仍可儲存。
-    const payload = omitUnchangedTripTextFields(omitUnchangedGallery(form, trip), trip);
+    const payload = omitUnchangedTripTextFields(omitUnchangedGallery(omitTripCover(form), trip), trip);
     // #748：只檢查仍在 payload 內（有變更）的欄位；有錯就不打 API、保留表單，並標出欄位。
     const errors = tripTextFieldErrors(payload);
     if (errors.length > 0) {
@@ -1074,7 +1074,7 @@ export default function TripDetailPage() {
             <Button variant="outline" onClick={() => router.push('/tenant/trips')}>
               {t.actions.back}
             </Button>
-            <Button onClick={saveBasic} loading={busy}>{t.actions.save}</Button>
+            <Button onClick={saveBasic} loading={busy} disabled={coverBusy}>{t.actions.save}</Button>
           </>
         }
       />
@@ -1247,7 +1247,7 @@ export default function TripDetailPage() {
                 <input
                   ref={coverInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/webp"
                   className="hidden"
                   data-testid="trip-cover-input"
                   onChange={(e) => void onPickCover(e)}
@@ -1255,7 +1255,7 @@ export default function TripDetailPage() {
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline" size="sm" className="min-h-11 flex-1"
-                    loading={coverBusy} disabled={coverBusy}
+                    loading={coverBusy} disabled={coverBusy || busy}
                     onClick={() => coverInputRef.current?.click()}
                   >
                     <Upload size={14} />{form.coverImageUrl ? t.form.replaceCta : t.form.uploadCta}
@@ -1263,7 +1263,7 @@ export default function TripDetailPage() {
                   {form.coverImageUrl ? (
                     <Button
                       variant="outline" size="sm" className="min-h-11"
-                      disabled={coverBusy} onClick={() => void onRemoveCover()}
+                      disabled={coverBusy || busy} onClick={() => void onRemoveCover()}
                     >
                       <Trash2 size={14} />{t.form.removeImage}
                     </Button>

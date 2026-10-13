@@ -25,3 +25,9 @@ export async function uploadTripCover(tripId: string, file: File): Promise<strin
 export async function removeTripCover(tripId: string): Promise<void> {
   await updateTrip(tripId, { coverImageUrl: '' });
 }
+
+/** 基本資料儲存的 payload 不得帶 coverImageUrl：封面只由封面卡片自己的流程管理，避免舊值覆蓋剛換好的封面。 */
+export function omitTripCover<T extends { coverImageUrl?: string }>(form: T): Omit<T, 'coverImageUrl'> {
+  const { coverImageUrl: _cover, ...rest } = form;
+  return rest;
+}

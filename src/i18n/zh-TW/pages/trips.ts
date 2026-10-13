@@ -137,7 +137,6 @@ export const tripsPage = {
     removeImage: '移除',
     replaceCta: '更換圖片',
     coverAlt: '行程封面預覽',
-    uploading: '上傳中…',
   },
 
   /* --------------------------------------------------------------- 方案 */

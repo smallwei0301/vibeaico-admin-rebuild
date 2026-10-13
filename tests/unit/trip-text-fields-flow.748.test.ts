@@ -59,7 +59,7 @@ async function saveBasicLike(form: Trip, original: Trip) {
 describe('編輯頁 saveBasic', () => {
   it('原始碼：先 omit 再預檢，有錯就 return（不打 API），沒錯才 updateTrip(payload)', () => {
     const save = body(detailPage, 'saveBasic');
-    expect(save).toContain('omitUnchangedTripTextFields(omitUnchangedGallery(form, trip), trip)');
+    expect(save).toContain('omitUnchangedTripTextFields(omitUnchangedGallery(omitTripCover(form), trip), trip)');
     expect(save).toContain('tripTextFieldErrors(payload)');
     const check = save.indexOf('tripTextFieldErrors(payload)');
     const bail = save.indexOf('return;', check);
