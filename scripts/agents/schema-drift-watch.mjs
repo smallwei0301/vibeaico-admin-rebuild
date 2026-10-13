@@ -10,6 +10,7 @@ import {
 } from './schema-truth-evidence.mjs';
 import { isMigrationLedgerVersion } from './schema-truth-proof-policy.mjs';
 import { verifyProductionDbReleasePlan } from './production-db-release-plan.mjs';
+import { PRODUCTION_DB_CATALOG_FINGERPRINT_SQL } from '../db/production-db-catalog-fingerprint.mjs';
 // Version 2 is intentionally separate from schema-truth-evidence's v1 packet:
 // it adds LOCAL_EXPECTED and object-level fingerprints for the live observer.
 export const DRIFT_WATCH_SCHEMA_VERSION = 2;
@@ -37,6 +38,58 @@ SELECT json_build_object(
     ORDER BY version, name) FROM (${stripSql(MIGRATION_LEDGER_SQL)}) AS ledger_rows), '[]'::json)
 ) AS snapshot;
 `;
+// Metadata only: no application rows, secrets, URLs, or provider credentials.
+// Kept separate from the observer contract so a scoped release cannot turn the
+// standalone global observer into MATCH or weaken its original query digest.
+export const RELEASE_CATALOG_SQL = `
+select json_build_object(
+ 'routines', coalesce((select json_agg(json_build_object(
+   'name', n.nspname || '.' || p.proname, 'args', pg_get_function_identity_arguments(p.oid),
+   'owner', pg_get_userbyid(p.proowner), 'securityDefiner', p.prosecdef,
+   'config', p.proconfig, 'volatility', p.provolatile, 'body', p.prosrc,
+   'definition', pg_get_functiondef(p.oid))) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+   where ((n.nspname='public' and p.proname in ('create_tour_order','cancel_tour_order','expire_tour_order',
+     'accept_tour_request','reject_tour_request','guide_staff_interval_available','mark_external_calendar_sync_error',
+     'sync_replace_external_calendar_events','reserve_seats','release_seats','is_tenant_member','tenant_role_at_least',
+     'is_admin','is_platform_admin','set_updated_at')) or (n.nspname='auth' and p.proname='uid')) and p.prokind='f'), '[]'::json),
+ 'foreignKeys', coalesce((select json_agg(json_build_object(
+   'table', ns.nspname || '.' || c.relname, 'target', nt.nspname || '.' || t.relname,
+   'name', con.conname, 'definition', pg_get_constraintdef(con.oid,true),
+   'columns', (select json_agg(a.attname order by ord) from unnest(con.conkey) with ordinality k(num,ord) join pg_attribute a on a.attrelid=con.conrelid and a.attnum=k.num),
+   'targetColumns', (select json_agg(a.attname order by ord) from unnest(con.confkey) with ordinality k(num,ord) join pg_attribute a on a.attrelid=con.confrelid and a.attnum=k.num),
+   'validated', con.convalidated, 'deferrable', con.condeferrable))
+   from pg_constraint con join pg_class c on c.oid=con.conrelid join pg_namespace ns on ns.oid=c.relnamespace
+   join pg_class t on t.oid=con.confrelid join pg_namespace nt on nt.oid=t.relnamespace
+   where ns.nspname='public' and con.contype='f'), '[]'::json),
+ 'enums', coalesce((select json_agg(json_build_object('name', t.typname, 'labels',
+   (select json_agg(e.enumlabel order by e.enumsortorder) from pg_enum e where e.enumtypid=t.oid)))
+   from pg_type t join pg_namespace n on n.oid=t.typnamespace where n.nspname='public' and t.typtype='e'), '[]'::json),
+ 'tableOwners', coalesce((select json_agg(json_build_object('table',n.nspname || '.' || c.relname,'owner',pg_get_userbyid(c.relowner)))
+   from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind in ('r','p')), '[]'::json),
+ 'roles', (select json_agg(json_build_object('name',rolname,'login',rolcanlogin,'superuser',rolsuper,
+   'bypassRls',rolbypassrls,'inherit',rolinherit,'createRole',rolcreaterole,'createDb',rolcreatedb)) from pg_roles),
+ 'memberships', coalesce((select json_agg(json_build_object('member',m.rolname,'parent',r.rolname,
+   'admin',a.admin_option,'inherit',a.inherit_option,'set',a.set_option)) from pg_auth_members a
+   join pg_roles m on m.oid=a.member join pg_roles r on r.oid=a.roleid), '[]'::json),
+ 'authTarget', (select json_build_object('type',format_type(a.atttypid,a.atttypmod),'notNull',a.attnotnull,
+   'primaryKey',exists(select 1 from pg_constraint con where con.conrelid=a.attrelid and con.contype='p' and con.conkey=array[a.attnum]))
+   from pg_attribute a where a.attrelid='auth.users'::regclass and a.attname='id' and not a.attisdropped),
+ 'defaults', coalesce((select json_agg(json_build_object('table',n.nspname || '.' || c.relname,'column',a.attname,
+   'expression',pg_get_expr(d.adbin,d.adrelid),
+   'functions',coalesce((select json_agg(json_build_object('name',pn.nspname || '.' || p.proname,
+     'args',pg_get_function_identity_arguments(p.oid),'securityDefiner',p.prosecdef))
+     from regexp_matches(d.adbin::text, ':funcid ([0-9]+)', 'g') ids
+     join pg_proc p on p.oid=ids[1]::oid join pg_namespace pn on pn.oid=p.pronamespace), '[]'::json),
+   'sequences',coalesce((select json_agg(s.oid::regclass::text) from pg_depend dep join pg_class s on s.oid=dep.refobjid
+     where dep.classid='pg_attrdef'::regclass and dep.objid=d.oid and dep.refclassid='pg_class'::regclass and s.relkind='S'), '[]'::json)))
+   from pg_attrdef d join pg_attribute a on a.attrelid=d.adrelid and a.attnum=d.adnum
+   join pg_class c on c.oid=d.adrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='public'), '[]'::json),
+ 'catalogFingerprint', (select catalog_fingerprint from (${stripSql(PRODUCTION_DB_CATALOG_FINGERPRINT_SQL)}) fingerprint)
+) as catalog;
+`;
+export const RELEASE_SNAPSHOT_SQL = `select json_build_object('raw', (select snapshot from (${stripSql(READ_ONLY_SNAPSHOT_SQL)}) observer),
+ 'catalog', (select catalog from (${stripSql(RELEASE_CATALOG_SQL)}) supplementary)) as snapshot;`;
+export const RELEASE_CATALOG_QUERY_DIGEST = sha256(RELEASE_SNAPSHOT_SQL);
 function fail(code, message) {
   const error = new Error(`${code}: ${message}`);
   error.code = code;
@@ -117,9 +170,9 @@ export function parseLocalSchemaObserverUrl(connectionString) {
 /**
  * @param {{ connectionString?: string, directQuery?: (input: { connectionString: string, query: string, readOnly: boolean }) => Promise<unknown> }} options
  */
-export async function captureLocalExpectedSnapshot({ connectionString, directQuery = querySnapshotViaPostgres } = {}) {
+export async function captureLocalExpectedSnapshot({ connectionString, directQuery = querySnapshotViaPostgres, includeReleaseCatalog = false } = {}) {
   const localConnectionString = parseLocalSchemaObserverUrl(connectionString);
-  return directQuery({ connectionString: localConnectionString, query: READ_ONLY_SNAPSHOT_SQL, readOnly: true });
+  return directQuery({ connectionString: localConnectionString, query: includeReleaseCatalog ? RELEASE_SNAPSHOT_SQL : READ_ONLY_SNAPSHOT_SQL, readOnly: true });
 }
 function observerConnectionStringFor(environment, value) {
   const raw = String(value ?? '').trim();
@@ -262,6 +315,18 @@ export function buildObserverSnapshotFromRaw({ environment, projectRef, observed
   };
   const normalized = normalizeMetadataEvidencePacket({ ...packet, captureDigest: digest(packet) }, observedMainSha);
   return outputSnapshot({ normalized, environment, projectRef, metadataItems, acl: normalized.acl });
+}
+export function buildReleaseCatalogCapture({ snapshot, raw, catalog }) {
+  const normalized = normalizeObserverSnapshot(snapshot, snapshot?.observedMainSha);
+  const rebuilt = buildObserverSnapshotFromRaw({ environment: normalized.environment, projectRef: normalized.projectRef,
+    observedAt: normalized.observedAt, observedMainSha: normalized.observedMainSha, evidenceRef: normalized.evidenceRef, raw });
+  if (rebuilt.captureDigest.value !== normalized.captureDigest.value) fail('RELEASE_RAW_CAPTURE_MISMATCH', 'raw catalog differs from normalized observer capture');
+  if (!catalog || typeof catalog !== 'object' || Array.isArray(catalog)) fail('RELEASE_CATALOG_REQUIRED', 'supplementary catalog was not captured');
+  const core = { schemaVersion: 1, environment: normalized.environment, projectRef: normalized.projectRef,
+    mainSha: normalized.observedMainSha, observedAt: normalized.observedAt,
+    snapshotCaptureDigest: normalized.captureDigest.value, queryDigest: RELEASE_CATALOG_QUERY_DIGEST,
+    raw, catalog, readOnly: true, databaseMutationAuthorized: false };
+  return { ...core, captureDigest: sha256(stableStringify(core)) };
 }
 export function buildUnavailableSnapshot({ environment, observedAt = new Date().toISOString(), observedMainSha, reason }) {
   if (![LOCAL_EXPECTED_ENVIRONMENT, 'TEST', 'PRODUCTION'].includes(environment)) fail('INVALID_ENVIRONMENT', 'environment is invalid');
@@ -688,7 +753,7 @@ function unwrapSnapshot(body) {
   const candidates = [body, body?.snapshot, Array.isArray(body) ? body[0] : null, Array.isArray(body?.result) ? body.result[0] : null,
     Array.isArray(body?.data) ? body.data[0] : null].flatMap((candidate) => [candidate, candidate?.snapshot]);
   return candidates.find((candidate) => candidate && typeof candidate === 'object' && !Array.isArray(candidate) &&
-    Object.keys(candidate).sort().join('\n') === ['acl', 'ledger', 'metadata'].join('\n')) ?? null;
+    [ ['acl', 'ledger', 'metadata'].join('\n'), ['catalog', 'raw'].join('\n') ].includes(Object.keys(candidate).sort().join('\n'))) ?? null;
 }
 /**
  * @param {{
@@ -701,11 +766,18 @@ function unwrapSnapshot(body) {
  *   observedAt?: string,
  * }} input
  */
-export async function captureEnvironmentSnapshot({ environment, currentMainSha, token = process.env.SCHEMA_OBSERVER_TOKEN, connectionString = null, directQuery = querySnapshotViaPostgres, fetchImpl = globalThis.fetch, observedAt = new Date().toISOString() } = /** @type {any} */ ({})) {
+export async function captureEnvironmentSnapshot({ environment, currentMainSha, token = process.env.SCHEMA_OBSERVER_TOKEN, connectionString = null, directQuery = querySnapshotViaPostgres, fetchImpl = globalThis.fetch, observedAt = new Date().toISOString(), onReleaseCapture } = /** @type {any} */ ({})) {
   const mainSha = validSha(currentMainSha, 'currentMainSha');
   const projectRef = EXPECTED_PROJECT_REFS[environment];
   const evidenceRef = `supabase:${String(environment).toLowerCase()}/schema-observer`;
   const unavailable = (reason) => buildUnavailableSnapshot({ environment, observedAt, observedMainSha: mainSha, reason });
+  const query = onReleaseCapture ? RELEASE_SNAPSHOT_SQL : READ_ONLY_SNAPSHOT_SQL;
+  const finish = (packet) => {
+    const raw = onReleaseCapture ? packet?.raw : packet;
+    const snapshot = buildObserverSnapshotFromRaw({ environment, projectRef, observedAt, observedMainSha: mainSha, evidenceRef, raw });
+    if (onReleaseCapture) onReleaseCapture({ snapshot, raw, catalog: packet.catalog });
+    return snapshot;
+  };
   if (!['TEST', 'PRODUCTION'].includes(environment)) return unavailable('INVALID_ENVIRONMENT');
   let directConnectionString;
   try { directConnectionString = connectionString || observerConnectionStringFor(environment, token); }
@@ -713,9 +785,9 @@ export async function captureEnvironmentSnapshot({ environment, currentMainSha, 
   if (directConnectionString) {
     try {
       directConnectionString = parseProjectBoundSchemaObserverUrl(directConnectionString, environment).connectionString;
-      const raw = await directQuery({ connectionString: directConnectionString, query: READ_ONLY_SNAPSHOT_SQL, readOnly: true });
+      const raw = await directQuery({ connectionString: directConnectionString, query, readOnly: true });
       if (!raw) return unavailable('EVIDENCE_RESPONSE_SHAPE_INVALID');
-      return buildObserverSnapshotFromRaw({ environment, projectRef, observedAt, observedMainSha: mainSha, evidenceRef, raw });
+      return finish(raw);
     } catch (error) {
       return unavailable(error?.code && /^[A-Z0-9_.-]+$/.test(error.code) ? error.code : 'EVIDENCE_UNAVAILABLE');
     }
@@ -725,13 +797,13 @@ export async function captureEnvironmentSnapshot({ environment, currentMainSha, 
   try {
     const response = await fetchImpl(`https://api.supabase.com/v1/projects/${projectRef}/database/query/read-only`, {
       method: 'POST', headers: { authorization: `Bearer ${token.trim()}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ query: READ_ONLY_SNAPSHOT_SQL }),
+      body: JSON.stringify({ query }),
     });
     if (!response || response.ok !== true) return unavailable(`HTTP_${Number(response?.status) || 'UNKNOWN'}`);
     const body = await response.json();
     const raw = unwrapSnapshot(body);
     if (!raw) return unavailable('EVIDENCE_RESPONSE_SHAPE_INVALID');
-    return buildObserverSnapshotFromRaw({ environment, projectRef, observedAt, observedMainSha: mainSha, evidenceRef, raw });
+    return finish(raw);
   } catch (error) {
     return unavailable(error?.code && /^[A-Z0-9_.-]+$/.test(error.code) ? error.code : 'EVIDENCE_UNAVAILABLE');
   }
@@ -757,12 +829,17 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const input = parseArgs(process.argv.slice(2));
     if (!input['json-out']) fail('INVALID_ARGUMENT', '--json-out is required');
     if (input.command === 'capture') {
-      const result = await captureEnvironmentSnapshot({ environment: input.environment, currentMainSha: input['current-main-sha'] });
+      const result = await captureEnvironmentSnapshot({ environment: input.environment, currentMainSha: input['current-main-sha'],
+        ...(input['catalog-out'] ? { onReleaseCapture: ({ snapshot, raw, catalog }) => {
+          writeJson(input['catalog-out'], buildReleaseCatalogCapture({ snapshot, raw, catalog }));
+        } } : {}) });
       writeJson(input['json-out'], result);
       if (result.status !== 'CAPTURED') process.exitCode = 2;
     } else if (input.command === 'normalize') {
-      const result = buildObserverSnapshotFromRaw({ environment: input.environment, projectRef: input['project-ref'], observedAt: input['observed-at'] ?? new Date().toISOString(), observedMainSha: input['current-main-sha'], evidenceRef: input['evidence-ref'] ?? 'local:fresh-install', raw: readJson(input['raw-json']) });
+      const packet = readJson(input['raw-json']);
+      const result = buildObserverSnapshotFromRaw({ environment: input.environment, projectRef: input['project-ref'], observedAt: input['observed-at'] ?? new Date().toISOString(), observedMainSha: input['current-main-sha'], evidenceRef: input['evidence-ref'] ?? 'local:fresh-install', raw: input['catalog-out'] ? packet.raw : packet });
       writeJson(input['json-out'], result);
+      if (input['catalog-out']) writeJson(input['catalog-out'], buildReleaseCatalogCapture({ snapshot: result, raw: packet.raw, catalog: packet.catalog }));
     } else if (input.command === 'compare') {
       const result = compareObserverSnapshots({ expectedSnapshot: readJson(input['expected-snapshot']), testSnapshot: readJson(input['test-snapshot']), productionSnapshot: readJson(input['production-snapshot']), currentMainSha: input['current-main-sha'], exceptions: input.exceptions ? readJson(input.exceptions).exceptions : [], maxEvidenceAgeMinutes: input['max-evidence-age-minutes'] ? Number(input['max-evidence-age-minutes']) : undefined,
         releaseLedgerBinding: input['release-ledger-binding'] ? readJson(input['release-ledger-binding']) : undefined,
