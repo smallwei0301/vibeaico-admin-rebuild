@@ -10,7 +10,7 @@ import { notFound } from 'next/navigation';
 import { loadPublicBookingPlan } from '@/server/public-tour-booking';
 import { publicTourBookingPage as t } from '@/i18n/zh-TW/pages/public-tour-booking';
 import { BookingForm } from './BookingForm';
-import { candidateIsBookable } from '@/lib/public-departure-candidates';
+import { isDepartureBookableOnPage } from '@/lib/public-booking-price';
 
 type Params = {
   params: Promise<{ shopCode: string; planId: string }>;
@@ -43,9 +43,9 @@ export default async function PublicTourBookingPage({ params, searchParams }: Pa
   const plan = await loadPublicBookingPlan(shopCode, planId);
   if (!plan) notFound();
 
-  // 深連結預選團次：只接受 plan.departures 內、且剩餘名額 >= 方案最低人數（單一團次可訂）的 id，其餘靜默忽略。
+  // 深連結預選團次：只接受 isDepartureBookableOnPage 判定可預選且可送出（含價格可確定）的 id，其餘靜默忽略。
   const requested = Array.isArray(departure) ? departure[0] : departure;
-  const initialDepartureId = requested && plan.departures.some((d) => d.id === requested && candidateIsBookable(d.seatsLeft, plan.minParty)) ? requested : '';
+  const initialDepartureId = requested && isDepartureBookableOnPage(plan, requested) ? requested : '';
 
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-6">

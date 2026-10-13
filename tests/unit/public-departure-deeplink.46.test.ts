@@ -2,7 +2,8 @@
  * #46「團次直達預約」：
  *  1. 預約頁 `?departure=<id>`：只預選 plan.departures 內的 id，未知 id 靜默忽略。
  *  2. 店家首頁團次徽章：只有 bookingCta === 'fixed' 的方案才是直達預約連結。
- *  3. LINE「近期團次」回覆：只有啟用中的 FIXED_DEPARTURE 方案才附深連結。
+ *  3. LINE「近期團次」回覆：連結資格＝預約頁自己的 loadPublicBookingPlan + isDepartureBookableOnPage（單一來源），
+ *     載入器回 null／丟錯、季節價未知、名額不足、不在候選內的團次都不附連結。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -10,6 +11,7 @@ import type { ReactElement } from 'react';
 
 const fx = vi.hoisted(() => ({
   bookingPlan: null as unknown,
+  bookingPlansById: {} as Record<string, unknown>,
   shop: null as unknown,
   lineReplies: [] as Array<{ text: string }[]>,
 }));
@@ -17,7 +19,7 @@ const fx = vi.hoisted(() => ({
 vi.mock('next/navigation', () => ({ notFound: () => { throw new Error('NOT_FOUND'); } }));
 vi.mock('@/server/public-tour-booking', async (importActual) => ({
   ...(await importActual<typeof import('@/server/public-tour-booking')>()),
-  loadPublicBookingPlan: async () => fx.bookingPlan,
+  loadPublicBookingPlan: async (_shop: string, planId: string) => (planId in fx.bookingPlansById ? fx.bookingPlansById[planId] : fx.bookingPlan),
 }));
 vi.mock('@/app/s/[shopCode]/plans/[planId]/book/BookingForm', () => ({ BookingForm: () => null }));
 vi.mock('@/server/public-shop', () => ({ loadPublicShop: async () => fx.shop }));
@@ -33,6 +35,7 @@ import BookPage from '@/app/s/[shopCode]/plans/[planId]/book/page';
 import ShopPage from '@/app/s/[shopCode]/page';
 import { replyDepartures } from '@/server/line-events';
 import { APP_URL } from '@/config/env';
+import { isDepartureBookableOnPage } from '@/lib/public-booking-price';
 
 const bookingPlan = (ids: string[]) => ({
   tenantId: 't', shopName: 's', tripId: 'trip', tripTitle: 'T', planId: 'p1', planName: 'P',
@@ -138,108 +141,50 @@ describe('店家首頁團次徽章', () => {
   });
 });
 
-describe('LINE「近期團次」深連結', () => {
-  // 固定「現在」＝2098-01-01 08:00（台北）／00:00Z：09:00 的團次未開始，結果與執行時刻無關。
-  beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2098-01-01T00:00:00Z')); });
-  afterEach(() => { vi.useRealTimers(); });
-  it('只有啟用中的 FIXED_DEPARTURE 方案附深連結', async () => {
-    fx.lineReplies.length = 0;
-    const today = new Date().toISOString().slice(0, 10);
-    const deps = [
-      { id: 'dep/1', trip_id: 'tr', plan_id: 'pf', departs_on: today, start_time: '09:00:00', capacity: 5, seats_booked: 1 },
-      { id: 'dep-2', trip_id: 'tr', plan_id: 'pi', departs_on: today, start_time: null, capacity: 5, seats_booked: 1 },
-      { id: 'dep-3', trip_id: 'tr', plan_id: 'pr', departs_on: today, start_time: null, capacity: 5, seats_booked: 1 },
-      { id: 'dep-4', trip_id: 'tr', plan_id: 'pq', departs_on: today, start_time: null, capacity: 5, seats_booked: 1 },
-    ];
-    const plans = [
-      { id: 'pf', name: '固定', sales_mode: 'FIXED_DEPARTURE', active: true },
-      { id: 'pi', name: '停用', sales_mode: 'FIXED_DEPARTURE', active: false },
-      { id: 'pr', name: '申請', sales_mode: 'REQUEST', active: true },
-      { id: 'pq', name: '即時', sales_mode: 'INSTANT', active: true },
-    ];
-    // 通用 chain：任何 filter 方法回自己，await 時回該表資料
-    const chain = (data: unknown) => {
-      const c: any = { then: (res: (v: unknown) => unknown) => Promise.resolve({ data, error: null }).then(res) };
-      for (const m of ['select', 'eq', 'in', 'gte', 'lte', 'order', 'limit', 'range']) c[m] = () => c;
-      return c;
-    };
-    const admin = {
-      from: (t: string) => chain(t === 'trips' ? [{ id: 'tr', title: '行程' }] : t === 'trip_departures' ? deps : plans),
-    };
-    const ok = await replyDepartures({
-      admin, token: 'k', replyToken: 'r', userId: 'u', lineConfig: {},
-      tenant: { id: 'ten', shop_code: 'demo', name: 'D', business_type: 'GUIDE' },
-    } as any);
-    expect(ok).toBe(true);
-    const text = fx.lineReplies[0][0].text;
-    const base = `${APP_URL.replace(/\/$/, '')}/s/demo`;
-    expect(text).toContain(`${base}/plans/pf/book?departure=dep%2F1`);
-    expect(text.match(/\/book\?departure=/g)?.length).toBe(1);
-    // 結尾仍保留店家首頁網址
-    expect(text.trimEnd().endsWith(base)).toBe(true);
-    // 深連結緊接在對應團次行的下一行
-    const lines = text.split('\n');
-    const i = lines.findIndex((l) => l.includes('固定'));
-    expect(lines[i + 1]).toBe(`${base}/plans/pf/book?departure=dep%2F1`);
-    expect(lines[i + 2]).toContain('停用');
+describe('isDepartureBookableOnPage（預約頁預選／送出資格的單一判斷）', () => {
+  const plan = (over: Record<string, unknown> = {}, deps?: unknown[]) => ({
+    minParty: 2, departures: deps ?? [
+      { id: 'ok', seatsLeft: 2, unitPrice: 100 },
+      { id: 'few', seatsLeft: 1, unitPrice: 100 },
+      { id: 'noprice', seatsLeft: 5 },
+    ], ...over,
+  }) as Parameters<typeof isDepartureBookableOnPage>[0];
+  it('名額達最低人數且價格可確定 → true', () => {
+    expect(isDepartureBookableOnPage(plan(), 'ok')).toBe(true);
   });
-
-  it('額滿的 FIXED_DEPARTURE 團次不附深連結，仍有餘位者才附', async () => {
-    fx.lineReplies.length = 0;
-    const today = new Date().toISOString().slice(0, 10);
-    const deps = [
-      { id: 'dep-open', trip_id: 'tr', plan_id: 'pf', departs_on: today, start_time: null, capacity: 5, seats_booked: 1 },
-      { id: 'dep-full', trip_id: 'tr', plan_id: 'pf', departs_on: today, start_time: null, capacity: 5, seats_booked: 5 },
-      { id: 'dep-over', trip_id: 'tr', plan_id: 'pf', departs_on: today, start_time: null, capacity: 5, seats_booked: 6 },
-    ];
-    const plans = [{ id: 'pf', name: '固定', sales_mode: 'FIXED_DEPARTURE', active: true }];
-    const chain = (data: unknown) => {
-      const c: any = { then: (res: (v: unknown) => unknown) => Promise.resolve({ data, error: null }).then(res) };
-      for (const m of ['select', 'eq', 'in', 'gte', 'lte', 'order', 'limit', 'range']) c[m] = () => c;
-      return c;
-    };
-    const admin = {
-      from: (t: string) => chain(t === 'trips' ? [{ id: 'tr', title: '行程' }] : t === 'trip_departures' ? deps : plans),
-    };
-    const ok = await replyDepartures({
-      admin, token: 'k', replyToken: 'r', userId: 'u', lineConfig: {},
-      tenant: { id: 'ten', shop_code: 'demo', name: 'D', business_type: 'GUIDE' },
-    } as any);
-    expect(ok).toBe(true);
-    const text = fx.lineReplies[0][0].text;
-    expect(text).toContain('departure=dep-open');
-    expect(text).not.toContain('dep-full');
-    expect(text).not.toContain('dep-over');
-    expect(text.match(/\/book\?departure=/g)?.length).toBe(1);
+  it('不在 plan.departures、空值、名額不足 → false', () => {
+    expect(isDepartureBookableOnPage(plan(), 'nope')).toBe(false);
+    expect(isDepartureBookableOnPage(plan(), '')).toBe(false);
+    expect(isDepartureBookableOnPage(plan(), undefined)).toBe(false);
+    expect(isDepartureBookableOnPage(plan(), 'few')).toBe(false);
   });
-
-  it('方案 min_party=4：剩 4 位的團次附連結，剩 1 位的不附', async () => {
-    fx.lineReplies.length = 0;
-    const today = new Date().toISOString().slice(0, 10);
-    const deps = [
-      { id: 'dep-four', trip_id: 'tr', plan_id: 'pf', departs_on: today, start_time: null, capacity: 5, seats_booked: 1 },
-      { id: 'dep-one', trip_id: 'tr', plan_id: 'pf', departs_on: today, start_time: null, capacity: 5, seats_booked: 4 },
-    ];
-    const plans = [{ id: 'pf', name: '固定', sales_mode: 'FIXED_DEPARTURE', active: true, min_party: 4 }];
-    const chain = (data: unknown) => {
-      const c: any = { then: (res: (v: unknown) => unknown) => Promise.resolve({ data, error: null }).then(res) };
-      for (const m of ['select', 'eq', 'in', 'gte', 'lte', 'order', 'limit', 'range']) c[m] = () => c;
-      return c;
-    };
-    const admin = {
-      from: (t: string) => chain(t === 'trips' ? [{ id: 'tr', title: '行程' }] : t === 'trip_departures' ? deps : plans),
-    };
-    const ok = await replyDepartures({
-      admin, token: 'k', replyToken: 'r', userId: 'u', lineConfig: {},
-      tenant: { id: 'ten', shop_code: 'demo', name: 'D', business_type: 'GUIDE' },
-    } as any);
-    expect(ok).toBe(true);
-    const text = fx.lineReplies[0][0].text;
-    expect(text).toContain('departure=dep-four');
-    expect(text).not.toContain('dep-one');
-    expect(text.match(/\/book\?departure=/g)?.length).toBe(1);
+  it('有季節定價但團次無 unitPrice → false；無季節定價則以基本價可訂', () => {
+    expect(isDepartureBookableOnPage(plan({ seasonalPricing: true }), 'noprice')).toBe(false);
+    expect(isDepartureBookableOnPage(plan({ seasonalPricing: true }), 'ok')).toBe(true);
+    expect(isDepartureBookableOnPage(plan(), 'noprice')).toBe(true);
   });
+});
 
+describe('預約頁預選：季節價未知的團次不預選', () => {
+  it('seasonalPricing 且團次無 unitPrice → 空', async () => {
+    fx.bookingPlansById = {};
+    fx.bookingPlan = {
+      ...bookingPlan([]), seasonalPricing: true,
+      departures: [
+        { id: 'unknown', departsOn: '2098-01-01', startTime: '09:00', seatsLeft: 5 },
+        { id: 'priced', departsOn: '2098-01-02', startTime: '09:00', seatsLeft: 5, unitPrice: 120 },
+      ],
+    };
+    expect(await renderBook('unknown')).toBe('');
+    expect(await renderBook('priced')).toBe('priced');
+  });
+});
+
+describe('LINE「近期團次」深連結（連結資格＝預約頁載入器 + 共用判斷）', () => {
+  afterEach(() => { fx.bookingPlansById = {}; });
+  const dep = (id: string, planId: string, seatsBooked = 1) => ({
+    id, trip_id: 'tr', plan_id: planId, departs_on: '2098-01-01', start_time: null, capacity: 5, seats_booked: seatsBooked,
+  });
   const lineAdmin = (deps: unknown[], plans: unknown[]) => {
     const chain = (data: unknown) => {
       const c: any = { then: (res: (v: unknown) => unknown) => Promise.resolve({ data, error: null }).then(res) };
@@ -258,25 +203,74 @@ describe('LINE「近期團次」深連結', () => {
     return fx.lineReplies[0][0].text;
   };
   const fixedPlans = [{ id: 'pf', name: '固定', sales_mode: 'FIXED_DEPARTURE', active: true }];
-
-  it('今天（台北時間）已開始的團次不附深連結，預約頁會預選的團次才附', async () => {
-    vi.setSystemTime(new Date('2098-01-01T02:00:00Z')); // 台北 10:00
-    const deps = [
-      { id: 'dep-started', trip_id: 'tr', plan_id: 'pf', departs_on: '2098-01-01', start_time: '09:00:00', capacity: 5, seats_booked: 1 },
-      { id: 'dep-later', trip_id: 'tr', plan_id: 'pf', departs_on: '2098-01-01', start_time: '15:00:00', capacity: 5, seats_booked: 1 },
-    ];
-    const text = await runLine(deps, fixedPlans);
-    expect(text).not.toContain('dep-started');
-    expect(text).toContain('departure=dep-later');
+  const bp = (ids: Array<string | Record<string, unknown>>, over: Record<string, unknown> = {}) => ({
+    ...bookingPlan([]), minParty: 1,
+    departures: ids.map((x) => typeof x === 'string'
+      ? { id: x, departsOn: '2098-01-01', startTime: '', seatsLeft: 4 } : { departsOn: '2098-01-01', startTime: '', seatsLeft: 4, ...x }),
+    ...over,
   });
 
-  it('超出預約頁前 12 個候選的第 13 個可訂團次不附深連結', async () => {
-    const deps = Array.from({ length: 13 }, (_, i) => ({
-      id: `dep-${String(i).padStart(2, '0')}`, trip_id: 'tr', plan_id: 'pf',
-      departs_on: `2098-01-${String(i + 1).padStart(2, '0')}`, start_time: '09:00:00', capacity: 5, seats_booked: 1,
-    }));
-    const text = await runLine(deps, fixedPlans);
-    expect(text).toContain('departure=dep-11');
-    expect(text).not.toContain('departure=dep-12');
+  it('只有啟用中的 FIXED_DEPARTURE 方案附深連結，連結緊接在對應團次行下方', async () => {
+    fx.bookingPlansById = { pf: bp(['dep/1']), pi: bp(['dep-2']), pr: bp(['dep-3']), pq: bp(['dep-4']) };
+    const plans = [
+      { id: 'pf', name: '固定', sales_mode: 'FIXED_DEPARTURE', active: true },
+      { id: 'pi', name: '停用', sales_mode: 'FIXED_DEPARTURE', active: false },
+      { id: 'pr', name: '申請', sales_mode: 'REQUEST', active: true },
+      { id: 'pq', name: '即時', sales_mode: 'INSTANT', active: true },
+    ];
+    const text = await runLine([dep('dep/1', 'pf'), dep('dep-2', 'pi'), dep('dep-3', 'pr'), dep('dep-4', 'pq')], plans);
+    const base = `${APP_URL.replace(/\/$/, '')}/s/demo`;
+    expect(text).toContain(`${base}/plans/pf/book?departure=dep%2F1`);
+    expect(text.match(/\/book\?departure=/g)?.length).toBe(1);
+    expect(text.trimEnd().endsWith(base)).toBe(true);
+    const lines = text.split('\n');
+    const i = lines.findIndex((l) => l.includes('固定'));
+    expect(lines[i + 1]).toBe(`${base}/plans/pf/book?departure=dep%2F1`);
+    expect(lines[i + 2]).toContain('停用');
+  });
+
+  it('預約頁載入的方案不含該團次（額滿／已開始／超出前 12 個候選）→ 不附連結，清單仍列出', async () => {
+    fx.bookingPlansById = { pf: bp(['dep-open']) };
+    const text = await runLine([dep('dep-open', 'pf'), dep('dep-full', 'pf', 5), dep('dep-late', 'pf')], fixedPlans);
+    expect(text).toContain('departure=dep-open');
+    expect(text).not.toContain('departure=dep-full');
+    expect(text).not.toContain('departure=dep-late');
+    expect(text).toContain('固定');
+  });
+
+  it('方案 minParty=4：預約頁剩 4 位者附連結，剩 1 位者不附', async () => {
+    fx.bookingPlansById = { pf: bp([{ id: 'dep-four', seatsLeft: 4 }, { id: 'dep-one', seatsLeft: 1 }], { minParty: 4 }) };
+    const text = await runLine([dep('dep-four', 'pf'), dep('dep-one', 'pf', 4)], fixedPlans);
+    expect(text).toContain('departure=dep-four');
+    expect(text).not.toContain('departure=dep-one');
+  });
+
+  it('季節價未知（seasonalPricing 但團次無 unitPrice）→ 不附連結；有 unitPrice 才附', async () => {
+    fx.bookingPlansById = { pf: bp([{ id: 'dep-unknown' }, { id: 'dep-priced', unitPrice: 120 }], { seasonalPricing: true }) };
+    const text = await runLine([dep('dep-unknown', 'pf'), dep('dep-priced', 'pf')], fixedPlans);
+    expect(text).not.toContain('departure=dep-unknown');
+    expect(text).toContain('departure=dep-priced');
+  });
+
+  it('一般方案（無季節定價）→ 附連結', async () => {
+    fx.bookingPlansById = { pf: bp(['dep-a']) };
+    expect(await runLine([dep('dep-a', 'pf')], fixedPlans)).toContain('departure=dep-a');
+  });
+
+  it('載入器回 null → 該方案不附連結（fail closed），團次清單仍顯示', async () => {
+    fx.bookingPlansById = { pf: null };
+    const text = await runLine([dep('dep-a', 'pf')], fixedPlans);
+    expect(text).not.toContain('/book?departure=');
+    expect(text).toContain('固定');
+  });
+
+  it('載入器丟錯 → 該方案不附連結，其他方案不受影響', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    fx.bookingPlansById = { pf: new Proxy({}, { get() { throw new Error('boom'); } }), pg: bp(['dep-g']) };
+    const plans = [...fixedPlans, { id: 'pg', name: '另一', sales_mode: 'FIXED_DEPARTURE', active: true }];
+    const text = await runLine([dep('dep-a', 'pf'), dep('dep-g', 'pg')], plans);
+    expect(text).not.toContain('departure=dep-a');
+    expect(text).toContain('departure=dep-g');
+    err.mockRestore();
   });
 });
