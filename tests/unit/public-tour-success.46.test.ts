@@ -58,7 +58,7 @@ const pageModule = { exports: {} as { default: (props: {
 const imports: Record<string, unknown> = {
   'next/navigation': { notFound },
   'next/link': { default: (props: React.ComponentProps<'a'>) => React.createElement('a', props) },
-  '@/server/public-tour-request': { loadPublicTourRequestStatus: loader },
+  '@/server/public-tour-request': { loadPublicTourRequestStatus: loader, loadPublicShopTimeZone: async () => 'Asia/Taipei' },
   '@/i18n/zh-TW/pages/public-tour-request': { publicTourRequestPage: t },
   '@/lib/utils': utils,
   '@/i18n/zh-TW/common': { common },

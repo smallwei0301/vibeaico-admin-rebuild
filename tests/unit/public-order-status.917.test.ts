@@ -46,6 +46,7 @@ describe('#917 旅客訂單狀態頁格式化', () => {
 });
 
 const loader = vi.fn();
+const tzLoader = vi.fn(async () => 'Asia/Taipei');
 const compiled = ts.transpileModule(page, {
   compilerOptions: { jsx: ts.JsxEmit.React, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
@@ -53,7 +54,7 @@ const mod = { exports: {} as { default: (p: unknown) => Promise<React.ReactEleme
 const imports: Record<string, unknown> = {
   'next/navigation': { notFound: () => { throw new Error('NOT_FOUND'); } },
   'next/link': { default: (props: React.ComponentProps<'a'>) => React.createElement('a', props) },
-  '@/server/public-tour-request': { loadPublicTourRequestStatus: loader },
+  '@/server/public-tour-request': { loadPublicTourRequestStatus: loader, loadPublicShopTimeZone: tzLoader },
   '@/i18n/zh-TW/pages/public-tour-request': { publicTourRequestPage: t },
   '@/i18n/zh-TW/common': { common },
   '@/lib/public-order-format': publicOrderFormat,
@@ -80,36 +81,58 @@ async function render(overrides: Partial<TourOrder>) {
   }));
 }
 
-describe('#917 固定團次確認／取消文案不使用申請制說法', () => {
-  const banned = ['申請', '婉拒', '導遊已確認'];
+const MODES = ['REQUEST', 'FIXED_DEPARTURE', 'INSTANT', undefined] as const;
+const banned = ['婉拒', '重新申請', '導遊已確認', '導遊審核', '名額已釋出'];
+// 只取狀態卡片（第一個 h1 到其 section 結尾），避免其他區塊干擾。
+function statusCard(html: string): string {
+  const start = html.indexOf('<h1');
+  return html.slice(start, html.indexOf('</section>', start));
+}
+
+describe('#917 CONFIRMED／CANCELLED 文案不依（可變的）販售模式分流', () => {
   const cases: Array<Partial<TourOrder>> = [
     { status: 'CONFIRMED', paymentStatus: 'UNPAID', holdExpiresAt: null },
+    { status: 'CONFIRMED', paymentStatus: 'UNPAID', holdExpiresAt: '2026-11-01T12:00:00Z' },
     { status: 'CONFIRMED', paymentStatus: 'PAID' },
     { status: 'CANCELLED', paymentStatus: 'UNPAID' },
+    { status: 'CANCELLED', paymentStatus: 'PAID' },
+    { status: 'CANCELLED', paymentStatus: 'REFUNDED' },
   ];
-  for (const salesMode of ['FIXED_DEPARTURE', 'INSTANT'] as const) {
-    it.each(cases)(`${salesMode} %j`, async (c) => {
-      const html = await render({ ...c, salesMode });
-      for (const w of banned) {
-        // 頁面其他區塊（欄位標籤等）可能含「申請」；只檢查狀態卡片 h1 與其說明段落。
-        const card = html.slice(html.indexOf('<h1'), html.indexOf('</section>', html.indexOf('<h1')));
-        expect(card).not.toContain(w);
-      }
-    });
-  }
-  it('REQUEST 與 salesMode 未知維持原文案', async () => {
-    for (const salesMode of ['REQUEST', undefined] as const) {
-      const confirmed = await render({ status: 'CONFIRMED', paymentStatus: 'UNPAID', holdExpiresAt: null, salesMode });
-      expect(confirmed).toContain(t.status.confirmedTitle);
-      expect(confirmed).toContain(t.status.confirmedNoDeadlineDescription);
-      const paid = await render({ status: 'CONFIRMED', paymentStatus: 'PAID', salesMode });
-      expect(paid).toContain(t.status.confirmedPaymentDescription);
-      const cancelled = await render({ status: 'CANCELLED', paymentStatus: 'UNPAID', salesMode });
-      expect(cancelled).toContain(t.status.cancelledDescription);
+  it.each(cases)('四種 salesMode 文案完全相同 %j', async (c) => {
+    const cards = new Set<string>();
+    for (const salesMode of MODES) {
+      const card = statusCard(await render({ ...c, salesMode }));
+      for (const w of banned) expect(card).not.toContain(w);
+      cards.add(card);
     }
+    expect(cards.size).toBe(1);
   });
-  it('固定團次改用專用文案', async () => {
-    const html = await render({ status: 'CANCELLED', paymentStatus: 'UNPAID', salesMode: 'FIXED_DEPARTURE' });
-    expect(html).toContain(t.status.cancelledLockedDescription);
+  it('使用中性文案', async () => {
+    const confirmed = await render({ status: 'CONFIRMED', paymentStatus: 'UNPAID', holdExpiresAt: null, salesMode: 'FIXED_DEPARTURE' });
+    expect(confirmed).toContain(t.status.confirmedTitle);
+    expect(confirmed).toContain(t.status.confirmedNoDeadlineDescription);
+    const paid = await render({ status: 'CONFIRMED', paymentStatus: 'PAID', salesMode: 'REQUEST' });
+    expect(paid).toContain(t.status.confirmedPaymentDescription);
+    const cancelled = await render({ status: 'CANCELLED', paymentStatus: 'UNPAID', salesMode: 'INSTANT' });
+    expect(cancelled).toContain(t.status.cancelledTitle);
+    expect(cancelled).toContain(t.status.cancelledDescription);
+  });
+  it('不再保留 locked 專用的確認／取消文案 key', () => {
+    const keys = Object.keys(t.status);
+    expect(keys.filter((k) => /^(confirmed|cancelled)Locked/.test(k))).toEqual([]);
+  });
+});
+
+describe('#917 付款期限與送出時間依店家時區', () => {
+  const iso = '2026-10-13T16:30:00Z';
+  it('Asia/Taipei 與 America/Los_Angeles 顯示不同，且頁面確實傳入店家時區', async () => {
+    tzLoader.mockResolvedValueOnce('Asia/Taipei');
+    const taipei = await render({ status: 'CONFIRMED', paymentStatus: 'UNPAID', holdExpiresAt: iso, createdAt: iso });
+    tzLoader.mockResolvedValueOnce('America/Los_Angeles');
+    const la = await render({ status: 'CONFIRMED', paymentStatus: 'UNPAID', holdExpiresAt: iso, createdAt: iso });
+    expect(tzLoader).toHaveBeenCalledWith('shop');
+    expect(taipei).toContain('2026/10/14 00:30');
+    expect(la).toContain('2026/10/13 09:30');
+    expect(la).not.toContain('2026/10/14 00:30');
   });
 });

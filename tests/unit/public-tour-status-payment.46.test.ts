@@ -11,6 +11,7 @@ import type { TourOrder, TourPaymentStatus } from '@/lib/types';
 import { publicTourRequestPage as t } from '@/i18n/zh-TW/pages/public-tour-request';
 
 const loader = vi.fn();
+const tzLoader = vi.fn(async () => 'Asia/Taipei');
 const notFound = vi.fn(() => { throw new Error('NEXT_NOT_FOUND'); });
 // The repo's Vitest config preserves JSX for Next. Compile the actual page to
 // CommonJS here so these tests exercise server rendering without a config change.
@@ -25,7 +26,7 @@ const pageModule = { exports: {} as { default: (props: {
 const imports: Record<string, unknown> = {
   'next/navigation': { notFound },
   'next/link': { default: (props: React.ComponentProps<'a'>) => React.createElement('a', props) },
-  '@/server/public-tour-request': { loadPublicTourRequestStatus: loader },
+  '@/server/public-tour-request': { loadPublicTourRequestStatus: loader, loadPublicShopTimeZone: tzLoader },
   '@/i18n/zh-TW/pages/public-tour-request': { publicTourRequestPage: t },
   '@/lib/utils': utils,
   '@/i18n/zh-TW/common': { common },
