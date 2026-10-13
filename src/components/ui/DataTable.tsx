@@ -36,8 +36,16 @@ export type Column<T> = {
   /** 金額 / 數量欄：右對齊 + tabular-nums */
   numeric?: boolean;
   width?: string;
+  /** 固定於表格右側（橫向捲動時不離開視窗）；未設定時欄位行為完全不變。 */
+  sticky?: 'right';
   render: (row: T, index: number) => React.ReactNode;
 };
+
+/** 只在欄位設定 sticky 時才回傳樣式 class（樣式定義於 globals.css）。 */
+export function stickyClass(c: { sticky?: 'right' }, cell: 'th' | 'td'): string | undefined {
+  if (c.sticky !== 'right') return undefined;
+  return cell === 'th' ? 'col-sticky-right col-sticky-right-head' : 'col-sticky-right';
+}
 
 export function DataTable<T>({
   columns,
@@ -68,7 +76,7 @@ export function DataTable<T>({
           <tr>
             {columns.map((c) => (
               <th key={c.key} style={c.width ? { width: c.width } : undefined}
-                  className={cn(c.numeric && 'text-right')}>
+                  className={cn(c.numeric && 'text-right', stickyClass(c, 'th'))}>
                 {c.header}
               </th>
             ))}
@@ -91,7 +99,7 @@ export function DataTable<T>({
             rows.map((row, i) => (
               <tr key={rowKey(row, i)} id={rowId?.(row)} className={rowClassName?.(row)}>
                 {columns.map((c) => (
-                  <td key={c.key} className={cn(c.numeric && 'cell-numeric')}>
+                  <td key={c.key} className={cn(c.numeric && 'cell-numeric', stickyClass(c, 'td'))}>
                     {c.render(row, i)}
                   </td>
                 ))}

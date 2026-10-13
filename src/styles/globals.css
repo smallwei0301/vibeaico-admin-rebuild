@@ -293,6 +293,16 @@
   .data-table tbody tr { --row-bg: #fff; transition: background-color var(--transition-fast); }
   .data-table tbody tr:hover { --row-bg: var(--neutral-150); }
   .data-table tbody tr:last-child td { border-bottom: none; }
+  /* 固定右欄（Column.sticky='right'）：背景跟隨 --row-bg 以免 hover/斑馬紋時透出底下內容 */
+  .data-table .col-sticky-right { position: sticky; right: 0; box-shadow: -4px 0 6px -4px var(--neutral-250); }
+  .data-table tbody td.col-sticky-right {
+    z-index: 1;
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+  .data-table thead th.col-sticky-right-head { z-index: 3; }
   /* 金額欄右對齊、等寬數字，才能目視比大小 */
   .data-table .cell-numeric { text-align: right; font-variant-numeric: tabular-nums; }
   /* 徽章不被壓斷 */
@@ -365,6 +375,9 @@
   .btn-block { @apply w-full; }
 
   .btn-group { @apply inline-flex items-center gap-1 flex-nowrap; }
+  /* 可換行變體：窄螢幕限寬讓按鈕折行，桌機維持單行 */
+  .btn-group-wrap { @apply flex-wrap; max-width: 7.5rem; }
+  @media (min-width: 992px) { .btn-group-wrap { @apply flex-nowrap; max-width: none; } }
 
   /* ---------- 表單 ---------- */
   .form-label {

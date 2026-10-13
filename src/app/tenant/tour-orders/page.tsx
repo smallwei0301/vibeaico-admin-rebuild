@@ -476,9 +476,9 @@ export default function TourOrdersPage() {
       render: (o) => <Badge tone={SOURCE_TONE[o.source]}>{t.source[o.source]}</Badge>,
     },
     {
-      key: 'actions', header: t.columns.actions, width: '150px',
+      key: 'actions', header: t.columns.actions, width: '150px', sticky: 'right',
       render: (o) => (
-        <div className="btn-group">
+        <div className="btn-group btn-group-wrap">
           <Button
             variant="outline" size="sm" title={t.actions.detail} aria-label={t.actions.detail}
             onClick={() => setDetail(o)}
