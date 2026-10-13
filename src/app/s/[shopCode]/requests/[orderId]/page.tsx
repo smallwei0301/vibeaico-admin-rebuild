@@ -18,6 +18,8 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { loadPublicShopTimeZone, loadPublicTourRequestStatus } from '@/server/public-tour-request';
+import { loadPublicPaymentMethods } from '@/server/public-payment-methods';
+import { shouldShowPaymentMethods, type PublicPaymentMethod } from '@/lib/public-payment-methods';
 import { publicTourRequestPage as t } from '@/i18n/zh-TW/pages/public-tour-request';
 import { formatCurrency } from '@/lib/utils';
 import { common } from '@/i18n/zh-TW/common';
@@ -119,6 +121,50 @@ function StatusBody({ order, timeZone }: { order: TourOrder; timeZone: string })
   );
 }
 
+function PaymentMethodsSection({ methods }: { methods: PublicPaymentMethod[] }) {
+  const pm = t.status.paymentMethods;
+  return (
+    <section className="card">
+      <div className="card-body flex flex-col gap-3">
+        <h2 className="text-base font-medium">{pm.title}</h2>
+        {methods.length === 0 ? (
+          <p className="text-sm text-secondary">{pm.empty}</p>
+        ) : (
+          <>
+            <p className="text-sm text-secondary">{pm.intro}</p>
+            <ul className="flex flex-col gap-3">
+              {methods.map((m) => {
+                const bank = [m.bankName, m.bankCode].filter(Boolean).join(' ');
+                return (
+                  <li key={m.id} className="flex flex-col gap-1 rounded-lg border border-neutral p-3 text-sm">
+                    <div className="font-medium">
+                      {m.displayName || pm.types[m.methodType]}
+                      <span className="ml-2 text-xs text-secondary">{pm.types[m.methodType]}</span>
+                    </div>
+                    {bank || m.accountNumber || m.accountHolderName ? (
+                      <dl className="grid grid-cols-[5rem_1fr] gap-y-1">
+                        {bank ? (<><dt className="text-secondary">{pm.fields.bank}</dt><dd className="break-all">{bank}</dd></>) : null}
+                        {m.accountNumber ? (<><dt className="text-secondary">{pm.fields.accountNumber}</dt><dd className="break-all">{m.accountNumber}</dd></>) : null}
+                        {m.accountHolderName ? (<><dt className="text-secondary">{pm.fields.accountHolder}</dt><dd className="break-all">{m.accountHolderName}</dd></>) : null}
+                      </dl>
+                    ) : null}
+                    {m.instructions ? <p className="whitespace-pre-line text-secondary">{m.instructions}</p> : null}
+                    {m.qrImageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={m.qrImageUrl} alt={pm.qrAlt(m.displayName || pm.types[m.methodType])} className="h-40 w-40 max-w-full object-contain" />
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+            <p className="text-sm text-secondary">{pm.afterTransferNote}</p>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export default async function PublicTourRequestStatusPage({ params, searchParams }: Params) {
   const { shopCode, orderId } = await params;
   const { contact, created } = await searchParams;
@@ -129,6 +175,8 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
     loadPublicShopTimeZone(shopCode),
   ]);
   if (!order) notFound();
+  // #938：存取驗證（contact 比對）已通過才會走到這裡；只在未付款且未取消時才查收款方式。
+  const paymentMethods = shouldShowPaymentMethods(order) ? await loadPublicPaymentMethods(shopCode) : null;
 
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-6">
@@ -153,6 +201,8 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
           <p className="text-sm text-secondary">{paymentDescriptionFor(order)}</p>
         </div>
       </section>
+
+      {paymentMethods ? <PaymentMethodsSection methods={paymentMethods} /> : null}
 
       <section className="card">
         <div className="card-body flex flex-col gap-1">

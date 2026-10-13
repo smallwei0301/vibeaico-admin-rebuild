@@ -8,6 +8,7 @@ import { cancelledCopyKind, formatInstantInTimeZone, formatPlainDateWithWeekday 
 import { common } from '@/i18n/zh-TW/common';
 import * as utils from '@/lib/utils';
 import * as publicOrderFormat from '@/lib/public-order-format';
+import * as publicPaymentMethodsLib from '@/lib/public-payment-methods';
 import { publicTourRequestPage as t } from '@/i18n/zh-TW/pages/public-tour-request';
 import type { TourOrder } from '@/lib/types';
 
@@ -55,6 +56,8 @@ const imports: Record<string, unknown> = {
   'next/navigation': { notFound: () => { throw new Error('NOT_FOUND'); } },
   'next/link': { default: (props: React.ComponentProps<'a'>) => React.createElement('a', props) },
   '@/server/public-tour-request': { loadPublicTourRequestStatus: loader, loadPublicShopTimeZone: tzLoader },
+  '@/server/public-payment-methods': { loadPublicPaymentMethods: async () => [] },
+  '@/lib/public-payment-methods': publicPaymentMethodsLib,
   '@/i18n/zh-TW/pages/public-tour-request': { publicTourRequestPage: t },
   '@/i18n/zh-TW/common': { common },
   '@/lib/public-order-format': publicOrderFormat,

@@ -95,6 +95,27 @@ export const publicTourRequestPage = {
     createdBookingTitle: '訂單已送出',
     createdBookingDescription: '店家已收到您的預約並為您保留名額；付款方式與期限會由店家透過您填寫的聯絡方式通知，請以下方付款狀態為準。',
     paymentTitle: '付款狀態',
+    paymentMethods: {
+      title: '付款方式',
+      intro: '請依下列任一方式向店家付款：',
+      empty: '店家尚未提供線上付款資訊，請直接聯絡店家。',
+      afterTransferNote: '匯款後請告知店家您的帳號後五碼，以便對帳。',
+      types: {
+        LINE_PAY: 'LINE Pay',
+        JKOPAY: '街口支付',
+        BANK_TRANSFER: '銀行轉帳',
+        CASH: '現金',
+        ONLINE_PAYMENT: '線上刷卡付款',
+        OTHER: '其他',
+      },
+      fields: {
+        bank: '銀行',
+        accountNumber: '帳號',
+        accountHolder: '戶名',
+        instructions: '說明',
+      },
+      qrAlt: (name: string) => `${name} 付款 QR Code`,
+    },
     paymentState: {
       UNPAID: '尚未付款',
       PARTIAL: '已付部分款項',
