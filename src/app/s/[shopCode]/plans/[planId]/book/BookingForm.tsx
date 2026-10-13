@@ -9,7 +9,7 @@ import { publicTourBookingPage as t, NOTE_MAX_LENGTH } from '@/i18n/zh-TW/pages/
 import { formatCurrency } from '@/lib/utils';
 import { priceChangedQuoteFromError, isPriceChangedError, type PriceChangedQuote } from '@/lib/public-price-change';
 import { candidateIsBookable } from '@/lib/public-departure-candidates';
-import { canSubmitBooking, effectiveMaxParty, isDepartureBookableOnPage, partyExceedsSeats, resolveBookingTotal, seasonalHeadlineKind } from '@/lib/public-booking-price';
+import { bookingPartyIssue, canSubmitBooking, effectiveMaxParty, isDepartureBookableOnPage, resolveBookingTotal, seasonalHeadlineKind } from '@/lib/public-booking-price';
 import type { PublicBookingPlan } from '@/server/public-tour-booking';
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
@@ -67,8 +67,9 @@ export function BookingForm({
   // #919：人數上限＝min(方案最大人數, 所選團次剩餘名額)；超過團次名額是「這個團次不夠」，不是「被搶」。
   const selectedSeatsLeft = selectedDeparture?.seatsLeft;
   const maxPartyAllowed = effectiveMaxParty(plan.maxParty, selectedSeatsLeft);
-  const exceedsSeats = partyExceedsSeats(partySize, selectedSeatsLeft);
-  const partySizeInvalid = !Number.isInteger(partySize) || partySize < plan.minParty || partySize > plan.maxParty || exceedsSeats;
+  const partyIssue = bookingPartyIssue({ partySize, minParty: plan.minParty, maxParty: plan.maxParty, seatsLeft: selectedSeatsLeft });
+  const departureInsufficient = partyIssue === 'departureInsufficient';
+  const partySizeInvalid = partyIssue === 'range' || partyIssue === 'seats';
   const bookingTotal = resolveBookingTotal(selectedDeparture, plan, partySize);
   const canSubmit = canSubmitBooking({
     departureId, contactName, hasContact, partySize, minParty: plan.minParty, maxParty: plan.maxParty, submitting,
@@ -161,6 +162,8 @@ export function BookingForm({
                 className="form-select"
                 value={departureId}
                 onChange={(e) => { setDepartureId(e.target.value); setConfirmedQuote(null); }}
+                aria-invalid={departureInsufficient || undefined}
+                aria-describedby={departureInsufficient ? 'departureId-error' : undefined}
                 required
               >
                 <option value="">{t.form.departurePlaceholder}</option>
@@ -173,6 +176,11 @@ export function BookingForm({
                 ))}
               </select>
             )}
+            {departureInsufficient ? (
+              <p id="departureId-error" className="text-sm text-danger">
+                {t.errors.departureInsufficient(plan.minParty)}
+              </p>
+            ) : null}
           </div>
 
           <div className="flex flex-col gap-1">
@@ -191,7 +199,7 @@ export function BookingForm({
             />
             {partySizeInvalid ? (
               <p id="partySize-error" className="text-sm text-danger">
-                {exceedsSeats && selectedSeatsLeft !== undefined && partySize <= plan.maxParty
+                {partyIssue === 'seats' && selectedSeatsLeft !== undefined
                   ? t.errors.partySizeExceedsSeats(selectedSeatsLeft)
                   : t.errors.partySizeOutOfRange(plan.minParty, plan.maxParty)}
               </p>

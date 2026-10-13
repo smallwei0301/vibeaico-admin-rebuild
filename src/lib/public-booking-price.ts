@@ -70,6 +70,28 @@ export function partyExceedsSeats(partySize: number, seatsLeft?: number): boolea
   return seatsLeft !== undefined && Number.isInteger(partySize) && partySize > seatsLeft;
 }
 
+export type BookingPartyIssue = 'none' | 'range' | 'seats' | 'departureInsufficient';
+
+/**
+ * #919：人數欄位／團次欄位該顯示哪一則訊息的單一判斷來源（優先順序由上而下）。
+ * - departureInsufficient：已選團次剩餘名額低於方案最低人數（例如 router.refresh 後名額變少），減人數也救不了，只能改選團次。
+ * - range：人數不是整數／低於最低人數／超過方案最大人數，且名額不是更緊的限制。
+ * - seats：人數超過所選團次剩餘名額，且名額比方案最大人數更緊（上限取兩者較小值）——直接講名額，不先講範圍。
+ * - none：合法。未選團次（seatsLeft 未提供）只看範圍。
+ */
+export function bookingPartyIssue(input: {
+  partySize: number;
+  minParty: number;
+  maxParty: number;
+  seatsLeft?: number;
+}): BookingPartyIssue {
+  const { partySize, minParty, maxParty, seatsLeft } = input;
+  if (seatsLeft !== undefined && !candidateIsBookable(seatsLeft, minParty)) return 'departureInsufficient';
+  if (!Number.isInteger(partySize) || partySize < minParty) return 'range';
+  if (partySize <= effectiveMaxParty(maxParty, seatsLeft)) return 'none';
+  return seatsLeft !== undefined && seatsLeft < maxParty ? 'seats' : 'range';
+}
+
 /**
  * 預約／申請表單能否送出。原本的必填條件不變；方案有季節定價（seasonalPricing）時，另外要求目前選的團次算得出
  * 實際金額（bookingTotal 不為 null，例如季節資料不完整或查詢失敗就算不出）——避免旅客在看不到正確金額時送出。
