@@ -17,6 +17,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminSupabase } from './supabase';
 import { getLineCredentials, lineBotInfo, lineMulticast, consumePushQuota } from './line';
 import { ApiHttpError, ERR } from './http';
+import { hydrateTourOrders } from './tour-orders';
 
 export const OWNER_NOTIFY_MAX_RECIPIENTS = 3;
 
@@ -385,6 +386,35 @@ export async function notifyOwnerNewBooking(tenantId: string, bookingId: string)
     await sendOwnerNotifyEvent(tenantId, 'notify_new_booking', text);
   } catch (e) {
     console.error('[owner-notify] notifyOwnerNewBooking 失敗', tenantId, bookingId, e);
+  }
+}
+
+/**
+ * 公開頁建立團體訂單（TourOrder）成功後通知老闆（Issue #941）。
+ * 即時預約（非 REQUEST）→「新團體預約」；REQUEST 申請 →「新預約申請（待審）」。
+ * 出發日期用 `trip_departures.departs_on`（本身就是店家當地日期，不再做時區換算）。
+ * 找不到訂單就不推；整體吞錯只 log，呼叫端以 `void` 呼叫、不影響建單回應。
+ */
+export async function notifyOwnerNewTourOrder(tenantId: string, orderId: string): Promise<void> {
+  try {
+    const admin = createAdminSupabase();
+    const [{ data: row, error }, { data: tenant }] = await Promise.all([
+      admin.from('tour_orders').select('*').eq('id', orderId).eq('tenant_id', tenantId).maybeSingle(),
+      admin.from('tenants').select('name').eq('id', tenantId).maybeSingle(),
+    ]);
+    if (error) throw error;
+    if (!row) return;
+    const [order] = await hydrateTourOrders(admin, tenantId, [row]);
+    if (!order) return;
+    const shop = tenant?.name ?? '';
+    const head = order.salesMode === 'REQUEST' ? `【${shop}】新預約申請（待審）` : `【${shop}】新團體預約`;
+    const when = [order.departsOn, order.startTime].filter(Boolean).join(' ');
+    const text =
+      `${head}\n訂單編號：${order.orderNo}\n行程／方案：${order.tripTitle}／${order.planName}\n` +
+      `出發日期：${when}\n人數：${order.partySize}\n旅客：${order.customerName}`;
+    await sendOwnerNotifyEvent(tenantId, 'notify_new_booking', text);
+  } catch (e) {
+    console.error('[owner-notify] notifyOwnerNewTourOrder 失敗', tenantId, orderId, e);
   }
 }
 

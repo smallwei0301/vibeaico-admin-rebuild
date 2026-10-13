@@ -1,5 +1,6 @@
 import { readJsonBody, PUBLIC_JSON_BODY_LIMIT_BYTES, handle, ok, fail, ERR } from '@/server/http';
 import { isFeatureActive } from '@/server/features';
+import { notifyOwnerNewTourOrder } from '@/server/owner-notify';
 import { checkRateLimit, clientIpFromHeaders } from '@/server/rate-limit';
 import {
   PublicTourBookingError, loadPublicBookingPlan, submitPublicTourBooking,
@@ -39,6 +40,8 @@ export const POST = handle(async (req) => {
 
   try {
     const { orderId, orderNo } = await submitPublicTourBooking(body);
+    // 建單成功才通知老闆（#941）；fire-and-forget，失敗只 log、不影響回應。
+    void notifyOwnerNewTourOrder(plan.tenantId, orderId);
     return ok({ orderId, orderNo }, { status: 201 });
   } catch (e) {
     if (e instanceof PublicTourBookingError) {
