@@ -54,6 +54,7 @@ export function RequestForm({
   // #749：頁面金額與實際金額不符時，後端回的現價；旅客確認後以此金額再送出。改團次或人數即作廢。
   const [confirmedQuote, setConfirmedQuote] = React.useState<PriceChangedQuote | null>(null);
 
+  const partySizeInvalid = !Number.isInteger(partySize) || partySize < plan.minParty || partySize > plan.maxParty;
   const hasContact = !!(contactPhone.trim() || contactLine.trim() || contactEmail.trim());
   // 實際金額摘要只使用 resolveBookingTotal 的結果（與 create_tour_order 同順序：季節單價 → PER_GROUP 一口價／PER_PERSON × 人數）。
   const selectedDeparture = plan.departures.find((d) => d.id === departureId);
@@ -165,10 +166,17 @@ export function RequestForm({
               className="form-control"
               min={plan.minParty}
               max={plan.maxParty}
-              value={partySize}
-              onChange={(e) => { setPartySize(Number(e.target.value)); setConfirmedQuote(null); }}
+              value={Number.isNaN(partySize) ? '' : partySize}
+              onChange={(e) => { setPartySize(e.target.value === '' ? NaN : Number(e.target.value)); setConfirmedQuote(null); }}
+              aria-invalid={partySizeInvalid || undefined}
+              aria-describedby={partySizeInvalid ? 'partySize-error' : undefined}
               required
             />
+            {partySizeInvalid ? (
+              <p id="partySize-error" className="text-sm text-danger">
+                {t.errors.partySizeOutOfRange(plan.minParty, plan.maxParty)}
+              </p>
+            ) : null}
           </div>
 
           <div className="flex flex-col gap-1">
