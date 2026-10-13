@@ -49,6 +49,7 @@ export const registerTenant = (payload: {
   password: string;
   tenantName: string;
   shopCode: string;
+  phone?: string;
   businessType?: BusinessType;
 }) =>
   adaptAuth(
