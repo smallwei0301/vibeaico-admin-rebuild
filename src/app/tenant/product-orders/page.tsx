@@ -35,16 +35,6 @@ import type { Booking, Customer, Product, ProductOrder, ProductOrderStatus, Staf
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
 /* -------------------------------------------------------------------------- */
 
-/** 原站 /api/payment-methods（本頁只需要下拉選單用的最小欄位） */
-type PaymentMethodOption = { id: string; name: string };
-
-const MOCK_PAYMENT_METHODS: PaymentMethodOption[] = [
-  { id: 'pm_1', name: '現金' },
-  { id: 'pm_2', name: '信用卡' },
-  { id: 'pm_3', name: 'LINE Pay' },
-  { id: 'pm_4', name: '銀行轉帳' },
-];
-
 /**
  * 原站 ProductOrder 另有出貨方式、統編、票券折抵、取消原因、付款連結等欄位，
  * 尚未收錄進 lib/types.ts，骨架階段以本頁常數補齊。
@@ -765,7 +755,6 @@ function ManualOrderModal({
   const [items, setItems] = React.useState<CartItem[]>([]);
 
   const [staffId, setStaffId] = React.useState('');
-  const [paymentMethodId, setPaymentMethodId] = React.useState('');
   const [bookingId, setBookingId] = React.useState('');
   const [note, setNote] = React.useState('');
   const [paidCompleted, setPaidCompleted] = React.useState(false);
@@ -781,7 +770,7 @@ function ManualOrderModal({
     setKeyword(''); setSearched(false); setCandidates([]); setCustomerId('');
     setNewName(''); setNewPhone('');
     setProductId(''); setQty('1'); setItems([]);
-    setStaffId(''); setPaymentMethodId(''); setBookingId(''); setNote('');
+    setStaffId(''); setBookingId(''); setNote('');
     setPaidCompleted(false); setNotify(false);
     setError(''); setPhoneConflict(null);
   }, [open]);
@@ -857,7 +846,7 @@ function ManualOrderModal({
     createdAt: new Date().toISOString(),
     ...DEFAULT_EXTRAS,
     staffName: staff.find((s) => s.id === staffId)?.name ?? null,
-    paymentMethodName: MOCK_PAYMENT_METHODS.find((p) => p.id === paymentMethodId)?.name ?? null,
+    paymentMethodName: null, // #875：後端不保存收款方式，不顯示假值
     bookingId: bookingId || null,
     note: note.trim(),
     paidAmount: paidCompleted ? total : 0,
@@ -1073,12 +1062,11 @@ function ManualOrderModal({
         <FormGroup>
           <Label htmlFor="moPaymentMethodId">{t.manual.paymentLabel}</Label>
           <Select
-            id="moPaymentMethodId" className="form-select-sm" value={paymentMethodId}
-            onChange={(e) => setPaymentMethodId(e.target.value)}
+            id="moPaymentMethodId" className="form-select-sm" value="" disabled
           >
             <option value="">{t.manual.paymentPlaceholder}</option>
-            {MOCK_PAYMENT_METHODS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </Select>
+          <p className="mt-1 text-sm text-muted">{t.manual.paymentUnavailable}</p>
         </FormGroup>
 
         <FormGroup>

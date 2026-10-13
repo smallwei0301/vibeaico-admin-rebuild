@@ -26,7 +26,7 @@ import { listBookings } from '@/services/bookings';
 import { getGuideActionInbox } from '@/services/guide-action-inbox';
 import { createGuideInboxLoader, guideInboxForTenant, type GuideInboxLoadState } from '@/lib/guide-inbox-load';
 import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
-import { APP_URL } from '@/config/env';
+import { APP_URL, USE_MOCK } from '@/config/env';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { FEATURE_EXPIRY_WARNING_DAYS } from '@/config/features';
 import { MODE_PRESETS } from '@/config/modes';
@@ -419,7 +419,8 @@ export default function DashboardPage() {
   const linePlanLabel =
     stats?.linePlatformStatus === 'NOT_CONFIGURED' ? t.stats.lineNotConfigured
       : stats?.linePlatformStatus === 'ERROR' ? t.stats.unknown
-        : MOCK_LINE_PLAN === 'PRO' ? t.stats.linePlanPro : t.stats.linePlanLite;
+        : !USE_MOCK ? t.stats.lineConnected // #875：真實模式沒有方案資料，不捏造方案名稱
+          : MOCK_LINE_PLAN === 'PRO' ? t.stats.linePlanPro : t.stats.linePlanLite;
 
   const todayColumns: Column<Booking>[] = [
     { key: 'time', header: t.todayBookings.columns.time, width: '84px', render: (b) => formatTime(b.startAt) },

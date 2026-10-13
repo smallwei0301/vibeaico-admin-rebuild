@@ -201,6 +201,7 @@ export const dashboardPage = {
     exhausted: '已用盡',
     linePlanLite: '輕量版',
     linePlanPro: '專業版',
+    lineConnected: '已連線',
     lineNotConfigured: '未設定 LINE',
     unknown: '未知',
   },
