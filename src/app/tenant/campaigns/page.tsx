@@ -24,6 +24,9 @@ import {
   listCampaigns, listFeatures, pauseCampaign, publishCampaign, resumeCampaign, updateCampaign,
 } from '@/services';
 import type { CampaignFormPayload } from '@/services/campaigns';
+import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
+import { isRenderableImageUrl } from '@/lib/image-url';
+import { canManageMarketing, uploadMessageImage, validateMessageImageFile } from '@/lib/message-image';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { campaignsPage as t } from '@/i18n/zh-TW/pages/campaigns';
@@ -543,6 +546,9 @@ function CampaignFormModal({
   const isEdit = !!campaign;
   /** 已發布的活動只能改名稱、描述、結束時間、備註與圖片 */
   const locked = !!campaign && campaign.status !== 'DRAFT';
+  const canUploadImage = canManageMarketing(useCurrentTenant().role);
+  /** 已結束的活動 PUT 會回 409，上傳只會留下孤兒公開檔，故一併鎖住圖片上傳。 */
+  const ended = campaign?.status === 'ENDED';
 
   const [name, setName] = React.useState('');
   // #176 (b)：新增時的預設**不能**是 REDIRECTED_TYPES 裡的值。上面的 filter 用
@@ -552,7 +558,9 @@ function CampaignFormModal({
   const [startAt, setStartAt] = React.useState('');
   const [endAt, setEndAt] = React.useState('');
   const [description, setDescription] = React.useState('');
-  const [imageName, setImageName] = React.useState('');
+  const [imageUrl, setImageUrl] = React.useState('');
+  const [uploading, setUploading] = React.useState(false);
+  const [imageError, setImageError] = React.useState('');
   const [pushMessage, setPushMessage] = React.useState('');
   const [couponId, setCouponId] = React.useState('');
   const [bonusPoints, setBonusPoints] = React.useState('');
@@ -562,15 +570,23 @@ function CampaignFormModal({
   const [error, setError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
 
+  // 表單元件常駐（open 切換、換 push/campaign 都是同一個 instance）：上傳期間若關閉／換筆／送出，
+  // 舊上傳的結果不得寫入新狀態。token 在 open／record 變動、送出、卸載時輪替，回來時比對不符就丟棄。
+  const uploadTokenRef = React.useRef(0);
+  React.useEffect(() => () => { uploadTokenRef.current += 1; }, []);
+
   React.useEffect(() => {
-    if (!open) return;
+    uploadTokenRef.current += 1;
+    if (!open) { setUploading(false); return; }
     setError('');
     setName(campaign?.name ?? '');
     setType((campaign?.type || 'NEW_CUSTOMER') as CampaignType);
     setStartAt(campaign?.startAt ? campaign.startAt.slice(0, 16) : '');
     setEndAt(campaign?.endAt ? campaign.endAt.slice(0, 16) : '');
     setDescription(campaign?.description ?? '');
-    setImageName('');
+    setImageUrl(campaign?.imageUrl ?? '');
+    setUploading(false);
+    setImageError('');
     setPushMessage(campaign?.pushMessage ?? '');
     setCouponId(campaign?.couponId ?? '');
     setBonusPoints(campaign?.bonusPoints ? String(campaign.bonusPoints) : '');
@@ -579,15 +595,35 @@ function CampaignFormModal({
     setIsAutoTrigger(campaign?.isAutoTrigger ?? false);
   }, [open, campaign]);
 
-  const pickImage = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      e.target.value = '';
-      toast.show(t.messages.imageTooLarge, 'warning');
+  const pickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const file = input.files?.[0];
+    if (!file || !canUploadImage || ended || uploading || saving) return;
+    const invalid = validateMessageImageFile(file);
+    if (invalid) {
+      input.value = '';
+      const msg = invalid === 'size' ? t.messages.imageTooLarge : t.messages.imageTypeInvalid;
+      setImageError(msg);
+      toast.show(msg, 'warning');
       return;
     }
-    setImageName(file.name);
+    setImageError('');
+    setUploading(true);
+    const token = ++uploadTokenRef.current;
+    try {
+      const url = await uploadMessageImage(file);
+      if (token !== uploadTokenRef.current) return;
+      setImageUrl(url);
+      toast.show(t.messages.imageUploaded, 'success');
+    } catch (err) {
+      if (token !== uploadTokenRef.current) return;
+      const msg = `${t.messages.imageUploadFailedPrefix}${err instanceof Error ? err.message : t.messages.unknownError}`;
+      setImageError(msg);
+      toast.show(msg, 'danger');
+    } finally {
+      input.value = '';
+      if (token === uploadTokenRef.current) setUploading(false);
+    }
   };
 
   const prereq = AUTO_TRIGGER_PREREQ[type];
@@ -630,6 +666,8 @@ function CampaignFormModal({
   };
 
   const submit = async () => {
+    if (uploading) return;
+    uploadTokenRef.current += 1;
     const err = validate();
     setError(err);
     if (err) { toast.show(err, 'warning'); return; }
@@ -647,7 +685,7 @@ function CampaignFormModal({
         thresholdAmount: thresholdAmount ? Number(thresholdAmount) : null,
         recallDays: recallDays ? Number(recallDays) : null,
         isAutoTrigger,
-        imageUrl: campaign?.imageUrl ?? '',
+        imageUrl,
       };
       if (isEdit && campaign) {
         await updateCampaign(campaign.id, payload);
@@ -674,7 +712,7 @@ function CampaignFormModal({
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>{common.cancel}</Button>
-          <Button loading={saving} loadingText={common.saving} onClick={() => void submit()}>
+          <Button loading={saving} loadingText={common.saving} disabled={uploading} onClick={() => void submit()}>
             {common.save}
           </Button>
         </>
@@ -753,15 +791,24 @@ function CampaignFormModal({
 
       <FormGroup>
         <Label htmlFor="campaignImageInput">{t.form.image}</Label>
-        <Input id="campaignImageInput" type="file" accept="image/*" onChange={pickImage} />
+        <Input
+          id="campaignImageInput" type="file" accept="image/jpeg,image/png,image/webp"
+          disabled={!canUploadImage || ended || uploading || saving} onChange={pickImage}
+        />
         <div className="flex items-center justify-between">
-          <FormText>{t.form.imageUploadHint}</FormText>
-          {imageName ? (
-            <Button variant="ghost" size="sm" onClick={() => setImageName('')}>
+          <FormText>
+            {!canUploadImage ? t.form.imageStaffReadonly : ended ? t.form.imageEndedReadonly : uploading ? t.form.imageUploading : t.form.imageUploadHint}
+          </FormText>
+          {imageUrl && canUploadImage && !ended ? (
+            <Button variant="ghost" size="sm" disabled={uploading || saving} onClick={() => setImageUrl('')}>
               {t.form.imageRemove}
             </Button>
           ) : null}
         </div>
+        {imageError ? <FormText className="text-danger">{imageError}</FormText> : null}
+        {imageUrl && isRenderableImageUrl(imageUrl) ? (
+          <img src={imageUrl} alt={t.form.imagePreviewAlt} className="mt-2 max-h-40 rounded-md object-contain" />
+        ) : null}
       </FormGroup>
 
       <h6 className="mb-3 mt-2 text-base font-bold text-dark">{t.form.sectionReward}</h6>

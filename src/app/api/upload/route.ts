@@ -55,12 +55,15 @@ const ALLOWED_BUCKETS = new Set([
   'chat-images',
 ]);
 /**
- * 需要高於預設 STAFF 的 bucket 最低角色。刻意只列 portfolio-images：作品集所有寫入
- * （/api/portfolios POST/PUT/reorder）都要 MANAGER，上傳端點不得讓 STAFF 繞過頁面
- * 的管理者限制直接建立 public 物件。其他 bucket 維持歷史行為（STAFF 可上傳）。
+ * 需要高於預設 STAFF 的 bucket 最低角色。列出 portfolio-images 與 keyword-reply-images：
+ * 兩者的所有寫入端（/api/portfolios POST/PUT/reorder、keyword-replies／marketing pushes／
+ * campaigns 寫入）都要 MANAGER，上傳端點不得讓 STAFF 繞過管理者限制直接建立 public 物件。
+ * 其他 bucket 維持歷史行為（STAFF 可上傳）。
  */
 const BUCKET_MIN_ROLE: Partial<Record<string, 'MANAGER'>> = {
   'portfolio-images': 'MANAGER',
+  // 全部消費者（keyword-replies／marketing pushes／campaigns 寫入）皆為 MANAGER。
+  'keyword-reply-images': 'MANAGER',
 };
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB
 const ALLOWED_TYPES: Record<string, string> = {

@@ -20,6 +20,10 @@ const oldUrl = (name: string) =>
 let existingContent: Record<string, unknown> | null = null;
 let existingRowMissing = false;
 let otherContents: Array<Record<string, unknown>> = [];
+let pushContents: Array<Record<string, unknown>> = [];
+let campaignContents: Array<Record<string, unknown>> = [];
+let failTable: string | null = null;
+let scannedTables: string[] = [];
 let referenceScanError = false;
 let referenceRangeCalls: Array<[number, number]> = [];
 
@@ -29,7 +33,7 @@ const storageFromMock = vi.fn((_bucket: string) => ({ remove: removeMock }));
 function fakeSessionSupabase() {
   return {
     from: (table: string) => {
-      if (table !== 'keyword_replies') throw new Error(`unexpected table: ${table}`);
+      if (!['keyword_replies', 'marketing_pushes', 'campaigns'].includes(table)) throw new Error(`unexpected table: ${table}`);
       return {
         select: (cols: string) => {
           const builder: any = {
@@ -38,10 +42,13 @@ function fakeSessionSupabase() {
             order: (_field: string, _options: unknown) => builder,
             range: async (from: number, to: number) => {
               referenceRangeCalls.push([from, to]);
-              if (referenceScanError) {
+              scannedTables.push(table);
+              if (referenceScanError || failTable === table) {
                 return { data: null, error: { message: 'reference scan unavailable' } };
               }
-              const data = otherContents.slice(from, to + 1).map((content, index) => ({
+              const src =
+                table === 'marketing_pushes' ? pushContents : table === 'campaigns' ? campaignContents : otherContents;
+              const data = src.slice(from, to + 1).map((content, index) => ({
                 id: `other-${from + index}`,
                 content,
               }));
@@ -108,6 +115,10 @@ describe('PUT keyword-replies/:id — 換圖／移除圖片安全清理（#50 it
     existingContent = null;
     existingRowMissing = false;
     otherContents = [];
+    pushContents = [];
+    campaignContents = [];
+    failTable = null;
+    scannedTables = [];
     referenceScanError = false;
     referenceRangeCalls = [];
     removeMock.mockClear();
@@ -123,7 +134,8 @@ describe('PUT keyword-replies/:id — 換圖／移除圖片安全清理（#50 it
     );
 
     expect(res.status).toBe(200);
-    expect(referenceRangeCalls).toEqual([[0, 199]]);
+    expect(referenceRangeCalls).toEqual([[0, 199], [0, 199], [0, 199]]);
+    expect(scannedTables).toEqual(['keyword_replies', 'marketing_pushes', 'campaigns']);
     expect(storageFromMock).toHaveBeenCalledWith(BUCKET);
     expect(removeMock).toHaveBeenCalledTimes(1);
     expect(removeMock).toHaveBeenCalledWith([`${TENANT_ID}/old.png`]);
@@ -138,6 +150,39 @@ describe('PUT keyword-replies/:id — 換圖／移除圖片安全清理（#50 it
 
     expect(res.status).toBe(200);
     expect(removeMock).toHaveBeenCalledWith([`${TENANT_ID}/old.png`]);
+  });
+
+  it('行銷推播仍引用同一 URL（含 query 別名）→ 不刪', async () => {
+    existingContent = { text: 'hi', imageUrl: oldUrl('old.png') };
+    pushContents = [{ text: 'p', imageUrl: `${oldUrl('old.png')}?v=2` }];
+    const res = await PUT(
+      makePutRequest({ content: { text: 'hi', imageUrl: oldUrl('new.png') } }),
+      { params: params() },
+    );
+    expect(res.status).toBe(200);
+    expect(removeMock).not.toHaveBeenCalled();
+  });
+
+  it('活動 campaigns 仍引用同一 URL → 不刪', async () => {
+    existingContent = { text: 'hi', imageUrl: oldUrl('old.png') };
+    campaignContents = [{ description: 'c', imageUrl: oldUrl('old.png') }];
+    const res = await PUT(
+      makePutRequest({ content: { text: 'hi' } }),
+      { params: params() },
+    );
+    expect(res.status).toBe(200);
+    expect(removeMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['marketing_pushes', 'campaigns'])('%s 引用掃描失敗 → fail closed 不刪，PUT 仍成功', async (table) => {
+    existingContent = { text: 'hi', imageUrl: oldUrl('old.png') };
+    failTable = table;
+    const res = await PUT(
+      makePutRequest({ content: { text: 'hi', imageUrl: oldUrl('new.png') } }),
+      { params: params() },
+    );
+    expect(res.status).toBe(200);
+    expect(removeMock).not.toHaveBeenCalled();
   });
 
   it('Storage remove 回傳錯誤：best-effort，PUT 仍成功', async () => {

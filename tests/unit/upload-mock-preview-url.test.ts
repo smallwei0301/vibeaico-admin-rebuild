@@ -1,3 +1,4 @@
+import { isRenderableImageUrl } from '@/lib/image-url';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { uploadImage } from '@/services/upload';
@@ -23,19 +24,25 @@ describe('uploadImage mock 分支回傳可顯示的 URL（Codex P2）', () => {
   });
 });
 
+describe('isRenderableImageUrl（共用模組）', () => {
+  it('接受 http(s)、根相對、blob:，拒絕 javascript:/data:/裸檔名', () => {
+    expect(isRenderableImageUrl('blob:http://localhost/abc')).toBe(true);
+    expect(isRenderableImageUrl('https://x/a.png')).toBe(true);
+    expect(isRenderableImageUrl('http://x/a.png')).toBe(true);
+    expect(isRenderableImageUrl('/a.png')).toBe(true);
+    expect(isRenderableImageUrl('javascript:alert(1)')).toBe(false);
+    expect(isRenderableImageUrl('data:image/png;base64,AAA')).toBe(false);
+    expect(isRenderableImageUrl('cover.png')).toBe(false);
+    expect(isRenderableImageUrl('')).toBe(false);
+  });
+});
+
 describe('portfolio 頁面圖片渲染', () => {
   const page = readFileSync('src/app/tenant/portfolio/page.tsx', 'utf8');
-  const m = page.match(/const isRenderableImageUrl = \(url: string\) => (\/.*\/)\.test\(url\);/);
 
-  it('isRenderableImageUrl 接受 blob:，仍拒絕 javascript:/data:/裸檔名', () => {
-    expect(m).not.toBeNull();
-    const re = new RegExp((m as RegExpMatchArray)[1].slice(1, -1));
-    expect(re.test('blob:http://localhost/abc')).toBe(true);
-    expect(re.test('https://x/a.png')).toBe(true);
-    expect(re.test('/a.png')).toBe(true);
-    expect(re.test('javascript:alert(1)')).toBe(false);
-    expect(re.test('data:image/png;base64,AAA')).toBe(false);
-    expect(re.test('cover.png')).toBe(false);
+  it('portfolio 使用共用的 isRenderableImageUrl，不再自行定義', () => {
+    expect(page).toContain("import { isRenderableImageUrl } from '@/lib/image-url'");
+    expect(page).not.toMatch(/const isRenderableImageUrl/);
   });
 
   it('卡片網格 <img> 帶 loading="lazy" 與 decoding="async"', () => {
