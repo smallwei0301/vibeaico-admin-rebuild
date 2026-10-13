@@ -1,6 +1,7 @@
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { consumePushQuota, getLineCredentials, lineMulticast } from '@/server/line';
+import { isWebpUrl } from '@/lib/message-image';
 
 /**
  * POST /api/marketing/pushes/:id/send — 立即發送（04 分冊 §B-5、06 分冊 §2/§5）。
@@ -105,7 +106,7 @@ export const POST = handle(async (_req, { params }) => {
     const messages: any[] = [{ type: 'text', text: typeof c.text === 'string' ? c.text : '' }];
     // LINE image message 只收 https；非 https（手動 http 網址等）不組圖片訊息，文字照送。
     // LINE 只收 JPEG／PNG；.webp（忽略 query／hash）同樣視為不可送圖，只送文字。
-    if (typeof c.imageUrl === 'string' && /^https:\/\//i.test(c.imageUrl) && !/\.webp$/i.test(c.imageUrl.split(/[?#]/)[0]))
+    if (typeof c.imageUrl === 'string' && /^https:\/\//i.test(c.imageUrl) && !isWebpUrl(c.imageUrl))
       messages.push({ type: 'image', originalContentUrl: c.imageUrl, previewImageUrl: c.imageUrl });
 
     const { token } = await getLineCredentials(t.tenantId);

@@ -140,3 +140,20 @@ describe('isLineSendableImageUrl：LINE 只收 https', () => {
     expect(marketingPage.form.imageUrlHttpsRequired).toMatch(/^圖片網址必須以 https:\/\//);
   });
 });
+
+describe('isWebpUrl／isLineSendableImageUrl：拒絕 .webp', () => {
+  it('忽略 query／hash 與大小寫判斷 .webp', async () => {
+    const { isWebpUrl } = await import('@/lib/message-image');
+    expect(isWebpUrl('https://a.com/x.webp')).toBe(true);
+    expect(isWebpUrl('https://a.com/x.WEBP?v=1#h')).toBe(true);
+    expect(isWebpUrl('https://a.com/x.png?f=a.webp')).toBe(false);
+    expect(isWebpUrl('https://a.com/x.jpg')).toBe(false);
+  });
+  it('https .webp 不可送；表單使用專屬文案並與 send route 共用 isWebpUrl', () => {
+    expect(isLineSendableImageUrl('https://a.com/x.webp')).toBe(false);
+    expect(isLineSendableImageUrl('https://a.com/x.WebP?v=1')).toBe(false);
+    expect(isLineSendableImageUrl('https://a.com/x.png?f=a.webp')).toBe(true);
+    expect(marketingPage.form.imageUrlWebpUnsupported).toMatch(/WebP/);
+    expect(pages.marketing).toContain('isWebpUrl(imageUrl)');
+  });
+});

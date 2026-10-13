@@ -26,7 +26,7 @@ import type { MarketingPushFormPayload } from '@/services/marketing';
 import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { USE_MOCK } from '@/config/env';
 import { isRenderableImageUrl } from '@/lib/image-url';
-import { canManageMarketing, isLineSendableImageUrl, uploadMessageImage, validateLinePushImageFile } from '@/lib/message-image';
+import { canManageMarketing, isLineSendableImageUrl, isWebpUrl, uploadMessageImage, validateLinePushImageFile } from '@/lib/message-image';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { marketingPage as t } from '@/i18n/zh-TW/pages/marketing';
@@ -477,6 +477,7 @@ function PushFormModal({
     if (content.length > t.form.contentMax) return common.validation.maxLength(t.form.contentMax);
     if (targetType === 'MEMBERSHIP_LEVEL' && !targetValue) return t.form.targetValueRequired;
     if (targetType === 'CUSTOM' && !customTargets.trim()) return t.form.customTargetsRequired;
+    if (isWebpUrl(imageUrl)) return t.form.imageUrlWebpUnsupported;
     if (!isLineSendableImageUrl(imageUrl, { mock: USE_MOCK })) return t.form.imageUrlHttpsRequired;
     return '';
   };

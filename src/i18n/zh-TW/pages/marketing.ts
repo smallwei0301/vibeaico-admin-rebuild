@@ -123,6 +123,7 @@ export const marketingPage = {
     imageUrl: '圖片網址（選填）',
     imageUrlPlaceholder: 'https://example.com/image.jpg',
     imageUrlHttpsRequired: '圖片網址必須以 https:// 開頭，LINE 才能顯示。',
+    imageUrlWebpUnsupported: 'LINE 不支援 WebP 圖片，請改用 JPG 或 PNG 網址。',
     imageUrlHelp: '上傳成功後會自動填入；也可直接輸入圖片網址',
     scheduledAt: '排程發送時間（選填）',
     scheduledAtHelp: '不填則儲存為草稿，手動發送',

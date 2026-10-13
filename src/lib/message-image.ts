@@ -42,6 +42,11 @@ export async function uploadMessageImage(file: File): Promise<string> {
   return url;
 }
 
+/** 網址路徑（忽略 query／hash，不分大小寫）是否以 .webp 結尾；LINE 不收 WebP。send route 與表單共用。 */
+export function isWebpUrl(url: string): boolean {
+  return /\.webp$/i.test(url.trim().split(/[?#]/)[0]);
+}
+
 /**
  * LINE image message 只收 https 網址；send route 會靜默略過非 https（只送文字）。
  * 表單送出前先擋，避免「存了卻沒發出圖片」的假成功。
@@ -50,6 +55,6 @@ export async function uploadMessageImage(file: File): Promise<string> {
 export function isLineSendableImageUrl(url: string, opts: { mock?: boolean } = {}): boolean {
   const v = url.trim();
   if (!v) return true;
-  if (/^https:\/\//i.test(v)) return true;
+  if (/^https:\/\//i.test(v)) return !isWebpUrl(v);
   return Boolean(opts.mock) && /^blob:/i.test(v);
 }

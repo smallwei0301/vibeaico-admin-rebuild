@@ -28,37 +28,47 @@ export async function keywordReplyImageMayStillBeReferenced(params: {
 }): Promise<boolean> {
   const { supabase, tenantId, excludeReplyId, canonicalUrl } = params;
 
-  for (let from = 0; ; from += KEYWORD_REPLY_REFERENCE_PAGE_SIZE) {
-    const { data, error } = await supabase
-      .from('keyword_replies')
-      .select('id, content')
-      .eq('tenant_id', tenantId)
-      .neq('id', excludeReplyId)
-      .order('id', { ascending: true })
-      .range(from, from + KEYWORD_REPLY_REFERENCE_PAGE_SIZE - 1);
+  // 同一個 bucket 也存行銷推播與活動圖片（content jsonb 的 imageUrl），一併掃描；
+  // 只有 keyword_replies 需要排除目前正在換圖的那一列。
+  const sources: Array<{ table: string; excludeId?: string }> = [
+    { table: 'keyword_replies', excludeId: excludeReplyId },
+    { table: 'marketing_pushes' },
+    { table: 'campaigns' },
+  ];
 
-    if (error) {
-      console.error('[storage-cleanup] 無法確認舊 keyword 圖片是否仍被引用，保守跳過刪除', {
-        tenantId,
-        excludeReplyId,
-        message: error.message,
-      });
-      return true;
+  for (const { table, excludeId } of sources) {
+    for (let from = 0; ; from += KEYWORD_REPLY_REFERENCE_PAGE_SIZE) {
+      let query = supabase.from(table).select('id, content').eq('tenant_id', tenantId);
+      if (excludeId) query = query.neq('id', excludeId);
+      const { data, error } = await query
+        .order('id', { ascending: true })
+        .range(from, from + KEYWORD_REPLY_REFERENCE_PAGE_SIZE - 1);
+
+      if (error) {
+        console.error('[storage-cleanup] 無法確認舊圖片是否仍被引用，保守跳過刪除', {
+          tenantId,
+          table,
+          excludeReplyId,
+          message: error.message,
+        });
+        return true;
+      }
+
+      const rows = data ?? [];
+      for (const row of rows) {
+        const content = (row.content ?? {}) as Record<string, unknown>;
+        const imageUrl = typeof content.imageUrl === 'string' ? content.imageUrl : '';
+        if (!imageUrl) continue;
+
+        const canonical =
+          tenantOwnedPublicStorageUrl(imageUrl, KEYWORD_REPLY_IMAGES_BUCKET, tenantId) ?? imageUrl;
+        if (canonical === canonicalUrl) return true;
+      }
+
+      if (rows.length < KEYWORD_REPLY_REFERENCE_PAGE_SIZE) break;
     }
-
-    const rows = data ?? [];
-    for (const row of rows) {
-      const content = (row.content ?? {}) as Record<string, unknown>;
-      const imageUrl = typeof content.imageUrl === 'string' ? content.imageUrl : '';
-      if (!imageUrl) continue;
-
-      const canonical =
-        tenantOwnedPublicStorageUrl(imageUrl, KEYWORD_REPLY_IMAGES_BUCKET, tenantId) ?? imageUrl;
-      if (canonical === canonicalUrl) return true;
-    }
-
-    if (rows.length < KEYWORD_REPLY_REFERENCE_PAGE_SIZE) return false;
   }
+  return false;
 }
 
 /**
