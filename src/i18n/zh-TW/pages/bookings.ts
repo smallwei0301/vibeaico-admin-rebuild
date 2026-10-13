@@ -111,6 +111,8 @@ export const bookingsPage = {
 
     staff: '服務人員',
     staffAuto: '不指定（系統自動分配）',
+    staffCurrentInactive: (name: string) => `${name}（目前指定・已停止接受預約）`,
+    staffCurrentUnknown: '目前指定人員',
     staffHelp: '可選擇指定 服務人員 或由系統自動分配',
     staffRequired: '此店家設定為強制指定',
     staffRequiredSuffix: '，請選擇後再送出',
@@ -324,6 +326,7 @@ export const bookingsPage = {
 
     batchConfirmed: (n: number) => `成功確認 ${n} 筆預約`,
     batchCancelled: (n: number) => `成功取消 ${n} 筆預約`,
+    batchPartial: (ok: number, fail: number) => `成功 ${ok} 筆、失敗 ${fail} 筆`,
     batchConfirmFailed: '批次確認失敗',
     batchCancelFailed: '批次取消失敗',
     selectConfirmFirst: '請先選擇要確認的預約',

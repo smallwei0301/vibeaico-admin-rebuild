@@ -187,6 +187,10 @@
     {
       "ref": "issue/899",
       "title": "LINE 設定切換選單未儲存提示"
+    },
+    {
+      "ref": "issue/903",
+      "title": "預約管理批次操作與編輯人員下拉誠實化"
     }
   ],
   "main": {
@@ -7746,13 +7750,47 @@
         "issue": 899,
         "count": 1,
         "evidenceRef": "this commit"
+      },
+      {
+        "id": "20261013-luna-scout-903-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModel": "unknown",
+        "startedAt": "2026-10-13T16:31:20Z",
+        "completedAt": "2026-10-13T16:32:20Z",
+        "note": "Luna 窄盤點預約管理／Quick Edit 真實模式誤導問題，回報批次部分失敗與人員下拉不實兩項 GAP，經主 agent 核對後開立 issue/903。actual 未經平台驗證。",
+        "issue": 903,
+        "count": 1,
+        "evidenceRef": "this commit"
+      },
+      {
+        "id": "20261013-luna-scout-903-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModel": "unknown",
+        "startedAt": "2026-10-13T16:39:09Z",
+        "completedAt": "2026-10-13T16:39:09Z",
+        "note": "Luna metrics capture 綁定 issue/903 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2。actual 未經平台驗證。",
+        "issue": 903,
+        "count": 1,
+        "evidenceRef": "this commit"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 49,
+    "issuesStarted": 50,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -7779,8 +7817,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 118,
-    "lunaAccepted": 109,
+    "lunaTasks": 120,
+    "lunaAccepted": 111,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -8016,7 +8054,8 @@
     "2026-10-13 非計分紀錄（issue/894 follow-up）：follow-up builder commits 35a5c17a（15:17:18Z–15:19:31Z）、8df149b6（15:27:42Z–15:29:46Z），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/898）：builder commit 65dbbcf9（cherry-pick 為 a52cb4a4，旅客預約流程移除我的訂單死連結、人數不合顯示原因、無團次文案指向返回店家頁），Sonnet builder 16:08:21Z–16:14:17Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/895 follow-up）：builder commit ceb61f18（15:44:30Z–15:47:03Z），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
-    "2026-10-13 非計分紀錄（issue/899）：builder commit 66174027（cherry-pick 為 0c00e267，LINE 設定切換 Flex 選單樣式與活動關鍵字時提示尚未儲存），Sonnet builder 16:08:44Z–16:11:01Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
+    "2026-10-13 非計分紀錄（issue/899）：builder commit 66174027（cherry-pick 為 0c00e267，LINE 設定切換 Flex 選單樣式與活動關鍵字時提示尚未儲存），Sonnet builder 16:08:44Z–16:11:01Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/903）：builder commit 6045ed07（cherry-pick 為 6200e18b，預約批次確認／取消改 allSettled 如實顯示成功與失敗筆數並重讀、編輯預約人員下拉顯示目前指定人員），Sonnet builder 16:32:44Z–16:38:09Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
