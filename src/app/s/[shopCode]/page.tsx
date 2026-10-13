@@ -187,7 +187,7 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
                       {trip.plans.map((plan) => (
                         <li key={plan.id} className="flex flex-wrap items-center gap-2 text-sm">
                           <span className="font-medium">{plan.name}</span>
-                          <span>{plan.seasonalPricing ? t.trips.seasonalHeadline : formatCurrency(plan.pricePerPerson)}</span>
+                          <span>{plan.seasonalPricing ? (plan.bookingCta === 'fixed' || plan.bookingCta === 'request' ? t.trips.seasonalByDepartureHeadline : t.trips.seasonalHeadline) : formatCurrency(plan.pricePerPerson)}</span>
                           <span className="text-2xs text-secondary">
                             {t.trips.partyRange(plan.minParty, plan.maxParty)}
                           </span>

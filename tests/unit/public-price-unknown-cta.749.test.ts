@@ -205,6 +205,26 @@ describe('#749 (c)(d) 首頁與詳情頁 loader', () => {
     expect(plans.slice(0, 500).every((p) => p.bookingCta === 'fixed')).toBe(true);
   });
 
+  it('#895：>500 個方案且已判定團次的方案排在 planRows 最後（第 571–600 個）：季節查詢優先它們，CTA／linkable 與只查判定方案時相同', async () => {
+    fx.tripCount = 20;
+    // 前 19 個行程（570 個方案）全是 INSTANT（不判定團次）；最後一個行程 30 個 FIXED 方案帶季節，位置在 500 之後。
+    fx.plans = Object.fromEntries(Array.from({ length: 600 }, (_, n) => [
+      `p${String(n).padStart(3, '0')}`,
+      (n >= 570 ? { mode: 'FIXED_DEPARTURE', seasons: true } : { mode: 'INSTANT' }) as PlanFx,
+    ]));
+    const shop = (await loadPublicShop('demo'))!;
+    const plans = shop.trips.flatMap((tr) => tr.plans);
+    const judged = plans.filter((p) => Number(p.id.slice(1)) >= 570);
+    expect(judged.length).toBe(30);
+    expect(fx.seasonCalls.length).toBeLessThanOrEqual(5);
+    // 判定過的方案全在季節查詢內，且在第一塊。
+    expect(judged.every((p) => fx.seasonCalls[0].includes(p.id))).toBe(true);
+    expect(judged.every((p) => p.bookingCta === 'fixed' && p.seasonalPricing === true)).toBe(true);
+    const lastTrip = shop.trips[shop.trips.length - 1];
+    expect(lastTrip.departures.length).toBeGreaterThan(0);
+    expect(lastTrip.departures.every((d) => d.linkable === true)).toBe(true);
+  });
+
   it('只有最後一塊 throw（其他塊正常）：只有該塊方案為 price-not-loaded', async () => {
     manyPlans();
     const probe = await homeAll();

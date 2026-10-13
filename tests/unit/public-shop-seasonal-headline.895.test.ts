@@ -73,8 +73,10 @@ describe('#895 loadPublicShop seasonalPricing', () => {
 
 describe('#895 首頁 render 分支', () => {
   it('季節方案顯示季節標題而非基本價；最低價排除季節方案', () => {
-    expect(page).toContain('plan.seasonalPricing ? t.trips.seasonalHeadline : formatCurrency(plan.pricePerPerson)');
+    expect(page).toContain("plan.bookingCta === 'fixed' || plan.bookingCta === 'request' ? t.trips.seasonalByDepartureHeadline : t.trips.seasonalHeadline");
+    expect(page).toContain('formatCurrency(plan.pricePerPerson)');
     expect(page).toContain('trip.plans.filter((p) => !p.seasonalPricing)');
     expect(i18n).toContain('seasonalHeadline:');
+    expect(i18n).toContain('seasonalByDepartureHeadline:');
   });
 });
