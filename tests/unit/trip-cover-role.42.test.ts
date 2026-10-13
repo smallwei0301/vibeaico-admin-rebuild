@@ -13,7 +13,7 @@ describe('#42 封面權限（Codex P2）', () => {
   it('頁面 handler 在上傳／移除前先以 canEditCover 早退', () => {
     const src = readFileSync('src/app/tenant/trips/[id]/page.tsx', 'utf8');
     expect(src).toContain('canManageTripCover(currentTenant?.role)');
-    expect(src).toMatch(/if \(!file \|\| !canEditCover \|\| coverBusy \|\| busy\) return;/);
-    expect(src).toMatch(/if \(!canEditCover \|\| coverBusy \|\| busy\) return;/);
+    expect(src).toMatch(/if \(!file \|\| !canEditCover \|\| coverListedBlocked \|\| coverBusy \|\| busy\) return;/);
+    expect(src).toMatch(/if \(!canEditCover \|\| coverListedBlocked \|\| coverBusy \|\| busy\) return;/);
   });
 });

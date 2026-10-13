@@ -19,6 +19,11 @@ export function canManageTripCover(role: 'OWNER' | 'MANAGER' | 'STAFF' | null | 
   return role === 'OWNER' || role === 'MANAGER';
 }
 
+/** 已上架 Midao 的行程，封面異動須走審核（docs/integration/21 §6），目前尚未開放送審，故不可直接更換／移除。 */
+export function tripCoverBlockedByListing(listing: string | null | undefined): boolean {
+  return listing === 'LISTED';
+}
+
 /** 上傳封面並寫入行程；回傳新的公開網址。上傳或寫入任一步失敗都會 throw，不假裝成功。 */
 export async function uploadTripCover(tripId: string, file: File): Promise<string> {
   const { url } = await uploadImage(file, TRIP_COVER_BUCKET);
