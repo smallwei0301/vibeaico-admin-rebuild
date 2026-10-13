@@ -30,6 +30,9 @@ describe('#914 DataTable sticky right column', () => {
     expect(css).toMatch(/@media \(min-width:\s*1200px\)\s*\{\s*\.btn-group-wrap\s*\{[^}]*flex-nowrap/);
     expect(css).not.toMatch(/@media \(min-width:\s*992px\)\s*\{\s*\.btn-group-wrap/);
     expect(css).toMatch(/\.btn-group\s*\{[^}]*flex-nowrap/);
+    // 換行上限走 token，不寫死 rem
+    expect(css).toMatch(/\.btn-group-wrap\s*\{[^}]*max-width:\s*var\(--btn-group-wrap-max\)/);
+    expect(read('src/styles/tokens.css')).toMatch(/--btn-group-wrap-max:\s*[\d.]+rem/);
   });
 
   it.each(['src/app/tenant/bookings/page.tsx', 'src/app/tenant/tour-orders/page.tsx'])(

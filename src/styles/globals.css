@@ -384,7 +384,7 @@
 
   .btn-group { @apply inline-flex items-center gap-1 flex-nowrap; }
   /* 可換行變體：窄螢幕限寬讓按鈕折行，桌機維持單行 */
-  .btn-group-wrap { @apply flex-wrap; max-width: 7.5rem; }
+  .btn-group-wrap { @apply flex-wrap; max-width: var(--btn-group-wrap-max); }
   @media (min-width: 1200px) { .btn-group-wrap { @apply flex-nowrap; max-width: none; } }
 
   /* ---------- 表單 ---------- */

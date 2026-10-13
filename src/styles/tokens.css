@@ -77,7 +77,8 @@
   --shadow-xl: 0 10px 40px rgba(0, 0, 0, 0.30);
   --shadow-focus: 0 0 0 3px rgba(67, 97, 238, 0.25);
   --shadow-nav-active: inset 3px 0 0 #8ea4ff;
-  --sticky-actions-reserve: 4rem; /* >= 手機版固定操作欄實際寬度 */
+  --sticky-actions-reserve: 4rem; /* 前一欄讓位寬度；實測 <1200px 固定操作欄換行後僅約 3.54rem（56.6px，單顆按鈕寬+左右 padding），4rem 為其上限留裕度。讓位只減少「捲動途中」被蓋住的格數，不影響靜止位置（最左／最右） */
+  --btn-group-wrap-max: 7.5rem; /* <1200px 操作按鈕群最大寬度，超過就換行以收窄固定操作欄 */
   --shadow-sticky-edge: -4px 0 6px -4px var(--neutral-250);
 
   /* ---------- 字體 ---------- */
