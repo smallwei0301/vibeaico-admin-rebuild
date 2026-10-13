@@ -23,6 +23,8 @@ describe('#914 DataTable sticky right column', () => {
     const css = read('src/styles/globals.css');
     expect(css).toMatch(/\.col-sticky-right\s*\{[^}]*position:\s*sticky;[^}]*right:\s*0/);
     expect(css).toMatch(/\.data-table thead th\.col-sticky-right-head\s*\{\s*z-index:\s*3/);
+    expect(css).toMatch(/\.col-sticky-right\s*\{[^}]*box-shadow:\s*var\(--shadow-sticky-edge\)/);
+    expect(read('src/styles/tokens.css')).toMatch(/--shadow-sticky-edge:\s*[^;]+;/);
     expect(css).toContain('.btn-group-wrap');
     expect(css).toMatch(/\.btn-group\s*\{[^}]*flex-nowrap/);
   });

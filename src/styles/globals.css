@@ -294,7 +294,7 @@
   .data-table tbody tr:hover { --row-bg: var(--neutral-150); }
   .data-table tbody tr:last-child td { border-bottom: none; }
   /* 固定右欄（Column.sticky='right'）：背景跟隨 --row-bg 以免 hover/斑馬紋時透出底下內容 */
-  .data-table .col-sticky-right { position: sticky; right: 0; box-shadow: -4px 0 6px -4px var(--neutral-250); }
+  .data-table .col-sticky-right { position: sticky; right: 0; box-shadow: var(--shadow-sticky-edge); }
   .data-table tbody td.col-sticky-right {
     z-index: 1;
     max-width: none;

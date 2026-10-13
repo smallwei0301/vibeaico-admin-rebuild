@@ -77,6 +77,7 @@
   --shadow-xl: 0 10px 40px rgba(0, 0, 0, 0.30);
   --shadow-focus: 0 0 0 3px rgba(67, 97, 238, 0.25);
   --shadow-nav-active: inset 3px 0 0 #8ea4ff;
+  --shadow-sticky-edge: -4px 0 6px -4px var(--neutral-250);
 
   /* ---------- 字體 ---------- */
   --font-family: "Inter", "Noto Sans TC", -apple-system, BlinkMacSystemFont,
