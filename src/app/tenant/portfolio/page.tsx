@@ -37,8 +37,8 @@ type SortMode = 'line' | 'public';
 const COVER_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const COVER_MAX_BYTES = 5 * 1024 * 1024;
 
-/** 只渲染 http(s) 或根相對路徑；舊資料（標題污染值、mock 檔名）退回圖示。 */
-const isRenderableImageUrl = (url: string) => /^(https?:)?\//.test(url);
+/** 只渲染 http(s)、根相對路徑或 blob:（mock 上傳預覽）；舊資料（標題污染值、mock 檔名）退回圖示。 */
+const isRenderableImageUrl = (url: string) => /^((https?:)?\/|blob:)/.test(url);
 
 const EMPTY_DRAFT = {
   id: '',
@@ -452,6 +452,8 @@ export default function PortfolioPage() {
                     <img
                       src={item.imageUrl}
                       alt={t.form.imagePreviewAlt}
+                      loading="lazy"
+                      decoding="async"
                       className="h-full w-full object-cover"
                     />
                   ) : (
