@@ -34,6 +34,8 @@ export const publicShopPage = {
     /** 沒有可報名的團次時的誠實說法——不要顯示成「已額滿」，那是兩件事 */
     departuresEmpty: '目前沒有開放報名的日期，請與店家確認。',
     seatsLeft: (n: number) => `剩 ${n} 位`,
+    /** 團次徽章（固定團次方案）直達預約頁時，加在可見的日期／時間／名額文字前的螢幕閱讀器前綴（不覆蓋可見文字） */
+    departureBookSrPrefix: '預約 ',
     /** 沒有指定出發時間的團次 */
     noStartTime: '時間未定',
     /**

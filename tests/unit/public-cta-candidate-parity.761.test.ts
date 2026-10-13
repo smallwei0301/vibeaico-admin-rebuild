@@ -62,7 +62,7 @@ vi.mock('@/server/supabase', () => ({
           // exact count：模擬 DB 真實總列數（詳情頁以此判定是否讀到底）。
           return { data: all.slice(a, b + 1), count: all.length, error: null };
         }
-        if (table === 'trip_departures' && selectCols.includes('plan_id')) {
+        if (table === 'trip_departures' && selectCols.startsWith('plan_id')) {
           // Issue 760：首頁批次查詢（以行程為範圍）；單一方案的列保持各自的排序（全域排序的子序列）。
           const all = Object.keys(fx.plans).flatMap((id) => planRows(id));
           const [a, b] = range ?? [0, all.length];

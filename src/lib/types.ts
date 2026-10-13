@@ -607,6 +607,9 @@ export type TourOrder = {
   startTime: string;
   customerName: string;
   customerPhone: string;
+  /** 旅客自助下單時留的 LINE ID／Email（選填，舊資料與店家手動建單可能沒有）。 */
+  customerLine?: string;
+  customerEmail?: string;
   partySize: number;
   unitPrice: number;
   totalAmount: number;

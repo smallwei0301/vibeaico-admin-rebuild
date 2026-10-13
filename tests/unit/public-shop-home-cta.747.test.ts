@@ -63,7 +63,7 @@ vi.mock('@/server/supabase', () => ({
           const [a, b] = range ?? [0, p.rows.length];
           return { data: p.rows.slice(a, b + 1).map((r, i) => ({ id: `d-${a + i}`, departs_on: '2098-01-01', start_time: null, ...r })), error: null };
         }
-        if (table === 'trip_departures' && selectCols.includes('plan_id')) {
+        if (table === 'trip_departures' && selectCols.startsWith('plan_id')) {
           // Issue 760：首頁批次查詢（以行程為範圍、不帶 plan_id eq）。模擬 DB 的全域排序（departs_on、start_time、id）與 range。
           const planIds = Object.keys(fx.plans).filter((id) => (inFilters.trip_id ?? []).includes(fx.plans[id].trip ?? 'trip-1')
             && (inFilters.plan_id ? inFilters.plan_id.includes(id) : true));

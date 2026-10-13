@@ -34,6 +34,8 @@ import {
 import { APP_URL } from '@/config/env';
 import { MODE_PRESETS, type BusinessType } from '@/config/modes';
 import { keywordRepliesPage } from '@/i18n/zh-TW/pages/keyword-replies';
+import { isDepartureBookableOnPage } from '@/lib/public-booking-price';
+import { loadPublicBookingPlan } from './public-tour-booking';
 
 /** webhook 端已查好的店家列（route.ts select id, shop_code, name） */
 export type WebhookTenant = {
@@ -810,7 +812,7 @@ async function replyTrips(ctx: BuiltinCtx): Promise<boolean> {
  *    一個店家還沒打算開賣的團。先過濾再 limit，才不會被草稿團次吃掉名額。
  * ⚠️ TOUR_MODULE 閘門同樣在**任何 tour-domain 查詢之前**，理由見 `replyTrips()`。
  */
-async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
+export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
   if (businessTypeOf(ctx.tenant) !== 'GUIDE') return false;
   if (!(await isFeatureActive(ctx.tenant.id, 'TOUR_MODULE'))) return false;
 
@@ -833,7 +835,7 @@ async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
 
   const { data: departures, error } = await ctx.admin
     .from('trip_departures')
-    .select('trip_id, plan_id, departs_on, start_time, capacity, seats_booked')
+    .select('id, trip_id, plan_id, departs_on, start_time, capacity, seats_booked')
     .eq('tenant_id', ctx.tenant.id)
     .eq('status', 'OPEN')
     .in('trip_id', [...titleById.keys()])
@@ -851,15 +853,32 @@ async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
   // 不讓它擋掉整份團次清單。
   const planIds = [...new Set(departures.map((d: any) => d.plan_id).filter(Boolean))];
   const planNameById = new Map<string, string>();
+  const fixedPlanIds = new Set<string>();
   if (planIds.length) {
     const { data: plans, error: planError } = await ctx.admin
       .from('trip_plans')
-      .select('id, name')
+      .select('id, name, sales_mode, active, min_party')
       .eq('tenant_id', ctx.tenant.id)
       .in('id', planIds);
     if (planError) console.error('[line] replyDepartures 查詢 trip_plans 失敗', planError);
-    for (const p of (plans ?? []) as any[]) planNameById.set(p.id, p.name);
+    for (const p of (plans ?? []) as any[]) {
+      planNameById.set(p.id, p.name);
+      if (p.active === true && p.sales_mode === 'FIXED_DEPARTURE') fixedPlanIds.add(p.id);
+    }
   }
+
+  // 直達預約連結只給「目的預約頁真的可預選且可送出」的團次：對每個出現的 FIXED_DEPARTURE 方案呼叫預約頁同一支
+  // loadPublicBookingPlan（至多 SERVICE_LIST_LIMIT 個方案的有界查詢），再用預約頁共用的 isDepartureBookableOnPage 判定。
+  // 載入失敗或回傳 null → 該方案不附連結（fail closed），不影響團次清單本身。
+  const bookingPlanById = new Map<string, Awaited<ReturnType<typeof loadPublicBookingPlan>>>();
+  const linkPlanIds = [...new Set(departures.map((d: any) => d.plan_id as string).filter((id: string) => fixedPlanIds.has(id)))];
+  await Promise.all(linkPlanIds.map(async (planId) => {
+    try {
+      bookingPlanById.set(planId, await loadPublicBookingPlan(ctx.tenant.shop_code, planId));
+    } catch (planLoadError) {
+      console.error('[line] replyDepartures 載入預約頁方案失敗', planLoadError);
+    }
+  }));
 
   const lines = departures.map((d: any) => {
     // capacity - seats_booked 可能因為並發而暫時為負；夾到 0，不顯示「剩 -1 位」
@@ -868,7 +887,12 @@ async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
     const planName = planNameById.get(d.plan_id);
     const plan = planName ? `（${planName}）` : '';
     const seats = left > 0 ? MSG.departureSeatsLeft(left) : MSG.departureFull;
-    return `・${d.departs_on}${time} ${titleById.get(d.trip_id) ?? ''}${plan}　${seats}`;
+    const line = `・${d.departs_on}${time} ${titleById.get(d.trip_id) ?? ''}${plan}　${seats}`;
+    // 直達預約：只給預約頁自己判定可預選且可送出的團次（isDepartureBookableOnPage）；其餘維持無連結。
+    const bookingPlan = bookingPlanById.get(d.plan_id);
+    if (!d.id || !fixedPlanIds.has(d.plan_id) || !bookingPlan || !isDepartureBookableOnPage(bookingPlan, String(d.id))) return line;
+    const deepLink = `${buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code)}/plans/${encodeURIComponent(d.plan_id)}/book?departure=${encodeURIComponent(d.id)}`;
+    return `${line}\n${deepLink}`;
   });
   const shopUrl = buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code);
   return replyText(ctx, `${MSG.departureTitle}\n${lines.join('\n')}\n\n${shopUrl}`);

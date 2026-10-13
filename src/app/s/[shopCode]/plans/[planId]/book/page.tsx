@@ -10,9 +10,13 @@ import { notFound } from 'next/navigation';
 import { loadPublicBookingPlan } from '@/server/public-tour-booking';
 import { publicTourBookingPage as t } from '@/i18n/zh-TW/pages/public-tour-booking';
 import { BookingForm } from './BookingForm';
+import { isDepartureBookableOnPage } from '@/lib/public-booking-price';
 
 type Params = {
   params: Promise<{ shopCode: string; planId: string }>;
+};
+type PageProps = Params & {
+  searchParams: Promise<{ departure?: string | string[] }>;
 };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
@@ -33,14 +37,19 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   }
 }
 
-export default async function PublicTourBookingPage({ params }: Params) {
+export default async function PublicTourBookingPage({ params, searchParams }: PageProps) {
   const { shopCode, planId } = await params;
+  const { departure } = await searchParams;
   const plan = await loadPublicBookingPlan(shopCode, planId);
   if (!plan) notFound();
 
+  // 深連結預選團次：只接受 isDepartureBookableOnPage 判定可預選且可送出（含價格可確定）的 id，其餘靜默忽略。
+  const requested = Array.isArray(departure) ? departure[0] : departure;
+  const initialDepartureId = requested && isDepartureBookableOnPage(plan, requested) ? requested : '';
+
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-6">
-      <BookingForm shopCode={shopCode} plan={plan} />
+      <BookingForm shopCode={shopCode} plan={plan} initialDepartureId={initialDepartureId} />
     </main>
   );
 }

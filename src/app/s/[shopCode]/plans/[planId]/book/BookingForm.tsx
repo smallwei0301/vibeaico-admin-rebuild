@@ -1,5 +1,6 @@
 'use client';
 
+import { pickRedirectContact } from '@/lib/public-contact';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -7,7 +8,7 @@ import { ApiError, request } from '@/lib/api';
 import { publicTourBookingPage as t } from '@/i18n/zh-TW/pages/public-tour-booking';
 import { formatCurrency } from '@/lib/utils';
 import { priceChangedQuoteFromError, isPriceChangedError, type PriceChangedQuote } from '@/lib/public-price-change';
-import { canSubmitBooking, resolveBookingTotal, seasonalHeadlineKind } from '@/lib/public-booking-price';
+import { canSubmitBooking, isDepartureBookableOnPage, resolveBookingTotal, seasonalHeadlineKind } from '@/lib/public-booking-price';
 import type { PublicBookingPlan } from '@/server/public-tour-booking';
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
@@ -36,11 +37,13 @@ function messageForError(e: unknown): string {
 }
 
 export function BookingForm({
-  shopCode, plan,
-}: { shopCode: string; plan: PublicBookingPlan }) {
+  shopCode, plan, initialDepartureId = '',
+}: { shopCode: string; plan: PublicBookingPlan; initialDepartureId?: string }) {
   const router = useRouter();
 
-  const [departureId, setDepartureId] = React.useState('');
+  const [departureId, setDepartureId] = React.useState(
+    isDepartureBookableOnPage(plan, initialDepartureId) ? initialDepartureId : '',
+  );
   const [partySize, setPartySize] = React.useState(plan.minParty);
   const [contactName, setContactName] = React.useState('');
   const [contactPhone, setContactPhone] = React.useState('');
@@ -81,9 +84,9 @@ export function BookingForm({
           note: note.trim() || undefined,
         }),
       });
-      const contact = (contactPhone || contactLine || contactEmail).trim();
-      router.push(
-        `/s/${shopCode}/requests/${res.orderId}?contact=${encodeURIComponent(contact)}`,
+      const contact = pickRedirectContact(contactPhone, contactLine, contactEmail);
+      router.replace(
+        `/s/${shopCode}/requests/${res.orderId}?contact=${encodeURIComponent(contact)}&created=1`,
       );
     } catch (err) {
       const quote = priceChangedQuoteFromError(err);

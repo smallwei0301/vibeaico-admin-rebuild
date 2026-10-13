@@ -85,6 +85,11 @@ export const publicTourRequestPage = {
     pendingLockedDescription: '店家會透過您填寫的聯絡方式與您確認付款方式與期限；在完成付款前，請留意店家通知。',
     pendingLockedPaymentDescription: '目前訂單仍待確認，請留意店家後續通知；付款進度請以下方付款狀態為準。',
     confirmedPaymentDescription: '導遊已確認此申請，付款進度請以下方付款狀態為準。',
+    /** created=1 才顯示。REQUEST 沒鎖位、也沒付款，措辭不得出現「預約成功」。 */
+    createdRequestTitle: '申請已送出',
+    createdRequestDescription: '店家已收到您的申請，正等待導遊確認；確認前不會鎖位，也不需要付款。請留意您填寫的聯絡方式。',
+    createdBookingTitle: '訂單已送出',
+    createdBookingDescription: '店家已收到您的預約並為您保留名額；付款方式與期限會由店家透過您填寫的聯絡方式通知，請以下方付款狀態為準。',
     paymentTitle: '付款狀態',
     paymentState: {
       UNPAID: '尚未付款',

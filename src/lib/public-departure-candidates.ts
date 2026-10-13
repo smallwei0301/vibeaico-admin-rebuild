@@ -29,6 +29,25 @@ export function bookingCandidateSeatsLeft(
   return capacity - seatsBooked;
 }
 
+/**
+ * 預約頁／申請頁候選團次的唯一選取規則（純函式）：rows 已依 departs_on、start_time、id 排序，
+ * 逐列套用 bookingCandidateSeatsLeft（略過已開始、客滿），湊滿 MAX_BOOKING_CANDIDATE_DEPARTURES 個即停。
+ * loadBookingCandidateRows（預約頁載入器）與所有「直達預約連結」的產生端共用，不得各寫各的。
+ */
+export function selectBookingCandidates<R extends { departs_on?: unknown; start_time?: unknown; capacity?: unknown; seats_booked?: unknown }>(
+  rows: Iterable<R>,
+  now: { today: string; hm: string },
+): Array<{ row: R; seatsLeft: number }> {
+  const out: Array<{ row: R; seatsLeft: number }> = [];
+  for (const row of rows) {
+    const seatsLeft = bookingCandidateSeatsLeft(row, now);
+    if (seatsLeft === null) continue;
+    out.push({ row, seatsLeft });
+    if (out.length >= MAX_BOOKING_CANDIDATE_DEPARTURES) break;
+  }
+  return out;
+}
+
 /** 單一候選團次是否「可訂」：剩餘名額 >= 方案最低人數。 */
 export function candidateIsBookable(seatsLeft: number, minParty: unknown): boolean {
   return seatsLeft >= normalizeMinParty(minParty);
