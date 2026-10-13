@@ -295,10 +295,10 @@ export const lineSettingsPage = {
     fallbackTitle: '關閉時，顧客打閒聊文字的回應：',
     fallbackHint: '回提示文字「請點選下方選單使用 👇」（避免 Bot 看起來像死掉）',
     fallbackSilent: '完全靜默（店家在 LINE OA Manager 自己手動回覆）',
-    enabledToast: 'Flex 主選單已啟用',
-    disabledToast: 'Flex 主選單已關閉（顧客只能透過 Rich Menu 操作）',
-    fallbackHintToast: '已設為純文字提示模式',
-    fallbackSilentToast: '已設為完全靜默模式',
+    enabledToast: '已切換為啟用 Flex 主選單（尚未儲存，請按下方「儲存主選單樣式」）',
+    disabledToast: '已切換為關閉 Flex 主選單（尚未儲存，請按下方「儲存主選單樣式」才會生效）',
+    fallbackHintToast: '已選擇純文字提示模式（尚未儲存，請按下方「儲存主選單樣式」）',
+    fallbackSilentToast: '已選擇完全靜默模式（尚未儲存，請按下方「儲存主選單樣式」）',
 
     campaignKeyword: '顧客打「活動」等文字時自動回覆活動列表',
     campaignKeywordOn:
@@ -307,9 +307,9 @@ export const lineSettingsPage = {
       '關閉：這類文字系統完全不回應——適合已在 LINE OA Manager 自設「本月活動」等關鍵字回覆的店家（避免兩邊同時回覆）。Rich Menu「查看活動」按鈕不受影響。',
     campaignKeywordWarning:
       '⚠️ 關閉前請先確認已在 LINE OA Manager 設好對應的關鍵字自動回覆， 否則顧客打「活動」相關文字會 完全沒有任何回應 。',
-    campaignKeywordOnToast: '已開啟活動關鍵字自動回覆',
+    campaignKeywordOnToast: '已切換為開啟活動關鍵字自動回覆（尚未儲存，請按下方「儲存主選單樣式」）',
     campaignKeywordOffToast:
-      '已關閉活動關鍵字自動回覆（改由您在 LINE OA Manager 自設的回覆接手）',
+      '已切換為關閉活動關鍵字自動回覆（尚未儲存，請按下方「儲存主選單樣式」才會生效）',
 
     headerColor: 'Header 顏色',
     headerTitle: 'Header 標題',
