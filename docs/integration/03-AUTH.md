@@ -164,6 +164,9 @@ const bodySchema = z.object({
   tenantName: z.string().min(1, '請輸入店家名稱'),
   shopCode: z.string().regex(/^[a-z0-9-]+$/, '僅限小寫英文、數字、連字號'),
   businessType: z.enum(['LOCAL_SHOP', 'GUIDE', 'CLINIC']).optional(),   // 預設 LOCAL_SHOP，寫入 tenants.business_type
+  // 店家電話（選填）：省略或空字串＝未提供；有值則 normalizeTenantPhone() 後須剛好 TENANT_PHONE_LENGTH(10) 碼，否則 400；
+  // 存正規化純數字（src/lib/tenant-phone.ts，與註冊頁共用）
+  phone: z.string().max(40).optional().transform(/* 空字串則 undefined；位數不符 addIssue；回傳 digits */),
 });
 
 function isDuplicateEmailError(error: unknown): boolean {
@@ -201,7 +204,7 @@ export const POST = handle(async (req) => {
     ownerLinked = true;
     const s = DEFAULT_TENANT_SETTINGS(b.shopCode, b.tenantName);
     const { error: serr } = await admin.from('tenant_settings').insert({
-      tenant_id: t.id, basic: s.basic, business: s.business, notify: s.notify,
+      tenant_id: t.id, basic: { ...s.basic, tenantPhone: b.phone ?? s.basic.tenantPhone }, business: s.business, notify: s.notify,
       privacy: s.privacy, points: s.points, line: { ...s.line, channelSecret: undefined, channelAccessToken: undefined },
     });
     if (serr) throw serr;

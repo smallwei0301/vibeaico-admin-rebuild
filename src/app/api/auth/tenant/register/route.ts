@@ -5,6 +5,7 @@ import { consumeCode } from '@/server/verify-code';
 import { DEFAULT_TENANT_SETTINGS } from '@/config/tenant-settings';
 import { BUSINESS_TYPES, MODE_PRESETS } from '@/config/modes';
 import { SHOP_CODE_PATTERN, SHOP_CODE_MESSAGE } from '@/lib/shop-code';
+import { normalizeTenantPhone, TENANT_PHONE_LENGTH } from '@/lib/tenant-phone';
 
 const bodySchema = z.object({
   email: z.string().email(),
@@ -15,8 +16,17 @@ const bodySchema = z.object({
   shopCode: z.string().regex(SHOP_CODE_PATTERN, SHOP_CODE_MESSAGE),
   // 業態：省略時寫入 LOCAL_SHOP（與 DB 預設一致）；非法值由 zod 擋成 400。
   businessType: z.enum(BUSINESS_TYPES).optional(),
-  // 店家電話：選填（向下相容）；只允許數字、+、-、空白，寫入 tenant_settings.basic.tenantPhone。
-  phone: z.string().trim().max(20).regex(/^[0-9+\- ]*$/, '電話格式不正確').optional(),
+  // 店家電話：選填（向下相容）。與註冊頁共用 normalizeTenantPhone：省略或空字串視為未提供（存預設 ''）；
+  // 有值則去除非數字後必須剛好 TENANT_PHONE_LENGTH 碼，並存正規化後的純數字至 tenant_settings.basic.tenantPhone。
+  phone: z.string().max(40).optional().transform((v, ctx) => {
+    if (v === undefined || v === '') return undefined;   // 省略或空字串＝未提供；僅空白／符號則走下方位數檢查 → 400
+    const digits = normalizeTenantPhone(v);
+    if (digits.length !== TENANT_PHONE_LENGTH) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `請輸入 ${TENANT_PHONE_LENGTH} 位數電話號碼` });
+      return z.NEVER;
+    }
+    return digits;
+  }),
 });
 
 function isDuplicateEmailError(error: unknown): boolean {

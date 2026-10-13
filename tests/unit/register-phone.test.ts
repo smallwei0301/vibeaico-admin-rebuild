@@ -45,7 +45,7 @@ describe('register 店家電話寫入 basic.tenantPhone', () => {
   it('帶 phone → tenant_settings.basic.tenantPhone 持久化', async () => {
     const res = await POST(req({ ...base, phone: ' 0912-345 678 ' }), {});
     expect(res.status).toBe(200);
-    expect(mocks.settingsInsert.mock.calls[0][0].basic.tenantPhone).toBe('0912-345 678');
+    expect(mocks.settingsInsert.mock.calls[0][0].basic.tenantPhone).toBe('0912345678');
   });
 
   it('省略 phone → tenantPhone 為預設空字串', async () => {
@@ -54,12 +54,25 @@ describe('register 店家電話寫入 basic.tenantPhone', () => {
     expect(mocks.settingsInsert.mock.calls[0][0].basic.tenantPhone).toBe('');
   });
 
-  it('非法 phone → 400 且不建帳號', async () => {
-    for (const phone of ['abc123', '1'.repeat(21)]) {
+  it('非法 phone（符號/空白/位數不符）→ 400 且不建帳號', async () => {
+    for (const phone of ['abc123', '-', '+', '   ', '0912', '091234567890', '1'.repeat(41)]) {
       const res = await POST(req({ ...base, phone }), {});
       expect(res.status).toBe(400);
     }
     expect(mocks.createUser).not.toHaveBeenCalled();
+    expect(mocks.settingsInsert).not.toHaveBeenCalled();
+  });
+
+  it('直接 POST "(02)2345-6789" → 存正規化 0223456789', async () => {
+    const res = await POST(req({ ...base, phone: '(02)2345-6789' }), {});
+    expect(res.status).toBe(200);
+    expect(mocks.settingsInsert.mock.calls[0][0].basic.tenantPhone).toBe('0223456789');
+  });
+
+  it('phone "" → 視為未提供，存 \'\'', async () => {
+    const res = await POST(req({ ...base, phone: '' }), {});
+    expect(res.status).toBe(200);
+    expect(mocks.settingsInsert.mock.calls[0][0].basic.tenantPhone).toBe('');
   });
 });
 
