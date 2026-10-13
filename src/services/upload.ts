@@ -26,10 +26,20 @@ export interface RemoveWelcomeCardImageResult {
   removed: boolean;
 }
 
+/**
+ * mock 模式的上傳結果：優先用 blob: URL，讓頁面能真的顯示剛選的圖片。
+ * blob URL 只在當前頁面 session 有效，對 in-memory mock store 足夠；
+ * 沒有 URL.createObjectURL（例如 node 測試環境）時退回 file.name。
+ */
+const mockPreviewUrl = (file: File): string =>
+  typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
+    ? URL.createObjectURL(file)
+    : file.name;
+
 /** Upload an image through the tenant-scoped server endpoint. */
 export const uploadImage = (file: File, bucket: UploadBucket) =>
   adapt<UploadResult>(
-    () => ({ url: file.name }),
+    () => ({ url: mockPreviewUrl(file) }),
     async () => {
       const form = new FormData();
       form.append('file', file);
