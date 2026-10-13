@@ -68,7 +68,7 @@ describe('POST body schema：money/mode 規則存在於 zod 層', () => {
   });
 
   it('performanceMode 限定三個值，且 SPECIFIC_STAFF 時 refine 要求 performanceStaffId', () => {
-    expect(postRoute).toMatch(/z\.enum\(\['INHERIT', 'SPECIFIC_STAFF', 'NONE'\]\)/);
+    expect(postRoute).toMatch(/z\.enum\(\['INHERIT', 'SPECIFIC_STAFF', 'NONE'\](?:,\s*\{[\s\S]*?\}\s*)?\)/);
     expect(postRoute).toMatch(/performanceMode !== 'SPECIFIC_STAFF' \|\| !!v\.performanceStaffId/);
   });
 
