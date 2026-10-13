@@ -7337,40 +7337,6 @@
         "count": 1
       },
       {
-        "id": "20261013-terra-build-7-portfolio-upload",
-        "role": "build",
-        "requestedModel": "terra",
-        "inputTokens": null,
-        "outputTokens": null,
-        "cachedTokens": null,
-        "contextClass": "compact",
-        "accepted": true,
-        "actualModel": "unknown",
-        "issue": 7,
-        "count": 1,
-        "startedAt": "2026-10-13T06:12:52Z",
-        "completedAt": "2026-10-13T06:20:22Z",
-        "note": "Sonnet builder subagent：作品集主圖改為真實上傳至 portfolio-images，移除以標題充當 imageUrl 的 fallback。 CAPTURED_AT=2026-10-13T07:16:40Z; 事後依 commit 時間戳補記（非即時埋點）。",
-        "evidenceRef": "commit 137f46b7"
-      },
-      {
-        "id": "20261013-terra-build-7-manager-gate",
-        "role": "build",
-        "requestedModel": "terra",
-        "inputTokens": null,
-        "outputTokens": null,
-        "cachedTokens": null,
-        "contextClass": "compact",
-        "accepted": true,
-        "actualModel": "unknown",
-        "issue": 7,
-        "count": 1,
-        "startedAt": "2026-10-13T06:31:28Z",
-        "completedAt": "2026-10-13T06:36:03Z",
-        "note": "Sonnet build follow-up：主圖上傳限店主／管理者（OWNER／MANAGER），STAFF 停用並顯示說明。 CAPTURED_AT=2026-10-13T07:16:40Z; 事後依 commit 時間戳補記（非即時埋點）。",
-        "evidenceRef": "commit 15646fa0"
-      },
-      {
         "id": "20261013-luna-scout-7-metrics-bind",
         "role": "scout",
         "requestedModel": "luna",
@@ -7385,6 +7351,23 @@
         "startedAt": "2026-10-13T07:15:50Z",
         "completedAt": "2026-10-13T07:16:40Z",
         "note": "Luna metrics capture binding issue/7 to the Run：補 sources、delivery.issuesStarted 30→31、本列三筆 modelUsage.tasks 與 flow.lunaTasks/lunaAccepted +1。Self-reported runtime claude-haiku-5-5 (requested claude-haiku-4-5)，actual 未經平台驗證。"
+      },
+      {
+        "id": "20261013-luna-scout-7-retro-removal",
+        "role": "scout",
+        "requestedModel": "luna",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModel": "unknown",
+        "startedAt": "2026-10-13T07:39:40Z",
+        "completedAt": "2026-10-13T07:39:40Z",
+        "note": "Luna scout（PR #863 Codex P2 follow-up）：移除先前事後補記的 issue/7 build 兩列（137f46b7、15646fa0），不計入觀測用量；flow.lunaTasks/lunaAccepted +1。自報 runtime claude-haiku-5-5，actual 未經平台驗證。",
+        "issue": 7,
+        "count": 1,
+        "evidenceRef": "PR #863 Codex P2"
       }
     ],
     "fullContextReplays": 0,
@@ -7418,8 +7401,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 99,
-    "lunaAccepted": 90,
+    "lunaTasks": 100,
+    "lunaAccepted": 91,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -7631,7 +7614,8 @@
     "2026-10-06 PR #791 Codex P2：completionTruth 的 SOURCE_VERIFIED／MERGED_TO_MAIN／AUTO_VERCEL_DEPLOYED claim 狀態詞彙正規化為 score-run-current 接受的 success／merged／ready（原值為型別名，scorer 會略過該階段）；只改狀態詞彙，未改驗證結果或證據。checkedAt 更新為最新 claim 重驗時間。",
     "2026-10-06 PR #791 Codex P2：ISSUE_CLOSED evidenceRef 改為 scorer 可解析的 issue URL；production-stage claim subject 改為單一 canonical issue#N（複合 subject 拆成每個 Issue 一筆，原 subject 保留在 evidenceRef）；補 #781 ISSUE_CLOSED（close-guard capture issuecomment-6007682712）與 issuesClosed 10、#790 main push CI。只改格式與補記已觀測事件，未改驗證結果。",
     "2026-10-07 session_018ZuhUGeBPHKDk3uZJ92KDj scout層次的事後補記任務未即時埋點（11筆 modelUsage.tasks 已移除）；依CLAUDE.md規則「未埋點的量維持null，不回填推算值」復原至origin/main。相關執行紀錄見branch日誌與PR審查。",
-    "Capture path correction: the first temporary Run edit was mistakenly made in /workspace/vibeaico-admin-rebuild on clean branch work; both files were restored to HEAD before this authorized write. Final capture is only in /workspace/goal46, with no commit or push."
+    "Capture path correction: the first temporary Run edit was mistakenly made in /workspace/vibeaico-admin-rebuild on clean branch work; both files were restored to HEAD before this authorized write. Final capture is only in /workspace/goal46, with no commit or push.",
+    "2026-10-13 非計分紀錄：issue/7 的兩筆 build（commit 137f46b7 06:12:52Z→06:20:22Z、commit 15646fa0 06:31:28Z→06:36:03Z）為事後依 commit 時間戳補記，非即時埋點，已自 modelUsage.tasks 移除，依 CLAUDE.md「未埋點的量維持 null，不回填推算值」不計入觀測用量。兩次 commit 的 Sonnet 施工事實仍以 git 歷史與 PR #863 本文揭露為準。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
