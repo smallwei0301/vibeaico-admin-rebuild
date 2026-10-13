@@ -136,7 +136,10 @@ export const campaignsPage = {
     descriptionMax: 500,
 
     image: '活動圖片',
-    imageUploadHint: '點擊上傳圖片（最大 2MB）',
+    imageUploadHint: '選擇圖片後會立即上傳（支援 JPG、PNG、WebP，最大 5MB）',
+    imageUploading: '圖片上傳中…',
+    imagePreviewAlt: '活動圖片預覽',
+    imageStaffReadonly: '僅店主或管理者可上傳活動圖片',
     imageRemove: '移除圖片',
 
     sectionReward: '推播與獎勵設定',
@@ -285,7 +288,10 @@ export const campaignsPage = {
     pauseFailed: '暫停失敗',
     resumeFailed: '恢復失敗',
     endFailed: '結束失敗',
-    imageTooLarge: '圖片大小不可超過 2MB',
+    imageTooLarge: '圖片大小不可超過 5MB',
+    imageTypeInvalid: '僅支援 JPG、PNG、WebP 格式',
+    imageUploaded: '圖片已上傳',
+    imageUploadFailedPrefix: '圖片上傳失敗: ',
     loadCampaignsFailed: '載入活動失敗:',
     loadDetailFailed: '載入活動詳情失敗',
     loadDetailFailedPrefix: '載入活動詳情失敗:',

@@ -23,6 +23,8 @@ import {
   sendMarketingPush, updateMarketingPush,
 } from '@/services/marketing';
 import type { MarketingPushFormPayload } from '@/services/marketing';
+import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
+import { canManageMarketing, uploadMessageImage, validateMessageImageFile } from '@/lib/message-image';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { marketingPage as t } from '@/i18n/zh-TW/pages/marketing';
@@ -400,13 +402,15 @@ function PushFormModal({
 }) {
   const toast = useToast();
   const isEdit = !!push;
+  const canUploadImage = canManageMarketing(useCurrentTenant().role);
 
   const [title, setTitle] = React.useState('');
   const [content, setContent] = React.useState('');
   const [targetType, setTargetType] = React.useState<PushTargetType>('ALL');
   const [targetValue, setTargetValue] = React.useState('');
   const [customTargets, setCustomTargets] = React.useState('');
-  const [imageName, setImageName] = React.useState('');
+  const [uploading, setUploading] = React.useState(false);
+  const [imageError, setImageError] = React.useState('');
   const [imageUrl, setImageUrl] = React.useState('');
   const [scheduledAt, setScheduledAt] = React.useState('');
   const [note, setNote] = React.useState('');
@@ -421,21 +425,39 @@ function PushFormModal({
     setTargetType(push?.targetType ?? 'ALL');
     setTargetValue(push?.targetType === 'MEMBERSHIP_LEVEL' ? push.targetValue : '');
     setCustomTargets(push?.targetType === 'CUSTOM' ? push.targetValue : '');
-    setImageName('');
+    setUploading(false);
+    setImageError('');
     setImageUrl(push?.imageUrl ?? '');
     setScheduledAt(push?.scheduledAt ? push.scheduledAt.slice(0, 16) : '');
     setNote(push?.note ?? '');
   }, [open, push]);
 
-  const pickImage = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      e.target.value = '';
-      toast.show(t.messages.imageTooLarge, 'warning');
+  const pickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const file = input.files?.[0];
+    if (!file || !canUploadImage || uploading || saving) return;
+    const invalid = validateMessageImageFile(file);
+    if (invalid) {
+      input.value = '';
+      const msg = invalid === 'size' ? t.messages.imageTooLarge : t.messages.imageTypeInvalid;
+      setImageError(msg);
+      toast.show(msg, 'warning');
       return;
     }
-    setImageName(file.name);
+    setImageError('');
+    setUploading(true);
+    try {
+      const url = await uploadMessageImage(file);
+      setImageUrl(url);
+      toast.show(t.messages.imageUploaded, 'success');
+    } catch (err) {
+      const msg = `${t.messages.imageUploadFailedPrefix}${err instanceof Error ? err.message : t.messages.unknownError}`;
+      setImageError(msg);
+      toast.show(msg, 'danger');
+    } finally {
+      input.value = '';
+      setUploading(false);
+    }
   };
 
   const validate = (): string => {
@@ -448,6 +470,7 @@ function PushFormModal({
   };
 
   const submit = async () => {
+    if (uploading) return;
     const err = validate();
     setError(err);
     if (err) { toast.show(err, 'warning'); return; }
@@ -490,7 +513,7 @@ function PushFormModal({
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>{common.cancel}</Button>
-          <Button loading={saving} loadingText={common.saving} onClick={() => void submit()}>
+          <Button loading={saving} loadingText={common.saving} disabled={uploading} onClick={() => void submit()}>
             {common.save}
           </Button>
         </>
@@ -557,15 +580,24 @@ function PushFormModal({
 
       <FormGroup>
         <Label htmlFor="pushImageInput">{t.form.image}</Label>
-        <Input id="pushImageInput" type="file" accept="image/*" onChange={pickImage} />
+        <Input
+          id="pushImageInput" type="file" accept="image/jpeg,image/png,image/webp"
+          disabled={!canUploadImage || uploading || saving} onChange={pickImage}
+        />
         <div className="flex items-center justify-between">
-          <FormText>{t.form.imageUploadHint}</FormText>
-          {imageName ? (
-            <Button variant="ghost" size="sm" onClick={() => setImageName('')}>
+          <FormText>
+            {!canUploadImage ? t.form.imageStaffReadonly : uploading ? t.form.imageUploading : t.form.imageUploadHint}
+          </FormText>
+          {imageUrl && canUploadImage ? (
+            <Button variant="ghost" size="sm" disabled={uploading || saving} onClick={() => setImageUrl('')}>
               {t.form.imageRemove}
             </Button>
           ) : null}
         </div>
+        {imageError ? <FormText className="text-danger">{imageError}</FormText> : null}
+        {imageUrl ? (
+          <img src={imageUrl} alt={t.form.imagePreviewAlt} className="mt-2 max-h-40 rounded-md object-contain" />
+        ) : null}
         <FormText>{t.form.imageFormatHint}</FormText>
       </FormGroup>
 
@@ -574,6 +606,7 @@ function PushFormModal({
         <Input
           id="pushImageUrl" type="url" value={imageUrl}
           placeholder={t.form.imageUrlPlaceholder}
+          disabled={uploading}
           onChange={(e) => setImageUrl(e.target.value)}
         />
         <FormText>{t.form.imageUrlHelp}</FormText>
