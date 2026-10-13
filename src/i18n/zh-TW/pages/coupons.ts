@@ -133,7 +133,7 @@ export const couponsPage = {
       '開啟後這張票券不會出現在公開頁與 LINE 領券清單、顧客無法自行領取，只能由您在票券列表按「發放」指定顧客發送（適合失誤補償券、熟客專屬券）',
     description: '使用說明',
     image: '票券圖片',
-    imageUpload: '點擊上傳圖片（最大 2MB）',
+    imageUnavailable: '票券圖片尚未開放',
     imageRemove: '移除圖片',
     imageTooLarge: '圖片大小不可超過 2MB',
     endBeforeStart: '使用期限結束必須晚於開始時間',

@@ -833,15 +833,8 @@ function CouponFormModal({
 
       <FormGroup>
         <Label htmlFor="couponImageInput">{t.form.image}</Label>
-        <div className="flex items-center gap-2">
-          <Input id="couponImageInput" type="file" accept="image/*" />
-          {draft.imageUrl ? (
-            <Button variant="outline" size="sm" onClick={() => patch({ imageUrl: '' })}>
-              {t.form.imageRemove}
-            </Button>
-          ) : null}
-        </div>
-        <FormText>{t.form.imageUpload}</FormText>
+        <Input id="couponImageInput" type="file" accept="image/*" disabled />
+        <FormText>{t.form.imageUnavailable}</FormText>
       </FormGroup>
 
       {errors.map((err) => <FormError key={err}>{err}</FormError>)}
