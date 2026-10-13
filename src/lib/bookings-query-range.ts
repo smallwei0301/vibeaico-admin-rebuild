@@ -37,10 +37,23 @@ function zonedDayStartMs(zone: string, ymd: string): number {
   return lo * 60_000;
 }
 
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** 形狀為 YYYY-MM-DD 且為真實存在的日曆日期（年月日往返一致；2026-02-30、2026-13-01 無效）。 */
+export function isValidYmd(s: string): boolean {
+  if (!YMD_RE.test(s)) return false;
+  const [y, m, d] = s.split('-').map(Number);
+  if (m < 1 || m > 12 || d < 1) return false;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  // setUTCFullYear 避免 0–99 年被當成 1900+；此處以往返比對月日即可
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
 /** 店家時區某個 YYYY-MM-DD 當天第一個有效瞬間 ~ 當天最後一毫秒，轉成 UTC ISO（含當天，#933）。 */
 export function zonedDayRange(
   ymd: string, timeZone: string = PUBLIC_DEFAULT_TIME_ZONE,
 ): { from: string; to: string } {
+  if (!isValidYmd(ymd)) throw new RangeError(`無效的日期：${ymd}`);
   const zone = resolvePublicTimeZone(timeZone);
   const [y, m, d] = ymd.split('-').map(Number);
   const next = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
@@ -50,7 +63,10 @@ export function zonedDayRange(
   };
 }
 
-const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** 值是否為純日期形狀 YYYY-MM-DD（不保證存在）。 */
+export function isDateOnlyShape(value: string): boolean {
+  return YMD_RE.test(value);
+}
 
 /**
  * 預約列表 from/to 篩選值轉成 UTC ISO（#933）：純日期 YYYY-MM-DD 依店家時區日界線，
@@ -60,6 +76,7 @@ export function bookingFilterBound(
   value: string, edge: 'from' | 'to', timeZone: string = PUBLIC_DEFAULT_TIME_ZONE,
 ): string {
   if (!YMD_RE.test(value)) return value;
+  // 形狀為純日期但不存在（如 2026-02-30）：zonedDayRange 會 throw RangeError，不靜默換成別的日期。
   return zonedDayRange(value, timeZone)[edge];
 }
 

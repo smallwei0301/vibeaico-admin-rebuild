@@ -19,7 +19,7 @@ vi.mock('@/server/owner-notify', () => ({ notifyOwnerNewBooking: vi.fn() }));
 import { GET as listRoute } from '../../src/app/api/bookings/route';
 import { POST as markPaid } from '../../src/app/api/bookings/[id]/mark-paid-offline/route';
 import { POST as applyCoupon } from '../../src/app/api/bookings/[id]/apply-coupon/route';
-import { bookingFilterBound, zonedDayRange, tenantDayRange } from '../../src/lib/bookings-query-range';
+import { bookingFilterBound, zonedDayRange, tenantDayRange, isValidYmd } from '../../src/lib/bookings-query-range';
 import { canMarkPaidOffline, syncDetailFinalPrice } from '../../src/lib/booking-detail-sync';
 
 function makeSb(opts: { booking?: Row | null; bookingUpdate?: { data: Row | null; error: any }; timezone?: string; settingsError?: boolean }) {
@@ -118,6 +118,22 @@ describe('#933 日界線轉換', () => {
   });
 });
 
+describe('#933 日期有效性', () => {
+  it('isValidYmd 邊界', () => {
+    expect(isValidYmd('2024-02-29')).toBe(true);
+    expect(isValidYmd('2000-02-29')).toBe(true);
+    expect(isValidYmd('2026-12-31')).toBe(true);
+    for (const bad of ['2026-02-29', '2026-02-30', '2026-13-01', '2026-00-10', '2026-04-31', '1900-02-29', '2026-10-00', '2026-1-01', '2026-10-14T00:00:00Z'])
+      expect(isValidYmd(bad)).toBe(false);
+  });
+
+  it('zonedDayRange／bookingFilterBound 對不存在的日期 throw，不換成別的日期', () => {
+    expect(() => zonedDayRange('2026-02-30')).toThrow(RangeError);
+    expect(() => bookingFilterBound('2026-13-01', 'from')).toThrow(RangeError);
+    expect(() => bookingFilterBound('2026-02-30', 'to')).toThrow(RangeError);
+  });
+});
+
 describe('#933 GET /api/bookings 日期篩選', () => {
   const get = (qs: string) => listRoute(new Request('http://x/api/bookings?' + qs), { params: Promise.resolve({}) } as any);
   const view = () => state.sb.log.find((e: any) => e.table === 'bookings_view');
@@ -154,6 +170,30 @@ describe('#933 GET /api/bookings 日期篩選', () => {
     state.sb = makeSb({});
     await get('to=2026-10-14');
     expect(view().filters).toContainEqual(['lte', 'start_at', '2026-10-14T15:59:59.999Z']);
+  });
+
+  it('不存在的日期 from=2026-02-30 回 400 中文訊息且不查 bookings', async () => {
+    state.sb = makeSb({});
+    const res = await get('from=2026-02-30');
+    expect(res.status).toBe(400);
+    expect((await res.json()).message).toBe('日期不存在，請重新選擇');
+    expect(state.sb.log.some((e: any) => e.table === 'bookings_view')).toBe(false);
+    const res2 = await get('to=2026-13-01');
+    expect(res2.status).toBe(400);
+  });
+
+  it('只帶 ISO from/to：不查 tenant_settings，設定表錯誤也 200', async () => {
+    state.sb = makeSb({ settingsError: true });
+    const res = await get('from=2026-10-13T16:00:00.000Z&to=2026-10-14T15:59:59.999Z');
+    expect(res.status).toBe(200);
+    expect(state.sb.log.some((e: any) => e.table === 'tenant_settings')).toBe(false);
+  });
+
+  it('其中一個是純日期時仍查 tenant_settings，錯誤回 500', async () => {
+    state.sb = makeSb({ settingsError: true });
+    const res = await get('from=2026-10-13T16:00:00.000Z&to=2026-10-14');
+    expect(res.status).toBe(500);
+    expect(state.sb.log.some((e: any) => e.table === 'tenant_settings')).toBe(true);
   });
 
   it('未帶日期不查 tenant_settings', async () => {
