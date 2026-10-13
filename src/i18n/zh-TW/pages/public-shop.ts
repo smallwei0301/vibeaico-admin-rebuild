@@ -51,9 +51,9 @@ export const publicShopPage = {
      */
     bookBadge: '可線上預約',
     bookCta: '線上預約（送出後立即為您保留名額）',
-    /** #747：方案沒有可訂／可申請日期，或日期未載入時的提示（首頁專用，不沿用詳情頁的措辭）。 */
     /** #894：INSTANT 方案尚無線上入口時的提示（首頁專用，語意同詳情頁 plans.instantNote）。 */
     instantHint: '此方案尚未開放線上預約，請先聯絡店家確認可預約時段。',
+    /** #747：方案沒有可訂／可申請日期，或日期未載入時的提示（首頁專用，不沿用詳情頁的措辭）。 */
     noRequestableHint: '目前沒有可申請的日期，請聯絡店家確認。',
     noBookableHint: '目前沒有可預約的日期，請聯絡店家確認。',
     datesNotLoadedHint: '請聯絡店家查詢日期。',
@@ -89,6 +89,9 @@ export const publicShopPage = {
     title: '找不到這家店',
     description: '這個網址可能輸入錯誤，或這家店已經不再營業。',
     backHome: '回到首頁',
+    /** #894：/s/** 其他子路由（行程、方案）共用同一個邊界，不可誤稱店家停業。 */
+    genericTitle: '找不到這個頁面',
+    genericDescription: '這個頁面可能已下架或連結有誤，請回到首頁重新瀏覽。',
   },
 
   /** #894：公開頁發生未預期錯誤時的說明；不顯示技術訊息給旅客。 */

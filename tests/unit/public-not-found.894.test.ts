@@ -15,8 +15,10 @@ describe('#894 public shop not-found / error', () => {
 
   it('not-found 使用 i18n 並連回首頁', () => {
     const src = read('not-found.tsx');
-    expect(src).toContain('t.notFound.title');
-    expect(src).toContain('t.notFound.description');
+    expect(src).toContain('t.notFound.genericTitle');
+    expect(src).toContain('t.notFound.genericDescription');
+    expect(src).not.toContain('t.notFound.title');
+    expect(src).not.toContain('t.notFound.description');
     expect(src).toContain('href="/"');
     expect(src).not.toContain("'use client'");
   });

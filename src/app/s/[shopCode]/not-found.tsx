@@ -7,8 +7,8 @@ export default function PublicShopNotFound() {
     <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6">
       <section className="card">
         <div className="card-body flex flex-col gap-3">
-          <h1 className="text-xl font-semibold">{t.notFound.title}</h1>
-          <p className="text-sm text-secondary">{t.notFound.description}</p>
+          <h1 className="text-xl font-semibold">{t.notFound.genericTitle}</h1>
+          <p className="text-sm text-secondary">{t.notFound.genericDescription}</p>
           <Link href="/" className="btn btn-primary btn-sm w-fit">
             {t.notFound.backHome}
           </Link>
