@@ -23,6 +23,8 @@ export const resetPasswordPage = {
 
   messages: {
     invalidLink: '無效的重設連結',
+    incompleteLink: '重設連結不完整或已失效，請重新申請忘記密碼',
+    passwordTooShort: '新密碼至少需要 8 個字元',
     requiredFields: '請填寫所有欄位',
     passwordMismatch: '兩次輸入的密碼不一致',
     success: '密碼重設成功！請使用新密碼登入。',
@@ -30,5 +32,6 @@ export const resetPasswordPage = {
     unknownError: '未知錯誤',
   },
 
+  requestNewLink: '重新申請忘記密碼',
   backToLogin: '返回登入',
 } as const;

@@ -16,8 +16,8 @@ export const loginPage = {
 
   /* ------------------------------------------------------------ 登入表單 */
   form: {
-    username: '帳號',
-    usernamePlaceholder: '請輸入帳號',
+    username: '電子郵件',
+    usernamePlaceholder: '請輸入註冊時使用的電子郵件',
     password: '密碼',
     passwordPlaceholder: '請輸入密碼',
     showPassword: '顯示密碼',
@@ -53,14 +53,16 @@ export const loginPage = {
 
   /* -------------------------------------------------- 訊息（inline JS）*/
   messages: {
-    usernameRequired: '請輸入帳號',
+    usernameRequired: '請輸入電子郵件',
+    emailInvalid: '電子郵件格式不正確，請輸入註冊時使用的電子郵件',
+    loginSuccess: '登入成功',
     passwordRequired: '請輸入密碼',
     /** 超管「模擬登入」連結（/api/auth/impersonate）的錯誤文案 */
     impersonateFailedPrefix: '模擬登入失敗:',
     impersonateFailedRetry: '模擬登入失敗：請稍後再試，或回超管後台重新產生連結。',
     impersonateExpired:
       '模擬登入失敗：連結可能已過期，請回超管後台重新產生模擬登入連結。',
-    loginFailed: '登入失敗，請確認帳號密碼',
+    loginFailed: '登入失敗，請確認電子郵件與密碼',
     unknownError: '未知錯誤',
   },
 } as const;
