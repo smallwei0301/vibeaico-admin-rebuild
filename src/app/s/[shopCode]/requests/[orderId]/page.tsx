@@ -25,6 +25,7 @@ import {
   cancelledCopyKind,
   formatInstantInTimeZone,
   formatPlainDateWithWeekday,
+  isLockedBooking,
 } from '@/lib/public-order-format';
 import type { TourOrder } from '@/lib/types';
 
@@ -56,7 +57,7 @@ function StatusBody({ order }: { order: TourOrder }) {
     // #46：REQUEST 送出當下不鎖位，其餘 sales_mode（FIXED_DEPARTURE／INSTANT）
     // 建單當下就已經真的鎖位（0111 的 reserve_seats 分流）。PENDING 對兩者是
     // 完全不同的現況，文案不能共用——見 i18n 檔 `pendingLockedTitle` 的檔頭。
-    const locked = order.salesMode !== undefined && order.salesMode !== 'REQUEST';
+    const locked = isLockedBooking(order);
     return (
       <section className="card">
         <div className="card-body flex flex-col gap-2">
@@ -75,29 +76,35 @@ function StatusBody({ order }: { order: TourOrder }) {
     );
   }
   if (order.status === 'CONFIRMED') {
+    const locked = isLockedBooking(order);
     return (
       <section className="card">
         <div className="card-body flex flex-col gap-2">
-          <h1 className="text-xl font-semibold text-success">{t.status.confirmedTitle}</h1>
+          <h1 className="text-xl font-semibold text-success">{locked ? t.status.confirmedLockedTitle : t.status.confirmedTitle}</h1>
           <p className="text-sm text-secondary">
             {order.paymentStatus === 'UNPAID'
               ? order.holdExpiresAt
                 ? t.status.confirmedDescription(showInstant(order.holdExpiresAt))
-                : t.status.confirmedNoDeadlineDescription
-              : t.status.confirmedPaymentDescription}
+                : locked
+                  ? t.status.confirmedLockedNoDeadlineDescription
+                  : t.status.confirmedNoDeadlineDescription
+              : locked
+                ? t.status.confirmedLockedPaymentDescription
+                : t.status.confirmedPaymentDescription}
           </p>
         </div>
       </section>
     );
   }
   if (order.status === 'CANCELLED') {
+    const locked = isLockedBooking(order);
     return (
       <section className="card">
         <div className="card-body flex flex-col gap-2">
-          <h1 className="text-xl font-semibold text-danger">{t.status.cancelledTitle}</h1>
+          <h1 className="text-xl font-semibold text-danger">{locked ? t.status.cancelledLockedTitle : t.status.cancelledTitle}</h1>
           <p className="text-sm text-secondary">
             {{
-              UNPAID: t.status.cancelledDescription,
+              UNPAID: locked ? t.status.cancelledLockedDescription : t.status.cancelledDescription,
               PAID: t.status.cancelledPaidDescription,
               REFUNDED: t.status.cancelledRefundedDescription,
             }[cancelledCopyKind(order.paymentStatus)]}

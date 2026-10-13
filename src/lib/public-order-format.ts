@@ -43,3 +43,8 @@ export function cancelledCopyKind(paymentStatus: string | null | undefined): Can
   if (paymentStatus === 'PAID' || paymentStatus === 'PARTIAL' || paymentStatus === 'REFUND_PENDING') return 'PAID';
   return 'UNPAID';
 }
+
+/** 已鎖位的非申請制訂單（FIXED_DEPARTURE／INSTANT）；salesMode 未知時視同申請制，與 PENDING 分支一致。 */
+export function isLockedBooking(order: { salesMode?: string | null }): boolean {
+  return order.salesMode !== undefined && order.salesMode !== null && order.salesMode !== 'REQUEST';
+}

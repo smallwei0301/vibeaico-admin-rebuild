@@ -108,6 +108,12 @@ export const publicTourRequestPage = {
       REFUND_PENDING: '退款仍在處理中，尚未完成；退款進度請向店家確認。',
       REFUNDED: '此訂單已退款；實際退款金額請向店家確認。',
     },
+    /** #917：固定團次／INSTANT 沒有導遊審核，CONFIRMED／CANCELLED 不可沿用申請制說法。 */
+    confirmedLockedTitle: '預約已確認',
+    confirmedLockedPaymentDescription: '店家已確認您的預約，付款進度請以下方付款狀態為準。',
+    confirmedLockedNoDeadlineDescription: '店家已確認您的預約，請與店家確認付款方式與期限。',
+    cancelledLockedTitle: '此預約已取消',
+    cancelledLockedDescription: '此預約已取消，名額已釋出。如需重新預約，請回到行程頁選擇團次，或改用 LINE／電話聯絡店家。',
     confirmedTitle: '導遊已確認，名額已鎖定',
     confirmedDescription: (deadline: string) => `請於 ${deadline} 前完成付款，逾期名額將被釋放。`,
     confirmedNoDeadlineDescription: '導遊已確認此申請，請與店家確認付款方式與期限。',
