@@ -227,6 +227,10 @@
     {
       "ref": "issue/923",
       "title": "預約票券核銷補償、已結案預約不可核銷或改價、錯誤中文化"
+    },
+    {
+      "ref": "issue/926",
+      "title": "LINE 開通精靈新店家憑證欄位與 Webhook 測試步驟修正"
     }
   ],
   "main": {
@@ -8109,13 +8113,47 @@
         "issue": 923,
         "count": 1,
         "evidenceRef": "this commit"
+      },
+      {
+        "id": "20261013-luna-scout-926-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": "2026-10-13T21:13:53Z",
+        "completedAt": "2026-10-13T21:15:12Z",
+        "note": "Luna 窄盤點 LINE 開通精靈與首頁待辦，回報新店家 Secret／Token 欄位唯讀且顯示已設定、步驟四 Webhook 測試指向不存在的按鈕、首頁 LINE 打勾判定（ESCALATE_SOL 未採），主 agent 核對後開立 issue/926。actual 未經平台驗證。",
+        "issue": 926,
+        "count": 1,
+        "evidenceRef": "this commit"
+      },
+      {
+        "id": "20261013-luna-scout-926-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": "2026-10-13T21:31:46Z",
+        "completedAt": "2026-10-13T21:31:46Z",
+        "note": "Luna metrics capture 綁定 issue/926 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2，並補記 #923 最終移除票券補償。actual 未經平台驗證。",
+        "issue": 926,
+        "count": 1,
+        "evidenceRef": "this commit"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 59,
+    "issuesStarted": 60,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -8142,8 +8180,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 137,
-    "lunaAccepted": 128,
+    "lunaTasks": 139,
+    "lunaAccepted": 130,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -8396,7 +8434,9 @@
     "2026-10-13 非計分紀錄（issue/917）：兩次 Luna scout——旅客訂單狀態頁盤點（約 18:31:50Z–18:33:00Z）與 #46 旅客流程缺口盤點（約 19:33:30Z–19:35:10Z）——未在發生當下留下 raw event，起訖時間為事後近似值，依 Codex 審查與 CLAUDE.md 即時埋點規則不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/919）：builder commit f993023c（20:11:56Z–20:16:25Z，cherry-pick 為 d4e4c7e7，預約表單名額不足團次停用、人數上限依團次剩餘名額、canSubmitBooking 檢查剩餘名額），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/921）：builder commit d0f72afd（20:34:41Z–20:47:36Z，cherry-pick 為 bbe9f6d6，三支列表 API 關鍵字以雙引號與 LIKE 跳脫安全帶入 PostgREST .or()、接受申請保留時數中文錯誤），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
-    "2026-10-13 非計分紀錄（issue/923）：builder commit 6ed81c08（20:53:45Z–20:58:55Z，cherry-pick 為 47bde615，票券核銷狀態白名單與寫回失敗還原、調價擋已取消／未到店、預約 zod 中文訊息、product-orders 核銷補償），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
+    "2026-10-13 非計分紀錄（issue/923）：builder commit 6ed81c08（20:53:45Z–20:58:55Z，cherry-pick 為 47bde615，票券核銷狀態白名單與寫回失敗還原、調價擋已取消／未到店、預約 zod 中文訊息、product-orders 核銷補償），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/923 follow-up）：先前 notes 記載的 builder commit 6ed81c08 含應用層票券補償與 product-orders 核銷補償；經 Opus 審查判定在傳輸層逾時已提交時會造成重複折抵（PAYMENT_CONSISTENCY），由 builder commit 5889666e（21:07:23Z–21:11:13Z，Sonnet）移除，最終合併 ee719a19 不含補償，票券核銷原子化改由 issue/925 處理。未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/926）：builder commit 96dd194c（21:16:19Z–21:30:44Z，cherry-pick 為 4ebe0b96，新店家 Secret／Token 預設可輸入並隱藏取消重新輸入、步驟四 Webhook 測試失敗時提供一鍵修正），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
