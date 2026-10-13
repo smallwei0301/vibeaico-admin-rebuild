@@ -219,6 +219,10 @@
     {
       "ref": "issue/919",
       "title": "旅客預約表單名額不足團次停用與人數上限"
+    },
+    {
+      "ref": "issue/921",
+      "title": "店家後台搜尋特殊字元與接受申請保留時數中文錯誤"
     }
   ],
   "main": {
@@ -8033,13 +8037,47 @@
         "issue": 919,
         "count": 1,
         "evidenceRef": "this commit"
+      },
+      {
+        "id": "20261013-luna-scout-921-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": "2026-10-13T20:30:59Z",
+        "completedAt": "2026-10-13T20:33:36Z",
+        "note": "Luna 窄盤點 #46 剩餘環節（公開行程頁、我的訂單、店家團體訂單），回報接受申請保留時數英文錯誤、店家搜尋關鍵字含逗號括號失敗、申請節流（推論未採），主 agent 核對後開立 issue/921。actual 未經平台驗證。",
+        "issue": 921,
+        "count": 1,
+        "evidenceRef": "this commit"
+      },
+      {
+        "id": "20261013-luna-scout-921-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": "2026-10-13T20:49:00Z",
+        "completedAt": "2026-10-13T20:49:00Z",
+        "note": "Luna metrics capture 綁定 issue/921 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2。actual 未經平台驗證。",
+        "issue": 921,
+        "count": 1,
+        "evidenceRef": "this commit"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 57,
+    "issuesStarted": 58,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -8066,8 +8104,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 133,
-    "lunaAccepted": 124,
+    "lunaTasks": 135,
+    "lunaAccepted": 126,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -8318,7 +8356,8 @@
     "2026-10-13 非計分紀錄（issue/917）：builder commits 0a915f85（cherry-pick 為 bf1426a8，日期時區與取消文案）、774fce46（18:48:35Z–18:55:22Z，cherry-pick 為 5fa5d8dd，移除定金冒充實付金額）、29f0fc43（19:35:33Z–19:43:01Z，cherry-pick 為 9068060e，固定團次確認／取消文案），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 Luna 即時紀錄（issue/917）：本筆 commit 同時補記 #914 後續 builder notes；對應 modelUsage 原新增三筆 scout 列，其中兩筆事後回填列已於 da0f1f1e 移至非計分 notes，現僅保留 917-bind 一筆（2026-10-13 更正筆數）。",
     "2026-10-13 非計分紀錄（issue/917）：兩次 Luna scout——旅客訂單狀態頁盤點（約 18:31:50Z–18:33:00Z）與 #46 旅客流程缺口盤點（約 19:33:30Z–19:35:10Z）——未在發生當下留下 raw event，起訖時間為事後近似值，依 Codex 審查與 CLAUDE.md 即時埋點規則不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
-    "2026-10-13 非計分紀錄（issue/919）：builder commit f993023c（20:11:56Z–20:16:25Z，cherry-pick 為 d4e4c7e7，預約表單名額不足團次停用、人數上限依團次剩餘名額、canSubmitBooking 檢查剩餘名額），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
+    "2026-10-13 非計分紀錄（issue/919）：builder commit f993023c（20:11:56Z–20:16:25Z，cherry-pick 為 d4e4c7e7，預約表單名額不足團次停用、人數上限依團次剩餘名額、canSubmitBooking 檢查剩餘名額），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/921）：builder commit d0f72afd（20:34:41Z–20:47:36Z，cherry-pick 為 bbe9f6d6，三支列表 API 關鍵字以雙引號與 LIKE 跳脫安全帶入 PostgREST .or()、接受申請保留時數中文錯誤），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {

@@ -396,7 +396,7 @@ export const cancelTourOrderSchema = z.object({
  * 單一算出 `hold_expires_at`，不在這裡或前端重複算一次。
  */
 export const acceptTourRequestSchema = z.object({
-  holdHours: z.number().finite().positive().max(168, '保留時數過長，請確認輸入').optional(),
+  holdHours: z.number({ invalid_type_error: '保留時數需為數字' }).finite('保留時數需為數字').positive('保留時數需大於 0').max(168, '保留時數過長，請確認輸入').optional(),
 });
 
 export const rejectTourRequestSchema = z.object({
