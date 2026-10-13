@@ -40,6 +40,10 @@ export const dashboardPage = {
       BUSINESS_HOURS: '設定營業時間',
       LINE_BOT: '連接 LINE Bot',
     },
+    /** 模式專屬步驟文案（沒列的沿用 steps） */
+    stepsByMode: {
+      GUIDE: { SERVICE: '建立第一個行程' },
+    } as Record<string, Partial<Record<'SHOP_INFO' | 'STAFF' | 'SERVICE' | 'BUSINESS_HOURS' | 'LINE_BOT', string>>>,
     done: '已完成',
     todo: '尚未完成',
     goSetup: '前往設定',

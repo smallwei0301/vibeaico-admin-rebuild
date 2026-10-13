@@ -14,12 +14,8 @@ describe('setup step routes', () => {
     for (const key of STEP_KEYS) {
       it(`${mode}/${key} maps to an existing tenant page or null`, () => {
         const href = getSetupStepHref(key, mode);
-        if (href === null) {
-          // 只有該模式側邊欄隱藏的頁面才能為 null
-          expect(key).toBe('SERVICE');
-          expect(MODE_PRESETS[mode].hiddenNavKeys).toContain('services');
-          return;
-        }
+        expect(href).not.toBeNull();
+        if (href === null) return;
         const path = href.split('#')[0];
         expect(path.startsWith('/tenant/')).toBe(true);
         expect(existsSync(root(`src/app${path}/page.tsx`))).toBe(true);
@@ -39,5 +35,18 @@ describe('setup step routes', () => {
     expect(page).toContain('getSetupStepHref(s.key, businessType)');
     expect(page).toMatch(/<Link\s+href=\{href\}\s+aria-label=\{t\.setup\.goSetupLabel\(stepLabel\)\}/);
     expect(page).toContain('min-h-11');
+  });
+
+  it('GUIDE SERVICE counts trips and links to a page visible in GUIDE nav', () => {
+    expect(MODE_PRESETS.GUIDE.setupInventoryTable).toBe('trips');
+    expect(MODE_PRESETS.LOCAL_SHOP.setupInventoryTable).toBe('services');
+    expect(MODE_PRESETS.CLINIC.setupInventoryTable).toBe('services');
+    expect(getSetupStepHref('SERVICE', 'GUIDE')).toBe('/tenant/trips');
+    expect(MODE_PRESETS.GUIDE.hiddenNavKeys).not.toContain('trips');
+  });
+
+  it('setup-status route reads the inventory table from the preset', () => {
+    const route = readFileSync(root('src/app/api/settings/setup-status/route.ts'), 'utf8');
+    expect(route).toContain('MODE_PRESETS[t.businessType].setupInventoryTable');
   });
 });

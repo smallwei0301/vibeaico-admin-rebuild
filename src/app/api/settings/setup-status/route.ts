@@ -1,13 +1,15 @@
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import type { SetupStatus } from '@/lib/types';
+import { MODE_PRESETS } from '@/config/modes';
 
 /**
  * GET /api/settings/setup-status — 回 SetupStatus。
  * 判定規則照 04 分冊 A-1：
  *   SHOP_INFO       basic.tenantPhone 或 tenantAddress 有值
  *   STAFF           staff 至少 1 筆
- *   SERVICE         services 至少 1 筆
+ *   SERVICE         依模式：services（LOCAL_SHOP／CLINIC）或 trips（GUIDE）至少 1 筆
+ *                   （MODE_PRESETS.setupInventoryTable）
  *   BUSINESS_HOURS  business jsonb ≠ '{}'（曾儲存過）
  *   LINE_BOT        line_channel_access_token_enc 非空
  * percent = done 數 / 5 * 100（整數）
@@ -21,7 +23,7 @@ export const GET = handle(async () => {
       .select('basic, business, line_channel_access_token_enc')
       .eq('tenant_id', t.tenantId).maybeSingle(),
     t.supabase.from('staff').select('id', { count: 'exact', head: true }).eq('tenant_id', t.tenantId),
-    t.supabase.from('services').select('id', { count: 'exact', head: true }).eq('tenant_id', t.tenantId),
+    t.supabase.from(MODE_PRESETS[t.businessType].setupInventoryTable).select('id', { count: 'exact', head: true }).eq('tenant_id', t.tenantId),
   ]);
   if (serr) throw serr;
   if (staffErr) throw staffErr;

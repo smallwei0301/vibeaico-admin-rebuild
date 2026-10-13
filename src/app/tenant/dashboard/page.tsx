@@ -630,7 +630,7 @@ export default function DashboardPage() {
             <ul className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
               {setup.steps.map((s) => {
                 const href = s.done ? null : getSetupStepHref(s.key, businessType);
-                const stepLabel = t.setup.steps[s.key];
+                const stepLabel = t.setup.stepsByMode[businessType]?.[s.key] ?? t.setup.steps[s.key];
                 const inner = (
                   <>
                     <span

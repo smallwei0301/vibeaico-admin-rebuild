@@ -58,6 +58,8 @@ export type ModePreset = {
    * 判定條件見 api/settings/setup-status（SERVICE 計 services 表；GUIDE 隱藏 services 頁）。
    */
   setupStepRoutes: Record<SetupStepKey, string | null>;
+  /** 設定進度 SERVICE 步驟計算哪種庫存（services 與 trips 資料表分開，見 10 分冊 §0） */
+  setupInventoryTable: 'services' | 'trips';
 };
 
 const COMMON_SETUP_ROUTES = {
@@ -80,6 +82,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     showActionInbox: false,
     reportingMode: 'GENERAL',
     setupStepRoutes: { ...COMMON_SETUP_ROUTES, SERVICE: '/tenant/services' },
+    setupInventoryTable: 'services',
     richMenuCells: [
       { label: '立即預約', text: '預約' },
       { label: '我的預約', text: '我的預約' },
@@ -104,8 +107,8 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     shopSections: ['TRIPS', 'PORTFOLIO'],
     showActionInbox: true,
     reportingMode: 'GUIDE_TOUR',
-    // services 頁在 GUIDE 側邊欄隱藏（hiddenNavKeys），不給連結
-    setupStepRoutes: { ...COMMON_SETUP_ROUTES, SERVICE: null },
+    setupStepRoutes: { ...COMMON_SETUP_ROUTES, SERVICE: '/tenant/trips' },
+    setupInventoryTable: 'trips',
     richMenuCells: [
       { label: '所有行程', text: '行程' },
       { label: '近期團次', text: '團次' },
@@ -127,6 +130,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     showActionInbox: false,
     reportingMode: 'GENERAL',
     setupStepRoutes: { ...COMMON_SETUP_ROUTES, SERVICE: '/tenant/services' },
+    setupInventoryTable: 'services',
     richMenuCells: [
       { label: '線上掛號', text: '預約' },
       { label: '我的掛號', text: '我的預約' },
