@@ -264,10 +264,9 @@ const MAX_HOME_DEPARTURE_PAGES = 5;
 const HOME_DEPARTURE_PLAN_ID_CHUNK = 100;
 /**
  * 首頁季節查詢（readPlanSeasons）同樣依 HOME_DEPARTURE_PLAN_ID_CHUNK 分塊；塊數上限 5（最多 500 個方案），
- * 讓單一匿名請求的季節查詢數有界（每塊內部仍最多 5 頁）。只查「已判定團次」的方案（bookableByPlan 有值者，保持原順序），
- * 超出上限的方案不查詢、視為季節價未知（保守，不誤開入口）。最壞查詢數 = 5 塊 × 每塊最多 5 頁 = 25，通常遠少於
- * （團次判定總預算 MAX_HOME_DEPARTURE_PAGES 用完後，未判定方案不進季節查詢）。已判定方案至多 5 頁預算的塊數，
- * 所以此上限實務上不改變輸出、只限制查詢數。
+ * 讓單一匿名請求的季節查詢數有界（每塊內部仍最多 5 頁）。查詢 ID 順序＝「已判定團次」的方案（bookableByPlan 有值者）
+ * 在前、其餘方案在後（#895 為了標題判定才納入其餘方案），所以塊數上限只會先犧牲標題判定，CTA／linkable 與原本一致；
+ * 超出上限的方案不查詢、視為季節價未知（保守，不誤開入口；標題顯示季節定價）。最壞查詢數 = 5 塊 × 每塊最多 5 頁 = 25。
  */
 const MAX_HOME_SEASON_CHUNKS = 5;
 
@@ -607,7 +606,12 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
   const seasonKnown = new Set<string>();
   // 已確認完整的季節資料（含沒有季節的方案＝空陣列）；團次 linkable 用它解析各團次單價，與預約頁載入器同一個函式。
   const loadedSeasons = new Map<string, LoadedPlanSeasons>();
-  const seasonIds = homePlans.filter((plan) => bookableByPlan.has(plan.id)).map((plan) => plan.id);
+  // #895：首頁價格標題要對「所有」輸出方案判定是否季節定價（含 INSTANT／未入選方案），所以查詢範圍是全部方案；
+  // 但 CTA／linkable 仍只吃「已判定團次」方案的結果（loadedSeasons／seasonKnown），語意不變。
+  const headlineSeasons = new Map<string, LoadedPlanSeasons>();
+  // 已判定團次的方案排最前面（去重），其餘接在後：塊數上限只會截掉「僅供標題判定」的方案，不影響 CTA／linkable。
+  const allPlanIds = [...plansByTrip.values()].flatMap((list) => list.map((plan) => plan.id));
+  const seasonIds = [...new Set([...allPlanIds.filter((id) => bookableByPlan.has(id)), ...allPlanIds])];
   const seasonIdSet = new Set(homePlans.map((plan) => plan.id));
   const seasonChunks: string[][] = [];
   for (let i = 0; i < seasonIds.length && seasonChunks.length < MAX_HOME_SEASON_CHUNKS; i += HOME_DEPARTURE_PLAN_ID_CHUNK) {
@@ -618,8 +622,14 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
       const reader = await readPlanSeasons(admin, tenantId, chunk);
       for (const id of chunk) {
         if (!seasonalPriceUnknown({ incomplete: reader.isIncomplete(id) })) {
-          seasonKnown.add(id);
-          loadedSeasons.set(id, { seasons: reader.byPlan.get(id) ?? [], incomplete: false });
+          headlineSeasons.set(id, { seasons: reader.byPlan.get(id) ?? [], incomplete: false });
+          if (bookableByPlan.has(id)) {
+            seasonKnown.add(id);
+            loadedSeasons.set(id, { seasons: reader.byPlan.get(id) ?? [], incomplete: false });
+          }
+        } else {
+          // 季節資料不完整：與詳情頁相同視為季節定價（incomplete）。
+          headlineSeasons.set(id, { seasons: reader.byPlan.get(id) ?? [], incomplete: true });
         }
       }
     } catch (error) {
@@ -630,6 +640,10 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
   for (const list of plansByTrip.values()) {
     for (const plan of list) {
       const bookable = bookableByPlan.get(plan.id);
+      // #895：與詳情頁同一個 helper（hasSeasonalPricing）；查詢失敗／超出塊數上限（沒有記錄）視為不完整＝季節定價，
+      // 不把基本價當成確定售價。
+      const headline = headlineSeasons.get(plan.id);
+      if (!headline || hasSeasonalPricing(headline)) plan.seasonalPricing = true;
       plan.bookingCta = bookingCtaState({
         salesMode: plan.salesMode,
         minParty: plan.minParty,

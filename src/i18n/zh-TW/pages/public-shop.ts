@@ -28,6 +28,10 @@ export const publicShopPage = {
     detailsLink: '查看行程詳情',
     /** 顯示在行程卡片上的方案價格區間 */
     priceFrom: (amount: string) => `${amount} 起`,
+    /** #895：季節定價方案的價格標題（與詳情頁 seasonalContactHeadline 同義；首頁不列各團次單價） */
+    seasonalHeadline: '價格依出發日期而定，請洽店家',
+    /** #895：季節定價方案且有預約入口（fixed／request）時，旅客在預約頁看得到各團次價格 */
+    seasonalByDepartureHeadline: '價格依出發日期而定，請見預約頁',
     partyRange: (min: number, max: number) => `${min}–${max} 人成行`,
     durationHours: (hours: number) => `約 ${hours} 小時`,
     departuresTitle: '近期出團',

@@ -175,6 +175,10 @@
     {
       "ref": "issue/894",
       "title": "旅客公開頁中文錯誤頁與 INSTANT 方案說明"
+    },
+    {
+      "ref": "issue/895",
+      "title": "店家公開首頁季節定價方案顯示"
     }
   ],
   "main": {
@@ -7683,13 +7687,30 @@
         "issue": 894,
         "count": 1,
         "evidenceRef": "this commit"
+      },
+      {
+        "id": "20261013-luna-scout-895-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModel": "unknown",
+        "startedAt": "2026-10-13T15:39:20Z",
+        "completedAt": "2026-10-13T15:39:35Z",
+        "note": "Luna metrics capture 綁定 issue/895 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +1。actual 未經平台驗證。",
+        "issue": 895,
+        "count": 1,
+        "evidenceRef": "this commit"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 46,
+    "issuesStarted": 47,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -7716,8 +7737,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 115,
-    "lunaAccepted": 106,
+    "lunaTasks": 116,
+    "lunaAccepted": 107,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -7948,7 +7969,9 @@
     "2026-10-13 非計分紀錄（issue/892）：builder commit 1250722d（cherry-pick 為 4473010d，真實模式隱藏假的行事曆訂閱網址與無作用的 App／推播按鈕、側欄回報問題開啟回報視窗），Sonnet builder 13:54:02Z–14:04:24Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/890 follow-up）：follow-up builder commits fff2392e（13:41:05Z–13:43:27Z）、4144916e（13:56:45Z–13:59:33Z）、157bfc56（14:11:48Z–14:12:27Z）、a711b6de（14:24:04Z–14:24:41Z），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/894）：builder commit c714809d（cherry-pick 為 0b1b3eb6，旅客公開頁新增中文 not-found／error 頁、首頁 INSTANT 方案說明），Sonnet builder 14:56:00Z–15:01:49Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
-    "2026-10-13 非計分紀錄（issue/892 follow-up）：builder commits 29e9859d（14:42:55Z–14:45:08Z）、73ac80f4（14:53:20Z–14:55:23Z），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
+    "2026-10-13 非計分紀錄（issue/892 follow-up）：builder commits 29e9859d（14:42:55Z–14:45:08Z）、73ac80f4（14:53:20Z–14:55:23Z），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/895）：builder commit 8d0576d5（cherry-pick 為 9d24ed6b，店家公開首頁季節定價方案改顯示依出發日期而定、不納入最低價），Sonnet builder 15:07:49Z–15:16:18Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/894 follow-up）：follow-up builder commits 35a5c17a（15:17:18Z–15:19:31Z）、8df149b6（15:27:42Z–15:29:46Z），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {

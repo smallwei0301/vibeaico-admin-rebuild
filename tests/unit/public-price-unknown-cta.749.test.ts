@@ -154,10 +154,10 @@ describe('#749 (c)(d) 首頁與詳情頁 loader', () => {
     expect(fx.seasonCalls).toHaveLength(5);
   });
 
-  it('首頁只批次查一次季節，且只帶會判定團次的方案', async () => {
+  it('首頁只批次查一次季節；#895 起涵蓋全部輸出方案（含 INSTANT），首頁價格標題才判得出季節定價', async () => {
     await home();
     expect(fx.seasonCalls).toHaveLength(1);
-    expect([...fx.seasonCalls[0]].sort()).toEqual(['f', 'r']);
+    expect([...fx.seasonCalls[0]].sort()).toEqual(['f', 'i', 'r']);
   });
 
   // 250 個 FIXED 方案分在 9 個行程（每行程最多判定 30 個）→ 3 塊（100、100、50）。
@@ -205,6 +205,26 @@ describe('#749 (c)(d) 首頁與詳情頁 loader', () => {
     expect(plans.slice(0, 500).every((p) => p.bookingCta === 'fixed')).toBe(true);
   });
 
+  it('#895：>500 個方案且已判定團次的方案排在 planRows 最後（第 571–600 個）：季節查詢優先它們，CTA／linkable 與只查判定方案時相同', async () => {
+    fx.tripCount = 20;
+    // 前 19 個行程（570 個方案）全是 INSTANT（不判定團次）；最後一個行程 30 個 FIXED 方案帶季節，位置在 500 之後。
+    fx.plans = Object.fromEntries(Array.from({ length: 600 }, (_, n) => [
+      `p${String(n).padStart(3, '0')}`,
+      (n >= 570 ? { mode: 'FIXED_DEPARTURE', seasons: true } : { mode: 'INSTANT' }) as PlanFx,
+    ]));
+    const shop = (await loadPublicShop('demo'))!;
+    const plans = shop.trips.flatMap((tr) => tr.plans);
+    const judged = plans.filter((p) => Number(p.id.slice(1)) >= 570);
+    expect(judged.length).toBe(30);
+    expect(fx.seasonCalls.length).toBeLessThanOrEqual(5);
+    // 判定過的方案全在季節查詢內，且在第一塊。
+    expect(judged.every((p) => fx.seasonCalls[0].includes(p.id))).toBe(true);
+    expect(judged.every((p) => p.bookingCta === 'fixed' && p.seasonalPricing === true)).toBe(true);
+    const lastTrip = shop.trips[shop.trips.length - 1];
+    expect(lastTrip.departures.length).toBeGreaterThan(0);
+    expect(lastTrip.departures.every((d) => d.linkable === true)).toBe(true);
+  });
+
   it('只有最後一塊 throw（其他塊正常）：只有該塊方案為 price-not-loaded', async () => {
     manyPlans();
     const probe = await homeAll();
@@ -225,7 +245,7 @@ describe('#749 (c)(d) 首頁與詳情頁 loader', () => {
     expect(plans.some((p) => !failedChunk.has(p.id))).toBe(true);
   });
 
-  it('團次預算在第一塊就用完：其餘方案 dates-not-loaded，季節只查判定過的方案（不查全部 homePlans）', async () => {
+  it('團次預算在第一塊就用完：其餘方案 dates-not-loaded；#895 起季節查詢涵蓋全部輸出方案（分塊），CTA 仍只看判定過的方案', async () => {
     manyPlans();
     fx.depFill = true;
     const plans = await homeAll();
@@ -233,8 +253,8 @@ describe('#749 (c)(d) 首頁與詳情頁 loader', () => {
     expect(judged.length).toBeGreaterThan(0);
     expect(judged.length).toBeLessThan(100);
     expect(plans.length - judged.length).toBeGreaterThan(100);
-    expect(fx.seasonCalls).toHaveLength(1);
-    expect([...fx.seasonCalls[0]].sort()).toEqual(judged.map((p) => p.id).sort());
+    expect(fx.seasonCalls.length).toBeGreaterThan(1);
+    expect(fx.seasonCalls.flat().sort()).toEqual(plans.map((p) => p.id).sort());
   });
 
   it('詳情頁只對未知的方案輸出 seasonalPriceUnknown', async () => {
