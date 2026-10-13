@@ -21,6 +21,7 @@ import {
 } from '@/services/reports';
 import { exportReports } from '@/services/report-export';
 import { listFeatures } from '@/services/settings';
+import type { FeatureCode } from '@/config/features';
 import { common } from '@/i18n/zh-TW/common';
 import { reportsPage as t } from '@/i18n/zh-TW/pages/reports';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/utils';
@@ -34,10 +35,8 @@ type RangeKey = ReportRange;
 
 const RANGES: RangeKey[] = ['week', 'month', 'quarter'];
 
-/** 進階報表功能代碼；尚未收錄在 config/features.ts 的 FEATURE_CODES */
-const ADVANCED_REPORT_CODE = 'ADVANCED_REPORT';
-/** 骨架階段：後端沒有這個訂閱旗標時的預設值 */
-const MOCK_ADVANCED_REPORT_SUBSCRIBED = true;
+/** 進階報表實際受後端 requireFeature('BASIC_REPORT') 把關（#882）；前端 gate 與之對齊 */
+const ADVANCED_GATE_CODE: FeatureCode = 'BASIC_REPORT';
 
 /** 區間 → 各報表端點的 ?from&to（YYYY-MM-DD，含今天；quarter = 13 週） */
 const RANGE_DAYS: Record<RangeKey, number> = { week: 7, month: 30, quarter: 91 };
@@ -125,8 +124,8 @@ export default function ReportsPage() {
     void (async () => {
       try {
         const features = await listFeatures();
-        const found = features.find((f) => String(f.code) === ADVANCED_REPORT_CODE);
-        setAdvancedUnlocked(found ? found.active : MOCK_ADVANCED_REPORT_SUBSCRIBED);
+        const found = features.find((f) => f.code === ADVANCED_GATE_CODE);
+        setAdvancedUnlocked(found ? found.active : false);
       } catch (e) {
         fail(t.errors.advancedSubscription, e);
       }
@@ -536,7 +535,7 @@ export default function ReportsPage() {
           <CardBody className="py-12 text-center">
             <h2 className="mb-2 text-lg font-bold">{t.advanced.locked.title}</h2>
             <p className="mx-auto mb-4 max-w-xl text-base text-secondary">{t.advanced.locked.body}</p>
-            <Link href="/tenant/feature-store?feature=ADVANCED_REPORT" className="btn btn-primary">
+            <Link href={`/tenant/feature-store?feature=${ADVANCED_GATE_CODE}`} className="btn btn-primary">
               <Store size={15} />
               {t.advanced.locked.action}
             </Link>
