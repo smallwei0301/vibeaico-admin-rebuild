@@ -37,6 +37,9 @@ type SortMode = 'line' | 'public';
 const COVER_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const COVER_MAX_BYTES = 5 * 1024 * 1024;
 
+/** 只渲染 http(s) 或根相對路徑；舊資料（標題污染值、mock 檔名）退回圖示。 */
+const isRenderableImageUrl = (url: string) => /^(https?:)?\//.test(url);
+
 const EMPTY_DRAFT = {
   id: '',
   title: '',
@@ -67,6 +70,8 @@ export default function PortfolioPage() {
   const [saving, setSaving] = React.useState(false);
   const [imageUploading, setImageUploading] = React.useState(false);
   const [imageError, setImageError] = React.useState('');
+  /** 每次開啟／關閉草稿就換一個 token，讓進行中的上傳認得自己是否過期。 */
+  const draftTokenRef = React.useRef(0);
 
   const [deleteTarget, setDeleteTarget] = React.useState<Portfolio | null>(null);
   const [toggleTarget, setToggleTarget] = React.useState<Portfolio | null>(null);
@@ -116,7 +121,15 @@ export default function PortfolioPage() {
 
   /* -------------------------------------------------------------- 動作 */
 
+  const closeDraft = () => {
+    draftTokenRef.current += 1;
+    setImageUploading(false);
+    setDraft(null);
+  };
+
   const openCreate = () => {
+    draftTokenRef.current += 1;
+    setImageUploading(false);
     setEditing(false);
     setTitleError('');
     setImageError('');
@@ -124,6 +137,8 @@ export default function PortfolioPage() {
   };
 
   const openEdit = (item: Portfolio) => {
+    draftTokenRef.current += 1;
+    setImageUploading(false);
     setEditing(true);
     setTitleError('');
     setImageError('');
@@ -143,6 +158,8 @@ export default function PortfolioPage() {
    */
   const onPickCover = async (file: File) => {
     if (!canManage) return;
+    // 上傳期間使用者可能取消並開另一筆：只在同一次開啟的草稿上寫回結果。
+    const token = draftTokenRef.current;
     if (!COVER_ALLOWED_TYPES.includes(file.type)) {
       setImageError(t.messages.imageTypeInvalid);
       return;
@@ -155,14 +172,16 @@ export default function PortfolioPage() {
     setImageUploading(true);
     try {
       const { url } = await uploadImage(file, 'portfolio-images');
+      if (draftTokenRef.current !== token) return;
       setDraft((d) => (d ? { ...d, imageUrl: url } : d));
       toast.show(t.messages.imageUploaded);
     } catch (e) {
+      if (draftTokenRef.current !== token) return;
       const detail = e instanceof ApiError && e.message ? e.message : t.messages.retryLater;
       setImageError(`${t.messages.imageUploadFailedPrefix}${detail}`);
       toast.show(`${t.messages.imageUploadFailedPrefix}${detail}`, 'danger');
     } finally {
-      setImageUploading(false);
+      if (draftTokenRef.current === token) setImageUploading(false);
     }
   };
 
@@ -195,6 +214,7 @@ export default function PortfolioPage() {
         });
         toast.show(t.messages.created);
       }
+      draftTokenRef.current += 1;
       setDraft(null);
       await load();
     } catch (e) {
@@ -426,8 +446,17 @@ export default function PortfolioPage() {
           {ordered.map((item, index) => (
             <Card key={item.id}>
               <CardBody>
-                <div className="mb-3 flex h-32 items-center justify-center rounded-md bg-neutral-100 text-secondary">
-                  <ImageIcon size={26} />
+                <div className="mb-3 flex h-32 items-center justify-center overflow-hidden rounded-md bg-neutral-100 text-secondary">
+                  {isRenderableImageUrl(item.imageUrl) ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={item.imageUrl}
+                      alt={t.form.imagePreviewAlt}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <ImageIcon size={26} />
+                  )}
                 </div>
 
                 <div className="flex items-start justify-between gap-2">
@@ -511,12 +540,12 @@ export default function PortfolioPage() {
       {/* -------------------------------------------------- modal：新增/編輯 */}
       <Modal
         open={!!draft}
-        onClose={() => setDraft(null)}
+        onClose={closeDraft}
         size="lg"
         title={editing ? t.form.editTitle : t.form.createTitle}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setDraft(null)}>{common.cancel}</Button>
+            <Button variant="secondary" onClick={closeDraft}>{common.cancel}</Button>
             <Button loading={saving} loadingText={common.saving} disabled={imageUploading} onClick={() => void save()}>
               {common.save}
             </Button>
@@ -565,7 +594,7 @@ export default function PortfolioPage() {
               {!canManage ? <FormText>{t.form.imageManagerOnly}</FormText> : null}
               {imageUploading ? <FormText>{t.form.imageUploading}</FormText> : null}
               {imageError ? <FormError>{imageError}</FormError> : null}
-              {/^(https?:)?\//.test(draft.imageUrl) ? (
+              {isRenderableImageUrl(draft.imageUrl) ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={draft.imageUrl}

@@ -54,6 +54,14 @@ const ALLOWED_BUCKETS = new Set([
    */
   'chat-images',
 ]);
+/**
+ * 需要高於預設 STAFF 的 bucket 最低角色。刻意只列 portfolio-images：作品集所有寫入
+ * （/api/portfolios POST/PUT/reorder）都要 MANAGER，上傳端點不得讓 STAFF 繞過頁面
+ * 的管理者限制直接建立 public 物件。其他 bucket 維持歷史行為（STAFF 可上傳）。
+ */
+const BUCKET_MIN_ROLE: Partial<Record<string, 'MANAGER'>> = {
+  'portfolio-images': 'MANAGER',
+};
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB
 const ALLOWED_TYPES: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -77,7 +85,14 @@ export const POST = handle(async (req) => {
 
   // Welcome-card settings and its public assets are manager-owned. Keep the
   // historical upload permissions for the other buckets unchanged.
-  const t = bucket === WELCOME_CARD_BUCKET ? await requireTenant('MANAGER') : member;
+  // portfolio-images 以 BUCKET_MIN_ROLE 要求 MANAGER（STAFF → 403，早於任何 storage 寫入）。
+  const bucketMinRole = BUCKET_MIN_ROLE[bucket];
+  const t =
+    bucket === WELCOME_CARD_BUCKET
+      ? await requireTenant('MANAGER')
+      : bucketMinRole
+        ? await requireTenant(bucketMinRole)
+        : member;
 
   const ext = ALLOWED_TYPES[file.type];
   if (!ext)
