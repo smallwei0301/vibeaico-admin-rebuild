@@ -132,4 +132,8 @@ describe('tour-orders 頁面（#873）', () => {
     expect(page).toContain('listPaymentMethods');
     expect(page).toContain('/tenant/payment-methods');
   });
+  it('收款方式載入中停用送出並在 handler 擋下', () => {
+    expect(page).toMatch(/disabled=\{[^}]*payState === 'loading'\}/);
+    expect(page).toContain("if (payState === 'loading') return;");
+  });
 });
