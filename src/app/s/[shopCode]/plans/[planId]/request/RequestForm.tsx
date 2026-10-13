@@ -1,5 +1,6 @@
 'use client';
 
+import { pickRedirectContact } from '@/lib/public-contact';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -83,9 +84,9 @@ export function RequestForm({
           specialRequest: specialRequest.trim() || undefined,
         }),
       });
-      const contact = (contactPhone || contactLine || contactEmail).trim();
+      const contact = pickRedirectContact(contactPhone, contactLine, contactEmail);
       router.push(
-        `/s/${shopCode}/requests/${res.orderId}?contact=${encodeURIComponent(contact)}`,
+        `/s/${shopCode}/requests/${res.orderId}?contact=${encodeURIComponent(contact)}&created=1`,
       );
     } catch (err) {
       const quote = priceChangedQuoteFromError(err);

@@ -471,6 +471,8 @@ export function mapTourOrder(r: any, derived: {
     startTime: derived.startTime,
     customerName: String(contact.name ?? ''),
     customerPhone: String(contact.phone ?? ''),
+    customerLine: typeof contact.line === 'string' && contact.line.trim() ? contact.line.trim() : undefined,
+    customerEmail: typeof contact.email === 'string' && contact.email.trim() ? contact.email.trim() : undefined,
     partySize: Number(r.party_size ?? 0),
     unitPrice: Number(r.unit_price ?? 0),
     totalAmount: Number(r.total_amount ?? 0),

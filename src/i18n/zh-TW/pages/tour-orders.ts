@@ -25,7 +25,7 @@ export const tourOrdersPage = {
     confirmBalance: '確認收到尾款',
     complete: '標記完成',
     cancel: '取消訂單',
-    contactLine: 'LINE 聯絡',
+    contactLine: '複製 LINE ID',
     accept: '接受申請',
     reject: '拒絕申請',
   },
@@ -114,6 +114,8 @@ export const tourOrdersPage = {
       startTime: '出發時間',
       name: '姓名',
       phone: '電話',
+      line: 'LINE ID',
+      email: 'Email',
       party: '人數',
       unitPrice: '單價',
       total: '總金額',
@@ -180,6 +182,8 @@ export const tourOrdersPage = {
   },
 
   messages: {
+    lineCopied: '已複製 LINE ID',
+    lineCopyFailed: '無法複製，請手動選取 LINE ID',
     created: '訂單已建立',
     paymentConfirmed: '已確認收款，訂單成立',
     depositConfirmed: '已確認收到訂金，訂單標記為部分付款',
