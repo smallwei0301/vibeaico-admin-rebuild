@@ -28,6 +28,7 @@ import {
 import { createCustomer, listCustomers } from '@/services/customers';
 import { listServices, listStaff } from '@/services/catalog';
 import { exportBookingsCsv, exportBookingsXlsx } from '@/services/reports';
+import { USE_MOCK } from '@/config/env';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { bookingsPage as t } from '@/i18n/zh-TW/pages/bookings';
@@ -50,9 +51,6 @@ const TIME_OPTIONS: string[] = Array.from({ length: 26 }, (_, i) => {
   const total = 9 * 60 + i * 30;
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 });
-
-/** 編輯預約的服務時長：30–480 分鐘，每 30 分鐘一檔 */
-const DURATION_OPTIONS: number[] = Array.from({ length: 16 }, (_, i) => (i + 1) * 30);
 
 /** 原站 /api/settings 的「強制指定服務人員」；骨架階段固定 */
 const REQUIRE_STAFF = false;
@@ -972,10 +970,9 @@ function BookingFormModal({
     if (!serviceId) return c.serviceInvalid;
     if (REQUIRE_STAFF && !staffId) return `${c.staffRequired}${c.staffRequiredSuffix}`;
     if (!date) return c.dateInvalid;
-    if (!isEdit && checkoutDate && checkoutDate <= date) return c.checkoutInvalid;
+    if (USE_MOCK && !isEdit && checkoutDate && checkoutDate <= date) return c.checkoutInvalid;
     if (!time) return c.timeInvalid;
     if (!isEdit && date < new Date().toISOString().slice(0, 10)) return t.messages.pastDate;
-    if (isEdit && !duration) return t.messages.requiredFields;
     return '';
   };
 
@@ -1004,7 +1001,6 @@ function BookingFormModal({
     try {
       const startAt = new Date(`${date}T${time}:00`).toISOString();
       if (isEdit && booking) {
-        // duration 下拉僅供畫面試算：PUT /api/bookings/:id 以既有 duration_minutes 重算 end_at
         const result = await updateBooking(booking.id, { startAt, staffId: staffId || null, note });
         onSaved(result);
       } else {
@@ -1090,7 +1086,7 @@ function BookingFormModal({
       <div className="grid gap-x-4 md:grid-cols-2">
         <FormGroup>
           <Label required htmlFor="bookingService">{isEdit ? e.service : c.service}</Label>
-          <Select id="bookingService" value={serviceId} onChange={(ev) => setServiceId(ev.target.value)}>
+          <Select id="bookingService" value={serviceId} disabled={isEdit} onChange={(ev) => setServiceId(ev.target.value)}>
             <option value="">{c.servicePlaceholder}</option>
             {services.map((s) => (
               <option key={s.id} value={s.id}>
@@ -1098,7 +1094,7 @@ function BookingFormModal({
               </option>
             ))}
           </Select>
-          {!isEdit ? <FormText>{c.serviceHelp}</FormText> : null}
+          <FormText>{isEdit ? e.serviceLocked : c.serviceHelp}</FormText>
         </FormGroup>
 
         <FormGroup>
@@ -1118,7 +1114,7 @@ function BookingFormModal({
           <Input id="bookingDate" type="date" value={date} onChange={(ev) => setDate(ev.target.value)} />
         </FormGroup>
 
-        {!isEdit ? (
+        {USE_MOCK && !isEdit ? (
           <FormGroup>
             <Label required htmlFor="checkoutDate">{c.checkoutDate}</Label>
             <Input
@@ -1148,16 +1144,12 @@ function BookingFormModal({
         </FormGroup>
 
         <FormGroup>
-          <Label required={isEdit} htmlFor="bookingDuration">{isEdit ? e.duration : c.duration}</Label>
+          <Label htmlFor="bookingDuration">{isEdit ? e.duration : c.duration}</Label>
           {isEdit ? (
-            <Select
-              id="bookingDuration" value={String(duration)}
-              onChange={(ev) => setDuration(Number(ev.target.value))}
-            >
-              {DURATION_OPTIONS.map((d) => (
-                <option key={d} value={d}>{`${d} ${e.durationUnit}`}</option>
-              ))}
-            </Select>
+            <Input
+              id="bookingDuration" readOnly
+              value={c.durationValue(duration)}
+            />
           ) : (
             <Input
               id="bookingDuration" readOnly placeholder={c.durationPlaceholder}
