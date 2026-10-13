@@ -230,4 +230,10 @@ export const clinicQueuePage = {
     rosterTitle: '今日尚無掛號',
     rosterDescription: '病患透過 LINE 自助掛號或由店家代客掛號後，會出現在這份名單。',
   },
+
+  /* ------------------------------------------------ 真實模式（後端尚未提供） */
+  unavailable: {
+    title: '號碼掛號功能尚未開放',
+    description: '看診診次與現場號碼管理功能開放後會顯示在這裡，目前不會產生任何診次或掛號資料。',
+  },
 } as const;

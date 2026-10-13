@@ -18,6 +18,7 @@ import {
   FormError, FormGroup, FormText, Input, Label, Select,
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
+import { USE_MOCK } from '@/config/env';
 import { listServices } from '@/services/catalog';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
@@ -104,7 +105,24 @@ const toIsoDate = (d: Date) =>
 
 /* -------------------------------------------------------------------------- */
 
+/** 真實模式後端（#20）尚未提供：只顯示誠實的未開放狀態，不渲染假資料也不發請求。 */
 export default function ClinicQueuePage() {
+  if (!USE_MOCK) {
+    return (
+      <>
+        <PageHeader eyebrow={nav.navOperation} title={t.title} />
+        <EmptyState
+          icon={Hospital}
+          title={t.unavailable.title}
+          description={t.unavailable.description}
+        />
+      </>
+    );
+  }
+  return <DemoClinicQueuePage />;
+}
+
+function DemoClinicQueuePage() {
   const toast = useToast();
 
   const [services, setServices] = React.useState<Service[]>([]);
