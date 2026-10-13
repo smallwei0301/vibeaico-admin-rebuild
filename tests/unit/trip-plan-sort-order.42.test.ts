@@ -119,7 +119,7 @@ describe('#42 plan display-order persistence', () => {
     expect(source).toContain('reorderPlans');
     expect(source).toContain('movePlan');
     expect(source).toContain('if (updates.length === 0) return;');
-    expect(source).toContain('updates.map((u) => saveTripPlan(tripId, { id: u.id, sortOrder: u.sortOrder }))');
+    expect(source).toContain('updates.map((u) => () => saveTripPlan(tripId, { id: u.id, sortOrder: u.sortOrder }))');
     expect(source).toContain('t.plans.labels.moveUp');
     expect(source).toContain('t.plans.labels.moveDown');
   });

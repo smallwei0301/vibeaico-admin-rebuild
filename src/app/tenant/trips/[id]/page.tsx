@@ -28,6 +28,7 @@ import {
   type FormationDecisionPayload,
 } from '@/services/tours';
 import { getTenantSettings } from '@/services/settings';
+import { saveAllThenResync } from '@/lib/trip-plan-resync';
 import { formationTimeZone, formationLocalDateTime, formationWallTimeToIso, tryFormationLocalToIso } from '@/lib/departure-formation-time';
 import { listStaff } from '@/services/catalog';
 import { common } from '@/i18n/zh-TW/common';
@@ -587,22 +588,24 @@ export default function TripDetailPage() {
     if (blockListedPlanWrite()) return;
     const { plans: reordered, updates } = reorderPlans(plans, index, delta);
     if (updates.length === 0) return;
-    try {
-      if (USE_MOCK) {
-        setPlans(reordered);
-      } else {
-        await Promise.all(
-          updates.map((u) => saveTripPlan(tripId, { id: u.id, sortOrder: u.sortOrder })),
-        );
-        setPlans(await listTripPlans(tripId));
-      }
-      toast.show(t.messages.planOrderUpdated);
-    } catch (error) {
+    const fail = (error: unknown) =>
       toast.show(
         error instanceof Error && error.message ? error.message : t.messages.planOrderFailed,
         'danger',
       );
+    if (USE_MOCK) {
+      setPlans(reordered);
+      toast.show(t.messages.planOrderUpdated);
+      return;
     }
+    // 等全部寫入 settled 後才重讀（部分成功時與伺服器對齊，重讀失敗保留原狀）（#930）
+    const result = await saveAllThenResync(
+      updates.map((u) => () => saveTripPlan(tripId, { id: u.id, sortOrder: u.sortOrder })),
+      () => listTripPlans(tripId),
+      setPlans,
+    );
+    if (result.ok) toast.show(t.messages.planOrderUpdated);
+    else fail(result.error);
   };
 
   /* ------------------------------------------------------------- 團次 */
