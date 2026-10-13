@@ -24,6 +24,13 @@ describe('#892 真實模式不顯示假功能', () => {
     expect(s).toContain('t.subscribe.notAvailable');
     expect(s).toMatch(/\{USE_MOCK && \(\s*<ConfirmModal\s+open=\{confirmRegen\}/);
     expect(calendarSyncPage.subscribe.notAvailable).toContain('尚未開放');
+    // 加入教學（貼網址／同步頻率／員工同步）屬於對外訂閱，真實模式隱藏；外部行事曆匯入卡片不受控管
+    expect(s).toMatch(/\{USE_MOCK && \(\s*<Card>\s*<CardBody>\s*<h6[^>]*>\s*<Info[^>]*\/>\s*\{t\.howTo\.title\}/);
+    const howToIdx = s.indexOf('t.howTo.staffBody');
+    const importIdx = s.indexOf('t.external.title');
+    expect(importIdx).toBeGreaterThan(howToIdx);
+    expect(s.slice(howToIdx, importIdx)).toMatch(/\)\}\s*\{\/\* -+ 匯入外部行事曆/);
+    expect(s).toContain('listExternalCalendars');
   });
 
   it('Topbar 安裝 App／推播按鈕僅 mock 顯示', () => {

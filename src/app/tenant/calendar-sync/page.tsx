@@ -143,6 +143,7 @@ export default function CalendarSyncPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         {/* -------------------------------------------- 如何加入 Google Calendar */}
+        {USE_MOCK && (
         <Card>
           <CardBody>
             <h6 className="mb-3 flex items-center gap-2 text-md font-bold">
@@ -166,6 +167,7 @@ export default function CalendarSyncPage() {
             <p className="text-base text-neutral-700">{t.howTo.staffBody}</p>
           </CardBody>
         </Card>
+        )}
 
         {/* ---------------------------------------------------- 匯入外部行事曆 */}
         <Card>
