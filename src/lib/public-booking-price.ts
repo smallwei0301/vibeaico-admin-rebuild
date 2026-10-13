@@ -43,7 +43,8 @@ export function seasonalHeadlineKind(plan: {
 /**
  * 預約頁「可預選且可送出」某個團次的單一判斷來源（#46）：團次在 plan.departures 內、剩餘名額 >= 方案最低人數，
  * 且價格可確定（有季節定價時該團次必須解析出 unitPrice，否則 canSubmitBooking 會擋下送出）。
- * 預約頁的 ?departure= 預選、BookingForm 初始團次、LINE「近期團次」與店家首頁的直達連結都用它，不得各自重寫。
+ * 預約頁的 ?departure= 預選與 BookingForm 初始團次直接呼叫它；LINE「近期團次」用預約頁載入器的結果呼叫它；
+ * 店家首頁（public-shop.ts 的 linkable）在團次列只有單一團次，改用 seasonUnitPriceFor 解析同一個 unitPrice 後呼叫它。不得各自重寫。
  */
 export function isDepartureBookableOnPage(
   plan: { minParty: number; seasonalPricing?: boolean; departures: Array<{ id: string; seatsLeft: number; unitPrice?: number }> },

@@ -50,7 +50,7 @@ vi.mock('@/server/supabase', () => ({
   }),
 }));
 
-import { canSubmitBooking, resolveBookingTotal, seasonalHeadlineKind } from '@/lib/public-booking-price';
+import { canSubmitBooking, isDepartureBookableOnPage, resolveBookingTotal, seasonalHeadlineKind } from '@/lib/public-booking-price';
 import { loadPublicBookingPlan } from '@/server/public-tour-booking';
 import { loadPublicRequestPlan } from '@/server/public-tour-request';
 
@@ -283,5 +283,32 @@ describe('#11 表單與 client 接線 pin', () => {
 
   it('H3：PublicContactActions 經過 phoneContact', () => {
     expect(read('src/components/public/PublicContactActions.tsx')).toMatch(/const phone = phoneContact\(shop\);/);
+  });
+});
+
+describe('#46 isDepartureBookableOnPage 與 canSubmitBooking 一致（可預選的團次，最低人數＋聯絡資料齊全時一定送得出）', () => {
+  const plans = [
+    { minParty: 1, priceType: 'PER_PERSON' as const, pricePerPerson: 1000 },
+    { minParty: 3, priceType: 'PER_GROUP' as const, pricePerPerson: 1000, seasonalPricing: true },
+    { minParty: 2, priceType: 'PER_PERSON' as const, pricePerPerson: 1000, seasonalPricing: true },
+  ];
+  const departures = [
+    { id: 'a', seatsLeft: 0, unitPrice: 1200 },
+    { id: 'b', seatsLeft: 2, unitPrice: 1200 },
+    { id: 'c', seatsLeft: 5, unitPrice: undefined },
+    { id: 'd', seatsLeft: 5, unitPrice: 0 },
+    { id: 'e', seatsLeft: 1 },
+  ];
+  it.each(plans.map((p, i) => [i, p] as const))('方案 %i', (_i, plan) => {
+    const view = { ...plan, departures };
+    for (const dep of departures) {
+      const bookable = isDepartureBookableOnPage(view, dep.id);
+      const total = resolveBookingTotal(dep, plan, plan.minParty);
+      const submit = canSubmitBooking({
+        departureId: dep.id, contactName: 'x', hasContact: true, partySize: plan.minParty,
+        minParty: plan.minParty, maxParty: 10, submitting: false, seasonalPricing: plan.seasonalPricing, bookingTotal: total,
+      });
+      if (bookable) expect(submit).toBe(true);
+    }
   });
 });

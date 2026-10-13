@@ -5,7 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const fx = vi.hoisted(() => ({ deps: [] as Array<Record<string, unknown>>, min: 1 }));
+const fx = vi.hoisted(() => ({ deps: [] as Array<Record<string, unknown>>, min: 1, seasons: [] as Array<Record<string, unknown>>, seasonsError: false }));
 
 vi.mock('@/server/supabase', () => ({
   createAdminSupabase: () => ({
@@ -21,6 +21,7 @@ vi.mock('@/server/supabase', () => ({
           return { data: [{ id: 'pf', trip_id: 'trip-1', sort_order: 0, name: 'pf', description: '', price_per_person: 100, price_type: 'PER_PERSON', min_party: fx.min, max_party: 8, sales_mode: 'FIXED_DEPARTURE' }], error: null };
         }
         if (table === 'trip_departures') return { data: fx.deps, error: null };
+        if (table === 'trip_plan_seasons') return fx.seasonsError ? { data: null, error: { message: 'boom' } } : { data: fx.seasons, error: null };
         return { data: [], error: null };
       };
       const chain: Record<string, unknown> = {
@@ -48,7 +49,7 @@ async function linkableById() {
 
 describe('首頁團次徽章 linkable（與預約頁候選集合一致）', () => {
   // 台北 2098-01-01 10:00
-  beforeEach(() => { fx.min = 1; vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2098-01-01T02:00:00Z')); });
+  beforeEach(() => { fx.min = 1; fx.seasons = []; fx.seasonsError = false; vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2098-01-01T02:00:00Z')); });
   afterEach(() => { vi.useRealTimers(); });
 
   it('今天已開始的團次不列；之後的團次 linkable', async () => {
@@ -64,5 +65,33 @@ describe('首頁團次徽章 linkable（與預約頁候選集合一致）', () =
     const m = await linkableById();
     expect(m.get('few')).toBe(false);
     expect(m.get('enough')).toBe(true);
+  });
+
+  const season = (over: Record<string, unknown> = {}) => ({
+    id: 's1', plan_id: 'pf', start_month: 7, start_day: 1, end_month: 8, end_day: 31, price_override: 3000, sort_order: 0, ...over,
+  });
+
+  it('季節定價方案：完整季節資料下每個團次都解析得出單價 → linkable（與預約頁 isDepartureBookableOnPage 一致）', async () => {
+    fx.seasons = [season()];
+    fx.deps = [dep('summer', '2098-07-10', '09:00:00'), dep('winter', '2098-01-10', '09:00:00')];
+    const m = await linkableById();
+    expect(m.get('summer')).toBe(true);
+    expect(m.get('winter')).toBe(true);
+  });
+
+  it('季節資料未確認（查詢失敗，團次無法解析單價）→ 不 linkable（fail closed）', async () => {
+    fx.seasonsError = true;
+    fx.deps = [dep('summer', '2098-07-10', '09:00:00')];
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const m = await linkableById();
+    spy.mockRestore();
+    expect(m.get('summer')).toBe(false);
+  });
+
+  it('季節定價方案，名額不足仍不 linkable（名額與價格兩個條件都要過）', async () => {
+    fx.min = 4;
+    fx.seasons = [season()];
+    fx.deps = [dep('few', '2098-07-10', '09:00:00', 4)];
+    expect((await linkableById()).get('few')).toBe(false);
   });
 });
