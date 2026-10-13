@@ -39,6 +39,7 @@ import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
 import { ApiError } from '@/lib/api';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import { resolveGuideInboxDepartureFocus } from '@/lib/guide-action-inbox';
+import { removeTripCover, uploadTripCover, validateTripCoverFile } from '@/lib/trip-cover';
 import { MAX_PUBLIC_GALLERY_IMAGES, omitUnchangedGallery } from '@/lib/trip-gallery';
 import {
   omitUnchangedTripTextFields, tripTextFieldErrors,
@@ -216,6 +217,8 @@ export default function TripDetailPage() {
   const [showChildPrice, setShowChildPrice] = React.useState(false);
   const [savingPlan, setSavingPlan] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
+  const [coverBusy, setCoverBusy] = React.useState(false);
+  const coverInputRef = React.useRef<HTMLInputElement>(null);
   const [addonDraft, setAddonDraft] = React.useState<TripAddon | null>(null);
   const [departureDraft, setDepartureDraft] = React.useState<TripDeparture | null>(null);
   /** #41：REVIEW_REQUIRED 團次的導遊決策（仍然成團／延長募集） */
@@ -323,6 +326,44 @@ export default function TripDetailPage() {
       return false;
     } finally {
       setBusy(false);
+    }
+  };
+
+  /** 封面：上傳 → 寫入行程 → 重讀；只動 coverImageUrl，不碰表單中尚未儲存的其他欄位。 */
+  const onPickCover = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || coverBusy) return;
+    const invalid = validateTripCoverFile(file);
+    if (invalid) {
+      toast.show(invalid === 'type' ? t.messages.coverTypeInvalid : t.messages.coverTooLarge, 'danger');
+      return;
+    }
+    setCoverBusy(true);
+    try {
+      const url = await uploadTripCover(tripId, file);
+      setTrip((cur) => (cur ? { ...cur, coverImageUrl: url } : cur));
+      setForm((cur) => (cur ? { ...cur, coverImageUrl: url } : cur));
+      toast.show(t.messages.coverUploaded);
+    } catch (err) {
+      toast.show(`${t.messages.actionFailedPrefix}${err instanceof ApiError ? err.message : ''}`, 'danger');
+    } finally {
+      setCoverBusy(false);
+    }
+  };
+
+  const onRemoveCover = async () => {
+    if (coverBusy) return;
+    setCoverBusy(true);
+    try {
+      await removeTripCover(tripId);
+      setTrip((cur) => (cur ? { ...cur, coverImageUrl: '' } : cur));
+      setForm((cur) => (cur ? { ...cur, coverImageUrl: '' } : cur));
+      toast.show(t.messages.coverRemoved);
+    } catch (err) {
+      toast.show(`${t.messages.actionFailedPrefix}${err instanceof ApiError ? err.message : ''}`, 'danger');
+    } finally {
+      setCoverBusy(false);
     }
   };
 
@@ -1191,10 +1232,43 @@ export default function TripDetailPage() {
             <Card>
               <CardHeader><CardTitle>{t.form.coverLabel}</CardTitle></CardHeader>
               <CardBody className="flex flex-col gap-2">
-                <div className="flex aspect-[3/2] items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-neutral-50 text-muted">
-                  <ImageIcon size={28} />
+                {form.coverImageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={form.coverImageUrl}
+                    alt={t.form.coverAlt}
+                    className="aspect-[3/2] w-full rounded-lg border border-neutral-200 object-cover"
+                  />
+                ) : (
+                  <div className="flex aspect-[3/2] items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-neutral-50 text-muted">
+                    <ImageIcon size={28} />
+                  </div>
+                )}
+                <input
+                  ref={coverInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  data-testid="trip-cover-input"
+                  onChange={(e) => void onPickCover(e)}
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline" size="sm" className="min-h-11 flex-1"
+                    loading={coverBusy} disabled={coverBusy}
+                    onClick={() => coverInputRef.current?.click()}
+                  >
+                    <Upload size={14} />{form.coverImageUrl ? t.form.replaceCta : t.form.uploadCta}
+                  </Button>
+                  {form.coverImageUrl ? (
+                    <Button
+                      variant="outline" size="sm" className="min-h-11"
+                      disabled={coverBusy} onClick={() => void onRemoveCover()}
+                    >
+                      <Trash2 size={14} />{t.form.removeImage}
+                    </Button>
+                  ) : null}
                 </div>
-                <Button variant="outline" size="sm"><Upload size={14} />{t.form.uploadCta}</Button>
                 <FormText>{t.form.coverHelp}</FormText>
                 <div className="mt-2 border-t border-neutral-200 pt-2">
                   <Label>{t.form.galleryLabel}</Label>

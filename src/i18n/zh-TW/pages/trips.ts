@@ -135,6 +135,9 @@ export const tripsPage = {
     },
     uploadCta: '上傳圖片',
     removeImage: '移除',
+    replaceCta: '更換圖片',
+    coverAlt: '行程封面預覽',
+    uploading: '上傳中…',
   },
 
   /* --------------------------------------------------------------- 方案 */
@@ -531,6 +534,10 @@ export const tripsPage = {
      * ——後者會讓店家不知道是權限、名稱重複還是網路問題。這個前綴後面接 ApiError.message。
      */
     actionFailedPrefix: '操作失敗：',
+    coverUploaded: '封面圖片已更新',
+    coverRemoved: '封面圖片已移除',
+    coverTypeInvalid: '封面僅支援 JPG、PNG 或 WebP 圖片',
+    coverTooLarge: '封面圖片不可超過 5MB',
     /** 「新增行程」建立的草稿標題（店家接著在詳情頁改成真正的名稱） */
     untitled: '未命名行程',
     planNameRequired: '請輸入方案名稱',
