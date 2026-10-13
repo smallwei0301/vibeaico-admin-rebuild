@@ -191,6 +191,10 @@
     {
       "ref": "issue/903",
       "title": "預約管理批次操作與編輯人員下拉誠實化"
+    },
+    {
+      "ref": "issue/906",
+      "title": "店家登入與重設密碼中文錯誤與 email 驗證"
     }
   ],
   "main": {
@@ -7784,13 +7788,47 @@
         "issue": 903,
         "count": 1,
         "evidenceRef": "this commit"
+      },
+      {
+        "id": "20261013-luna-scout-906-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModel": "unknown",
+        "startedAt": "2026-10-13T16:40:30Z",
+        "completedAt": "2026-10-13T16:41:55Z",
+        "note": "Luna 窄盤點店家註冊／登入／忘記密碼／重設密碼真實模式問題，回報三項 GAP；主 agent 核對後避開 open draft PR #796 檔案，取登入與重設密碼開立 issue/906。actual 未經平台驗證。",
+        "issue": 906,
+        "count": 1,
+        "evidenceRef": "this commit"
+      },
+      {
+        "id": "20261013-luna-scout-906-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModel": "unknown",
+        "startedAt": "2026-10-13T16:48:35Z",
+        "completedAt": "2026-10-13T16:48:35Z",
+        "note": "Luna metrics capture 綁定 issue/906 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2。actual 未經平台驗證。",
+        "issue": 906,
+        "count": 1,
+        "evidenceRef": "this commit"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 50,
+    "issuesStarted": 51,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -7817,8 +7855,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 120,
-    "lunaAccepted": 111,
+    "lunaTasks": 122,
+    "lunaAccepted": 113,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -8055,7 +8093,8 @@
     "2026-10-13 非計分紀錄（issue/898）：builder commit 65dbbcf9（cherry-pick 為 a52cb4a4，旅客預約流程移除我的訂單死連結、人數不合顯示原因、無團次文案指向返回店家頁），Sonnet builder 16:08:21Z–16:14:17Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/895 follow-up）：builder commit ceb61f18（15:44:30Z–15:47:03Z），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/899）：builder commit 66174027（cherry-pick 為 0c00e267，LINE 設定切換 Flex 選單樣式與活動關鍵字時提示尚未儲存），Sonnet builder 16:08:44Z–16:11:01Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
-    "2026-10-13 非計分紀錄（issue/903）：builder commit 6045ed07（cherry-pick 為 6200e18b，預約批次確認／取消改 allSettled 如實顯示成功與失敗筆數並重讀、編輯預約人員下拉顯示目前指定人員），Sonnet builder 16:32:44Z–16:38:09Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
+    "2026-10-13 非計分紀錄（issue/903）：builder commit 6045ed07（cherry-pick 為 6200e18b，預約批次確認／取消改 allSettled 如實顯示成功與失敗筆數並重讀、編輯預約人員下拉顯示目前指定人員），Sonnet builder 16:32:44Z–16:38:09Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/906）：builder commit c5322335（cherry-pick 為 2899d56c，店家登入改以電子郵件驗證並中文提示、重設密碼連結不完整時給中文說明），Sonnet builder 16:42:32Z–16:47:35Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
