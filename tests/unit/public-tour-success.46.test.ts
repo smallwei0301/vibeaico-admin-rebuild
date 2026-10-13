@@ -9,6 +9,8 @@ import type { TourOrder } from '@/lib/types';
 import { publicTourRequestPage as t } from '@/i18n/zh-TW/pages/public-tour-request';
 import { pickRedirectContact } from '@/lib/public-contact';
 import { mapTourOrder } from '@/server/mappers';
+import { common } from '@/i18n/zh-TW/common';
+import * as publicOrderFormat from '@/lib/public-order-format';
 
 describe('#46 pickRedirectContact', () => {
   it('電話只有空白、LINE 有填 → 取 LINE（不得回空字串造成 404）', () => {
@@ -56,9 +58,11 @@ const pageModule = { exports: {} as { default: (props: {
 const imports: Record<string, unknown> = {
   'next/navigation': { notFound },
   'next/link': { default: (props: React.ComponentProps<'a'>) => React.createElement('a', props) },
-  '@/server/public-tour-request': { loadPublicTourRequestStatus: loader },
+  '@/server/public-tour-request': { loadPublicTourRequestStatus: loader, loadPublicShopTimeZone: async () => 'Asia/Taipei' },
   '@/i18n/zh-TW/pages/public-tour-request': { publicTourRequestPage: t },
   '@/lib/utils': utils,
+  '@/i18n/zh-TW/common': { common },
+  '@/lib/public-order-format': publicOrderFormat,
 };
 new Function('require', 'exports', 'React', compiled)((id: string) => {
   if (!(id in imports)) throw new Error(`Unexpected page import: ${id}`);

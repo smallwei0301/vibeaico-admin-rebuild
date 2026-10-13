@@ -17,10 +17,33 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { loadPublicTourRequestStatus } from '@/server/public-tour-request';
+import { loadPublicShopTimeZone, loadPublicTourRequestStatus } from '@/server/public-tour-request';
 import { publicTourRequestPage as t } from '@/i18n/zh-TW/pages/public-tour-request';
-import { formatCurrency, formatDateTime } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
+import { common } from '@/i18n/zh-TW/common';
+import {
+  cancelledCopyKind,
+  formatInstantInTimeZone,
+  formatPlainDateWithWeekday,
+  isLockedBooking,
+} from '@/lib/public-order-format';
 import type { TourOrder } from '@/lib/types';
+
+// 時間點以店家時區（loadPublicShopTimeZone，無效回退 Asia/Taipei）顯示；無法解析時退回原值，不顯示 Invalid Date。
+function showInstant(iso: string, timeZone: string): string {
+  return formatInstantInTimeZone(iso, timeZone) ?? iso;
+}
+
+function paymentDescriptionFor(order: TourOrder): string {
+  const refunded = order.refundedAmount ?? 0;
+  if (order.paymentStatus === 'REFUNDED' && refunded > 0) {
+    return t.status.paymentRefundedWithAmount(formatCurrency(refunded));
+  }
+  if (order.paymentStatus === 'REFUND_PENDING' && refunded > 0) {
+    return t.status.paymentRefundPendingWithAmount(formatCurrency(refunded));
+  }
+  return t.status.paymentDescription[order.paymentStatus];
+}
 
 type Params = {
   params: Promise<{ shopCode: string; orderId: string }>;
@@ -29,12 +52,12 @@ type Params = {
 
 export const metadata: Metadata = { title: t.status.metaTitle };
 
-function StatusBody({ order }: { order: TourOrder }) {
+function StatusBody({ order, timeZone }: { order: TourOrder; timeZone: string }) {
   if (order.status === 'PENDING') {
     // #46：REQUEST 送出當下不鎖位，其餘 sales_mode（FIXED_DEPARTURE／INSTANT）
     // 建單當下就已經真的鎖位（0111 的 reserve_seats 分流）。PENDING 對兩者是
     // 完全不同的現況，文案不能共用——見 i18n 檔 `pendingLockedTitle` 的檔頭。
-    const locked = order.salesMode !== undefined && order.salesMode !== 'REQUEST';
+    const locked = isLockedBooking(order);
     return (
       <section className="card">
         <div className="card-body flex flex-col gap-2">
@@ -52,6 +75,8 @@ function StatusBody({ order }: { order: TourOrder }) {
       </section>
     );
   }
+  // CONFIRMED／CANCELLED 不依 salesMode 分流：order.salesMode 讀自方案「目前」的 sales_mode，
+  // 店家改過方案後會與下單當時不同，tour_orders 又沒有快照欄位，所以用兩種模式都成立的中性文案。
   if (order.status === 'CONFIRMED') {
     return (
       <section className="card">
@@ -60,7 +85,7 @@ function StatusBody({ order }: { order: TourOrder }) {
           <p className="text-sm text-secondary">
             {order.paymentStatus === 'UNPAID'
               ? order.holdExpiresAt
-                ? t.status.confirmedDescription(formatDateTime(order.holdExpiresAt))
+                ? t.status.confirmedDescription(showInstant(order.holdExpiresAt, timeZone))
                 : t.status.confirmedNoDeadlineDescription
               : t.status.confirmedPaymentDescription}
           </p>
@@ -73,7 +98,13 @@ function StatusBody({ order }: { order: TourOrder }) {
       <section className="card">
         <div className="card-body flex flex-col gap-2">
           <h1 className="text-xl font-semibold text-danger">{t.status.cancelledTitle}</h1>
-          <p className="text-sm text-secondary">{t.status.cancelledDescription}</p>
+          <p className="text-sm text-secondary">
+            {{
+              UNPAID: t.status.cancelledDescription,
+              PAID: t.status.cancelledPaidDescription,
+              REFUNDED: t.status.cancelledRefundedDescription,
+            }[cancelledCopyKind(order.paymentStatus)]}
+          </p>
         </div>
       </section>
     );
@@ -93,7 +124,10 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
   const { contact, created } = await searchParams;
 
   if (!contact) notFound();
-  const order = await loadPublicTourRequestStatus(shopCode, orderId, contact);
+  const [order, timeZone] = await Promise.all([
+    loadPublicTourRequestStatus(shopCode, orderId, contact),
+    loadPublicShopTimeZone(shopCode),
+  ]);
   if (!order) notFound();
 
   return (
@@ -110,13 +144,13 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
           </div>
         </section>
       ) : null}
-      <StatusBody order={order} />
+      <StatusBody order={order} timeZone={timeZone} />
 
       <section className="card">
         <div className="card-body flex flex-col gap-2">
           <h2 className="text-base font-medium">{t.status.paymentTitle}</h2>
           <p className="text-sm font-medium">{t.status.paymentState[order.paymentStatus]}</p>
-          <p className="text-sm text-secondary">{t.status.paymentDescription[order.paymentStatus]}</p>
+          <p className="text-sm text-secondary">{paymentDescriptionFor(order)}</p>
         </div>
       </section>
 
@@ -128,15 +162,21 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
             <dt className="text-secondary">{t.status.fields.trip}</dt><dd>{order.tripTitle}</dd>
             <dt className="text-secondary">{t.status.fields.plan}</dt><dd>{order.planName}</dd>
             <dt className="text-secondary">{t.status.fields.departsOn}</dt>
-            <dd>{order.departsOn}{order.startTime ? ` ${order.startTime}` : ''}</dd>
+            <dd>{formatPlainDateWithWeekday(order.departsOn, common.weekdays) ?? order.departsOn}{order.startTime ? ` ${order.startTime}` : ''}</dd>
             <dt className="text-secondary">{t.status.fields.party}</dt>
             <dd>{t.status.partyUnit(order.partySize)}</dd>
             <dt className="text-secondary">{t.status.fields.submittedAt}</dt>
-            <dd>{formatDateTime(order.createdAt)}</dd>
+            <dd>{showInstant(order.createdAt, timeZone)}</dd>
           </dl>
           <div className="mt-1 text-sm font-medium text-dark">
             {formatCurrency(order.totalAmount)}
           </div>
+          {(order.refundedAmount ?? 0) > 0 ? (
+            <dl className="grid grid-cols-[7rem_1fr] gap-y-1 text-sm">
+              <dt className="text-secondary">{t.status.fields.refunded}</dt>
+              <dd>{formatCurrency(order.refundedAmount ?? 0)}</dd>
+            </dl>
+          ) : null}
         </div>
       </section>
 

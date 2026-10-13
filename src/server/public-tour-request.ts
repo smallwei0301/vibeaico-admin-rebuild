@@ -36,7 +36,7 @@
  *    但 API 端點本身不能只靠「畫面沒有連結」當作唯一防線（連結可以被猜到／分享）。
  */
 import { z } from 'zod';
-import { resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
+import { PUBLIC_DEFAULT_TIME_ZONE, resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
 import { hasSeasonalPricing, loadPlanSeasons, seasonUnitPriceFor } from '@/server/public-plan-seasons';
 import { loadBookingCandidateRows } from '@/server/public-tour-booking';
 import { createTourOrderWithQuote, PRICE_UNVERIFIABLE_MESSAGE, type PriceQuote } from '@/server/public-order-quote';
@@ -364,6 +364,28 @@ export async function loadPublicTourRequestStatus(
 
   const [order] = await hydrateTourOrders(admin, tenantId, [row]);
   return order ?? null;
+}
+
+/**
+ * 店家時區（`tenant_settings.basic.timezone`，缺值／無效回退 Asia/Taipei）。
+ * 狀態頁用它顯示付款期限、送出時間。刻意獨立成小函式、不擴充
+ * `loadPublicTourRequestStatus` 的回傳型別，讓既有呼叫者與測試不受影響。
+ * 任何錯誤（店家不存在、查詢失敗）都回退預設時區，時區只影響顯示，不可讓頁面失敗。
+ */
+export async function loadPublicShopTimeZone(shopCode: string): Promise<string> {
+  if (!SHOP_CODE_PATTERN.test(shopCode)) return PUBLIC_DEFAULT_TIME_ZONE;
+  try {
+    const { data, error } = await createAdminSupabase()
+      .from('tenants').select('tenant_settings(basic)')
+      .eq('shop_code', shopCode).maybeSingle();
+    if (error || !data) return PUBLIC_DEFAULT_TIME_ZONE;
+    const raw = (data as Record<string, unknown>).tenant_settings;
+    const settings = (Array.isArray(raw) ? raw[0] : raw) as
+      | { basic?: Record<string, unknown> } | null | undefined;
+    return resolvePublicTimeZone(settings?.basic?.timezone);
+  } catch {
+    return PUBLIC_DEFAULT_TIME_ZONE;
+  }
 }
 
 /**
