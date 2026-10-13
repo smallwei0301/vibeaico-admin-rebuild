@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { zhErrorMap } from '@/server/zod-zh';
 import { handle } from '@/server/http';
-import { resyncAfterFailure } from '@/lib/trip-plan-resync';
+import { resyncAfterFailure, saveAllThenResync } from '@/lib/trip-plan-resync';
 
 const msg = (schema: z.ZodTypeAny, v: unknown) => {
   const r = schema.safeParse(v, { errorMap: undefined });
@@ -98,13 +98,41 @@ describe('#930 movePlan 失敗後重讀', () => {
     expect(ok).toBe(false);
     expect(applied).toBe(false);
   });
-  it('page.tsx movePlan catch 在非 mock 時呼叫 resyncAfterFailure(listTripPlans)', () => {
+  it('saveAllThenResync：一筆快速失敗、一筆較慢成功，重讀發生在全部 settled 之後', async () => {
+    const events: string[] = [];
+    const slow = () => new Promise<void>((res) => setTimeout(() => { events.push('slow-done'); res(); }, 30));
+    const fast = async () => { events.push('fast-fail'); throw new Error('boom'); };
+    let applied: number[] | null = null;
+    const r = await saveAllThenResync([fast, slow], async () => { events.push('refetch'); return [7]; }, (l) => { applied = l; });
+    expect(events).toEqual(['fast-fail', 'slow-done', 'refetch']);
+    expect(r.ok).toBe(false);
+    expect(r.ok === false && (r.error as Error).message).toBe('boom');
+    expect(applied).toEqual([7]);
+  });
+  it('saveAllThenResync：全部成功不走失敗路徑，只重讀一次', async () => {
+    let fetches = 0;
+    let applied: number[] | null = null;
+    const r = await saveAllThenResync([async () => 1, async () => 2], async () => { fetches += 1; return [1]; }, (l) => { applied = l; });
+    expect(r).toEqual({ ok: true });
+    expect(fetches).toBe(1);
+    expect(applied).toEqual([1]);
+  });
+  it('saveAllThenResync：失敗後重讀也失敗不 throw，回傳原失敗原因', async () => {
+    const r = await saveAllThenResync(
+      [async () => { throw new Error('first'); }],
+      async () => { throw new Error('refetch'); },
+      () => { throw new Error('should not apply'); },
+    );
+    expect(r.ok).toBe(false);
+    expect(r.ok === false && (r.error as Error).message).toBe('first');
+  });
+  it('page.tsx movePlan 非 mock 時以 saveAllThenResync 等全部寫入後重讀，不再用 Promise.all', () => {
     const src = readFileSync('src/app/tenant/trips/[id]/page.tsx', 'utf8');
     const start = src.indexOf('const movePlan');
     const body = src.slice(start, src.indexOf('/* ---', start));
-    const catchIdx = body.indexOf('} catch');
-    expect(catchIdx).toBeGreaterThan(0);
-    expect(body.slice(catchIdx)).toMatch(/!USE_MOCK\)\s*await resyncAfterFailure\(\(\) => listTripPlans\(tripId\), setPlans\)/);
-    expect(body.indexOf('toast.show', catchIdx)).toBeLessThan(body.indexOf('resyncAfterFailure', catchIdx));
+    expect(body).not.toContain('Promise.all(');
+    expect(body).toMatch(/await saveAllThenResync\(/);
+    expect(body).toMatch(/\(\) => listTripPlans\(tripId\),\s*setPlans/);
+    expect(body).toContain('t.messages.planOrderFailed');
   });
 });
