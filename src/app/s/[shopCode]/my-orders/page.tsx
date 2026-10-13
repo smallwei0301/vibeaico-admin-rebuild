@@ -11,17 +11,15 @@ import { MyOrdersSearch } from './MyOrdersSearch';
 
 type Params = {
   params: Promise<{ shopCode: string }>;
-  searchParams: Promise<{ contact?: string }>;
 };
 
 export const metadata: Metadata = { title: t.myOrders.metaTitle };
 
-export default async function MyOrdersPage({ params, searchParams }: Params) {
+export default async function MyOrdersPage({ params }: Params) {
   const { shopCode } = await params;
-  const { contact } = await searchParams;
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-6">
-      <MyOrdersSearch shopCode={shopCode} initialContact={contact ?? ''} />
+      <MyOrdersSearch shopCode={shopCode} />
     </main>
   );
 }
