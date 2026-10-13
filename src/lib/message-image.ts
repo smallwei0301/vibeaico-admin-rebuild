@@ -21,6 +21,17 @@ export type MessageImageFileError = TripCoverFileError;
 export const validateMessageImageFile: (file: { type: string; size: number }) => MessageImageFileError | null =
   validateTripCoverFile;
 
+/** LINE image message：previewImageUrl 上限 1MB、僅接受 JPEG／PNG（推播同一網址同時作 original 與 preview）。 */
+export const LINE_PUSH_IMAGE_MAX_BYTES = 1024 * 1024;
+export const LINE_PUSH_IMAGE_ALLOWED_TYPES = ['image/jpeg', 'image/png'] as const;
+
+/** 行銷推播專用：比 /api/upload 更嚴，避免存得下卻在 /send 被 LINE 400 退件。 */
+export function validateLinePushImageFile(file: { type: string; size: number }): MessageImageFileError | null {
+  if (!(LINE_PUSH_IMAGE_ALLOWED_TYPES as readonly string[]).includes(file.type)) return 'type';
+  if (file.size > LINE_PUSH_IMAGE_MAX_BYTES) return 'size';
+  return null;
+}
+
 /** POST/PUT /api/marketing/pushes 與 /api/campaigns 皆為 manager-only；STAFF 先上傳再 403 會留下孤兒公開檔，前端要先擋。 */
 export const canManageMarketing: (role: 'OWNER' | 'MANAGER' | 'STAFF' | null | undefined) => boolean =
   canManageTripCover;

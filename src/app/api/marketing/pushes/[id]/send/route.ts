@@ -104,7 +104,8 @@ export const POST = handle(async (_req, { params }) => {
     const c = (row.content ?? {}) as Record<string, any>;
     const messages: any[] = [{ type: 'text', text: typeof c.text === 'string' ? c.text : '' }];
     // LINE image message 只收 https；非 https（手動 http 網址等）不組圖片訊息，文字照送。
-    if (typeof c.imageUrl === 'string' && /^https:\/\//i.test(c.imageUrl))
+    // LINE 只收 JPEG／PNG；.webp（忽略 query／hash）同樣視為不可送圖，只送文字。
+    if (typeof c.imageUrl === 'string' && /^https:\/\//i.test(c.imageUrl) && !/\.webp$/i.test(c.imageUrl.split(/[?#]/)[0]))
       messages.push({ type: 'image', originalContentUrl: c.imageUrl, previewImageUrl: c.imageUrl });
 
     const { token } = await getLineCredentials(t.tenantId);

@@ -547,6 +547,8 @@ function CampaignFormModal({
   /** 已發布的活動只能改名稱、描述、結束時間、備註與圖片 */
   const locked = !!campaign && campaign.status !== 'DRAFT';
   const canUploadImage = canManageMarketing(useCurrentTenant().role);
+  /** 已結束的活動 PUT 會回 409，上傳只會留下孤兒公開檔，故一併鎖住圖片上傳。 */
+  const ended = campaign?.status === 'ENDED';
 
   const [name, setName] = React.useState('');
   // #176 (b)：新增時的預設**不能**是 REDIRECTED_TYPES 裡的值。上面的 filter 用
@@ -596,7 +598,7 @@ function CampaignFormModal({
   const pickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.target;
     const file = input.files?.[0];
-    if (!file || !canUploadImage || uploading || saving) return;
+    if (!file || !canUploadImage || ended || uploading || saving) return;
     const invalid = validateMessageImageFile(file);
     if (invalid) {
       input.value = '';
@@ -791,13 +793,13 @@ function CampaignFormModal({
         <Label htmlFor="campaignImageInput">{t.form.image}</Label>
         <Input
           id="campaignImageInput" type="file" accept="image/jpeg,image/png,image/webp"
-          disabled={!canUploadImage || uploading || saving} onChange={pickImage}
+          disabled={!canUploadImage || ended || uploading || saving} onChange={pickImage}
         />
         <div className="flex items-center justify-between">
           <FormText>
-            {!canUploadImage ? t.form.imageStaffReadonly : uploading ? t.form.imageUploading : t.form.imageUploadHint}
+            {!canUploadImage ? t.form.imageStaffReadonly : ended ? t.form.imageEndedReadonly : uploading ? t.form.imageUploading : t.form.imageUploadHint}
           </FormText>
-          {imageUrl && canUploadImage ? (
+          {imageUrl && canUploadImage && !ended ? (
             <Button variant="ghost" size="sm" disabled={uploading || saving} onClick={() => setImageUrl('')}>
               {t.form.imageRemove}
             </Button>

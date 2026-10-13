@@ -4,6 +4,7 @@ import {
   MESSAGE_IMAGE_BUCKET,
   canManageMarketing,
   isLineSendableImageUrl,
+  validateLinePushImageFile,
   validateMessageImageFile,
 } from '@/lib/message-image';
 import { marketingPage } from '@/i18n/zh-TW/pages/marketing';
@@ -16,6 +17,24 @@ const pages = {
 };
 
 describe('行銷推播／活動圖片：驗證 helper', () => {
+  it('推播（LINE）只接受 jpeg/png 且 ≤1MB', () => {
+    expect(validateLinePushImageFile({ type: 'image/png', size: MB })).toBeNull();
+    expect(validateLinePushImageFile({ type: 'image/jpeg', size: 1 })).toBeNull();
+    expect(validateLinePushImageFile({ type: 'image/webp', size: 1 })).toBe('type');
+    expect(validateLinePushImageFile({ type: 'image/png', size: MB + 1 })).toBe('size');
+  });
+  it('推播頁用 LINE validator 與 jpeg/png accept，活動頁維持原 validator', () => {
+    expect(pages.marketing).toContain('validateLinePushImageFile(file)');
+    expect(pages.marketing).toContain('accept="image/jpeg,image/png"');
+    expect(pages.campaigns).toContain('validateMessageImageFile(file)');
+    expect(pages.campaigns).toContain('accept="image/jpeg,image/png,image/webp"');
+    expect(marketingPage.form.imageFormatHint).toContain('最大 1MB');
+  });
+  it('活動 ENDED 時 pickImage 在驗證與上傳前早退，input 停用', () => {
+    expect(pages.campaigns).toContain("campaign?.status === 'ENDED'");
+    expect(pages.campaigns).toContain('if (!file || !canUploadImage || ended || uploading || saving) return;');
+    expect(pages.campaigns).toMatch(/disabled=\{!canUploadImage \|\| ended \|\| uploading \|\| saving\}/);
+  });
   it('只接受 jpeg/png/webp 且 ≤5MB（與 /api/upload 一致）', () => {
     expect(validateMessageImageFile({ type: 'image/png', size: 5 * MB })).toBeNull();
     expect(validateMessageImageFile({ type: 'image/jpeg', size: 1 })).toBeNull();
@@ -41,13 +60,13 @@ describe('行銷推播／活動圖片：驗證 helper', () => {
 
 describe.each(Object.entries(pages))('%s 頁面圖片上傳接線', (_name, src) => {
   it('pickImage 對 STAFF 在驗證與上傳前早退', () => {
-    expect(src).toMatch(/if \(!file \|\| !canUploadImage \|\| uploading \|\| saving\) return;/);
+    expect(src).toMatch(/if \(!file \|\| !canUploadImage \|\| (ended \|\| )?uploading \|\| saving\) return;/);
     expect(src.indexOf('!canUploadImage || uploading')).toBeLessThan(src.indexOf('await uploadMessageImage(file)'));
-    expect(src).toMatch(/disabled=\{!canUploadImage \|\| uploading \|\| saving\}/);
+    expect(src).toMatch(/disabled=\{!canUploadImage \|\| (ended \|\| )?uploading \|\| saving\}/);
     expect(src).toContain('t.form.imageStaffReadonly');
   });
   it('先驗證再上傳，成功才設定 imageUrl，失敗顯示錯誤且不改值', () => {
-    expect(src).toContain('validateMessageImageFile(file)');
+    expect(src).toMatch(/validate(Message|LinePush)ImageFile\(file\)/);
     expect(src).toContain('const url = await uploadMessageImage(file);\n      if (token !== uploadTokenRef.current) return;\n      setImageUrl(url);');
     expect(src).toContain("toast.show(msg, 'danger')");
     // catch 區塊內不得 setImageUrl（失敗保留原值）
@@ -84,7 +103,7 @@ describe('文案反映真實限制', () => {
     const all = JSON.stringify([marketingPage, campaignsPage]);
     expect(all).not.toContain('2MB');
     expect(all).not.toContain('上傳圖片優先');
-    expect(marketingPage.messages.imageTooLarge).toContain('5MB');
+    expect(marketingPage.messages.imageTooLarge).toContain('1MB');
     expect(campaignsPage.messages.imageTooLarge).toContain('5MB');
   });
 });

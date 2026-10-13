@@ -46,7 +46,7 @@ describe('POST /api/marketing/pushes/:id/send 圖片訊息', () => {
     expect(messages.map((m: any) => m.type)).toEqual(['text', 'image']);
   });
 
-  it.each(['http://cdn.test/a.png', 'blob:http://localhost/x', 'cover.png'])('%s → 只送文字', async (url) => {
+  it.each(['http://cdn.test/a.png', 'blob:http://localhost/x', 'cover.png', 'https://cdn.test/a.webp', 'https://cdn.test/A.WEBP?v=1#x'])('%s → 只送文字', async (url) => {
     state.imageUrl = url;
     const res = await send();
     expect(res.status).toBe(200);

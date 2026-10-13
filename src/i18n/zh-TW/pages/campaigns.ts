@@ -140,6 +140,7 @@ export const campaignsPage = {
     imageUploading: '圖片上傳中…',
     imagePreviewAlt: '活動圖片預覽',
     imageStaffReadonly: '僅店主或管理者可上傳活動圖片',
+    imageEndedReadonly: '活動已結束，無法更換圖片',
     imageRemove: '移除圖片',
 
     sectionReward: '推播與獎勵設定',

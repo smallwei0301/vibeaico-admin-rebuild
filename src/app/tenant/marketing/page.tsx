@@ -26,7 +26,7 @@ import type { MarketingPushFormPayload } from '@/services/marketing';
 import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { USE_MOCK } from '@/config/env';
 import { isRenderableImageUrl } from '@/lib/image-url';
-import { canManageMarketing, isLineSendableImageUrl, uploadMessageImage, validateMessageImageFile } from '@/lib/message-image';
+import { canManageMarketing, isLineSendableImageUrl, uploadMessageImage, validateLinePushImageFile } from '@/lib/message-image';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { marketingPage as t } from '@/i18n/zh-TW/pages/marketing';
@@ -444,7 +444,7 @@ function PushFormModal({
     const input = e.target;
     const file = input.files?.[0];
     if (!file || !canUploadImage || uploading || saving) return;
-    const invalid = validateMessageImageFile(file);
+    const invalid = validateLinePushImageFile(file);
     if (invalid) {
       input.value = '';
       const msg = invalid === 'size' ? t.messages.imageTooLarge : t.messages.imageTypeInvalid;
@@ -594,7 +594,7 @@ function PushFormModal({
       <FormGroup>
         <Label htmlFor="pushImageInput">{t.form.image}</Label>
         <Input
-          id="pushImageInput" type="file" accept="image/jpeg,image/png,image/webp"
+          id="pushImageInput" type="file" accept="image/jpeg,image/png"
           disabled={!canUploadImage || uploading || saving} onChange={pickImage}
         />
         <div className="flex items-center justify-between">
