@@ -23,6 +23,7 @@ import {
 } from '@/services/reports';
 import { getSetupStatus } from '@/services/settings';
 import { listBookings } from '@/services/bookings';
+import { tenantDateString, tenantDayRange } from '@/lib/bookings-query-range';
 import { getGuideActionInbox } from '@/services/guide-action-inbox';
 import { createGuideInboxLoader, guideInboxForTenant, type GuideInboxLoadState } from '@/lib/guide-inbox-load';
 import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
@@ -371,9 +372,9 @@ export default function DashboardPage() {
     })();
     void (async () => {
       try {
-        const today = formatDate(new Date().toISOString());
-        const res = await listBookings({ page: 0, size: 50 });
-        setTodayRows(res.content.filter((b) => formatDate(b.startAt) === today));
+        const today = tenantDateString();
+        const res = await listBookings({ page: 0, size: 100, ...tenantDayRange() });
+        setTodayRows(res.content.filter((b) => tenantDateString(new Date(b.startAt)) === today));
       } catch (e) { fail(t.errors.todayBookings, e); } finally { setLoadingToday(false); }
     })();
     void (async () => {
@@ -894,7 +895,7 @@ export default function DashboardPage() {
               </div>
               <p className="form-text">{t.alertCards.atRiskCustomers.body(alerts?.atRiskCustomers ?? 0)}</p>
             </div>
-            <Link href="/tenant/customers?filter=atRisk" className="btn btn-primary btn-sm flex-shrink-0 whitespace-nowrap">
+            <Link href="/tenant/customers?atRisk=true" className="btn btn-primary btn-sm flex-shrink-0 whitespace-nowrap">
               {t.alertCards.atRiskCustomers.action}
             </Link>
           </CardBody>

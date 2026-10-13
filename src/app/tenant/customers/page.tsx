@@ -79,6 +79,8 @@ export default function CustomersPage() {
   const [keywordDraft, setKeywordDraft] = React.useState('');
   const [keyword, setKeyword] = React.useState('');
   const [statusFilter, setStatusFilter] = React.useState('');
+  /** 每次載入遞增；只有最新一次請求的結果能寫入畫面（忽略過期回應） */
+  const loadSeq = React.useRef(0);
 
   /* 進階篩選：draft 是畫面上的值，applied 才會送去查詢（按「篩選」才生效）*/
   const [tags, setTags] = React.useState<string[]>([]);
@@ -122,6 +124,8 @@ export default function CustomersPage() {
   }, []);
 
   const load = React.useCallback(async () => {
+    const seq = ++loadSeq.current;
+    const isStale = () => seq !== loadSeq.current;
     setLoading(true);
     try {
       const res = await listCustomers({
@@ -136,6 +140,8 @@ export default function CustomersPage() {
         minVisits: toNumber(applied.minVisits),
       });
 
+      if (isStale()) return;
+
       /* 標籤篩選骨架階段由前端補做（原站是 /api/customers?tag=）*/
       const list = applied.tag
         ? res.content.filter((c) => c.tags.includes(applied.tag))
@@ -144,6 +150,7 @@ export default function CustomersPage() {
       setTotal(list.length);
       setRows(list.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE));
     } catch (e) {
+      if (isStale()) return;
       toast.show(
         `${t.messages.loadCustomersFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
         'danger',
@@ -151,7 +158,7 @@ export default function CustomersPage() {
       setRows([]);
       setTotal(0);
     } finally {
-      setLoading(false);
+      if (!isStale()) setLoading(false);
     }
   }, [page, keyword, statusFilter, applied, toast]);
 
