@@ -13,7 +13,11 @@
     "approvalComment": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/855#issuecomment-6137971029",
     "approvalBodySha256": "d7a9520e2b905e14fb1ce07b931ec94415290464cc6d1bf89dab456f2e1a895c",
     "approvalActorLogin": "smallwei0301",
-    "approvalActorId": 206991894
+    "approvalActorId": 206991894,
+    "technicalReviewComment": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/855#issuecomment-6138187919",
+    "technicalReviewBodySha256": "c9ba90f9b16c2c21daf41600bad803dd6f5d6632b1f9b0607bf8a005fc636148",
+    "technicalReviewActorLogin": "smallwei0301",
+    "technicalReviewActorId": 206991894
   },
   "nativeRolePilot": {
     "version": "2026-10-09.1",

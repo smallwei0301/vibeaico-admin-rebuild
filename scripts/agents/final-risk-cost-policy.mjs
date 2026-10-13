@@ -355,6 +355,7 @@ export function sourceIdentityDataDeferred(review = {}, policy = {}, context = {
     && Number.isSafeInteger(scope.prNumber) && scope.prNumber > 0
     && /^[a-f0-9]{40}$/.test(scope.headSha ?? '') && /^[a-f0-9]{64}$/.test(scope.changeDigest ?? '')
     && /^[a-f0-9]{64}$/.test(scope.approvalBodySha256 ?? '')
+    && /^[a-f0-9]{64}$/.test(scope.technicalReviewBodySha256 ?? '')
     && context.reviewSurface === 'PRODUCT_SOURCE_FINAL_RISK' && scope.surface === context.reviewSurface
     && context.repository === scope.repository && context.prNumber === scope.prNumber
     && context.currentHeadSha === scope.headSha && context.headSha === scope.headSha
@@ -362,6 +363,8 @@ export function sourceIdentityDataDeferred(review = {}, policy = {}, context = {
     && /^[a-f0-9]{40}$/.test(proof.currentMainSha ?? '')
     && JSON.stringify(proof.scope) === JSON.stringify(scope)
     && proof.approvalBodySha256 === scope.approvalBodySha256
+    && proof.technicalReviewBodySha256 === scope.technicalReviewBodySha256
+    && review.report === scope.technicalReviewComment
     && review.reviewerTier === 'AUDIT' && review.requestedModel === policy.models?.audit
     && review.actualModel === 'unknown' && review.identityEvidence === 'UNKNOWN'
     && review.executionEvidence === 'OPERATOR_ATTESTED'
