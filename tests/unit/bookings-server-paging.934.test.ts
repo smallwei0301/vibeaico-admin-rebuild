@@ -124,11 +124,19 @@ describe('#934 startBefore（未處理）', () => {
     expect(state.sb.calls.find((c: any[]) => c[0] === 'lt')).toBeUndefined();
   });
   it('非法 startBefore 回 400 且不查詢', async () => {
-    for (const bad of ['abc', '2026-13-45T00:00:00Z', '2026-10-13']) {
+    for (const bad of ['abc', '2026-13-45T00:00:00Z', '2026-10-13', '2026-02-30T00:00:00Z', '2026-10-13T10:00:00']) {
       state.sb = makeSb();
       const res = await get(`startBefore=${encodeURIComponent(bad)}`);
       expect(res.status).toBe(400);
       expect(state.sb.calls.find((c: any[]) => c[0] === 'lt')).toBeUndefined();
+    }
+  });
+  it('帶時區偏移、毫秒／微秒與頁面 toISOString 格式皆通過並原樣傳給 .lt', async () => {
+    for (const ok of ['2026-10-13T10:00:00+08:00', '2026-10-13T10:00:00.123Z', '2026-10-13T10:00:00.123456Z', '2026-10-13T10:00:00Z', new Date().toISOString()]) {
+      state.sb = makeSb();
+      const res = await get(`startBefore=${encodeURIComponent(ok)}`);
+      expect(res.status).toBe(200);
+      expect(state.sb.calls).toContainEqual(['lt', 'start_at', ok]);
     }
   });
   it('mock 分支以 startAt < startBefore 過濾（嚴格小於）', async () => {

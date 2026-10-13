@@ -42,8 +42,8 @@ const querySchema = z.object({
   from: filterDate, // ISO 日期
   to: filterDate,
   // #934：「未處理」＝開始時間已過；獨立的 ISO 時間上界（嚴格小於），與 from／to 並存，不受店家時區日界線影響。
-  startBefore: z.string().optional()
-    .refine((v) => v === undefined || (/^\d{4}-\d{2}-\d{2}T/.test(v) && !Number.isNaN(Date.parse(v))), 'startBefore 須為有效的 ISO 時間'),
+  startBefore: z.string().datetime({ offset: true, message: 'startBefore 須為有效的 ISO 時間' })
+    .refine((v) => isValidYmd(v.slice(0, 10)), 'startBefore 須為有效的 ISO 時間').optional(),
   staffId: z.string().uuid().optional(),
   bookingId: z.string().uuid().optional(),
 });
