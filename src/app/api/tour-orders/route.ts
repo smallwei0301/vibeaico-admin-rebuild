@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ilikeAnyOf } from '@/server/postgrest-filter';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { hydrateTourOrders } from '@/server/tour-orders';
@@ -113,10 +114,7 @@ export const GET = handle(async (req) => {
     if (paymentStatus) query = query.eq('payment_status', paymentStatus);
     // 顧客姓名與電話存在 contact jsonb 裡，訂單編號是欄位——兩者都要搜得到。
     if (keyword) {
-      const like = `%${keyword}%`;
-      query = query.or(
-        `order_no.ilike.${like},contact->>name.ilike.${like},contact->>phone.ilike.${like}`,
-      );
+      query = query.or(ilikeAnyOf(['order_no', 'contact->>name', 'contact->>phone'], keyword));
     }
     return query;
   };

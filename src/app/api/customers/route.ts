@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ilikeAnyOf } from '@/server/postgrest-filter';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { isFeatureActive } from '@/server/features';
@@ -46,7 +47,7 @@ export const GET = handle(async (req) => {
   if (advancedCustomer && q.minSpent != null) query = query.gte('total_spent', q.minSpent);
   if (advancedCustomer && q.maxSpent != null) query = query.lte('total_spent', q.maxSpent);
   if (advancedCustomer && q.minVisits != null) query = query.gte('booking_count', q.minVisits);
-  if (q.keyword) query = query.or(`name.ilike.%${q.keyword}%,phone.ilike.%${q.keyword}%`);
+  if (q.keyword) query = query.or(ilikeAnyOf(['name', 'phone'], q.keyword));
 
   const { data, count, error } = await query;
   if (error) throw error;

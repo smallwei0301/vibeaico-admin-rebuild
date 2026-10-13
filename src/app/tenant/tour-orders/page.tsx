@@ -730,7 +730,7 @@ export default function TourOrdersPage() {
                 <FormGroup className="mb-2">
                   <Label>{t.request.holdHoursLabel}</Label>
                   <Input
-                    type="number" min={0}
+                    type="number" min={1} step="any"
                     placeholder={t.request.holdHoursPlaceholder(12)}
                     value={acceptHoldHours}
                     onChange={(e) => setAcceptHoldHours(e.target.value)}

@@ -1,5 +1,6 @@
 // GET：04-API-CONTRACTS.md §0 參考實作，逐字採用。POST：§B-1 手動建立預約。
 import { z } from 'zod';
+import { ilikeAnyOf } from '@/server/postgrest-filter';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { pageRange, toPaged } from '@/server/paging';
@@ -38,7 +39,7 @@ export const GET = handle(async (req) => {
   if (q.from) query = query.gte('start_at', q.from);
   if (q.to) query = query.lte('start_at', q.to);
   if (q.keyword) query = query.or(
-    `customer_name.ilike.%${q.keyword}%,customer_phone.ilike.%${q.keyword}%,booking_no.ilike.%${q.keyword}%`);
+    ilikeAnyOf(['customer_name', 'customer_phone', 'booking_no'], q.keyword));
 
   const { data, count, error } = await query;
   if (error) throw error;
