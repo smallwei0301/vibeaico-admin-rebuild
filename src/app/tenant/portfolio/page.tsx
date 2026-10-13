@@ -22,6 +22,7 @@ import {
   createPortfolio, deletePortfolio, listPortfolios, reorderPortfolios,
   reorderPortfoliosLine, togglePortfolioActive, togglePortfolioLineFeatured, updatePortfolio,
 } from '@/services/portfolios';
+import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { uploadImage } from '@/services/upload';
 import { ApiError } from '@/lib/api';
 import type { Portfolio } from '@/lib/types';
@@ -49,6 +50,9 @@ const EMPTY_DRAFT = {
 
 export default function PortfolioPage() {
   const toast = useToast();
+  const { role } = useCurrentTenant();
+  /** 與 POST/PUT /api/portfolios 的 requireTenant('MANAGER') 一致：STAFF 上傳了也存不了，會留下孤兒公開檔案。 */
+  const canManage = role === 'OWNER' || role === 'MANAGER';
 
   const [items, setItems] = React.useState<Portfolio[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -138,6 +142,7 @@ export default function PortfolioPage() {
    * 失敗時 draft 維持原狀（編輯時保留原圖），絕不假裝成功。
    */
   const onPickCover = async (file: File) => {
+    if (!canManage) return;
     if (!COVER_ALLOWED_TYPES.includes(file.type)) {
       setImageError(t.messages.imageTypeInvalid);
       return;
@@ -549,7 +554,7 @@ export default function PortfolioPage() {
               <Input
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
-                disabled={imageUploading}
+                disabled={imageUploading || !canManage}
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   e.target.value = '';
@@ -557,6 +562,7 @@ export default function PortfolioPage() {
                 }}
               />
               <FormText>{t.form.coverImageHelp}</FormText>
+              {!canManage ? <FormText>{t.form.imageManagerOnly}</FormText> : null}
               {imageUploading ? <FormText>{t.form.imageUploading}</FormText> : null}
               {imageError ? <FormError>{imageError}</FormError> : null}
               {/^(https?:)?\//.test(draft.imageUrl) ? (

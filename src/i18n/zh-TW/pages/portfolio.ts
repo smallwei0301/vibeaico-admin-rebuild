@@ -82,6 +82,7 @@ export const portfolioPage = {
     coverImage: '作品主圖',
     coverImageHelp: '支援 JPG、PNG、WebP，最大 5MB',
     imageUploading: '上傳中…',
+    imageManagerOnly: '只有店主或管理者可以上傳作品圖片。',
     imagePreviewAlt: '作品主圖預覽',
     extraImages: '其他圖片（選填，最多 8 張）',
     extraImagesHelp: '可一次選多張，讓作品展示更豐富',

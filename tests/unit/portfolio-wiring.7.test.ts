@@ -232,3 +232,18 @@ describe('portfolio #7: cover image is really uploaded, title is never stored as
     expect(page).toMatch(/multiple disabled/);
   });
 });
+
+describe('portfolio #7: STAFF cannot upload (no orphan public files before a 403 save)', () => {
+  it('derives canManage from the tenant role and returns before any upload', () => {
+    expect(page).toContain('useCurrentTenant');
+    expect(page).toContain("role === 'OWNER' || role === 'MANAGER'");
+    const pick = page.slice(page.indexOf('const onPickCover'), page.indexOf('const save = async'));
+    expect(pick.indexOf('if (!canManage) return;')).toBeGreaterThan(-1);
+    expect(pick.indexOf('if (!canManage) return;')).toBeLessThan(pick.indexOf('uploadImage('));
+  });
+
+  it('disables the cover input and explains why for STAFF', () => {
+    expect(page).toContain('imageUploading || !canManage');
+    expect(page).toContain('t.form.imageManagerOnly');
+  });
+});
