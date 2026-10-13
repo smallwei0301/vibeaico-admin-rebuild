@@ -1,4 +1,7 @@
 import { Compass, Hospital, Store, type LucideIcon } from 'lucide-react';
+import type { SetupStatus } from '@/lib/types';
+
+export type SetupStepKey = SetupStatus['steps'][number]['key'];
 
 /**
  * 業態模式（Business Modes）— 規格見 docs/integration/13-BUSINESS-MODES.md
@@ -50,7 +53,30 @@ export type ModePreset = {
    * 以程式化列舉守住這條，改了 cells 卻少 handler 會自動轉紅。
    */
   richMenuCells: readonly { label: string; text: string }[];
+  /**
+   * 儀表板「設定進度」每一步的前往頁面；null＝該模式側邊欄隱藏此頁，不提供連結。
+   * 判定條件見 api/settings/setup-status（SERVICE 依 setupInventory 計「公開頁可預約」的庫存）。
+   */
+  setupStepRoutes: Record<SetupStepKey, string | null>;
+  /**
+   * 設定進度 SERVICE 步驟計算哪種庫存（services 與 trips 資料表分開，見 10 分冊 §0）。
+   * 只有顧客真的看得到、訂得到的庫存才算完成：
+   * - table：LOCAL_SHOP／CLINIC，公開商店頁列出 services.active=true，皆可預約。
+   * - publicBookablePlans：GUIDE，直接沿用公開店家頁（server/public-shop loadPublicShop）的
+   *   方案入口判定——bookingCta 為 fixed／request 才算（已發布行程、啟用方案、未來 OPEN 團次
+   *   且座位足夠）；INSTANT 方案公開頁無入口，不算。
+   */
+  setupInventory:
+    | { kind: 'table'; table: 'services'; filter: { column: string; value: string | boolean } }
+    | { kind: 'publicBookablePlans' };
 };
+
+const COMMON_SETUP_ROUTES = {
+  SHOP_INFO: '/tenant/settings#basic',
+  STAFF: '/tenant/staff',
+  BUSINESS_HOURS: '/tenant/settings#business',
+  LINE_BOT: '/tenant/line-settings',
+} as const;
 
 export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
   LOCAL_SHOP: {
@@ -64,6 +90,8 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     shopSections: ['SERVICES', 'PRODUCTS', 'PORTFOLIO'],
     showActionInbox: false,
     reportingMode: 'GENERAL',
+    setupStepRoutes: { ...COMMON_SETUP_ROUTES, SERVICE: '/tenant/services' },
+    setupInventory: { kind: 'table', table: 'services', filter: { column: 'active', value: true } },
     richMenuCells: [
       { label: '立即預約', text: '預約' },
       { label: '我的預約', text: '我的預約' },
@@ -88,6 +116,8 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     shopSections: ['TRIPS', 'PORTFOLIO'],
     showActionInbox: true,
     reportingMode: 'GUIDE_TOUR',
+    setupStepRoutes: { ...COMMON_SETUP_ROUTES, SERVICE: '/tenant/trips' },
+    setupInventory: { kind: 'publicBookablePlans' },
     richMenuCells: [
       { label: '所有行程', text: '行程' },
       { label: '近期團次', text: '團次' },
@@ -108,6 +138,8 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     shopSections: ['SERVICES'],
     showActionInbox: false,
     reportingMode: 'GENERAL',
+    setupStepRoutes: { ...COMMON_SETUP_ROUTES, SERVICE: '/tenant/services' },
+    setupInventory: { kind: 'table', table: 'services', filter: { column: 'active', value: true } },
     richMenuCells: [
       { label: '線上掛號', text: '預約' },
       { label: '我的掛號', text: '我的預約' },

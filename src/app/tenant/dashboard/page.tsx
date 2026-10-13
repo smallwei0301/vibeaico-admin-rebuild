@@ -3,7 +3,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle, ArrowRightCircle, BarChart3, Bell, CalendarCheck, CalendarDays,
-  CalendarPlus, ClipboardCopy, Clock, Copy, DollarSign, ExternalLink, Eye,
+  CalendarPlus, ChevronRight, ClipboardCopy, Clock, Copy, DollarSign, ExternalLink, Eye,
   ClipboardList, Hourglass, Layers, Megaphone, Package, PieChart, Radio, Rocket, Palette,
   Settings, Ticket, TrendingDown, Trophy, Users, X, Zap,
 } from 'lucide-react';
@@ -30,6 +30,7 @@ import { APP_URL } from '@/config/env';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { FEATURE_EXPIRY_WARNING_DAYS } from '@/config/features';
 import { MODE_PRESETS } from '@/config/modes';
+import { getSetupStepHref } from '@/lib/setup-step-routes';
 import { common } from '@/i18n/zh-TW/common';
 import { dashboardPage as t } from '@/i18n/zh-TW/pages/dashboard';
 import {
@@ -556,8 +557,8 @@ export default function DashboardPage() {
             <ol className="flex flex-col gap-3">
               <li className="flex flex-wrap items-center gap-3 rounded-lg bg-primary-deep p-3">
                 <Badge tone="neutral">{t.focus.step1Badge}</Badge>
-                <span className="flex-1 text-base font-semibold">{t.focus.step1Title}</span>
-                <Link href="/tenant/services" className="btn btn-secondary text-primary">
+                <span className="flex-1 text-base font-semibold">{t.focus.step1TitleByMode[businessType] ?? t.focus.step1Title}</span>
+                <Link href={getSetupStepHref('SERVICE', businessType) ?? '/tenant/services'} className="btn btn-secondary text-primary">
                   {t.focus.step1Action}
                 </Link>
               </li>
@@ -627,21 +628,42 @@ export default function DashboardPage() {
             </div>
 
             <ul className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-              {setup.steps.map((s) => (
-                <li key={s.key} className="flex items-center gap-2 rounded-lg bg-neutral-50 px-3 py-2">
-                  <span
-                    aria-label={s.done ? t.setup.done : t.setup.todo}
-                    className={s.done
-                      ? 'flex h-5 w-5 items-center justify-center rounded-pill bg-success text-2xs text-neutral-0'
-                      : 'flex h-5 w-5 items-center justify-center rounded-pill bg-neutral-250 text-2xs text-neutral-600'}
-                  >
-                    {s.done ? '✓' : '·'}
-                  </span>
-                  <span className={s.done ? 'text-sm text-secondary line-through' : 'text-sm font-semibold text-dark'}>
-                    {t.setup.steps[s.key]}
-                  </span>
-                </li>
-              ))}
+              {setup.steps.map((s) => {
+                const href = s.done ? null : getSetupStepHref(s.key, businessType);
+                const stepLabel = t.setup.stepsByMode[businessType]?.[s.key] ?? t.setup.steps[s.key];
+                const inner = (
+                  <>
+                    <span
+                      aria-hidden={href ? true : undefined}
+                      aria-label={href ? undefined : s.done ? t.setup.done : t.setup.todo}
+                      className={s.done
+                        ? 'flex h-5 w-5 shrink-0 items-center justify-center rounded-pill bg-success text-2xs text-neutral-0'
+                        : 'flex h-5 w-5 shrink-0 items-center justify-center rounded-pill bg-neutral-250 text-2xs text-neutral-600'}
+                    >
+                      {s.done ? '✓' : '·'}
+                    </span>
+                    <span className={s.done ? 'min-w-0 text-sm text-secondary line-through' : 'min-w-0 text-sm font-semibold text-dark'}>
+                      {stepLabel}
+                    </span>
+                    {href ? <ChevronRight size={14} aria-hidden="true" className="ml-auto shrink-0 text-secondary" /> : null}
+                  </>
+                );
+                return (
+                  <li key={s.key}>
+                    {href ? (
+                      <Link
+                        href={href}
+                        aria-label={t.setup.goSetupLabel(stepLabel)}
+                        className="flex min-h-11 items-center gap-2 rounded-lg bg-neutral-50 px-3 py-2 hover:bg-neutral-100 focus-visible:outline-none focus-visible:shadow-focus"
+                      >
+                        {inner}
+                      </Link>
+                    ) : (
+                      <div className="flex min-h-11 items-center gap-2 rounded-lg bg-neutral-50 px-3 py-2">{inner}</div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </CardBody>
         </Card>
