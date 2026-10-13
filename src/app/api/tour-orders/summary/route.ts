@@ -69,7 +69,17 @@ export const GET = handle(async () => {
     if (page.length === 0) break;
     for (const r of page) monthRevenue += Number(r.total_amount ?? 0);
     scanned += page.length;
-    if (scanned >= MAX_REVENUE_ROWS) throw new ApiHttpError(422, '區間內訂單過多，請縮短日期區間', ERR.REPORT_RANGE_TOO_LARGE);
+    if (scanned >= MAX_REVENUE_ROWS) {
+      // 剛好等於上限仍可正常回傳；只有「超過」才拒絕：再探一筆（同租戶／狀態／月份／排序）。
+      const { data: probe, error: probeErr } = await t.supabase.from('tour_orders').select('id')
+        .eq('tenant_id', t.tenantId).eq('payment_status', 'PAID')
+        .gte('created_at', month.fromIso).lt('created_at', month.toIso)
+        .order('id', { ascending: true })
+        .range(scanned, scanned);
+      if (probeErr) throw probeErr;
+      if ((probe ?? []).length > 0) throw new ApiHttpError(422, '區間內訂單過多，請縮短日期區間', ERR.REPORT_RANGE_TOO_LARGE);
+      break;
+    }
   }
 
   return ok({

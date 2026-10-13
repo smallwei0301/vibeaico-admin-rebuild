@@ -134,9 +134,19 @@ describe('GET /api/tour-orders/summary（#890）', () => {
     expect(queries.some((x) => x.table === 'trip_departures')).toBe(false);
   });
 
-  it('本月已付款訂單超過掃描上限：回 422 REPORT_001，不回少算的 200', async () => {
-    const big = Array.from({ length: 50_000 }, (_, i) => order({ id: `r${String(i).padStart(5, '0')}`, status: 'COMPLETED', payment_status: 'PAID', total_amount: 1 }));
-    requireTenantMock.mockResolvedValue({ supabase: fakeSupabase({ tour_orders: big, trip_departures: [] }), tenantId: A, user: { id: 'u' }, role: 'OWNER' });
+  const bigRows = (n: number) => Array.from({ length: n }, (_, i) => order({ id: `r${String(i).padStart(5, '0')}`, status: 'COMPLETED', payment_status: 'PAID', total_amount: 1 }));
+
+  it('本月已付款訂單剛好 50,000 筆：200 並回完整加總', async () => {
+    requireTenantMock.mockResolvedValue({ supabase: fakeSupabase({ tour_orders: bigRows(50_000), trip_departures: [] }), tenantId: A, user: { id: 'u' }, role: 'OWNER' });
+    const { status, body } = await call();
+    expect(status).toBe(200);
+    expect(body.data.monthRevenue).toBe(50_000);
+    const probe = queries.filter((q) => q.table === 'tour_orders').at(-1)!;
+    expect(probe.calls).toContainEqual(['eq', ['tenant_id', A]]);
+  });
+
+  it('本月已付款訂單 50,001 筆（超過上限）：回 422 REPORT_001，不回少算的 200', async () => {
+    requireTenantMock.mockResolvedValue({ supabase: fakeSupabase({ tour_orders: bigRows(50_001), trip_departures: [] }), tenantId: A, user: { id: 'u' }, role: 'OWNER' });
     const { status, body } = await call();
     expect(status).toBe(422);
     expect(body.code).toBe('REPORT_001');
