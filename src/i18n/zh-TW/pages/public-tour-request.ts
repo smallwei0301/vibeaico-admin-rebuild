@@ -79,11 +79,27 @@ export const publicTourRequestPage = {
     /**
      * #46：FIXED_DEPARTURE／INSTANT 訂單的 PENDING 與 REQUEST 完全不同——
      * 建單當下就已經真的鎖位（`create_tour_order` 的 `reserve_seats`），只是
-     * 付款尚未完成。這裡絕對不能沿用上面 REQUEST 的「尚未鎖位」文案，那句話
-     * 對這裡是假的；也不能寫成「已付款」，那同樣是假的（#12 金流尚未落地）。
+     * 訂單仍待確認。不能沿用 REQUEST 的「尚未鎖位」；付款進度另依 paymentStatus 顯示。
      */
-    pendingLockedTitle: '已為您預約，名額已鎖定，尚未付款',
+    pendingLockedTitle: '已為您預約，名額已鎖定',
     pendingLockedDescription: '店家會透過您填寫的聯絡方式與您確認付款方式與期限；在完成付款前，請留意店家通知。',
+    pendingLockedPaymentDescription: '目前訂單仍待確認，請留意店家後續通知；付款進度請以下方付款狀態為準。',
+    confirmedPaymentDescription: '導遊已確認此申請，付款進度請以下方付款狀態為準。',
+    paymentTitle: '付款狀態',
+    paymentState: {
+      UNPAID: '尚未付款',
+      PARTIAL: '已付部分款項',
+      PAID: '已全額付款',
+      REFUND_PENDING: '退款處理中，尚未完成',
+      REFUNDED: '已退款',
+    },
+    paymentDescription: {
+      UNPAID: '此訂單尚未收到付款。',
+      PARTIAL: '已收到部分款項，尚未全額付清；實際已付金額、待付金額與期限請向店家確認。',
+      PAID: '此訂單已全額付清。',
+      REFUND_PENDING: '退款仍在處理中，尚未完成；退款進度請向店家確認。',
+      REFUNDED: '此訂單已退款；實際退款金額請向店家確認。',
+    },
     confirmedTitle: '導遊已確認，名額已鎖定',
     confirmedDescription: (deadline: string) => `請於 ${deadline} 前完成付款，逾期名額將被釋放。`,
     confirmedNoDeadlineDescription: '導遊已確認此申請，請與店家確認付款方式與期限。',
