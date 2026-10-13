@@ -1,9 +1,9 @@
 /**
  * `/s/{shopCode}/my-orders` — 旅客「我的訂單」查詢頁（issue #46 第三片）。
  *
- * 這一頁不在伺服器端預先讀資料——「用什麼聯絡方式查詢」是使用者當下輸入的，
- * 不是路由參數，所以整頁只負責掛載 client 表單元件，實際查詢由它呼叫
- * `POST /api/public/tour-requests/mine`（同 `RequestForm` 呼叫送出 API 的模式）。
+ * issue #650 起匿名聯絡方式查詢已停用，這一頁只顯示「需要旅客身分驗證」的
+ * 空狀態，不呼叫任何查詢 API；正式批次查單由 #12 的旅客身分接手。
+ * 路由刻意保留（可能被旅客加入書籤），但站內不再有連結指向這裡。
  */
 import type { Metadata } from 'next';
 import { publicTourRequestPage as t } from '@/i18n/zh-TW/pages/public-tour-request';
