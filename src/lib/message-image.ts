@@ -30,3 +30,15 @@ export async function uploadMessageImage(file: File): Promise<string> {
   const { url } = await uploadImage(file, MESSAGE_IMAGE_BUCKET);
   return url;
 }
+
+/**
+ * LINE image message 只收 https 網址；send route 會靜默略過非 https（只送文字）。
+ * 表單送出前先擋，避免「存了卻沒發出圖片」的假成功。
+ * 空字串視為未設定（可）。mock 模式的上傳回傳 blob: 網址（僅 demo 預覽），放行。
+ */
+export function isLineSendableImageUrl(url: string, opts: { mock?: boolean } = {}): boolean {
+  const v = url.trim();
+  if (!v) return true;
+  if (/^https:\/\//i.test(v)) return true;
+  return Boolean(opts.mock) && /^blob:/i.test(v);
+}

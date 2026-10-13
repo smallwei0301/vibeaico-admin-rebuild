@@ -122,6 +122,7 @@ export const marketingPage = {
     imageFormatHint: '支援 JPG、PNG、WebP 格式（最大 5MB），建議尺寸 1040x1040',
     imageUrl: '圖片網址（選填）',
     imageUrlPlaceholder: 'https://example.com/image.jpg',
+    imageUrlHttpsRequired: '圖片網址必須以 https:// 開頭，LINE 才能顯示。',
     imageUrlHelp: '上傳成功後會自動填入；也可直接輸入圖片網址',
     scheduledAt: '排程發送時間（選填）',
     scheduledAtHelp: '不填則儲存為草稿，手動發送',

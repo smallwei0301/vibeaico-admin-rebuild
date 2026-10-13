@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MESSAGE_IMAGE_BUCKET,
   canManageMarketing,
+  isLineSendableImageUrl,
   validateMessageImageFile,
 } from '@/lib/message-image';
 import { marketingPage } from '@/i18n/zh-TW/pages/marketing';
@@ -98,4 +99,25 @@ describe('表單元件上傳競態守衛（push／campaign）', () => {
       expect(src).toContain('imageUrl && isRenderableImageUrl(imageUrl)');
     });
   }
+});
+
+describe('isLineSendableImageUrl：LINE 只收 https', () => {
+  it('空值與 https 通過；http／相對路徑／其他協定不通過', () => {
+    expect(isLineSendableImageUrl('')).toBe(true);
+    expect(isLineSendableImageUrl('  ')).toBe(true);
+    expect(isLineSendableImageUrl('https://a.com/x.png')).toBe(true);
+    expect(isLineSendableImageUrl(' HTTPS://a.com/x.png ')).toBe(true);
+    expect(isLineSendableImageUrl('http://a.com/x.png')).toBe(false);
+    expect(isLineSendableImageUrl('/x.png')).toBe(false);
+    expect(isLineSendableImageUrl('data:image/png;base64,AAA')).toBe(false);
+  });
+  it('blob: 只在 mock 模式放行', () => {
+    expect(isLineSendableImageUrl('blob:http://localhost/abc', { mock: true })).toBe(true);
+    expect(isLineSendableImageUrl('blob:http://localhost/abc')).toBe(false);
+    expect(isLineSendableImageUrl('blob:http://localhost/abc', { mock: false })).toBe(false);
+  });
+  it('推播表單 validate 使用此規則與對應文案', () => {
+    expect(pages.marketing).toContain('isLineSendableImageUrl(imageUrl, { mock: USE_MOCK })');
+    expect(marketingPage.form.imageUrlHttpsRequired).toMatch(/^圖片網址必須以 https:\/\//);
+  });
 });
