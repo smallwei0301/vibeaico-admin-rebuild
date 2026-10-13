@@ -32,6 +32,7 @@ import { USE_MOCK } from '@/config/env';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { bookingsPage as t } from '@/i18n/zh-TW/pages/bookings';
+import { buildStaffOptions, summarizeBatch } from '@/lib/booking-batch';
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
 import type {
   Booking, BookingAddon, BookingAddonPerformanceMode, BookingStatus, Customer, PaymentStatus,
@@ -835,13 +836,17 @@ export default function BookingsPage() {
         onConfirm={async () => {
           const ids = batchPending.map((b) => b.id);
           setBatchConfirmOpen(false);
-          try {
-            await Promise.all(ids.map((id) => confirmBooking(id)));
+          const results = await Promise.allSettled(ids.map((id) => confirmBooking(id)));
+          const { succeeded, failed } = summarizeBatch(ids, results);
+          void load();
+          if (failed.length === 0) {
             toast.show(t.messages.batchConfirmed(ids.length));
             setSelected([]);
-            void load();
-          } catch {
+          } else if (succeeded.length === 0) {
             toast.show(t.messages.batchConfirmFailed, 'danger');
+          } else {
+            toast.show(t.messages.batchPartial(succeeded.length, failed.length), 'warning');
+            setSelected(failed);
           }
         }}
       />
@@ -865,13 +870,17 @@ export default function BookingsPage() {
         onConfirm={async () => {
           const ids = batchCancellable.map((b) => b.id);
           setBatchCancelOpen(false);
-          try {
-            await Promise.all(ids.map((id) => cancelBooking(id)));
+          const results = await Promise.allSettled(ids.map((id) => cancelBooking(id)));
+          const { succeeded, failed } = summarizeBatch(ids, results);
+          void load();
+          if (failed.length === 0) {
             toast.show(t.messages.batchCancelled(ids.length));
             setSelected([]);
-            void load();
-          } catch {
+          } else if (succeeded.length === 0) {
             toast.show(t.messages.batchCancelFailed, 'danger');
+          } else {
+            toast.show(t.messages.batchPartial(succeeded.length, failed.length), 'warning');
+            setSelected(failed);
           }
         }}
       />
@@ -1101,8 +1110,14 @@ function BookingFormModal({
           <Label htmlFor="bookingStaff">{isEdit ? e.staff : c.staff}</Label>
           <Select id="bookingStaff" value={staffId} onChange={(ev) => setStaffId(ev.target.value)}>
             <option value="">{c.staffAuto}</option>
-            {staff.filter((s) => s.bookable).map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
+            {buildStaffOptions(staff, staffId).map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.kind === 'currentUnknown'
+                  ? c.staffCurrentUnknown
+                  : o.kind === 'currentInactive'
+                    ? c.staffCurrentInactive(o.name)
+                    : o.name}
+              </option>
             ))}
           </Select>
           <FormText>{c.staffHelp}</FormText>
