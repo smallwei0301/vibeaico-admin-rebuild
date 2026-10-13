@@ -147,6 +147,10 @@
     {
       "ref": "issue/880",
       "title": "診所看診進度頁真實模式誠實化"
+    },
+    {
+      "ref": "issue/882",
+      "title": "進階報表解鎖判斷對齊後端"
     }
   ],
   "main": {
@@ -7536,13 +7540,30 @@
         "issue": 880,
         "count": 1,
         "evidenceRef": "this commit"
+      },
+      {
+        "id": "20261013-luna-scout-882-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModel": "unknown",
+        "startedAt": "2026-10-13T12:33:16Z",
+        "completedAt": "2026-10-13T12:33:31Z",
+        "note": "Luna metrics capture 綁定 issue/882 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +1。自報 runtime claude-haiku-5-5，actual 未經平台驗證。",
+        "issue": 882,
+        "count": 1,
+        "evidenceRef": "this commit"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 39,
+    "issuesStarted": 40,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -7569,8 +7590,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 108,
-    "lunaAccepted": 99,
+    "lunaTasks": 109,
+    "lunaAccepted": 100,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -7791,7 +7812,8 @@
     "2026-10-13 非計分紀錄（issue/873）：builder commit 2336f6e3（cherry-pick 為 6a1cb713，手動建單收款方式改接真實後端）施工 Sonnet builder 10:49:30Z–10:56:14Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/875）：builder commit 840ccd9e（cherry-pick 為 20e36d66，Sonnet builder 11:21:39Z–~11:36Z，真實店家不再看到寫死示範數字）未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/877）：builder commits 0eeaa3a5（cherry-pick 為 96608c16，顧客標籤清單真實模式改由 /api/customers/tags 取得）與 464ab032（cherry-pick 為 f7c54b60，移除 mock-import 白名單中已不存在的 customers 頁條目），Sonnet builder 11:57:45Z–12:08:38Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
-    "2026-10-13 非計分紀錄（issue/880）：builder commit c2dcbe5d（cherry-pick 為 92546f9e，號碼掛號頁真實模式改顯示誠實未開放狀態、不再渲染假診次與假成功操作），Sonnet builder 12:13:07Z–12:18:05Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
+    "2026-10-13 非計分紀錄（issue/880）：builder commit c2dcbe5d（cherry-pick 為 92546f9e，號碼掛號頁真實模式改顯示誠實未開放狀態、不再渲染假診次與假成功操作），Sonnet builder 12:13:07Z–12:18:05Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/882）：builder commit 9a086272（cherry-pick 為 45e68609，進階報表 gate 對齊後端 BASIC_REPORT，找不到功能視為未訂閱），Sonnet builder 12:25:13Z–12:30:42Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
