@@ -211,6 +211,10 @@
     {
       "ref": "issue/914",
       "title": "手機版預約管理與團體訂單操作欄固定右側"
+    },
+    {
+      "ref": "issue/917",
+      "title": "旅客訂單狀態頁日期時區、取消與固定團次文案"
     }
   ],
   "main": {
@@ -7974,13 +7978,64 @@
         "issue": 914,
         "count": 1,
         "evidenceRef": "this commit"
+      },
+      {
+        "id": "20261013-luna-scout-917-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModel": "unknown",
+        "startedAt": "2026-10-13T18:31:50Z",
+        "completedAt": "2026-10-13T18:33:00Z",
+        "note": "Luna 窄盤點旅客訂單狀態頁，回報出發日期與時間未依店家時區、已付款取消單文案不分流，主 agent 核對後開立 issue/917；起訖時間為近似值。actual 未經平台驗證。",
+        "issue": 917,
+        "count": 1,
+        "evidenceRef": "this commit"
+      },
+      {
+        "id": "20261013-luna-scout-46-gap-917",
+        "role": "scout",
+        "requestedModel": "luna",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModel": "unknown",
+        "startedAt": "2026-10-13T19:33:30Z",
+        "completedAt": "2026-10-13T19:35:10Z",
+        "note": "Luna 窄盤點 #46 旅客流程，回報固定團次訂單 CONFIRMED／CANCELLED 仍顯示申請制文案，主 agent 核對後併入 issue/917；起訖時間為近似值。actual 未經平台驗證。",
+        "issue": 917,
+        "count": 1,
+        "evidenceRef": "this commit"
+      },
+      {
+        "id": "20261013-luna-scout-917-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModel": "unknown",
+        "startedAt": "2026-10-13T19:44:13Z",
+        "completedAt": "2026-10-13T19:44:13Z",
+        "note": "Luna metrics capture 綁定 issue/917 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +3；另補記 #914 後續 builder 非計分 notes。actual 未經平台驗證。",
+        "issue": 917,
+        "count": 1,
+        "evidenceRef": "this commit"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 55,
+    "issuesStarted": 56,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -8007,8 +8062,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 130,
-    "lunaAccepted": 121,
+    "lunaTasks": 133,
+    "lunaAccepted": 124,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -8254,7 +8309,10 @@
     "2026-10-13 非計分紀錄（issue/911）：builder commit 539e29f5（cherry-pick 為 322d5053，LINE 開通精靈缺 Secret／Token 時中文提示、verify／test 連線錯誤改中文可行動文案、FAQ 不再宣稱儲存會自動設定 Webhook），Sonnet builder 17:18:44Z–17:24:43Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/911 follow-up）：builder commits 2b81e5d0（17:53:01Z–17:57:09Z，Webhook 測試失敗依網址檢查結果分流）、759181fd（18:07:19Z–18:11:24Z，Codex 四項 P2：Token 401/403、配對 429/5xx、Webhook 測試依 LINE 原因分類、表單說明），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/914）：builder commit cbb7d5d4（cherry-pick 為 52720fe9，DataTable 支援 sticky right 欄、預約管理與團體訂單操作欄固定右側並可換行，以 390px Playwright 驗證按鈕可見可點），Sonnet builder 17:44:49Z–17:50:12Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
-    "2026-10-13 Luna 即時紀錄（issue/914）：本筆為 notes 補記 commit，對應 modelUsage 不新增 scout 列以免重複計數。"
+    "2026-10-13 Luna 即時紀錄（issue/914）：本筆為 notes 補記 commit，對應 modelUsage 不新增 scout 列以免重複計數。",
+    "2026-10-13 非計分紀錄（issue/914 follow-up）：builder commits cf402a2a（18:26:34Z–18:30:15Z，陰影改 token）、a190fe04（18:39:41Z–18:46:53Z，前一欄讓位）、98c31f9a（18:56:46Z–19:02:57Z，讓位擴至 1199.98px）、6f6ba025（19:06:59Z–19:13:57Z，實測保留讓位並修正 token 註解）、9382b690（19:21:49Z–19:30:20Z，改依表格實際溢出切換），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/917）：builder commits 0a915f85（cherry-pick 為 bf1426a8，日期時區與取消文案）、774fce46（18:48:35Z–18:55:22Z，cherry-pick 為 5fa5d8dd，移除定金冒充實付金額）、29f0fc43（19:35:33Z–19:43:01Z，cherry-pick 為 9068060e，固定團次確認／取消文案），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 Luna 即時紀錄（issue/917）：本筆 commit 同時補記 #914 後續 builder notes，對應 modelUsage 僅新增上述三筆 scout 列。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
