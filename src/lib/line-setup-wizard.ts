@@ -110,6 +110,28 @@ export function credentialsConfigured(p: CredentialsPresence): boolean {
 }
 
 /**
+ * 憑證欄位（Secret／Token）載入後的初始狀態：後端回傳的遮罩值為空＝尚未設定，
+ * 欄位直接進入可輸入狀態；有值則維持遮罩＋「重新輸入」。（#926）
+ */
+export function shouldEditCredentialByDefault(maskedValue: string | null | undefined): boolean {
+  return !maskedValue;
+}
+
+/**
+ * 步驟四（WEBHOOK_TEST）是否同樣顯示「一鍵幫我設定並開啟 Webhook」。
+ * 沿用步驟三的條件（WEBHOOK 檢查 FAIL＝未開或網址不符）；另外 WEBHOOK_TEST 為 FAIL
+ * 且 WEBHOOK 並非確定通過時也顯示（例如 WEBHOOK 結果缺漏），因為 verify 失敗訊息會引導店家按它。
+ * WEBHOOK 已通過但測試仍失敗（網站未部署等）時，同步網址無助益，不顯示。
+ */
+export function shouldOfferWebhookFix(checks: VerifyCheck[] | null): boolean {
+  if (!checks) return false;
+  const webhook = checks.find((c) => c.key === 'WEBHOOK');
+  const test = checks.find((c) => c.key === 'WEBHOOK_TEST');
+  if (webhook?.status === 'FAIL') return true;
+  return test?.status === 'FAIL' && webhook?.status !== 'PASS';
+}
+
+/**
  * 重新整理／首次開啟精靈時，該從哪一步開始——依「真實設定是否已填」與
  * 「最近一次 verify 的真實結果」推算，不是只讀 React state。
  *
