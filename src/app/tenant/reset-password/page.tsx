@@ -11,6 +11,7 @@ import { AuthCardHeading } from '@/components/layout/AuthShell';
 import { useToast } from '@/components/ui/Toast';
 import { resetPasswordPage as t } from '@/i18n/zh-TW/pages/reset-password';
 import { ApiError } from '@/lib/api';
+import { PASSWORD_MIN_LENGTH, isResetLinkUsable } from '@/lib/auth-input';
 import { resetPassword } from '@/services';
 
 /** 原站以 ?token=… 帶入重設 token；缺 token 直接顯示「無效的重設連結」 */
@@ -18,7 +19,6 @@ const TOKEN_QUERY_KEY = 'token';
 /** service 層 resetPassword() 需要 email + 6 位數驗證碼（03 分冊 §6.2）；
  *  重設連結一併帶 ?email=…，token 當驗證碼用 —— 版面/文案不變，只多讀一個查詢參數 */
 const EMAIL_QUERY_KEY = 'email';
-const PASSWORD_MIN_LENGTH = 8;
 
 /** 重設成功後導回登入頁前的停留秒數，讓使用者看到成功提示 */
 const REDIRECT_TO_LOGIN_DELAY_MS = 1500;
@@ -50,17 +50,24 @@ export default function ResetPasswordPage() {
   }, []);
 
   const invalidLink = tokenChecked && !token;
+  const linkIncomplete = tokenChecked && !!token && !isResetLinkUsable(email, token);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!isResetLinkUsable(email, token)) {
+      setError(t.messages.incompleteLink);
+      toast.show(t.messages.incompleteLink, 'warning');
+      return;
+    }
     if (!newPassword || !confirmPassword) {
       setError(t.messages.requiredFields);
       toast.show(t.messages.requiredFields, 'warning');
       return;
     }
     if (newPassword.length < PASSWORD_MIN_LENGTH) {
-      setError(t.form.newPasswordPlaceholder);
+      setError(t.messages.passwordTooShort);
+      toast.show(t.messages.passwordTooShort, 'warning');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -91,6 +98,14 @@ export default function ResetPasswordPage() {
 
         {invalidLink ? (
           <Alert tone="danger" className="mb-4">{t.messages.invalidLink}</Alert>
+        ) : null}
+        {linkIncomplete ? (
+          <Alert tone="danger" className="mb-4">
+            {t.messages.incompleteLink}{' '}
+            <Link href="/tenant/forgot-password" className="font-semibold">
+              {t.requestNewLink}
+            </Link>
+          </Alert>
         ) : null}
         {done ? (
           <Alert tone="success" className="mb-4">{t.messages.success}</Alert>

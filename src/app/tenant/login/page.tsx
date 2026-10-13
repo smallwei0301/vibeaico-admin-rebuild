@@ -9,10 +9,11 @@ import { Card, CardBody } from '@/components/ui/Card';
 import { FormGroup, Input, Label } from '@/components/ui/Form';
 import { AuthCardHeading } from '@/components/layout/AuthShell';
 import { useToast } from '@/components/ui/Toast';
-import { common } from '@/i18n/zh-TW/common';
 import { loginPage as t } from '@/i18n/zh-TW/pages/login';
 import { ApiError } from '@/lib/api';
+import { AUTH_REAL } from '@/config/env';
 import { safeNextPath } from '@/lib/auth-boundary';
+import { isValidEmail } from '@/lib/auth-input';
 import { getOAuthStatus, login } from '@/services';
 import type { OAuthStatus } from '@/lib/types';
 
@@ -70,6 +71,11 @@ export default function LoginPage() {
       toast.show(t.messages.usernameRequired, 'warning');
       return;
     }
+    // 真實認證只收 email（/api/auth/login 為 z.string().email()）；mock 認證維持任意字串可登入
+    if (AUTH_REAL && !isValidEmail(username)) {
+      toast.show(t.messages.emailInvalid, 'warning');
+      return;
+    }
     if (!password) {
       toast.show(t.messages.passwordRequired, 'warning');
       return;
@@ -78,7 +84,7 @@ export default function LoginPage() {
     setOauthError('');
     try {
       await login(username.trim(), password);
-      toast.show(common.message.saveSuccess);
+      toast.show(t.messages.loginSuccess);
       // ?next= 在 submit 當下從 location 讀（同 reset-password 頁的手法），
       // 不用 useSearchParams()——那個 hook 在 Next 15 要求整頁包 Suspense
       // 邊界，否則空 env 靜態預渲染直接失敗（鐵則 10 回歸實測抓到）。
@@ -114,7 +120,8 @@ export default function LoginPage() {
               id="username"
               name="username"
               type="text"
-              autoComplete="username"
+              inputMode="email"
+              autoComplete="email"
               placeholder={t.form.usernamePlaceholder}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
