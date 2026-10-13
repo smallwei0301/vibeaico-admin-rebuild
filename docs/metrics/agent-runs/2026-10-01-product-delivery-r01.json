@@ -179,6 +179,10 @@
     {
       "ref": "issue/895",
       "title": "店家公開首頁季節定價方案顯示"
+    },
+    {
+      "ref": "issue/898",
+      "title": "旅客預約表單回饋與我的訂單死連結"
     }
   ],
   "main": {
@@ -7704,13 +7708,30 @@
         "issue": 895,
         "count": 1,
         "evidenceRef": "this commit"
+      },
+      {
+        "id": "20261013-luna-scout-898-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModel": "unknown",
+        "startedAt": "2026-10-13T16:14:54Z",
+        "completedAt": "2026-10-13T16:15:11Z",
+        "note": "Luna metrics capture 綁定 issue/898 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +1。actual 未經平台驗證。",
+        "issue": 898,
+        "count": 1,
+        "evidenceRef": "this commit"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 47,
+    "issuesStarted": 48,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -7737,8 +7758,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 116,
-    "lunaAccepted": 107,
+    "lunaTasks": 117,
+    "lunaAccepted": 108,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -7971,7 +7992,9 @@
     "2026-10-13 非計分紀錄（issue/894）：builder commit c714809d（cherry-pick 為 0b1b3eb6，旅客公開頁新增中文 not-found／error 頁、首頁 INSTANT 方案說明），Sonnet builder 14:56:00Z–15:01:49Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/892 follow-up）：builder commits 29e9859d（14:42:55Z–14:45:08Z）、73ac80f4（14:53:20Z–14:55:23Z），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/895）：builder commit 8d0576d5（cherry-pick 為 9d24ed6b，店家公開首頁季節定價方案改顯示依出發日期而定、不納入最低價），Sonnet builder 15:07:49Z–15:16:18Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
-    "2026-10-13 非計分紀錄（issue/894 follow-up）：follow-up builder commits 35a5c17a（15:17:18Z–15:19:31Z）、8df149b6（15:27:42Z–15:29:46Z），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
+    "2026-10-13 非計分紀錄（issue/894 follow-up）：follow-up builder commits 35a5c17a（15:17:18Z–15:19:31Z）、8df149b6（15:27:42Z–15:29:46Z），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/898）：builder commit 65dbbcf9（cherry-pick 為 a52cb4a4，旅客預約流程移除我的訂單死連結、人數不合顯示原因、無團次文案指向返回店家頁），Sonnet builder 16:08:21Z–16:14:17Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/895 follow-up）：builder commit ceb61f18（15:44:30Z–15:47:03Z），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
