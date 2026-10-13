@@ -139,4 +139,33 @@ describe('LINE「近期團次」深連結', () => {
     expect(lines[i + 1]).toBe(`${base}/plans/pf/book?departure=dep%2F1`);
     expect(lines[i + 2]).toContain('停用');
   });
+
+  it('額滿的 FIXED_DEPARTURE 團次不附深連結，仍有餘位者才附', async () => {
+    fx.lineReplies.length = 0;
+    const today = new Date().toISOString().slice(0, 10);
+    const deps = [
+      { id: 'dep-open', trip_id: 'tr', plan_id: 'pf', departs_on: today, start_time: null, capacity: 5, seats_booked: 1 },
+      { id: 'dep-full', trip_id: 'tr', plan_id: 'pf', departs_on: today, start_time: null, capacity: 5, seats_booked: 5 },
+      { id: 'dep-over', trip_id: 'tr', plan_id: 'pf', departs_on: today, start_time: null, capacity: 5, seats_booked: 6 },
+    ];
+    const plans = [{ id: 'pf', name: '固定', sales_mode: 'FIXED_DEPARTURE', active: true }];
+    const chain = (data: unknown) => {
+      const c: any = { then: (res: (v: unknown) => unknown) => Promise.resolve({ data, error: null }).then(res) };
+      for (const m of ['select', 'eq', 'in', 'gte', 'lte', 'order', 'limit']) c[m] = () => c;
+      return c;
+    };
+    const admin = {
+      from: (t: string) => chain(t === 'trips' ? [{ id: 'tr', title: '行程' }] : t === 'trip_departures' ? deps : plans),
+    };
+    const ok = await replyDepartures({
+      admin, token: 'k', replyToken: 'r', userId: 'u', lineConfig: {},
+      tenant: { id: 'ten', shop_code: 'demo', name: 'D', business_type: 'GUIDE' },
+    } as any);
+    expect(ok).toBe(true);
+    const text = fx.lineReplies[0][0].text;
+    expect(text).toContain('departure=dep-open');
+    expect(text).not.toContain('dep-full');
+    expect(text).not.toContain('dep-over');
+    expect(text.match(/\/book\?departure=/g)?.length).toBe(1);
+  });
 });

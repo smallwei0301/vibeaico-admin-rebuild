@@ -873,8 +873,8 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
     const plan = planName ? `（${planName}）` : '';
     const seats = left > 0 ? MSG.departureSeatsLeft(left) : MSG.departureFull;
     const line = `・${d.departs_on}${time} ${titleById.get(d.trip_id) ?? ''}${plan}　${seats}`;
-    // 直達預約：只給啟用中的 FIXED_DEPARTURE 方案；其他方案維持無連結。
-    if (!d.id || !fixedPlanIds.has(d.plan_id)) return line;
+    // 直達預約：只給啟用中的 FIXED_DEPARTURE 方案且仍有餘位的團次；額滿或其他方案維持無連結。
+    if (!d.id || left <= 0 || !fixedPlanIds.has(d.plan_id)) return line;
     const deepLink = `${buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code)}/plans/${encodeURIComponent(d.plan_id)}/book?departure=${encodeURIComponent(d.id)}`;
     return `${line}\n${deepLink}`;
   });
