@@ -51,15 +51,6 @@ const WHITELIST: WhitelistEntry[] = [
       '正常掛載的頁面），沿用骨架既有作法，非 #34 範圍內的行為。',
     owner: '#34',
   },
-  {
-    file: 'src/app/tenant/customers/page.tsx',
-    bindings: ['MOCK_CUSTOMERS'],
-    reason:
-      '骨架階段從假顧客資料推導「顧客標籤」下拉選單選項（對應原站 ' +
-      '/api/customers/tags，尚未接後端），在 render 時求值以跟隨業態切換，' +
-      '與 #34 的側欄外框值無關，維持既有骨架行為。',
-    owner: '#7',
-  },
 ];
 
 /** 掃描一個目錄底下所有 .ts/.tsx 檔（略過 node_modules，此鎖不需要） */
