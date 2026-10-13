@@ -15,6 +15,7 @@ export const pointsPage = {
     monthlyCostHint: '目前訂閱功能的月費合計（下次續訂時扣）',
     pendingTopup: '處理中儲值',
     pendingTopupHint: '付款處理中',
+    notAvailableHint: '尚未開放',
   },
 
   /* ---------------------------------------------------------- 付款結果 */

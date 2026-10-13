@@ -17,6 +17,7 @@ import {
   CharCounter, FormError, FormGroup, FormText, Input, Label, Select, Textarea,
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
+import { USE_MOCK } from '@/config/env';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { pointsPage as t } from '@/i18n/zh-TW/pages/points';
@@ -204,15 +205,15 @@ export default function PointsPage() {
         />
         <StatCard
           label={t.stats.monthlyCost}
-          value={loading ? t.labels.dash : t.labels.points(MOCK_MONTHLY_COST)}
-          hint={t.stats.monthlyCostHint}
+          value={!USE_MOCK ? t.labels.dash : loading ? t.labels.dash : t.labels.points(MOCK_MONTHLY_COST)}
+          hint={USE_MOCK ? t.stats.monthlyCostHint : t.stats.notAvailableHint}
           icon={CreditCard}
           tone="success"
         />
         <StatCard
           label={t.stats.pendingTopup}
-          value={loading ? t.labels.dash : t.labels.points(MOCK_PENDING_TOPUP)}
-          hint={t.stats.pendingTopupHint}
+          value={!USE_MOCK ? t.labels.dash : loading ? t.labels.dash : t.labels.points(MOCK_PENDING_TOPUP)}
+          hint={USE_MOCK ? t.stats.pendingTopupHint : t.stats.notAvailableHint}
           icon={Clock}
           tone="warning"
         />

@@ -135,6 +135,7 @@ export const productOrdersPage = {
     staffLabel: '經手員工（僅記錄供日後查詢，不計入業績報表，選填）',
     staffPlaceholder: '不指定',
     paymentLabel: '付款方式（選填）',
+    paymentUnavailable: '收款方式尚未開放保存',
     paymentPlaceholder: '未指定',
     bookingLabel: '關聯今日預約（選填，對帳用）',
     bookingPlaceholder: '不關聯',

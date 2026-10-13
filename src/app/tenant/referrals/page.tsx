@@ -17,7 +17,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmModal } from '@/components/ui/Modal';
 import { Input, Label } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { APP_URL } from '@/config/env';
+import { APP_URL, USE_MOCK } from '@/config/env';
 import { nav } from '@/i18n/zh-TW/nav';
 import { referralsPage as t } from '@/i18n/zh-TW/pages/referrals';
 import { formatDateTime, formatNumber } from '@/lib/utils';
@@ -90,6 +90,8 @@ export default function ReferralsPage() {
   const referralLink = `${APP_URL.replace(/\/$/, '')}/register?ref=${MOCK_REFERRAL_CODE}`;
 
   React.useEffect(() => {
+    // #875：真實模式沒有推薦後端（#24），不載入示範資料
+    if (!USE_MOCK) { setLoading(false); return; }
     let cancelled = false;
     setLoading(true);
     const timer = setTimeout(() => {
@@ -152,6 +154,19 @@ export default function ReferralsPage() {
         : <span className="text-muted">{t.labels.notCompleted}</span>),
     },
   ];
+
+  if (!USE_MOCK) {
+    return (
+      <>
+        <PageHeader eyebrow={nav.navMarketing} title={t.title} />
+        <EmptyState
+          icon={Share2}
+          title={t.unavailable.title}
+          description={t.unavailable.description}
+        />
+      </>
+    );
+  }
 
   return (
     <>
