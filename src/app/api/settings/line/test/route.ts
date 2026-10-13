@@ -2,6 +2,7 @@ import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { decryptSecret } from '@/server/crypto';
 import { lineGetRaw } from '@/server/line';
+import { tokenFailMessage } from '@/server/line-check-messages';
 
 /**
  * POST /api/settings/line/test — 解密 token → GET /v2/bot/info（06 分冊 §7 TOKEN 項）。
@@ -27,10 +28,7 @@ export const POST = handle(async () => {
     console.warn('[line/test] bot/info failed', { status: res.status, lineMessage: res.body?.message });
     return ok({
       ok: false,
-      message:
-        res.status === 401 || res.status === 403
-          ? 'Access Token 無效或已失效，請到 LINE Developers 重新發行後貼上'
-          : `Token 驗證失敗（HTTP ${res.status}），請稍後再試`,
+      message: tokenFailMessage(res.status),
     });
   } catch {
     return ok({ ok: false, message: '無法連線至 LINE 伺服器，請稍後再試' });

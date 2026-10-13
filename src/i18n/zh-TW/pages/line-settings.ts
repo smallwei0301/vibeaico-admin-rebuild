@@ -93,7 +93,7 @@ export const lineSettingsPage = {
         title: '步驟五：儲存並啟用',
         lines: [
           '1. 回到 VibeAI 後台 LINE 設定，把剛剛複製的 Channel ID、Channel Secret、Channel Access Token 貼到對應欄位',
-          '2. 按「 儲存設定 」，Webhook 網址會自動帶入',
+          '2. 按「 儲存設定 」保存憑證，再按「完整檢查」；若「Webhook 網址」項目失敗，請按「自動修正網址」',
           '3. 回 LINE 官方帳號管理後台 → 設定 → 回應設定 → 改成「 手動聊天 」',
         ],
         note: '',
@@ -161,7 +161,7 @@ export const lineSettingsPage = {
 
     webhookUrl: 'Webhook URL',
     webhookCopy: '複製',
-    webhookHelp: 'Webhook 不用自己填，存好金鑰後 VibeAI 會自動設定。',
+    webhookHelp: 'Webhook 不用自己填。「儲存設定」只保存憑證，存好後請按「完整檢查」；若「Webhook 網址」項目失敗，再按「自動修正網址」。',
     webhookEmpty: 'Webhook URL 尚未產生',
 
     lineBasicId: 'LINE 官方帳號基本 ID',

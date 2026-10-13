@@ -8,6 +8,11 @@ import {
   linePostRaw,
   lineOAuthClientCredentialsRaw,
 } from '@/server/line';
+import {
+  tokenFailMessage,
+  idSecretPairFailMessage,
+  webhookTestFailMessage,
+} from '@/server/line-check-messages';
 
 /**
  * POST /api/settings/line/verify — 六項可查證檢查 + 一項人工確認提示。
@@ -65,12 +70,6 @@ const NOT_CONFIGURED = '尚未設定 LINE Channel Token';
 
 const AUTO_REPLY_INFO_MESSAGE =
   '「自動回應訊息」開關無公開 API 可直接查詢，請自行至 LINE Official Account Manager 確認並關閉，避免 LINE 內建自動回應攔截 Bot 訊息';
-
-function tokenFailMessage(status: number): string {
-  return status === 401 || status === 403
-    ? 'Access Token 無效或已失效，請到 LINE Developers 重新發行後貼上'
-    : `Token 驗證失敗（HTTP ${status}），請稍後再試`;
-}
 
 function mkCheck(key: string, status: CheckStatus, message: string): Check {
   return { key, status, pass: status === 'PASS', message };
@@ -166,7 +165,7 @@ export const POST = handle(async () => {
           : mkCheck(
               'ID_SECRET_PAIR',
               'FAIL',
-              'Channel ID 與 Secret 配對失敗，請確認兩者來自同一個 Channel',
+              idSecretPairFailMessage(pair.status),
             ),
       );
     } catch {
@@ -210,7 +209,7 @@ export const POST = handle(async () => {
             'FAIL',
             test.ok
               ? webhookPassed
-                ? 'Webhook 網址已設定，但 LINE 測試請求未通過驗證；最常見原因是 Channel Secret 不正確，請確認 Secret 與 Channel ID 來自同一個 Channel，重新貼上並儲存後，再按「完整檢查」'
+                ? webhookTestFailMessage(test.body)
                 : 'LINE 無法連到 Webhook，請先按「一鍵幫我設定並開啟 Webhook」（或設定頁的「自動修正網址」）後再檢查'
               : 'Webhook 測試請求失敗',
           ),

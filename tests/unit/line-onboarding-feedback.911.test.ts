@@ -3,6 +3,11 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { lineSettingsPage } from '@/i18n/zh-TW/pages/line-settings';
+import {
+  tokenFailMessage,
+  idSecretPairFailMessage,
+  webhookTestFailMessage,
+} from '@/server/line-check-messages';
 import { lineSetupWizardPage } from '@/i18n/zh-TW/line-setup-wizard';
 
 const read = (p: string) => readFileSync(resolve(process.cwd(), p), 'utf8');
@@ -45,11 +50,55 @@ describe('#911 LINE 開通精靈回饋', () => {
   it('WEBHOOK_TEST 失敗訊息依 WEBHOOK 檢查結果分流', () => {
     const src = read('src/app/api/settings/line/verify/route.ts');
     const seg = src.slice(src.indexOf("// WEBHOOK_TEST"), src.indexOf("// AUTO_REPLY"));
-    expect(seg).toMatch(/test\.ok\s*\?\s*webhookPassed/);
-    expect(seg).toContain('Channel Secret 不正確');
+    expect(seg).toMatch(/test\.ok\s*\?\s*webhookPassed\s*\?\s*webhookTestFailMessage\(test\.body\)/);
     expect(seg).toContain('一鍵幫我設定並開啟 Webhook');
     expect(seg).toContain('Webhook 測試請求失敗');
-    expect(seg.indexOf('Channel Secret 不正確')).toBeLessThan(seg.indexOf('一鍵幫我設定並開啟 Webhook'));
+    expect(seg.indexOf('webhookTestFailMessage')).toBeLessThan(seg.indexOf('一鍵幫我設定並開啟 Webhook'));
+  });
+
+  it('TOKEN：401 與 403 文案不同，其他維持稍後再試', () => {
+    expect(tokenFailMessage(401)).toContain('Access Token 無效或已失效');
+    expect(tokenFailMessage(403)).not.toContain('Access Token 無效或已失效');
+    expect(tokenFailMessage(403)).toContain('403');
+    expect(tokenFailMessage(500)).toBe('Token 驗證失敗（HTTP 500），請稍後再試');
+    for (const f of ['verify', 'test']) {
+      const src = read(`src/app/api/settings/line/${f}/route.ts`);
+      expect(src).toContain('tokenFailMessage(');
+      expect(src).not.toContain('status === 401 || ');
+    }
+  });
+
+  it('ID_SECRET_PAIR：只有 400/401 顯示配對失敗', () => {
+    expect(idSecretPairFailMessage(400)).toContain('配對失敗');
+    expect(idSecretPairFailMessage(401)).toContain('配對失敗');
+    expect(idSecretPairFailMessage(429)).toContain('暫時限制請求次數');
+    expect(idSecretPairFailMessage(429)).not.toContain('配對失敗');
+    expect(idSecretPairFailMessage(503)).toContain('LINE 伺服器暫時異常');
+    expect(idSecretPairFailMessage(503)).not.toContain('配對失敗');
+    expect(idSecretPairFailMessage(404)).toContain('配對檢查失敗（HTTP 404）');
+    expect(idSecretPairFailMessage(404)).not.toContain('配對失敗');
+  });
+
+  it('WEBHOOK_TEST：依 reason／statusCode 分流', () => {
+    expect(webhookTestFailMessage({ success: false, reason: 'COULD_NOT_CONNECT' })).toContain('連不到 Webhook');
+    expect(webhookTestFailMessage({ reason: 'REQUEST_TIMEOUT' })).toContain('逾時');
+    expect(webhookTestFailMessage({ reason: 'ERROR_STATUS_CODE', statusCode: 401 })).toContain('Channel Secret 不正確');
+    const other = webhookTestFailMessage({ reason: 'ERROR_STATUS_CODE', statusCode: 502 });
+    expect(other).toContain('HTTP 502');
+    expect(other).not.toContain('Channel Secret');
+    const unknown = webhookTestFailMessage({ reason: 'SOMETHING_NEW' });
+    expect(unknown).toContain('Webhook 測試未通過');
+    expect(unknown).not.toContain('Channel Secret');
+    expect(webhookTestFailMessage(undefined)).toContain('Webhook 測試未通過');
+  });
+
+  it('form.webhookHelp 不宣稱儲存後自動設定 Webhook', () => {
+    const h = lineSettingsPage.form.webhookHelp;
+    expect(h).not.toMatch(/(存好|儲存)[^。]*會自動設定/);
+    expect(h).toContain('完整檢查');
+    expect(h).toContain('自動修正網址');
+    const steps = JSON.stringify(lineSettingsPage.tutorial);
+    expect(steps).not.toContain('Webhook 網址會自動帶入');
   });
 
   it('FAQ／verifyWebhook 不無條件指向自動修正網址，網址正確時提示檢查 Channel Secret', () => {
