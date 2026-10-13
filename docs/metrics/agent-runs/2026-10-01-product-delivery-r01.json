@@ -235,6 +235,10 @@
     {
       "ref": "issue/928",
       "title": "LINE 基本圖文選單依營業模式產生六格"
+    },
+    {
+      "ref": "issue/930",
+      "title": "欄位驗證錯誤仍有大量英文（Zod 預設訊息未中文化）；行程方案排序部分失敗後畫面與資料不一致"
     }
   ],
   "main": {
@@ -8185,13 +8189,47 @@
         "startedAt": "2026-10-13T21:44:56Z",
         "completedAt": "2026-10-13T21:44:56Z",
         "note": "Luna metrics capture 綁定 issue/928 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261013-luna-scout-930-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 930,
+        "count": 1,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-13T21:48:57Z",
+        "completedAt": "2026-10-13T21:49:56Z",
+        "note": "Luna 窄盤點 Quick Edit 真實模式缺口（scout 自報時間，照前例標註）：歸納 Zod 預設英文訊息與排序失敗後畫面不一致兩項缺口，主 agent 核對後開立 issue/930。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261013-luna-scout-930-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 930,
+        "count": 1,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-13T22:04:35Z",
+        "completedAt": "2026-10-13T22:05:01Z",
+        "note": "Luna metrics capture 綁定 issue/930 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2。actual 未經平台驗證。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 61,
+    "issuesStarted": 62,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -8218,8 +8256,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 141,
-    "lunaAccepted": 132,
+    "lunaTasks": 143,
+    "lunaAccepted": 134,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -8475,7 +8513,10 @@
     "2026-10-13 非計分紀錄（issue/923）：builder commit 6ed81c08（20:53:45Z–20:58:55Z，cherry-pick 為 47bde615，票券核銷狀態白名單與寫回失敗還原、調價擋已取消／未到店、預約 zod 中文訊息、product-orders 核銷補償），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/923 follow-up）：先前 notes 記載的 builder commit 6ed81c08 含應用層票券補償與 product-orders 核銷補償；經 Opus 審查判定在傳輸層逾時已提交時會造成重複折抵（PAYMENT_CONSISTENCY），由 builder commit 5889666e（21:07:23Z–21:11:13Z，Sonnet）移除，最終合併 ee719a19 不含補償，票券核銷原子化改由 issue/925 處理。未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/926）：builder commit 96dd194c（21:16:19Z–21:30:44Z，cherry-pick 為 4ebe0b96，新店家 Secret／Token 預設可輸入並隱藏取消重新輸入、步驟四 Webhook 測試失敗時提供一鍵修正），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
-    "2026-10-13 非計分紀錄（issue/928）：builder commit 5cd5bc83（21:37:22Z–21:41:51Z，cherry-pick 為 11e56284，基本圖文選單改依 MODE_PRESETS[businessType].richMenuCells 產生六格、抽出 src/server/rich-menu.ts），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
+    "2026-10-13 非計分紀錄（issue/928）：builder commit 5cd5bc83（21:37:22Z–21:41:51Z，cherry-pick 為 11e56284，基本圖文選單改依 MODE_PRESETS[businessType].richMenuCells 產生六格、抽出 src/server/rich-menu.ts），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/930）：builder commit 08a2f803（21:51:03Z–21:56:16Z，cherry-pick 為 0382a445，新增 src/server/zod-zh.ts 與 src/i18n/zh-TW/validation.ts 將 Zod 錯誤一律中文、schema 自訂訊息優先，movePlan 非 mock 失敗後重讀清單），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/928 follow-up）：builder commit 69254370（21:53:00Z–21:57:06Z），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此；其後 Opus 重審（21:58:18Z–21:58:44Z）。",
+    "2026-10-13 非計分紀錄（Luna 掃描）：另一 Luna scout 於 21:48:03Z–21:48:36Z 確認 #898／#883／#909 已在 main，無新缺口；未計入 modelUsage.tasks，僅記於此。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
