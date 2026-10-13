@@ -203,8 +203,8 @@ export const submitPublicTourRequestSchema = z.object({
    *  這一輪沒有方案端的問題設定介面（那是另一塊 UI 工作），所以固定成通用的
    *  「偏好日期/時段補充」與「特殊需求」兩題，並非每方案客製——如實記在
    *  PR 說明裡，不假裝這是已經做完的可設定題目。 */
-  preferredNote: z.string().trim().max(500).optional(),
-  specialRequest: z.string().trim().max(500).optional(),
+  preferredNote: z.string().trim().max(500, '偏好日期／時段補充長度超過上限（最多 500 字）').optional(),
+  specialRequest: z.string().trim().max(500, '特殊需求長度超過上限（最多 500 字）').optional(),
 }).refine(
   (v) => !!(v.contactPhone || v.contactLine || v.contactEmail),
   { message: '請至少填寫一種聯絡方式（LINE、電話或 Email）', path: ['contactPhone'] },

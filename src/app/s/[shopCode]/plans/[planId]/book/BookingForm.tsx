@@ -5,7 +5,7 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ApiError, request } from '@/lib/api';
-import { publicTourBookingPage as t } from '@/i18n/zh-TW/pages/public-tour-booking';
+import { publicTourBookingPage as t, NOTE_MAX_LENGTH } from '@/i18n/zh-TW/pages/public-tour-booking';
 import { formatCurrency } from '@/lib/utils';
 import { priceChangedQuoteFromError, isPriceChangedError, type PriceChangedQuote } from '@/lib/public-price-change';
 import { canSubmitBooking, isDepartureBookableOnPage, resolveBookingTotal, seasonalHeadlineKind } from '@/lib/public-booking-price';
@@ -17,6 +17,11 @@ function formatDepartureDate(departsOn: string): string {
   const [y, m, d] = departsOn.split('-').map(Number);
   const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
   return `${m}/${d}（${WEEKDAYS[weekday]}）`;
+}
+
+/** #909：名額不足（TOUR_001）或團次不可預約（REQ_003）——需要清除已選團次並重新讀取。 */
+function isStaleDepartureError(e: unknown): boolean {
+  return e instanceof ApiError && (e.code === 'TOUR_001' || e.code === 'REQ_003');
 }
 
 /** 後端錯誤碼 → 這一頁的中文訊息。查不到就退回通用訊息，不顯示原始錯誤碼給旅客。 */
@@ -96,6 +101,12 @@ export function BookingForm({
         setError('');
       } else {
         if (isPriceChangedError(err)) setConfirmedQuote(null);
+        // #909：名額被搶或團次失效時，已選團次已不可信：清除選擇並重新讀取伺服器端團次清單。
+        if (isStaleDepartureError(err)) {
+          setDepartureId('');
+          setConfirmedQuote(null);
+          router.refresh();
+        }
         setError(messageForError(err));
       }
     } finally {
@@ -221,7 +232,7 @@ export function BookingForm({
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium" htmlFor="note">{t.form.noteLabel}</label>
             <textarea
-              id="note" className="form-control" rows={2}
+              id="note" className="form-control" rows={2} maxLength={NOTE_MAX_LENGTH}
               value={note} onChange={(e) => setNote(e.target.value)}
             />
           </div>
