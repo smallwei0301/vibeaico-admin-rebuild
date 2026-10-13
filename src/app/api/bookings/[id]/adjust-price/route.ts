@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 
+// 刻意採黑名單：只擋 CANCELLED／NO_SHOW，COMPLETED 仍可調價（服務後更正金額）。
+// 注意：日後若新增狀態值，會預設放行，屆時需重新檢視此清單與下方 not in 條件。
 const BLOCKED_STATUSES: string[] = ['CANCELLED', 'NO_SHOW'];
 
 const bodySchema = z.object({ finalPrice: z.number().min(0, '金額不可為負') });

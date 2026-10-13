@@ -19,7 +19,7 @@ import { z } from 'zod';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
-import { redeemCoupon, tryRevertCouponRedemption } from '@/server/coupons';
+import { redeemCoupon } from '@/server/coupons';
 
 const bodySchema = z.object({ code: z.string().min(1, '請輸入票券代碼') });
 
@@ -45,12 +45,7 @@ export const POST = handle(async (req, { params }) => {
       coupon_instance_id: redemption.instanceId,
     })
     .eq('id', id).eq('tenant_id', t.tenantId);
-  if (uErr) {
-    // issue #923：票券已核銷但寫回訂單失敗，還原票券讓店家可以重試。
-    await tryRevertCouponRedemption(
-      t.supabase, t.tenantId, redemption.instanceId, redemption.redeemedAt, `productOrderId=${id}`);
-    throw uErr;
-  }
+  if (uErr) throw uErr;
 
   return ok({ totalAmount: redemption.newAmount, couponDiscount: redemption.discount });
 });

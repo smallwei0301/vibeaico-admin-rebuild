@@ -16,7 +16,6 @@ vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => undefined })
 vi.mock('@/server/features', () => ({ requireFeature: async () => undefined }));
 
 import { POST as applyCoupon } from '../../src/app/api/bookings/[id]/apply-coupon/route';
-import { POST as productApplyCoupon } from '../../src/app/api/product-orders/[id]/apply-coupon/route';
 import { POST as adjustPrice } from '../../src/app/api/bookings/[id]/adjust-price/route';
 import { POST as addAddon } from '../../src/app/api/bookings/[id]/addons/route';
 import { PUT as putBooking } from '../../src/app/api/bookings/[id]/route';
@@ -95,58 +94,25 @@ describe('#923 票券核銷狀態守門', () => {
   }
 
   for (const status of ['PENDING', 'CONFIRMED']) {
-    it(`${status} 可核銷，bookings 更新帶原狀態條件`, async () => {
+    it(`${status} 可核銷`, async () => {
       state.sb = makeSb({ booking: booking(status), inst });
       const res = await applyCoupon(req({ code: 'X' }), ctx);
       expect(res.status).toBe(200);
-      const upd = state.sb.log.find((e: any) => e.table === 'bookings' && e.op === 'update');
-      expect(upd.filters).toContainEqual(['eq', 'status', status]);
       expect(reverts(state.sb)).toHaveLength(0);
     });
   }
 });
 
-describe('#923 核銷後寫回失敗的補償', () => {
-  it('bookings 寫回出錯：還原 redeemed_at 並拋出原錯誤', async () => {
-    const boom = { message: 'db down' };
-    state.sb = makeSb({ booking: booking('CONFIRMED'), inst, bookingUpdate: { data: null, error: boom } });
-    await expect(applyCoupon(req({ code: 'X' }), ctx)).resolves.toMatchObject({ status: 500 });
-    const rv = reverts(state.sb);
-    expect(rv).toHaveLength(1);
-    expect(rv[0].filters).toContainEqual(['eq', 'id', 'ci1']);
-    expect(rv[0].filters).toContainEqual(['eq', 'tenant_id', 't1']);
-    expect(rv[0].filters).toContainEqual(['not:is', 'redeemed_at', null]);
-    // 只還原本次寫入的那一筆
-    const written = redeemWrites(state.sb)[0].patch.redeemed_at;
-    expect(rv[0].filters).toContainEqual(['eq', 'redeemed_at', written]);
-  });
-
-  it('狀態在檢查後被改掉（影響 0 筆）：補償並回 409', async () => {
-    state.sb = makeSb({ booking: booking('CONFIRMED'), inst, bookingUpdate: { data: null, error: null } });
-    const res = await applyCoupon(req({ code: 'X' }), ctx);
-    expect(res.status).toBe(409);
-    expect(reverts(state.sb)).toHaveLength(1);
-  });
-
-  it('補償本身失敗：console.error 含 instanceId 與 bookingId，仍回報原錯誤', async () => {
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+describe('#923 核銷後寫回失敗（不做應用層補償，見 #925）', () => {
+  it('bookings 寫回出錯：回 500，且不呼叫任何還原 redeemed_at 的 update', async () => {
     state.sb = makeSb({
       booking: booking('CONFIRMED'), inst,
       bookingUpdate: { data: null, error: { message: 'db down' } },
-      revertError: { message: 'revert failed' },
     });
     const res = await applyCoupon(req({ code: 'X' }), ctx);
     expect(res.status).toBe(500);
-    const logged = spy.mock.calls.map((c) => String(c[0])).join('\n');
-    expect(logged).toContain('instanceId=ci1');
-    expect(logged).toContain('bookingId=b1');
-  });
-
-  it('product-orders 同樣有核銷後寫回失敗問題：套用相同補償', async () => {
-    state.sb = makeSb({ inst, bookingUpdate: { data: null, error: { message: 'db down' } } });
-    const res = await productApplyCoupon(req({ code: 'X' }), ctx);
-    expect(res.status).toBe(500);
-    expect(reverts(state.sb)).toHaveLength(1);
+    expect(redeemWrites(state.sb)).toHaveLength(1);
+    expect(reverts(state.sb)).toHaveLength(0);
   });
 });
 

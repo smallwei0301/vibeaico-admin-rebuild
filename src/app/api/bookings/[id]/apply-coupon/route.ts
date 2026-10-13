@@ -5,7 +5,7 @@
 import { z } from 'zod';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
-import { redeemCoupon, tryRevertCouponRedemption } from '@/server/coupons';
+import { redeemCoupon } from '@/server/coupons';
 
 const APPLICABLE_STATUSES: string[] = ['PENDING', 'CONFIRMED'];
 
@@ -38,7 +38,10 @@ export const POST = handle(async (req, { params }) => {
   // bookings 表沒有 coupon 欄位（0004 migration；欄位真相以 DB 為準），
   // 「booking 記 coupon」改記在 custom_fields jsonb 的保留鍵 _coupon 底下
   // （不與預約自訂欄位填答的一般鍵衝突），保住票券↔預約的追溯性。
-  const { data: updated, error: uErr } = await t.supabase.from('bookings')
+  // 注意：核銷（coupon_instances）與寫回（bookings）不是同一個交易，非原子，見 #925。
+  // 這裡刻意不做應用層補償：寫回若遇逾時等傳輸層錯誤，DB 可能其實已提交，
+  // 此時還原票券會造成重複折抵；單一交易 RPC 由 #925 處理。寫回失敗直接 throw。
+  const { error: uErr } = await t.supabase.from('bookings')
     .update({
       final_price: redemption.newAmount,
       custom_fields: {
@@ -49,21 +52,8 @@ export const POST = handle(async (req, { params }) => {
         },
       },
     })
-    // 狀態條件：檢查之後若狀態被改掉，這裡影響 0 筆，改為補償並回 409。
-    .eq('id', id).eq('tenant_id', t.tenantId).eq('status', booking.status)
-    .select('id').maybeSingle();
-  const revert = () => tryRevertCouponRedemption(
-    t.supabase, t.tenantId, redemption.instanceId, redemption.redeemedAt, `bookingId=${id}`);
-  if (uErr) {
-    // 票券已核銷但折扣沒寫上：還原票券讓店家可以重試（完整單一交易 RPC 另案）。
-    await revert();
-    throw uErr;
-  }
-  if (!updated) {
-    await revert();
-    throw new ApiHttpError(
-      409, '預約狀態已變更，無法核銷票券；票券未被消耗，請重新整理後再試', ERR.CONFLICT);
-  }
+    .eq('id', id).eq('tenant_id', t.tenantId);
+  if (uErr) throw uErr;
 
   return ok({ finalPrice: redemption.newAmount });
 });

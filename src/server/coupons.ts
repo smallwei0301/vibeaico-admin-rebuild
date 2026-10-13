@@ -36,7 +36,7 @@ export async function redeemCoupon(
   code: string,
   customerId: string,
   currentAmount: number,
-): Promise<{ newAmount: number; discount: number; instanceId: string; redeemedAt: string; discountType: string; discountValue: number }> {
+): Promise<{ newAmount: number; discount: number; instanceId: string; discountType: string; discountValue: number }> {
   const { data: inst, error: iErr } = await supabase.from('coupon_instances')
     .select('id, customer_id, redeemed_at, coupons(discount_type, discount_value, start_at, end_at)')
     .eq('tenant_id', tenantId).eq('code', code).maybeSingle();
@@ -73,9 +73,8 @@ export async function redeemCoupon(
   if (coupon.end_at !== null && now >= Date.parse(coupon.end_at))
     throw new ApiHttpError(409, '此票券已過期', ERR.CONFLICT);
 
-  const redeemedAt = new Date().toISOString();
   const { data: redeemed, error: rErr } = await supabase.from('coupon_instances')
-    .update({ redeemed_at: redeemedAt })
+    .update({ redeemed_at: new Date().toISOString() })
     .eq('id', inst.id).eq('tenant_id', tenantId).is('redeemed_at', null)
     .select('id').maybeSingle();
   if (rErr) throw rErr;
@@ -86,48 +85,7 @@ export async function redeemCoupon(
     newAmount,
     discount: currentAmount - newAmount,
     instanceId: inst.id as string,
-    redeemedAt,
     discountType: coupon.discount_type,
     discountValue: Number(coupon.discount_value),
   };
-}
-
-/**
- * 補償：把 `redeemCoupon` 剛寫入的 `redeemed_at` 還原為 null（issue #923）。
- * 呼叫端在「核銷成功、但寫回單據失敗」時使用，讓店家可以重試而不是看到「已核銷」。
- * 條件要求 `redeemed_at` 仍等於本次寫入的時間，只還原本次這一筆，不誤傷之後的核銷。
- * 失敗時拋出，由 `tryRevertCouponRedemption` 負責記錄。
- */
-export async function revertCouponRedemption(
-  supabase: SupabaseClient,
-  tenantId: string,
-  instanceId: string,
-  redeemedAt?: string,
-): Promise<void> {
-  let q = supabase.from('coupon_instances')
-    .update({ redeemed_at: null })
-    .eq('id', instanceId).eq('tenant_id', tenantId).not('redeemed_at', 'is', null);
-  if (redeemedAt) q = q.eq('redeemed_at', redeemedAt);
-  const { error } = await q;
-  if (error) throw error;
-}
-
-/** 補償不得吞掉原錯誤：補償失敗只記 log（含 instanceId 與單據 id），回傳是否成功。 */
-export async function tryRevertCouponRedemption(
-  supabase: SupabaseClient,
-  tenantId: string,
-  instanceId: string,
-  redeemedAt: string | undefined,
-  refLabel: string,
-): Promise<boolean> {
-  try {
-    await revertCouponRedemption(supabase, tenantId, instanceId, redeemedAt);
-    return true;
-  } catch (e) {
-    console.error(
-      `[coupon-compensation-failed] instanceId=${instanceId} ${refLabel} tenantId=${tenantId} 票券已核銷但單據寫回失敗且還原失敗，需人工處理`,
-      e,
-    );
-    return false;
-  }
 }
