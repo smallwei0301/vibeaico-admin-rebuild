@@ -303,13 +303,11 @@
     white-space: normal;
   }
   .data-table thead th.col-sticky-right-head { z-index: 3; }
-  /* 手機與 iPad 橫向（<=1199.98px，側欄仍在、寬表會溢出）橫向捲動時，固定欄會蓋住前一欄右側；替前一欄預留固定欄寬度，並用 clip 避免假省略號（對應原站 original-tenant.css）。>=1200px 不加，避免多餘橫捲 */
-  @media (max-width: 1199.98px) {
-    .data-table .col-before-sticky-right,
-    .data-table tbody td.col-before-sticky-right {
-      padding-right: var(--sticky-actions-reserve);
-      text-overflow: clip;
-    }
+  /* 表格實際橫向溢出時（DataTable 在容器設 data-sticky-compact）：替前一欄預留固定欄寬度，並用 clip 避免假省略號（對應原站 original-tenant.css）。未溢出時不加，避免多餘橫捲 */
+  [data-sticky-compact] .data-table .col-before-sticky-right,
+  [data-sticky-compact] .data-table tbody td.col-before-sticky-right {
+    padding-right: var(--sticky-actions-reserve);
+    text-overflow: clip;
   }
   /* 金額欄右對齊、等寬數字，才能目視比大小 */
   .data-table .cell-numeric { text-align: right; font-variant-numeric: tabular-nums; }
@@ -383,9 +381,9 @@
   .btn-block { @apply w-full; }
 
   .btn-group { @apply inline-flex items-center gap-1 flex-nowrap; }
-  /* 可換行變體：窄螢幕限寬讓按鈕折行，桌機維持單行 */
-  .btn-group-wrap { @apply flex-wrap; max-width: var(--btn-group-wrap-max); }
-  @media (min-width: 1200px) { .btn-group-wrap { @apply flex-nowrap; max-width: none; } }
+  /* 可換行變體：預設單行；表格實際橫向溢出（祖先 data-sticky-compact）才限寬折行以收窄固定操作欄 */
+  .btn-group-wrap { @apply flex-nowrap; }
+  [data-sticky-compact] .btn-group-wrap { @apply flex-wrap; max-width: var(--btn-group-wrap-max); }
 
   /* ---------- 表單 ---------- */
   .form-label {

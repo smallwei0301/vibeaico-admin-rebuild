@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { stickyClass, beforeStickyClass } from '@/components/ui/DataTable';
+import { stickyClass, beforeStickyClass, nextStickyCompact } from '@/components/ui/DataTable';
 
 const read = (p: string) => readFileSync(p, 'utf8');
 
@@ -26,9 +26,8 @@ describe('#914 DataTable sticky right column', () => {
     expect(css).toMatch(/\.col-sticky-right\s*\{[^}]*box-shadow:\s*var\(--shadow-sticky-edge\)/);
     expect(read('src/styles/tokens.css')).toMatch(/--shadow-sticky-edge:\s*[^;]+;/);
     expect(css).toContain('.btn-group-wrap');
-    // 按鈕群組換行須與前一欄讓位同帶寬：>=1200px 才 nowrap，992–1199.98px 仍可換行
-    expect(css).toMatch(/@media \(min-width:\s*1200px\)\s*\{\s*\.btn-group-wrap\s*\{[^}]*flex-nowrap/);
-    expect(css).not.toMatch(/@media \(min-width:\s*992px\)\s*\{\s*\.btn-group-wrap/);
+    // 預設 nowrap、不限寬；換行與限寬只在 [data-sticky-compact] 祖先下
+    expect(css).toMatch(/\.btn-group-wrap\s*\{\s*@apply flex-nowrap;\s*\}/);
     expect(css).toMatch(/\.btn-group\s*\{[^}]*flex-nowrap/);
     // 換行上限走 token，不寫死 rem
     expect(css).toMatch(/\.btn-group-wrap\s*\{[^}]*max-width:\s*var\(--btn-group-wrap-max\)/);
@@ -55,13 +54,83 @@ describe('#914 DataTable sticky right column', () => {
     expect(src.match(/beforeStickyClass\(columns, ci\)/g)?.length).toBe(2);
   });
 
-  it('前一欄預留空間：<=1199.98px（含 iPad 橫向）、使用 token、clip 不出假省略號、桌機不加', () => {
+  it('前一欄預留空間：只在 [data-sticky-compact] 下、使用 token、clip；無 viewport 斷點', () => {
     const css = read('src/styles/globals.css');
-    const m = css.match(/@media \(max-width:\s*1199\.98px\)\s*\{[^@]*?col-before-sticky-right[^}]*\}/);
+    const m = css.match(/\[data-sticky-compact\] \.data-table \.col-before-sticky-right,[^{]*\{[^}]*\}/);
     expect(m).not.toBeNull();
     expect(m![0]).toMatch(/padding-right:\s*var\(--sticky-actions-reserve\)/);
     expect(m![0]).toMatch(/text-overflow:\s*clip/);
     expect(css.replace(m![0], '')).not.toMatch(/col-before-sticky-right[^}]*padding-right/);
     expect(read('src/styles/tokens.css')).toMatch(/--sticky-actions-reserve:\s*[\d.]+rem/);
+  });
+
+  it('不再以 viewport 斷點切換固定欄相關規則', () => {
+    const css = read('src/styles/globals.css');
+    expect(css).not.toMatch(/@media[^{]*(1199\.98|1200px)/);
+    // 逐一取出 @media 區塊（括號配對），其內容不得含這兩個選擇器
+    let i = css.indexOf('@media');
+    while (i !== -1) {
+      const open = css.indexOf('{', i);
+      let depth = 0;
+      let j = open;
+      for (; j < css.length; j++) {
+        if (css[j] === '{') depth++;
+        else if (css[j] === '}' && --depth === 0) break;
+      }
+      expect(css.slice(open, j + 1)).not.toMatch(/btn-group-wrap|col-before-sticky-right/);
+      i = css.indexOf('@media', j);
+    }
+  });
+
+  it('DataTable 只在有 sticky 欄時掛 observer 與屬性，卸載 disconnect', () => {
+    const src = read('src/components/ui/DataTable.tsx');
+    expect(src).toContain("columns.some((c) => c.sticky === 'right')");
+    expect(src).toMatch(/if \(!enabled\) return;/);
+    expect(src).toContain('new ResizeObserver');
+    expect(src).toContain('ro.disconnect()');
+    expect(src).toContain('useLayoutEffect');
+  });
+});
+
+describe('#914 nextStickyCompact 遲滯判斷', () => {
+  const m = (scrollWidth: number, clientWidth: number, threshold = scrollWidth) => ({ scrollWidth, clientWidth, threshold });
+
+  it('進入：非 compact 且 scrollWidth > clientWidth + 1', () => {
+    expect(nextStickyCompact(false, m(1000, 902))).toBe(true);
+  });
+  it('維持非 compact：未溢出或僅差 1px 容差', () => {
+    expect(nextStickyCompact(false, m(900, 902))).toBe(false);
+    expect(nextStickyCompact(false, m(903, 902))).toBe(false); // 差 1px 內
+    expect(nextStickyCompact(false, m(904, 902))).toBe(true); // 差 2px
+  });
+  it('維持 compact：容器仍小於進入前所需寬度（不看 compact 下的 scrollWidth）', () => {
+    expect(nextStickyCompact(true, { scrollWidth: 1, clientWidth: 902, threshold: 1000 })).toBe(true);
+    expect(nextStickyCompact(true, { scrollWidth: 1, clientWidth: 998, threshold: 1000 })).toBe(true);
+  });
+  it('退出：容器寬度回到足以容納非 compact 寬度', () => {
+    expect(nextStickyCompact(true, { scrollWidth: 1, clientWidth: 999, threshold: 1000 })).toBe(false); // 1px 容差邊界
+    expect(nextStickyCompact(true, { scrollWidth: 1, clientWidth: 1000, threshold: 1000 })).toBe(false);
+    expect(nextStickyCompact(true, { scrollWidth: 1, clientWidth: 1400, threshold: 1000 })).toBe(false);
+  });
+  it('門檻邊界一致：進入與退出互為補集，同一寬度不來回切換', () => {
+    const sw = 1000;
+    for (let cw = 800; cw <= 1200; cw++) {
+      const enters = nextStickyCompact(false, m(sw, cw));
+      const staysCompact = nextStickyCompact(true, { scrollWidth: 0, clientWidth: cw, threshold: sw });
+      expect(staysCompact).toBe(enters);
+    }
+  });
+  it('縮小再放大序列：只在跨越門檻時各切換一次', () => {
+    const sw = 1000;
+    let compact = false;
+    let flips = 0;
+    const widths = [1400, 1200, 1000, 999, 900, 700, 500, 700, 900, 998, 999, 1000, 1200, 1400];
+    for (const cw of widths) {
+      const next = nextStickyCompact(compact, { scrollWidth: compact ? 1 : sw, clientWidth: cw, threshold: sw });
+      if (next !== compact) flips++;
+      compact = next;
+    }
+    expect(flips).toBe(2);
+    expect(compact).toBe(false);
   });
 });

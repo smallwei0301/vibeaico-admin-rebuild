@@ -52,6 +52,76 @@ export function beforeStickyClass(columns: { sticky?: 'right' }[], index: number
   return columns[index + 1]?.sticky === 'right' ? 'col-before-sticky-right' : undefined;
 }
 
+/**
+ * 固定操作欄的 compact 模式遲滯判斷（純函式，可單元測試）。
+ * - 非 compact：容器實際橫向溢出（scrollWidth > clientWidth + 1）才進入。
+ * - compact：scrollWidth 是 compact 版面的寬度，不能拿來比；改用「進入前（非 compact）量到的 scrollWidth」
+ *   當門檻 threshold，容器寬度回到足以容納該寬度（clientWidth + 1 >= threshold）才退出。
+ *   進入條件 sw > cw + 1 與退出條件 cw + 1 >= sw 互為補集、門檻固定不隨 compact 狀態改變，
+ *   所以同一個寬度不會出現「進入後立刻退出」的來回切換。
+ */
+export function nextStickyCompact(
+  prev: boolean,
+  m: { scrollWidth: number; clientWidth: number; threshold: number },
+): boolean {
+  if (!prev) return m.scrollWidth > m.clientWidth + 1;
+  return !(m.clientWidth + 1 >= m.threshold);
+}
+
+export const STICKY_COMPACT_ATTR = 'data-sticky-compact';
+
+/**
+ * 只在 columns 有 sticky 欄時，依「表格實際是否橫向溢出」切換容器的 data-sticky-compact。
+ * 沒有 sticky 欄：不建立 observer、不寫屬性。
+ */
+function useStickyCompact(
+  ref: React.RefObject<HTMLDivElement | null>,
+  enabled: boolean,
+  deps: React.DependencyList,
+) {
+  const threshold = React.useRef(0); // 進入 compact 前量到的非 compact scrollWidth（退出門檻）
+  const lastTableWidth = React.useRef(-1); // 上次評估結束時的表格寬度，用來分辨「內容變了」與「只是自己切換造成的尺寸變化」
+
+  const evaluate = React.useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const table = el.firstElementChild as HTMLElement | null;
+    const tableWidth = table ? table.getBoundingClientRect().width : 0;
+    const compact = el.hasAttribute(STICKY_COMPACT_ATTR);
+    if (compact && Math.abs(tableWidth - lastTableWidth.current) < 0.5) {
+      // 表格內容沒變：只靠遲滯門檻判斷是否退出，不動 DOM 就不會閃。
+      if (nextStickyCompact(true, { scrollWidth: el.scrollWidth, clientWidth: el.clientWidth, threshold: threshold.current })) return;
+    }
+    // 其餘情形需要「非 compact」的 scrollWidth：暫時移除屬性量測（同一同步段內，瀏覽器不會繪出中間狀態）。
+    if (compact) el.removeAttribute(STICKY_COMPACT_ATTR);
+    const sw = el.scrollWidth;
+    threshold.current = sw;
+    const next = nextStickyCompact(false, { scrollWidth: sw, clientWidth: el.clientWidth, threshold: sw });
+    if (next) el.setAttribute(STICKY_COMPACT_ATTR, '');
+    lastTableWidth.current = table ? table.getBoundingClientRect().width : 0;
+  }, [ref]);
+
+  React.useLayoutEffect(() => {
+    if (!enabled) return;
+    evaluate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, evaluate, ...deps]);
+
+  React.useEffect(() => {
+    if (!enabled) return;
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => evaluate());
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => {
+      ro.disconnect();
+      el.removeAttribute(STICKY_COMPACT_ATTR);
+      lastTableWidth.current = -1;
+    };
+  }, [enabled, ref, evaluate]);
+}
+
 export function DataTable<T>({
   columns,
   rows,
@@ -74,8 +144,11 @@ export function DataTable<T>({
   /** 可選：為每列加上 className（例如標示被定位的列）。 */
   rowClassName?: (row: T) => string | undefined;
 }) {
+  const bodyRef = React.useRef<HTMLDivElement>(null);
+  const hasSticky = columns.some((c) => c.sticky === 'right');
+  useStickyCompact(bodyRef, hasSticky, [rows, loading, columns]);
   return (
-    <div className={cn('data-table-body', scroll && 'lg:max-h-[65vh] lg:overflow-y-auto')}>
+    <div ref={bodyRef} className={cn('data-table-body', scroll && 'lg:max-h-[65vh] lg:overflow-y-auto')}>
       <table className="data-table">
         <thead>
           <tr>
