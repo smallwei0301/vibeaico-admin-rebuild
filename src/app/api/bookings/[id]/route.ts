@@ -9,7 +9,7 @@ import { notifyBookingStatus } from '@/server/line-notify';
 const bodySchema = z.object({
   startAt: z.string().optional(),
   /** undefined = 不動；null = 清除指定員工 */
-  staffId: z.string().uuid().nullable().optional(),
+  staffId: z.string().uuid('員工 ID 格式不正確').nullable().optional(),
   note: z.string().optional(),
 });
 

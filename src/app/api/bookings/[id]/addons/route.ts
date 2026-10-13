@@ -89,14 +89,16 @@ export const GET = handle(async (req, { params }) => {
 });
 
 const bodySchema = z.object({
-  serviceId: z.string().uuid().optional().nullable(),
+  serviceId: z.string().uuid('服務 ID 格式不正確').optional().nullable(),
   name: z.string().trim().min(1, '請輸入項目名稱'),
   price: z.number().min(0, '加購價不可為負數'),
   quantity: z.number().int().positive('數量需為正整數'),
   durationMinutes: z.number().int().min(0, '佔用時長不可為負數'),
-  staffId: z.string().uuid().optional().nullable(),
-  performanceMode: z.enum(['INHERIT', 'SPECIFIC_STAFF', 'NONE']),
-  performanceStaffId: z.string().uuid().optional().nullable(),
+  staffId: z.string().uuid('員工 ID 格式不正確').optional().nullable(),
+  performanceMode: z.enum(['INHERIT', 'SPECIFIC_STAFF', 'NONE'], {
+    errorMap: () => ({ message: '業績歸戶方式不正確' }),
+  }),
+  performanceStaffId: z.string().uuid('業績歸戶人員 ID 格式不正確').optional().nullable(),
   notify: z.boolean().optional().default(false),
   /** 由前端在開啟加購視窗時產生一次、整個送出/重試流程沿用同一把（見 addon-modal 前端註解）。 */
   idempotencyKey: z.string().trim().min(1, '缺少冪等金鑰'),
