@@ -223,6 +223,10 @@
     {
       "ref": "issue/921",
       "title": "店家後台搜尋特殊字元與接受申請保留時數中文錯誤"
+    },
+    {
+      "ref": "issue/923",
+      "title": "預約票券核銷補償、已結案預約不可核銷或改價、錯誤中文化"
     }
   ],
   "main": {
@@ -8071,13 +8075,47 @@
         "issue": 921,
         "count": 1,
         "evidenceRef": "this commit"
+      },
+      {
+        "id": "20261013-luna-scout-923-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": "2026-10-13T20:51:56Z",
+        "completedAt": "2026-10-13T20:52:34Z",
+        "note": "Luna 窄盤點 Quick Edit 與預約管理（真實模式），回報票券核銷非原子、已結案預約仍可核銷或改價、zod 英文訊息，主 agent 核對 apply-coupon／adjust-price／#291 白名單後開立 issue/923。actual 未經平台驗證。",
+        "issue": 923,
+        "count": 1,
+        "evidenceRef": "this commit"
+      },
+      {
+        "id": "20261013-luna-scout-923-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "startedAt": "2026-10-13T21:03:43Z",
+        "completedAt": "2026-10-13T21:03:43Z",
+        "note": "Luna metrics capture 綁定 issue/923 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2。actual 未經平台驗證。",
+        "issue": 923,
+        "count": 1,
+        "evidenceRef": "this commit"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 58,
+    "issuesStarted": 59,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -8104,8 +8142,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 135,
-    "lunaAccepted": 126,
+    "lunaTasks": 137,
+    "lunaAccepted": 128,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -8357,7 +8395,8 @@
     "2026-10-13 Luna 即時紀錄（issue/917）：本筆 commit 同時補記 #914 後續 builder notes；對應 modelUsage 原新增三筆 scout 列，其中兩筆事後回填列已於 da0f1f1e 移至非計分 notes，現僅保留 917-bind 一筆（2026-10-13 更正筆數）。",
     "2026-10-13 非計分紀錄（issue/917）：兩次 Luna scout——旅客訂單狀態頁盤點（約 18:31:50Z–18:33:00Z）與 #46 旅客流程缺口盤點（約 19:33:30Z–19:35:10Z）——未在發生當下留下 raw event，起訖時間為事後近似值，依 Codex 審查與 CLAUDE.md 即時埋點規則不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/919）：builder commit f993023c（20:11:56Z–20:16:25Z，cherry-pick 為 d4e4c7e7，預約表單名額不足團次停用、人數上限依團次剩餘名額、canSubmitBooking 檢查剩餘名額），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
-    "2026-10-13 非計分紀錄（issue/921）：builder commit d0f72afd（20:34:41Z–20:47:36Z，cherry-pick 為 bbe9f6d6，三支列表 API 關鍵字以雙引號與 LIKE 跳脫安全帶入 PostgREST .or()、接受申請保留時數中文錯誤），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
+    "2026-10-13 非計分紀錄（issue/921）：builder commit d0f72afd（20:34:41Z–20:47:36Z，cherry-pick 為 bbe9f6d6，三支列表 API 關鍵字以雙引號與 LIKE 跳脫安全帶入 PostgREST .or()、接受申請保留時數中文錯誤），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/923）：builder commit 6ed81c08（20:53:45Z–20:58:55Z，cherry-pick 為 47bde615，票券核銷狀態白名單與寫回失敗還原、調價擋已取消／未到店、預約 zod 中文訊息、product-orders 核銷補償），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
