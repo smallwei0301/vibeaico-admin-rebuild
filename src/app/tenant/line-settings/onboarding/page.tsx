@@ -25,7 +25,7 @@ import { nav } from '@/i18n/zh-TW/nav';
 import { lineSetupWizardPage as t } from '@/i18n/zh-TW/line-setup-wizard';
 import {
   WIZARD_STEP_KEYS, VERIFIABLE_CHECK_KEYS, allVerifiableChecksPassed, canAdvanceFromStep, credentialsConfigured,
-  deriveStartingStep, stepAfterVerifyRetry, stepStatus, createWizardRequestGate,
+  deriveStartingStep, shouldEditCredentialByDefault, shouldOfferWebhookFix, stepAfterVerifyRetry, stepStatus, createWizardRequestGate,
   type VerifyCheck, type WizardStepKey,
 } from '@/lib/line-setup-wizard';
 
@@ -144,6 +144,13 @@ export default function LineSetupWizardPage() {
       if (!current()) return;
       setSettings(s);
       setChannelId(s.line.channelId);
+      /* #926：只在「載入完成的這一刻」決定一次初始編輯狀態。尚未設定的欄位直接可輸入；
+       * 已設定的維持遮罩＋「重新輸入」。使用者之後按「取消重新輸入」只可能發生在已有值的
+       * 欄位，且不會再經過這裡，所以不會被強制切回編輯。 */
+      setSecretEditing(shouldEditCredentialByDefault(s.line.channelSecret));
+      setTokenEditing(shouldEditCredentialByDefault(s.line.channelAccessToken));
+      setSecretInput('');
+      setTokenInput('');
       setAutoReplyAck(readAckFromStorage());
       setLoadState('ready');
       const configured = credentialsConfigured({
@@ -418,6 +425,8 @@ export default function LineSetupWizardPage() {
                     onChange={(e) => setSecretInput(e.target.value)}
                   />
                 ) : (
+                  /* 唯讀狀態只會在「已有值」時出現（未設定時初始即為編輯狀態，#926），
+                   * 所以 secretMaskedPlaceholder 的「已設定」字樣不會對應到空值。 */
                   <Input
                     id="wizSecret"
                     readOnly
@@ -434,9 +443,11 @@ export default function LineSetupWizardPage() {
                     >
                       {secretVisible ? <EyeOff size={14} /> : <Eye size={14} />}
                     </Button>
-                    <Button variant="secondary" onClick={() => { setSecretEditing(false); setSecretInput(''); }}>
-                      {t.credentials.secretCancelReenter}
-                    </Button>
+                    {settings.line.channelSecret ? (
+                      <Button variant="secondary" onClick={() => { setSecretEditing(false); setSecretInput(''); }}>
+                        {t.credentials.secretCancelReenter}
+                      </Button>
+                    ) : null}
                   </>
                 ) : (
                   <Button variant="outline" onClick={() => setSecretEditing(true)}>
@@ -461,6 +472,7 @@ export default function LineSetupWizardPage() {
                     onChange={(e) => setTokenInput(e.target.value)}
                   />
                 ) : (
+                  /* 同 Secret：唯讀只出現在已有值時（#926）。 */
                   <Input
                     id="wizToken"
                     readOnly
@@ -477,9 +489,11 @@ export default function LineSetupWizardPage() {
                     >
                       {tokenVisible ? <EyeOff size={14} /> : <Eye size={14} />}
                     </Button>
-                    <Button variant="secondary" onClick={() => { setTokenEditing(false); setTokenInput(''); }}>
-                      {t.credentials.secretCancelReenter}
-                    </Button>
+                    {settings.line.channelAccessToken ? (
+                      <Button variant="secondary" onClick={() => { setTokenEditing(false); setTokenInput(''); }}>
+                        {t.credentials.secretCancelReenter}
+                      </Button>
+                    ) : null}
                   </>
                 ) : (
                   <Button variant="outline" onClick={() => setTokenEditing(true)}>
@@ -661,6 +675,18 @@ export default function LineSetupWizardPage() {
                       <div className="form-text mt-1">{t.webhookTest.passMessage}</div>
                     ) : c?.status === 'FAIL' ? (
                       <div className="form-text mt-1">{t.webhookTest.failHint}</div>
+                    ) : null}
+                    {shouldOfferWebhookFix(checks) ? (
+                      <Button
+                        variant="success"
+                        size="sm"
+                        className="mt-2"
+                        loading={syncingWebhook}
+                        loadingText={t.botWebhook.fixing}
+                        onClick={() => void fixWebhook()}
+                      >
+                        {t.botWebhook.fixWebhook}
+                      </Button>
                     ) : null}
                   </div>
                 </div>
