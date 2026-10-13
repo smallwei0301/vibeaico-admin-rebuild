@@ -60,23 +60,15 @@ export type ModePreset = {
   setupStepRoutes: Record<SetupStepKey, string | null>;
   /**
    * 設定進度 SERVICE 步驟計算哪種庫存（services 與 trips 資料表分開，見 10 分冊 §0）。
-   * `filter` 與公開商店頁（server/public-shop.ts）的可見條件一致：只有顧客真的看得到、
-   * 訂得到的庫存才算完成——GUIDE 草稿行程不算，LOCAL_SHOP／CLINIC 停用服務不算。
+   * 只有顧客真的看得到、訂得到的庫存才算完成：
+   * - table：LOCAL_SHOP／CLINIC，公開商店頁列出 services.active=true，皆可預約。
+   * - publicBookablePlans：GUIDE，直接沿用公開店家頁（server/public-shop loadPublicShop）的
+   *   方案入口判定——bookingCta 為 fixed／request 才算（已發布行程、啟用方案、未來 OPEN 團次
+   *   且座位足夠）；INSTANT 方案公開頁無入口，不算。
    */
-  setupInventory: {
-    table: 'services' | 'trips';
-    filter: { column: string; value: string | boolean };
-    /**
-     * 父列本身可見還不夠，還要有至少一筆「啟用中的子列」才算可預約（GUIDE：已發布行程
-     * 必須至少有一個 active 方案，public-shop 也只列 trip_plans.active=true）。
-     * 已知限制：FIXED_DEPARTURE 方案另需未來 OPEN 團次才真正可訂，這裡不建模。
-     */
-    requireActiveChild?: {
-      table: 'trip_plans';
-      fk: string;
-      filter: { column: string; value: string | boolean };
-    };
-  };
+  setupInventory:
+    | { kind: 'table'; table: 'services'; filter: { column: string; value: string | boolean } }
+    | { kind: 'publicBookablePlans' };
 };
 
 const COMMON_SETUP_ROUTES = {
@@ -99,7 +91,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     showActionInbox: false,
     reportingMode: 'GENERAL',
     setupStepRoutes: { ...COMMON_SETUP_ROUTES, SERVICE: '/tenant/services' },
-    setupInventory: { table: 'services', filter: { column: 'active', value: true } },
+    setupInventory: { kind: 'table', table: 'services', filter: { column: 'active', value: true } },
     richMenuCells: [
       { label: '立即預約', text: '預約' },
       { label: '我的預約', text: '我的預約' },
@@ -125,11 +117,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     showActionInbox: true,
     reportingMode: 'GUIDE_TOUR',
     setupStepRoutes: { ...COMMON_SETUP_ROUTES, SERVICE: '/tenant/trips' },
-    setupInventory: {
-      table: 'trips',
-      filter: { column: 'status', value: 'PUBLISHED' },
-      requireActiveChild: { table: 'trip_plans', fk: 'trip_id', filter: { column: 'active', value: true } },
-    },
+    setupInventory: { kind: 'publicBookablePlans' },
     richMenuCells: [
       { label: '所有行程', text: '行程' },
       { label: '近期團次', text: '團次' },
@@ -151,7 +139,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     showActionInbox: false,
     reportingMode: 'GENERAL',
     setupStepRoutes: { ...COMMON_SETUP_ROUTES, SERVICE: '/tenant/services' },
-    setupInventory: { table: 'services', filter: { column: 'active', value: true } },
+    setupInventory: { kind: 'table', table: 'services', filter: { column: 'active', value: true } },
     richMenuCells: [
       { label: '線上掛號', text: '預約' },
       { label: '我的掛號', text: '我的預約' },
