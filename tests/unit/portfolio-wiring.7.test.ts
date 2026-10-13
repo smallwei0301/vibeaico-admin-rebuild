@@ -202,3 +202,33 @@ describe('portfolio #7 follow-up: LINE 排序真的落地（0075 line_sort_order
     expect(reorderLineRoute).toContain("'line'");
   });
 });
+
+describe('portfolio #7: cover image is really uploaded, title is never stored as imageUrl', () => {
+  it('picks upload through uploadImage(file, "portfolio-images") and validates like the server', () => {
+    expect(page).toContain("from '@/services/upload'");
+    expect(page).toContain("uploadImage(file, 'portfolio-images')");
+    expect(page).toContain("'image/jpeg', 'image/png', 'image/webp'");
+    expect(page).toContain('5 * 1024 * 1024');
+    expect(page).not.toContain('file.name');
+  });
+
+  it('only writes imageUrl after a successful upload and reports failures honestly', () => {
+    const pick = page.slice(page.indexOf('const onPickCover'), page.indexOf('const save = async'));
+    expect(pick.indexOf('await uploadImage')).toBeLessThan(pick.indexOf('imageUrl: url'));
+    expect(pick).toContain("'danger'");
+    expect(pick).toContain('setImageUploading(false)');
+  });
+
+  it('save payload never falls back to the title and create is blocked without an image', () => {
+    const save = page.slice(page.indexOf('const save = async'), page.indexOf('const save = async') + 1800);
+    expect(save).not.toMatch(/imageUrl:\s*draft\.imageUrl\s*\|\|/);
+    expect(save).not.toMatch(/imageUrl:[^,\n]*title/);
+    expect(save.indexOf('!draft.imageUrl')).toBeGreaterThan(-1);
+    expect(save.indexOf('!draft.imageUrl')).toBeLessThan(save.indexOf('createPortfolio'));
+    expect(save.indexOf('!draft.imageUrl')).toBeLessThan(save.indexOf('updatePortfolio'));
+  });
+
+  it('extraImages input is disabled (no fake gallery support)', () => {
+    expect(page).toMatch(/multiple disabled/);
+  });
+});

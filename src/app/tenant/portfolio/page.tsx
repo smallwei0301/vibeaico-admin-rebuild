@@ -22,6 +22,8 @@ import {
   createPortfolio, deletePortfolio, listPortfolios, reorderPortfolios,
   reorderPortfoliosLine, togglePortfolioActive, togglePortfolioLineFeatured, updatePortfolio,
 } from '@/services/portfolios';
+import { uploadImage } from '@/services/upload';
+import { ApiError } from '@/lib/api';
 import type { Portfolio } from '@/lib/types';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
@@ -29,6 +31,10 @@ import { portfolioPage as t } from '@/i18n/zh-TW/pages/portfolio';
 import { formatNumber } from '@/lib/utils';
 
 type SortMode = 'line' | 'public';
+
+/** 與 src/app/api/upload/route.ts 的 ALLOWED_TYPES / MAX_BYTES 一致（jpeg/png/webp、5MB）。 */
+const COVER_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const COVER_MAX_BYTES = 5 * 1024 * 1024;
 
 const EMPTY_DRAFT = {
   id: '',
@@ -55,6 +61,8 @@ export default function PortfolioPage() {
   const [editing, setEditing] = React.useState(false);
   const [titleError, setTitleError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
+  const [imageUploading, setImageUploading] = React.useState(false);
+  const [imageError, setImageError] = React.useState('');
 
   const [deleteTarget, setDeleteTarget] = React.useState<Portfolio | null>(null);
   const [toggleTarget, setToggleTarget] = React.useState<Portfolio | null>(null);
@@ -107,12 +115,14 @@ export default function PortfolioPage() {
   const openCreate = () => {
     setEditing(false);
     setTitleError('');
+    setImageError('');
     setDraft({ ...EMPTY_DRAFT, sortOrder: items.length });
   };
 
   const openEdit = (item: Portfolio) => {
     setEditing(true);
     setTitleError('');
+    setImageError('');
     setDraft({
       id: item.id,
       title: item.title,
@@ -123,10 +133,42 @@ export default function PortfolioPage() {
     });
   };
 
+  /**
+   * 選檔 → 真的上傳到 portfolio-images → 只在成功後才寫入 draft.imageUrl。
+   * 失敗時 draft 維持原狀（編輯時保留原圖），絕不假裝成功。
+   */
+  const onPickCover = async (file: File) => {
+    if (!COVER_ALLOWED_TYPES.includes(file.type)) {
+      setImageError(t.messages.imageTypeInvalid);
+      return;
+    }
+    if (file.size > COVER_MAX_BYTES) {
+      setImageError(t.messages.imageTooLarge);
+      return;
+    }
+    setImageError('');
+    setImageUploading(true);
+    try {
+      const { url } = await uploadImage(file, 'portfolio-images');
+      setDraft((d) => (d ? { ...d, imageUrl: url } : d));
+      toast.show(t.messages.imageUploaded);
+    } catch (e) {
+      const detail = e instanceof ApiError && e.message ? e.message : t.messages.retryLater;
+      setImageError(`${t.messages.imageUploadFailedPrefix}${detail}`);
+      toast.show(`${t.messages.imageUploadFailedPrefix}${detail}`, 'danger');
+    } finally {
+      setImageUploading(false);
+    }
+  };
+
   const save = async () => {
     if (!draft) return;
     if (!draft.title.trim()) {
       setTitleError(t.messages.titleRequired);
+      return;
+    }
+    if (!draft.imageUrl) {
+      setImageError(t.messages.imageRequired);
       return;
     }
     setSaving(true);
@@ -143,7 +185,7 @@ export default function PortfolioPage() {
         await createPortfolio({
           title: draft.title.trim(),
           description: draft.description,
-          imageUrl: draft.imageUrl || draft.title.trim(),
+          imageUrl: draft.imageUrl,
           active: draft.active,
         });
         toast.show(t.messages.created);
@@ -470,7 +512,7 @@ export default function PortfolioPage() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setDraft(null)}>{common.cancel}</Button>
-            <Button loading={saving} loadingText={common.saving} onClick={() => void save()}>
+            <Button loading={saving} loadingText={common.saving} disabled={imageUploading} onClick={() => void save()}>
               {common.save}
             </Button>
           </>
@@ -503,22 +545,34 @@ export default function PortfolioPage() {
             </FormGroup>
 
             <FormGroup>
-              <Label>{t.form.coverImage}</Label>
+              <Label required>{t.form.coverImage}</Label>
               <Input
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/png,image/webp"
+                disabled={imageUploading}
                 onChange={(e) => {
                   const file = e.target.files?.[0];
-                  setDraft({ ...draft, imageUrl: file ? file.name : draft.imageUrl });
+                  e.target.value = '';
+                  if (file) void onPickCover(file);
                 }}
               />
               <FormText>{t.form.coverImageHelp}</FormText>
+              {imageUploading ? <FormText>{t.form.imageUploading}</FormText> : null}
+              {imageError ? <FormError>{imageError}</FormError> : null}
+              {/^(https?:)?\//.test(draft.imageUrl) ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={draft.imageUrl}
+                  alt={t.form.imagePreviewAlt}
+                  className="mt-2 max-h-32 rounded-lg border border-neutral-200"
+                />
+              ) : null}
             </FormGroup>
 
             <FormGroup>
               <Label>{t.form.extraImages}</Label>
-              <Input type="file" accept="image/*" multiple />
-              <FormText>{t.form.extraImagesHelp}</FormText>
+              <Input type="file" accept="image/*" multiple disabled />
+              <FormText>{t.form.extraImagesUnavailable}</FormText>
             </FormGroup>
 
             <FormGroup>
