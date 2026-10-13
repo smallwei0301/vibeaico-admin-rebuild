@@ -1,6 +1,7 @@
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { createAdminSupabase } from '@/server/supabase';
+import { buildRichMenuBody } from '@/server/rich-menu';
 import { lineSettingsSchema } from '@/config/tenant-settings';
 import {
   getLineCredentials, lineCreateRichMenu, lineUploadRichMenuImage,
@@ -11,7 +12,8 @@ import {
  * POST /api/settings/line/rich-menu/create —— 建立並發布 Rich Menu（06 分冊 §6 MVP）。
  *
  * 流程（§6 表格 ①–⑤）：
- *   ① 依 richMenuTheme 產生 2500×1686 六格選單設定（message action）
+ *   ① 依 richMenuTheme 與店家 business_type 產生 2500×1686 六格選單設定（message action，
+ *      label／text 取 MODE_PRESETS[businessType].richMenuCells；讀不到回退 LOCAL_SHOP）
  *   ② POST /v2/bot/richmenu 建立
  *   ③ 上傳圖片到 api-data.line.me（底圖：店家自傳 richMenuBgImageUrl 優先，
  *      否則取 richmenu-assets bucket 內預先做好的主題底圖 themes/{THEME}.png|jpg；
@@ -25,27 +27,6 @@ import {
  * MVP 簡化：richMenuNoOverlay / richMenuTextColor 是文字疊圖合成用（§6 註明
  * 設計器合成屬後期），本端點直接用底圖原圖上傳。
  */
-
-/** 六格（3×2）格線：833+833+834 = 2500；843+843 = 1686 */
-const CELLS = [
-  { x: 0, y: 0, w: 833, h: 843 }, { x: 833, y: 0, w: 833, h: 843 }, { x: 1666, y: 0, w: 834, h: 843 },
-  { x: 0, y: 843, w: 833, h: 843 }, { x: 833, y: 843, w: 833, h: 843 }, { x: 1666, y: 843, w: 834, h: 843 },
-];
-/** 六格的 message action 文字（對應 webhook 內建指令與關鍵字，06 §3/§6） */
-const CELL_TEXTS = ['預約', '我的預約', '服務項目', '會員卡', '優惠', '聯絡我們'];
-
-function buildRichMenuBody(theme: string) {
-  return {
-    size: { width: 2500, height: 1686 },
-    selected: true,
-    name: `vibeai-${theme.toLowerCase()}`,
-    chatBarText: '選單',
-    areas: CELLS.map((c, i) => ({
-      bounds: { x: c.x, y: c.y, width: c.w, height: c.h },
-      action: { type: 'message', label: CELL_TEXTS[i], text: CELL_TEXTS[i] },
-    })),
-  };
-}
 
 /** 取得底圖 bytes + contentType；拿不到 → 丟 4xx 明確 message */
 async function loadBackgroundImage(
@@ -86,7 +67,7 @@ export const POST = handle(async () => {
   const image = await loadBackgroundImage(theme, line.richMenuBgImageUrl ?? '');
 
   // ② 建立 → ③ 傳圖 → ④ 設為預設
-  const richMenuId = await lineCreateRichMenu(token, buildRichMenuBody(theme));
+  const richMenuId = await lineCreateRichMenu(token, buildRichMenuBody(theme, t.businessType));
   try {
     await lineUploadRichMenuImage(token, richMenuId, image.bytes, image.contentType);
     await lineSetDefaultRichMenu(token, richMenuId);
