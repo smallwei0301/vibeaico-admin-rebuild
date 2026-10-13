@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { stickyClass } from '@/components/ui/DataTable';
+import { stickyClass, beforeStickyClass } from '@/components/ui/DataTable';
 
 const read = (p: string) => readFileSync(p, 'utf8');
 
@@ -37,4 +37,25 @@ describe('#914 DataTable sticky right column', () => {
       expect(src).toContain('btn-group btn-group-wrap');
     },
   );
+
+  it('前一欄 class 只在 sticky 表出現（未設定 sticky 的表格完全不變）', () => {
+    expect(beforeStickyClass([{}, {}, {}], 0)).toBeUndefined();
+    expect(beforeStickyClass([{}, {}, {}], 2)).toBeUndefined();
+    const cols = [{}, {}, { sticky: 'right' as const }];
+    expect(beforeStickyClass(cols, 0)).toBeUndefined();
+    expect(beforeStickyClass(cols, 1)).toBe('col-before-sticky-right');
+    expect(beforeStickyClass(cols, 2)).toBeUndefined();
+    const src = read('src/components/ui/DataTable.tsx');
+    expect(src.match(/beforeStickyClass\(columns, ci\)/g)?.length).toBe(2);
+  });
+
+  it('手機版前一欄預留空間：<=991px、使用 token、clip 不出假省略號、桌機不加', () => {
+    const css = read('src/styles/globals.css');
+    const m = css.match(/@media \(max-width:\s*991px\)\s*\{[^@]*?col-before-sticky-right[^}]*\}/);
+    expect(m).not.toBeNull();
+    expect(m![0]).toMatch(/padding-right:\s*var\(--sticky-actions-reserve\)/);
+    expect(m![0]).toMatch(/text-overflow:\s*clip/);
+    expect(css.replace(m![0], '')).not.toMatch(/col-before-sticky-right[^}]*padding-right/);
+    expect(read('src/styles/tokens.css')).toMatch(/--sticky-actions-reserve:\s*[\d.]+rem/);
+  });
 });

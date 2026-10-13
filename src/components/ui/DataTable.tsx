@@ -47,6 +47,11 @@ export function stickyClass(c: { sticky?: 'right' }, cell: 'th' | 'td'): string 
   return cell === 'th' ? 'col-sticky-right col-sticky-right-head' : 'col-sticky-right';
 }
 
+/** sticky right 欄的「前一欄」才回傳 class（手機版預留空間，避免被固定欄蓋住）；表格沒有 sticky 欄時永遠 undefined。 */
+export function beforeStickyClass(columns: { sticky?: 'right' }[], index: number): string | undefined {
+  return columns[index + 1]?.sticky === 'right' ? 'col-before-sticky-right' : undefined;
+}
+
 export function DataTable<T>({
   columns,
   rows,
@@ -74,9 +79,9 @@ export function DataTable<T>({
       <table className="data-table">
         <thead>
           <tr>
-            {columns.map((c) => (
+            {columns.map((c, ci) => (
               <th key={c.key} style={c.width ? { width: c.width } : undefined}
-                  className={cn(c.numeric && 'text-right', stickyClass(c, 'th'))}>
+                  className={cn(c.numeric && 'text-right', stickyClass(c, 'th'), beforeStickyClass(columns, ci))}>
                 {c.header}
               </th>
             ))}
@@ -98,8 +103,8 @@ export function DataTable<T>({
           ) : (
             rows.map((row, i) => (
               <tr key={rowKey(row, i)} id={rowId?.(row)} className={rowClassName?.(row)}>
-                {columns.map((c) => (
-                  <td key={c.key} className={cn(c.numeric && 'cell-numeric', stickyClass(c, 'td'))}>
+                {columns.map((c, ci) => (
+                  <td key={c.key} className={cn(c.numeric && 'cell-numeric', stickyClass(c, 'td'), beforeStickyClass(columns, ci))}>
                     {c.render(row, i)}
                   </td>
                 ))}

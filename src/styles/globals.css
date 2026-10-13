@@ -303,6 +303,14 @@
     white-space: normal;
   }
   .data-table thead th.col-sticky-right-head { z-index: 3; }
+  /* 手機版橫向捲動時，固定欄會蓋住前一欄右側；替前一欄預留固定欄寬度，並用 clip 避免假省略號（對應原站 original-tenant.css） */
+  @media (max-width: 991px) {
+    .data-table .col-before-sticky-right,
+    .data-table tbody td.col-before-sticky-right {
+      padding-right: var(--sticky-actions-reserve);
+      text-overflow: clip;
+    }
+  }
   /* 金額欄右對齊、等寬數字，才能目視比大小 */
   .data-table .cell-numeric { text-align: right; font-variant-numeric: tabular-nums; }
   /* 徽章不被壓斷 */
