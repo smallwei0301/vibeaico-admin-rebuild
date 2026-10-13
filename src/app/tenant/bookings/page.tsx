@@ -407,9 +407,9 @@ export default function BookingsPage() {
       ),
     },
     {
-      key: 'actions', header: t.columns.actions, width: '210px',
+      key: 'actions', header: t.columns.actions, width: '210px', sticky: 'right',
       render: (b) => (
-        <div className="btn-group">
+        <div className="btn-group btn-group-wrap">
           <Button variant="outline" size="sm" aria-label={t.rowActions.detail} onClick={() => setDetailTarget(b)}>
             <Eye size={13} />
           </Button>

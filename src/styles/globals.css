@@ -293,6 +293,22 @@
   .data-table tbody tr { --row-bg: #fff; transition: background-color var(--transition-fast); }
   .data-table tbody tr:hover { --row-bg: var(--neutral-150); }
   .data-table tbody tr:last-child td { border-bottom: none; }
+  /* 固定右欄（Column.sticky='right'）：背景跟隨 --row-bg 以免 hover/斑馬紋時透出底下內容 */
+  .data-table .col-sticky-right { position: sticky; right: 0; box-shadow: var(--shadow-sticky-edge); }
+  .data-table tbody td.col-sticky-right {
+    z-index: 1;
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+  .data-table thead th.col-sticky-right-head { z-index: 3; }
+  /* 表格實際橫向溢出時（DataTable 在容器設 data-sticky-compact）：替前一欄預留固定欄寬度，並用 clip 避免假省略號（對應原站 original-tenant.css）。未溢出時不加，避免多餘橫捲 */
+  [data-sticky-compact] .data-table .col-before-sticky-right,
+  [data-sticky-compact] .data-table tbody td.col-before-sticky-right {
+    padding-right: var(--sticky-actions-reserve);
+    text-overflow: clip;
+  }
   /* 金額欄右對齊、等寬數字，才能目視比大小 */
   .data-table .cell-numeric { text-align: right; font-variant-numeric: tabular-nums; }
   /* 徽章不被壓斷 */
@@ -365,6 +381,9 @@
   .btn-block { @apply w-full; }
 
   .btn-group { @apply inline-flex items-center gap-1 flex-nowrap; }
+  /* 可換行變體：預設單行；表格實際橫向溢出（祖先 data-sticky-compact）才限寬折行以收窄固定操作欄 */
+  .btn-group-wrap { @apply flex-nowrap; }
+  [data-sticky-compact] .btn-group-wrap { @apply flex-wrap; max-width: var(--btn-group-wrap-max); }
 
   /* ---------- 表單 ---------- */
   .form-label {
