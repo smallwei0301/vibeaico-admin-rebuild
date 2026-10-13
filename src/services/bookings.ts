@@ -3,12 +3,17 @@ import type {
   Booking, BookingAddon, BookingAddonNotifiedOutcome, BookingAddonPerformanceMode,
   BookingStatus, CalendarEvent, Paged, PaymentStatus,
 } from '@/lib/types';
+import { bookingFilterBound } from '@/lib/bookings-query-range';
 import { MOCK_BOOKINGS, MOCK_MODE, MOCK_STAFF } from '@/mock';
 import type { BusinessType } from '@/config/modes';
 
 export type BookingQuery = {
   page?: number; size?: number; status?: BookingStatus | '';
   paymentStatus?: PaymentStatus | '';
+  /** #934：多值狀態（逗號分隔送 API 的 `statuses`），與單值 status 並存、皆套用。 */
+  statuses?: BookingStatus[];
+  /** #934：隱藏已取消（API `excludeCancelled=true`）。 */
+  excludeCancelled?: boolean;
   keyword?: string; from?: string; to?: string; staffId?: string; bookingId?: string;
 };
 
@@ -19,7 +24,18 @@ export function listBookings(q: BookingQuery = {}): Promise<Paged<Booking>> {
       let rows = MOCK_BOOKINGS;
       if (q.bookingId) rows = rows.filter((b) => b.id === q.bookingId);
       if (q.status) rows = rows.filter((b) => b.status === q.status);
+      if (q.statuses?.length) rows = rows.filter((b) => q.statuses!.includes(b.status));
+      if (q.excludeCancelled) rows = rows.filter((b) => b.status !== 'CANCELLED');
       if (q.paymentStatus) rows = rows.filter((b) => b.paymentStatus === q.paymentStatus);
+      /* 與 API 等價：純日期依店家時區日界線（含結束日當天），完整 ISO 原樣比較。 */
+      if (q.from) {
+        const lo = Date.parse(bookingFilterBound(q.from, 'from'));
+        rows = rows.filter((b) => Date.parse(b.startAt) >= lo);
+      }
+      if (q.to) {
+        const hi = Date.parse(bookingFilterBound(q.to, 'to'));
+        rows = rows.filter((b) => Date.parse(b.startAt) <= hi);
+      }
       if (q.staffId) rows = rows.filter((b) => b.staffId === q.staffId);
       if (q.keyword) {
         const k = q.keyword.toLowerCase();
@@ -35,7 +51,16 @@ export function listBookings(q: BookingQuery = {}): Promise<Paged<Booking>> {
         size,
       };
     },
-    () => request<Paged<Booking>>('/api/bookings', { query: q as Record<string, string> }),
+    () => {
+      const { statuses, excludeCancelled, ...rest } = q;
+      return request<Paged<Booking>>('/api/bookings', {
+        query: {
+          ...rest,
+          ...(statuses?.length ? { statuses: statuses.join(',') } : {}),
+          ...(excludeCancelled ? { excludeCancelled: 'true' } : {}),
+        } as Record<string, string>,
+      });
+    },
   );
 }
 

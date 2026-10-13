@@ -25,7 +25,7 @@ import {
   listBookingAddons, listBookings, markBookingPaidOffline, markNoShow, revertBookingComplete,
   updateBooking,
 } from '@/services/bookings';
-import { mergeUnprocessedBookings, unprocessedUpperBound, zonedDayRange } from '@/lib/bookings-query-range';
+import { unprocessedEndBound, unprocessedUpperBound } from '@/lib/bookings-query-range';
 import { canMarkPaidOffline, syncDetailFinalPrice } from '@/lib/booking-detail-sync';
 import { createCustomer, listCustomers } from '@/services/customers';
 import { listServices, listStaff } from '@/services/catalog';
@@ -150,83 +150,36 @@ export default function BookingsPage() {
     setLoading(true);
     try {
       const isRealStatus = (REAL_STATUSES as string[]).includes(status);
-      const baseParams = {
-        page: 0,
-        size: 100,
+      /* #934：所有篩選與分頁都交給 API（server-side）；「未處理」＝待確認＋已確認且開始時間已過。 */
+      const filterParams = {
+        statuses: status === 'UNPROCESSED' ? (['PENDING', 'CONFIRMED'] as BookingStatus[]) : undefined,
+        status: isRealStatus ? (status as BookingStatus) : ('' as const),
+        excludeCancelled: !showCancelled && status !== 'CANCELLED' ? true : undefined,
         paymentStatus: paymentStatusFilter || undefined,
         keyword,
         from: startDate || undefined,
-        to: endDate || unprocessedUpperBound(status, endDate),
+        to: status === 'UNPROCESSED'
+          ? unprocessedUpperBound(status, endDate) ?? unprocessedEndBound(endDate)
+          : endDate || undefined,
       };
-      /* API status 只收單一值：「未處理」分別查待確認與已確認再合併，避免分頁前被其他狀態擠掉 */
-      let res;
-      if (status === 'UNPROCESSED') {
-        const [pendingRes, confirmedRes] = await Promise.all([
-          listBookings({ ...baseParams, status: 'PENDING' }),
-          listBookings({ ...baseParams, status: 'CONFIRMED' }),
-        ]);
-        res = {
-          ...pendingRes,
-          content: mergeUnprocessedBookings(pendingRes.content, confirmedRes.content),
-          totalElements: pendingRes.totalElements + confirmedRes.totalElements,
-        };
-      } else {
-        res = await listBookings({
-          ...baseParams,
-          status: isRealStatus ? (status as BookingStatus) : '',
-        });
+      const res = await listBookings({ ...filterParams, page, size: PAGE_SIZE });
+
+      /* 刪除／篩選後目前頁已超出範圍：退回最後一頁再查（避免空白頁卻有資料）。 */
+      if (res.content.length === 0 && page > 0 && res.totalElements > 0) {
+        setPage(Math.max(0, res.totalPages - 1));
+        return;
       }
 
-      const applyClientFilters = (items: Booking[]) => {
-        let filtered = items;
-        if (paymentStatusFilter) {
-          filtered = filtered.filter((b) => b.paymentStatus === paymentStatusFilter);
-        }
-        /** 未處理＝時間已過、但仍停在「待確認 / 已確認」的預約 */
-        if (status === 'UNPROCESSED') {
-          const now = Date.now();
-          filtered = filtered.filter(
-            (b) => (b.status === 'PENDING' || b.status === 'CONFIRMED') && new Date(b.startAt).getTime() < now,
-          );
-        }
-        /* 真實模式的日期篩選由 server 依店家時區日界線處理（#933）；
-           mock 的 listBookings 不處理 from/to，才在此用台北日界線補濾。 */
-        if (USE_MOCK && startDate) {
-          const lo = Date.parse(zonedDayRange(startDate).from);
-          filtered = filtered.filter((b) => Date.parse(b.startAt) >= lo);
-        }
-        if (USE_MOCK && endDate) {
-          const hi = Date.parse(zonedDayRange(endDate).to);
-          filtered = filtered.filter((b) => Date.parse(b.startAt) <= hi);
-        }
-        if (!showCancelled && status !== 'CANCELLED') {
-          filtered = filtered.filter((b) => b.status !== 'CANCELLED');
-        }
-        return filtered;
-      };
-
-      let list = applyClientFilters(res.content);
+      const list = res.content;
 
       if (requestedBookingId && openedDeepLinkId.current !== requestedBookingId) {
         let requested = list.find((b) => b.id === requestedBookingId);
         if (!requested) {
-          /*
-           * The table intentionally loads at most 100 rows before doing its
-           * client-side pagination. A GUIDE action may point at a later row,
-           * so resolve that one booking through the existing tenant-scoped
-           * list API instead of silently failing to open the detail modal.
-           */
+          /* GUIDE action 指向的預約可能不在目前這一頁：以租戶範圍的 list API 單筆解析。 */
           const exact = await listBookings({
-            page: 0,
-            size: 1,
-            bookingId: requestedBookingId,
-            status: isRealStatus ? (status as BookingStatus) : '',
-            paymentStatus: paymentStatusFilter || undefined,
-            keyword,
-            from: startDate || undefined,
-            to: endDate || undefined,
+            ...filterParams, page: 0, size: 1, bookingId: requestedBookingId,
           });
-          requested = applyClientFilters(exact.content).find((b) => b.id === requestedBookingId);
+          requested = exact.content.find((b) => b.id === requestedBookingId);
         }
         if (requested) {
           setDetailTarget(requested);
@@ -240,8 +193,8 @@ export default function BookingsPage() {
           && new Date(b.startAt).getTime() < now)
         .map((b) => b.id));
 
-      setTotal(list.length);
-      setRows(list.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE));
+      setTotal(res.totalElements);
+      setRows(list);
     } catch (e) {
       toast.show(`${t.messages.loadFailed}${e instanceof Error ? e.message : t.messages.unknownError}`, 'danger');
       setRows([]);

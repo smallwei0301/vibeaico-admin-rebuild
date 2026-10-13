@@ -16,11 +16,27 @@ const INVALID_DATE_MESSAGE = '日期不存在，請重新選擇';
 /** 純日期形狀（YYYY-MM-DD）必須是真實日曆日期；完整 ISO 時間照舊接受。 */
 const filterDate = z.string().optional()
   .refine((v) => v === undefined || !isDateOnlyShape(v) || isValidYmd(v), INVALID_DATE_MESSAGE);
+const BOOKING_STATUS = z.enum(['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW']);
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(0).default(0),
   size: z.coerce.number().int().min(1).max(100).default(20),
-  status: z.enum(['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW']).optional(),
+  status: BOOKING_STATUS.optional(),
+  // #934：逗號分隔多值（如 PENDING,CONFIRMED），每個值都須在白名單內；與單值 status 並存（皆套用）。
+  statuses: z.string().optional().transform((v, ctx) => {
+    if (v === undefined || v === '') return undefined;
+    const out: z.infer<typeof BOOKING_STATUS>[] = [];
+    for (const part of v.split(',').map((x) => x.trim()).filter(Boolean)) {
+      const r = BOOKING_STATUS.safeParse(part);
+      if (!r.success) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'statuses 含不合法的狀態值' });
+        return z.NEVER;
+      }
+      if (!out.includes(r.data)) out.push(r.data);
+    }
+    return out.length ? out : undefined;
+  }),
+  excludeCancelled: z.enum(['true', 'false']).optional().transform((v) => v === 'true'),
   paymentStatus: z.enum(['UNPAID', 'PAID_ONLINE', 'PAID_OFFLINE', 'REFUNDED']).optional(),
   keyword: z.string().optional(),
   from: filterDate, // ISO 日期
@@ -41,6 +57,8 @@ export const GET = handle(async (req) => {
     .range(from, to);
   if (q.bookingId) query = query.eq('id', q.bookingId);
   if (q.status) query = query.eq('status', q.status);
+  if (q.statuses) query = query.in('status', q.statuses);
+  if (q.excludeCancelled) query = query.neq('status', 'CANCELLED');
   if (q.paymentStatus) query = query.eq('payment_status', q.paymentStatus);
   if (q.staffId) query = query.eq('staff_id', q.staffId);
   if (q.from || q.to) {
