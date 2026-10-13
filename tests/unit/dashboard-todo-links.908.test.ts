@@ -61,6 +61,6 @@ describe('#908 首頁待辦連結與查詢範圍', () => {
     expect(unprocessedUpperBound('UNPROCESSED', undefined, now)).toBe(now.toISOString());
     expect(unprocessedUpperBound('UNPROCESSED', '2026-10-20', now)).toBeUndefined();
     expect(unprocessedUpperBound('PENDING', '', now)).toBeUndefined();
-    expect(read('src/app/tenant/bookings/page.tsx')).toContain('unprocessedUpperBound(status, endDate)');
+    expect(read('src/app/tenant/bookings/page.tsx')).toContain('startBefore: status === \'UNPROCESSED\'');
   });
 });

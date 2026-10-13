@@ -14,6 +14,8 @@ export type BookingQuery = {
   statuses?: BookingStatus[];
   /** #934：隱藏已取消（API `excludeCancelled=true`）。 */
   excludeCancelled?: boolean;
+  /** #934：開始時間嚴格早於此 ISO 時間（「未處理」用，API `startBefore`）。 */
+  startBefore?: string;
   keyword?: string; from?: string; to?: string; staffId?: string; bookingId?: string;
 };
 
@@ -35,6 +37,10 @@ export function listBookings(q: BookingQuery = {}): Promise<Paged<Booking>> {
       if (q.to) {
         const hi = Date.parse(bookingFilterBound(q.to, 'to'));
         rows = rows.filter((b) => Date.parse(b.startAt) <= hi);
+      }
+      if (q.startBefore) {
+        const sb = Date.parse(q.startBefore);
+        rows = rows.filter((b) => Date.parse(b.startAt) < sb);
       }
       if (q.staffId) rows = rows.filter((b) => b.staffId === q.staffId);
       if (q.keyword) {

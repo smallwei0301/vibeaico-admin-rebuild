@@ -99,17 +99,6 @@ export function mergeUnprocessedBookings<T extends { id: string; startAt: string
 }
 
 /**
- * 「未處理」且使用者有設結束日期時的 API 上界（#934）：結束日當天尾端若在未來，
- * 改用現在時間（未處理＝開始時間已過）；否則沿用結束日期（由 server 依店家時區轉日界線）。
- */
-export function unprocessedEndBound(
-  endDate: string | undefined | null, now: Date = new Date(),
-): string | undefined {
-  if (!endDate) return undefined;
-  return Date.parse(zonedDayRange(endDate).to) > now.getTime() ? now.toISOString() : endDate;
-}
-
-/**
  * 「未處理」預約的 API 時間上限：僅在使用者未設結束日期時帶現在時間；
  * 有 endDate 則維持原行為（回傳 undefined）。
  */

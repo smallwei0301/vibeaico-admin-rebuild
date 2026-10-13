@@ -25,7 +25,6 @@ import {
   listBookingAddons, listBookings, markBookingPaidOffline, markNoShow, revertBookingComplete,
   updateBooking,
 } from '@/services/bookings';
-import { unprocessedEndBound, unprocessedUpperBound } from '@/lib/bookings-query-range';
 import { canMarkPaidOffline, syncDetailFinalPrice } from '@/lib/booking-detail-sync';
 import { createCustomer, listCustomers } from '@/services/customers';
 import { listServices, listStaff } from '@/services/catalog';
@@ -158,9 +157,9 @@ export default function BookingsPage() {
         paymentStatus: paymentStatusFilter || undefined,
         keyword,
         from: startDate || undefined,
-        to: status === 'UNPROCESSED'
-          ? unprocessedUpperBound(status, endDate) ?? unprocessedEndBound(endDate)
-          : endDate || undefined,
+        to: endDate || undefined,
+        /* 未處理＝開始時間已過：獨立 startBefore（server 嚴格 <），不與店家時區日界線混用。 */
+        startBefore: status === 'UNPROCESSED' ? new Date().toISOString() : undefined,
       };
       const res = await listBookings({ ...filterParams, page, size: PAGE_SIZE });
 
@@ -506,7 +505,7 @@ export default function BookingsPage() {
                   className="form-control-sm w-52"
                   placeholder={t.filters.searchPlaceholder}
                   value={keyword}
-                  onChange={(e) => setKeyword(e.target.value)}
+                  onChange={(e) => { setKeyword(e.target.value); setPage(0); }}
                   onKeyDown={(e) => e.key === 'Enter' && setPage(0)}
                 />
                 <Button

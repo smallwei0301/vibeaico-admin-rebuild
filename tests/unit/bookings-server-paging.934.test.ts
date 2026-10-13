@@ -13,7 +13,6 @@ vi.mock('@/server/owner-notify', () => ({ notifyOwnerNewBooking: vi.fn() }));
 
 import { GET as listRoute } from '../../src/app/api/bookings/route';
 import { listBookings } from '../../src/services/bookings';
-import { unprocessedEndBound } from '../../src/lib/bookings-query-range';
 import { MOCK_BOOKINGS } from '../../src/mock';
 
 function makeSb(total = 250) {
@@ -110,11 +109,42 @@ describe('#934 mock 分支分頁與篩選', () => {
   });
 });
 
-describe('#934 unprocessedEndBound', () => {
-  it('未來的結束日改用現在；過去的結束日沿用日期', () => {
-    const now = new Date('2026-10-13T05:00:00.000Z');
-    expect(unprocessedEndBound('2026-10-20', now)).toBe(now.toISOString());
-    expect(unprocessedEndBound('2026-10-01', now)).toBe('2026-10-01');
-    expect(unprocessedEndBound('', now)).toBeUndefined();
+describe('#934 startBefore（未處理）', () => {
+  it('route 帶 startBefore 走 .lt(start_at)，與 to 日界線並存', async () => {
+    state.sb = makeSb();
+    const sbv = '2026-10-13T05:00:00.000Z';
+    const res = await get(`statuses=PENDING,CONFIRMED&startBefore=${encodeURIComponent(sbv)}&to=2026-10-20`);
+    expect(res.status).toBe(200);
+    expect(state.sb.calls).toContainEqual(['lt', 'start_at', sbv]);
+    expect(state.sb.calls.find((c: any[]) => c[0] === 'lte' && c[1] === 'start_at')).toBeDefined();
+  });
+  it('未帶 startBefore 不加 .lt', async () => {
+    state.sb = makeSb();
+    await get('page=0');
+    expect(state.sb.calls.find((c: any[]) => c[0] === 'lt')).toBeUndefined();
+  });
+  it('非法 startBefore 回 400 且不查詢', async () => {
+    for (const bad of ['abc', '2026-13-45T00:00:00Z', '2026-10-13']) {
+      state.sb = makeSb();
+      const res = await get(`startBefore=${encodeURIComponent(bad)}`);
+      expect(res.status).toBe(400);
+      expect(state.sb.calls.find((c: any[]) => c[0] === 'lt')).toBeUndefined();
+    }
+  });
+  it('mock 分支以 startAt < startBefore 過濾（嚴格小於）', async () => {
+    const pivot = MOCK_BOOKINGS[0].startAt;
+    const r = await listBookings({ startBefore: pivot, size: 100 });
+    expect(r.content.every((b) => Date.parse(b.startAt) < Date.parse(pivot))).toBe(true);
+    expect(r.content.some((b) => b.startAt === pivot)).toBe(false);
+  });
+  const src = readFileSync('src/app/tenant/bookings/page.tsx', 'utf8');
+  it('頁面未處理查詢組成：statuses＋startBefore＋原樣 to；不再使用 unprocessedEndBound', () => {
+    expect(src).toMatch(/statuses: status === 'UNPROCESSED' \? \(\['PENDING', 'CONFIRMED'\]/);
+    expect(src).toMatch(/to: endDate \|\| undefined,/);
+    expect(src).toMatch(/startBefore: status === 'UNPROCESSED' \? new Date\(\)\.toISOString\(\)/);
+    expect(src).not.toContain('unprocessedEndBound');
+  });
+  it('keyword 變更時重置頁碼', () => {
+    expect(src).toMatch(/setKeyword\(e\.target\.value\); setPage\(0\);/);
   });
 });

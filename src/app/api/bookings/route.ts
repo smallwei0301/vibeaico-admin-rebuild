@@ -41,6 +41,9 @@ const querySchema = z.object({
   keyword: z.string().optional(),
   from: filterDate, // ISO 日期
   to: filterDate,
+  // #934：「未處理」＝開始時間已過；獨立的 ISO 時間上界（嚴格小於），與 from／to 並存，不受店家時區日界線影響。
+  startBefore: z.string().optional()
+    .refine((v) => v === undefined || (/^\d{4}-\d{2}-\d{2}T/.test(v) && !Number.isNaN(Date.parse(v))), 'startBefore 須為有效的 ISO 時間'),
   staffId: z.string().uuid().optional(),
   bookingId: z.string().uuid().optional(),
 });
@@ -73,6 +76,7 @@ export const GET = handle(async (req) => {
     if (q.from) query = query.gte('start_at', bookingFilterBound(q.from, 'from', zone));
     if (q.to) query = query.lte('start_at', bookingFilterBound(q.to, 'to', zone));
   }
+  if (q.startBefore) query = query.lt('start_at', q.startBefore);
   if (q.keyword) query = query.or(
     ilikeAnyOf(['customer_name', 'customer_phone', 'booking_no'], q.keyword));
 
