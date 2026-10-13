@@ -8,6 +8,7 @@ import { getNav, isGroup, findActiveGroup, type NavLeaf } from '@/config/nav';
 import { navLabel, type NavKey } from '@/i18n/zh-TW/nav';
 import type { BusinessType } from '@/config/modes';
 import { common } from '@/i18n/zh-TW/common';
+import { openBugReport } from './BugReportModal';
 import { CountBadge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
 
@@ -54,6 +55,23 @@ export function Sidebar({
   const renderLeaf = (leaf: NavLeaf, sub = false) => {
     const Icon = leaf.icon;
     const count = leaf.badge ? counts[leaf.badge] ?? 0 : 0;
+    if (leaf.key === 'report_issue') {
+      return (
+        <li key={leaf.key}>
+          <button
+            type="button"
+            onClick={() => { onCloseMobile(); openBugReport(); }}
+            className={cn('sidebar-link w-[calc(100%-1rem)] text-left', sub && 'sidebar-sub-link')}
+            title={collapsed ? navLabel(leaf.key as NavKey, businessType) : undefined}
+          >
+            <Icon size={sub ? 15 : 17} className="flex-shrink-0" />
+            <span className="sidebar-link-label truncate">
+              {navLabel(leaf.key as NavKey, businessType)}
+            </span>
+          </button>
+        </li>
+      );
+    }
     return (
       <li key={leaf.key}>
         <Link

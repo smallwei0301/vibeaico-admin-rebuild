@@ -3,6 +3,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Bell, Building2, ChevronDown, LogOut, Menu, Settings, Smartphone } from 'lucide-react';
+import { USE_MOCK } from '@/config/env';
 import { common } from '@/i18n/zh-TW/common';
 import { cn } from '@/lib/utils';
 import { performLogout } from '@/lib/auth-boundary';
@@ -132,15 +133,19 @@ export function Topbar({
           </button>
           {userMenu && (
             <DropdownPanel onClose={() => setUserMenu(false)}>
-              <button className="flex w-full items-center gap-2 px-3 py-2 text-left text-base text-neutral-700 hover:bg-neutral-100">
-                <Smartphone size={15} />
-                {common.topbar.installApp}
-              </button>
-              <button className="flex w-full items-center gap-2 px-3 py-2 text-left text-base text-neutral-700 hover:bg-neutral-100">
-                <Bell size={15} />
-                {common.topbar.enablePush}
-              </button>
-              <hr className="my-1 border-neutral-200" />
+              {USE_MOCK && (
+                <>
+                <button className="flex w-full items-center gap-2 px-3 py-2 text-left text-base text-neutral-700 hover:bg-neutral-100">
+                  <Smartphone size={15} />
+                  {common.topbar.installApp}
+                </button>
+                <button className="flex w-full items-center gap-2 px-3 py-2 text-left text-base text-neutral-700 hover:bg-neutral-100">
+                  <Bell size={15} />
+                  {common.topbar.enablePush}
+                </button>
+                <hr className="my-1 border-neutral-200" />
+                </>
+              )}
               <button
                 type="button"
                 disabled={loggingOut}

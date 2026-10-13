@@ -15,6 +15,13 @@ import { submitBugReport } from '@/services/bug-report';
  * service layer. The screenshot field remains disabled until an attachment
  * storage contract exists; the UI must not imply that an ignored file was saved.
  */
+/** 側欄「回報問題」透過 window CustomEvent 開啟本視窗（#892）；手機版浮動按鈕隱藏，但視窗本體仍掛載。 */
+export const OPEN_BUG_REPORT_EVENT = 'vibeai:open-bug-report';
+
+export function openBugReport() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(OPEN_BUG_REPORT_EVENT));
+}
+
 export function BugReportButton() {
   const [open, setOpen] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
@@ -26,6 +33,13 @@ export function BugReportButton() {
   const [description, setDescription] = React.useState('');
   const [contactEmail, setContactEmail] = React.useState('');
   const [error, setError] = React.useState('');
+
+  React.useEffect(() => {
+    const onOpen = () => setOpen(true);
+    window.addEventListener(OPEN_BUG_REPORT_EVENT, onOpen);
+    const cleanup = () => window.removeEventListener(OPEN_BUG_REPORT_EVENT, onOpen);
+    return cleanup;
+  }, []);
 
   const reset = () => {
     setCategory('');

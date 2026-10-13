@@ -167,6 +167,10 @@
     {
       "ref": "issue/890",
       "title": "導遊訂單統計卡改為整店數字"
+    },
+    {
+      "ref": "issue/892",
+      "title": "行事曆訂閱網址與選單死按鈕誠實化"
     }
   ],
   "main": {
@@ -7641,13 +7645,30 @@
         "issue": 890,
         "count": 1,
         "evidenceRef": "this commit"
+      },
+      {
+        "id": "20261013-luna-scout-892-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModel": "unknown",
+        "startedAt": "2026-10-13T14:35:53Z",
+        "completedAt": "2026-10-13T14:38:10Z",
+        "note": "Luna metrics capture 綁定 issue/892 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +1。actual 未經平台驗證。",
+        "issue": 892,
+        "count": 1,
+        "evidenceRef": "this commit"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 44,
+    "issuesStarted": 45,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -7674,8 +7695,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 113,
-    "lunaAccepted": 104,
+    "lunaTasks": 114,
+    "lunaAccepted": 105,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -7902,7 +7923,9 @@
     "2026-10-13 非計分紀錄（issue/886）：builder commit f36e7f61（cherry-pick 為 8b35a667，導遊訂單詳情顯示取消／退款政策快照與已退款金額、收款方式空白顯示未指定），Sonnet builder 12:47:18Z–12:52:41Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/888）：builder commit 86faec79（cherry-pick 為 addf0e65，編輯預約時長改唯讀顯示實際規則、真實模式隱藏不會保存的退房日期），Sonnet builder 13:09:07Z–13:15:27Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/890）：builder commit ea400c76（cherry-pick 為 9f38c254，導遊訂單統計卡改為整店數字、新增唯讀 summary API），Sonnet builder 13:18:18Z–13:34:53Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
-    "2026-10-13 非計分紀錄（issue/888 review-fix）：review-fix builder commit 18382c6c（編輯預約服務不可更換、移除殘留註解），Sonnet builder 13:21:00Z–13:23:40Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
+    "2026-10-13 非計分紀錄（issue/888 review-fix）：review-fix builder commit 18382c6c（編輯預約服務不可更換、移除殘留註解），Sonnet builder 13:21:00Z–13:23:40Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/892）：builder commit 1250722d（cherry-pick 為 4473010d，真實模式隱藏假的行事曆訂閱網址與無作用的 App／推播按鈕、側欄回報問題開啟回報視窗），Sonnet builder 13:54:02Z–14:04:24Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/890 follow-up）：follow-up builder commits fff2392e（13:41:05Z–13:43:27Z）、4144916e（13:56:45Z–13:59:33Z）、157bfc56（14:11:48Z–14:12:27Z）、a711b6de（14:24:04Z–14:24:41Z），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {

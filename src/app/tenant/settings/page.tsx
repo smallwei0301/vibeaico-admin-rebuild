@@ -22,7 +22,7 @@ import { getTenantSettings, previewBusinessHours, saveTenantSettings } from '@/s
 import { removeWelcomeCardImage as removeWelcomeCardImageAsset, uploadImage } from '@/services/upload';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import type { TenantSettings } from '@/config/tenant-settings';
-import { APP_URL } from '@/config/env';
+import { APP_URL, USE_MOCK } from '@/config/env';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { settingsPage as t } from '@/i18n/zh-TW/pages/settings';
@@ -1490,38 +1490,44 @@ export default function SettingsPage() {
                 </CardTitle>
               </CardHeader>
               <CardBody>
-                <Alert tone="neutral" className="mb-4">{t.calendarSync.intro}</Alert>
+                {USE_MOCK && <Alert tone="neutral" className="mb-4">{t.calendarSync.intro}</Alert>}
 
-                <FormGroup>
-                  <Label htmlFor="calIcsUrl">{t.calendarSync.urlLabel}</Label>
-                  <Input id="calIcsUrl" readOnly value={icsUrl} />
-                </FormGroup>
+                {USE_MOCK ? (
+                  <>
+                    <FormGroup>
+                      <Label htmlFor="calIcsUrl">{t.calendarSync.urlLabel}</Label>
+                      <Input id="calIcsUrl" readOnly value={icsUrl} />
+                    </FormGroup>
 
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() =>
-                      window.open(
-                        `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(icsUrl)}`,
-                        '_blank',
-                        'noopener',
-                      )
-                    }
-                  >
-                    <CalendarPlus size={14} />
-                    {t.calendarSync.google}
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    onClick={() => void copy(icsUrl, t.calendarSync.copied)}
-                  >
-                    {t.calendarSync.copy}
-                  </Button>
-                  <Button variant="outlineDanger" size="sm" onClick={() => setConfirmRegen(true)}>
-                    <RotateCcw size={13} />
-                    {t.calendarSync.regenerate}
-                  </Button>
-                </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() =>
+                          window.open(
+                            `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(icsUrl)}`,
+                            '_blank',
+                            'noopener',
+                          )
+                        }
+                      >
+                        <CalendarPlus size={14} />
+                        {t.calendarSync.google}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        onClick={() => void copy(icsUrl, t.calendarSync.copied)}
+                      >
+                        {t.calendarSync.copy}
+                      </Button>
+                      <Button variant="outlineDanger" size="sm" onClick={() => setConfirmRegen(true)}>
+                        <RotateCcw size={13} />
+                        {t.calendarSync.regenerate}
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <Alert tone="warning" data-testid="ics-unavailable">{t.calendarSync.notAvailable}</Alert>
+                )}
 
                 <FormText className="mt-3">
                   <Link className="underline" href="/tenant/calendar-sync">
@@ -1595,6 +1601,7 @@ export default function SettingsPage() {
       )}
 
       {/* -------------------------------------------- 確認：重新產生 ICS 網址 */}
+      {USE_MOCK && (
       <ConfirmModal
         open={confirmRegen}
         danger
@@ -1607,6 +1614,7 @@ export default function SettingsPage() {
         onClose={() => setConfirmRegen(false)}
         onConfirm={() => void regenerateIcs()}
       />
+      )}
 
       {/* ------------------------------------------------ 確認：更改密碼 */}
       <ConfirmModal
