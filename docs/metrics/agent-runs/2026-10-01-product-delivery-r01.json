@@ -139,6 +139,10 @@
     {
       "ref": "issue/875",
       "title": "真實店家不再看到示範假數字"
+    },
+    {
+      "ref": "issue/877",
+      "title": "顧客標籤篩選改用真實標籤"
     }
   ],
   "main": {
@@ -7494,13 +7498,30 @@
         "issue": 875,
         "count": 1,
         "evidenceRef": "this commit"
+      },
+      {
+        "id": "20261013-luna-scout-877-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModel": "unknown",
+        "startedAt": "2026-10-13T12:10:58Z",
+        "completedAt": "2026-10-13T12:11:16Z",
+        "note": "Luna metrics capture 綁定 issue/877 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +1。自報 runtime claude-haiku-5-5，actual 未經平台驗證。",
+        "issue": 877,
+        "count": 1,
+        "evidenceRef": "this commit"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 37,
+    "issuesStarted": 38,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -7527,8 +7548,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 106,
-    "lunaAccepted": 97,
+    "lunaTasks": 107,
+    "lunaAccepted": 98,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -7747,7 +7768,8 @@
     "2026-10-13 非計分紀錄（issue/868）：兩筆票券 builder 施工 commit 3098c941（cherry-pick 為 a8713f0a，圖片上傳控制項改為誠實停用狀態）與 bc54660f（cherry-pick 為 1e42ed6f，加購券類型標示尚未開放保存並移除無法持久化的加購欄位）未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/871）：builder commit 546be7d4（cherry-pick 為 7a494543，註冊頁保存店家電話並停用尚未開放的推薦碼）施工 Sonnet builder 10:30:36Z–10:40:28Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/873）：builder commit 2336f6e3（cherry-pick 為 6a1cb713，手動建單收款方式改接真實後端）施工 Sonnet builder 10:49:30Z–10:56:14Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
-    "2026-10-13 非計分紀錄（issue/875）：builder commit 840ccd9e（cherry-pick 為 20e36d66，Sonnet builder 11:21:39Z–~11:36Z，真實店家不再看到寫死示範數字）未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
+    "2026-10-13 非計分紀錄（issue/875）：builder commit 840ccd9e（cherry-pick 為 20e36d66，Sonnet builder 11:21:39Z–~11:36Z，真實店家不再看到寫死示範數字）未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/877）：builder commits 0eeaa3a5（cherry-pick 為 96608c16，顧客標籤清單真實模式改由 /api/customers/tags 取得）與 464ab032（cherry-pick 為 f7c54b60，移除 mock-import 白名單中已不存在的 customers 頁條目），Sonnet builder 11:57:45Z–12:08:38Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {

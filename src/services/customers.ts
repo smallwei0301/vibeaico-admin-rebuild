@@ -67,6 +67,16 @@ export const listUnboundLineUsers = () =>
     () => request<UnboundLineUser[]>('/api/line-users/unbound'),
   );
 
+/**
+ * GET /api/customers/tags — 該租戶顧客現有的標籤清單（需 ADVANCED_CUSTOMER）。
+ * mock 分支在呼叫時才由 MOCK_CUSTOMERS 推導（live binding，不可在 module 頂層求值）。
+ */
+export const listCustomerTags = (): Promise<string[]> =>
+  adapt<string[]>(
+    () => Array.from(new Set(MOCK_CUSTOMERS.flatMap((c) => c.tags))),
+    async () => (await request<{ tags: string[] }>('/api/customers/tags')).tags ?? [],
+  );
+
 export type CustomerQuery = {
   page?: number; size?: number; keyword?: string; atRisk?: boolean;
   levelId?: string; tag?: string; minSpent?: number; maxSpent?: number; minVisits?: number;

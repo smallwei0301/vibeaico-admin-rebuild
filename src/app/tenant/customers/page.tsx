@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
-  bindLineUser, createCustomer, deleteCustomer, listCustomers, listUnboundLineUsers,
+  bindLineUser, createCustomer, deleteCustomer, listCustomers, listCustomerTags, listUnboundLineUsers,
   unbindLineUser, updateCustomer, type UnboundLineUser,
 } from '@/services/customers';
 import { listMembershipLevels } from '@/services/catalog';
@@ -28,7 +28,6 @@ import {
   getTravelerRiskPolicy,
   type AssignTravelerRiskPolicyPayload,
 } from '@/services/traveler-risk';
-import { MOCK_CUSTOMERS } from '@/mock';
 import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
@@ -43,13 +42,6 @@ import type {
 /* -------------------------------------------------------------------------- */
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
 /* -------------------------------------------------------------------------- */
-
-/**
- * 原站 /api/customers/tags；骨架階段由假資料推導，避免與 mock 脫節。
- * 必須在 render 時求值 —— 假資料會隨業態模式切換（見 src/mock/index.ts）。
- */
-const customerTags = (): string[] =>
-  Array.from(new Set(MOCK_CUSTOMERS.flatMap((c) => c.tags)));
 
 const GENDER_OPTIONS = Object.entries(common.gender) as [Gender, string][];
 
@@ -89,6 +81,7 @@ export default function CustomersPage() {
   const [statusFilter, setStatusFilter] = React.useState('');
 
   /* 進階篩選：draft 是畫面上的值，applied 才會送去查詢（按「篩選」才生效）*/
+  const [tags, setTags] = React.useState<string[]>([]);
   const [draft, setDraft] = React.useState<AdvancedFilters>(EMPTY_ADVANCED);
   const [applied, setApplied] = React.useState<AdvancedFilters>(EMPTY_ADVANCED);
 
@@ -116,6 +109,17 @@ export default function CustomersPage() {
       }
     })();
   }, [toast]);
+
+  /* 標籤清單：真實模式走 /api/customers/tags；失敗（含未開通 ADVANCED_CUSTOMER 的 403）一律空清單，不退回 mock */
+  React.useEffect(() => {
+    void (async () => {
+      try {
+        setTags(await listCustomerTags());
+      } catch {
+        setTags([]);
+      }
+    })();
+  }, []);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -381,7 +385,7 @@ export default function CustomersPage() {
                 onChange={(e) => setDraft((d) => ({ ...d, tag: e.target.value }))}
               >
                 <option value="">{t.search.tagAll}</option>
-                {customerTags().map((tag) => (
+                {tags.map((tag) => (
                   <option key={tag} value={tag}>{tag}</option>
                 ))}
               </Select>
