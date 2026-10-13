@@ -19,8 +19,33 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { loadPublicTourRequestStatus } from '@/server/public-tour-request';
 import { publicTourRequestPage as t } from '@/i18n/zh-TW/pages/public-tour-request';
-import { formatCurrency, formatDateTime } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
+import { common } from '@/i18n/zh-TW/common';
+import {
+  cancelledCopyKind,
+  formatInstantInTimeZone,
+  formatPlainDateWithWeekday,
+} from '@/lib/public-order-format';
 import type { TourOrder } from '@/lib/types';
+
+// 載入器目前沒有帶出店家時區，統一用預設（Asia/Taipei）；無法解析時退回原值，不顯示 Invalid Date。
+function showInstant(iso: string): string {
+  return formatInstantInTimeZone(iso) ?? iso;
+}
+
+function paymentDescriptionFor(order: TourOrder): string {
+  const refunded = order.refundedAmount ?? 0;
+  if (order.paymentStatus === 'PARTIAL' && order.depositAmount > 0) {
+    return t.status.paymentPartialWithAmount(formatCurrency(order.depositAmount));
+  }
+  if (order.paymentStatus === 'REFUNDED' && refunded > 0) {
+    return t.status.paymentRefundedWithAmount(formatCurrency(refunded));
+  }
+  if (order.paymentStatus === 'REFUND_PENDING' && refunded > 0) {
+    return t.status.paymentRefundPendingWithAmount(formatCurrency(refunded));
+  }
+  return t.status.paymentDescription[order.paymentStatus];
+}
 
 type Params = {
   params: Promise<{ shopCode: string; orderId: string }>;
@@ -60,7 +85,7 @@ function StatusBody({ order }: { order: TourOrder }) {
           <p className="text-sm text-secondary">
             {order.paymentStatus === 'UNPAID'
               ? order.holdExpiresAt
-                ? t.status.confirmedDescription(formatDateTime(order.holdExpiresAt))
+                ? t.status.confirmedDescription(showInstant(order.holdExpiresAt))
                 : t.status.confirmedNoDeadlineDescription
               : t.status.confirmedPaymentDescription}
           </p>
@@ -73,7 +98,13 @@ function StatusBody({ order }: { order: TourOrder }) {
       <section className="card">
         <div className="card-body flex flex-col gap-2">
           <h1 className="text-xl font-semibold text-danger">{t.status.cancelledTitle}</h1>
-          <p className="text-sm text-secondary">{t.status.cancelledDescription}</p>
+          <p className="text-sm text-secondary">
+            {{
+              UNPAID: t.status.cancelledDescription,
+              PAID: t.status.cancelledPaidDescription,
+              REFUNDED: t.status.cancelledRefundedDescription,
+            }[cancelledCopyKind(order.paymentStatus)]}
+          </p>
         </div>
       </section>
     );
@@ -116,7 +147,7 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
         <div className="card-body flex flex-col gap-2">
           <h2 className="text-base font-medium">{t.status.paymentTitle}</h2>
           <p className="text-sm font-medium">{t.status.paymentState[order.paymentStatus]}</p>
-          <p className="text-sm text-secondary">{t.status.paymentDescription[order.paymentStatus]}</p>
+          <p className="text-sm text-secondary">{paymentDescriptionFor(order)}</p>
         </div>
       </section>
 
@@ -128,15 +159,31 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
             <dt className="text-secondary">{t.status.fields.trip}</dt><dd>{order.tripTitle}</dd>
             <dt className="text-secondary">{t.status.fields.plan}</dt><dd>{order.planName}</dd>
             <dt className="text-secondary">{t.status.fields.departsOn}</dt>
-            <dd>{order.departsOn}{order.startTime ? ` ${order.startTime}` : ''}</dd>
+            <dd>{formatPlainDateWithWeekday(order.departsOn, common.weekdays) ?? order.departsOn}{order.startTime ? ` ${order.startTime}` : ''}</dd>
             <dt className="text-secondary">{t.status.fields.party}</dt>
             <dd>{t.status.partyUnit(order.partySize)}</dd>
             <dt className="text-secondary">{t.status.fields.submittedAt}</dt>
-            <dd>{formatDateTime(order.createdAt)}</dd>
+            <dd>{showInstant(order.createdAt)}</dd>
           </dl>
           <div className="mt-1 text-sm font-medium text-dark">
             {formatCurrency(order.totalAmount)}
           </div>
+          {order.depositAmount > 0 || (order.refundedAmount ?? 0) > 0 ? (
+            <dl className="grid grid-cols-[7rem_1fr] gap-y-1 text-sm">
+              {order.depositAmount > 0 ? (
+                <>
+                  <dt className="text-secondary">{t.status.fields.depositPaid}</dt>
+                  <dd>{formatCurrency(order.depositAmount)}</dd>
+                </>
+              ) : null}
+              {(order.refundedAmount ?? 0) > 0 ? (
+                <>
+                  <dt className="text-secondary">{t.status.fields.refunded}</dt>
+                  <dd>{formatCurrency(order.refundedAmount ?? 0)}</dd>
+                </>
+              ) : null}
+            </dl>
+          ) : null}
         </div>
       </section>
 

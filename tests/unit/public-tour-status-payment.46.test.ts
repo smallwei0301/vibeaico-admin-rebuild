@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import ts from 'typescript';
 import * as utils from '@/lib/utils';
+import { common } from '@/i18n/zh-TW/common';
+import * as publicOrderFormat from '@/lib/public-order-format';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TourOrder, TourPaymentStatus } from '@/lib/types';
@@ -26,6 +28,8 @@ const imports: Record<string, unknown> = {
   '@/server/public-tour-request': { loadPublicTourRequestStatus: loader },
   '@/i18n/zh-TW/pages/public-tour-request': { publicTourRequestPage: t },
   '@/lib/utils': utils,
+  '@/i18n/zh-TW/common': { common },
+  '@/lib/public-order-format': publicOrderFormat,
 };
 new Function('require', 'exports', 'React', compiled)((id: string) => {
   if (!(id in imports)) throw new Error(`Unexpected page import: ${id}`);
@@ -56,12 +60,14 @@ describe('#46 旅客付款狀態顯示', () => {
     const html = await render({ paymentStatus });
     expect(html).toContain(t.status.paymentTitle);
     expect(html).toContain(t.status.paymentState[paymentStatus]);
-    expect(html).toContain(t.status.paymentDescription[paymentStatus]);
+    // #917：PARTIAL 且有已收定金時改顯示帶金額的說明，其餘沿用原說明。
+    if (paymentStatus === 'PARTIAL') expect(html).toContain(t.status.paymentPartialWithAmount(utils.formatCurrency(500)));
+    else expect(html).toContain(t.status.paymentDescription[paymentStatus]);
     expect(html.includes('前完成付款')).toBe(paymentStatus === 'UNPAID');
     expect(html.includes('逾期名額將被釋放')).toBe(paymentStatus === 'UNPAID');
     if (paymentStatus === 'PARTIAL') {
       expect(html).not.toContain(t.status.paymentState.PAID);
-      expect(html).not.toContain('1,500'); // depositAmount is not authoritative paidAmount.
+      expect(html).toContain(t.status.fields.depositPaid); // #917：明確標示為「已付訂金」，不當作全額已付。
     }
     if (paymentStatus === 'REFUND_PENDING') expect(html).not.toContain(t.status.paymentState.REFUNDED);
   });
