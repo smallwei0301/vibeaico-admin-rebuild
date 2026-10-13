@@ -125,9 +125,13 @@ export const tourOrdersPage = {
       ref: '交易編號 / 匯款後五碼',
       source: '訂單來源',
       createdAt: '成立時間',
+      refundPolicy: '取消／退款政策',
+      refunded: '已退款金額',
     },
     partyUnit: (n: number) => `${n} 位`,
     noRef: '尚未回報',
+    noMethod: '未指定',
+    noPolicy: '無紀錄',
     noNote: '無',
   },
 
