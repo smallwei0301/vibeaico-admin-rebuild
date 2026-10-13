@@ -1393,7 +1393,7 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
     expect(bookingsPageSource).toContain("params.get('bookingId')");
     expect(bookingsPageSource).toContain('requestedBookingId');
     expect(bookingsPageSource).toContain('bookingId: requestedBookingId');
-    expect(bookingsPageSource).toContain('applyClientFilters(exact.content)');
+    expect(bookingsPageSource).toContain('exact.content.find((b) => b.id === requestedBookingId)');
     expect(bookingsPageSource).toContain('setDetailTarget(requested)');
     expect(bookingsApiSource).toContain('bookingId: z.string().uuid().optional()');
     expect(bookingsApiSource).toContain("query.eq('id', q.bookingId)");

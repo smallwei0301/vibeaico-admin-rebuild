@@ -38,11 +38,10 @@ describe('#908 首頁待辦連結與查詢範圍', () => {
     expect(dash).toContain('tenantDateString(new Date(b.startAt)) === today');
   });
 
-  it('UNPROCESSED 分別查 PENDING／CONFIRMED，合併後依 startAt 由新到舊', () => {
+  it('UNPROCESSED 以 statuses=PENDING,CONFIRMED 單次 server-side 查詢（#934）；合併工具仍依 startAt 由新到舊', () => {
     const src = read('src/app/tenant/bookings/page.tsx');
-    expect(src).toContain("status: 'PENDING'");
-    expect(src).toContain("status: 'CONFIRMED'");
-    expect(src).toContain('pendingRes.totalElements + confirmedRes.totalElements');
+    expect(src).toContain("['PENDING', 'CONFIRMED'] as BookingStatus[]");
+    expect(src).not.toContain('pendingRes.totalElements + confirmedRes.totalElements');
     const merged = mergeUnprocessedBookings(
       [{ id: 'a', startAt: '2026-10-01T00:00:00Z' }, { id: 'c', startAt: '2026-10-03T00:00:00Z' }],
       [{ id: 'b', startAt: '2026-10-02T00:00:00Z' }, { id: 'a', startAt: '2026-10-01T00:00:00Z' }],
@@ -62,6 +61,6 @@ describe('#908 首頁待辦連結與查詢範圍', () => {
     expect(unprocessedUpperBound('UNPROCESSED', undefined, now)).toBe(now.toISOString());
     expect(unprocessedUpperBound('UNPROCESSED', '2026-10-20', now)).toBeUndefined();
     expect(unprocessedUpperBound('PENDING', '', now)).toBeUndefined();
-    expect(read('src/app/tenant/bookings/page.tsx')).toContain('unprocessedUpperBound(status, endDate)');
+    expect(read('src/app/tenant/bookings/page.tsx')).toContain('startBefore: status === \'UNPROCESSED\'');
   });
 });

@@ -243,6 +243,10 @@
     {
       "ref": "issue/933",
       "title": "預約管理：日期篩選用 UTC 日界線漏掉清晨預約、已取消預約可標記已收款、同一預約可重複核銷票券、詳情金額不刷新"
+    },
+    {
+      "ref": "issue/934",
+      "title": "預約管理列表只載入最新 100 筆：超過 100 筆的店家翻不到舊預約、總數最多顯示 100"
     }
   ],
   "main": {
@@ -8261,13 +8265,30 @@
         "startedAt": "2026-10-13T22:32:21Z",
         "completedAt": "2026-10-13T22:32:54Z",
         "note": "Luna metrics capture 綁定 issue/933 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261013-luna-scout-934-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 934,
+        "count": 1,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-13T23:22:39Z",
+        "completedAt": "2026-10-13T23:23:12Z",
+        "note": "Luna metrics capture 綁定 issue/934 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +1。#934 盤點與 #933 同一次（已記於 20261013-luna-scout-933-inventory），不另記 inventory。actual 未經平台驗證。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 63,
+    "issuesStarted": 64,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -8294,8 +8315,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 145,
-    "lunaAccepted": 136,
+    "lunaTasks": 146,
+    "lunaAccepted": 137,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -8558,7 +8579,13 @@
     "2026-10-13 非計分紀錄（issue/933）：Sonnet builder commit 1f52ac42（22:14:54Z–22:29:49Z，cherry-pick 為 f319993b，預約日期篩選改店家時區日界線、已取消預約不可標記收款、同一預約不可重複核銷票券、詳情金額同步），未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/930 follow-up）：follow-up builder commit f60010de（22:15:18Z–22:25:47Z，方案排序等所有寫入完成後再重讀清單），Sonnet builder，未即時埋點，僅記於此；Opus 審查 hash 所列 c04c0ec8 經 git 核對為 #930 ledger 綁定 commit（22:05:15Z），非審查 commit，審查紀錄待主 agent 更正；重審 f60010de（22:26:42Z–22:27:32Z）。",
     "2026-10-13 非計分紀錄（PR #932）：issue/930 PR #932 已 merge 為 62c43712（欄位驗證錯誤一律中文；行程方案排序部分失敗後自動重讀清單）。",
-    "2026-10-13 非計分紀錄（開立 issue/934）：另開 issue/934（預約列表 100 筆上限），未開工，不計入 delivery.issuesStarted。"
+    "2026-10-13 非計分紀錄（開立 issue/934）：另開 issue/934（預約列表 100 筆上限），未開工，不計入 delivery.issuesStarted。",
+    "2026-10-13 非計分紀錄（issue/933 builder 與 cherry-pick）：Sonnet builder commit 535c9dba（22:34:28Z–22:43:37Z，疊在 #933 舊版上）；cherry-pick 解衝突 commit 45faaf0c（Sonnet，23:18:31Z–23:22:17Z）；兩者皆未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（PR #935）：issue/933 PR #935 已 merge 為 7cd07bc7（預約日期篩選改店家時區日界線；已取消預約不可標記收款、同一預約不可重複核銷票券；詳情金額同步）。",
+    "2026-10-13 非計分紀錄（issue/933 follow-up）：follow-up builder commit 65113a02（22:41:32Z–22:45:47Z，午夜 DST 跳時日界線取當天第一個有效瞬間；時區設定查詢錯誤不再靜默回退）與 e5b81f26（22:57:47Z–23:01:35Z，不存在的日期回 400；只有純日期篩選才讀取店家時區設定）；Sonnet builder，未即時埋點，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/933 Opus 審查）：審查對象與時間——head 13ce48b8（22:34:09Z–22:35:20Z）、65113a02（22:46:44Z–22:50:34Z）、e5b81f26（23:02:30Z–23:05:31Z），皆未即時埋點，僅記於此。",
+    "2026-10-13 非計分紀錄（開立 issue/936）：另開 issue/936（後台顯示時區統一），未開工，不計入 delivery.issuesStarted。",
+    "2026-10-13 非計分紀錄（更正）：前一筆 notes 所列「Opus 審查 c04c0ec8」指的是對 PR #932 舊 head c04c0ec8 的審查（22:06:08Z–22:09:48Z），非審查 commit；c04c0ec8 為 #930 ledger 綁定 commit 的說明已於本筆更正。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
