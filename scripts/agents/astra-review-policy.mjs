@@ -433,9 +433,15 @@ async function loadSourceIdentityDataDeferral({ github, owner, repo, current, di
     const approvalBodySha256 = createHash('sha256').update(String(approval.body ?? '')).digest('hex');
     if (approval.html_url !== scope.approvalComment || approval.user?.login !== scope.approvalActorLogin
       || approval.user?.id !== scope.approvalActorId || approvalBodySha256 !== scope.approvalBodySha256) return undefined;
+    const reportRef = fallbackReference(scope.technicalReviewComment, `${owner}/${repo}`);
+    if (reportRef?.kind !== 'issuecomment' || reportRef.number !== current.number || reportRef.id === ref.id) return undefined;
+    const { data: report } = await github.rest.issues.getComment({ owner, repo, comment_id: reportRef.id });
+    const technicalReviewBodySha256 = createHash('sha256').update(String(report.body ?? '')).digest('hex');
+    if (report.html_url !== scope.technicalReviewComment || report.user?.login !== scope.technicalReviewActorLogin
+      || report.user?.id !== scope.technicalReviewActorId || technicalReviewBodySha256 !== scope.technicalReviewBodySha256) return undefined;
     const { data: after } = await github.rest.repos.getCommit({ owner, repo, ref: 'main' });
     if (after.sha !== main.sha) return undefined;
-    return { trusted: true, currentMainSha: main.sha, scope: live, approvalBodySha256 };
+    return { trusted: true, currentMainSha: main.sha, scope: live, approvalBodySha256, technicalReviewBodySha256 };
   } catch { return undefined; }
 }
 

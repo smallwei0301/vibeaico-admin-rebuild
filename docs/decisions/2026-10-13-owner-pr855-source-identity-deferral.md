@@ -15,6 +15,9 @@ requested `gpt-6.1-sol`，actual `unknown`、identity `UNKNOWN`，execution `OPE
 
 沿既有 source reviewer adapter 和 cost validator 承接，不新增 reviewer tier、release framework、writer 或 approval flow。
 只有 trusted current-main bytes 與 pinned directive comment author/body hash 均回讀相符才適用。
+另釘選實際獨立技術審查 comment6138187919、發布者與完整 body hash；attestation 的 report 必須指向此紀錄。
+審查者未參與 Build 的 operator-observed execution 由凍結報告記載，不以發布者 GitHub 帳號冒充 reviewer backend identity。
+報告缺失、刪改或其他 PASS payload／builder 自審指向不同報告均拒絕；Owner 授權紀錄不能替代獨立技術報告。
 設定停用、comment edit/delete、不同 repo/PR/head/digest、拒絕／dismissed review 均不放行。
 其他角色／模型／native pilot 和 DB G5／writer 不適用；Production policy、原八 migration 範圍、G0–G7 全保留。
 正常治理 source CI／獨立差異審查及 merge/main readback 後才由 adapter 使用；本治理 PR 不能自批 #855 或自己。
