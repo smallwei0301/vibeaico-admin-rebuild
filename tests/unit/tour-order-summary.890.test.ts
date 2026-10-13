@@ -153,6 +153,21 @@ describe('GET /api/tour-orders/summary（#890）', () => {
     expect(body.data).toBeUndefined();
   });
 
+  it('遠端 max_rows(600) 不整除上限：50,001 筆時分頁跨越 50,000 仍回 422', async () => {
+    requireTenantMock.mockResolvedValue({ supabase: fakeSupabase({ tour_orders: bigRows(50_001), trip_departures: [] }, 600), tenantId: A, user: { id: 'u' }, role: 'OWNER' });
+    const { status, body } = await call();
+    expect(status).toBe(422);
+    expect(body.code).toBe('REPORT_001');
+    expect(body.data).toBeUndefined();
+  });
+
+  it('遠端 max_rows(600) 不整除上限：剛好 50,000 筆（末頁較短）仍回 200 並完整加總', async () => {
+    requireTenantMock.mockResolvedValue({ supabase: fakeSupabase({ tour_orders: bigRows(50_000), trip_departures: [] }, 600), tenantId: A, user: { id: 'u' }, role: 'OWNER' });
+    const { status, body } = await call();
+    expect(status).toBe(200);
+    expect(body.data.monthRevenue).toBe(50_000);
+  });
+
   it('日期界線用店家時區：LA 10/31 晚上（台北已是 11/1）仍算十月，7 天窗用 LA 日期', async () => {
     vi.setSystemTime(new Date('2026-11-01T03:00:00.000Z')); // 台北 11/1 11:00；LA(PDT) 10/31 20:00
     const tables: Record<string, Row[]> = {
