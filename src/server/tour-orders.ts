@@ -27,7 +27,7 @@ type AnyClient = {
  */
 export const TOUR_ORDER_AUTO_EXPIRE_REASON = '未在保留期限內完成付款，系統自動取消';
 
-/** 一批 tour_orders 列 → TourOrder[]，關聯值以 3 趟 `.in()` 查詢補齊 */
+/** 一批 tour_orders 列 → TourOrder[]，關聯值以 4 趟 `.in()` 查詢補齊 */
 export async function hydrateTourOrders(
   supabase: AnyClient, tenantId: string, rows: any[],
 ): Promise<TourOrder[]> {
@@ -40,7 +40,9 @@ export async function hydrateTourOrders(
   const planIds = ids(rows.map((r) => r.plan_id));
   const departureIds = ids(rows.map((r) => r.departure_id));
 
-  const [trips, plans, departures] = await Promise.all([
+  const methodIds = ids(rows.map((r) => r.payment_method_id));
+
+  const [trips, plans, departures, methods] = await Promise.all([
     tripIds.length
       ? supabase.from('trips').select('id, title').eq('tenant_id', tenantId).in('id', tripIds)
       : { data: [], error: null },
@@ -54,10 +56,14 @@ export async function hydrateTourOrders(
       ? supabase.from('trip_departures').select('id, departs_on, start_time')
         .eq('tenant_id', tenantId).in('id', departureIds)
       : { data: [], error: null },
+    methodIds.length
+      ? supabase.from('tenant_payment_methods').select('id, display_name')
+        .eq('tenant_id', tenantId).in('id', methodIds)
+      : { data: [], error: null },
   ]);
 
   // 這三趟查詢失敗時**不吞掉**：查不到名稱與「查詢壞了」不是同一件事（PB-023）。
-  for (const result of [trips, plans, departures]) {
+  for (const result of [trips, plans, departures, methods]) {
     if (result.error) throw result.error;
   }
 
@@ -71,6 +77,9 @@ export async function hydrateTourOrders(
     (plans.data ?? [])
       .filter((r: any) => r.sales_mode === 'FIXED_DEPARTURE' || r.sales_mode === 'INSTANT' || r.sales_mode === 'REQUEST')
       .map((r: any) => [r.id, r.sales_mode]),
+  );
+  const methodLabelById = new Map<string, string>(
+    (methods.data ?? []).map((r: any) => [r.id, String(r.display_name ?? '')]),
   );
   const departureById = new Map<string, { departsOn: string; startTime: string }>(
     (departures.data ?? []).map((r: any) => [r.id, {
@@ -86,19 +95,7 @@ export async function hydrateTourOrders(
       departsOn: departure?.departsOn ?? '',
       startTime: departure?.startTime ?? '',
       salesMode: salesModeByPlanId.get(r.plan_id),
-      /**
-       * ⚠️ 永遠回空字串，而且這是刻意的。
-       *
-       * 10 分冊 §4 說「設定 UI 已存在：/tenant/payment-methods 頁支援六種收款
-       * 類型」——那一頁確實存在，但它讀的是**頁內的 MOCK_METHODS 常數**，
-       * `tenant_payment_methods` 表在整個 supabase/migrations 裡零命中，
-       * 也沒有任何 /api/payment-methods 路由。收款方式整條鏈路還沒有後端。
-       *
-       * 所以這裡沒有名稱可查。硬編一個「現金」或回 payment_method_id 的原字串，
-       * 都是把「查不到」偽裝成「查到了」。回空字串，畫面就會誠實地空著。
-       * 那條鏈路落地後，這裡補一趟查詢即可，欄位與型別都不用動。
-       */
-      paymentMethodLabel: '',
+      paymentMethodLabel: r.payment_method_id ? (methodLabelById.get(r.payment_method_id) ?? '') : '',
     });
   });
 }

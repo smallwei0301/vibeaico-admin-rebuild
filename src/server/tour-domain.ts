@@ -380,16 +380,7 @@ export const manualTourOrderSchema = z.object({
   customerName: z.string().trim().min(1, '請輸入顧客姓名'),
   customerPhone: z.string().trim().min(1, '請輸入聯絡電話'),
   partySize: z.coerce.number().int().min(1, '人數至少為 1'),
-  /**
-   * 收款方式 id。**目前一律存不進去，而且這是誠實的**：
-   * `tenant_payment_methods` 表在 supabase/migrations 裡零命中，
-   * `/tenant/payment-methods` 頁讀的是頁內的 MOCK_METHODS 常數，
-   * 也沒有任何 `/api/payment-methods` 路由——收款方式整條鏈路還沒有後端。
-   *
-   * 前端送過來的會是 mock id（`pm_1` 之類），不是 uuid。**不用 `.uuid()`**，
-   * 否則整張手動建單表單會因為一個還沒有後端的欄位而 400，把可用的功能一起擋掉。
-   * 只有真的是 uuid 的值才落庫（見 route），其餘視為 null。
-   */
+  /** 收款方式 id；route 會驗證它屬於本租戶且啟用中（#873）。 */
   paymentMethodId: z.string().trim().nullable().optional(),
   note: optionalText,
 });

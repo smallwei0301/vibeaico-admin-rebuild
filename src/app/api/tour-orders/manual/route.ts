@@ -45,14 +45,23 @@ export const POST = handle(async (req) => {
     return fail(409, '此團次已關閉報名，無法建立訂單', ERR.CONFLICT);
   }
 
-  /**
-   * `tenant_payment_methods` 表尚未存在（10 分冊 §4 的設定 UI 讀的是頁內常數），
-   * 所以前端送來的會是 mock id。只有真的是 uuid 的值才落庫，其餘存 null——
-   * 把 `pm_1` 硬塞進 uuid 欄位會 22P02，而為了它 400 掉整張表單更糟。
-   * 收款方式的後端落地後，這個判斷連同註解一起移除。
-   */
-  const paymentMethodId = b.paymentMethodId && UUID_RE.test(b.paymentMethodId)
-    ? b.paymentMethodId : null;
+  // 收款方式（#873）：有帶就必須是本租戶、啟用中的 tenant_payment_methods 列；
+  // 空字串／null 視為「不指定收款方式」。
+  const rawMethod = b.paymentMethodId?.trim() || null;
+  let paymentMethodId: string | null = null;
+  if (rawMethod) {
+    if (!UUID_RE.test(rawMethod)) {
+      return fail(400, '收款方式不存在或已停用', ERR.VALIDATION);
+    }
+    const { data: method, error: methodError } = await t.supabase
+      .from('tenant_payment_methods').select('id, active')
+      .eq('tenant_id', t.tenantId).eq('id', rawMethod).maybeSingle();
+    if (methodError) throw methodError;
+    if (!method || method.active === false) {
+      return fail(400, '收款方式不存在或已停用', ERR.VALIDATION);
+    }
+    paymentMethodId = rawMethod;
+  }
 
   const yymmdd = taipeiTodayDateString().replaceAll('-', '').slice(2);
   let orderId: string | null = null;
