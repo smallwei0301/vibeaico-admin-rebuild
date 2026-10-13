@@ -340,16 +340,8 @@ export const lineSettingsPage = {
 
     previewTitle: '即時預覽效果',
     previewChatArea: '顧客聊天區域',
-    previewItems: [
-      '開始預約',
-      '我的預約',
-      '瀏覽商品',
-      '作品展示',
-      '領取票券',
-      '我的票券',
-      '會員資訊',
-      '聯絡店家',
-    ],
+    previewNote:
+      '發布時 LINE 選單只會顯示所選底圖；格子文字用來對照點擊範圍與各格送出的關鍵字，不會畫進圖片。',
 
     themeTitle: '選擇主題配色',
     themes: {
