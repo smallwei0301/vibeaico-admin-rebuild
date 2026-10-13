@@ -374,6 +374,7 @@ export const settingsPage = {
     regenerateConfirmTitle: '重新產生訂閱網址',
     regenerateConfirm:
       '確定重新產生？\n\n舊網址將立即失效，已在 Google Calendar 訂閱的會停止更新（需重新加入）。',
+    notAvailable: '行事曆訂閱網址尚未開放，開放後會在這裡提供可加入 Google 日曆的網址。',
     moreLinkText: '前往「行事曆同步」頁管理外部行事曆',
   },
 

@@ -14,7 +14,7 @@ import { useToast } from '@/components/ui/Toast';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { calendarSyncPage as t } from '@/i18n/zh-TW/pages/calendar-sync';
-import { APP_URL } from '@/config/env';
+import { APP_URL, USE_MOCK } from '@/config/env';
 import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { formatDateTime } from '@/lib/utils';
 import {
@@ -105,33 +105,39 @@ export default function CalendarSyncPage() {
       {/* ------------------------------------------------------------ 訂閱網址 */}
       <Card className="mb-4">
         <CardBody>
-          <FormGroup>
-            <Label htmlFor="calIcsUrl">{t.subscribe.urlLabel}</Label>
-            <div className="input-group">
-              <Input id="calIcsUrl" readOnly value={icsUrl} className="font-mono" />
-              <Button
-                variant="outline" aria-label={t.subscribe.copy}
-                onClick={() => void copy(icsUrl, t.subscribe.copied)}
-              >
-                <ClipboardCopy size={14} />
-              </Button>
-            </div>
-          </FormGroup>
+          {USE_MOCK ? (
+            <>
+            <FormGroup>
+              <Label htmlFor="calIcsUrl">{t.subscribe.urlLabel}</Label>
+              <div className="input-group">
+                <Input id="calIcsUrl" readOnly value={icsUrl} className="font-mono" />
+                <Button
+                  variant="outline" aria-label={t.subscribe.copy}
+                  onClick={() => void copy(icsUrl, t.subscribe.copied)}
+                >
+                  <ClipboardCopy size={14} />
+                </Button>
+              </div>
+            </FormGroup>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <a href={googleUrl} target="_blank" rel="noreferrer" className="btn btn-primary btn-lg">
-              <CalendarPlus size={18} />
-              {t.subscribe.google}
-            </a>
-            <Button variant="outlineDanger" size="sm" onClick={() => setConfirmRegen(true)}>
-              <RotateCcw size={13} />
-              {t.subscribe.regenerate}
-            </Button>
-            <span className="text-xs text-secondary">
-              {t.subscribe.lastSync}：
-              {lastSyncAt ? formatDateTime(lastSyncAt) : t.subscribe.neverSynced}
-            </span>
-          </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <a href={googleUrl} target="_blank" rel="noreferrer" className="btn btn-primary btn-lg">
+                <CalendarPlus size={18} />
+                {t.subscribe.google}
+              </a>
+              <Button variant="outlineDanger" size="sm" onClick={() => setConfirmRegen(true)}>
+                <RotateCcw size={13} />
+                {t.subscribe.regenerate}
+              </Button>
+              <span className="text-xs text-secondary">
+                {t.subscribe.lastSync}：
+                {lastSyncAt ? formatDateTime(lastSyncAt) : t.subscribe.neverSynced}
+              </span>
+            </div>
+            </>
+          ) : (
+            <Alert tone="warning" data-testid="ics-unavailable">{t.subscribe.notAvailable}</Alert>
+          )}
         </CardBody>
       </Card>
 
@@ -239,6 +245,7 @@ export default function CalendarSyncPage() {
         </CardBody>
       </Card>
 
+      {USE_MOCK && (
       <ConfirmModal
         open={confirmRegen}
         danger
@@ -262,6 +269,7 @@ export default function CalendarSyncPage() {
           }
         }}
       />
+      )}
 
       <ConfirmModal
         open={!!deleting}

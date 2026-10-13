@@ -9,6 +9,7 @@ export const calendarSyncPage = {
   /** 訂閱網址卡 */
   subscribe: {
     urlLabel: '訂閱網址（ICS）',
+    notAvailable: '行事曆訂閱網址尚未開放，開放後會在這裡提供可加入 Google 日曆的網址。',
     google: '加入 Google Calendar',
     copy: '複製訂閱網址',
     regenerate: '重新產生網址',

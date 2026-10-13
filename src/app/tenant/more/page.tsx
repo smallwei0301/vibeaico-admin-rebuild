@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { getGuideMoreGroups } from '@/config/nav';
 import { navLabel, type NavKey } from '@/i18n/zh-TW/nav';
 import { morePage as t } from '@/i18n/zh-TW/pages/more';
+import { openBugReport } from '@/components/layout/BugReportModal';
 import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 
 /**
@@ -44,15 +45,23 @@ export default function MorePage() {
                 <ul>
                   {group.leaves.map((leaf) => {
                     const Icon = leaf.icon;
+                    const rowClass =
+                      'flex items-center gap-3 border-t border-neutral-100 px-4 py-3 text-sm text-dark first:border-t-0 hover:bg-neutral-50';
+                    const body = (
+                      <>
+                        <Icon size={18} className="flex-shrink-0 text-secondary" />
+                        <span className="truncate">{navLabel(leaf.key as NavKey, businessType)}</span>
+                      </>
+                    );
                     return (
                       <li key={leaf.key}>
-                        <Link
-                          href={leaf.href}
-                          className="flex items-center gap-3 border-t border-neutral-100 px-4 py-3 text-sm text-dark first:border-t-0 hover:bg-neutral-50"
-                        >
-                          <Icon size={18} className="flex-shrink-0 text-secondary" />
-                          <span className="truncate">{navLabel(leaf.key as NavKey, businessType)}</span>
-                        </Link>
+                        {leaf.key === 'report_issue' ? (
+                          <button type="button" onClick={openBugReport} className={`${rowClass} w-full text-left`}>
+                            {body}
+                          </button>
+                        ) : (
+                          <Link href={leaf.href} className={rowClass}>{body}</Link>
+                        )}
                       </li>
                     );
                   })}
