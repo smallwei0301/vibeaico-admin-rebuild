@@ -62,6 +62,20 @@ export const DELETE = handle(async (_req, { params }) => {
   const t = await requireTenant('MANAGER');
   const { id } = await params;
 
+  /*
+   * ⚠️ tour_orders.payment_method_id 沒有 FK／快照：實體刪除會讓歷史訂單失去收款方式標籤（#873）。
+   * 已被本店訂單引用者拒絕刪除，改走停用（active=false）；停用不影響既有標籤。
+   */
+  const { count, error: refErr } = await t.supabase
+    .from('tour_orders')
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', t.tenantId)
+    .eq('payment_method_id', id);
+  if (refErr) throw refErr;
+  if ((count ?? 0) > 0) {
+    throw new ApiHttpError(409, '已有訂單使用此收款方式，請改為停用', ERR.CONFLICT);
+  }
+
   const { data, error } = await t.supabase
     .from('tenant_payment_methods')
     .delete()

@@ -372,6 +372,7 @@ export default function TourOrdersPage() {
    */
   const submitDraft = async () => {
     if (!draft.tripId || !draft.planId || !draft.departureId) return;
+    if (payState === 'loading') return;
     if (!draft.customerName.trim() || !draft.customerPhone.trim()) return;
     const ok = await runOrderAction(
       () => createManualTourOrder({
@@ -751,7 +752,7 @@ export default function TourOrdersPage() {
             <Button
               onClick={submitDraft}
               loading={busy}
-              disabled={!draft.departureId || !draft.customerName || !draft.customerPhone}
+              disabled={!draft.departureId || !draft.customerName || !draft.customerPhone || payState === 'loading'}
             >
               {t.create.submit}
             </Button>

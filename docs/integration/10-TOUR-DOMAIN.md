@@ -301,6 +301,7 @@ create table tenant_payment_methods (
 
 端點：`GET/POST /api/payment-methods`、`PUT/DELETE /api/payment-methods/:id`、
 `toggle-active`、`test-connection`、`test-charge`。秘密欄位遮罩與空字串不覆蓋規則同 LINE。
+`DELETE /api/payment-methods/:id`：同租戶任一 `tour_orders.payment_method_id` 引用該收款方式時回 409（`REQ_003`，「已有訂單使用此收款方式，請改為停用」），不刪除；改以停用（`active=false`）保留歷史訂單標籤。
 
 - 線上刷卡支援 ECPAY／NEWEBPAY，依租戶所選金流商產生表單。
 - QR 類型在 checkout 顯示 QR 圖＋人工回報付款。
