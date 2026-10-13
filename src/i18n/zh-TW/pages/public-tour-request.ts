@@ -6,6 +6,9 @@
  * 『已送出申請』標成『預約成功』」——送出申請時完全沒有鎖任何名額，導遊按下
  * 「接受」的那一刻才真的鎖位。用詞寧可囉唆，也不能讓旅客誤以為已經訂到。
  */
+/** 備註類自由文字欄位字數上限（與 server zod 的 max(500) 一致）。 */
+export const NOTE_MAX_LENGTH = 500;
+
 export const publicTourRequestPage = {
   form: {
     metaTitle: (planName: string) => `線上申請 - ${planName}`,

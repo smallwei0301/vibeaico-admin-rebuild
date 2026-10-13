@@ -6,6 +6,9 @@
  * `src/server/public-tour-booking.ts` 檔頭），所以文案用「已預約」而不是
  * 「已送出申請」，但同樣不能謊稱已付款——#12 金流 provider 尚未落地。
  */
+/** 備註類自由文字欄位字數上限（與 server zod 的 max(500) 一致）。 */
+export const NOTE_MAX_LENGTH = 500;
+
 export const publicTourBookingPage = {
   form: {
     metaTitle: (planName: string) => `線上預約 - ${planName}`,

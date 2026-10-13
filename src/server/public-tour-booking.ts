@@ -208,7 +208,7 @@ export const submitPublicTourBookingSchema = z.object({
   contactPhone: z.string().trim().max(40, '電話長度超過上限').optional(),
   contactLine: z.string().trim().max(100, 'LINE ID 長度超過上限').optional(),
   contactEmail: z.string().trim().max(254, 'Email 長度超過上限').email('Email 格式錯誤').optional().or(z.literal('')),
-  note: z.string().trim().max(500).optional(),
+  note: z.string().trim().max(500, '備註長度超過上限（最多 500 字）').optional(),
 }).refine(
   (v) => !!(v.contactPhone || v.contactLine || v.contactEmail),
   { message: '請至少填寫一種聯絡方式（LINE、電話或 Email）', path: ['contactPhone'] },
