@@ -597,6 +597,14 @@ export type TourOrderSource = 'MIDAO' | 'VIBEAI_SHOP' | 'LINE' | 'MANUAL';
 /** 18 分冊 §4：成交當下 trip_plans.deposit_mode 的 snapshot，值域同 0066 的 deposit_mode。 */
 export type TourDepositModeSnapshot = 'NONE' | 'DEPOSIT_FIXED' | 'DEPOSIT_PERCENT' | 'FULL';
 
+/** GET /api/tour-orders/summary（#890）：整個店家的四張統計卡數字，與列表分頁／篩選無關。 */
+export type TourOrderSummary = {
+  pending: number;
+  awaitingPayment: number;
+  upcoming7d: number;
+  monthRevenue: number;
+};
+
 export type TourOrder = {
   id: string;
   orderNo: string;

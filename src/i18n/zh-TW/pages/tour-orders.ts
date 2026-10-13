@@ -14,6 +14,8 @@ export const tourOrdersPage = {
     unpaid: '待收款',
     upcoming: '近 7 天出團',
     monthRevenue: '本月營收',
+    /** 統計載入中或失敗時的中性佔位（不顯示 0，避免誤導成真的沒有） */
+    placeholder: '—',
   },
 
   actions: {
