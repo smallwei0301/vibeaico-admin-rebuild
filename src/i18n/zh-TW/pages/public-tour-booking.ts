@@ -34,6 +34,7 @@ export const publicTourBookingPage = {
     departurePlaceholder: '請選擇一個日期',
     departureOption: (dateText: string, startTime: string, seatsLeft: number) =>
       `${dateText}${startTime ? ` ${startTime}` : ''}（剩 ${seatsLeft} 位）`,
+    departureInsufficientSuffix: '（名額不足）',
     departuresEmpty: '這個方案目前沒有開放預約的日期，請點下方「返回店家頁」，用店家頁上的聯絡方式詢問。',
     partyLabel: '人數',
     nameLabel: '姓名',
@@ -62,6 +63,8 @@ export const publicTourBookingPage = {
     seatsUnavailable: '此團次名額已被搶先預約，請重新選擇日期',
     departureUnavailable: '此團次已不開放預約，請重新選擇日期',
     partySizeOutOfRange: (min: number, max: number) => `此方案的人數需介於 ${min}–${max} 人，請調整人數`,
+    partySizeExceedsSeats: (seatsLeft: number) => `此團次只剩 ${seatsLeft} 位，請減少人數或改選其他團次`,
+    departureInsufficient: (minParty: number) => `此團次剩餘名額已不足 ${minParty} 人的最低成團人數，請改選其他團次`,
     priceChangedNoQuote: '價格已更新，請重新整理頁面確認最新金額後再送出',
     priceUnverifiable: '線上價格暫時無法確認，請直接聯絡店家',
     featureLocked: '此店家目前未開放線上預約，請改用 LINE 或電話聯絡',
