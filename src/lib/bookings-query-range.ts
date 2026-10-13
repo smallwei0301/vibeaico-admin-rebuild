@@ -2,17 +2,6 @@
 import { PUBLIC_DEFAULT_TIME_ZONE, resolvePublicTimeZone } from '@/lib/public-time-zone';
 
 
-/** 指定時區在某個時間點的 UTC 偏移（毫秒；東區為正）。 */
-function zoneOffsetMs(zone: string, atMs: number): number {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
-  }).formatToParts(new Date(atMs));
-  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
-  const asUtc = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
-  return asUtc - Math.floor(atMs / 1000) * 1000;
-}
-
 /** 店家時區的「現在」日期（YYYY-MM-DD）。 */
 export function tenantDateString(
   now: Date = new Date(), timeZone: string = PUBLIC_DEFAULT_TIME_ZONE,
@@ -22,13 +11,73 @@ export function tenantDateString(
   }).format(now);
 }
 
-/** 店家時區當地 `ymd` 的 hh:mm:ss.ms 對應的 UTC 毫秒（對有夏令時的時區也正確）。 */
-function zonedWallToUtcMs(zone: string, ymd: string, h: number, mi: number, s: number, ms: number): number {
+/** 店家時區在某個 UTC 毫秒的當地日期（YYYY-MM-DD）。 */
+function zonedDateAt(zone: string, atMs: number): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date(atMs));
+}
+
+/**
+ * 店家時區當地日期 `ymd` 的第一個有效瞬間（UTC 毫秒）。
+ * 午夜發生 DST 跳時（如 America/Havana、America/Santiago，00:00 直接跳到 01:00）時當地 00:00 不存在，
+ * 取當天第一個真實存在的瞬間；以「當地日期 >= ymd」的最小分鐘做二分搜尋，對非 DST 日等同 00:00。
+ */
+function zonedDayStartMs(zone: string, ymd: string): number {
   const [y, m, d] = ymd.split('-').map(Number);
-  const wall = Date.UTC(y, m - 1, d, h, mi, s, ms);
-  let utc = wall - zoneOffsetMs(zone, wall);
-  utc = wall - zoneOffsetMs(zone, utc);
-  return utc;
+  const wall = Date.UTC(y, m - 1, d);
+  const HOUR = 3600_000;
+  // 偏移範圍 UTC-12 ~ UTC+14：wall-15h 當地必早於 ymd，wall+27h 當地必不早於 ymd。
+  let lo = Math.floor((wall - 15 * HOUR) / 60_000);
+  let hi = Math.floor((wall + 27 * HOUR) / 60_000);
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (zonedDateAt(zone, mid * 60_000) >= ymd) hi = mid; else lo = mid + 1;
+  }
+  return lo * 60_000;
+}
+
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** 形狀為 YYYY-MM-DD 且為真實存在的日曆日期（年月日往返一致；2026-02-30、2026-13-01 無效）。 */
+export function isValidYmd(s: string): boolean {
+  if (!YMD_RE.test(s)) return false;
+  const [y, m, d] = s.split('-').map(Number);
+  if (m < 1 || m > 12 || d < 1) return false;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  // setUTCFullYear 避免 0–99 年被當成 1900+；此處以往返比對月日即可
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
+/** 店家時區某個 YYYY-MM-DD 當天第一個有效瞬間 ~ 當天最後一毫秒，轉成 UTC ISO（含當天，#933）。 */
+export function zonedDayRange(
+  ymd: string, timeZone: string = PUBLIC_DEFAULT_TIME_ZONE,
+): { from: string; to: string } {
+  if (!isValidYmd(ymd)) throw new RangeError(`無效的日期：${ymd}`);
+  const zone = resolvePublicTimeZone(timeZone);
+  const [y, m, d] = ymd.split('-').map(Number);
+  const next = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+  return {
+    from: new Date(zonedDayStartMs(zone, ymd)).toISOString(),
+    to: new Date(zonedDayStartMs(zone, next) - 1).toISOString(),
+  };
+}
+
+/** 值是否為純日期形狀 YYYY-MM-DD（不保證存在）。 */
+export function isDateOnlyShape(value: string): boolean {
+  return YMD_RE.test(value);
+}
+
+/**
+ * 預約列表 from/to 篩選值轉成 UTC ISO（#933）：純日期 YYYY-MM-DD 依店家時區日界線，
+ * from＝當天 00:00、to＝當天結束（含當天）；完整 ISO 時間字串（首頁/未處理既有呼叫端）原樣通過。
+ */
+export function bookingFilterBound(
+  value: string, edge: 'from' | 'to', timeZone: string = PUBLIC_DEFAULT_TIME_ZONE,
+): string {
+  if (!YMD_RE.test(value)) return value;
+  // 形狀為純日期但不存在（如 2026-02-30）：zonedDayRange 會 throw RangeError，不靜默換成別的日期。
+  return zonedDayRange(value, timeZone)[edge];
 }
 
 /** 店家時區（預設 Asia/Taipei）`now` 當天 00:00:00.000 ~ 23:59:59.999，轉成 UTC ISO。 */
@@ -36,11 +85,7 @@ export function tenantDayRange(
   now: Date = new Date(), timeZone: string = PUBLIC_DEFAULT_TIME_ZONE,
 ): { from: string; to: string } {
   const zone = resolvePublicTimeZone(timeZone);
-  const ymd = tenantDateString(now, zone);
-  return {
-    from: new Date(zonedWallToUtcMs(zone, ymd, 0, 0, 0, 0)).toISOString(),
-    to: new Date(zonedWallToUtcMs(zone, ymd, 23, 59, 59, 999)).toISOString(),
-  };
+  return zonedDayRange(tenantDateString(now, zone), zone);
 }
 
 /** 合併「待確認」與「已確認」兩次查詢的結果，依 startAt 由新到舊排序。 */

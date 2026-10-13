@@ -9,6 +9,13 @@ import { createAdminSupabase } from '@/server/supabase';
 import { notifyBookingEvent } from '@/server/email/notify';
 import { taipeiTodayDateString } from '@/server/tz';
 import { notifyOwnerNewBooking } from '@/server/owner-notify';
+import { bookingFilterBound, isDateOnlyShape, isValidYmd } from '@/lib/bookings-query-range';
+import { resolvePublicTimeZone } from '@/lib/public-time-zone';
+
+const INVALID_DATE_MESSAGE = '日期不存在，請重新選擇';
+/** 純日期形狀（YYYY-MM-DD）必須是真實日曆日期；完整 ISO 時間照舊接受。 */
+const filterDate = z.string().optional()
+  .refine((v) => v === undefined || !isDateOnlyShape(v) || isValidYmd(v), INVALID_DATE_MESSAGE);
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(0).default(0),
@@ -16,8 +23,8 @@ const querySchema = z.object({
   status: z.enum(['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW']).optional(),
   paymentStatus: z.enum(['UNPAID', 'PAID_ONLINE', 'PAID_OFFLINE', 'REFUNDED']).optional(),
   keyword: z.string().optional(),
-  from: z.string().optional(), // ISO 日期
-  to: z.string().optional(),
+  from: filterDate, // ISO 日期
+  to: filterDate,
   staffId: z.string().uuid().optional(),
   bookingId: z.string().uuid().optional(),
 });
@@ -36,8 +43,18 @@ export const GET = handle(async (req) => {
   if (q.status) query = query.eq('status', q.status);
   if (q.paymentStatus) query = query.eq('payment_status', q.paymentStatus);
   if (q.staffId) query = query.eq('staff_id', q.staffId);
-  if (q.from) query = query.gte('start_at', q.from);
-  if (q.to) query = query.lte('start_at', q.to);
+  if (q.from || q.to) {
+    // #933：只有至少一個界線是純日期才需要店家時區（ISO 界線與時區無關，不多查一次）。純日期依店家時區（basic.timezone，缺值回退 Asia/Taipei）日界線，與匯出一致，結束日含當天。
+    let zone = resolvePublicTimeZone(undefined);
+    if ((q.from && isDateOnlyShape(q.from)) || (q.to && isDateOnlyShape(q.to))) {
+      const { data: settings, error: se } = await t.supabase.from('tenant_settings')
+        .select('basic').eq('tenant_id', t.tenantId).maybeSingle();
+      if (se) throw se;
+      zone = resolvePublicTimeZone((settings?.basic as { timezone?: unknown } | null)?.timezone);
+    }
+    if (q.from) query = query.gte('start_at', bookingFilterBound(q.from, 'from', zone));
+    if (q.to) query = query.lte('start_at', bookingFilterBound(q.to, 'to', zone));
+  }
   if (q.keyword) query = query.or(
     ilikeAnyOf(['customer_name', 'customer_phone', 'booking_no'], q.keyword));
 

@@ -239,6 +239,10 @@
     {
       "ref": "issue/930",
       "title": "欄位驗證錯誤仍有大量英文（Zod 預設訊息未中文化）；行程方案排序部分失敗後畫面與資料不一致"
+    },
+    {
+      "ref": "issue/933",
+      "title": "預約管理：日期篩選用 UTC 日界線漏掉清晨預約、已取消預約可標記已收款、同一預約可重複核銷票券、詳情金額不刷新"
     }
   ],
   "main": {
@@ -8223,13 +8227,47 @@
         "startedAt": "2026-10-13T22:04:35Z",
         "completedAt": "2026-10-13T22:05:01Z",
         "note": "Luna metrics capture 綁定 issue/930 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261013-luna-scout-933-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 933,
+        "count": 1,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-13T22:10:45Z",
+        "completedAt": "2026-10-13T22:13:45Z",
+        "note": "Luna 窄盤點預約管理／團體訂單真實模式缺口（scout 自報時間，照前例標註）：歸納日期篩選 UTC 日界線、已取消預約可收款、票券重複核銷、詳情金額不刷新四項缺口，主 agent 核對後開立 issue/933。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261013-luna-scout-933-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 933,
+        "count": 1,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-13T22:32:21Z",
+        "completedAt": "2026-10-13T22:32:54Z",
+        "note": "Luna metrics capture 綁定 issue/933 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2。actual 未經平台驗證。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 62,
+    "issuesStarted": 63,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -8256,8 +8294,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 143,
-    "lunaAccepted": 134,
+    "lunaTasks": 145,
+    "lunaAccepted": 136,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -8516,7 +8554,11 @@
     "2026-10-13 非計分紀錄（issue/928）：builder commit 5cd5bc83（21:37:22Z–21:41:51Z，cherry-pick 為 11e56284，基本圖文選單改依 MODE_PRESETS[businessType].richMenuCells 產生六格、抽出 src/server/rich-menu.ts），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/930）：builder commit 08a2f803（21:51:03Z–21:56:16Z，cherry-pick 為 0382a445，新增 src/server/zod-zh.ts 與 src/i18n/zh-TW/validation.ts 將 Zod 錯誤一律中文、schema 自訂訊息優先，movePlan 非 mock 失敗後重讀清單），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/928 follow-up）：builder commit 69254370（21:53:00Z–21:57:06Z），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此；其後 Opus 重審（21:58:18Z–21:58:44Z）。",
-    "2026-10-13 非計分紀錄（Luna 掃描）：另一 Luna scout 於 21:48:03Z–21:48:36Z 確認 #898／#883／#909 已在 main，無新缺口；未計入 modelUsage.tasks，僅記於此。"
+    "2026-10-13 非計分紀錄（Luna 掃描）：另一 Luna scout 於 21:48:03Z–21:48:36Z 確認 #898／#883／#909 已在 main，無新缺口；未計入 modelUsage.tasks，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/933）：Sonnet builder commit 1f52ac42（22:14:54Z–22:29:49Z，cherry-pick 為 f319993b，預約日期篩選改店家時區日界線、已取消預約不可標記收款、同一預約不可重複核銷票券、詳情金額同步），未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/930 follow-up）：follow-up builder commit f60010de（22:15:18Z–22:25:47Z，方案排序等所有寫入完成後再重讀清單），Sonnet builder，未即時埋點，僅記於此；Opus 審查 hash 所列 c04c0ec8 經 git 核對為 #930 ledger 綁定 commit（22:05:15Z），非審查 commit，審查紀錄待主 agent 更正；重審 f60010de（22:26:42Z–22:27:32Z）。",
+    "2026-10-13 非計分紀錄（PR #932）：issue/930 PR #932 已 merge 為 62c43712（欄位驗證錯誤一律中文；行程方案排序部分失敗後自動重讀清單）。",
+    "2026-10-13 非計分紀錄（開立 issue/934）：另開 issue/934（預約列表 100 筆上限），未開工，不計入 delivery.issuesStarted。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
