@@ -1,5 +1,6 @@
 'use client';
 import * as React from 'react';
+import Link from 'next/link';
 import {
   BadgeDollarSign, CalendarClock, CheckCircle2, ClipboardList, Eye,
   MessageSquareText, Plus, Wallet, XCircle,
@@ -21,6 +22,7 @@ import {
   createManualTourOrder, listTourOrders, listTripDepartures, listTripPlans, listTrips,
   parseTourOrdersDeepLink, rejectTourOrder,
 } from '@/services/tours';
+import { listPaymentMethods, type PaymentMethodRow } from '@/services/payment-methods';
 import { ApiError } from '@/lib/api';
 import { createLatestGuard } from '@/lib/latest-request';
 import { formatAsOf } from '@/lib/guide-report-range';
@@ -62,13 +64,6 @@ const PAYMENT_TONE: Record<TourPaymentStatus, 'danger' | 'success' | 'neutral' |
 const SOURCE_TONE: Record<TourOrderSource, 'primary' | 'info' | 'success' | 'neutral'> = {
   MIDAO: 'primary', VIBEAI_SHOP: 'info', LINE: 'success', MANUAL: 'neutral',
 };
-
-/** 骨架用：收款方式取自 /tenant/payment-methods 設定 */
-const MOCK_PAYMENT_METHODS = [
-  { id: 'pm_2', label: '國泰世華銀行轉帳' },
-  { id: 'pm_3', label: '線上刷卡付款' },
-  { id: 'pm_1', label: 'LINE Pay' },
-];
 
 export default function TourOrdersPage() {
   const toast = useToast();
@@ -118,7 +113,7 @@ export default function TourOrdersPage() {
 
   const [draft, setDraft] = React.useState({
     tripId: '', planId: '', departureId: '', customerName: '',
-    customerPhone: '', partySize: 2, paymentMethodId: MOCK_PAYMENT_METHODS[0].id, note: '',
+    customerPhone: '', partySize: 2, paymentMethodId: '', note: '',
   });
 
   /**
@@ -313,6 +308,32 @@ export default function TourOrdersPage() {
     })();
   }, [createOpen, trips.length, toast]);
 
+  /** #873：開啟建單視窗時載入真實收款方式，只列啟用中的，預設選第一筆。 */
+  const [payMethods, setPayMethods] = React.useState<PaymentMethodRow[]>([]);
+  const [payState, setPayState] = React.useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  React.useEffect(() => {
+    if (!createOpen) return;
+    let cancelled = false;
+    setPayState('loading');
+    void (async () => {
+      try {
+        const rows = (await listPaymentMethods()).filter((m) => m.active)
+          .sort((a, b) => a.sortOrder - b.sortOrder);
+        if (cancelled) return;
+        setPayMethods(rows);
+        setPayState('ready');
+        setDraft((d) => (rows.some((m) => m.id === d.paymentMethodId)
+          ? d : { ...d, paymentMethodId: rows[0]?.id ?? '' }));
+      } catch {
+        if (cancelled) return;
+        setPayMethods([]);
+        setPayState('error');
+        setDraft((d) => ({ ...d, paymentMethodId: '' }));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [createOpen]);
+
   /** 選了行程才載方案；選了方案才載團次——與下拉的 disabled 條件一致 */
   React.useEffect(() => {
     if (!draft.tripId) { setPlans([]); setDepartures([]); return; }
@@ -358,7 +379,7 @@ export default function TourOrdersPage() {
         customerName: draft.customerName.trim(),
         customerPhone: draft.customerPhone.trim(),
         partySize: draft.partySize,
-        paymentMethodId: draft.paymentMethodId,
+        paymentMethodId: draft.paymentMethodId || undefined,
         note: draft.note,
       }),
       t.messages.created,
@@ -367,7 +388,7 @@ export default function TourOrdersPage() {
     setCreateOpen(false);
     setDraft({
       tripId: '', planId: '', departureId: '', customerName: '',
-      customerPhone: '', partySize: 2, paymentMethodId: MOCK_PAYMENT_METHODS[0].id, note: '',
+      customerPhone: '', partySize: 2, paymentMethodId: '', note: '',
     });
   };
 
@@ -806,15 +827,34 @@ export default function TourOrdersPage() {
               />
             </FormGroup>
             <FormGroup>
-              <Label required>{t.create.paymentLabel}</Label>
+              <Label>{t.create.paymentLabel}</Label>
               <Select
                 value={draft.paymentMethodId}
+                disabled={payState === 'loading'}
                 onChange={(e) => setDraft({ ...draft, paymentMethodId: e.target.value })}
               >
-                {MOCK_PAYMENT_METHODS.map((m) => (
-                  <option key={m.id} value={m.id}>{m.label}</option>
-                ))}
+                {payState === 'loading' ? (
+                  <option value="">{t.create.paymentLoading}</option>
+                ) : (
+                  <>
+                    {payMethods.length === 0 && <option value="">{t.create.paymentNone}</option>}
+                    {payMethods.map((m) => (
+                      <option key={m.id} value={m.id}>{m.displayName}</option>
+                    ))}
+                  </>
+                )}
               </Select>
+              {payState === 'error' && (
+                <FormText>{t.create.paymentLoadFailed}</FormText>
+              )}
+              {payState === 'ready' && payMethods.length === 0 && (
+                <FormText>
+                  {t.create.paymentEmptyHint}
+                  <Link href="/tenant/payment-methods" className="text-primary underline">
+                    {t.create.paymentEmptyLink}
+                  </Link>
+                </FormText>
+              )}
             </FormGroup>
           </div>
 

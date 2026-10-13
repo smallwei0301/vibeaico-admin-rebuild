@@ -964,7 +964,7 @@ export const cancelTourOrder = (id: string, reason?: string) =>
 
 export const createManualTourOrder = (payload: {
   departureId: string; customerName: string; customerPhone: string;
-  partySize: number; paymentMethodId: string; note?: string;
+  partySize: number; paymentMethodId?: string; note?: string;
 }) =>
   adapt(() => undefined, () =>
     request<void>('/api/tour-orders/manual', { method: 'POST', body: JSON.stringify(payload) }));
