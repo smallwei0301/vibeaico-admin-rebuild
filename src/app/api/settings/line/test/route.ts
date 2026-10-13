@@ -24,7 +24,14 @@ export const POST = handle(async () => {
   try {
     const res = await lineGetRaw(token, '/v2/bot/info');
     if (res.ok) return ok({ ok: true, message: '連線正常' });
-    return ok({ ok: false, message: res.body?.message ?? `LINE API 錯誤（${res.status}）` });
+    console.warn('[line/test] bot/info failed', { status: res.status, lineMessage: res.body?.message });
+    return ok({
+      ok: false,
+      message:
+        res.status === 401 || res.status === 403
+          ? 'Access Token 無效或已失效，請到 LINE Developers 重新發行後貼上'
+          : `Token 驗證失敗（HTTP ${res.status}），請稍後再試`,
+    });
   } catch {
     return ok({ ok: false, message: '無法連線至 LINE 伺服器，請稍後再試' });
   }

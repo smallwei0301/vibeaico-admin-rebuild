@@ -112,7 +112,7 @@ export const lineSettingsPage = {
 
     verifyWebhook: {
       title: '驗證 Webhook：',
-      body: '儲存設定後，系統會自動將 Webhook URL 設定到 LINE 並發送驗證請求。LINE 會向此 URL 發送測試訊號，收到 200 回應即代表驗證成功。如果驗證失敗，請回到本系統重新點「儲存設定」再試一次。',
+      body: '「儲存設定」只保存憑證。請按「完整檢查」讓系統請 LINE 向 Webhook URL 發送測試訊號，收到 200 回應即代表驗證成功；若失敗，請按「自動修正網址」後再檢查一次。',
     },
 
     consoleLink: '前往 LINE Developers Console',
@@ -398,15 +398,15 @@ export const lineSettingsPage = {
     faq: [
       {
         q: 'Q: 連線失敗怎麼辦？',
-        a: '請確認 Channel ID、Secret 和 Token 是否正確。儲存後系統會自動設定 Webhook URL 並測試連線。',
+        a: '請確認 Channel ID、Secret 和 Token 是否正確。「儲存設定」只會保存憑證，不會自動設定 Webhook 或測試連線；存好後請按「完整檢查」，或使用 LINE 開通精靈的檢查步驟。',
       },
       {
         q: 'Q: Bot 不回應訊息？',
-        a: '1. 請先重新點一次「儲存設定」觸發自動連線 2. 到 LINE 官方帳號管理後台 →「設定」→「回應設定」→ 確認為「手動聊天」 3. 確認「自動回應訊息」已關閉',
+        a: '1. 請先按「完整檢查」，若 Webhook 項目失敗，再按「自動修正網址」（精靈內為「一鍵幫我設定並開啟 Webhook」）2. 到 LINE 官方帳號管理後台 →「設定」→「回應設定」→ 確認為「手動聊天」 3. 確認「自動回應訊息」已關閉',
       },
       {
         q: 'Q: Webhook 驗證是什麼？',
-        a: '儲存設定後，系統會自動將 Webhook URL 設定到 LINE 並發送驗證請求。LINE 會向此 URL 發送測試訊號，收到 200 回應即代表驗證成功。如果驗證失敗，請重新點「儲存設定」再試一次。',
+        a: '「儲存設定」只保存憑證。請按「完整檢查」讓系統請 LINE 向 Webhook URL 發送測試訊號，收到 200 回應即代表驗證成功；若失敗，請按「自動修正網址」（精靈內為「一鍵幫我設定並開啟 Webhook」）後再檢查一次。',
       },
       {
         q: 'Q: 按選單沒反應？',
