@@ -21,6 +21,7 @@ export const tripsPage = {
     view: '檢視',
     duplicate: '複製',
     delete: '刪除',
+    coverListedBlocked: '此行程已上架 Midao，封面異動需審核，目前尚未開放送審，無法更換或移除。',
     deleteListedBlocked: '此行程已上架 Midao，無法刪除。請先聯絡 Midao 下架後再刪除。',
     publish: '發布到商店頁',
     unpublish: '從商店頁下架',
@@ -116,6 +117,8 @@ export const tripsPage = {
     regionPlaceholder: '例：宜蘭 頭城',
     categoryLabel: '分類',
     coverLabel: '封面圖片',
+    coverListedReadonly: '此行程已上架 Midao，封面異動需審核，目前尚未開放送審，無法更換或移除。',
+    coverManagerOnly: '只有店主或管理者可以更換封面。',
     coverHelp: '建議 1200×800 以上，會用在列表卡片與 LINE 訊息。',
     galleryLabel: '其他照片',
     galleryHelp: (max: number) => `最多 ${max} 張，可拖曳調整順序。`,
@@ -135,6 +138,8 @@ export const tripsPage = {
     },
     uploadCta: '上傳圖片',
     removeImage: '移除',
+    replaceCta: '更換圖片',
+    coverAlt: '行程封面預覽',
   },
 
   /* --------------------------------------------------------------- 方案 */
@@ -479,6 +484,8 @@ export const tripsPage = {
   /* ------------------------------------------------------------ 確認 / 訊息 */
   confirm: {
     deleteTitle: '刪除行程',
+    removeCoverTitle: '移除封面圖片',
+    removeCoverMessage: '確定要移除這張封面圖片嗎？移除後商店頁與 LINE 訊息將不再顯示封面。',
     delete: (name: string) => `確定要刪除行程「${name}」嗎？已有訂單的行程會改為封存而不是刪除。`,
     deletePlan: (name: string) => `確定要刪除方案「${name}」嗎？`,
     deleteAddon: (name: string) => `確定要刪除加購項目「${name}」嗎？`,
@@ -531,6 +538,10 @@ export const tripsPage = {
      * ——後者會讓店家不知道是權限、名稱重複還是網路問題。這個前綴後面接 ApiError.message。
      */
     actionFailedPrefix: '操作失敗：',
+    coverUploaded: '封面圖片已更新',
+    coverRemoved: '封面圖片已移除',
+    coverTypeInvalid: '封面僅支援 JPG、PNG 或 WebP 圖片',
+    coverTooLarge: '封面圖片不可超過 5MB',
     /** 「新增行程」建立的草稿標題（店家接著在詳情頁改成真正的名稱） */
     untitled: '未命名行程',
     planNameRequired: '請輸入方案名稱',

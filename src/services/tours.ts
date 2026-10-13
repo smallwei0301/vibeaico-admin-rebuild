@@ -185,8 +185,23 @@ export const createTrip = (payload: Partial<Trip>) =>
       }),
   );
 
+/**
+ * mock 分支過去是 `() => undefined`：封面上傳／移除與任何儲存都「成功」卻沒寫回
+ * MOCK_TRIPS，重載即還原（假成功）。現在照真實 PUT 的偏好式更新語意：只合併
+ * `!== undefined` 的欄位；已上架（LISTED）行程動封面回 409，與 server 一致。
+ */
 export const updateTrip = (id: string, payload: Partial<Trip>) =>
-  adapt(() => undefined, () =>
+  adapt(() => {
+    const trip = MOCK_TRIPS.find((t) => t.id === id);
+    if (!trip) throw new ApiError('找不到此行程', 'REQ_002', 404);
+    if (payload.coverImageUrl !== undefined && trip.midaoListing === 'LISTED') {
+      throw new ApiError(tripsPage.actions.coverListedBlocked, 'REQ_003', 409);
+    }
+    const patch: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(payload)) if (v !== undefined) patch[k] = v;
+    Object.assign(trip, patch);
+    return undefined;
+  }, () =>
     request<void>(`/api/trips/${id}`, {
       method: 'PUT',
       body: JSON.stringify(tripApiPayload(payload)),

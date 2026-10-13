@@ -69,11 +69,23 @@ export const PUT = handle(async (req, { params }: Context) => {
     return ok(mapTrip(data));
   }
 
-  const { data, error } = await t.supabase.from('trips').update(patch)
-    .eq('tenant_id', t.tenantId).eq('id', id).select('*').maybeSingle();
+  // 封面異動需走 Midao 審核（docs/integration/21 §6）：帶條件更新，讀與寫之間被上架也不會寫入。
+  const coverTouched = 'cover_image_url' in patch;
+  let query = t.supabase.from('trips').update(patch)
+    .eq('tenant_id', t.tenantId).eq('id', id);
+  if (coverTouched) query = query.neq('midao_listing', 'LISTED');
+  const { data, error } = await query.select('*').maybeSingle();
   if (error?.code === '23505') return fail(409, '此行程代碼已被使用', ERR.CONFLICT);
   if (error) throw error;
-  if (!data) return fail(404, '找不到此行程', ERR.NOT_FOUND);
+  if (!data) {
+    if (coverTouched) {
+      const { data: still, error: rereadError } = await t.supabase.from('trips').select('id')
+        .eq('tenant_id', t.tenantId).eq('id', id).maybeSingle();
+      if (rereadError) throw rereadError;
+      if (still) return fail(409, tripsPage.actions.coverListedBlocked, ERR.CONFLICT);
+    }
+    return fail(404, '找不到此行程', ERR.NOT_FOUND);
+  }
   return ok(mapTrip(data));
 });
 
