@@ -1,12 +1,13 @@
 import { ApiError, adapt, request } from '@/lib/api';
 import type {
   DepartureConflict, Trip, TripAddon, TripDeparture, TripPlan, TripPlanSeason,
-  TourOrder, TourOrderSource, TourOrderStatus, TourPaymentStatus, Paged,
+  TourOrder, TourOrderSummary, TourOrderSource, TourOrderStatus, TourPaymentStatus, Paged,
 } from '@/lib/types';
 import { canDeleteTrip } from '@/lib/trip-deletion';
 import { tripsPage } from '@/i18n/zh-TW/pages/trips';
 import { resolvePublicTimeZone } from '@/lib/public-time-zone';
 import { clampGalleryForCopy } from '@/lib/trip-gallery';
+import { taipeiMonthRange } from '@/server/tz';
 import { addDays, repeatCustomerIdSet, zonedMidnightMs, zonedToday } from '@/server/guide-report';
 import {
   DECISION_FROM_STATUS, FormationDecisionError, buildContinuePatch, buildExtendPatch, buildFormPatch, effectiveParticipants,
@@ -733,6 +734,30 @@ export type TourOrderQuery = {
 };
 
 const MOCK_TIME_ZONE = 'Asia/Taipei';
+
+/** #890：統計卡數字（整個店家，非目前這一頁）。mock 於呼叫當下由 mock 訂單算出，定義同 /api/tour-orders/summary。 */
+export function getTourOrderSummary(): Promise<TourOrderSummary> {
+  return adapt(
+    () => {
+      const nowMs = Date.now();
+      const all = mockTourOrdersRelativeToNow(nowMs);
+      const today = zonedToday(MOCK_TIME_ZONE, nowMs);
+      const in7 = addDays(today, 7);
+      const month = taipeiMonthRange();
+      return {
+        pending: all.filter((o) => o.status === 'PENDING').length,
+        awaitingPayment: all.filter((o) => o.status !== 'CANCELLED'
+          && (o.paymentStatus === 'UNPAID' || o.paymentStatus === 'PARTIAL')).length,
+        upcoming7d: all.filter((o) => o.status === 'CONFIRMED' && o.departsOn >= today && o.departsOn <= in7).length,
+        monthRevenue: all
+          .filter((o) => o.paymentStatus === 'PAID'
+            && Date.parse(o.createdAt) >= Date.parse(month.fromIso) && Date.parse(o.createdAt) < Date.parse(month.toIso))
+          .reduce((sum, o) => sum + o.totalAmount, 0),
+      };
+    },
+    () => request<TourOrderSummary>('/api/tour-orders/summary'),
+  );
+}
 
 export function listTourOrders(q: TourOrderQuery = {}): Promise<Paged<TourOrder>> {
   return adapt(

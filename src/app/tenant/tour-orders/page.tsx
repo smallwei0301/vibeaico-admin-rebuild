@@ -19,7 +19,7 @@ import { FormGroup, FormText, Input, Label, Select, Textarea } from '@/component
 import { useToast } from '@/components/ui/Toast';
 import {
   acceptTourOrder, cancelTourOrder, completeTourOrder, confirmTourOrderPayment,
-  createManualTourOrder, listTourOrders, listTripDepartures, listTripPlans, listTrips,
+  createManualTourOrder, getTourOrderSummary, listTourOrders, listTripDepartures, listTripPlans, listTrips,
   parseTourOrdersDeepLink, rejectTourOrder,
 } from '@/services/tours';
 import { listPaymentMethods, type PaymentMethodRow } from '@/services/payment-methods';
@@ -33,11 +33,10 @@ import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { tourOrdersPage as t } from '@/i18n/zh-TW/pages/tour-orders';
 import { publicTourRequestPage } from '@/i18n/zh-TW/pages/public-tour-request';
 import { refundPolicyText } from '@/lib/tour-order-detail-labels';
-import { isAwaitingPayment } from '@/server/tour-domain';
 import { isPendingTourRequest, tourPaymentActions } from '@/lib/tour-order-payment-actions';
 import { formatCurrency, formatDateTime, formatNumber } from '@/lib/utils';
 import type {
-  TourOrder, TourOrderSource, TourOrderStatus, TourPaymentStatus,
+  TourOrder, TourOrderSource, TourOrderSummary, TourOrderStatus, TourPaymentStatus,
   Trip, TripDeparture, TripPlan,
 } from '@/lib/types';
 
@@ -104,6 +103,9 @@ export default function TourOrdersPage() {
   /** 這次的篩選是否來自報表／深連結（決定是否顯示「清除」提示列） */
   const [fromLink, setFromLink] = React.useState(false);
   const latest = React.useRef(createLatestGuard());
+  /** #890：統計卡數字（整個店家，由 /api/tour-orders/summary 提供）；null＝載入中或失敗，顯示佔位。 */
+  const [summary, setSummary] = React.useState<TourOrderSummary | null>(null);
+  const summaryLatest = React.useRef(createLatestGuard());
 
   const [detail, setDetail] = React.useState<TourOrder | null>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -154,7 +156,8 @@ export default function TourOrdersPage() {
       || dl.activeOnly || dl.repeatCustomers || paymentStatus) setFromLink(true);
     setReady(true);
     const guard = latest.current;
-    return () => guard.invalidate();
+    const summaryGuard = summaryLatest.current;
+    return () => { guard.invalidate(); summaryGuard.invalidate(); };
   }, []);
 
   const drillExtras = React.useMemo(() => ({
@@ -213,22 +216,20 @@ export default function TourOrdersPage() {
   React.useEffect(() => { if (ready) void load(); }, [ready, load]);
 
   /* --------------------------------------------------------------- 統計 */
-  const stats = React.useMemo(() => {
-    const now = new Date();
-    const in7 = new Date(now.getTime() + 7 * 86_400_000);
-    return {
-      pending: rows.filter((o) => o.status === 'PENDING').length,
-      unpaid: rows.filter(isAwaitingPayment).length,
-      upcoming: rows.filter((o) => {
-        const d = new Date(o.departsOn);
-        return o.status === 'CONFIRMED' && d >= now && d <= in7;
-      }).length,
-      revenue: rows
-        .filter((o) => o.paymentStatus === 'PAID'
-          && o.createdAt.slice(0, 7) === now.toISOString().slice(0, 7))
-        .reduce((sum, o) => sum + o.totalAmount, 0),
-    };
-  }, [rows]);
+  /** 統計卡與列表分頁／篩選無關：載入失敗只回到佔位，不影響列表。 */
+  const loadSummary = React.useCallback(async () => {
+    const token = summaryLatest.current.next();
+    try {
+      const res = await getTourOrderSummary();
+      if (!summaryLatest.current.isLatest(token)) return;
+      setSummary(res);
+    } catch {
+      if (!summaryLatest.current.isLatest(token)) return;
+      setSummary(null);
+    }
+  }, []);
+
+  React.useEffect(() => { if (ready) void loadSummary(); }, [ready, loadSummary]);
 
   /* ----------------------------------------------------------- 狀態動作 */
   /**
@@ -248,6 +249,7 @@ export default function TourOrdersPage() {
     setBusy(true);
     try {
       await fn();
+      void loadSummary(); // 統計卡與列表並行重讀，失敗只回佔位、不阻擋列表
       await load();
       toast.show(successMessage);
       return true;
@@ -530,10 +532,10 @@ export default function TourOrdersPage() {
       />
 
       <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label={t.stats.pending} value={formatNumber(stats.pending)} icon={ClipboardList} tone="warning" />
-        <StatCard label={t.stats.unpaid} value={formatNumber(stats.unpaid)} icon={Wallet} tone="danger" />
-        <StatCard label={t.stats.upcoming} value={formatNumber(stats.upcoming)} icon={CalendarClock} tone="info" />
-        <StatCard label={t.stats.monthRevenue} value={formatCurrency(stats.revenue)} icon={BadgeDollarSign} tone="success" />
+        <StatCard label={t.stats.pending} value={summary ? formatNumber(summary.pending) : t.stats.placeholder} icon={ClipboardList} tone="warning" />
+        <StatCard label={t.stats.unpaid} value={summary ? formatNumber(summary.awaitingPayment) : t.stats.placeholder} icon={Wallet} tone="danger" />
+        <StatCard label={t.stats.upcoming} value={summary ? formatNumber(summary.upcoming7d) : t.stats.placeholder} icon={CalendarClock} tone="info" />
+        <StatCard label={t.stats.monthRevenue} value={summary ? formatCurrency(summary.monthRevenue) : t.stats.placeholder} icon={BadgeDollarSign} tone="success" />
       </div>
 
       {fromLink || tripFilter || planFilter || activeOnly || repeatOnly || createdFrom || createdTo || createdBefore ? (
