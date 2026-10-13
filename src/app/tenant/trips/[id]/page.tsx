@@ -39,7 +39,7 @@ import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
 import { ApiError } from '@/lib/api';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import { resolveGuideInboxDepartureFocus } from '@/lib/guide-action-inbox';
-import { omitTripCover, removeTripCover, uploadTripCover, validateTripCoverFile } from '@/lib/trip-cover';
+import { canManageTripCover, omitTripCover, removeTripCover, uploadTripCover, validateTripCoverFile } from '@/lib/trip-cover';
 import { MAX_PUBLIC_GALLERY_IMAGES, omitUnchangedGallery } from '@/lib/trip-gallery';
 import {
   omitUnchangedTripTextFields, tripTextFieldErrors,
@@ -190,6 +190,7 @@ export default function TripDetailPage() {
   const toast = useToast();
   const businessType = useBusinessType();
   const currentTenant = useCurrentTenant();
+  const canEditCover = canManageTripCover(currentTenant?.role);
   const publicShopUrl = buildPublicBookingUrl(APP_URL, currentTenant.shopCode);
   const tripId = String(params?.id ?? '');
 
@@ -334,7 +335,7 @@ export default function TripDetailPage() {
   const onPickCover = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (!file || coverBusy || busy) return;
+    if (!file || !canEditCover || coverBusy || busy) return;
     const invalid = validateTripCoverFile(file);
     if (invalid) {
       toast.show(invalid === 'type' ? t.messages.coverTypeInvalid : t.messages.coverTooLarge, 'danger');
@@ -354,7 +355,7 @@ export default function TripDetailPage() {
   };
 
   const onRemoveCover = async () => {
-    if (coverBusy || busy) return;
+    if (!canEditCover || coverBusy || busy) return;
     setConfirmRemoveCover(false);
     setCoverBusy(true);
     try {
@@ -1257,7 +1258,7 @@ export default function TripDetailPage() {
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline" size="sm" className="min-h-11 flex-1"
-                    loading={coverBusy} disabled={coverBusy || busy}
+                    loading={coverBusy} disabled={!canEditCover || coverBusy || busy}
                     onClick={() => coverInputRef.current?.click()}
                   >
                     <Upload size={14} />{form.coverImageUrl ? t.form.replaceCta : t.form.uploadCta}
@@ -1265,13 +1266,14 @@ export default function TripDetailPage() {
                   {form.coverImageUrl ? (
                     <Button
                       variant="outline" size="sm" className="min-h-11"
-                      disabled={coverBusy || busy} onClick={() => setConfirmRemoveCover(true)}
+                      disabled={!canEditCover || coverBusy || busy} onClick={() => setConfirmRemoveCover(true)}
                     >
                       <Trash2 size={14} />{t.form.removeImage}
                     </Button>
                   ) : null}
                 </div>
                 <FormText>{t.form.coverHelp}</FormText>
+                {!canEditCover ? <FormText>{t.form.coverManagerOnly}</FormText> : null}
                 <div className="mt-2 border-t border-neutral-200 pt-2">
                   <Label>{t.form.galleryLabel}</Label>
                   <div className="mt-1 grid grid-cols-3 gap-1.5">

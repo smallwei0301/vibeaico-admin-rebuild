@@ -14,6 +14,11 @@ export function validateTripCoverFile(file: { type: string; size: number }): Tri
   return null;
 }
 
+/** 伺服器端 PUT /trips 為 manager-only（OWNER／MANAGER）；STAFF 先上傳再 403 會留下孤兒公開檔，所以前端要先擋。 */
+export function canManageTripCover(role: 'OWNER' | 'MANAGER' | 'STAFF' | null | undefined): boolean {
+  return role === 'OWNER' || role === 'MANAGER';
+}
+
 /** 上傳封面並寫入行程；回傳新的公開網址。上傳或寫入任一步失敗都會 throw，不假裝成功。 */
 export async function uploadTripCover(tripId: string, file: File): Promise<string> {
   const { url } = await uploadImage(file, TRIP_COVER_BUCKET);

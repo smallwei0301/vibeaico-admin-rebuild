@@ -33,6 +33,6 @@ describe('#42 基本資料儲存不帶封面', () => {
     expect(src).toContain('onConfirm={() => void onRemoveCover()}');
     expect(src).toContain('t.confirm.removeCoverTitle');
     expect(src.match(/removeTripCover\(tripId\)/g)).toHaveLength(1);
-    expect(src).toMatch(/const onRemoveCover = async \(\) => \{\n    if \(coverBusy \|\| busy\) return;/);
+    expect(src).toMatch(/const onRemoveCover = async \(\) => \{\n    if \(!canEditCover \|\| coverBusy \|\| busy\) return;/);
   });
 });

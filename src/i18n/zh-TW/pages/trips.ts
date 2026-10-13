@@ -116,6 +116,7 @@ export const tripsPage = {
     regionPlaceholder: '例：宜蘭 頭城',
     categoryLabel: '分類',
     coverLabel: '封面圖片',
+    coverManagerOnly: '只有店主或管理者可以更換封面。',
     coverHelp: '建議 1200×800 以上，會用在列表卡片與 LINE 訊息。',
     galleryLabel: '其他照片',
     galleryHelp: (max: number) => `最多 ${max} 張，可拖曳調整順序。`,
