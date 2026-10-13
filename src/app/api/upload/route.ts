@@ -61,6 +61,8 @@ const ALLOWED_BUCKETS = new Set([
  */
 const BUCKET_MIN_ROLE: Partial<Record<string, 'MANAGER'>> = {
   'portfolio-images': 'MANAGER',
+  // 全部消費者（keyword-replies／marketing pushes／campaigns 寫入）皆為 MANAGER。
+  'keyword-reply-images': 'MANAGER',
 };
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB
 const ALLOWED_TYPES: Record<string, string> = {

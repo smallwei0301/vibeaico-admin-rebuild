@@ -62,6 +62,16 @@ describe('POST /api/upload bucket minimum role', () => {
     expect(state.upload).toHaveBeenCalledTimes(1);
   });
 
+  it('STAFF + keyword-reply-images → 403 and no storage write；MANAGER 放行', async () => {
+    const denied = await post('keyword-reply-images');
+    expect(denied.status).toBe(403);
+    expect(state.upload).not.toHaveBeenCalled();
+    state.role = 'MANAGER';
+    const allowed = await post('keyword-reply-images');
+    expect(allowed.status).toBe(200);
+    expect(state.upload).toHaveBeenCalledTimes(1);
+  });
+
   it('STAFF + product-images stays allowed', async () => {
     const res = await post('product-images');
     expect(res.status).toBe(200);

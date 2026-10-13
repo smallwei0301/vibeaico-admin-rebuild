@@ -30,6 +30,7 @@ import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { portfolioPage as t } from '@/i18n/zh-TW/pages/portfolio';
 import { formatNumber } from '@/lib/utils';
+import { isRenderableImageUrl } from '@/lib/image-url';
 
 type SortMode = 'line' | 'public';
 
@@ -37,8 +38,6 @@ type SortMode = 'line' | 'public';
 const COVER_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const COVER_MAX_BYTES = 5 * 1024 * 1024;
 
-/** 只渲染 http(s)、根相對路徑或 blob:（mock 上傳預覽）；舊資料（標題污染值、mock 檔名）退回圖示。 */
-const isRenderableImageUrl = (url: string) => /^((https?:)?\/|blob:)/.test(url);
 
 const EMPTY_DRAFT = {
   id: '',

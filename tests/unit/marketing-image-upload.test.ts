@@ -47,7 +47,7 @@ describe.each(Object.entries(pages))('%s 頁面圖片上傳接線', (_name, src)
   });
   it('先驗證再上傳，成功才設定 imageUrl，失敗顯示錯誤且不改值', () => {
     expect(src).toContain('validateMessageImageFile(file)');
-    expect(src).toContain('const url = await uploadMessageImage(file);\n      setImageUrl(url);');
+    expect(src).toContain('const url = await uploadMessageImage(file);\n      if (token !== uploadTokenRef.current) return;\n      setImageUrl(url);');
     expect(src).toContain("toast.show(msg, 'danger')");
     // catch 區塊內不得 setImageUrl（失敗保留原值）
     const catchBlock = src.slice(src.indexOf('} catch (err) {'), src.indexOf('} finally {', src.indexOf('} catch (err) {')));
@@ -86,4 +86,16 @@ describe('文案反映真實限制', () => {
     expect(marketingPage.messages.imageTooLarge).toContain('5MB');
     expect(campaignsPage.messages.imageTooLarge).toContain('5MB');
   });
+});
+
+describe('表單元件上傳競態守衛（push／campaign）', () => {
+  for (const file of ['src/app/tenant/marketing/page.tsx', 'src/app/tenant/campaigns/page.tsx']) {
+    it(`${file} 以 token 丟棄過期的上傳結果，且預覽只渲染可渲染網址`, () => {
+      const src = readFileSync(file, 'utf8');
+      expect(src).toContain('uploadTokenRef');
+      expect(src).toMatch(/const token = \+\+uploadTokenRef\.current;/);
+      expect(src).toMatch(/if \(token !== uploadTokenRef\.current\) return;/);
+      expect(src).toContain('imageUrl && isRenderableImageUrl(imageUrl)');
+    });
+  }
 });

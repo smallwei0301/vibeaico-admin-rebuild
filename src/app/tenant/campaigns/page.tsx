@@ -25,6 +25,7 @@ import {
 } from '@/services';
 import type { CampaignFormPayload } from '@/services/campaigns';
 import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
+import { isRenderableImageUrl } from '@/lib/image-url';
 import { canManageMarketing, uploadMessageImage, validateMessageImageFile } from '@/lib/message-image';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
@@ -567,8 +568,14 @@ function CampaignFormModal({
   const [error, setError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
 
+  // 表單元件常駐（open 切換、換 push/campaign 都是同一個 instance）：上傳期間若關閉／換筆／送出，
+  // 舊上傳的結果不得寫入新狀態。token 在 open／record 變動、送出、卸載時輪替，回來時比對不符就丟棄。
+  const uploadTokenRef = React.useRef(0);
+  React.useEffect(() => () => { uploadTokenRef.current += 1; }, []);
+
   React.useEffect(() => {
-    if (!open) return;
+    uploadTokenRef.current += 1;
+    if (!open) { setUploading(false); return; }
     setError('');
     setName(campaign?.name ?? '');
     setType((campaign?.type || 'NEW_CUSTOMER') as CampaignType);
@@ -600,17 +607,20 @@ function CampaignFormModal({
     }
     setImageError('');
     setUploading(true);
+    const token = ++uploadTokenRef.current;
     try {
       const url = await uploadMessageImage(file);
+      if (token !== uploadTokenRef.current) return;
       setImageUrl(url);
       toast.show(t.messages.imageUploaded, 'success');
     } catch (err) {
+      if (token !== uploadTokenRef.current) return;
       const msg = `${t.messages.imageUploadFailedPrefix}${err instanceof Error ? err.message : t.messages.unknownError}`;
       setImageError(msg);
       toast.show(msg, 'danger');
     } finally {
       input.value = '';
-      setUploading(false);
+      if (token === uploadTokenRef.current) setUploading(false);
     }
   };
 
@@ -655,6 +665,7 @@ function CampaignFormModal({
 
   const submit = async () => {
     if (uploading) return;
+    uploadTokenRef.current += 1;
     const err = validate();
     setError(err);
     if (err) { toast.show(err, 'warning'); return; }
@@ -793,7 +804,7 @@ function CampaignFormModal({
           ) : null}
         </div>
         {imageError ? <FormText className="text-danger">{imageError}</FormText> : null}
-        {imageUrl ? (
+        {imageUrl && isRenderableImageUrl(imageUrl) ? (
           <img src={imageUrl} alt={t.form.imagePreviewAlt} className="mt-2 max-h-40 rounded-md object-contain" />
         ) : null}
       </FormGroup>
