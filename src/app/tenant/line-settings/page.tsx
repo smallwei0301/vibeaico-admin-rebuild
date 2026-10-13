@@ -27,6 +27,8 @@ import { createQrDataUrl, triggerDownload } from '@/lib/qr-code';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { lineSettingsPage as t } from '@/i18n/zh-TW/pages/line-settings';
+import { MODE_PRESETS } from '@/config/modes';
+import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { OwnerNotifySection } from '@/components/line-settings/OwnerNotifySection';
 
 /* -------------------------------------------------------------------------- */
@@ -70,6 +72,7 @@ type VerifyCheck = { key: string; status: VerifyCheckStatus; pass: boolean; mess
 
 export default function LineSettingsPage() {
   const toast = useToast();
+  const previewBusinessType = useBusinessType();
 
   const [loading, setLoading] = React.useState(true);
   const [settings, setSettings] = React.useState<TenantSettings | null>(null);
@@ -1115,7 +1118,7 @@ export default function LineSettingsPage() {
             <div className="rounded-md border border-neutral-250 p-3">
               <div className="mb-2 text-2xs text-secondary">{t.richMenu.previewChatArea}</div>
               <div
-                className="grid grid-cols-4 gap-px overflow-hidden rounded-sm"
+                className="grid grid-cols-3 gap-px overflow-hidden rounded-sm"
                 style={{
                   backgroundColor:
                     THEME_PRESETS.find((p) => p.key === richMenuTheme)?.swatch,
@@ -1123,16 +1126,17 @@ export default function LineSettingsPage() {
                   backgroundSize: 'cover',
                 }}
               >
-                {t.richMenu.previewItems.map((item) => (
+                {MODE_PRESETS[previewBusinessType].richMenuCells.map((cell) => (
                   <div
-                    key={item}
+                    key={cell.label}
                     className="flex h-12 items-center justify-center text-2xs font-semibold"
                     style={{ color: richMenuNoOverlay ? 'transparent' : richMenuTextColor }}
                   >
-                    {richMenuNoOverlay ? '' : item}
+                    {richMenuNoOverlay ? '' : cell.label}
                   </div>
                 ))}
               </div>
+              <p className="mt-2 text-2xs text-secondary">{t.richMenu.previewNote}</p>
             </div>
           </div>
 

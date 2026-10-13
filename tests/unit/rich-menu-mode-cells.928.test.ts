@@ -51,3 +51,24 @@ describe('#928 基本圖文選單依營業模式產生六格', () => {
     }
   });
 });
+
+describe('#928 LINE 設定的選單預覽與發布同源', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const page = fs.readFileSync('src/app/tenant/line-settings/page.tsx', 'utf8');
+  const i18n = fs.readFileSync('src/i18n/zh-TW/pages/line-settings.ts', 'utf8');
+
+  it('預覽為 3 欄六格，格子文字取自目前營業模式的 richMenuCells', () => {
+    expect(page).toContain('useBusinessType()');
+    expect(page).toContain('MODE_PRESETS[previewBusinessType].richMenuCells.map');
+    expect(page).toMatch(/grid grid-cols-3 gap-px/);
+    expect(page).not.toContain('previewItems');
+    for (const mode of MODES) expect(MODE_PRESETS[mode].richMenuCells).toHaveLength(6);
+  });
+
+  it('有 previewNote 說明文字不會畫進圖片，且不再有寫死的預覽字樣', () => {
+    expect(page).toContain('t.richMenu.previewNote');
+    expect(i18n).toMatch(/previewNote:[\s\S]*不會畫進圖片/);
+    expect(i18n).not.toContain('previewItems');
+    expect(i18n).not.toContain('瀏覽商品');
+  });
+});
