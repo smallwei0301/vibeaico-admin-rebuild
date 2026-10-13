@@ -329,14 +329,16 @@ jobs:
           RESEND_API_KEY: re_test_ci_local_mock
         run: |
           set -euo pipefail
+          # Bound composite HTTP/DB cases without changing their assertions (#901).
           if [ -n "${RELEASE_ID:-}" ]; then
             npx vitest run tests/integration \
               --config vitest.integration.config.mts \
               --no-file-parallelism \
+              --testTimeout=60000 \
               --reporter=default --reporter=json \
               --outputFile.json="$RUNNER_TEMP/production-db-g3-integration.json"
           else
-            npm run test:integration
+            npm run test:integration -- --testTimeout=60000
           fi
       - name: Run E2E tests
         if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' }}
