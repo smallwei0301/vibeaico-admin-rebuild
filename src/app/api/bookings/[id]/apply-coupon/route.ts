@@ -32,6 +32,13 @@ export const POST = handle(async (req, { params }) => {
     );
   }
 
+  // #933：同一預約只能核銷一張票券；必須在 redeemCoupon 之前擋下，否則第二張會被燒掉
+  // 並覆寫第一張的追溯紀錄。
+  const existing = (booking.custom_fields as Record<string, unknown> | null)?._coupon;
+  if (existing) {
+    throw new ApiHttpError(409, '此預約已核銷過票券，同一預約只能使用一張票券', ERR.CONFLICT);
+  }
+
   const redemption = await redeemCoupon(
     t.supabase, t.tenantId, b.code, booking.customer_id, Number(booking.final_price));
 

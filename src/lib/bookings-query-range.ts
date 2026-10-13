@@ -31,16 +31,36 @@ function zonedWallToUtcMs(zone: string, ymd: string, h: number, mi: number, s: n
   return utc;
 }
 
+/** 店家時區某個 YYYY-MM-DD 當天 00:00:00.000 ~ 23:59:59.999，轉成 UTC ISO（含當天，#933）。 */
+export function zonedDayRange(
+  ymd: string, timeZone: string = PUBLIC_DEFAULT_TIME_ZONE,
+): { from: string; to: string } {
+  const zone = resolvePublicTimeZone(timeZone);
+  return {
+    from: new Date(zonedWallToUtcMs(zone, ymd, 0, 0, 0, 0)).toISOString(),
+    to: new Date(zonedWallToUtcMs(zone, ymd, 23, 59, 59, 999)).toISOString(),
+  };
+}
+
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * 預約列表 from/to 篩選值轉成 UTC ISO（#933）：純日期 YYYY-MM-DD 依店家時區日界線，
+ * from＝當天 00:00、to＝當天結束（含當天）；完整 ISO 時間字串（首頁/未處理既有呼叫端）原樣通過。
+ */
+export function bookingFilterBound(
+  value: string, edge: 'from' | 'to', timeZone: string = PUBLIC_DEFAULT_TIME_ZONE,
+): string {
+  if (!YMD_RE.test(value)) return value;
+  return zonedDayRange(value, timeZone)[edge];
+}
+
 /** 店家時區（預設 Asia/Taipei）`now` 當天 00:00:00.000 ~ 23:59:59.999，轉成 UTC ISO。 */
 export function tenantDayRange(
   now: Date = new Date(), timeZone: string = PUBLIC_DEFAULT_TIME_ZONE,
 ): { from: string; to: string } {
   const zone = resolvePublicTimeZone(timeZone);
-  const ymd = tenantDateString(now, zone);
-  return {
-    from: new Date(zonedWallToUtcMs(zone, ymd, 0, 0, 0, 0)).toISOString(),
-    to: new Date(zonedWallToUtcMs(zone, ymd, 23, 59, 59, 999)).toISOString(),
-  };
+  return zonedDayRange(tenantDateString(now, zone), zone);
 }
 
 /** 合併「待確認」與「已確認」兩次查詢的結果，依 startAt 由新到舊排序。 */

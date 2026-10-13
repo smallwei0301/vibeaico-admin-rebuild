@@ -9,6 +9,8 @@ import { createAdminSupabase } from '@/server/supabase';
 import { notifyBookingEvent } from '@/server/email/notify';
 import { taipeiTodayDateString } from '@/server/tz';
 import { notifyOwnerNewBooking } from '@/server/owner-notify';
+import { bookingFilterBound } from '@/lib/bookings-query-range';
+import { resolvePublicTimeZone } from '@/lib/public-time-zone';
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(0).default(0),
@@ -36,8 +38,14 @@ export const GET = handle(async (req) => {
   if (q.status) query = query.eq('status', q.status);
   if (q.paymentStatus) query = query.eq('payment_status', q.paymentStatus);
   if (q.staffId) query = query.eq('staff_id', q.staffId);
-  if (q.from) query = query.gte('start_at', q.from);
-  if (q.to) query = query.lte('start_at', q.to);
+  if (q.from || q.to) {
+    // #933：純日期依店家時區（basic.timezone，缺值回退 Asia/Taipei）日界線，與匯出一致，結束日含當天。
+    const { data: settings } = await t.supabase.from('tenant_settings')
+      .select('basic').eq('tenant_id', t.tenantId).maybeSingle();
+    const zone = resolvePublicTimeZone((settings?.basic as { timezone?: unknown } | null)?.timezone);
+    if (q.from) query = query.gte('start_at', bookingFilterBound(q.from, 'from', zone));
+    if (q.to) query = query.lte('start_at', bookingFilterBound(q.to, 'to', zone));
+  }
   if (q.keyword) query = query.or(
     ilikeAnyOf(['customer_name', 'customer_phone', 'booking_no'], q.keyword));
 

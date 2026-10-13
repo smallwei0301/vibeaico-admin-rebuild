@@ -25,7 +25,8 @@ import {
   listBookingAddons, listBookings, markBookingPaidOffline, markNoShow, revertBookingComplete,
   updateBooking,
 } from '@/services/bookings';
-import { mergeUnprocessedBookings, unprocessedUpperBound } from '@/lib/bookings-query-range';
+import { mergeUnprocessedBookings, unprocessedUpperBound, zonedDayRange } from '@/lib/bookings-query-range';
+import { canMarkPaidOffline, syncDetailFinalPrice } from '@/lib/booking-detail-sync';
 import { createCustomer, listCustomers } from '@/services/customers';
 import { listServices, listStaff } from '@/services/catalog';
 import { exportBookingsCsv, exportBookingsXlsx } from '@/services/reports';
@@ -188,8 +189,16 @@ export default function BookingsPage() {
             (b) => (b.status === 'PENDING' || b.status === 'CONFIRMED') && new Date(b.startAt).getTime() < now,
           );
         }
-        if (startDate) filtered = filtered.filter((b) => b.startAt.slice(0, 10) >= startDate);
-        if (endDate) filtered = filtered.filter((b) => b.startAt.slice(0, 10) <= endDate);
+        /* 真實模式的日期篩選由 server 依店家時區日界線處理（#933）；
+           mock 的 listBookings 不處理 from/to，才在此用台北日界線補濾。 */
+        if (USE_MOCK && startDate) {
+          const lo = Date.parse(zonedDayRange(startDate).from);
+          filtered = filtered.filter((b) => Date.parse(b.startAt) >= lo);
+        }
+        if (USE_MOCK && endDate) {
+          const hi = Date.parse(zonedDayRange(endDate).to);
+          filtered = filtered.filter((b) => Date.parse(b.startAt) <= hi);
+        }
         if (!showCancelled && status !== 'CANCELLED') {
           filtered = filtered.filter((b) => b.status !== 'CANCELLED');
         }
@@ -670,7 +679,9 @@ export default function BookingsPage() {
         booking={couponTarget}
         onClose={() => setCouponTarget(null)}
         onApplied={(discount, net) => {
+          const id = couponTarget?.id;
           setCouponTarget(null);
+          if (id) setDetailTarget((prev) => syncDetailFinalPrice(prev, id, net));
           toast.show(t.messages.couponApplied(formatCurrency(discount), formatCurrency(net)));
           void load();
         }}
@@ -682,7 +693,9 @@ export default function BookingsPage() {
         addonCount={detailAddons.length}
         onClose={() => setAdjustTarget(null)}
         onAdjusted={(amount) => {
+          const id = adjustTarget?.id;
           setAdjustTarget(null);
+          if (id) setDetailTarget((prev) => syncDetailFinalPrice(prev, id, amount));
           toast.show(t.messages.priceAdjusted(formatCurrency(amount)));
           void load();
         }}
@@ -692,8 +705,10 @@ export default function BookingsPage() {
       <ApplyPointsModal
         booking={pointsTarget}
         onClose={() => setPointsTarget(null)}
-        onApplied={(points) => {
+        onApplied={(points, net) => {
+          const id = pointsTarget?.id;
           setPointsTarget(null);
+          if (id) setDetailTarget((prev) => syncDetailFinalPrice(prev, id, net));
           toast.show(t.messages.pointsApplied(points));
           void load();
         }}
@@ -1558,7 +1573,7 @@ function ApplyPointsModal({
 }: {
   booking: Booking | null;
   onClose: () => void;
-  onApplied: (points: number) => void;
+  onApplied: (points: number, net: number) => void;
 }) {
   const toast = useToast();
   const pm = t.pointsModal;
@@ -1580,7 +1595,7 @@ function ApplyPointsModal({
       // API 會驗證顧客實際可用點數與應付金額；折抵數以 API 回傳的最終金額計算。
       const price = booking.finalPrice;
       const res = await applyBookingPoints(booking.id, value);
-      onApplied(price - res.finalPrice);
+      onApplied(price - res.finalPrice, res.finalPrice);
     } catch (e) {
       // 409 顧客點數不足（POINTS_001）等 → 把 server message 顯示出來
       toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
@@ -1761,10 +1776,12 @@ function BookingDetailModal({
             <Button variant="outline" size="sm" disabled title={t.detailModal.payLinkUnavailable}>
               {t.rowActions.payLinkUnavailable}
             </Button>
-            <Button variant="outline" size="sm" onClick={onMarkPaid}>
-              <Wallet size={13} />
-              {t.rowActions.markPaidOffline}
-            </Button>
+            {canMarkPaidOffline(booking.status) ? (
+              <Button variant="outline" size="sm" onClick={onMarkPaid}>
+                <Wallet size={13} />
+                {t.rowActions.markPaidOffline}
+              </Button>
+            ) : null}
             {booking.source === 'LINE' ? (
               <Link href="/tenant/chat" className="btn btn-line btn-sm">{t.rowActions.chat}</Link>
             ) : null}
