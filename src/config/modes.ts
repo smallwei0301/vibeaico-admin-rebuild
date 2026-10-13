@@ -66,6 +66,16 @@ export type ModePreset = {
   setupInventory: {
     table: 'services' | 'trips';
     filter: { column: string; value: string | boolean };
+    /**
+     * 父列本身可見還不夠，還要有至少一筆「啟用中的子列」才算可預約（GUIDE：已發布行程
+     * 必須至少有一個 active 方案，public-shop 也只列 trip_plans.active=true）。
+     * 已知限制：FIXED_DEPARTURE 方案另需未來 OPEN 團次才真正可訂，這裡不建模。
+     */
+    requireActiveChild?: {
+      table: 'trip_plans';
+      fk: string;
+      filter: { column: string; value: string | boolean };
+    };
   };
 };
 
@@ -115,7 +125,11 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     showActionInbox: true,
     reportingMode: 'GUIDE_TOUR',
     setupStepRoutes: { ...COMMON_SETUP_ROUTES, SERVICE: '/tenant/trips' },
-    setupInventory: { table: 'trips', filter: { column: 'status', value: 'PUBLISHED' } },
+    setupInventory: {
+      table: 'trips',
+      filter: { column: 'status', value: 'PUBLISHED' },
+      requireActiveChild: { table: 'trip_plans', fk: 'trip_id', filter: { column: 'active', value: true } },
+    },
     richMenuCells: [
       { label: '所有行程', text: '行程' },
       { label: '近期團次', text: '團次' },

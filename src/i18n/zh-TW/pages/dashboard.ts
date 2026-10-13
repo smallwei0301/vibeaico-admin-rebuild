@@ -19,6 +19,10 @@ export const dashboardPage = {
     /** 原站步驟標題由 JS 動態產生，spec 未收錄，依按鈕語意重建 */
     step1Title: '確認服務項目與價格',
     step1Action: '去修改',
+    /** 模式專屬第 1 步標題（沒列的沿用 step1Title） */
+    step1TitleByMode: {
+      GUIDE: '確認行程與方案',
+    } as Partial<Record<BusinessType, string>>,
     step2Title: '複製預約網址，分享給顧客',
     step2Locked: '先完成第 1 步',
     step2Action: '複製',
@@ -43,7 +47,7 @@ export const dashboardPage = {
     },
     /** 模式專屬步驟文案（沒列的沿用 steps） */
     stepsByMode: {
-      GUIDE: { SERVICE: '發布第一個行程' },
+      GUIDE: { SERVICE: '發布第一個含方案的行程' },
     } as Partial<Record<BusinessType, Partial<Record<SetupStepKey, string>>>>,
     done: '已完成',
     todo: '尚未完成',

@@ -557,8 +557,8 @@ export default function DashboardPage() {
             <ol className="flex flex-col gap-3">
               <li className="flex flex-wrap items-center gap-3 rounded-lg bg-primary-deep p-3">
                 <Badge tone="neutral">{t.focus.step1Badge}</Badge>
-                <span className="flex-1 text-base font-semibold">{t.focus.step1Title}</span>
-                <Link href="/tenant/services" className="btn btn-secondary text-primary">
+                <span className="flex-1 text-base font-semibold">{t.focus.step1TitleByMode[businessType] ?? t.focus.step1Title}</span>
+                <Link href={getSetupStepHref('SERVICE', businessType) ?? '/tenant/services'} className="btn btn-secondary text-primary">
                   {t.focus.step1Action}
                 </Link>
               </li>
