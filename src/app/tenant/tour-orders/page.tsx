@@ -73,10 +73,14 @@ const MOCK_PAYMENT_METHODS = [
 export default function TourOrdersPage() {
   const toast = useToast();
   const copyLine = (lineId: string) => {
-    navigator.clipboard.writeText(lineId).then(
-      () => toast.show(t.messages.lineCopied),
-      () => toast.show(t.messages.lineCopyFailed, 'danger'),
-    );
+    try {
+      navigator.clipboard.writeText(lineId).then(
+        () => toast.show(t.messages.lineCopied),
+        () => toast.show(t.messages.lineCopyFailed, 'danger'),
+      );
+    } catch {
+      toast.show(t.messages.lineCopyFailed, 'danger');
+    }
   };
   const businessType = useBusinessType();
 

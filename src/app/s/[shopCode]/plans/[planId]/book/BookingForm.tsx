@@ -83,7 +83,7 @@ export function BookingForm({
         }),
       });
       const contact = pickRedirectContact(contactPhone, contactLine, contactEmail);
-      router.push(
+      router.replace(
         `/s/${shopCode}/requests/${res.orderId}?contact=${encodeURIComponent(contact)}&created=1`,
       );
     } catch (err) {

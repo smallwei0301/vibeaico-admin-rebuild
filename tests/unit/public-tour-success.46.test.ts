@@ -14,6 +14,15 @@ describe('#46 pickRedirectContact', () => {
   it('電話只有空白、LINE 有填 → 取 LINE（不得回空字串造成 404）', () => {
     expect(pickRedirectContact('   ', ' my-line ', '')).toBe('my-line');
   });
+  it('round-trip：空白電話＋LINE 的輸出，與 loader 的 trim＋小寫比對一致', () => {
+    // 鏡像 loadPublicTourRequestStatus 的比對（src/server/public-tour-request.ts）
+    const stored = { phone: '', line: 'My-Line', email: undefined as string | undefined };
+    const candidates = [stored.phone, stored.line, stored.email]
+      .filter((v): v is string => typeof v === 'string' && v.length > 0)
+      .map((v) => v.trim().toLowerCase());
+    const picked = pickRedirectContact('   ', ' My-Line ', '');
+    expect(candidates.includes(decodeURIComponent(encodeURIComponent(picked)).trim().toLowerCase())).toBe(true);
+  });
   it('優先順序：電話 > LINE > Email；全空回空字串', () => {
     expect(pickRedirectContact(' 0912 ', 'l', 'e@x.com')).toBe('0912');
     expect(pickRedirectContact('', '', ' e@x.com ')).toBe('e@x.com');
@@ -92,5 +101,15 @@ describe('#46 成功橫幅', () => {
     expect(html).toContain(t.status.createdBookingTitle);
     expect(html).not.toContain(t.status.createdRequestTitle);
     expect(t.status.createdBookingDescription).not.toMatch(/已付款|付款成功/);
+  });
+  it('created=1 但訂單已取消 → 不顯示橫幅', async () => {
+    const html = await render({ status: 'CANCELLED' }, '1');
+    expect(html).not.toContain(t.status.createdRequestTitle);
+    expect(html).not.toContain(t.status.createdBookingTitle);
+  });
+  it('created=1 但 REQUEST 已被接受（CONFIRMED）→ 不顯示橫幅', async () => {
+    const html = await render({ status: 'CONFIRMED', salesMode: 'REQUEST' }, '1');
+    expect(html).not.toContain(t.status.createdRequestTitle);
+    expect(html).not.toContain(t.status.createdBookingTitle);
   });
 });
