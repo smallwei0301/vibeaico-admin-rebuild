@@ -156,3 +156,28 @@ describe('#934 startBefore（未處理）', () => {
     expect(src).toMatch(/setKeyword\(e\.target\.value\); setPage\(0\);/);
   });
 });
+
+describe('#934 穩定排序（id 次排序鍵）', () => {
+  it('GET 依序 .order(start_at desc) 再 .order(id desc)，且在 range 之前', async () => {
+    state.sb = makeSb();
+    await get('page=1&size=20');
+    const c: any[][] = state.sb.calls;
+    const orders = c.filter((x) => x[0] === 'order');
+    expect(orders).toEqual([
+      ['order', 'start_at', { ascending: false }],
+      ['order', 'id', { ascending: false }],
+    ]);
+    const idx = (n: string) => c.findIndex((x) => x[0] === n);
+    expect(c.findIndex((x) => x[0] === 'order' && x[1] === 'id')).toBeLessThan(idx('range'));
+  });
+  it('mock 分支固定順序下，相鄰兩頁不重複不遺漏（含同時段資料）', async () => {
+    const size = 3;
+    const total = (await listBookings({ page: 0, size: 1000 })).content.map((b) => b.id);
+    const seen: string[] = [];
+    for (let p = 0; p * size < total.length; p++) {
+      seen.push(...(await listBookings({ page: p, size })).content.map((b) => b.id));
+    }
+    expect(seen).toEqual(total);
+    expect(new Set(seen).size).toBe(seen.length);
+  });
+});

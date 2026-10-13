@@ -57,6 +57,8 @@ export const GET = handle(async (req) => {
     .select('*', { count: 'exact' })
     .eq('tenant_id', t.tenantId)
     .order('start_at', { ascending: false })
+    // 次排序鍵：同時段預約在頁界時排序需穩定，否則 offset 分頁可能重複或漏筆。
+    .order('id', { ascending: false })
     .range(from, to);
   if (q.bookingId) query = query.eq('id', q.bookingId);
   if (q.status) query = query.eq('status', q.status);
