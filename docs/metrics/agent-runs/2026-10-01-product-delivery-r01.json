@@ -8251,7 +8251,10 @@
     "2026-10-13 非計分紀錄（issue/908）：builder commit d0dd3f0e（cherry-pick 為 cd1c356a，首頁流失預警連結改 atRisk=true、今日預約以當日範圍查詢、未處理預約查詢帶時間上限），Sonnet builder 16:52:38Z–16:56:50Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/908 follow-up）：builder commit 95b427d5（17:21:32Z–17:26:16Z，修正 Codex 三項 P2：店家時區日界線、未處理預約伺服器端狀態篩選、顧客頁過期請求保護），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/909）：builder commit d510d573（cherry-pick 為 0244ef76，旅客預約表單備註過長改中文提示並限制字數、名額被搶或團次失效時清除選擇並重新讀取團次），Sonnet builder 17:09:54Z–17:15:27Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
-    "2026-10-13 非計分紀錄（issue/911）：builder commit 539e29f5（cherry-pick 為 322d5053，LINE 開通精靈缺 Secret／Token 時中文提示、verify／test 連線錯誤改中文可行動文案、FAQ 不再宣稱儲存會自動設定 Webhook），Sonnet builder 17:18:44Z–17:24:43Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
+    "2026-10-13 非計分紀錄（issue/911）：builder commit 539e29f5（cherry-pick 為 322d5053，LINE 開通精靈缺 Secret／Token 時中文提示、verify／test 連線錯誤改中文可行動文案、FAQ 不再宣稱儲存會自動設定 Webhook），Sonnet builder 17:18:44Z–17:24:43Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/911 follow-up）：builder commits 2b81e5d0（17:53:01Z–17:57:09Z，Webhook 測試失敗依網址檢查結果分流）、759181fd（18:07:19Z–18:11:24Z，Codex 四項 P2：Token 401/403、配對 429/5xx、Webhook 測試依 LINE 原因分類、表單說明），Sonnet builder，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/914）：builder commit cbb7d5d4（cherry-pick 為 52720fe9，DataTable 支援 sticky right 欄、預約管理與團體訂單操作欄固定右側並可換行，以 390px Playwright 驗證按鈕可見可點），Sonnet builder 17:44:49Z–17:50:12Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 Luna 即時紀錄（issue/914）：本筆為 notes 補記 commit，對應 modelUsage 不新增 scout 列以免重複計數。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
