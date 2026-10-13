@@ -125,11 +125,9 @@ export const publicTourRequestPage = {
       departsOn: '希望出發日期',
       party: '人數',
       submittedAt: '申請時間',
-      depositPaid: '已付訂金',
       refunded: '已退金額',
     },
     /** #917：有實際金額時不再要求旅客向店家確認金額（金額已格式化為字串）。 */
-    paymentPartialWithAmount: (paid: string) => `已收到部分款項，已付 ${paid}，尚未全額付清；待付款期限請向店家確認。`,
     paymentRefundedWithAmount: (refunded: string) => `此訂單已退款，退款金額 ${refunded}。`,
     paymentRefundPendingWithAmount: (refunded: string) => `退款仍在處理中，已退 ${refunded}；其餘退款進度請向店家確認。`,
     partyUnit: (n: number) => `${n} 人`,

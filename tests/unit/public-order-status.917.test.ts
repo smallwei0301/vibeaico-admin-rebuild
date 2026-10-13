@@ -32,4 +32,8 @@ describe('#917 旅客訂單狀態頁格式化', () => {
     expect(page).not.toMatch(/<dd>\{order\.departsOn\}/);
     expect(page).not.toContain('formatDateTime');
   });
+  it('不以方案定金（depositAmount）冒充實付金額；僅顯示退款紀錄的已退金額', () => {
+    expect(page).not.toContain('depositAmount');
+    expect(page).toContain('refundedAmount');
+  });
 });

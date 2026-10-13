@@ -60,14 +60,12 @@ describe('#46 旅客付款狀態顯示', () => {
     const html = await render({ paymentStatus });
     expect(html).toContain(t.status.paymentTitle);
     expect(html).toContain(t.status.paymentState[paymentStatus]);
-    // #917：PARTIAL 且有已收定金時改顯示帶金額的說明，其餘沿用原說明。
-    if (paymentStatus === 'PARTIAL') expect(html).toContain(t.status.paymentPartialWithAmount(utils.formatCurrency(500)));
-    else expect(html).toContain(t.status.paymentDescription[paymentStatus]);
+    expect(html).toContain(t.status.paymentDescription[paymentStatus]);
     expect(html.includes('前完成付款')).toBe(paymentStatus === 'UNPAID');
     expect(html.includes('逾期名額將被釋放')).toBe(paymentStatus === 'UNPAID');
     if (paymentStatus === 'PARTIAL') {
       expect(html).not.toContain(t.status.paymentState.PAID);
-      expect(html).toContain(t.status.fields.depositPaid); // #917：明確標示為「已付訂金」，不當作全額已付。
+      expect(html).not.toContain('1,500'); // depositAmount is not authoritative paidAmount.
     }
     if (paymentStatus === 'REFUND_PENDING') expect(html).not.toContain(t.status.paymentState.REFUNDED);
   });

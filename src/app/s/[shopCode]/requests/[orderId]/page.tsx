@@ -35,9 +35,6 @@ function showInstant(iso: string): string {
 
 function paymentDescriptionFor(order: TourOrder): string {
   const refunded = order.refundedAmount ?? 0;
-  if (order.paymentStatus === 'PARTIAL' && order.depositAmount > 0) {
-    return t.status.paymentPartialWithAmount(formatCurrency(order.depositAmount));
-  }
   if (order.paymentStatus === 'REFUNDED' && refunded > 0) {
     return t.status.paymentRefundedWithAmount(formatCurrency(refunded));
   }
@@ -168,20 +165,10 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
           <div className="mt-1 text-sm font-medium text-dark">
             {formatCurrency(order.totalAmount)}
           </div>
-          {order.depositAmount > 0 || (order.refundedAmount ?? 0) > 0 ? (
+          {(order.refundedAmount ?? 0) > 0 ? (
             <dl className="grid grid-cols-[7rem_1fr] gap-y-1 text-sm">
-              {order.depositAmount > 0 ? (
-                <>
-                  <dt className="text-secondary">{t.status.fields.depositPaid}</dt>
-                  <dd>{formatCurrency(order.depositAmount)}</dd>
-                </>
-              ) : null}
-              {(order.refundedAmount ?? 0) > 0 ? (
-                <>
-                  <dt className="text-secondary">{t.status.fields.refunded}</dt>
-                  <dd>{formatCurrency(order.refundedAmount ?? 0)}</dd>
-                </>
-              ) : null}
+              <dt className="text-secondary">{t.status.fields.refunded}</dt>
+              <dd>{formatCurrency(order.refundedAmount ?? 0)}</dd>
             </dl>
           ) : null}
         </div>
