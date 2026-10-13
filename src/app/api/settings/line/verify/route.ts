@@ -8,6 +8,11 @@ import {
   linePostRaw,
   lineOAuthClientCredentialsRaw,
 } from '@/server/line';
+import {
+  tokenFailMessage,
+  idSecretPairFailMessage,
+  webhookTestFailMessage,
+} from '@/server/line-check-messages';
 
 /**
  * POST /api/settings/line/verify — 六項可查證檢查 + 一項人工確認提示。
@@ -122,9 +127,13 @@ export const POST = handle(async () => {
       : mkCheck(
           'TOKEN',
           'FAIL',
-          botInfo ? (botInfo.body?.message ?? `Token 驗證失敗（${botInfo.status}）`) : '無法連線至 LINE 伺服器',
+          botInfo ? tokenFailMessage(botInfo.status) : '無法連線至 LINE 伺服器',
         ),
   );
+
+  if (botInfo && !botInfo.ok) {
+    console.warn('[line/verify] TOKEN check failed', { status: botInfo.status, lineMessage: botInfo.body?.message });
+  }
 
   if (!botInfo?.ok) {
     checks.push(mkCheck('BOT_MODE', 'FAIL', '無法讀取回應方式設定（Access Token 驗證未通過）'));
@@ -149,13 +158,14 @@ export const POST = handle(async () => {
   } else {
     try {
       const pair = await lineOAuthClientCredentialsRaw(channelId, secret);
+      if (!pair.ok) console.warn('[line/verify] ID_SECRET_PAIR failed', { status: pair.status, lineError: pair.body?.error });
       checks.push(
         pair.ok
           ? mkCheck('ID_SECRET_PAIR', 'PASS', 'Channel ID 與 Secret 配對正確（webhook 簽章可通過）')
           : mkCheck(
               'ID_SECRET_PAIR',
               'FAIL',
-              `Channel ID 與 Secret 配對失敗（${pair.body?.error ?? pair.status}），請確認兩者是否來自同一個 Channel`,
+              idSecretPairFailMessage(pair.status),
             ),
       );
     } catch {
@@ -188,6 +198,9 @@ export const POST = handle(async () => {
   try {
     const test = await linePostRaw(token, '/v2/bot/channel/webhook/test');
     const passed = test.ok && test.body?.success === true;
+    if (!passed) {
+      console.warn('[line/verify] WEBHOOK_TEST failed', { status: test.status, reason: test.body?.reason, detail: test.body?.detail });
+    }
     checks.push(
       passed
         ? mkCheck('WEBHOOK_TEST', 'PASS', 'Webhook 實際測試通過（LINE → 本系統 200 OK）')
@@ -195,7 +208,9 @@ export const POST = handle(async () => {
             'WEBHOOK_TEST',
             'FAIL',
             test.ok
-              ? `Webhook 測試未通過（LINE 回報：${test.body?.reason ?? test.body?.detail ?? '未知原因'}）`
+              ? webhookPassed
+                ? webhookTestFailMessage(test.body)
+                : 'LINE 無法連到 Webhook，請先按「一鍵幫我設定並開啟 Webhook」（或設定頁的「自動修正網址」）後再檢查'
               : 'Webhook 測試請求失敗',
           ),
     );

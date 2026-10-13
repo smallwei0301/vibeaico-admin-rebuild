@@ -2,6 +2,7 @@ import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { decryptSecret } from '@/server/crypto';
 import { lineGetRaw } from '@/server/line';
+import { tokenFailMessage } from '@/server/line-check-messages';
 
 /**
  * POST /api/settings/line/test — 解密 token → GET /v2/bot/info（06 分冊 §7 TOKEN 項）。
@@ -24,7 +25,11 @@ export const POST = handle(async () => {
   try {
     const res = await lineGetRaw(token, '/v2/bot/info');
     if (res.ok) return ok({ ok: true, message: '連線正常' });
-    return ok({ ok: false, message: res.body?.message ?? `LINE API 錯誤（${res.status}）` });
+    console.warn('[line/test] bot/info failed', { status: res.status, lineMessage: res.body?.message });
+    return ok({
+      ok: false,
+      message: tokenFailMessage(res.status),
+    });
   } catch {
     return ok({ ok: false, message: '無法連線至 LINE 伺服器，請稍後再試' });
   }

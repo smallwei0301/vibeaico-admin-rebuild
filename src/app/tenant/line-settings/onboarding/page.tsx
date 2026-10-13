@@ -213,6 +213,19 @@ export default function LineSetupWizardPage() {
       toast.show(t.credentials.channelIdRequired, 'warning');
       return;
     }
+    const hasSecret = (secretEditing && !!secretInput.trim()) || !!settings?.line.channelSecret;
+    const hasToken = (tokenEditing && !!tokenInput.trim()) || !!settings?.line.channelAccessToken;
+    if (!hasSecret || !hasToken) {
+      toast.show(
+        !hasSecret && !hasToken
+          ? t.credentials.secretAndTokenRequired
+          : !hasSecret
+            ? t.credentials.secretRequired
+            : t.credentials.tokenRequired,
+        'warning',
+      );
+      return;
+    }
     setSavingCredentials(true);
     try {
       await saveLineSettings({

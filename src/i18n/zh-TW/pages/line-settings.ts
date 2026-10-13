@@ -93,7 +93,7 @@ export const lineSettingsPage = {
         title: '步驟五：儲存並啟用',
         lines: [
           '1. 回到 VibeAI 後台 LINE 設定，把剛剛複製的 Channel ID、Channel Secret、Channel Access Token 貼到對應欄位',
-          '2. 按「 儲存設定 」，Webhook 網址會自動帶入',
+          '2. 按「 儲存設定 」保存憑證，再按「完整檢查」；若「Webhook 網址」項目失敗，請按「自動修正網址」',
           '3. 回 LINE 官方帳號管理後台 → 設定 → 回應設定 → 改成「 手動聊天 」',
         ],
         note: '',
@@ -112,7 +112,7 @@ export const lineSettingsPage = {
 
     verifyWebhook: {
       title: '驗證 Webhook：',
-      body: '儲存設定後，系統會自動將 Webhook URL 設定到 LINE 並發送驗證請求。LINE 會向此 URL 發送測試訊號，收到 200 回應即代表驗證成功。如果驗證失敗，請回到本系統重新點「儲存設定」再試一次。',
+      body: '「儲存設定」只保存憑證。請按「完整檢查」讓系統請 LINE 向 Webhook URL 發送測試訊號，收到 200 回應即代表驗證成功；若「Webhook 網址」項目失敗，請按「自動修正網址」後再檢查；若網址項目已通過但測試失敗，請確認 Channel Secret 與 Channel ID 來自同一個 Channel，重新貼上並儲存後再檢查。',
     },
 
     consoleLink: '前往 LINE Developers Console',
@@ -161,7 +161,7 @@ export const lineSettingsPage = {
 
     webhookUrl: 'Webhook URL',
     webhookCopy: '複製',
-    webhookHelp: 'Webhook 不用自己填，存好金鑰後 VibeAI 會自動設定。',
+    webhookHelp: 'Webhook 不用自己填。「儲存設定」只保存憑證，存好後請按「完整檢查」；若「Webhook 網址」項目失敗，再按「自動修正網址」。',
     webhookEmpty: 'Webhook URL 尚未產生',
 
     lineBasicId: 'LINE 官方帳號基本 ID',
@@ -398,15 +398,15 @@ export const lineSettingsPage = {
     faq: [
       {
         q: 'Q: 連線失敗怎麼辦？',
-        a: '請確認 Channel ID、Secret 和 Token 是否正確。儲存後系統會自動設定 Webhook URL 並測試連線。',
+        a: '請確認 Channel ID、Secret 和 Token 是否正確。「儲存設定」只會保存憑證，不會自動設定 Webhook 或測試連線；存好後請按「完整檢查」，或使用 LINE 開通精靈的檢查步驟。',
       },
       {
         q: 'Q: Bot 不回應訊息？',
-        a: '1. 請先重新點一次「儲存設定」觸發自動連線 2. 到 LINE 官方帳號管理後台 →「設定」→「回應設定」→ 確認為「手動聊天」 3. 確認「自動回應訊息」已關閉',
+        a: '1. 請先按「完整檢查」，若 Webhook 項目失敗，再按「自動修正網址」（精靈內為「一鍵幫我設定並開啟 Webhook」）2. 到 LINE 官方帳號管理後台 →「設定」→「回應設定」→ 確認為「手動聊天」 3. 確認「自動回應訊息」已關閉',
       },
       {
         q: 'Q: Webhook 驗證是什麼？',
-        a: '儲存設定後，系統會自動將 Webhook URL 設定到 LINE 並發送驗證請求。LINE 會向此 URL 發送測試訊號，收到 200 回應即代表驗證成功。如果驗證失敗，請重新點「儲存設定」再試一次。',
+        a: '「儲存設定」只保存憑證。請按「完整檢查」讓系統請 LINE 向 Webhook URL 發送測試訊號，收到 200 回應即代表驗證成功；若「Webhook 網址」項目失敗，請按「自動修正網址」（精靈內為「一鍵幫我設定並開啟 Webhook」）後再檢查；若網址項目已通過但測試失敗，最常見原因是 Channel Secret 不正確，請確認 Secret 與 Channel ID 來自同一個 Channel，重新貼上並儲存後再按「完整檢查」。',
       },
       {
         q: 'Q: 按選單沒反應？',
