@@ -810,7 +810,7 @@ async function replyTrips(ctx: BuiltinCtx): Promise<boolean> {
  *    一個店家還沒打算開賣的團。先過濾再 limit，才不會被草稿團次吃掉名額。
  * ⚠️ TOUR_MODULE 閘門同樣在**任何 tour-domain 查詢之前**，理由見 `replyTrips()`。
  */
-async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
+export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
   if (businessTypeOf(ctx.tenant) !== 'GUIDE') return false;
   if (!(await isFeatureActive(ctx.tenant.id, 'TOUR_MODULE'))) return false;
 
@@ -833,7 +833,7 @@ async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
 
   const { data: departures, error } = await ctx.admin
     .from('trip_departures')
-    .select('trip_id, plan_id, departs_on, start_time, capacity, seats_booked')
+    .select('id, trip_id, plan_id, departs_on, start_time, capacity, seats_booked')
     .eq('tenant_id', ctx.tenant.id)
     .eq('status', 'OPEN')
     .in('trip_id', [...titleById.keys()])
@@ -851,14 +851,18 @@ async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
   // 不讓它擋掉整份團次清單。
   const planIds = [...new Set(departures.map((d: any) => d.plan_id).filter(Boolean))];
   const planNameById = new Map<string, string>();
+  const fixedPlanIds = new Set<string>();
   if (planIds.length) {
     const { data: plans, error: planError } = await ctx.admin
       .from('trip_plans')
-      .select('id, name')
+      .select('id, name, sales_mode, active')
       .eq('tenant_id', ctx.tenant.id)
       .in('id', planIds);
     if (planError) console.error('[line] replyDepartures 查詢 trip_plans 失敗', planError);
-    for (const p of (plans ?? []) as any[]) planNameById.set(p.id, p.name);
+    for (const p of (plans ?? []) as any[]) {
+      planNameById.set(p.id, p.name);
+      if (p.active === true && p.sales_mode === 'FIXED_DEPARTURE') fixedPlanIds.add(p.id);
+    }
   }
 
   const lines = departures.map((d: any) => {
@@ -868,7 +872,11 @@ async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
     const planName = planNameById.get(d.plan_id);
     const plan = planName ? `（${planName}）` : '';
     const seats = left > 0 ? MSG.departureSeatsLeft(left) : MSG.departureFull;
-    return `・${d.departs_on}${time} ${titleById.get(d.trip_id) ?? ''}${plan}　${seats}`;
+    const line = `・${d.departs_on}${time} ${titleById.get(d.trip_id) ?? ''}${plan}　${seats}`;
+    // 直達預約：只給啟用中的 FIXED_DEPARTURE 方案；其他方案維持無連結。
+    if (!d.id || !fixedPlanIds.has(d.plan_id)) return line;
+    const deepLink = `${buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code)}/plans/${encodeURIComponent(d.plan_id)}/book?departure=${encodeURIComponent(d.id)}`;
+    return `${line}\n${deepLink}`;
   });
   const shopUrl = buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code);
   return replyText(ctx, `${MSG.departureTitle}\n${lines.join('\n')}\n\n${shopUrl}`);

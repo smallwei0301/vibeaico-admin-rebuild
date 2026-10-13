@@ -66,6 +66,8 @@ export type PublicShop = {
 
 export type PublicDeparture = {
   id: string;
+  /** 所屬方案 id；空字串＝團次未綁方案（不產生直達預約連結）。 */
+  planId: string;
   departsOn: string;
   /** 'HH:mm'；空字串＝店家沒指定出發時間 */
   startTime: string;
@@ -557,7 +559,7 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
           .order('sort_order', { ascending: true })
           .order('id', { ascending: true }),
         admin.from('trip_departures')
-          .select('id, trip_id, departs_on, start_time, capacity, seats_booked')
+          .select('id, trip_id, plan_id, departs_on, start_time, capacity, seats_booked')
           .eq('tenant_id', tenantId).in('trip_id', tripIds)
           // 只有還在賣的團次：OPEN。CLOSED（停售）與 CANCELLED（取消）都不列。
           .eq('status', 'OPEN')
@@ -638,6 +640,7 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
     if (list.length >= MAX_DEPARTURES_PER_TRIP) continue;
     list.push({
       id: row.id as string,
+      planId: (row.plan_id as string | null) ?? '',
       departsOn: row.departs_on as string,
       startTime: row.start_time == null ? '' : String(row.start_time).slice(0, 5),
       capacity,

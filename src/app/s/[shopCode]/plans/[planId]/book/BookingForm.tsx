@@ -36,11 +36,13 @@ function messageForError(e: unknown): string {
 }
 
 export function BookingForm({
-  shopCode, plan,
-}: { shopCode: string; plan: PublicBookingPlan }) {
+  shopCode, plan, initialDepartureId = '',
+}: { shopCode: string; plan: PublicBookingPlan; initialDepartureId?: string }) {
   const router = useRouter();
 
-  const [departureId, setDepartureId] = React.useState('');
+  const [departureId, setDepartureId] = React.useState(
+    plan.departures.some((d) => d.id === initialDepartureId) ? initialDepartureId : '',
+  );
   const [partySize, setPartySize] = React.useState(plan.minParty);
   const [contactName, setContactName] = React.useState('');
   const [contactPhone, setContactPhone] = React.useState('');

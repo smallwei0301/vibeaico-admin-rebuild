@@ -14,6 +14,9 @@ import { BookingForm } from './BookingForm';
 type Params = {
   params: Promise<{ shopCode: string; planId: string }>;
 };
+type PageProps = Params & {
+  searchParams: Promise<{ departure?: string | string[] }>;
+};
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { shopCode, planId } = await params;
@@ -33,14 +36,19 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   }
 }
 
-export default async function PublicTourBookingPage({ params }: Params) {
+export default async function PublicTourBookingPage({ params, searchParams }: PageProps) {
   const { shopCode, planId } = await params;
+  const { departure } = await searchParams;
   const plan = await loadPublicBookingPlan(shopCode, planId);
   if (!plan) notFound();
 
+  // 深連結預選團次：只接受 plan.departures（已驗證可預約清單）內的 id，其餘靜默忽略。
+  const requested = Array.isArray(departure) ? departure[0] : departure;
+  const initialDepartureId = requested && plan.departures.some((d) => d.id === requested) ? requested : '';
+
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-6">
-      <BookingForm shopCode={shopCode} plan={plan} />
+      <BookingForm shopCode={shopCode} plan={plan} initialDepartureId={initialDepartureId} />
     </main>
   );
 }

@@ -13,6 +13,8 @@ import { resolve } from 'node:path';
  *    （未來主版本會變成錯誤），.mts 明確以 ESM 載入，故此處用 import.meta.dirname。
  */
 export default defineConfig({
+  // 頁面元件（.tsx，tsconfig jsx=preserve）要能在單元測試中直接 import
+  oxc: { jsx: { runtime: 'automatic' } },
   resolve: {
     alias: { '@': resolve(import.meta.dirname, 'src') },
   },

@@ -237,15 +237,36 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
                       <p className="text-2xs text-secondary">{t.trips.departuresEmpty}</p>
                     ) : (
                       <ul className="flex flex-wrap gap-2">
-                        {trip.departures.map((departure) => (
-                          <li key={departure.id} className="badge badge-primary">
-                            {formatDepartureDate(departure.departsOn)}
-                            {' '}
-                            {departure.startTime || t.trips.noStartTime}
-                            {' · '}
-                            {t.trips.seatsLeft(departure.capacity - departure.seatsBooked)}
-                          </li>
-                        ))}
+                        {trip.departures.map((departure) => {
+                          const label = (
+                            <>
+                              {formatDepartureDate(departure.departsOn)}
+                              {' '}
+                              {departure.startTime || t.trips.noStartTime}
+                              {' · '}
+                              {t.trips.seatsLeft(departure.capacity - departure.seatsBooked)}
+                            </>
+                          );
+                          // 直達預約：只有 bookingCta === 'fixed' 的 FIXED_DEPARTURE 方案才連到預約頁並預選此團次。
+                          const fixedPlan = departure.planId
+                            ? trip.plans.find((p) => p.id === departure.planId && p.bookingCta === 'fixed')
+                            : undefined;
+                          return (
+                            <li key={departure.id} className={fixedPlan ? undefined : 'badge badge-primary'}>
+                              {fixedPlan ? (
+                                <Link
+                                  href={`/s/${shopCode}/plans/${encodeURIComponent(fixedPlan.id)}/book?departure=${encodeURIComponent(departure.id)}`}
+                                  className="badge badge-primary inline-flex min-h-11 items-center underline underline-offset-4"
+                                  aria-label={t.trips.departureBookAria(
+                                    formatDepartureDate(departure.departsOn),
+                                  )}
+                                >
+                                  {label}
+                                </Link>
+                              ) : label}
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
                   </div>
