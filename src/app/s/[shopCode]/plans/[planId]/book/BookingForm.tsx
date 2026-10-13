@@ -8,7 +8,8 @@ import { ApiError, request } from '@/lib/api';
 import { publicTourBookingPage as t, NOTE_MAX_LENGTH } from '@/i18n/zh-TW/pages/public-tour-booking';
 import { formatCurrency } from '@/lib/utils';
 import { priceChangedQuoteFromError, isPriceChangedError, type PriceChangedQuote } from '@/lib/public-price-change';
-import { canSubmitBooking, isDepartureBookableOnPage, resolveBookingTotal, seasonalHeadlineKind } from '@/lib/public-booking-price';
+import { candidateIsBookable } from '@/lib/public-departure-candidates';
+import { canSubmitBooking, effectiveMaxParty, isDepartureBookableOnPage, partyExceedsSeats, resolveBookingTotal, seasonalHeadlineKind } from '@/lib/public-booking-price';
 import type { PublicBookingPlan } from '@/server/public-tour-booking';
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
@@ -60,14 +61,18 @@ export function BookingForm({
   // #749：頁面金額與實際金額不符時，後端回的現價；旅客確認後以此金額再送出。改團次或人數即作廢。
   const [confirmedQuote, setConfirmedQuote] = React.useState<PriceChangedQuote | null>(null);
 
-  const partySizeInvalid = !Number.isInteger(partySize) || partySize < plan.minParty || partySize > plan.maxParty;
   const hasContact = !!(contactPhone.trim() || contactLine.trim() || contactEmail.trim());
   // 實際金額摘要只使用 resolveBookingTotal 的結果（與 create_tour_order 同順序：季節單價 → PER_GROUP 一口價／PER_PERSON × 人數）。
   const selectedDeparture = plan.departures.find((d) => d.id === departureId);
+  // #919：人數上限＝min(方案最大人數, 所選團次剩餘名額)；超過團次名額是「這個團次不夠」，不是「被搶」。
+  const selectedSeatsLeft = selectedDeparture?.seatsLeft;
+  const maxPartyAllowed = effectiveMaxParty(plan.maxParty, selectedSeatsLeft);
+  const exceedsSeats = partyExceedsSeats(partySize, selectedSeatsLeft);
+  const partySizeInvalid = !Number.isInteger(partySize) || partySize < plan.minParty || partySize > plan.maxParty || exceedsSeats;
   const bookingTotal = resolveBookingTotal(selectedDeparture, plan, partySize);
   const canSubmit = canSubmitBooking({
     departureId, contactName, hasContact, partySize, minParty: plan.minParty, maxParty: plan.maxParty, submitting,
-    seasonalPricing: plan.seasonalPricing, bookingTotal,
+    seasonalPricing: plan.seasonalPricing, bookingTotal, seatsLeft: selectedSeatsLeft,
   });
 
   // 送出時鎖定的金額：旅客已確認新金額就用它，否則用頁面目前顯示的金額（算不出時不帶，維持舊行為）。
@@ -160,8 +165,9 @@ export function BookingForm({
               >
                 <option value="">{t.form.departurePlaceholder}</option>
                 {plan.departures.map((d) => (
-                  <option key={d.id} value={d.id}>
+                  <option key={d.id} value={d.id} disabled={!candidateIsBookable(d.seatsLeft, plan.minParty)}>
                     {t.form.departureOption(formatDepartureDate(d.departsOn), d.startTime, d.seatsLeft)}
+                    {!candidateIsBookable(d.seatsLeft, plan.minParty) ? t.form.departureInsufficientSuffix : ''}
                     {d.unitPrice !== undefined ? t.form.departurePrice(formatCurrency(d.unitPrice), t.form.planPriceUnit[plan.priceType]) : ''}
                   </option>
                 ))}
@@ -176,7 +182,7 @@ export function BookingForm({
               type="number"
               className="form-control"
               min={plan.minParty}
-              max={plan.maxParty}
+              max={maxPartyAllowed}
               value={Number.isNaN(partySize) ? '' : partySize}
               onChange={(e) => { setPartySize(e.target.value === '' ? NaN : Number(e.target.value)); setConfirmedQuote(null); }}
               aria-invalid={partySizeInvalid || undefined}
@@ -185,7 +191,9 @@ export function BookingForm({
             />
             {partySizeInvalid ? (
               <p id="partySize-error" className="text-sm text-danger">
-                {t.errors.partySizeOutOfRange(plan.minParty, plan.maxParty)}
+                {exceedsSeats && selectedSeatsLeft !== undefined && partySize <= plan.maxParty
+                  ? t.errors.partySizeExceedsSeats(selectedSeatsLeft)
+                  : t.errors.partySizeOutOfRange(plan.minParty, plan.maxParty)}
               </p>
             ) : null}
           </div>

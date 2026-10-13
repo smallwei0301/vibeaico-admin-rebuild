@@ -59,6 +59,18 @@ export function isDepartureBookableOnPage(
 }
 
 /**
+ * #919：人數的有效上限＝min(方案最大人數, 所選團次剩餘名額)。尚未選團次（seatsLeft 未提供）時就是方案最大人數。
+ */
+export function effectiveMaxParty(maxParty: number, seatsLeft?: number): number {
+  return seatsLeft === undefined ? maxParty : Math.min(maxParty, seatsLeft);
+}
+
+/** #919：人數是否超過所選團次的剩餘名額（只在人數本身是合法整數時判斷；未選團次不算超過）。 */
+export function partyExceedsSeats(partySize: number, seatsLeft?: number): boolean {
+  return seatsLeft !== undefined && Number.isInteger(partySize) && partySize > seatsLeft;
+}
+
+/**
  * 預約／申請表單能否送出。原本的必填條件不變；方案有季節定價（seasonalPricing）時，另外要求目前選的團次算得出
  * 實際金額（bookingTotal 不為 null，例如季節資料不完整或查詢失敗就算不出）——避免旅客在看不到正確金額時送出。
  * 沒有季節定價時，基本價一定算得出來，維持原條件。
@@ -73,9 +85,12 @@ export function canSubmitBooking(input: {
   submitting: boolean;
   seasonalPricing?: boolean;
   bookingTotal: unknown | null;
+  /** #919：所選團次的剩餘名額。有提供時人數不得超過它；不提供則行為與先前完全相同。 */
+  seatsLeft?: number;
 }): boolean {
+  const withinSeats = input.seatsLeft === undefined || input.partySize <= input.seatsLeft;
   const base = !!input.departureId && !!input.contactName.trim() && input.hasContact
-    && input.partySize >= input.minParty && input.partySize <= input.maxParty && !input.submitting;
+    && input.partySize >= input.minParty && input.partySize <= input.maxParty && withinSeats && !input.submitting;
   if (input.seasonalPricing) return base && input.bookingTotal !== null;
   return base;
 }
