@@ -132,9 +132,9 @@ function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
     case 'BOOKING_REQUEST':
       return (
         <>
-          <div className="truncate text-base font-semibold text-dark">{item.customerName}</div>
-          <div className="text-sm text-secondary">{item.serviceName}</div>
-          <div className="mt-1 text-xs text-secondary">
+          <div className="break-words text-lg font-semibold text-dark">{item.customerName}</div>
+          <div className="text-md text-secondary">{item.serviceName}</div>
+          <div className="mt-1 text-md text-secondary">
             {t.actionInbox.bookingAt}：{formatDate(item.dueAt)} {formatTime(item.dueAt)}
           </div>
         </>
@@ -142,9 +142,9 @@ function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
     case 'BOOKING_PAYMENT':
       return (
         <>
-          <div className="truncate text-base font-semibold text-dark">{item.customerName}</div>
-          <div className="text-sm text-secondary">{item.serviceName}</div>
-          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-secondary">
+          <div className="break-words text-lg font-semibold text-dark">{item.customerName}</div>
+          <div className="text-md text-secondary">{item.serviceName}</div>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-md text-secondary">
             <span>{t.actionInbox.paymentAmount(formatCurrency(item.amount))}</span>
             <span>{t.actionInbox.bookingAt}：{formatDate(item.dueAt)} {formatTime(item.dueAt)}</span>
           </div>
@@ -153,9 +153,9 @@ function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
     case 'TOUR_REQUEST':
       return (
         <>
-          <div className="truncate text-base font-semibold text-dark">{item.tripName}</div>
-          <div className="text-sm text-secondary">{item.planName}</div>
-          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-secondary">
+          <div className="break-words text-lg font-semibold text-dark">{item.tripName}</div>
+          <div className="text-md text-secondary">{item.planName}</div>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-md text-secondary">
             <span>{t.actionInbox.tourRequestSubmitted}</span>
             <span>{item.customerName}</span>
             <span>{t.actionInbox.tourRequestParty(item.partySize)}</span>
@@ -165,9 +165,9 @@ function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
     case 'TOUR_PAYMENT_DUE':
       return (
         <>
-          <div className="truncate text-base font-semibold text-dark">{item.tripName}</div>
-          <div className="text-sm text-secondary">{item.planName}</div>
-          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-secondary">
+          <div className="break-words text-lg font-semibold text-dark">{item.tripName}</div>
+          <div className="text-md text-secondary">{item.planName}</div>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-md text-secondary">
             <span>
               {item.stage === 'BALANCE'
                 ? t.actionInbox.tourPaymentDueBalanceDetail
@@ -198,9 +198,9 @@ function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
     case 'DEPARTURE':
       return (
         <>
-          <div className="truncate text-base font-semibold text-dark">{item.tripName}</div>
-          <div className="text-sm text-secondary">{item.planName}</div>
-          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-secondary">
+          <div className="break-words text-lg font-semibold text-dark">{item.tripName}</div>
+          <div className="text-md text-secondary">{item.planName}</div>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-md text-secondary">
             <span>{t.actionInbox.departureDay[item.departureDay]}</span>
             <span>{t.actionInbox.departureAt}：{item.departureDate.replaceAll('-', '/')} {item.startTime || '--:--'}</span>
             <span>{t.actionInbox.departureSeats(item.seatsBooked, item.capacity)}</span>
@@ -211,9 +211,9 @@ function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
       const seatsShort = Math.max(item.minToDepart - item.seatsBooked, 0);
       return (
         <>
-          <div className="truncate text-base font-semibold text-dark">{item.tripName}</div>
-          <div className="text-sm text-secondary">{item.planName}</div>
-          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-secondary">
+          <div className="break-words text-lg font-semibold text-dark">{item.tripName}</div>
+          <div className="text-md text-secondary">{item.planName}</div>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-md text-secondary">
             <span>
               {seatsShort > 0
                 ? t.actionInbox.formationSeatsShort(seatsShort)
@@ -237,9 +237,9 @@ function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
       const isConsistent = item.seatsBooked < item.minToDepart;
       return (
         <>
-          <div className="truncate text-base font-semibold text-dark">{item.tripName}</div>
-          <div className="text-sm text-secondary">{item.planName}</div>
-          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-secondary">
+          <div className="break-words text-lg font-semibold text-dark">{item.tripName}</div>
+          <div className="text-md text-secondary">{item.planName}</div>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-md text-secondary">
             <span>
               {isConsistent
                 ? t.actionInbox.formationAtRiskDetail(item.seatsBooked, item.minToDepart)
@@ -253,9 +253,9 @@ function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
     case 'REFUND_PENDING':
       return (
         <>
-          <div className="truncate text-base font-semibold text-dark">{item.customerName || item.orderNo}</div>
-          <div className="text-sm text-secondary">{item.orderNo}</div>
-          <div className="mt-1 text-xs text-secondary">
+          <div className="break-words text-lg font-semibold text-dark">{item.customerName || item.orderNo}</div>
+          <div className="text-md text-secondary">{item.orderNo}</div>
+          <div className="mt-1 text-md text-secondary">
             {t.actionInbox.refundOutstanding(formatCurrency(item.refundOutstandingAmount))}
           </div>
         </>
@@ -263,9 +263,9 @@ function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
     case 'STAFF_CONFLICT':
       return (
         <>
-          <div className="truncate text-base font-semibold text-dark">{item.tripName}</div>
-          <div className="text-sm text-secondary">{item.planName}</div>
-          <div className="mt-1 flex flex-col gap-0.5 text-xs text-secondary">
+          <div className="break-words text-lg font-semibold text-dark">{item.tripName}</div>
+          <div className="text-md text-secondary">{item.planName}</div>
+          <div className="mt-1 flex flex-col gap-0.5 text-md text-secondary">
             <span>
               {t.actionInbox.staffConflictSummary(item.conflicts.length)}
               ：{item.departureDate.replaceAll('-', '/')} {item.startTime || '--:--'}
@@ -281,9 +281,9 @@ function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
     case 'STAFF_UNASSIGNED':
       return (
         <>
-          <div className="truncate text-base font-semibold text-dark">{item.tripName}</div>
-          <div className="text-sm text-secondary">{item.planName}</div>
-          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-secondary">
+          <div className="break-words text-lg font-semibold text-dark">{item.tripName}</div>
+          <div className="text-md text-secondary">{item.planName}</div>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-md text-secondary">
             <span>{t.actionInbox.staffUnassignedDetail}</span>
             <span>{item.departureDate.replaceAll('-', '/')} {item.startTime || '--:--'}</span>
           </div>
@@ -472,19 +472,19 @@ export default function DashboardPage() {
       {modePreset.showActionInbox ? (
         <Card className="mb-4 border-primary">
           <CardHeader>
-            <CardTitle>
+            <CardTitle className="text-xl">
               <ClipboardList size={16} className="text-primary" />
               {t.actionInbox.title}
-              {visibleInbox.status === 'success' ? <span className="form-text">{t.actionInbox.count(actionInbox.length)}</span> : null}
+              {visibleInbox.status === 'success' ? <span className="text-base font-normal text-secondary">{t.actionInbox.count(actionInbox.length)}</span> : null}
             </CardTitle>
             <div className="flex flex-wrap gap-2">
               {actionInbox.some((item) => item.kind === 'BOOKING_REQUEST') ? (
-                <Link href="/tenant/bookings?status=PENDING" className="btn btn-outline btn-sm">
+                <Link href="/tenant/bookings?status=PENDING" className="btn btn-outline min-h-11 text-md">
                   {t.actionInbox.viewBookings}
                 </Link>
               ) : null}
               {actionInbox.some((item) => item.kind === 'BOOKING_PAYMENT') ? (
-                <Link href="/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID" className="btn btn-outline btn-sm">
+                <Link href="/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID" className="btn btn-outline min-h-11 text-md">
                   {t.actionInbox.viewPayments}
                 </Link>
               ) : null}
@@ -492,7 +492,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardBody>
             {visibleInbox.status === 'loading' ? (
-              <div className="py-4 text-center text-muted">{t.actionInbox.loading}</div>
+              <div className="py-4 text-center text-md text-muted">{t.actionInbox.loading}</div>
             ) : visibleInbox.status === 'error' ? (
               <Alert tone="danger" title={t.actionInbox.loadErrorTitle}>
                 <p className="text-md">{t.actionInbox.loadErrorBody}</p>
@@ -507,14 +507,14 @@ export default function DashboardPage() {
                 {actionInbox.map((item) => (
                   <li
                     key={item.id}
-                    className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-3 sm:flex-row sm:items-center sm:justify-between"
+                    className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-4 sm:flex-row sm:items-center sm:justify-between"
                   >
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
                       <div className="mb-1 flex flex-wrap items-center gap-2">
-                        <Badge tone={ACTION_INBOX_TONE[item.priority]}>
+                        <Badge tone={ACTION_INBOX_TONE[item.priority]} className="text-base">
                           {t.actionInbox.priority[item.priority]}
                         </Badge>
-                        <span className="text-sm font-semibold text-dark">
+                        <span className="text-md font-semibold text-dark">
                           {actionInboxKindLabel(item)}
                         </span>
                       </div>
@@ -522,7 +522,7 @@ export default function DashboardPage() {
                     </div>
                     <Link
                       href={item.href}
-                      className="btn btn-primary btn-sm w-full flex-shrink-0 sm:w-auto"
+                      className="btn btn-primary min-h-11 text-md w-full flex-shrink-0 sm:w-auto"
                     >
                       {actionInboxOpenLabel(item)}
                     </Link>
