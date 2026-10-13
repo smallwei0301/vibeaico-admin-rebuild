@@ -68,8 +68,10 @@
     "unresolvedP1": 0,
     "reopenedIssues": 0,
     "postMergeRegressions": 0,
-    "safetyViolations": 0,
-    "hardFailReasons": []
+    "safetyViolations": 1,
+    "hardFailReasons": [
+      "OBSERVED_2026_10_13_PR912_MERGED_BEFORE_LATEST_REVIEW_FINDINGS_INSPECTED"
+    ]
   },
   "flow": {
     "lunaTasks": 0,
@@ -94,7 +96,11 @@
     "Run created at recorded startedAt; issue registration predates this run. Live implementation/CI/closeout capture remains pending; default counters are not a completed scorecard. Frozen Product/Environment ledgers untouched.",
     "2026-10-13T17:23:44.874Z: live GET independently reverified #905 SOURCE merge and exact-head pull_request CI. Source integration/E2E were SOURCE_ONLY skipped; not TEST_VERIFIED. Actual current60s integration recovery remains pending; #901 stays OPEN.",
     "Capture gap retained: implementation/source-CI events were not written to this ledger at occurrence. No historical counters, actor/session, requested/served identity or task times reconstructed. Initial default counters are not evidence of observed zero; report remains NOT_GRADED and this Run remains IN_PROGRESS/OPEN.",
-    "Playbook paired-report lesson follow-up is prepared locally; no new validator/framework, no Product delivery credit and no DB G5/writer/Production authorization."
+    "Playbook paired-report lesson follow-up is prepared locally; no new validator/framework, no Product delivery credit and no DB G5/writer/Production authorization.",
+    "2026-10-13T23:24:32.644Z: NEW complete #905 main readback, not retroactive17:23 capture: evidence https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/901#issuecomment-6157314214 bodysha256 4b4aa7c5350796802f37af20eaeba38ba2b699216207e79f8f9fce792edcb8c9; merged93cc02c reached fetchedcurrente0763dc (livecompareahead14/behind0), mainci.yml blob75ed62a90abcafcbc4f0f36a7162a6585679c2f7 has both60000 budgets; SourceCI38433095286 and93 mainCI38434408772 SUCCESS/attempt1. Previous incomplete PR-only claim remains in #912 history, now superseded by this full source.",
+    "2026-10-13T23:24:32.644Z: Current state: actual93 liveCI recovery806 integration/25 E2E/all6 oldtimeoutcasesPASS, no permanentflake claim; #901 remaining scope is corrected Playbook/main closeout. New553 G3 failure is separate AuthGatewayTimeout504->503. #912 merged before latest reviews were inspected, acknowledged and repaired by this bounded followup; no Product/G5/Production authority.",
+    "2026-10-13T23:24:32.644Z: One current-turn observed governance merge/readback violation is recorded now, with evidence https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/901#issuecomment-6157314214. This is not a reconstructed historical counter; other initial defaults remain unproven observed zero, capture gaps retained, no comparison-grade claim.",
+    "2026-10-13T23:35:42.997Z: NEW full PR912 merge-fact readback/structured claim from https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/912#issuecomment-6157456492 (created 2026-10-13T23:35:02Z): merged_at23:21:47Z/mergee0763dcf9f3fc428ef2c8c3911ce0d909500452a/currentmainsame/livecompareIDENTICAL0/0/mainPlaybookblob507f3d8e0afc4e1b7322ee10cc8968ebc8723daa matchesf11source; SourceCI38440425777PASS with actualSOURCE_ONLYskip. Claim proves merge fact only, not completed post-merge closeout, TEST, Product or DB approval. New939P2 findings4265186730/4265186737 requirePBsummary8/latest2026-10-13 andthisstructuredclaim; no historicalRuncounterbackfill."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -111,14 +117,14 @@
   },
   "completionTruth": {
     "status": "VERIFIED",
-    "checkedAt": "2026-10-13T17:23:44.874Z",
+    "checkedAt": "2026-10-13T23:35:42.997Z",
     "claims": [
       {
         "type": "PR_MERGED",
         "subject": "pr#905",
         "claimedState": "merged",
         "observedState": "merged",
-        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/905",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/901#issuecomment-6157314214",
         "verification": "VERIFIED"
       },
       {
@@ -127,6 +133,14 @@
         "claimedState": "success",
         "observedState": "success",
         "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/38433095286",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "PR_MERGED",
+        "subject": "pr#912",
+        "claimedState": "merged",
+        "observedState": "merged",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/912#issuecomment-6157456492",
         "verification": "VERIFIED"
       }
     ]

@@ -928,9 +928,11 @@ normal prepare 的 reviewer packet 亦須列出獨立角色收據，正例以 cu
 - 2026-10-01 #713 paired-scorecard report reproduction 續例：exact-head workflow `36810577964` rejected the generated Markdown because it recorded weighted usage 27 while the ledger/scorer computed 33 after the new audit task. Root initially treated `score-run-current.mjs` as a file writer; it prints to stdout. The repair at `4a7c8a0abc00d97c502abe5ebfa1dcc24df7664b` generated the paired report from stdout and reproduced it byte-for-byte; exact-head workflow `36810825595` passed. Preserve the original failure as a report-generation failure, not a Product feature failure. Prevention: generate with `node scripts/agents/score-run-current.mjs <ledger> > <RUN_ID>.md`, then rerun and `diff -u` the canonical output against the paired Markdown before publishing; a green ledger validator/readiness alone does not verify the paired report.
 - 新增可核對事件：+1 report-generation reproduction（截至 2026-10-01）；既有次數按本條最新已記 5 件加一，非 CI 執行總數。
 - 2026-10-05 PR #788 續例：scout 補 r01 ledger JSON 後未重產 paired Markdown，exact head `27d2d7f1` 的 `agent-run-scorecard`（`validate-scorecards`）與 `agent-wip-guard`（`PUBLICATION_REPORT_REJECTED … canonical report differs from exact-head ledger`）同時失敗；以 `node scripts/agents/score-run-current.mjs <json> > <md>` 重產（`58135a06`）後兩者轉綠。之後每次派 scout 改 ledger 都在指令中明列「重產 .md 並 diff 為空」，後續 4 次 ledger commit 無再犯。預防不變：ledger 與 paired report 必須同一個 commit 重產並 `diff` 驗證。
-- 2026-10-13 #901／PR #905 同根因續例：新治理 Run 只提交 JSON，首次 publication guard 留下 `PUBLICATION_REPORT_REJECTED`（comment `6150455022`／scorecard run `38432433783`）。補上由既有 dispatcher 可重現的同名 Markdown 後，exact source `e5a1b333d9524fa47b4baaf9a45e7b3fbcd9a02e` 的 source CI `38433095286` 與 publication receipt `6150562500` 通過，正常 merge 為 `93cc02c`。預防仍是 JSON／Markdown 同 commit 產生並逐 byte 比對；JSON validator 或 preflight PASS 不單獨證明 paired report 存在。保留初次 FAIL，不按 CI 次數增加歷史事件計數。治理 Run 的即時 capture 缺口保持明記，不倒填模型／時間／counter；Source CI 的 integration／E2E skip 及新 60 秒預算仍待 live recovery，不冒充 Product 出貨或 G3／Production 許可。
+- 2026-10-13 #901／PR #905 同根因續例：新治理 Run 只提交 JSON，首次 publication guard 留下 `PUBLICATION_REPORT_REJECTED`（comment `6150455022`／scorecard run `38432433783`）。補上由既有 dispatcher 可重現的同名 Markdown 後，exact source `e5a1b333d9524fa47b4baaf9a45e7b3fbcd9a02e` 的 source CI `38433095286` 與 publication receipt `6150562500` 通過，正常 merge 為 `93cc02c`。預防仍是 JSON／Markdown 同 commit 產生並逐 byte 比對；JSON validator 或 preflight PASS 不單獨證明 paired report 存在。保留初次 FAIL，同一 #905 的 guard 訊號與 CI 重跑不重複計數。治理 Run 的即時 capture 缺口保持明記，不倒填模型／時間／Run counter；Source CI 的 integration／E2E 仍是 skip，但 main CI `38434408772` 已實跑 806 integration／25 E2E，六個原 timeout 案均 PASS，完成本次 60 秒預算 live recovery。後續 553 G3 `38447060001` 是不同的 Auth Gateway Timeout 504→503，不能混回此 blocker，也不宣稱永久根因修復、Product 出貨或 G3／Production 許可。
 
 - 新增可核對事件：+1 report-generation reproduction（2026-10-05，PR #788）。
+- 新增可核對事件：+1 report-generation reproduction（2026-10-13，PR #905）；這是另一張 PR 的獨立退件，不是同一事件重跑，與 #788 分開計一次，不回填 Run counters。
+- #912 的後續審查 `5511157177`（P1 `4265047173`／P2 `4265047181`、`4265047191`）指出完整 main 回讀來源、過期 pending 與事件計數缺漏。Root 在 ready 觸發新審查後未核對 latest findings 就 merge，舊空 findings 快照不能代替合併當下核對；required checks 綠也不能覆蓋未解 finding。改以 [新的完整 #905 回讀](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/901#issuecomment-6157314214) 綁 merge SHA／current main／reachability／main file bytes，並修正本條 current truth。合併前須在同一順序中完成「讀最新 reviews/inline findings → 判讀並解決 → 重查 exact-head required checks → 正常 merge」，CLI option 失敗即中止該順序，不把後續 shell 成功掩蓋它。
 
 - 2026-09-30 #704／PR #705 續例：新 v4 run ledger 通過 JSON/readiness，卻漏交
   `score-run-current.mjs` 規定的同名 Markdown report，remote scorecard
@@ -960,8 +962,8 @@ normal prepare 的 reviewer packet 亦須列出獨立角色收據，正例以 cu
   驗證以 #566 對應版本的 focused mutation、preflight、required source CI 與合併後分類事件為準；
   SOURCE_ONLY 不宣稱資料庫或產品驗收通過，舊失敗通知不覆寫。
 
-- 首次／最近：2026-09-11／2026-10-10
-- 發生次數：6（#352、#361、#370、#553、#586，加 #713 paired-scorecard reproduction；次數是事件，不是 CI 執行總數）
+- 首次／最近：2026-09-11／2026-10-13
+- 發生次數：8（#352、#361、#370、#553、#586，加 #713、#788、#905 paired-scorecard reproduction；次數是已列可核對的獨立事件，不是 CI 執行總數，也不是 Run usage counters）
 - Issue／PR／CI：PR #352、#361、#370；PR #713／exact-head workflows `36810577964` and `36810825595`；#844／#845 native receipt 覆蓋與 #846 隱私延伸／source CI `38017757393`；#847 summary 索引修正 finding `4236151821`（不新增事件次數）；#849 兩項採用契約 P1 `4237757692`／`4237831425` 與 source CI `38058794103`（同事件續例）
 - 分類：Agent
 - 事件：#352 開出後被守門與 CI 連退四次，**四次都是中繼資料填錯，沒有一次是程式碼問題**：
