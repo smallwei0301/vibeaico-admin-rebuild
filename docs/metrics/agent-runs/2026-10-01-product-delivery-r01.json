@@ -111,6 +111,10 @@
     {
       "ref": "issue/41",
       "title": "導遊成團決策"
+    },
+    {
+      "ref": "issue/7",
+      "title": "作品集主圖真實上傳"
     }
   ],
   "main": {
@@ -7331,13 +7335,63 @@
         "note": "Parent-reported local validation on Node 22: clean npm ci, full typecheck, full unit suite (381 files / 6155 tests), and full build all exit 0/PASS. Unit suite reported start 2026-10-12T01:54:55Z and duration 69.26s; exact terminal times for other commands unavailable. CAPTURED_AT=2026-10-12T01:58:26Z. Local validation, not hosted full CI; ci.fullCiRuns unchanged. Parent actor/model identity unavailable.",
         "issue": 46,
         "count": 1
+      },
+      {
+        "id": "20261013-terra-build-7-portfolio-upload",
+        "role": "build",
+        "requestedModel": "terra",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "accepted": true,
+        "actualModel": "unknown",
+        "issue": 7,
+        "count": 1,
+        "startedAt": "2026-10-13T06:12:52Z",
+        "completedAt": "2026-10-13T06:20:22Z",
+        "note": "Sonnet builder subagent：作品集主圖改為真實上傳至 portfolio-images，移除以標題充當 imageUrl 的 fallback。 CAPTURED_AT=2026-10-13T07:16:40Z; 事後依 commit 時間戳補記（非即時埋點）。",
+        "evidenceRef": "commit 137f46b7"
+      },
+      {
+        "id": "20261013-terra-build-7-manager-gate",
+        "role": "build",
+        "requestedModel": "terra",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "accepted": true,
+        "actualModel": "unknown",
+        "issue": 7,
+        "count": 1,
+        "startedAt": "2026-10-13T06:31:28Z",
+        "completedAt": "2026-10-13T06:36:03Z",
+        "note": "Sonnet build follow-up：主圖上傳限店主／管理者（OWNER／MANAGER），STAFF 停用並顯示說明。 CAPTURED_AT=2026-10-13T07:16:40Z; 事後依 commit 時間戳補記（非即時埋點）。",
+        "evidenceRef": "commit 15646fa0"
+      },
+      {
+        "id": "20261013-luna-scout-7-metrics-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "contextClass": "compact",
+        "accepted": true,
+        "actualModel": "unknown",
+        "issue": 7,
+        "count": 1,
+        "startedAt": "2026-10-13T07:15:50Z",
+        "completedAt": "2026-10-13T07:16:40Z",
+        "note": "Luna metrics capture binding issue/7 to the Run：補 sources、delivery.issuesStarted 30→31、本列三筆 modelUsage.tasks 與 flow.lunaTasks/lunaAccepted +1。Self-reported runtime claude-haiku-5-5 (requested claude-haiku-4-5)，actual 未經平台驗證。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 30,
+    "issuesStarted": 31,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -7364,8 +7418,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 98,
-    "lunaAccepted": 89,
+    "lunaTasks": 99,
+    "lunaAccepted": 90,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
