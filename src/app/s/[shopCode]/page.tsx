@@ -141,7 +141,8 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
         <section className="flex flex-col gap-3">
           <h2 className="text-lg font-medium">{t.trips.title}</h2>
           {trips.map((trip) => {
-            const prices = trip.plans.map((p) => p.pricePerPerson).filter((n) => n > 0);
+            // #895：季節定價方案的基本價不是確定售價，不納入「起」的最低價計算。
+            const prices = trip.plans.filter((p) => !p.seasonalPricing).map((p) => p.pricePerPerson).filter((n) => n > 0);
             const lowest = prices.length > 0 ? Math.min(...prices) : null;
             return (
               <article key={trip.id} className="card">
@@ -186,7 +187,7 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
                       {trip.plans.map((plan) => (
                         <li key={plan.id} className="flex flex-wrap items-center gap-2 text-sm">
                           <span className="font-medium">{plan.name}</span>
-                          <span>{formatCurrency(plan.pricePerPerson)}</span>
+                          <span>{plan.seasonalPricing ? t.trips.seasonalHeadline : formatCurrency(plan.pricePerPerson)}</span>
                           <span className="text-2xs text-secondary">
                             {t.trips.partyRange(plan.minParty, plan.maxParty)}
                           </span>
