@@ -23,7 +23,7 @@ import {
 } from '@/services/reports';
 import { getSetupStatus } from '@/services/settings';
 import { listBookings } from '@/services/bookings';
-import { localDayRange } from '@/lib/bookings-query-range';
+import { tenantDateString, tenantDayRange } from '@/lib/bookings-query-range';
 import { getGuideActionInbox } from '@/services/guide-action-inbox';
 import { createGuideInboxLoader, guideInboxForTenant, type GuideInboxLoadState } from '@/lib/guide-inbox-load';
 import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
@@ -372,9 +372,9 @@ export default function DashboardPage() {
     })();
     void (async () => {
       try {
-        const today = formatDate(new Date().toISOString());
-        const res = await listBookings({ page: 0, size: 100, ...localDayRange() });
-        setTodayRows(res.content.filter((b) => formatDate(b.startAt) === today));
+        const today = tenantDateString();
+        const res = await listBookings({ page: 0, size: 100, ...tenantDayRange() });
+        setTodayRows(res.content.filter((b) => tenantDateString(new Date(b.startAt)) === today));
       } catch (e) { fail(t.errors.todayBookings, e); } finally { setLoadingToday(false); }
     })();
     void (async () => {

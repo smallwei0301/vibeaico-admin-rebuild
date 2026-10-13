@@ -25,7 +25,7 @@ import {
   listBookingAddons, listBookings, markBookingPaidOffline, markNoShow, revertBookingComplete,
   updateBooking,
 } from '@/services/bookings';
-import { unprocessedUpperBound } from '@/lib/bookings-query-range';
+import { mergeUnprocessedBookings, unprocessedUpperBound } from '@/lib/bookings-query-range';
 import { createCustomer, listCustomers } from '@/services/customers';
 import { listServices, listStaff } from '@/services/catalog';
 import { exportBookingsCsv, exportBookingsXlsx } from '@/services/reports';
@@ -149,15 +149,32 @@ export default function BookingsPage() {
     setLoading(true);
     try {
       const isRealStatus = (REAL_STATUSES as string[]).includes(status);
-      const res = await listBookings({
+      const baseParams = {
         page: 0,
         size: 100,
-        status: isRealStatus ? (status as BookingStatus) : '',
         paymentStatus: paymentStatusFilter || undefined,
         keyword,
         from: startDate || undefined,
         to: endDate || unprocessedUpperBound(status, endDate),
-      });
+      };
+      /* API status 只收單一值：「未處理」分別查待確認與已確認再合併，避免分頁前被其他狀態擠掉 */
+      let res;
+      if (status === 'UNPROCESSED') {
+        const [pendingRes, confirmedRes] = await Promise.all([
+          listBookings({ ...baseParams, status: 'PENDING' }),
+          listBookings({ ...baseParams, status: 'CONFIRMED' }),
+        ]);
+        res = {
+          ...pendingRes,
+          content: mergeUnprocessedBookings(pendingRes.content, confirmedRes.content),
+          totalElements: pendingRes.totalElements + confirmedRes.totalElements,
+        };
+      } else {
+        res = await listBookings({
+          ...baseParams,
+          status: isRealStatus ? (status as BookingStatus) : '',
+        });
+      }
 
       const applyClientFilters = (items: Booking[]) => {
         let filtered = items;
