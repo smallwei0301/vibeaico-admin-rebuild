@@ -155,6 +155,10 @@
     {
       "ref": "issue/883",
       "title": "旅客我的訂單連結不再帶聯絡方式"
+    },
+    {
+      "ref": "issue/886",
+      "title": "導遊訂單詳情顯示退款政策與收款方式佔位"
     }
   ],
   "main": {
@@ -7578,13 +7582,30 @@
         "issue": 883,
         "count": 1,
         "evidenceRef": "this commit"
+      },
+      {
+        "id": "20261013-luna-scout-886-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModel": "unknown",
+        "startedAt": "2026-10-13T12:56:28Z",
+        "completedAt": "2026-10-13T12:56:40Z",
+        "note": "Luna metrics capture 綁定 issue/886 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +1。actual 未經平台驗證。",
+        "issue": 886,
+        "count": 1,
+        "evidenceRef": "this commit"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 41,
+    "issuesStarted": 42,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -7611,8 +7632,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 110,
-    "lunaAccepted": 101,
+    "lunaTasks": 111,
+    "lunaAccepted": 102,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -7835,7 +7856,8 @@
     "2026-10-13 非計分紀錄（issue/877）：builder commits 0eeaa3a5（cherry-pick 為 96608c16，顧客標籤清單真實模式改由 /api/customers/tags 取得）與 464ab032（cherry-pick 為 f7c54b60，移除 mock-import 白名單中已不存在的 customers 頁條目），Sonnet builder 11:57:45Z–12:08:38Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/880）：builder commit c2dcbe5d（cherry-pick 為 92546f9e，號碼掛號頁真實模式改顯示誠實未開放狀態、不再渲染假診次與假成功操作），Sonnet builder 12:13:07Z–12:18:05Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（issue/882）：builder commit 9a086272（cherry-pick 為 45e68609，進階報表 gate 對齊後端 BASIC_REPORT，找不到功能視為未訂閱），Sonnet builder 12:25:13Z–12:30:42Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
-    "2026-10-13 非計分紀錄（issue/883）：builder commit a99d0b63（cherry-pick 為 34020a0f，旅客訂單狀態頁「我的訂單」連結不再把聯絡方式放進網址），Sonnet builder 12:33:41Z–12:39:01Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
+    "2026-10-13 非計分紀錄（issue/883）：builder commit a99d0b63（cherry-pick 為 34020a0f，旅客訂單狀態頁「我的訂單」連結不再把聯絡方式放進網址），Sonnet builder 12:33:41Z–12:39:01Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/886）：builder commit f36e7f61（cherry-pick 為 8b35a667，導遊訂單詳情顯示取消／退款政策快照與已退款金額、收款方式空白顯示未指定），Sonnet builder 12:47:18Z–12:52:41Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {

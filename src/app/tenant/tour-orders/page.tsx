@@ -31,6 +31,8 @@ import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
 import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { tourOrdersPage as t } from '@/i18n/zh-TW/pages/tour-orders';
+import { publicTourRequestPage } from '@/i18n/zh-TW/pages/public-tour-request';
+import { refundPolicyText } from '@/lib/tour-order-detail-labels';
 import { isAwaitingPayment } from '@/server/tour-domain';
 import { isPendingTourRequest, tourPaymentActions } from '@/lib/tour-order-payment-actions';
 import { formatCurrency, formatDateTime, formatNumber } from '@/lib/utils';
@@ -454,7 +456,7 @@ export default function TourOrdersPage() {
               {t.depositBadge} {formatCurrency(o.depositAmount)}
             </div>
           ) : null}
-          <div className="mt-0.5 truncate text-2xs text-secondary">{o.paymentMethodLabel}</div>
+          <div className="mt-0.5 truncate text-2xs text-secondary">{o.paymentMethodLabel || t.detail.noMethod}</div>
           {o.holdExpiresAt ? (
             <div className="text-2xs text-warning">
               {t.hold.expiring(formatDateTime(o.holdExpiresAt))}
@@ -690,9 +692,20 @@ export default function TourOrdersPage() {
                     </dd>
                   </>
                 ) : null}
-                <dt className="text-secondary">{t.detail.fields.method}</dt><dd>{detail.paymentMethodLabel}</dd>
+                <dt className="text-secondary">{t.detail.fields.method}</dt><dd>{detail.paymentMethodLabel || <span className="text-muted">{t.detail.noMethod}</span>}</dd>
                 <dt className="text-secondary">{t.detail.fields.ref}</dt>
                 <dd>{detail.paymentRef || <span className="text-muted">{t.detail.noRef}</span>}</dd>
+                {detail.refundedAmount != null && detail.refundedAmount > 0 ? (
+                  <>
+                    <dt className="text-secondary">{t.detail.fields.refunded}</dt>
+                    <dd className="text-warning">{formatCurrency(detail.refundedAmount)}</dd>
+                  </>
+                ) : null}
+                <dt className="text-secondary">{t.detail.fields.refundPolicy}</dt>
+                <dd>
+                  {refundPolicyText(detail.refundPolicySnapshot, publicTourRequestPage.form.cancellationPolicy)
+                    ?? <span className="text-muted">{t.detail.noPolicy}</span>}
+                </dd>
                 <dt className="text-secondary">{t.detail.fields.createdAt}</dt>
                 <dd>{formatDateTime(detail.createdAt)}</dd>
               </dl>
