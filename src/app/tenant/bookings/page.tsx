@@ -52,8 +52,6 @@ const TIME_OPTIONS: string[] = Array.from({ length: 26 }, (_, i) => {
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 });
 
-/** 編輯預約的服務時長：30–480 分鐘，每 30 分鐘一檔 */
-
 /** 原站 /api/settings 的「強制指定服務人員」；骨架階段固定 */
 const REQUIRE_STAFF = false;
 
@@ -1088,7 +1086,7 @@ function BookingFormModal({
       <div className="grid gap-x-4 md:grid-cols-2">
         <FormGroup>
           <Label required htmlFor="bookingService">{isEdit ? e.service : c.service}</Label>
-          <Select id="bookingService" value={serviceId} onChange={(ev) => setServiceId(ev.target.value)}>
+          <Select id="bookingService" value={serviceId} disabled={isEdit} onChange={(ev) => setServiceId(ev.target.value)}>
             <option value="">{c.servicePlaceholder}</option>
             {services.map((s) => (
               <option key={s.id} value={s.id}>
@@ -1096,7 +1094,7 @@ function BookingFormModal({
               </option>
             ))}
           </Select>
-          {!isEdit ? <FormText>{c.serviceHelp}</FormText> : null}
+          <FormText>{isEdit ? e.serviceLocked : c.serviceHelp}</FormText>
         </FormGroup>
 
         <FormGroup>

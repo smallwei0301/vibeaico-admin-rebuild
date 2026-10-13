@@ -33,4 +33,15 @@ describe('#888 預約表單不顯示不會保存的欄位', () => {
     expect(copy).toContain('時長由服務項目與加購決定');
     expect(copy).not.toContain('可調整服務時長');
   });
+
+  it('殘留註解與未用文案已移除', () => {
+    expect(page).not.toContain('編輯預約的服務時長：30–480');
+    expect(copy).not.toContain('durationUnit');
+  });
+
+  it('編輯模式服務選單停用並說明', () => {
+    expect(page).toContain('<Select id="bookingService" value={serviceId} disabled={isEdit}');
+    expect(page).toContain('isEdit ? e.serviceLocked : c.serviceHelp');
+    expect(copy).toContain('已建立的預約無法更換服務；如需更換請取消後重新建立');
+  });
 });
