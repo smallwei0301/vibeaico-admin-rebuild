@@ -127,6 +127,10 @@
     {
       "ref": "issue/868",
       "title": "優惠券票券圖片與加購券誠實標示未開放"
+    },
+    {
+      "ref": "issue/871",
+      "title": "註冊頁保存店家電話並標示推薦碼未開放"
     }
   ],
   "main": {
@@ -7431,13 +7435,30 @@
         "issue": 868,
         "count": 1,
         "evidenceRef": "this commit"
+      },
+      {
+        "id": "20261013-luna-scout-871-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModel": "unknown",
+        "startedAt": "2026-10-13T10:46:04Z",
+        "completedAt": "2026-10-13T10:46:17Z",
+        "note": "Luna metrics capture 綁定 issue/871 至本 Run：補 sources、delivery.issuesStarted 34→35、flow.lunaTasks/lunaAccepted +1。自報 runtime claude-haiku-5-5，actual 未經平台驗證。",
+        "issue": 871,
+        "count": 1,
+        "evidenceRef": "this commit"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 34,
+    "issuesStarted": 35,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -7464,8 +7485,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 103,
-    "lunaAccepted": 94,
+    "lunaTasks": 104,
+    "lunaAccepted": 95,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -7681,7 +7702,8 @@
     "2026-10-13 非計分紀錄：issue/7 的兩筆 build（commit 137f46b7 06:12:52Z→06:20:22Z、commit 15646fa0 06:31:28Z→06:36:03Z）為事後依 commit 時間戳補記，非即時埋點，已自 modelUsage.tasks 移除，依 CLAUDE.md「未埋點的量維持 null，不回填推算值」不計入觀測用量。兩次 commit 的 Sonnet 施工事實仍以 git 歷史與 PR #863 本文揭露為準。",
     "2026-10-13 非計分紀錄（issue/864）：builder 施工 07:21:13Z–07:27:27Z（commit 7fd474ed，cherry-pick 為 87caa521）與強化 08:13:01Z–08:18:25Z（commit a8498d6b）為事後補記，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量；Luna scout 較早已找到候選，其事件同樣未即時埋點，僅記於此。",
     "2026-10-13 非計分紀錄（issue/867）：builder 施工 08:39:18Z–08:44:32Z（commit 763f723c，cherry-pick 為 782be93e）與 follow-up 08:45:00Z–08:49:41Z（commit 82b0933，cherry-pick 為 6c2455b7）為事後補記，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量；Luna scout 較早已找到候選，其事件同樣未即時埋點，僅記於此。",
-    "2026-10-13 非計分紀錄（issue/868）：兩筆票券 builder 施工 commit 3098c941（cherry-pick 為 a8713f0a，圖片上傳控制項改為誠實停用狀態）與 bc54660f（cherry-pick 為 1e42ed6f，加購券類型標示尚未開放保存並移除無法持久化的加購欄位）未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
+    "2026-10-13 非計分紀錄（issue/868）：兩筆票券 builder 施工 commit 3098c941（cherry-pick 為 a8713f0a，圖片上傳控制項改為誠實停用狀態）與 bc54660f（cherry-pick 為 1e42ed6f，加購券類型標示尚未開放保存並移除無法持久化的加購欄位）未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（issue/871）：builder commit 546be7d4（cherry-pick 為 7a494543，註冊頁保存店家電話並停用尚未開放的推薦碼）施工 Sonnet builder 10:30:36Z–10:40:28Z，未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
