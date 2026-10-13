@@ -34,6 +34,7 @@ import {
 import { APP_URL } from '@/config/env';
 import { MODE_PRESETS, type BusinessType } from '@/config/modes';
 import { keywordRepliesPage } from '@/i18n/zh-TW/pages/keyword-replies';
+import { candidateIsBookable } from '@/lib/public-departure-candidates';
 
 /** webhook 端已查好的店家列（route.ts select id, shop_code, name） */
 export type WebhookTenant = {
@@ -852,16 +853,18 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
   const planIds = [...new Set(departures.map((d: any) => d.plan_id).filter(Boolean))];
   const planNameById = new Map<string, string>();
   const fixedPlanIds = new Set<string>();
+  const minPartyByPlan = new Map<string, unknown>();
   if (planIds.length) {
     const { data: plans, error: planError } = await ctx.admin
       .from('trip_plans')
-      .select('id, name, sales_mode, active')
+      .select('id, name, sales_mode, active, min_party')
       .eq('tenant_id', ctx.tenant.id)
       .in('id', planIds);
     if (planError) console.error('[line] replyDepartures 查詢 trip_plans 失敗', planError);
     for (const p of (plans ?? []) as any[]) {
       planNameById.set(p.id, p.name);
       if (p.active === true && p.sales_mode === 'FIXED_DEPARTURE') fixedPlanIds.add(p.id);
+      minPartyByPlan.set(p.id, p.min_party);
     }
   }
 
@@ -873,8 +876,8 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
     const plan = planName ? `（${planName}）` : '';
     const seats = left > 0 ? MSG.departureSeatsLeft(left) : MSG.departureFull;
     const line = `・${d.departs_on}${time} ${titleById.get(d.trip_id) ?? ''}${plan}　${seats}`;
-    // 直達預約：只給啟用中的 FIXED_DEPARTURE 方案且仍有餘位的團次；額滿或其他方案維持無連結。
-    if (!d.id || left <= 0 || !fixedPlanIds.has(d.plan_id)) return line;
+    // 直達預約：只給啟用中的 FIXED_DEPARTURE 方案、且剩餘名額 >= 方案最低人數的團次（與預約頁單一團次可訂規則一致）；額滿、名額不足或其他方案維持無連結。
+    if (!d.id || !fixedPlanIds.has(d.plan_id) || !candidateIsBookable(left, minPartyByPlan.get(d.plan_id))) return line;
     const deepLink = `${buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code)}/plans/${encodeURIComponent(d.plan_id)}/book?departure=${encodeURIComponent(d.id)}`;
     return `${line}\n${deepLink}`;
   });

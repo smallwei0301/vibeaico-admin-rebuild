@@ -38,6 +38,7 @@ import { PublicContactActions } from '@/components/public/PublicContactActions';
 import { recordPromotionPageView } from '@/server/promotion-events';
 import { publicShopPage as t } from '@/i18n/zh-TW/pages/public-shop';
 import { formatCurrency } from '@/lib/utils';
+import { candidateIsBookable } from '@/lib/public-departure-candidates';
 
 type Params = {
   params: Promise<{ shopCode: string }>;
@@ -247,9 +248,10 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
                               {t.trips.seatsLeft(departure.capacity - departure.seatsBooked)}
                             </>
                           );
-                          // 直達預約：只有 bookingCta === 'fixed' 的 FIXED_DEPARTURE 方案才連到預約頁並預選此團次。
+                          // 直達預約：只有 bookingCta === 'fixed' 的方案、且此團次剩餘名額 >= 方案最低人數（與預約頁單一團次可訂規則一致）才連到預約頁並預選。
                           const fixedPlan = departure.planId
-                            ? trip.plans.find((p) => p.id === departure.planId && p.bookingCta === 'fixed')
+                            ? trip.plans.find((p) => p.id === departure.planId && p.bookingCta === 'fixed'
+                                && candidateIsBookable(departure.capacity - departure.seatsBooked, p.minParty))
                             : undefined;
                           return (
                             <li key={departure.id} className={fixedPlan ? undefined : 'badge badge-primary'}>
@@ -257,10 +259,8 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
                                 <Link
                                   href={`/s/${shopCode}/plans/${encodeURIComponent(fixedPlan.id)}/book?departure=${encodeURIComponent(departure.id)}`}
                                   className="badge badge-primary inline-flex min-h-11 items-center underline underline-offset-4"
-                                  aria-label={t.trips.departureBookAria(
-                                    formatDepartureDate(departure.departsOn),
-                                  )}
                                 >
+                                  <span className="sr-only">{t.trips.departureBookSrPrefix}</span>
                                   {label}
                                 </Link>
                               ) : label}

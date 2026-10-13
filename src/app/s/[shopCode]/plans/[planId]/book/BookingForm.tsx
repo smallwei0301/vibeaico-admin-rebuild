@@ -10,6 +10,7 @@ import { formatCurrency } from '@/lib/utils';
 import { priceChangedQuoteFromError, isPriceChangedError, type PriceChangedQuote } from '@/lib/public-price-change';
 import { canSubmitBooking, resolveBookingTotal, seasonalHeadlineKind } from '@/lib/public-booking-price';
 import type { PublicBookingPlan } from '@/server/public-tour-booking';
+import { candidateIsBookable } from '@/lib/public-departure-candidates';
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -42,7 +43,7 @@ export function BookingForm({
   const router = useRouter();
 
   const [departureId, setDepartureId] = React.useState(
-    plan.departures.some((d) => d.id === initialDepartureId) ? initialDepartureId : '',
+    plan.departures.some((d) => d.id === initialDepartureId && candidateIsBookable(d.seatsLeft, plan.minParty)) ? initialDepartureId : '',
   );
   const [partySize, setPartySize] = React.useState(plan.minParty);
   const [contactName, setContactName] = React.useState('');
