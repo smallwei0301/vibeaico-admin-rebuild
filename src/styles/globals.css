@@ -303,8 +303,8 @@
     white-space: normal;
   }
   .data-table thead th.col-sticky-right-head { z-index: 3; }
-  /* 手機版橫向捲動時，固定欄會蓋住前一欄右側；替前一欄預留固定欄寬度，並用 clip 避免假省略號（對應原站 original-tenant.css） */
-  @media (max-width: 991px) {
+  /* 手機與 iPad 橫向（<=1199.98px，側欄仍在、寬表會溢出）橫向捲動時，固定欄會蓋住前一欄右側；替前一欄預留固定欄寬度，並用 clip 避免假省略號（對應原站 original-tenant.css）。>=1200px 不加，避免多餘橫捲 */
+  @media (max-width: 1199.98px) {
     .data-table .col-before-sticky-right,
     .data-table tbody td.col-before-sticky-right {
       padding-right: var(--sticky-actions-reserve);
@@ -385,7 +385,7 @@
   .btn-group { @apply inline-flex items-center gap-1 flex-nowrap; }
   /* 可換行變體：窄螢幕限寬讓按鈕折行，桌機維持單行 */
   .btn-group-wrap { @apply flex-wrap; max-width: 7.5rem; }
-  @media (min-width: 992px) { .btn-group-wrap { @apply flex-nowrap; max-width: none; } }
+  @media (min-width: 1200px) { .btn-group-wrap { @apply flex-nowrap; max-width: none; } }
 
   /* ---------- 表單 ---------- */
   .form-label {

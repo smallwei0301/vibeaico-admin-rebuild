@@ -26,6 +26,9 @@ describe('#914 DataTable sticky right column', () => {
     expect(css).toMatch(/\.col-sticky-right\s*\{[^}]*box-shadow:\s*var\(--shadow-sticky-edge\)/);
     expect(read('src/styles/tokens.css')).toMatch(/--shadow-sticky-edge:\s*[^;]+;/);
     expect(css).toContain('.btn-group-wrap');
+    // 按鈕群組換行須與前一欄讓位同帶寬：>=1200px 才 nowrap，992–1199.98px 仍可換行
+    expect(css).toMatch(/@media \(min-width:\s*1200px\)\s*\{\s*\.btn-group-wrap\s*\{[^}]*flex-nowrap/);
+    expect(css).not.toMatch(/@media \(min-width:\s*992px\)\s*\{\s*\.btn-group-wrap/);
     expect(css).toMatch(/\.btn-group\s*\{[^}]*flex-nowrap/);
   });
 
@@ -49,9 +52,9 @@ describe('#914 DataTable sticky right column', () => {
     expect(src.match(/beforeStickyClass\(columns, ci\)/g)?.length).toBe(2);
   });
 
-  it('手機版前一欄預留空間：<=991px、使用 token、clip 不出假省略號、桌機不加', () => {
+  it('前一欄預留空間：<=1199.98px（含 iPad 橫向）、使用 token、clip 不出假省略號、桌機不加', () => {
     const css = read('src/styles/globals.css');
-    const m = css.match(/@media \(max-width:\s*991px\)\s*\{[^@]*?col-before-sticky-right[^}]*\}/);
+    const m = css.match(/@media \(max-width:\s*1199\.98px\)\s*\{[^@]*?col-before-sticky-right[^}]*\}/);
     expect(m).not.toBeNull();
     expect(m![0]).toMatch(/padding-right:\s*var\(--sticky-actions-reserve\)/);
     expect(m![0]).toMatch(/text-overflow:\s*clip/);
