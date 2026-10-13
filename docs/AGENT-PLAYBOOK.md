@@ -2388,7 +2388,7 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 根因：Owner 授權延期實際身分證據時，guard 錯將 waiver 當足夠條件，沒有要求已存在的獨立技術審查報告；技術獨審也漏掉對應 counterexample，而 parent 未在 merge 前檢視新 P1。
 - 影響：可信 write actor 可提交任意 PASS/report payload，繞過該來源延期分支要求的獨立技術審查。沒有證據顯示漏洞用於 DB G5 或 Production 寫入；publisher 不代表 reviewer backend 身分。
 - 修正：#859 僅補既有 scope/readback/helper 的報告來源綁定；保留 actual/backend 身分 UNKNOWN、Owner waiver 僅限 source、DB G5/writer 原限制。#859 於 `2026-10-13T04:38:09Z` 正常合併為 `7135a6a19b7e4cf7d88023a3082796dc6fbaf84a`；之後 #855 才提交 canonical review `5498879594` 並正常 Ready／合併至 main `829e694a7e5a1a6c18d9e9a57651306155699ffb`。
-- 預防：來源身分延期須把 actual same-PR technical report locator、publisher 與完整 body hash 綁入現有 policy，且 payload report 必須精確匹配已回讀報告；publisher 只證明 comment 來源，不冒充 reviewer backend identity。不得外推為一般模型身分或 DB approval 新門檻。
+- 預防：來源身分延期須把 actual same-PR technical report locator、publisher 與完整 body hash 綁入現有 policy，且 payload report 必須精確匹配已回讀報告；publisher 只證明 comment 來源，不冒充 reviewer backend identity。merge 前先檢視最新 finding 讀取結果，再送 mutation，不能在尚未檢視結果的同一批呼叫直接合併。不得外推為一般模型身分或 DB approval 新門檻。
 - 驗證：修正後原 32 案加六個反例共 38 案全 PASS；scoped 194、stock 242、DB Final Risk 12；source CI `38346986650` SUCCESS，獨立修正審查 `6138293323` PASS。早期 #858 PASS 與其遺漏均保留；actual model 與 backend actor/session 身分 UNKNOWN。
 - 狀態：已防止
 - 限制：此條只記 source waiver 的治理證據完整性，不代表產品出貨、DB G5 或 Production acceptance。
