@@ -88,10 +88,10 @@ export const publicShopPage = {
   notFound: {
     title: '找不到這家店',
     description: '這個網址可能輸入錯誤，或這家店已經不再營業。',
-    backHome: '回到首頁',
+    backToShop: '回到店家首頁',
     /** #894：/s/** 其他子路由（行程、方案）共用同一個邊界，不可誤稱店家停業。 */
     genericTitle: '找不到這個頁面',
-    genericDescription: '這個頁面可能已下架或連結有誤，請回到首頁重新瀏覽。',
+    genericDescription: '這個頁面可能已下架或連結有誤，請確認網址或聯絡店家。',
   },
 
   /** #894：公開頁發生未預期錯誤時的說明；不顯示技術訊息給旅客。 */
