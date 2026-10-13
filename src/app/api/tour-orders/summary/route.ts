@@ -1,4 +1,4 @@
-import { handle, ok } from '@/server/http';
+import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { taipeiMonthRange, taipeiTodayDateString } from '@/server/tz';
 
@@ -9,7 +9,7 @@ function addDaysYmd(ymd: string, days: number): string {
 }
 
 const PAGE = 1000;
-/** 防禦性上限：單月已付款訂單超過此數時不再讀取，避免無界掃描（超過時回 422 由 handle 轉成錯誤）。 */
+/** 防禦性上限：單月已付款訂單超過此數時拋 422（REPORT_RANGE_TOO_LARGE），絕不靜默少算營收；頁面端摘要失敗只顯示佔位，列表不受影響。 */
 const MAX_REVENUE_ROWS = 50_000;
 
 /**
@@ -36,22 +36,17 @@ export const GET = handle(async () => {
     .eq('tenant_id', t.tenantId).eq('status', 'PENDING');
   const awaitingQ = t.supabase.from('tour_orders').select('id', { count: 'exact', head: true })
     .eq('tenant_id', t.tenantId).neq('status', 'CANCELLED').in('payment_status', ['UNPAID', 'PARTIAL']);
-  const departuresQ = t.supabase.from('trip_departures').select('id')
-    .eq('tenant_id', t.tenantId).gte('departs_on', today).lte('departs_on', in7);
+  // 與列表 `departsOn` 同一個來源：tour_orders.departure_id → trip_departures.departs_on；
+  // 單一租戶範圍的 count（內嵌 inner 篩選），不經 id 清單，沒有 1000 列截斷與過長 URL 問題。
+  const upcomingQ = t.supabase.from('tour_orders').select('id, trip_departures!inner(departs_on)', { count: 'exact', head: true })
+    .eq('tenant_id', t.tenantId).eq('status', 'CONFIRMED')
+    .gte('trip_departures.departs_on', today).lte('trip_departures.departs_on', in7);
 
-  const [pendingRes, awaitingRes, depRes] = await Promise.all([pendingQ, awaitingQ, departuresQ]);
+  const [pendingRes, awaitingRes, upcomingRes] = await Promise.all([pendingQ, awaitingQ, upcomingQ]);
   if (pendingRes.error) throw pendingRes.error;
   if (awaitingRes.error) throw awaitingRes.error;
-  if (depRes.error) throw depRes.error;
-
-  const departureIds = ((depRes.data ?? []) as { id: string }[]).map((r) => r.id);
-  let upcoming7d = 0;
-  if (departureIds.length > 0) {
-    const { count, error } = await t.supabase.from('tour_orders').select('id', { count: 'exact', head: true })
-      .eq('tenant_id', t.tenantId).eq('status', 'CONFIRMED').in('departure_id', departureIds);
-    if (error) throw error;
-    upcoming7d = count ?? 0;
-  }
+  if (upcomingRes.error) throw upcomingRes.error;
+  const upcoming7d = upcomingRes.count ?? 0;
 
   let monthRevenue = 0;
   let scanned = 0;
@@ -65,7 +60,8 @@ export const GET = handle(async () => {
     const page = (data ?? []) as { total_amount: number | string | null }[];
     for (const r of page) monthRevenue += Number(r.total_amount ?? 0);
     scanned += page.length;
-    if (page.length < PAGE || scanned >= MAX_REVENUE_ROWS) break;
+    if (page.length < PAGE) break;
+    if (scanned >= MAX_REVENUE_ROWS) throw new ApiHttpError(422, '區間內訂單過多，請縮短日期區間', ERR.REPORT_RANGE_TOO_LARGE);
   }
 
   return ok({

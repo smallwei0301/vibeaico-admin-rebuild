@@ -16,16 +16,22 @@ vi.mock('@/server/tenant', () => ({ requireTenant: (...a: unknown[]) => requireT
 
 const queries: { table: string; calls: Call[] }[] = [];
 
-function applyOps(rows: Row[], calls: Call[]): Row[] {
+function applyOps(rows: Row[], calls: Call[], tables: Record<string, Row[]> = {}): Row[] {
   let out = rows;
+  // 內嵌 inner 篩選 `trip_departures.<col>`：以 departure_id 對應 trip_departures，找不到即排除（inner join）
+  const val = (r: Row, f: string): unknown => {
+    if (!f.startsWith('trip_departures.')) return r[f];
+    const dep = (tables.trip_departures ?? []).find((d) => d.id === r.departure_id);
+    return dep ? dep[f.slice('trip_departures.'.length)] : undefined;
+  };
   for (const [m, a] of calls) {
     const f = a[0] as string;
-    if (m === 'eq') out = out.filter((r) => r[f] === a[1]);
-    else if (m === 'neq') out = out.filter((r) => r[f] !== a[1]);
-    else if (m === 'in') out = out.filter((r) => (a[1] as unknown[]).includes(r[f]));
-    else if (m === 'gte') out = out.filter((r) => (r[f] as string) >= (a[1] as string));
-    else if (m === 'lte') out = out.filter((r) => (r[f] as string) <= (a[1] as string));
-    else if (m === 'lt') out = out.filter((r) => (r[f] as string) < (a[1] as string));
+    if (m === 'eq') out = out.filter((r) => val(r, f) === a[1]);
+    else if (m === 'neq') out = out.filter((r) => val(r, f) !== a[1]);
+    else if (m === 'in') out = out.filter((r) => (a[1] as unknown[]).includes(val(r, f)));
+    else if (m === 'gte') out = out.filter((r) => (val(r, f) as string) >= (a[1] as string));
+    else if (m === 'lte') out = out.filter((r) => (val(r, f) as string) <= (a[1] as string));
+    else if (m === 'lt') out = out.filter((r) => (val(r, f) as string) < (a[1] as string));
   }
   return out;
 }
@@ -42,7 +48,7 @@ function fakeSupabase(tables: Record<string, Row[]>) {
         order: () => b,
         range: (x: number, y: number) => { rng = [x, y]; return b; },
         then(resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) {
-          const all = applyOps(tables[table] ?? [], calls);
+          const all = applyOps(tables[table] ?? [], calls, tables);
           const data = rng ? all.slice(rng[0], rng[1] + 1) : all;
           return Promise.resolve({ data: head ? null : data, error: null, count: all.length }).then(resolve, reject);
         },
@@ -108,10 +114,31 @@ describe('GET /api/tour-orders/summary（#890）', () => {
 
   it('每一個查詢都帶 tenant_id 過濾', async () => {
     await call();
-    expect(queries.length).toBeGreaterThanOrEqual(5);
+    expect(queries.length).toBe(4);
+    expect(queries.every((q) => q.table === 'tour_orders')).toBe(true);
     for (const q of queries) {
       expect(q.calls.some(([m, a]) => m === 'eq' && a[0] === 'tenant_id' && a[1] === A), `${q.table} 缺 tenant_id`).toBe(true);
     }
+  });
+
+  it('近 7 天出團為單一 tour_orders 關聯查詢：tenant 與嵌入日期窗都在同一個 count 上', async () => {
+    await call();
+    const q = queries.find((x) => x.calls.some(([m, a]) => m === 'select' && String(a[0]).includes('trip_departures!inner')))!;
+    expect(q.table).toBe('tour_orders');
+    expect(q.calls).toContainEqual(['eq', ['tenant_id', A]]);
+    expect(q.calls).toContainEqual(['eq', ['status', 'CONFIRMED']]);
+    expect(q.calls).toContainEqual(['gte', ['trip_departures.departs_on', '2026-10-13']]);
+    expect(q.calls).toContainEqual(['lte', ['trip_departures.departs_on', '2026-10-20']]);
+    expect(queries.some((x) => x.table === 'trip_departures')).toBe(false);
+  });
+
+  it('本月已付款訂單超過掃描上限：回 422 REPORT_001，不回少算的 200', async () => {
+    const big = Array.from({ length: 50_000 }, (_, i) => order({ id: `r${String(i).padStart(5, '0')}`, status: 'COMPLETED', payment_status: 'PAID', total_amount: 1 }));
+    requireTenantMock.mockResolvedValue({ supabase: fakeSupabase({ tour_orders: big, trip_departures: [] }), tenantId: A, user: { id: 'u' }, role: 'OWNER' });
+    const { status, body } = await call();
+    expect(status).toBe(422);
+    expect(body.code).toBe('REPORT_001');
+    expect(body.data).toBeUndefined();
   });
 
   it('別的租戶的資料完全不計入', async () => {
