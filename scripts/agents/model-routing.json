@@ -1,6 +1,20 @@
 {
   "version": "2026-09-08.4",
   "modelMappingVersion": "2026-10-01.1",
+  "sourceIdentityDataDeferral": {
+    "version": "2026-10-13.1",
+    "enabled": true,
+    "surface": "PRODUCT_SOURCE_FINAL_RISK",
+    "repository": "smallwei0301/vibeaico-admin-rebuild",
+    "prNumber": 855,
+    "headSha": "3f9055cf12f13d0db1b0a63882e851d853f5800e",
+    "changeDigest": "517bac549fbd89f2189a3c2e5db7ecb1d6798cbb268144da88895756e1a9ffc4",
+    "ownerDecision": "docs/decisions/2026-10-13-owner-pr855-source-identity-deferral.md",
+    "approvalComment": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/855#issuecomment-6137971029",
+    "approvalBodySha256": "d7a9520e2b905e14fb1ce07b931ec94415290464cc6d1bf89dab456f2e1a895c",
+    "approvalActorLogin": "smallwei0301",
+    "approvalActorId": 206991894
+  },
   "nativeRolePilot": {
     "version": "2026-10-09.1",
     "enabled": true,

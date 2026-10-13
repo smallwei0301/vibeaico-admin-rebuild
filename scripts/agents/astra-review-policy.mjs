@@ -1,4 +1,4 @@
-import { fallbackReference, finalRiskReviewerErrors, independentRoleErrors } from './final-risk-cost-policy.mjs';
+import { fallbackReference, finalRiskReviewerErrors, independentRoleErrors, sourceIdentityDataDeferred } from './final-risk-cost-policy.mjs';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { AMBIGUOUS_FIELD, readField } from './agent-wip-policy.mjs';
@@ -312,10 +312,13 @@ export function evaluateAstra({ body = '', changedFiles = null, context = {}, re
     if (!['COMMENTED', 'APPROVED'].includes(latest.reviewState)) errors.push('Astra review is dismissed or requests changes');
     if (latest.verdict !== 'PASS') errors.push('Astra verdict is not PASS');
     if (latest.commitId !== latest.headSha) errors.push('Canonical review commit does not match its attested head');
-    const roleContext = { ...context, headSha: semanticRoleHead(latest, context) };
+    const roleContext = { ...context, headSha: semanticRoleHead(latest, context),
+      sourceIdentityDataDeferralEvidence: context.headSha === context.currentHeadSha
+        ? context.sourceIdentityDataDeferralEvidence : undefined };
     const reviewerErrors = finalRiskReviewerErrors(latest, policy, roleContext);
     if (reviewerErrors.length) errors.push('Astra model identity is unverified', ...reviewerErrors);
-    if (!['CURRENT_AGENT', 'EVIDENCE_FALLBACK'].includes(latest.reviewerTier) && latest.identityEvidence !== 'OPERATOR_ATTESTED') {
+    if (!sourceIdentityDataDeferred(latest, policy, roleContext)
+      && !['CURRENT_AGENT', 'EVIDENCE_FALLBACK'].includes(latest.reviewerTier) && latest.identityEvidence !== 'OPERATOR_ATTESTED') {
       errors.push('Missing explicit operator model attestation');
     }
     if (!meaningful(latest.report) || !/^https:\/\/github\.com\//.test(latest.report)) errors.push('Missing durable review report URL');
@@ -410,6 +413,32 @@ export function evaluateOrdinaryReview(reviews = [], context = {}, policy = {}) 
   return { status: errors.length ? 'SOL_REVIEW_PENDING' : 'SOL_REVIEW_APPROVED', errors };
 }
 
+/** Source identity deferral requires current-main policy and unchanged Owner evidence. */
+async function loadSourceIdentityDataDeferral({ github, owner, repo, current, digest }, policy) {
+  const scope = policy.sourceIdentityDataDeferral;
+  if (scope?.enabled !== true || scope.repository !== `${owner}/${repo}` || scope.prNumber !== current.number
+    || scope.headSha !== current.head.sha || scope.changeDigest !== digest || current.state !== 'open') return undefined;
+  try {
+    const { data: main } = await github.rest.repos.getCommit({ owner, repo, ref: 'main' });
+    if (!SHA.test(main.sha)) return undefined;
+    const { data: file } = await github.rest.repos.getContent({ owner, repo, ref: main.sha, path: 'scripts/agents/model-routing.json' });
+    if (Array.isArray(file) || file.type !== 'file' || file.encoding !== 'base64') return undefined;
+    const bytes = Buffer.from(file.content, 'base64');
+    if (createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex') !== file.sha) return undefined;
+    const live = JSON.parse(bytes.toString('utf8')).sourceIdentityDataDeferral;
+    if (JSON.stringify(live) !== JSON.stringify(scope)) return undefined;
+    const ref = fallbackReference(scope.approvalComment, `${owner}/${repo}`);
+    if (ref?.kind !== 'issuecomment' || ref.number !== current.number) return undefined;
+    const { data: approval } = await github.rest.issues.getComment({ owner, repo, comment_id: ref.id });
+    const approvalBodySha256 = createHash('sha256').update(String(approval.body ?? '')).digest('hex');
+    if (approval.html_url !== scope.approvalComment || approval.user?.login !== scope.approvalActorLogin
+      || approval.user?.id !== scope.approvalActorId || approvalBodySha256 !== scope.approvalBodySha256) return undefined;
+    const { data: after } = await github.rest.repos.getCommit({ owner, repo, ref: 'main' });
+    if (after.sha !== main.sha) return undefined;
+    return { trusted: true, currentMainSha: main.sha, scope: live, approvalBodySha256 };
+  } catch { return undefined; }
+}
+
 /** A native source pilot is never enabled by branch config or evidence payloads. */
 async function loadNativePolicyEvidence({ github, owner, repo, reviewer }, policy) {
   try {
@@ -473,6 +502,7 @@ export async function evaluateGithubAstra({ github, owner, repo, current }, poli
     }
   }
   const digest = changeDigestOf(files);
+  const sourceIdentityDataDeferralEvidence = await loadSourceIdentityDataDeferral({ github, owner, repo, current, digest }, policy);
   const fallbackSourceEvidence = await loadFallbackSourceEvidence({ github, owner, repo, reviews, prNumber: current.number }, policy);
   let roleEvidence, nativePolicyEvidence;
   if (ordinaryReviewRequired || (classification.required && policy.openaiBuilderDecision?.independentReviewerRequired === true)) {
@@ -523,7 +553,7 @@ export async function evaluateGithubAstra({ github, owner, repo, current }, poli
     schemaBaseline: readField(body, 'ASTRA_SCHEMA_BASELINE'),
     changeDigest: digest, createdAt: current.created_at, roleEvidence, ordinaryReviewRequired,
     reviewSurface: 'PRODUCT_SOURCE_FINAL_RISK', prNumber: current.number, currentHeadSha: current.head.sha,
-    nativeCanonical: true, nativePolicyEvidence,
+    nativeCanonical: true, nativePolicyEvidence, sourceIdentityDataDeferralEvidence,
   } }, policy);
   return { ...result, changeDigest: digest };
 }
