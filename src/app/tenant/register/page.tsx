@@ -52,9 +52,9 @@ type Field =
   | 'code' | 'name' | 'email' | 'verificationCode'
   | 'phone' | 'password' | 'confirmPassword';
 
-const EMPTY_FORM: Record<Field | 'referralCode', string> = {
+const EMPTY_FORM: Record<Field, string> = {
   code: '', name: '', email: '', verificationCode: '',
-  phone: '', password: '', confirmPassword: '', referralCode: '',
+  phone: '', password: '', confirmPassword: '',
 };
 
 export default function RegisterPage() {
@@ -92,7 +92,7 @@ export default function RegisterPage() {
   const lineNote = oauthNoteFor(oauthLoading, oauthStatus?.line.configured ?? false);
   const googleNote = oauthNoteFor(oauthLoading, oauthStatus?.google.configured ?? false);
 
-  const set = (key: Field | 'referralCode') => (e: React.ChangeEvent<HTMLInputElement>) => {
+  const set = (key: Field) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const { value } = e.target;
     setForm((f) => ({ ...f, [key]: value }));
     setErrors((s) => ({ ...s, [key]: undefined }));
@@ -172,6 +172,7 @@ export default function RegisterPage() {
         password: form.password,
         tenantName: form.name.trim(),
         shopCode: form.code.trim(),
+        phone: form.phone.trim(),
         businessType,
       });
       toast.show(t.messages.registerSuccess);
@@ -370,8 +371,9 @@ export default function RegisterPage() {
             <Input
               id="referralCode" name="referralCode" type="text"
               placeholder={t.form.referralCodePlaceholder}
-              value={form.referralCode} onChange={set('referralCode')}
+              disabled
             />
+            <FormText>{t.form.referralCodeUnavailable}</FormText>
           </FormGroup>
 
           {/* 原站以 hidden input 帶入業務推薦碼（?agent=…），骨架階段不需渲染 */}

@@ -82,6 +82,7 @@ export const registerPage = {
     referralCode: '推薦碼',
     referralCodeOptional: '（選填）',
     referralCodePlaceholder: '輸入推薦碼',
+    referralCodeUnavailable: '推薦碼功能尚未開放',
     submit: '註冊',
     submitting: '註冊中...',
   },

@@ -15,6 +15,8 @@ const bodySchema = z.object({
   shopCode: z.string().regex(SHOP_CODE_PATTERN, SHOP_CODE_MESSAGE),
   // 業態：省略時寫入 LOCAL_SHOP（與 DB 預設一致）；非法值由 zod 擋成 400。
   businessType: z.enum(BUSINESS_TYPES).optional(),
+  // 店家電話：選填（向下相容）；只允許數字、+、-、空白，寫入 tenant_settings.basic.tenantPhone。
+  phone: z.string().trim().max(20).regex(/^[0-9+\- ]*$/, '電話格式不正確').optional(),
 });
 
 function isDuplicateEmailError(error: unknown): boolean {
@@ -52,7 +54,7 @@ export const POST = handle(async (req) => {
     ownerLinked = true;
     const s = DEFAULT_TENANT_SETTINGS(b.shopCode, b.tenantName);
     const { error: serr } = await admin.from('tenant_settings').insert({
-      tenant_id: t.id, basic: s.basic, business: s.business, notify: s.notify,
+      tenant_id: t.id, basic: { ...s.basic, tenantPhone: b.phone ?? s.basic.tenantPhone }, business: s.business, notify: s.notify,
       privacy: s.privacy, points: s.points, line: { ...s.line, channelSecret: undefined, channelAccessToken: undefined },
     });
     if (serr) throw serr;
