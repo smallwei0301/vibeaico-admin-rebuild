@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, MessageCircle, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardBody } from '@/components/ui/Card';
+import { normalizeTenantPhone, TENANT_PHONE_LENGTH } from '@/lib/tenant-phone';
 import { FormError, FormGroup, FormText, Input, Label } from '@/components/ui/Form';
 import { AuthCardHeading } from '@/components/layout/AuthShell';
 import { MODE_PRESETS, type BusinessType } from '@/config/modes';
@@ -43,7 +44,6 @@ function oauthNoteFor(loading: boolean, configured: boolean): string {
  */
 /** 驗證碼 6 位數、電話 10 位數（原站 inline JS 逐字驗證） */
 const VERIFICATION_CODE_LENGTH = 6;
-const PHONE_LENGTH = 10;
 const PASSWORD_MIN_LENGTH = 8;
 /** 重新發送倒數秒數 */
 const RESEND_SECONDS = 60;
@@ -145,7 +145,7 @@ export default function RegisterPage() {
     if (form.verificationCode.trim().length !== VERIFICATION_CODE_LENGTH) {
       next.verificationCode = t.messages.code6;
     }
-    if (form.phone.replace(/\D/g, '').length !== PHONE_LENGTH) next.phone = t.messages.phone10;
+    if (normalizeTenantPhone(form.phone).length !== TENANT_PHONE_LENGTH) next.phone = t.messages.phone10;
     if (form.password.length < PASSWORD_MIN_LENGTH) {
       next.password = t.form.passwordPlaceholder;
     }
@@ -172,7 +172,7 @@ export default function RegisterPage() {
         password: form.password,
         tenantName: form.name.trim(),
         shopCode: form.code.trim(),
-        phone: form.phone.trim(),
+        phone: normalizeTenantPhone(form.phone),
         businessType,
       });
       toast.show(t.messages.registerSuccess);
@@ -371,9 +371,9 @@ export default function RegisterPage() {
             <Input
               id="referralCode" name="referralCode" type="text"
               placeholder={t.form.referralCodePlaceholder}
-              disabled
+              disabled aria-describedby="referralCode-note"
             />
-            <FormText>{t.form.referralCodeUnavailable}</FormText>
+            <FormText id="referralCode-note">{t.form.referralCodeUnavailable}</FormText>
           </FormGroup>
 
           {/* 原站以 hidden input 帶入業務推薦碼（?agent=…），骨架階段不需渲染 */}
