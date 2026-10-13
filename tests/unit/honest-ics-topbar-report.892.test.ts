@@ -47,4 +47,14 @@ describe('#892 真實模式不顯示假功能', () => {
     // 視窗本體不受 hidden lg:flex 影響：事件監聽在元件最外層、Modal 不在隱藏的按鈕內
     expect(src('src/components/layout/AppShell.tsx')).toContain('<BugReportButton />');
   });
+
+  it('側欄回報按鈕不得用 w-full（會與 .sidebar-link 的水平 margin 疊加而溢出），且 settings 說明僅 mock 顯示', () => {
+    const sidebar = src('src/components/layout/Sidebar.tsx');
+    const btn = sidebar.match(/<button\s+type="button"\s+onClick=\{\(\) => \{ onCloseMobile\(\); openBugReport[\s\S]*?className=\{cn\('([^']*)'/);
+    expect(btn).not.toBeNull();
+    expect(btn![1]).not.toMatch(/(^|\s)w-full(\s|$)/);
+    expect(btn![1]).toContain('w-[calc(100%-1rem)]');
+    const settings = src('src/app/tenant/settings/page.tsx');
+    expect(settings).toMatch(/\{USE_MOCK && <Alert[^>]*>\{t\.calendarSync\.intro\}<\/Alert>\}/);
+  });
 });

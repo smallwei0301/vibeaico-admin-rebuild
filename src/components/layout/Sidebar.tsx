@@ -61,7 +61,7 @@ export function Sidebar({
           <button
             type="button"
             onClick={() => { onCloseMobile(); openBugReport(); }}
-            className={cn('sidebar-link w-full text-left', sub && 'sidebar-sub-link')}
+            className={cn('sidebar-link w-[calc(100%-1rem)] text-left', sub && 'sidebar-sub-link')}
             title={collapsed ? navLabel(leaf.key as NavKey, businessType) : undefined}
           >
             <Icon size={sub ? 15 : 17} className="flex-shrink-0" />

@@ -1490,7 +1490,7 @@ export default function SettingsPage() {
                 </CardTitle>
               </CardHeader>
               <CardBody>
-                <Alert tone="neutral" className="mb-4">{t.calendarSync.intro}</Alert>
+                {USE_MOCK && <Alert tone="neutral" className="mb-4">{t.calendarSync.intro}</Alert>}
 
                 {USE_MOCK ? (
                   <>
