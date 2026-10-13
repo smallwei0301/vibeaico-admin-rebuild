@@ -22,7 +22,7 @@ import { POST as applyCoupon } from '../../src/app/api/bookings/[id]/apply-coupo
 import { bookingFilterBound, zonedDayRange, tenantDayRange } from '../../src/lib/bookings-query-range';
 import { canMarkPaidOffline, syncDetailFinalPrice } from '../../src/lib/booking-detail-sync';
 
-function makeSb(opts: { booking?: Row | null; bookingUpdate?: { data: Row | null; error: any }; timezone?: string }) {
+function makeSb(opts: { booking?: Row | null; bookingUpdate?: { data: Row | null; error: any }; timezone?: string; settingsError?: boolean }) {
   const log: { table: string; op: string; patch?: Row; filters: [string, string, any][] }[] = [];
   const sb = {
     log,
@@ -45,6 +45,7 @@ function makeSb(opts: { booking?: Row | null; bookingUpdate?: { data: Row | null
       };
       function resolve() {
         if (table === 'tenant_settings') {
+          if (opts.settingsError) return { data: null, error: { message: 'boom', code: 'XX000' } };
           return { data: opts.timezone ? { basic: { timezone: opts.timezone } } : null, error: null };
         }
         if (table === 'bookings_view') return { data: [], count: 0, error: null };
@@ -96,6 +97,21 @@ describe('#933 日界線轉換', () => {
     expect(bookingFilterBound('2026-10-14', 'from', 'Not/AZone')).toBe('2026-10-13T16:00:00.000Z');
   });
 
+  it('午夜 DST 跳時：Havana 2026-03-08 與 Santiago 2026-09-06 從當天第一個有效瞬間起、to 不跨日', () => {
+    const localDate = (iso: string, tz: string) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
+    for (const [ymd, tz, next] of [['2026-03-08', 'America/Havana', '2026-03-09'], ['2026-09-06', 'America/Santiago', '2026-09-07']] as const) {
+      const { from, to } = zonedDayRange(ymd, tz);
+      expect(localDate(from, tz)).toBe(ymd);
+      expect(localDate(new Date(Date.parse(from) - 1).toISOString(), tz)).not.toBe(ymd);
+      expect(localDate(to, tz)).toBe(ymd);
+      expect(localDate(new Date(Date.parse(to) + 1).toISOString(), tz)).toBe(next);
+    }
+    // 當地 00:00 不存在，第一個有效瞬間為 01:00（Havana UTC-5 → 05:00Z；Santiago UTC-3 → 04:00Z 為 01:00 之後）
+    expect(zonedDayRange('2026-03-08', 'America/Havana').from).toBe('2026-03-08T05:00:00.000Z');
+    expect(zonedDayRange('2026-03-08', 'America/New_York').from).toBe('2026-03-08T05:00:00.000Z');
+    expect(zonedDayRange('2026-03-08', 'America/New_York').to).toBe('2026-03-09T03:59:59.999Z');
+  });
+
   it('tenantDayRange 行為不變（首頁今日預約）', () => {
     const r = tenantDayRange(new Date('2026-10-14T01:00:00Z'), 'Asia/Taipei');
     expect(r).toEqual({ from: '2026-10-13T16:00:00.000Z', to: '2026-10-14T15:59:59.999Z' });
@@ -124,6 +140,19 @@ describe('#933 GET /api/bookings 日期篩選', () => {
     state.sb = makeSb({});
     await get('from=2026-10-13T16:00:00.000Z&to=2026-10-14T15:59:59.999Z');
     expect(view().filters).toContainEqual(['gte', 'start_at', '2026-10-13T16:00:00.000Z']);
+    expect(view().filters).toContainEqual(['lte', 'start_at', '2026-10-14T15:59:59.999Z']);
+  });
+
+  it('tenant_settings 查詢錯誤：回 500，不靜默回退台北', async () => {
+    state.sb = makeSb({ settingsError: true });
+    const res = await get('from=2026-10-14');
+    expect(res.status).toBe(500);
+    expect(view().filters.some((f: any) => f[0] === 'gte' || f[0] === 'lte')).toBe(false);
+  });
+
+  it('設定缺值（無資料列）回退台北', async () => {
+    state.sb = makeSb({});
+    await get('to=2026-10-14');
     expect(view().filters).toContainEqual(['lte', 'start_at', '2026-10-14T15:59:59.999Z']);
   });
 

@@ -40,8 +40,9 @@ export const GET = handle(async (req) => {
   if (q.staffId) query = query.eq('staff_id', q.staffId);
   if (q.from || q.to) {
     // #933：純日期依店家時區（basic.timezone，缺值回退 Asia/Taipei）日界線，與匯出一致，結束日含當天。
-    const { data: settings } = await t.supabase.from('tenant_settings')
+    const { data: settings, error: se } = await t.supabase.from('tenant_settings')
       .select('basic').eq('tenant_id', t.tenantId).maybeSingle();
+    if (se) throw se;
     const zone = resolvePublicTimeZone((settings?.basic as { timezone?: unknown } | null)?.timezone);
     if (q.from) query = query.gte('start_at', bookingFilterBound(q.from, 'from', zone));
     if (q.to) query = query.lte('start_at', bookingFilterBound(q.to, 'to', zone));

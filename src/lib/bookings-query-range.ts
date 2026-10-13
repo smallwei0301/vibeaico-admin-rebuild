@@ -2,17 +2,6 @@
 import { PUBLIC_DEFAULT_TIME_ZONE, resolvePublicTimeZone } from '@/lib/public-time-zone';
 
 
-/** 指定時區在某個時間點的 UTC 偏移（毫秒；東區為正）。 */
-function zoneOffsetMs(zone: string, atMs: number): number {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
-  }).formatToParts(new Date(atMs));
-  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
-  const asUtc = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
-  return asUtc - Math.floor(atMs / 1000) * 1000;
-}
-
 /** 店家時區的「現在」日期（YYYY-MM-DD）。 */
 export function tenantDateString(
   now: Date = new Date(), timeZone: string = PUBLIC_DEFAULT_TIME_ZONE,
@@ -22,23 +11,42 @@ export function tenantDateString(
   }).format(now);
 }
 
-/** 店家時區當地 `ymd` 的 hh:mm:ss.ms 對應的 UTC 毫秒（對有夏令時的時區也正確）。 */
-function zonedWallToUtcMs(zone: string, ymd: string, h: number, mi: number, s: number, ms: number): number {
-  const [y, m, d] = ymd.split('-').map(Number);
-  const wall = Date.UTC(y, m - 1, d, h, mi, s, ms);
-  let utc = wall - zoneOffsetMs(zone, wall);
-  utc = wall - zoneOffsetMs(zone, utc);
-  return utc;
+/** 店家時區在某個 UTC 毫秒的當地日期（YYYY-MM-DD）。 */
+function zonedDateAt(zone: string, atMs: number): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date(atMs));
 }
 
-/** 店家時區某個 YYYY-MM-DD 當天 00:00:00.000 ~ 23:59:59.999，轉成 UTC ISO（含當天，#933）。 */
+/**
+ * 店家時區當地日期 `ymd` 的第一個有效瞬間（UTC 毫秒）。
+ * 午夜發生 DST 跳時（如 America/Havana、America/Santiago，00:00 直接跳到 01:00）時當地 00:00 不存在，
+ * 取當天第一個真實存在的瞬間；以「當地日期 >= ymd」的最小分鐘做二分搜尋，對非 DST 日等同 00:00。
+ */
+function zonedDayStartMs(zone: string, ymd: string): number {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const wall = Date.UTC(y, m - 1, d);
+  const HOUR = 3600_000;
+  // 偏移範圍 UTC-12 ~ UTC+14：wall-15h 當地必早於 ymd，wall+27h 當地必不早於 ymd。
+  let lo = Math.floor((wall - 15 * HOUR) / 60_000);
+  let hi = Math.floor((wall + 27 * HOUR) / 60_000);
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (zonedDateAt(zone, mid * 60_000) >= ymd) hi = mid; else lo = mid + 1;
+  }
+  return lo * 60_000;
+}
+
+/** 店家時區某個 YYYY-MM-DD 當天第一個有效瞬間 ~ 當天最後一毫秒，轉成 UTC ISO（含當天，#933）。 */
 export function zonedDayRange(
   ymd: string, timeZone: string = PUBLIC_DEFAULT_TIME_ZONE,
 ): { from: string; to: string } {
   const zone = resolvePublicTimeZone(timeZone);
+  const [y, m, d] = ymd.split('-').map(Number);
+  const next = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
   return {
-    from: new Date(zonedWallToUtcMs(zone, ymd, 0, 0, 0, 0)).toISOString(),
-    to: new Date(zonedWallToUtcMs(zone, ymd, 23, 59, 59, 999)).toISOString(),
+    from: new Date(zonedDayStartMs(zone, ymd)).toISOString(),
+    to: new Date(zonedDayStartMs(zone, next) - 1).toISOString(),
   };
 }
 
