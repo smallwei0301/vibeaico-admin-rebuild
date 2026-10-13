@@ -4,7 +4,7 @@
  *  2. 店家首頁團次徽章：只有 bookingCta === 'fixed' 的方案才是直達預約連結。
  *  3. LINE「近期團次」回覆：只有啟用中的 FIXED_DEPARTURE 方案才附深連結。
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ReactElement } from 'react';
 
@@ -15,7 +15,10 @@ const fx = vi.hoisted(() => ({
 }));
 
 vi.mock('next/navigation', () => ({ notFound: () => { throw new Error('NOT_FOUND'); } }));
-vi.mock('@/server/public-tour-booking', () => ({ loadPublicBookingPlan: async () => fx.bookingPlan }));
+vi.mock('@/server/public-tour-booking', async (importActual) => ({
+  ...(await importActual<typeof import('@/server/public-tour-booking')>()),
+  loadPublicBookingPlan: async () => fx.bookingPlan,
+}));
 vi.mock('@/app/s/[shopCode]/plans/[planId]/book/BookingForm', () => ({ BookingForm: () => null }));
 vi.mock('@/server/public-shop', () => ({ loadPublicShop: async () => fx.shop }));
 vi.mock('@/server/promotion-events', () => ({ recordPromotionPageView: async () => undefined }));
@@ -82,7 +85,7 @@ describe('預約頁預選：單一團次須達方案最低人數', () => {
 
 describe('店家首頁團次徽章', () => {
   it('方案 minParty=4：剩 4 位的團次有連結、剩 1 位的沒有；可及名稱含日期時間名額', async () => {
-    const dep = (id: string, seatsBooked: number) => ({ id, planId: 'pf', departsOn: '2098-01-01', startTime: '09:00', capacity: 5, seatsBooked });
+    const dep = (id: string, seatsBooked: number) => ({ id, planId: 'pf', departsOn: '2098-01-01', startTime: '09:00', capacity: 5, seatsBooked, linkable: seatsBooked <= 1 });
     fx.shop = {
       tenantId: 't', services: [],
       shop: { name: 'Demo', description: '', phone: '', email: '', address: '', lineBasicId: '', businessType: 'GUIDE' },
@@ -109,7 +112,7 @@ describe('店家首頁團次徽章', () => {
     const plan = (id: string, bookingCta: string, salesMode: string) => ({
       id, name: id, description: '', pricePerPerson: 100, priceType: 'PER_PERSON', minParty: 1, maxParty: 4, salesMode, bookingCta,
     });
-    const dep = (id: string, planId: string) => ({ id, planId, departsOn: '2098-01-01', startTime: '09:00', capacity: 10, seatsBooked: 1 });
+    const dep = (id: string, planId: string) => ({ id, planId, departsOn: '2098-01-01', startTime: '09:00', capacity: 10, seatsBooked: 1, linkable: true });
     fx.shop = {
       tenantId: 't', services: [],
       shop: { name: 'Demo', description: '', phone: '', email: '', address: '', lineBasicId: '', businessType: 'GUIDE' },
@@ -136,6 +139,9 @@ describe('店家首頁團次徽章', () => {
 });
 
 describe('LINE「近期團次」深連結', () => {
+  // 固定「現在」＝2098-01-01 08:00（台北）／00:00Z：09:00 的團次未開始，結果與執行時刻無關。
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2098-01-01T00:00:00Z')); });
+  afterEach(() => { vi.useRealTimers(); });
   it('只有啟用中的 FIXED_DEPARTURE 方案附深連結', async () => {
     fx.lineReplies.length = 0;
     const today = new Date().toISOString().slice(0, 10);
@@ -154,7 +160,7 @@ describe('LINE「近期團次」深連結', () => {
     // 通用 chain：任何 filter 方法回自己，await 時回該表資料
     const chain = (data: unknown) => {
       const c: any = { then: (res: (v: unknown) => unknown) => Promise.resolve({ data, error: null }).then(res) };
-      for (const m of ['select', 'eq', 'in', 'gte', 'lte', 'order', 'limit']) c[m] = () => c;
+      for (const m of ['select', 'eq', 'in', 'gte', 'lte', 'order', 'limit', 'range']) c[m] = () => c;
       return c;
     };
     const admin = {
@@ -189,7 +195,7 @@ describe('LINE「近期團次」深連結', () => {
     const plans = [{ id: 'pf', name: '固定', sales_mode: 'FIXED_DEPARTURE', active: true }];
     const chain = (data: unknown) => {
       const c: any = { then: (res: (v: unknown) => unknown) => Promise.resolve({ data, error: null }).then(res) };
-      for (const m of ['select', 'eq', 'in', 'gte', 'lte', 'order', 'limit']) c[m] = () => c;
+      for (const m of ['select', 'eq', 'in', 'gte', 'lte', 'order', 'limit', 'range']) c[m] = () => c;
       return c;
     };
     const admin = {
@@ -217,7 +223,7 @@ describe('LINE「近期團次」深連結', () => {
     const plans = [{ id: 'pf', name: '固定', sales_mode: 'FIXED_DEPARTURE', active: true, min_party: 4 }];
     const chain = (data: unknown) => {
       const c: any = { then: (res: (v: unknown) => unknown) => Promise.resolve({ data, error: null }).then(res) };
-      for (const m of ['select', 'eq', 'in', 'gte', 'lte', 'order', 'limit']) c[m] = () => c;
+      for (const m of ['select', 'eq', 'in', 'gte', 'lte', 'order', 'limit', 'range']) c[m] = () => c;
       return c;
     };
     const admin = {
@@ -232,5 +238,45 @@ describe('LINE「近期團次」深連結', () => {
     expect(text).toContain('departure=dep-four');
     expect(text).not.toContain('dep-one');
     expect(text.match(/\/book\?departure=/g)?.length).toBe(1);
+  });
+
+  const lineAdmin = (deps: unknown[], plans: unknown[]) => {
+    const chain = (data: unknown) => {
+      const c: any = { then: (res: (v: unknown) => unknown) => Promise.resolve({ data, error: null }).then(res) };
+      for (const m of ['select', 'eq', 'in', 'gte', 'lte', 'order', 'limit', 'range']) c[m] = () => c;
+      return c;
+    };
+    return { from: (t: string) => chain(t === 'trips' ? [{ id: 'tr', title: '行程' }] : t === 'trip_departures' ? deps : plans) };
+  };
+  const runLine = async (deps: unknown[], plans: unknown[]) => {
+    fx.lineReplies.length = 0;
+    const ok = await replyDepartures({
+      admin: lineAdmin(deps, plans), token: 'k', replyToken: 'r', userId: 'u', lineConfig: {},
+      tenant: { id: 'ten', shop_code: 'demo', name: 'D', business_type: 'GUIDE' },
+    } as any);
+    expect(ok).toBe(true);
+    return fx.lineReplies[0][0].text;
+  };
+  const fixedPlans = [{ id: 'pf', name: '固定', sales_mode: 'FIXED_DEPARTURE', active: true }];
+
+  it('今天（台北時間）已開始的團次不附深連結，預約頁會預選的團次才附', async () => {
+    vi.setSystemTime(new Date('2098-01-01T02:00:00Z')); // 台北 10:00
+    const deps = [
+      { id: 'dep-started', trip_id: 'tr', plan_id: 'pf', departs_on: '2098-01-01', start_time: '09:00:00', capacity: 5, seats_booked: 1 },
+      { id: 'dep-later', trip_id: 'tr', plan_id: 'pf', departs_on: '2098-01-01', start_time: '15:00:00', capacity: 5, seats_booked: 1 },
+    ];
+    const text = await runLine(deps, fixedPlans);
+    expect(text).not.toContain('dep-started');
+    expect(text).toContain('departure=dep-later');
+  });
+
+  it('超出預約頁前 12 個候選的第 13 個可訂團次不附深連結', async () => {
+    const deps = Array.from({ length: 13 }, (_, i) => ({
+      id: `dep-${String(i).padStart(2, '0')}`, trip_id: 'tr', plan_id: 'pf',
+      departs_on: `2098-01-${String(i + 1).padStart(2, '0')}`, start_time: '09:00:00', capacity: 5, seats_booked: 1,
+    }));
+    const text = await runLine(deps, fixedPlans);
+    expect(text).toContain('departure=dep-11');
+    expect(text).not.toContain('departure=dep-12');
   });
 });

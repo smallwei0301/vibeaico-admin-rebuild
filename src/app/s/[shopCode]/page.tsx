@@ -38,7 +38,6 @@ import { PublicContactActions } from '@/components/public/PublicContactActions';
 import { recordPromotionPageView } from '@/server/promotion-events';
 import { publicShopPage as t } from '@/i18n/zh-TW/pages/public-shop';
 import { formatCurrency } from '@/lib/utils';
-import { candidateIsBookable } from '@/lib/public-departure-candidates';
 
 type Params = {
   params: Promise<{ shopCode: string }>;
@@ -248,10 +247,10 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
                               {t.trips.seatsLeft(departure.capacity - departure.seatsBooked)}
                             </>
                           );
-                          // 直達預約：只有 bookingCta === 'fixed' 的方案、且此團次剩餘名額 >= 方案最低人數（與預約頁單一團次可訂規則一致）才連到預約頁並預選。
-                          const fixedPlan = departure.planId
-                            ? trip.plans.find((p) => p.id === departure.planId && p.bookingCta === 'fixed'
-                                && candidateIsBookable(departure.capacity - departure.seatsBooked, p.minParty))
+                          // 直達預約：只有 bookingCta === 'fixed' 的方案、且此團次屬於預約頁候選集合並達方案最低人數
+                          // （departure.linkable，由 public-shop 以預約頁同一套候選規則計算）才連到預約頁並預選。
+                          const fixedPlan = departure.planId && departure.linkable
+                            ? trip.plans.find((p) => p.id === departure.planId && p.bookingCta === 'fixed')
                             : undefined;
                           return (
                             <li key={departure.id} className={fixedPlan ? undefined : 'badge badge-primary'}>

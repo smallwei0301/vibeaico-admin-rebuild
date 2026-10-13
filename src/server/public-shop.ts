@@ -36,7 +36,7 @@ import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
 import { buildPublicPhone } from '@/lib/public-phone';
 import { resolveSeasonUnitPrice } from '@/lib/public-season-price';
 import { readPlanSeasons, seasonalPriceUnknown } from '@/server/public-plan-seasons';
-import { bookingCandidateSeatsLeft, createCandidateTracker } from '@/lib/public-departure-candidates';
+import { bookingCandidateSeatsLeft, candidateIsBookable, createCandidateTracker, MAX_BOOKING_CANDIDATE_DEPARTURES } from '@/lib/public-departure-candidates';
 import { bookingCtaState, type BookingCtaState } from '@/lib/public-trip-client-state';
 import { hasStartedToday, resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
 import { publicGalleryUrls } from '@/lib/trip-gallery';
@@ -73,6 +73,11 @@ export type PublicDeparture = {
   startTime: string;
   capacity: number;
   seatsBooked: number;
+  /**
+   * 直達預約連結資格：此團次屬於其方案預約頁的候選集合（未開始、未客滿、前 12 個、600 列掃描內）
+   * 且剩餘名額 >= 方案最低人數。與預約頁 loadBookingCandidateRows 同一套規則（selectBookingCandidates）。
+   */
+  linkable?: boolean;
 };
 
 export type PublicPlan = {
@@ -566,7 +571,9 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
           // 已經出發的不列。用店家時區的今天比對，不是 UTC。
           .gte('departs_on', homeNow.today)
           .order('departs_on', { ascending: true })
-          .order('start_time', { ascending: true, nullsFirst: true }),
+          .order('start_time', { ascending: true, nullsFirst: true })
+          // 與預約頁／loadHomeBookability 同一個 tie-break，同方案的候選名次才會一致。
+          .order('id', { ascending: true }),
       ]);
   if (planError) throw queryFailed('trip_plans', planError);
   if (departureError) throw queryFailed('trip_departures', departureError);
@@ -627,24 +634,43 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
   }
 
   const departuresByTrip = new Map<string, PublicDeparture[]>();
+  // 直達預約資格：每個方案依序累計「原始列數」與「候選名次」，與預約頁 selectBookingCandidates（前 12 個候選、
+  // 單方案 600 列掃描上限）同一規則；名次必須在顯示上限（MAX_DEPARTURES_PER_TRIP）之前累計。
+  const minPartyById = new Map<string, unknown>();
+  for (const list of plansByTrip.values()) for (const plan of list) minPartyById.set(plan.id, plan.minParty);
+  const rankByPlan = new Map<string, { scanned: number; candidates: number }>();
   for (const row of departureRows ?? []) {
-    // 今天已到開始時間的團次不列（與詳情頁、方案入口同一規則）。
-    if (hasStartedToday(row, homeNow)) continue;
+    const planId = (row.plan_id as string | null) ?? '';
+    let rank: { scanned: number; candidates: number } | undefined;
+    if (planId) {
+      rank = rankByPlan.get(planId) ?? { scanned: 0, candidates: 0 };
+      rankByPlan.set(planId, rank);
+      rank.scanned += 1;
+    }
+    // 今天已到開始時間的團次不列（與詳情頁、方案入口同一規則）；額滿的不列：公開頁列一個買不到的團次只會讓顧客白跑一趟。
+    // （後台仍看得到它，那是店家要的資訊。）
+    const seatsLeft = bookingCandidateSeatsLeft(row, homeNow);
+    if (seatsLeft === null) continue;
+    let linkable = false;
+    if (rank) {
+      rank.candidates += 1;
+      linkable = rank.scanned <= MAX_DETAIL_DEPARTURE_SCAN_PER_PLAN
+        && rank.candidates <= MAX_BOOKING_CANDIDATE_DEPARTURES
+        && candidateIsBookable(seatsLeft, minPartyById.get(planId));
+    }
     const tripId = row.trip_id as string;
     const list = departuresByTrip.get(tripId) ?? [];
     const capacity = Number(row.capacity ?? 0);
     const seatsBooked = Number(row.seats_booked ?? 0);
-    // 額滿的不列：公開頁列一個買不到的團次只會讓顧客白跑一趟。
-    // （後台仍看得到它，那是店家要的資訊。）
-    if (seatsBooked >= capacity) continue;
     if (list.length >= MAX_DEPARTURES_PER_TRIP) continue;
     list.push({
       id: row.id as string,
-      planId: (row.plan_id as string | null) ?? '',
+      planId,
       departsOn: row.departs_on as string,
       startTime: row.start_time == null ? '' : String(row.start_time).slice(0, 5),
       capacity,
       seatsBooked,
+      linkable,
     });
     departuresByTrip.set(tripId, list);
   }

@@ -35,6 +35,8 @@ import { APP_URL } from '@/config/env';
 import { MODE_PRESETS, type BusinessType } from '@/config/modes';
 import { keywordRepliesPage } from '@/i18n/zh-TW/pages/keyword-replies';
 import { candidateIsBookable } from '@/lib/public-departure-candidates';
+import { resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
+import { loadBookingCandidateRows } from './public-tour-booking';
 
 /** webhook 端已查好的店家列（route.ts select id, shop_code, name） */
 export type WebhookTenant = {
@@ -868,6 +870,34 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
     }
   }
 
+  // 直達預約連結只給「目的預約頁真的會提供」的團次：對每個出現的 FIXED_DEPARTURE 方案呼叫預約頁同一支
+  // loadBookingCandidateRows（未開始、未客滿、前 12 個），取得候選 id 集合（至多 SERVICE_LIST_LIMIT 個方案的有界查詢）。
+  // 任一方案查詢失敗 → 該方案不附連結（fail closed），不影響團次清單本身。
+  const candidateIdsByPlan = new Map<string, Set<string>>();
+  const linkPlanIds = [...new Set(departures.map((d: any) => d.plan_id as string).filter((id: string) => fixedPlanIds.has(id)))];
+  if (linkPlanIds.length) {
+    let timeZone: unknown;
+    try {
+      const { data: settingsRows } = await ctx.admin.from('tenant_settings').select('basic').eq('tenant_id', ctx.tenant.id);
+      const first = Array.isArray(settingsRows) ? settingsRows[0] : settingsRows;
+      timeZone = (first as any)?.basic?.timezone;
+    } catch (settingsError) {
+      console.error('[line] replyDepartures 查詢 tenant_settings 失敗', settingsError);
+    }
+    const now = tenantNowParts(resolvePublicTimeZone(timeZone));
+    await Promise.all(linkPlanIds.map(async (planId) => {
+      try {
+        const rows = await loadBookingCandidateRows(
+          ctx.admin as any, { tenantId: ctx.tenant.id, planId, now },
+          (stage, cause) => new Error(`LINE_DEPARTURE_CANDIDATES_FAILED:${stage}`, { cause }),
+        );
+        candidateIdsByPlan.set(planId, new Set(rows.map(({ row }) => String(row.id))));
+      } catch (candidateError) {
+        console.error('[line] replyDepartures 查詢預約候選團次失敗', candidateError);
+      }
+    }));
+  }
+
   const lines = departures.map((d: any) => {
     // capacity - seats_booked 可能因為並發而暫時為負；夾到 0，不顯示「剩 -1 位」
     const left = Math.max(0, Number(d.capacity) - Number(d.seats_booked));
@@ -876,8 +906,9 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
     const plan = planName ? `（${planName}）` : '';
     const seats = left > 0 ? MSG.departureSeatsLeft(left) : MSG.departureFull;
     const line = `・${d.departs_on}${time} ${titleById.get(d.trip_id) ?? ''}${plan}　${seats}`;
-    // 直達預約：只給啟用中的 FIXED_DEPARTURE 方案、且剩餘名額 >= 方案最低人數的團次（與預約頁單一團次可訂規則一致）；額滿、名額不足或其他方案維持無連結。
-    if (!d.id || !fixedPlanIds.has(d.plan_id) || !candidateIsBookable(left, minPartyByPlan.get(d.plan_id))) return line;
+    // 直達預約：只給啟用中的 FIXED_DEPARTURE 方案、屬於預約頁候選集合（未開始、前 12 個）且剩餘名額 >= 方案最低人數的團次；其餘維持無連結。
+    if (!d.id || !fixedPlanIds.has(d.plan_id) || !candidateIdsByPlan.get(d.plan_id)?.has(String(d.id))
+      || !candidateIsBookable(left, minPartyByPlan.get(d.plan_id))) return line;
     const deepLink = `${buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code)}/plans/${encodeURIComponent(d.plan_id)}/book?departure=${encodeURIComponent(d.id)}`;
     return `${line}\n${deepLink}`;
   });

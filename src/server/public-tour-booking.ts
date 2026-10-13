@@ -33,7 +33,7 @@
  * 「指定 sales_mode」換成 `FIXED_DEPARTURE`。
  */
 import { z } from 'zod';
-import { bookingCandidateSeatsLeft, MAX_BOOKING_CANDIDATE_DEPARTURES } from '@/lib/public-departure-candidates';
+import { selectBookingCandidates } from '@/lib/public-departure-candidates';
 import { resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
 import { hasSeasonalPricing, loadPlanSeasons, seasonUnitPriceFor } from '@/server/public-plan-seasons';
 import { createTourOrderWithQuote, PRICE_UNVERIFIABLE_MESSAGE, type PriceQuote } from '@/server/public-order-quote';
@@ -102,7 +102,6 @@ export async function loadBookingCandidateRows(
   fail: (stage: string, cause: unknown) => Error,
 ): Promise<Array<{ row: Record<string, unknown>; seatsLeft: number }>> {
   const { tenantId, planId, now } = args;
-  const out: Array<{ row: Record<string, unknown>; seatsLeft: number }> = [];
   const { data, error } = await admin
     .from('trip_departures')
     .select('id, departs_on, start_time, capacity, seats_booked')
@@ -114,14 +113,8 @@ export async function loadBookingCandidateRows(
     .order('id', { ascending: true })
     .range(0, MAX_BOOKING_CANDIDATE_SCAN - 1);
   if (error) throw fail('trip_departures', error);
-  for (const row of (data ?? []) as Array<Record<string, unknown>>) {
-    // #761：候選規則（未開始、未客滿）與詳情頁／首頁入口共用 public-departure-candidates。
-    const seatsLeft = bookingCandidateSeatsLeft(row, now);
-    if (seatsLeft === null) continue;
-    out.push({ row, seatsLeft });
-    if (out.length >= MAX_BOOKING_CANDIDATE_DEPARTURES) break;
-  }
-  return out;
+  // #761：候選規則（未開始、未客滿、前 12 個）由 selectBookingCandidates 單一來源決定，直達預約連結的產生端共用。
+  return selectBookingCandidates((data ?? []) as Array<Record<string, unknown>>, now);
 }
 
 /**
