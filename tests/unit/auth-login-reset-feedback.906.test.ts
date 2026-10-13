@@ -12,6 +12,11 @@ describe('#906 email / token 檢查', () => {
     expect(isValidEmail('abc')).toBe(false);
     expect(isValidEmail('')).toBe(false);
     expect(isValidEmail('a@b.co')).toBe(true);
+    expect(isValidEmail('a@b.c')).toBe(false);
+    expect(isValidEmail('a@b..co')).toBe(false);
+    expect(isValidEmail('Owner+tag@Sub.Example.COM')).toBe(true);
+    expect(isValidEmail('owner-a@test.local')).toBe(true);
+    expect(isValidEmail('  owner@example.com  ')).toBe(true);
   });
   it('token 必須 6 位數字', () => {
     for (const bad of ['12345', '1234567', 'abcdef', '12 456', '', null, undefined]) {
@@ -22,6 +27,7 @@ describe('#906 email / token 檢查', () => {
   it('重設連結需 email 與 token 皆合格', () => {
     expect(isResetLinkUsable('a@b.co', '123456')).toBe(true);
     expect(isResetLinkUsable(null, '123456')).toBe(false);
+    expect(isResetLinkUsable('a@b.co', null)).toBe(false);
     expect(isResetLinkUsable('a@b.co', '12')).toBe(false);
   });
 });
@@ -50,5 +56,13 @@ describe('#906 頁面行為', () => {
       expect(c).not.toMatch(/Invalid|Too small|String must|expected/i);
     }
     expect(resetPasswordPage.messages.passwordTooShort).toContain('8');
+  });
+
+  it('缺 token（只有 email）也走連結不完整呈現，且登入識別欄位維持 username 自動填入', () => {
+    expect(resetSrc).toContain('tokenChecked && !isResetLinkUsable(email, token)');
+    expect(resetSrc).not.toContain('!!token &&');
+    expect(resetSrc).toContain('t.requestNewLink');
+    expect(loginSrc).toContain('autoComplete="username"');
+    expect(loginSrc).toContain('id="username"');
   });
 });

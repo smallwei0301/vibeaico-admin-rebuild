@@ -121,7 +121,7 @@ export default function LoginPage() {
               name="username"
               type="text"
               inputMode="email"
-              autoComplete="email"
+              autoComplete="username"
               placeholder={t.form.usernamePlaceholder}
               value={username}
               onChange={(e) => setUsername(e.target.value)}

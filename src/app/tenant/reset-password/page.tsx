@@ -14,7 +14,7 @@ import { ApiError } from '@/lib/api';
 import { PASSWORD_MIN_LENGTH, isResetLinkUsable } from '@/lib/auth-input';
 import { resetPassword } from '@/services';
 
-/** 原站以 ?token=… 帶入重設 token；缺 token 直接顯示「無效的重設連結」 */
+/** 原站以 ?token=… 帶入重設 token；缺 token／email 一律顯示「重設連結不完整」並附重新申請連結 */
 const TOKEN_QUERY_KEY = 'token';
 /** service 層 resetPassword() 需要 email + 6 位數驗證碼（03 分冊 §6.2）；
  *  重設連結一併帶 ?email=…，token 當驗證碼用 —— 版面/文案不變，只多讀一個查詢參數 */
@@ -49,8 +49,8 @@ export default function ResetPasswordPage() {
     setTokenChecked(true);
   }, []);
 
-  const invalidLink = tokenChecked && !token;
-  const linkIncomplete = tokenChecked && !!token && !isResetLinkUsable(email, token);
+  /** 任一必要參數缺漏或格式不符（缺 token、缺 email、驗證碼非 6 位數）都視為連結不完整 */
+  const linkIncomplete = tokenChecked && !isResetLinkUsable(email, token);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,9 +96,6 @@ export default function ResetPasswordPage() {
       <CardBody>
         <AuthCardHeading title={t.title} description={t.subheading} />
 
-        {invalidLink ? (
-          <Alert tone="danger" className="mb-4">{t.messages.invalidLink}</Alert>
-        ) : null}
         {linkIncomplete ? (
           <Alert tone="danger" className="mb-4">
             {t.messages.incompleteLink}{' '}
@@ -123,7 +120,7 @@ export default function ResetPasswordPage() {
                 placeholder={t.form.newPasswordPlaceholder}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                disabled={invalidLink || done}
+                disabled={linkIncomplete || done}
               />
               <Button
                 type="button"
@@ -147,7 +144,7 @@ export default function ResetPasswordPage() {
               placeholder={t.form.confirmPasswordPlaceholder}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              disabled={invalidLink || done}
+              disabled={linkIncomplete || done}
             />
             {error ? <FormError>{error}</FormError> : null}
           </FormGroup>
@@ -156,7 +153,7 @@ export default function ResetPasswordPage() {
             type="submit"
             size="lg"
             block
-            disabled={invalidLink || done}
+            disabled={linkIncomplete || done}
             loading={submitting}
             loadingText={t.form.submitting}
           >
