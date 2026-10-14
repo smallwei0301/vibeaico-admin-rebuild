@@ -31,6 +31,7 @@ import { APP_URL, USE_MOCK } from '@/config/env';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { FEATURE_EXPIRY_WARNING_DAYS } from '@/config/features';
 import { MODE_PRESETS } from '@/config/modes';
+import { navLabel } from '@/i18n/zh-TW/nav';
 import { getSetupStepHref } from '@/lib/setup-step-routes';
 import { common } from '@/i18n/zh-TW/common';
 import { dashboardPage as t } from '@/i18n/zh-TW/pages/dashboard';
@@ -298,11 +299,12 @@ function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
   }
 }
 
+/** 快速操作；newBooking／services 的目的地與標籤由 MODE_PRESETS 決定（#942），其餘固定。 */
 const QUICK_ACTIONS = [
-  { key: 'newBooking', href: '/tenant/bookings', icon: CalendarCheck },
+  { key: 'newBooking', icon: CalendarCheck },
   { key: 'calendar', href: '/tenant/calendar', icon: CalendarDays },
   { key: 'customers', href: '/tenant/customers', icon: Users },
-  { key: 'services', href: '/tenant/services', icon: Layers },
+  { key: 'services', icon: Layers },
   { key: 'marketing', href: '/tenant/marketing', icon: Megaphone },
   { key: 'settings', href: '/tenant/settings', icon: Settings },
 ] as const;
@@ -323,9 +325,11 @@ export default function DashboardPage() {
   const currentTenant = useCurrentTenant();
   const PUBLIC_BOOKING_URL = buildPublicBookingUrl(APP_URL, currentTenant.shopCode);
   const toast = useToast();
+  const { ordersHref, catalogHref, dashboardLinks } = modePreset;
 
   const [stats, setStats] = React.useState<DashboardStats | null>(null);
   const [alerts, setAlerts] = React.useState<DashboardAlerts | null>(null);
+  const [alertsFailed, setAlertsFailed] = React.useState(false);
   const [setup, setSetup] = React.useState<SetupStatus | null>(null);
   const [performance, setPerformance] = React.useState<StaffPerformance[]>([]);
   const [todayRows, setTodayRows] = React.useState<Booking[]>([]);
@@ -360,7 +364,7 @@ export default function DashboardPage() {
       try { setStats(await getDashboardStats()); } catch (e) { fail(t.errors.stats, e); }
     })();
     void (async () => {
-      try { setAlerts(await getDashboardAlerts()); } catch (e) { fail(t.errors.alerts, e); }
+      try { setAlerts(await getDashboardAlerts()); setAlertsFailed(false); } catch (e) { setAlertsFailed(true); fail(t.errors.alerts, e); }
     })();
     void (async () => {
       try { setSetup(await getSetupStatus()); } catch (e) { fail(t.errors.setupStatus, e); }
@@ -482,12 +486,12 @@ export default function DashboardPage() {
             </CardTitle>
             <div className="flex flex-wrap gap-2">
               {actionInbox.some((item) => item.kind === 'BOOKING_REQUEST') ? (
-                <Link href="/tenant/bookings?status=PENDING" className="btn btn-outline min-h-11 text-md">
+                <Link href={`${ordersHref}${dashboardLinks.pendingQuery}`} className="btn btn-outline min-h-11 text-md">
                   {t.actionInbox.viewBookings}
                 </Link>
               ) : null}
               {actionInbox.some((item) => item.kind === 'BOOKING_PAYMENT') ? (
-                <Link href="/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID" className="btn btn-outline min-h-11 text-md">
+                <Link href={`${ordersHref}?status=CONFIRMED&paymentStatus=UNPAID`} className="btn btn-outline min-h-11 text-md">
                   {t.actionInbox.viewPayments}
                 </Link>
               ) : null}
@@ -776,7 +780,7 @@ export default function DashboardPage() {
 
       {/* -------------------------------------------------------------- 統計卡 */}
       <div className="mb-4 grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-5">
-        <Link href="/tenant/bookings" className="no-underline">
+        <Link href={ordersHref} className="no-underline">
           <StatCard
             label={t.stats.todayBookings}
             value={stats ? formatNumber(stats.todayBookings) : PLACEHOLDER}
@@ -784,7 +788,7 @@ export default function DashboardPage() {
             tone="primary"
           />
         </Link>
-        <Link href="/tenant/bookings?status=PENDING" className="no-underline">
+        <Link href={`${ordersHref}${dashboardLinks.pendingQuery}`} className="no-underline">
           <StatCard
             label={t.stats.pendingBookings}
             value={stats ? formatNumber(stats.pendingBookings) : PLACEHOLDER}
@@ -859,11 +863,11 @@ export default function DashboardPage() {
                 {t.alertCards.unprocessedBookings.title}
               </div>
               <p className="form-text">
-                {t.alertCards.unprocessedBookings.body(alerts?.unprocessedBookings ?? 0)}
+                {alerts ? t.alertCards.unprocessedBookings.body(alerts.unprocessedBookings) : alertsFailed ? t.errors.alertValue : PLACEHOLDER}
               </p>
             </div>
             <Link
-              href="/tenant/bookings?status=UNPROCESSED"
+              href={`${ordersHref}${dashboardLinks.unprocessedQuery}`}
               className="btn btn-primary btn-sm flex-shrink-0 whitespace-nowrap"
             >
               {t.alertCards.unprocessedBookings.action}
@@ -878,7 +882,7 @@ export default function DashboardPage() {
                 <Package size={16} />
                 {t.alertCards.lowStock.title}
               </div>
-              <p className="form-text">{t.alertCards.lowStock.body(alerts?.lowStockProducts ?? 0)}</p>
+              <p className="form-text">{alerts ? t.alertCards.lowStock.body(alerts.lowStockProducts) : alertsFailed ? t.errors.alertValue : PLACEHOLDER}</p>
             </div>
             <Link href="/tenant/products" className="btn btn-primary btn-sm flex-shrink-0 whitespace-nowrap">
               {t.alertCards.lowStock.action}
@@ -893,7 +897,7 @@ export default function DashboardPage() {
                 <TrendingDown size={16} />
                 {t.alertCards.atRiskCustomers.title}
               </div>
-              <p className="form-text">{t.alertCards.atRiskCustomers.body(alerts?.atRiskCustomers ?? 0)}</p>
+              <p className="form-text">{alerts ? t.alertCards.atRiskCustomers.body(alerts.atRiskCustomers) : alertsFailed ? t.errors.alertValue : PLACEHOLDER}</p>
             </div>
             <Link href="/tenant/customers?atRisk=true" className="btn btn-primary btn-sm flex-shrink-0 whitespace-nowrap">
               {t.alertCards.atRiskCustomers.action}
@@ -910,16 +914,23 @@ export default function DashboardPage() {
             {t.quickActions.title}
           </h2>
           <div className="grid gap-2 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
-            {QUICK_ACTIONS.map(({ key, href, icon: Icon }) => (
+            {QUICK_ACTIONS.map((a) => {
+              const { key, icon: Icon } = a;
+              const href = key === 'newBooking' ? ordersHref : key === 'services' ? catalogHref : a.href;
+              const label = key === 'newBooking' ? navLabel(dashboardLinks.ordersNavKey, businessType)
+                : key === 'services' ? navLabel(dashboardLinks.catalogNavKey, businessType)
+                : t.quickActions[key];
+              return (
               <Link
                 key={key}
                 href={href}
                 className="flex flex-col items-center gap-2 rounded-lg bg-neutral-50 px-3 py-4 text-sm font-semibold text-neutral-700 hover:bg-neutral-100"
               >
                 <Icon size={20} className="text-primary" />
-                {t.quickActions[key]}
+                {label}
               </Link>
-            ))}
+              );
+            })}
           </div>
         </CardBody>
       </Card>
@@ -959,7 +970,7 @@ export default function DashboardPage() {
               {t.todayBookings.title}
               <span className="form-text">{t.todayBookings.count(todayRows.length)}</span>
             </CardTitle>
-            <Link href="/tenant/bookings" className="btn btn-primary btn-sm">
+            <Link href={ordersHref} className="btn btn-primary btn-sm">
               {t.todayBookings.viewAll}
             </Link>
           </CardHeader>
