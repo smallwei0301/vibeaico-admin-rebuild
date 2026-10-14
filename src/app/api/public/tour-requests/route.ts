@@ -1,5 +1,7 @@
+import { after } from 'next/server';
 import { readJsonBody, PUBLIC_JSON_BODY_LIMIT_BYTES, handle, ok, fail, ERR } from '@/server/http';
 import { isFeatureActive } from '@/server/features';
+import { notifyOwnerNewTourOrder } from '@/server/owner-notify';
 import { checkRateLimit, clientIpFromHeaders } from '@/server/rate-limit';
 import {
   PublicTourRequestError, loadPublicRequestPlan, submitPublicTourRequest,
@@ -45,6 +47,9 @@ export const POST = handle(async (req) => {
 
   try {
     const { orderId, orderNo } = await submitPublicTourRequest(body);
+    // 建單成功才通知老闆（#941）；以 after() 做最佳努力派送（回應送出後平台仍保活至完成），
+    // 失敗只 log、不影響回應。持久化 outbox 另案追蹤於 #945。
+    after(() => notifyOwnerNewTourOrder(plan.tenantId, orderId));
     return ok({ orderId, orderNo }, { status: 201 });
   } catch (e) {
     if (e instanceof PublicTourRequestError) {

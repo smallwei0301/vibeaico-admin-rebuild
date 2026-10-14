@@ -20,16 +20,19 @@ import { useToast } from '@/components/ui/Toast';
 import {
   acceptTourOrder, cancelTourOrder, completeTourOrder, confirmTourOrderPayment,
   createManualTourOrder, getTourOrderSummary, listTourOrders, listTripDepartures, listTripPlans, listTrips,
-  parseTourOrdersDeepLink, rejectTourOrder,
+  decideTourOrdersTenantAction, parseTourOrdersDeepLink, rejectTourOrder, stripTenantIdParam,
 } from '@/services/tours';
 import { listPaymentMethods, type PaymentMethodRow } from '@/services/payment-methods';
 import { ApiError } from '@/lib/api';
+import { AUTH_REAL } from '@/config/env';
+import { performSwitchTenant } from '@/lib/auth-boundary';
+import { switchTenant } from '@/services/auth';
 import { createLatestGuard } from '@/lib/latest-request';
 import { formatAsOf } from '@/lib/guide-report-range';
 import { PUBLIC_DEFAULT_TIME_ZONE } from '@/lib/public-time-zone';
 import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
-import { useBusinessType } from '@/components/layout/BusinessTypeContext';
+import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { tourOrdersPage as t } from '@/i18n/zh-TW/pages/tour-orders';
 import { publicTourRequestPage } from '@/i18n/zh-TW/pages/public-tour-request';
 import { refundPolicyText } from '@/lib/tour-order-detail-labels';
@@ -137,9 +140,29 @@ export default function TourOrdersPage() {
   const [requestedOrderId, setRequestedOrderId] = React.useState('');
   const openedDeepLinkId = React.useRef('');
 
+  const currentTenantId = useCurrentTenant().id;
+  const currentTenantRef = React.useRef(currentTenantId);
+  currentTenantRef.current = currentTenantId;
+
   React.useEffect(() => {
     const dl = parseTourOrdersDeepLink(window.location.search);
     const { paymentStatus, orderId } = dl;
+    // 通知連結帶 tenantId：多店帳號的 active-tenant cookie 可能指向別間店。
+    // 不同店 → 先切店（server 驗證成員資格）再 reload（同 AppShell）；失敗 → 提示並移除參數、不開啟訂單。
+    if (AUTH_REAL && decideTourOrdersTenantAction(dl.tenantId, currentTenantRef.current) === 'switch') {
+      const clean = `${window.location.pathname}${stripTenantIdParam(window.location.search)}${window.location.hash}`;
+      void performSwitchTenant({
+        switchTenant: () => switchTenant(dl.tenantId),
+        reload: () => window.location.replace(clean),
+        showError: () => {
+          toast.show(t.messages.deepLinkSwitchFailed, 'danger');
+          window.history.replaceState(null, '', clean);
+        },
+        fallbackMessage: t.messages.deepLinkSwitchFailed,
+      });
+      setReady(true);
+      return;
+    }
     if (dl.status) setStatusFilter(dl.status);
     if (dl.source) setSourceFilter(dl.source);
     if (dl.tripId) setTripFilter(dl.tripId);

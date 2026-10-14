@@ -251,6 +251,10 @@
     {
       "ref": "issue/938",
       "title": "旅客訂單狀態頁未付款時看不到店家的匯款帳號與收款方式，旅客無法自助完成付款"
+    },
+    {
+      "ref": "issue/941",
+      "title": "#46 旅客從公開頁送出團體預約或申請後，導遊收不到任何 LINE 通知，只能自己刷後台"
     }
   ],
   "main": {
@@ -8320,13 +8324,30 @@
         "startedAt": "2026-10-13T23:52:20Z",
         "completedAt": "2026-10-13T23:53:09Z",
         "note": "Luna metrics capture 綁定 issue/938 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2。#938 盤點已獨立記於 20261013-luna-scout-938-inventory。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261014-luna-scout-941-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 941,
+        "count": 1,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-14T00:49:52Z",
+        "completedAt": "2026-10-14T00:50:04Z",
+        "note": "Luna metrics capture 綁定 issue/941 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +1。#941 盤點與 #938 同一次（已記於 20261013-luna-scout-938-inventory），不另記 inventory。actual 未經平台驗證。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 65,
+    "issuesStarted": 66,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -8353,8 +8374,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 148,
-    "lunaAccepted": 139,
+    "lunaTasks": 149,
+    "lunaAccepted": 140,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -8626,7 +8647,8 @@
     "2026-10-13 非計分紀錄（更正）：前一筆 notes 所列「Opus 審查 c04c0ec8」指的是對 PR #932 舊 head c04c0ec8 的審查（22:06:08Z–22:09:48Z），非審查 commit；c04c0ec8 為 #930 ledger 綁定 commit 的說明已於本筆更正。",
     "2026-10-13 非計分紀錄（issue/938 builder 與 cherry-pick）：Sonnet builder commit ffbbf74f（23:27:39Z–23:32:36Z，cherry-pick 為 37c07a10，旅客訂單狀態頁未付款時顯示店家匯款帳號與收款方式），未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
     "2026-10-13 非計分紀錄（PR #937）：issue/934 PR #937 已 merge 為 7076fe78（預約管理列表改為伺服器端分頁與篩選，超過 100 筆也能翻到所有預約）。",
-    "2026-10-13 非計分紀錄（issue/934 follow-up）：follow-up builder commit 24aa1d24（23:26:30Z–23:30:37Z）、fdbcd52f（23:32:47Z–23:36:23Z）、24668484（23:42:34Z–23:46:12Z），Sonnet builder，未即時埋點，僅記於此；Opus 審查：82dea973 FIX_REQUIRED（23:24:35Z–23:25:55Z）、24aa1d24 PASS（23:31:31Z–23:32:15Z）、fdbcd52f PASS（23:37:09Z–23:37:51Z）、24668484 PASS（23:47:00Z–23:47:24Z），皆未即時埋點，僅記於此。"
+    "2026-10-13 非計分紀錄（issue/934 follow-up）：follow-up builder commit 24aa1d24（23:26:30Z–23:30:37Z）、fdbcd52f（23:32:47Z–23:36:23Z）、24668484（23:42:34Z–23:46:12Z），Sonnet builder，未即時埋點，僅記於此；Opus 審查：82dea973 FIX_REQUIRED（23:24:35Z–23:25:55Z）、24aa1d24 PASS（23:31:31Z–23:32:15Z）、fdbcd52f PASS（23:37:09Z–23:37:51Z）、24668484 PASS（23:47:00Z–23:47:24Z），皆未即時埋點，僅記於此。",
+    "非計分紀錄：PR #940 merge 為 2cea92ce（2026-10-14T00:49:11Z）；#941 Sonnet builder c8ec1f74（cherry-pick 為 2070b5ae）。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {

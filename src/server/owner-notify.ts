@@ -17,6 +17,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminSupabase } from './supabase';
 import { getLineCredentials, lineBotInfo, lineMulticast, consumePushQuota } from './line';
 import { ApiHttpError, ERR } from './http';
+import { hydrateTourOrders } from './tour-orders';
+import { APP_URL } from '@/config/env';
 
 export const OWNER_NOTIFY_MAX_RECIPIENTS = 3;
 
@@ -385,6 +387,96 @@ export async function notifyOwnerNewBooking(tenantId: string, bookingId: string)
     await sendOwnerNotifyEvent(tenantId, 'notify_new_booking', text);
   } catch (e) {
     console.error('[owner-notify] notifyOwnerNewBooking 失敗', tenantId, bookingId, e);
+  }
+}
+
+/**
+ * 公開頁建立團體訂單（TourOrder）成功後通知老闆（Issue #941）。
+ * 即時預約（非 REQUEST）→「新團體預約」；REQUEST 申請 →「新預約申請（待審）」。
+ * 出發日期用 `trip_departures.departs_on`（本身就是店家當地日期，不再做時區換算）。
+ * 找不到訂單就不推；整體吞錯只 log，呼叫端以 `void` 呼叫、不影響建單回應。
+ */
+/**
+ * 旅客可控欄位進入通知文字前的清洗：控制字元（含 CR/LF/TAB、U+007F、U+2028/2029）
+ * 一律換成空白並收斂連續空白，避免偽造多出來的行（例如假的「付款狀態：已付款」）；
+ * 再截斷到 `max` 字，避免單一欄位撐爆 LINE 文字訊息長度上限。
+ */
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g;
+function cleanNotifyField(value: unknown, max = 60): string {
+  const flat = String(value ?? '').replace(CONTROL_CHARS, ' ').replace(/\s+/g, ' ').trim();
+  const chars = Array.from(flat);
+  return chars.length > max ? `${chars.slice(0, max).join('')}…` : flat;
+}
+const OWNER_NOTIFY_TEXT_HARD_CAP = 1000;
+
+/**
+ * 公開頁建立團體訂單（TourOrder）成功後通知老闆（Issue #941）。
+ * 即時預約（非 REQUEST）→「新團體預約」；REQUEST 申請 →「新預約申請（待審）」，
+ * 並依 19 分冊 §5.3 附上處理指示（到後台「團體訂單」接受或婉拒）、期限（若有）與直達連結。
+ * 出發日期用 `trip_departures.departs_on`（本身就是店家當地日期，不再做時區換算）。
+ * REQUEST 建單時 `hold_expires_at` 為 null（接受後才由 accept_tour_request 算出），
+ * 因此只在訂單實際帶有期限時才顯示，不自行推算。
+ * 找不到訂單或店家查詢失敗就不推；整體吞錯只 log，呼叫端不受影響。
+ */
+/**
+ * 每店每小時最多推播幾則「新團體訂單」LINE 通知（跨實例以資料庫計數，不依賴行程內記憶體限流）。
+ * 公開 REQUEST 申請不鎖位，匿名者可重複送出；超過上限只略過推播（訂單仍在後台可見），
+ * 避免耗盡店家每月 LINE 推播額度。
+ */
+export const OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP = 10;
+
+export async function notifyOwnerNewTourOrder(tenantId: string, orderId: string): Promise<void> {
+  try {
+    const admin = createAdminSupabase();
+    // 額度保護：先查近 60 分鐘該店建單數（含本筆）；超過上限或查詢失敗都不推（fail closed）。
+    const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count, error: cErr } = await admin
+      .from('tour_orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .gte('created_at', since);
+    if (cErr || typeof count !== 'number') {
+      console.error('[owner-notify] 團體訂單近一小時計數失敗，略過推播', tenantId, cErr);
+      return;
+    }
+    if (count > OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP) {
+      console.warn('[owner-notify] 團體訂單通知超過每小時上限，略過推播', tenantId);
+      return;
+    }
+    const [{ data: row, error }, { data: tenant, error: tErr }] = await Promise.all([
+      admin.from('tour_orders').select('*').eq('id', orderId).eq('tenant_id', tenantId).maybeSingle(),
+      admin.from('tenants').select('name').eq('id', tenantId).maybeSingle(),
+    ]);
+    if (error) throw error;
+    if (tErr) throw tErr;
+    if (!row) return;
+    const [order] = await hydrateTourOrders(admin, tenantId, [row]);
+    if (!order) return;
+    const shop = cleanNotifyField(tenant?.name);
+    const prefix = shop ? `【${shop}】` : '';
+    const isRequest = order.salesMode === 'REQUEST';
+    const head = `${prefix}${isRequest ? '新預約申請（待審）' : '新團體預約'}`;
+    const when = cleanNotifyField([order.departsOn, order.startTime].filter(Boolean).join(' '));
+    const lines = [
+      head,
+      `訂單編號：${cleanNotifyField(order.orderNo)}`,
+      `行程／方案：${cleanNotifyField(order.tripTitle)}／${cleanNotifyField(order.planName)}`,
+      `出發日期：${when}`,
+      `人數：${cleanNotifyField(order.partySize, 10)}`,
+      `旅客：${cleanNotifyField(order.customerName)}`,
+    ];
+    if (isRequest) {
+      lines.push('請到後台「團體訂單」接受或婉拒此申請。');
+      if (order.holdExpiresAt) lines.push(`處理期限：${formatTaipeiForOwner(order.holdExpiresAt)}`);
+    }
+    lines.push(
+      `查看訂單：${APP_URL}/tenant/tour-orders?orderId=${encodeURIComponent(String(order.id))}&tenantId=${encodeURIComponent(tenantId)}`,
+    );
+    const text = lines.join('\n').slice(0, OWNER_NOTIFY_TEXT_HARD_CAP);
+    await sendOwnerNotifyEvent(tenantId, 'notify_new_booking', text);
+  } catch (e) {
+    console.error('[owner-notify] notifyOwnerNewTourOrder 失敗', tenantId, orderId, e);
   }
 }
 
