@@ -515,6 +515,9 @@ export function mapTourOrder(r: any, derived: {
      */
     refundPolicySnapshot: REFUND_POLICY_VALUES.has(r.refund_policy_snapshot)
       ? r.refund_policy_snapshot : null,
+    // #938：占位事實來源（0111）與指定收款方式；型別不符一律 undefined，不猜。
+    seatsReserved: typeof r.seats_reserved === 'boolean' ? r.seats_reserved : undefined,
+    paymentMethodId: typeof r.payment_method_id === 'string' && r.payment_method_id ? r.payment_method_id : undefined,
   };
 }
 

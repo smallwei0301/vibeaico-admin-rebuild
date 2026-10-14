@@ -247,6 +247,10 @@
     {
       "ref": "issue/934",
       "title": "預約管理列表只載入最新 100 筆：超過 100 筆的店家翻不到舊預約、總數最多顯示 100"
+    },
+    {
+      "ref": "issue/938",
+      "title": "旅客訂單狀態頁未付款時看不到店家的匯款帳號與收款方式，旅客無法自助完成付款"
     }
   ],
   "main": {
@@ -8282,13 +8286,47 @@
         "startedAt": "2026-10-13T23:22:39Z",
         "completedAt": "2026-10-13T23:23:12Z",
         "note": "Luna metrics capture 綁定 issue/934 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +1。#934 盤點與 #933 同一次（已記於 20261013-luna-scout-933-inventory），不另記 inventory。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261013-luna-scout-938-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 938,
+        "count": 1,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-13T23:24:50Z",
+        "completedAt": "2026-10-13T23:26:30Z",
+        "note": "Luna 窄盤點 #46 黃金流程盤點（scout 自報時間，照前例標註）：歸納旅客訂單狀態頁未付款時缺少店家匯款帳號與收款方式的缺口，主 agent 核對後開立 issue/938。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261013-luna-scout-938-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 938,
+        "count": 1,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-13T23:52:20Z",
+        "completedAt": "2026-10-13T23:53:09Z",
+        "note": "Luna metrics capture 綁定 issue/938 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2。#938 盤點已獨立記於 20261013-luna-scout-938-inventory。actual 未經平台驗證。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 64,
+    "issuesStarted": 65,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -8315,8 +8353,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 146,
-    "lunaAccepted": 137,
+    "lunaTasks": 148,
+    "lunaAccepted": 139,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -8585,7 +8623,10 @@
     "2026-10-13 非計分紀錄（issue/933 follow-up）：follow-up builder commit 65113a02（22:41:32Z–22:45:47Z，午夜 DST 跳時日界線取當天第一個有效瞬間；時區設定查詢錯誤不再靜默回退）與 e5b81f26（22:57:47Z–23:01:35Z，不存在的日期回 400；只有純日期篩選才讀取店家時區設定）；Sonnet builder，未即時埋點，僅記於此。",
     "2026-10-13 非計分紀錄（issue/933 Opus 審查）：審查對象與時間——head 13ce48b8（22:34:09Z–22:35:20Z）、65113a02（22:46:44Z–22:50:34Z）、e5b81f26（23:02:30Z–23:05:31Z），皆未即時埋點，僅記於此。",
     "2026-10-13 非計分紀錄（開立 issue/936）：另開 issue/936（後台顯示時區統一），未開工，不計入 delivery.issuesStarted。",
-    "2026-10-13 非計分紀錄（更正）：前一筆 notes 所列「Opus 審查 c04c0ec8」指的是對 PR #932 舊 head c04c0ec8 的審查（22:06:08Z–22:09:48Z），非審查 commit；c04c0ec8 為 #930 ledger 綁定 commit 的說明已於本筆更正。"
+    "2026-10-13 非計分紀錄（更正）：前一筆 notes 所列「Opus 審查 c04c0ec8」指的是對 PR #932 舊 head c04c0ec8 的審查（22:06:08Z–22:09:48Z），非審查 commit；c04c0ec8 為 #930 ledger 綁定 commit 的說明已於本筆更正。",
+    "2026-10-13 非計分紀錄（issue/938 builder 與 cherry-pick）：Sonnet builder commit ffbbf74f（23:27:39Z–23:32:36Z，cherry-pick 為 37c07a10，旅客訂單狀態頁未付款時顯示店家匯款帳號與收款方式），未即時埋點，依 CLAUDE.md 不列入 modelUsage.tasks、不計入觀測用量，僅記於此。",
+    "2026-10-13 非計分紀錄（PR #937）：issue/934 PR #937 已 merge 為 7076fe78（預約管理列表改為伺服器端分頁與篩選，超過 100 筆也能翻到所有預約）。",
+    "2026-10-13 非計分紀錄（issue/934 follow-up）：follow-up builder commit 24aa1d24（23:26:30Z–23:30:37Z）、fdbcd52f（23:32:47Z–23:36:23Z）、24668484（23:42:34Z–23:46:12Z），Sonnet builder，未即時埋點，僅記於此；Opus 審查：82dea973 FIX_REQUIRED（23:24:35Z–23:25:55Z）、24aa1d24 PASS（23:31:31Z–23:32:15Z）、fdbcd52f PASS（23:37:09Z–23:37:51Z）、24668484 PASS（23:47:00Z–23:47:24Z），皆未即時埋點，僅記於此。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {

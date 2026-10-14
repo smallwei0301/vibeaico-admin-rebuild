@@ -18,6 +18,9 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { loadPublicShopTimeZone, loadPublicTourRequestStatus } from '@/server/public-tour-request';
+import { loadPublicPaymentMethods } from '@/server/public-payment-methods';
+import { shouldShowPaymentMethods } from '@/lib/public-payment-methods';
+import { PaymentMethodsSection } from '@/components/public/PaymentMethodsSection';
 import { publicTourRequestPage as t } from '@/i18n/zh-TW/pages/public-tour-request';
 import { formatCurrency } from '@/lib/utils';
 import { common } from '@/i18n/zh-TW/common';
@@ -129,6 +132,8 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
     loadPublicShopTimeZone(shopCode),
   ]);
   if (!order) notFound();
+  // #938：存取驗證（contact 比對）已通過才會走到這裡；只在未付款且未取消時才查收款方式。
+  const paymentMethods = shouldShowPaymentMethods(order) ? await loadPublicPaymentMethods(shopCode, { preferredId: order.paymentMethodId }) : null;
 
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-6">
@@ -153,6 +158,8 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
           <p className="text-sm text-secondary">{paymentDescriptionFor(order)}</p>
         </div>
       </section>
+
+      {paymentMethods ? <PaymentMethodsSection methods={paymentMethods} /> : null}
 
       <section className="card">
         <div className="card-body flex flex-col gap-1">
