@@ -1,5 +1,5 @@
 /**
- * src/server/email/tour-order-email.ts — 導遊處理團體訂單後通知旅客（#954）
+ * src/server/email/tour-order-email.ts — 導遊處理團體訂單後通知旅客（#954）；旅客送出預約／申請的確認信（#957）
  * -----------------------------------------------------------------------------
  * 由 accept／reject／confirm-payment 三支路由在狀態變更成功後以 `after()` 呼叫。
  * 只在 `tour_orders.contact.email` 有值時寄；整體吞錯只 log，絕不丟進路由。
@@ -15,6 +15,7 @@ import { createAdminSupabase } from '@/server/supabase';
 import { hydrateTourOrders } from '@/server/tour-orders';
 import { resolvePublicTimeZone } from '@/lib/public-time-zone';
 import { formatInstantInTimeZone, travelerVisibleRejectReason } from '@/lib/public-order-format';
+import { checkRateLimit, peekRateLimit } from '@/server/rate-limit';
 import { sendTourOrderStatusEmail } from './send';
 import type { TourOrderStatusEmailKind } from './templates';
 
@@ -54,6 +55,8 @@ export async function notifyTravelerTourOrderStatus(
       departsOn: order.departsOn,
       deadlineText: kind === 'ACCEPTED' && order.holdExpiresAt
         ? formatInstantInTimeZone(order.holdExpiresAt, timeZone) : null,
+      totalText: kind === 'SUBMITTED_BOOKING' && Number.isFinite(order.totalAmount)
+        ? `NT$ ${Number(order.totalAmount).toLocaleString('en-US')}` : null,
       rejectReason: kind === 'REJECTED' ? travelerVisibleRejectReason(order) : null,
       statusUrl,
     });
@@ -75,4 +78,42 @@ export function scheduleTravelerTourOrderNotice(
   } catch {
     void notifyTravelerTourOrderStatus(tenantId, orderId, kind);
   }
+}
+
+const CONFIRM_WINDOW_MS = 60 * 60 * 1000;
+const CONFIRM_PER_EMAIL_MAX = 3;
+const CONFIRM_PER_IP_MAX = 10;
+
+function maskEmail(email: string): string {
+  const at = email.indexOf('@');
+  return at <= 0 ? '***' : `${email[0]}***${email.slice(at)}`;
+}
+
+/**
+ * 旅客確認信節流（#957 審查）：公開建單端點匿名可填任意 email，若不節流，攻擊者可反覆
+ * 建 REQUEST 單（不鎖位）讓平台對受害者持續寄信，損害共用寄件網域信譽。
+ * 兩道只影響「寄信」、不影響建單與 201：
+ *   - 同來源對同收件人：`traveler-confirm:<ip>:<trim+lowercase email>` 每小時 3 封
+ *   - 同 IP 跨店：`traveler-confirm-ip:<ip>` 每小時 10 封
+ * 先 peek 兩道，都過才一起扣額度（被收件人擋下不消耗 IP 額度）。
+ * 取捨：刻意「不提供」全域收件人上限。全域上限會讓匿名者只要知道受害者 email，
+ * 就能用任一 IP 耗盡額度，使受害者之後的真實預約被靜默略過確認信（對合法通知的 DoS）。
+ * 綁定來源後，攻擊者只能耗盡自己 IP 的額度；跨 IP 分散轟炸仍受每 IP 10 封限制。
+ * 誠實限制同 rate-limit.ts：單 process 記憶體、盡力而為；持久化節流隨 outbox 由 #945 處理。
+ * 沒有 email 時回傳 true（本來就不會寄，不佔額度）。
+ */
+export function allowTravelerConfirmEmail(email: string | null | undefined, ip: string): boolean {
+  const addr = (email ?? '').trim().toLowerCase();
+  if (!addr) return true;
+  const emailKey = `traveler-confirm:${ip}:${addr}`;
+  const ipKey = `traveler-confirm-ip:${ip}`;
+  const emailOpt = { max: CONFIRM_PER_EMAIL_MAX, windowMs: CONFIRM_WINDOW_MS };
+  const ipOpt = { max: CONFIRM_PER_IP_MAX, windowMs: CONFIRM_WINDOW_MS };
+  if (!peekRateLimit(emailKey, emailOpt) || !peekRateLimit(ipKey, ipOpt)) {
+    console.info('[tour-order-email] 旅客確認信節流，略過寄送', maskEmail(addr));
+    return false;
+  }
+  checkRateLimit(emailKey, emailOpt);
+  checkRateLimit(ipKey, ipOpt);
+  return true;
 }
