@@ -554,6 +554,7 @@ export const tripsPage = {
     planFormationDeadlineInvalid: '成團截止天數必須是 0–90 的整數',
     planMinParticipantsInvalid: '最少人數必須是至少 1 的整數',
     planMaxParticipantsInvalid: '最多人數必須是至少 1 的整數',
+    planDurationInvalid: '請輸入有效的時長（必須為正整數分鐘）',
     planPartyRangeInvalid: '最多人數不得小於最少人數',
     planDepositInvalid: '請檢查訂金模式與金額（需為整數）',
     planAdvancedSaved: '方案進階設定已儲存',
