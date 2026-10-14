@@ -1,3 +1,4 @@
+import { scheduleTravelerTourOrderNotice } from '@/server/email/tour-order-email';
 import { handle, ok, fail, ERR } from '@/server/http';
 import { requireTenantManager } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
@@ -41,6 +42,7 @@ export const POST = handle(async (req, { params }: Context) => {
     .select('*').eq('tenant_id', t.tenantId).eq('id', id).maybeSingle();
   if (afterError) throw afterError;
   if (!updated) return fail(404, '找不到此訂單', ERR.NOT_FOUND);
+  scheduleTravelerTourOrderNotice(t.tenantId, id, 'REJECTED');
   const [order] = await hydrateTourOrders(t.supabase, t.tenantId, [updated]);
   return ok(order);
 });

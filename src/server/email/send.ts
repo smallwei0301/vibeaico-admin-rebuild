@@ -15,6 +15,8 @@ import { Resend } from 'resend';
 import { APP_URL } from '@/config/env';
 import {
   verificationHtml, bookingHtml, orderHtml, productOrderReceiptHtml, supportChatNotifyHtml,
+  tourOrderStatusHtml, TOUR_ORDER_STATUS_EMAIL_COPY,
+  type TourOrderStatusEmailKind, type TourOrderStatusEmailDetails,
   type BookingNotifyDetails, type ProductOrderNotifyDetails,
   type ProductOrderReceiptDetails, type SupportChatNotifyDetails,
 } from './templates';
@@ -167,4 +169,16 @@ export async function sendSupportChatNotifyEmail(
   to: string, p: SupportChatNotifyDetails,
 ): Promise<EmailSendResult> {
   return send(to, `【VibeAI 客服】${p.shopName} — ${p.subject}`, supportChatNotifyHtml(p));
+}
+
+/**
+ * 團體訂單狀態通知信（#954）——導遊接受／婉拒申請、確認收款後寄給**旅客**。
+ * 基本交易通知 Email 免費（docs/integration/17-NOTIFICATION-DELIVERY.md），
+ * 不經付費通知閘。主旨文案見 templates.ts。
+ */
+export async function sendTourOrderStatusEmail(
+  to: string, kind: TourOrderStatusEmailKind, p: TourOrderStatusEmailDetails,
+): Promise<EmailSendResult> {
+  const subject = `【${p.shopName.replace(/[\r\n]+/g, ' ')}】${TOUR_ORDER_STATUS_EMAIL_COPY[kind].subject}`;
+  return send(to, subject, tourOrderStatusHtml(kind, p));
 }

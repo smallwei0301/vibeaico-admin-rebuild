@@ -271,6 +271,10 @@
     {
       "ref": "issue/951",
       "title": "#46 旅客送出預約後狀態頁沒有保存連結的提示或複製按鈕，關掉分頁就找不回申請"
+    },
+    {
+      "ref": "issue/954",
+      "title": "#46 導遊接受／拒絕申請或確認收款後，旅客收不到任何通知"
     }
   ],
   "main": {
@@ -8442,13 +8446,47 @@
         "startedAt": "2026-10-14T04:42:14Z",
         "completedAt": "2026-10-14T04:42:33Z",
         "note": "Luna metrics capture 綁定 issue/951 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +1。#951 盤點與 #944 同一次（已記於 20261014-luna-scout-944-inventory），不另記 inventory。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261014-luna-scout-954-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 954,
+        "count": 1,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-14T04:47:30Z",
+        "completedAt": "2026-10-14T04:47:52Z",
+        "note": "Luna 窄盤點旅客 Email 通知可行性（scout 自報時間，照前例標註）：確認 send.ts／templates、tour_orders.contact.email 與 accept/reject/confirm-payment 掛點，主 agent 核對後開立 issue/954。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261014-luna-scout-954-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 954,
+        "count": 1,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-14T05:01:00Z",
+        "completedAt": "2026-10-14T05:01:12Z",
+        "note": "Luna metrics capture 綁定 issue/954 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2。actual 未經平台驗證。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 70,
+    "issuesStarted": 71,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -8475,8 +8513,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 154,
-    "lunaAccepted": 145,
+    "lunaTasks": 156,
+    "lunaAccepted": 147,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -8753,7 +8791,8 @@
     "非計分紀錄：PR #943 merge 為 c6e043b7（2026-10-14T01:53:13Z）；#941 follow-up builders d1ba4eca、9efe8009、87019945 與 Opus 審查四次；#942 Sonnet builder d8e46c8e（00:04:19Z–00:09:47Z）cherry-pick 至 c6e043b7 之上；#944 Sonnet 預建 e3c19547（00:53:13Z–01:07:27Z）；#945 outbox follow-up 開立。",
     "非計分紀錄：PR #947 merge 為 03305ef9（2026-10-14T02:30:17Z）；#942 follow-up builders dff9b1db、37e8556d、845f3054 與 Opus 審查四次；#948 Sonnet builder 442965af（01:56:16Z–02:01:18Z）cherry-pick 為 ab1eab66；主 agent 於 #943 合併前未等 Codex 全部 finding（P1 節流封鎖、P2 tenantId 殘留）即合併，另於 #942 曾在 merge 被拒後先發出完成留言並隨即更正——兩者記為流程失誤。",
     "非計分紀錄：PR #949 merge 為 b0820682（2026-10-14T04:12:00Z，owner 決定先合併、並發原子化交由 #945）；#948 follow-up builder ad5ed6a2 與 Opus 審查兩次；#944 Sonnet 預建 e3c19547 並重建於新 main 為 81729dbf（container 重啟前完成）。",
-    "非計分紀錄：PR #950 merge 為 7f3fd668（2026-10-14T04:41:46Z）；#944 follow-up builder 74c3521d 與 Opus 審查兩次、Codex Code Review 一次 Failed 後以 @codex review 重跑；#952 快照 follow-up 開立；#951 Sonnet 預建 c6bd2d96（04:17:01Z–04:21:30Z）。"
+    "非計分紀錄：PR #950 merge 為 7f3fd668（2026-10-14T04:41:46Z）；#944 follow-up builder 74c3521d 與 Opus 審查兩次、Codex Code Review 一次 Failed 後以 @codex review 重跑；#952 快照 follow-up 開立；#951 Sonnet 預建 c6bd2d96（04:17:01Z–04:21:30Z）。",
+    "非計分紀錄：PR #953 merge 為 2db45afa（2026-10-14T04:50:43Z）；#954 Sonnet 預建 dfdc3da8（04:48:39Z–04:59:52Z）。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
