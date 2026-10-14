@@ -44,6 +44,15 @@ export async function notifyTravelerTourOrderStatus(
     const [order] = await hydrateTourOrders(admin, tenantId, [row]);
     if (!order) return;
 
+    const money = (n: unknown): number | null => {
+      const v = typeof n === 'string' && n.trim() === '' ? NaN : Number(n);
+      return n == null || !Number.isFinite(v) ? null : v;
+    };
+    const fmt = (n: number) => `NT$ ${n.toLocaleString('en-US')}`;
+    const paidN = kind === 'DEPOSIT_RECEIVED' ? money((row as Record<string, unknown>).paid_amount) : null;
+    const totalN = kind === 'DEPOSIT_RECEIVED' ? money(order.totalAmount) : null;
+    const balanceN = paidN != null && totalN != null ? totalN - paidN : null;
+
     const statusUrl = tenant.shop_code
       ? `${APP_URL}/s/${encodeURIComponent(String(tenant.shop_code))}/requests/${encodeURIComponent(orderId)}?contact=${encodeURIComponent(email)}`
       : `${APP_URL}`;
@@ -57,6 +66,8 @@ export async function notifyTravelerTourOrderStatus(
         ? formatInstantInTimeZone(order.holdExpiresAt, timeZone) : null,
       totalText: kind === 'SUBMITTED_BOOKING' && Number.isFinite(order.totalAmount)
         ? `NT$ ${Number(order.totalAmount).toLocaleString('en-US')}` : null,
+      paidText: paidN != null ? fmt(paidN) : null,
+      balanceText: balanceN != null && balanceN > 0 ? fmt(balanceN) : null,
       rejectReason: kind === 'REJECTED' ? travelerVisibleRejectReason(order) : null,
       statusUrl,
     });
