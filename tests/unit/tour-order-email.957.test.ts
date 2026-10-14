@@ -107,14 +107,21 @@ describe('route wiring（原始碼斷言）', () => {
 });
 
 describe('allowTravelerConfirmEmail 節流', () => {
-  it('同一 email 每小時 3 封，第 4 次拒絕；大小寫與空白視為同一人', async () => {
+  it('同 IP 同 email 每小時 3 封，第 4 次拒絕；大小寫與空白視為同一人', async () => {
     const { allowTravelerConfirmEmail } = await import('@/server/email/tour-order-email');
     const e = 'Victim-A@Example.com';
-    expect(allowTravelerConfirmEmail(e, 'ip-a1')).toBe(true);
-    expect(allowTravelerConfirmEmail(` ${e.toLowerCase()} `, 'ip-a2')).toBe(true);
-    expect(allowTravelerConfirmEmail(e, 'ip-a3')).toBe(true);
-    expect(allowTravelerConfirmEmail(e, 'ip-a4')).toBe(false);
-    expect(allowTravelerConfirmEmail('other-a@example.com', 'ip-a5')).toBe(true);
+    expect(allowTravelerConfirmEmail(e, 'ip-a')).toBe(true);
+    expect(allowTravelerConfirmEmail(` ${e.toLowerCase()} `, 'ip-a')).toBe(true);
+    expect(allowTravelerConfirmEmail(e, 'ip-a')).toBe(true);
+    expect(allowTravelerConfirmEmail(e, 'ip-a')).toBe(false);
+    expect(allowTravelerConfirmEmail('other-a@example.com', 'ip-a')).toBe(true);
+  });
+  it('額度綁定來源：IP A 用滿後，IP B 對同一收件人仍放行（匿名者無法封鎖合法確認信）', async () => {
+    const { allowTravelerConfirmEmail } = await import('@/server/email/tour-order-email');
+    const victim = 'victim-e@example.com';
+    for (let i = 0; i < 3; i += 1) expect(allowTravelerConfirmEmail(victim, 'ip-attacker')).toBe(true);
+    expect(allowTravelerConfirmEmail(victim, 'ip-attacker')).toBe(false);
+    expect(allowTravelerConfirmEmail(victim, 'ip-victim')).toBe(true);
   });
   it('同 IP 跨店每小時 10 封，第 11 次拒絕；被收件人擋下不消耗 IP 額度', async () => {
     const { allowTravelerConfirmEmail } = await import('@/server/email/tour-order-email');

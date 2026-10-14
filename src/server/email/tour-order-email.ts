@@ -93,16 +93,19 @@ function maskEmail(email: string): string {
  * 旅客確認信節流（#957 審查）：公開建單端點匿名可填任意 email，若不節流，攻擊者可反覆
  * 建 REQUEST 單（不鎖位）讓平台對受害者持續寄信，損害共用寄件網域信譽。
  * 兩道只影響「寄信」、不影響建單與 201：
- *   - 收件人：`traveler-confirm:<trim+lowercase email>` 每小時 3 封
+ *   - 同來源對同收件人：`traveler-confirm:<ip>:<trim+lowercase email>` 每小時 3 封
  *   - 同 IP 跨店：`traveler-confirm-ip:<ip>` 每小時 10 封
  * 先 peek 兩道，都過才一起扣額度（被收件人擋下不消耗 IP 額度）。
+ * 取捨：刻意「不提供」全域收件人上限。全域上限會讓匿名者只要知道受害者 email，
+ * 就能用任一 IP 耗盡額度，使受害者之後的真實預約被靜默略過確認信（對合法通知的 DoS）。
+ * 綁定來源後，攻擊者只能耗盡自己 IP 的額度；跨 IP 分散轟炸仍受每 IP 10 封限制。
  * 誠實限制同 rate-limit.ts：單 process 記憶體、盡力而為；持久化節流隨 outbox 由 #945 處理。
  * 沒有 email 時回傳 true（本來就不會寄，不佔額度）。
  */
 export function allowTravelerConfirmEmail(email: string | null | undefined, ip: string): boolean {
   const addr = (email ?? '').trim().toLowerCase();
   if (!addr) return true;
-  const emailKey = `traveler-confirm:${addr}`;
+  const emailKey = `traveler-confirm:${ip}:${addr}`;
   const ipKey = `traveler-confirm-ip:${ip}`;
   const emailOpt = { max: CONFIRM_PER_EMAIL_MAX, windowMs: CONFIRM_WINDOW_MS };
   const ipOpt = { max: CONFIRM_PER_IP_MAX, windowMs: CONFIRM_WINDOW_MS };
