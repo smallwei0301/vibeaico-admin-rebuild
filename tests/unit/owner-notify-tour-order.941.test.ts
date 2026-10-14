@@ -172,9 +172,24 @@ describe('#941 notifyOwnerNewTourOrder', () => {
     expect(state.multicast).toHaveLength(1);
   });
 
-  it('近一小時建單數超過上限：不推播、不消耗額度', async () => {
+  it('近一小時建單數為上限+1：改送一則彙總提醒（額度只消耗一次）', async () => {
     seed('REQUEST');
     addOrders(OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP, new Date().toISOString());
+    const { consumePushQuota } = await import('@/server/line');
+    vi.mocked(consumePushQuota).mockClear();
+    await notifyOwnerNewTourOrder('t1', 'o1');
+    expect(state.multicast).toHaveLength(1);
+    const text = state.multicast[0].msgs[0].text as string;
+    expect(text).toContain(`【祕島小舖】本小時新訂單已超過 ${OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP} 筆`);
+    expect(text).toContain('/tenant/tour-orders?tenantId=t1');
+    expect(text).not.toContain('orderId=');
+    expect(text).not.toContain('TO-261201-001');
+    expect(consumePushQuota).toHaveBeenCalledTimes(1);
+  });
+
+  it('近一小時建單數為上限+2：不推播、不消耗額度', async () => {
+    seed('REQUEST');
+    addOrders(OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP + 1, new Date().toISOString());
     const { consumePushQuota } = await import('@/server/line');
     vi.mocked(consumePushQuota).mockClear();
     await notifyOwnerNewTourOrder('t1', 'o1');

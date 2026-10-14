@@ -440,8 +440,21 @@ export async function notifyOwnerNewTourOrder(tenantId: string, orderId: string)
       console.error('[owner-notify] 團體訂單近一小時計數失敗，略過推播', tenantId, cErr);
       return;
     }
-    if (count > OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP) {
+    if (count > OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP + 1) {
       console.warn('[owner-notify] 團體訂單通知超過每小時上限，略過推播', tenantId);
+      return;
+    }
+    if (count === OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP + 1) {
+      // 視窗內第一筆超額訂單：改送一則彙總提醒（不逐筆），避免匿名灌單把真實通知整小時封死。
+      // 並行下兩筆訂單可能同時看到 CAP+1，最多多送一兩則提醒，可接受（仍受每月推播額度保護）。
+      const { data: tn, error: tnErr } = await admin.from('tenants').select('name').eq('id', tenantId).maybeSingle();
+      if (tnErr) throw tnErr;
+      const shopName = cleanNotifyField(tn?.name);
+      const pre = shopName ? `【${shopName}】` : '';
+      const reminder =
+        `${pre}本小時新訂單已超過 ${OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP} 筆，後續訂單暫停逐筆通知，請至後台「團體訂單」查看。\n` +
+        `查看訂單：${APP_URL}/tenant/tour-orders?tenantId=${encodeURIComponent(tenantId)}`;
+      await sendOwnerNotifyEvent(tenantId, 'notify_new_booking', reminder.slice(0, OWNER_NOTIFY_TEXT_HARD_CAP));
       return;
     }
     const [{ data: row, error }, { data: tenant, error: tErr }] = await Promise.all([
