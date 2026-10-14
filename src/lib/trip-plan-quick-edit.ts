@@ -9,6 +9,7 @@ export type QuickPlanValidationError = 'name' | 'basePrice' | 'childPrice';
 export type AdvancedPlanValidationError =
   | 'minParticipants'
   | 'maxParticipants'
+  | 'durationMinutes'
   | 'partyRange'
   | 'deposit'
   | 'salesMode'
@@ -127,6 +128,7 @@ export function validateAdvancedPlan(plan: TripPlan): AdvancedPlanValidationErro
     return 'maxParticipants';
   }
   if (plan.minParticipants > plan.maxParticipants) return 'partyRange';
+  if (!Number.isInteger(plan.durationMinutes) || plan.durationMinutes < 1) return 'durationMinutes';
 
   if (!Number.isInteger(plan.depositValue) || plan.depositValue < 0) return 'deposit';
   if ((plan.depositMode === 'NONE' || plan.depositMode === 'FULL') && plan.depositValue !== 0) {

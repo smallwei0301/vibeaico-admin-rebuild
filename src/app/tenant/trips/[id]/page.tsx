@@ -525,6 +525,10 @@ export default function TripDetailPage() {
       toast.show(t.messages.planPartyRangeInvalid, 'danger');
       return;
     }
+    if (validationError === 'durationMinutes') {
+      toast.show(t.messages.planDurationInvalid, 'danger');
+      return;
+    }
     if (validationError === 'deposit') {
       toast.show(t.messages.planDepositInvalid, 'danger');
       return;
@@ -1520,8 +1524,8 @@ export default function TripDetailPage() {
                     type="number"
                     min={0}
                     step={1}
-                    value={planDraft.basePrice}
-                    onChange={(e) => patchPlan({ basePrice: Number(e.target.value) })}
+                    value={Number.isNaN(planDraft.basePrice) ? '' : planDraft.basePrice}
+                    onChange={(e) => patchPlan({ basePrice: e.target.valueAsNumber })}
                   />
                   <FormText>{t.plans.quick.priceHelp}</FormText>
                 </FormGroup>
@@ -1666,8 +1670,8 @@ export default function TripDetailPage() {
                       type="number"
                       min={1}
                       step={1}
-                      value={planDraft.durationMinutes}
-                      onChange={(e) => patchPlan({ durationMinutes: Number(e.target.value) })}
+                      value={Number.isNaN(planDraft.durationMinutes) ? '' : planDraft.durationMinutes}
+                      onChange={(e) => patchPlan({ durationMinutes: e.target.valueAsNumber })}
                     />
                   </FormGroup>
                   <FormGroup>
@@ -1700,8 +1704,8 @@ export default function TripDetailPage() {
                       type="number"
                       min={1}
                       step={1}
-                      value={planDraft.minParticipants}
-                      onChange={(e) => patchPlan({ minParticipants: Number(e.target.value) })}
+                      value={Number.isNaN(planDraft.minParticipants) ? '' : planDraft.minParticipants}
+                      onChange={(e) => patchPlan({ minParticipants: e.target.valueAsNumber })}
                     />
                   </FormGroup>
                   <FormGroup>
@@ -1711,8 +1715,8 @@ export default function TripDetailPage() {
                       type="number"
                       min={1}
                       step={1}
-                      value={planDraft.maxParticipants}
-                      onChange={(e) => patchPlan({ maxParticipants: Number(e.target.value) })}
+                      value={Number.isNaN(planDraft.maxParticipants) ? '' : planDraft.maxParticipants}
+                      onChange={(e) => patchPlan({ maxParticipants: e.target.valueAsNumber })}
                     />
                   </FormGroup>
                 </div>
@@ -1751,8 +1755,8 @@ export default function TripDetailPage() {
                       min={planDraft.depositMode === 'DEPOSIT_PERCENT' ? 1 : 0}
                       max={planDraft.depositMode === 'DEPOSIT_PERCENT' ? 100 : undefined}
                       step={1}
-                      value={planDraft.depositValue}
-                      onChange={(e) => patchPlan({ depositValue: Number(e.target.value) })}
+                      value={Number.isNaN(planDraft.depositValue) ? '' : planDraft.depositValue}
+                      onChange={(e) => patchPlan({ depositValue: e.target.valueAsNumber })}
                     />
                     {planDraft.priceType === 'PER_PERSON' ? (
                       <FormText>{t.plans.fields.depositPerPersonNote}</FormText>
