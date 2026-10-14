@@ -219,6 +219,7 @@ export const dashboardPage = {
     unprocessedBookings: {
       title: '未處理預約',
       body: (n: number) => `${n} 筆預約已過期但尚未處理`,
+      bodyAwaitingAccept: (n: number) => `${n} 筆預約申請等待您接受或婉拒`,
       action: '前往處理',
     },
     lowStock: {
@@ -335,6 +336,8 @@ export const dashboardPage = {
   errors: {
     stats: '載入統計資料失敗:',
     alerts: '載入提醒失敗:',
+    /** 警示數字載入失敗時顯示在卡片內（不得以 0 冒充「沒有待辦」） */
+    alertValue: '載入失敗，請重新整理',
     setupStatus: '載入設定狀態失敗:',
     todayBookings: '載入今日預約失敗:',
     actionInbox: '載入待處理事項失敗:',

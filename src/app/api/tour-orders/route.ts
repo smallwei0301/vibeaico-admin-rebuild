@@ -28,6 +28,8 @@ const drilldownSchema = z.object({
   activeOnly: z.literal('1').optional(),
   /** 只列「重複旅客」的訂單（口徑同報表）；必須同時帶 createdFrom／createdTo */
   repeatCustomers: z.literal('1').optional(),
+  /** 方案銷售模式（trip_plans.sales_mode；GUIDE 首頁「待確認」只列 REQUEST 申請） */
+  salesMode: z.enum(['FIXED_DEPARTURE', 'INSTANT', 'REQUEST']).optional(),
   source: z.enum(['MIDAO', 'VIBEAI_SHOP', 'LINE', 'MANUAL']).optional(),
   createdFrom: z.string().regex(DATE_RE, 'createdFrom 需為 YYYY-MM-DD').optional(),
   createdTo: z.string().regex(DATE_RE, 'createdTo 需為 YYYY-MM-DD').optional(),
@@ -63,6 +65,7 @@ export const GET = handle(async (req) => {
     activeOnly: url.searchParams.get('activeOnly') || undefined,
     repeatCustomers: url.searchParams.get('repeatCustomers') || undefined,
     source: url.searchParams.get('source') || undefined,
+    salesMode: url.searchParams.get('salesMode') || undefined,
     createdFrom: url.searchParams.get('createdFrom') || undefined,
     createdTo: url.searchParams.get('createdTo') || undefined,
     createdBefore: url.searchParams.get('createdBefore') || undefined,
@@ -102,7 +105,11 @@ export const GET = handle(async (req) => {
 
   // 所有篩選集中在這一處，一般清單與「重複旅客」候選查詢共用；tenant_id 一律先套用。
   const filtered = (columns: string, opts?: { count: 'exact' }) => {
-    let query = t.supabase.from('tour_orders').select(columns, opts).eq('tenant_id', t.tenantId);
+    // salesMode 以 trip_plans!inner 內嵌篩選（同 dashboard-tour countPendingTourRequests）；
+    // 未帶時維持原 select，不多 join。
+    const sel = q.salesMode ? `${columns}, trip_plans!inner(sales_mode)` : columns;
+    let query = t.supabase.from('tour_orders').select(sel, opts).eq('tenant_id', t.tenantId);
+    if (q.salesMode) query = query.eq('trip_plans.sales_mode', q.salesMode);
     if (orderId) query = query.eq('id', orderId);
     if (status) query = query.eq('status', status);
     if (excludeCancelled) query = query.neq('status', 'CANCELLED');

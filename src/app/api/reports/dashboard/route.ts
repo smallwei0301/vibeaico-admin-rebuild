@@ -4,12 +4,18 @@ import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { taipeiTodayRange, taipeiMonthRange, taipeiCurrentMonthKey } from '@/server/tz';
 import { pushQuotaLimit } from '@/server/line';
+import { MODE_PRESETS } from '@/config/modes';
+import {
+  countPendingTourRequests, countTodayTourDepartureOrders, selectMonthTourReceipts, sumNetReceived,
+} from '@/server/dashboard-tour';
 import type { DashboardStats } from '@/lib/types';
 
 export const GET = handle(async () => {
   const t = await requireTenant();
   const { fromIso: todayFrom, toIso: todayTo } = taipeiTodayRange();
   const { fromIso: monthFrom, toIso: monthTo } = taipeiMonthRange();
+  // GUIDE 的訂單在 tour_orders（#942）；其他業態維持 bookings 口徑。
+  const tourMode = MODE_PRESETS[t.businessType ?? 'LOCAL_SHOP'].reportingMode === 'GUIDE_TOUR';
 
   const [
     { count: todayBookings, error: e1 },
@@ -20,15 +26,21 @@ export const GET = handle(async () => {
     { data: settingsRow, error: e6 },
     pushQuotaTotal,
   ] = await Promise.all([
-    t.supabase.from('bookings').select('id', { count: 'exact', head: true })
-      .eq('tenant_id', t.tenantId).gte('start_at', todayFrom).lt('start_at', todayTo),
-    t.supabase.from('bookings').select('id', { count: 'exact', head: true })
-      .eq('tenant_id', t.tenantId).eq('status', 'PENDING'),
+    tourMode
+      ? countTodayTourDepartureOrders(t.supabase, t.tenantId)
+      : t.supabase.from('bookings').select('id', { count: 'exact', head: true })
+        .eq('tenant_id', t.tenantId).gte('start_at', todayFrom).lt('start_at', todayTo),
+    tourMode
+      ? countPendingTourRequests(t.supabase, t.tenantId)
+      : t.supabase.from('bookings').select('id', { count: 'exact', head: true })
+        .eq('tenant_id', t.tenantId).eq('status', 'PENDING'),
     // 店家量級小，直接把本月已完成的 final_price 全撈回來在記憶體加總，
     // 不另外寫 rpc（同 A-5 staff-performance 的作法）。
-    t.supabase.from('bookings').select('final_price')
-      .eq('tenant_id', t.tenantId).eq('status', 'COMPLETED')
-      .gte('start_at', monthFrom).lt('start_at', monthTo),
+    tourMode
+      ? selectMonthTourReceipts(t.supabase, t.tenantId)
+      : t.supabase.from('bookings').select('final_price')
+        .eq('tenant_id', t.tenantId).eq('status', 'COMPLETED')
+        .gte('start_at', monthFrom).lt('start_at', monthTo),
     // 已軟刪（active=false）的顧客不計入儀表板統計。
     t.supabase.from('customers').select('id', { count: 'exact', head: true })
       .eq('tenant_id', t.tenantId).eq('active', true),
@@ -45,8 +57,10 @@ export const GET = handle(async () => {
   if (e5) throw e5;
   if (e6) throw e6;
 
-  const monthRevenue = (completedThisMonth ?? [])
-    .reduce((sum, r) => sum + Number(r.final_price), 0);
+  const monthRevenue = tourMode
+    ? sumNetReceived(completedThisMonth as { paid_amount: unknown; refunded_amount: unknown }[] | null)
+    : (completedThisMonth as { final_price: unknown }[] | null ?? [])
+      .reduce((sum, r) => sum + Number(r.final_price), 0);
 
   const stats: DashboardStats = {
     todayBookings: todayBookings ?? 0,

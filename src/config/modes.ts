@@ -46,6 +46,22 @@ export type ModePreset = {
   /** 報表頁使用的資料口徑；GUIDE 專屬報表完成前不顯示通用報表。 */
   reportingMode: 'GENERAL' | 'GUIDE_TOUR';
   /**
+   * 儀表板的連結與快速操作（#942）：目的地以 ordersHref／catalogHref 為準，這裡只補
+   * 篩選參數與標籤用的 nav key（文案走 i18n navLabel），頁面不寫業態分支。
+   */
+  dashboardLinks: {
+    /** 「待確認」統計卡與收件匣「待確認」入口的訂單篩選 query（含 `?`） */
+    pendingQuery: string;
+    /** 「未處理預約」警示卡的訂單篩選 query */
+    unprocessedQuery: string;
+    /** 「未處理預約」警示卡文案：EXPIRED＝已過期未處理；AWAITING_ACCEPT＝等待導遊接受或婉拒（i18n alertCards.unprocessedBookings.body） */
+    unprocessedCopyKey: 'EXPIRED' | 'AWAITING_ACCEPT';
+    /** 快速操作「訂單」按鈕的標籤 nav key */
+    ordersNavKey: 'bookings' | 'tour_orders';
+    /** 快速操作「目錄」按鈕的標籤 nav key */
+    catalogNavKey: 'services' | 'trips';
+  };
+  /**
    * Rich Menu 六格：`label` 是顧客看到的按鈕字，`text` 是按下去實際送出的訊息。
    *
    * ⚠️ 這是單一事實來源（13 分冊）。webhook 的內建意圖表必須涵蓋這裡每一個
@@ -90,6 +106,13 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     shopSections: ['SERVICES', 'PRODUCTS', 'PORTFOLIO'],
     showActionInbox: false,
     reportingMode: 'GENERAL',
+    dashboardLinks: {
+      pendingQuery: '?status=PENDING',
+      unprocessedQuery: '?status=UNPROCESSED',
+      unprocessedCopyKey: 'EXPIRED',
+      ordersNavKey: 'bookings',
+      catalogNavKey: 'services',
+    },
     setupStepRoutes: { ...COMMON_SETUP_ROUTES, SERVICE: '/tenant/services' },
     setupInventory: { kind: 'table', table: 'services', filter: { column: 'active', value: true } },
     richMenuCells: [
@@ -116,6 +139,13 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     shopSections: ['TRIPS', 'PORTFOLIO'],
     showActionInbox: true,
     reportingMode: 'GUIDE_TOUR',
+    dashboardLinks: {
+      pendingQuery: '?status=PENDING&salesMode=REQUEST',
+      unprocessedQuery: '?status=PENDING&salesMode=REQUEST',
+      unprocessedCopyKey: 'AWAITING_ACCEPT',
+      ordersNavKey: 'tour_orders',
+      catalogNavKey: 'trips',
+    },
     setupStepRoutes: { ...COMMON_SETUP_ROUTES, SERVICE: '/tenant/trips' },
     setupInventory: { kind: 'publicBookablePlans' },
     richMenuCells: [
@@ -138,6 +168,13 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     shopSections: ['SERVICES'],
     showActionInbox: false,
     reportingMode: 'GENERAL',
+    dashboardLinks: {
+      pendingQuery: '?status=PENDING',
+      unprocessedQuery: '?status=UNPROCESSED',
+      unprocessedCopyKey: 'EXPIRED',
+      ordersNavKey: 'bookings',
+      catalogNavKey: 'services',
+    },
     setupStepRoutes: { ...COMMON_SETUP_ROUTES, SERVICE: '/tenant/services' },
     setupInventory: { kind: 'table', table: 'services', filter: { column: 'active', value: true } },
     richMenuCells: [

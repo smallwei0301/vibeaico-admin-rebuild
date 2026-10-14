@@ -6,10 +6,14 @@ import { taipeiTodayDateString, taipeiCurrentMonthKey } from '@/server/tz';
 import { businessSettingsSchema } from '@/config/tenant-settings';
 import { FEATURE_EXPIRY_WARNING_DAYS } from '@/config/features';
 import { pushQuotaLimit } from '@/server/line';
+import { MODE_PRESETS } from '@/config/modes';
+import { countPendingTourRequests } from '@/server/dashboard-tour';
 import type { DashboardAlerts } from '@/lib/types';
 
 export const GET = handle(async () => {
   const t = await requireTenant();
+  // GUIDE 的未處理＝待導遊接受的團體申請（tour_orders，與首頁待確認卡同口徑，#942）。
+  const tourMode = MODE_PRESETS[t.businessType ?? 'LOCAL_SHOP'].reportingMode === 'GUIDE_TOUR';
 
   const [
     { count: unprocessedBookings, error: e1 },
@@ -22,8 +26,10 @@ export const GET = handle(async () => {
     { data: featureRows, error: e6 },
     pushQuota,
   ] = await Promise.all([
-    t.supabase.from('bookings').select('id', { count: 'exact', head: true })
-      .eq('tenant_id', t.tenantId).eq('status', 'PENDING'),
+    tourMode
+      ? countPendingTourRequests(t.supabase, t.tenantId)
+      : t.supabase.from('bookings').select('id', { count: 'exact', head: true })
+        .eq('tenant_id', t.tenantId).eq('status', 'PENDING'),
     t.supabase.from('products').select('stock, safety_stock')
       .eq('tenant_id', t.tenantId).eq('active', true),
     t.supabase.from('customers_view').select('id', { count: 'exact', head: true })
