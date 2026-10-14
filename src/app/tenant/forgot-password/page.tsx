@@ -11,13 +11,22 @@ import { useToast } from '@/components/ui/Toast';
 import { forgotPasswordPage as t } from '@/i18n/zh-TW/pages/forgot-password';
 import { ApiError } from '@/lib/api';
 import { forgotPassword } from '@/services';
+import { createForgotPasswordFlow } from '@/lib/forgot-password-flow';
 
 export default function ForgotPasswordPage() {
   const toast = useToast();
 
   const [email, setEmail] = React.useState('');
-  const [submitting, setSubmitting] = React.useState(false);
-  const [sent, setSent] = React.useState(false);
+  const [{ submitting, sent }, setFeedback] = React.useState({ submitting: false, sent: false });
+  const flow = React.useRef(createForgotPasswordFlow({
+    onState: setFeedback,
+    onSuccess: () => toast.show(t.messages.sent),
+    onError: (err) => toast.show(
+      `${t.messages.sendFailedPrefix}${err instanceof ApiError ? err.message : t.messages.unknownError}`,
+      'danger',
+    ),
+  }));
+  React.useEffect(() => () => flow.current.invalidate(), []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,19 +34,7 @@ export default function ForgotPasswordPage() {
       toast.show(t.messages.emailRequired, 'warning');
       return;
     }
-    setSubmitting(true);
-    try {
-      await forgotPassword(email.trim());
-      setSent(true);
-      toast.show(t.messages.sent);
-    } catch (err) {
-      toast.show(
-        `${t.messages.sendFailedPrefix}${err instanceof ApiError ? err.message : t.messages.unknownError}`,
-        'danger',
-      );
-    } finally {
-      setSubmitting(false);
-    }
+    await flow.current.submit(email.trim(), forgotPassword);
   };
 
   return (
@@ -59,7 +56,10 @@ export default function ForgotPasswordPage() {
               autoComplete="email"
               placeholder={t.form.emailPlaceholder}
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                flow.current.reset();
+                setEmail(e.target.value);
+              }}
             />
           </FormGroup>
 

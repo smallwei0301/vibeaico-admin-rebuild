@@ -15,6 +15,7 @@ export const POST = handle(async (req) => {
   const admin = createAdminSupabase();
   const { data: uid } = await admin.rpc('user_id_by_email', { p_email: b.email });
   if (!uid) return fail(400, '驗證碼錯誤或已過期', ERR.CODE_INVALID);
-  await admin.auth.admin.updateUserById(uid, { password: b.newPassword });
+  const { error } = await admin.auth.admin.updateUserById(uid, { password: b.newPassword });
+  if (error) throw error;
   return ok({ reset: true });
 });
