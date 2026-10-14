@@ -863,7 +863,9 @@ export default function DashboardPage() {
                 {t.alertCards.unprocessedBookings.title}
               </div>
               <p className="form-text">
-                {alerts ? t.alertCards.unprocessedBookings.body(alerts.unprocessedBookings) : alertsFailed ? t.errors.alertValue : PLACEHOLDER}
+                {alerts ? (dashboardLinks.unprocessedCopyKey === 'AWAITING_ACCEPT'
+                  ? t.alertCards.unprocessedBookings.bodyAwaitingAccept
+                  : t.alertCards.unprocessedBookings.body)(alerts.unprocessedBookings) : alertsFailed ? t.errors.alertValue : PLACEHOLDER}
               </p>
             </div>
             <Link

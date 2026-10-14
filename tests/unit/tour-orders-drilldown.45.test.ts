@@ -47,8 +47,33 @@ describe('parseTourOrdersDeepLink 新參數', () => {
     expect(parseTourOrdersDeepLink('?status=BOGUS&createdFrom=10/01&createdTo=x'))
       .toMatchObject({ status: '', createdFrom: '', createdTo: '' });
     expect(parseTourOrdersDeepLink('')).toEqual({
-      paymentStatus: '', orderId: '', status: '', tripId: '', createdFrom: '', createdTo: '', source: '', planId: '', activeOnly: false, repeatCustomers: false, createdBefore: '', tz: '', tenantId: '',
+      paymentStatus: '', orderId: '', status: '', tripId: '', createdFrom: '', createdTo: '', source: '', planId: '', activeOnly: false, repeatCustomers: false, salesMode: '', createdBefore: '', tz: '', tenantId: '',
     });
+  });
+});
+
+describe('salesMode 篩選（#942）', () => {
+  it('parse 只接受三個合法值；build 與 parse 互逆', () => {
+    expect(parseTourOrdersDeepLink('?status=PENDING&salesMode=REQUEST')).toMatchObject({ status: 'PENDING', salesMode: 'REQUEST' });
+    expect(parseTourOrdersDeepLink('?salesMode=BOGUS')).toMatchObject({ salesMode: '' });
+    const href = buildTourOrdersLink({ status: 'PENDING', salesMode: 'REQUEST' });
+    expect(href).toBe('/tenant/tour-orders?status=PENDING&salesMode=REQUEST');
+    expect(parseTourOrdersDeepLink(href.split('?')[1]).salesMode).toBe('REQUEST');
+  });
+
+  it('GET 帶 salesMode → trip_plans!inner 內嵌篩選；非法值 → 400', async () => {
+    const res = await get('?status=PENDING&salesMode=REQUEST');
+    expect(res.status).toBe(200);
+    expect(ops('tour_orders.eq').some((o) => o[1] === 'trip_plans.sales_mode' && o[2] === 'REQUEST')).toBe(true);
+    expect(ops('tour_orders.select').some((o) => String(o[1]).includes('trip_plans!inner(sales_mode)'))).toBe(true);
+    state.ops = [];
+    expect((await get('?salesMode=BOGUS')).status).toBe(400);
+    expect(ops('tour_orders.select')).toHaveLength(0);
+  });
+
+  it('未帶 salesMode 時不 join trip_plans', async () => {
+    await get('?status=PENDING');
+    expect(ops('tour_orders.select').some((o) => String(o[1]).includes('trip_plans'))).toBe(false);
   });
 });
 

@@ -219,6 +219,7 @@ export const dashboardPage = {
     unprocessedBookings: {
       title: '未處理預約',
       body: (n: number) => `${n} 筆預約已過期但尚未處理`,
+      bodyAwaitingAccept: (n: number) => `${n} 筆預約申請等待您接受或婉拒`,
       action: '前往處理',
     },
     lowStock: {

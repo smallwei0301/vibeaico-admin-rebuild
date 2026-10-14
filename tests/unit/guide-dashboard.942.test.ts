@@ -12,13 +12,24 @@ let businessType: string | undefined = 'GUIDE';
 const tablesQueried: string[] = [];
 const filters: { table: string; op: string; args: unknown[] }[] = [];
 
+// 模擬 PostgREST max_rows：每頁最多回 maxRows 列（range 時才生效）。
+let maxRows = 1;
 function chain(table: string, result: { data?: unknown; count?: number }) {
   const r = { data: null, count: 0, error: null, ...result };
+  let page: [number, number] | null = null;
   const q: any = new Proxy(function () {}, {
     get(_t, prop) {
-      if (prop === 'then') return (res: (v: unknown) => void) => res(r);
+      if (prop === 'then') {
+        return (res: (v: unknown) => void) => res(
+          page && Array.isArray(r.data) ? { ...r, data: r.data.slice(page[0], page[0] + Math.min(maxRows, page[1] - page[0] + 1)) } : r,
+        );
+      }
       if (prop === 'maybeSingle') return async () => r;
-      return (...args: unknown[]) => { filters.push({ table, op: String(prop), args }); return q; };
+      return (...args: unknown[]) => {
+        filters.push({ table, op: String(prop), args });
+        if (prop === 'range') page = [args[0] as number, args[1] as number];
+        return q;
+      };
     },
   });
   return q;
@@ -49,7 +60,8 @@ describe('#942 dashboard route 依業態切換資料來源', () => {
     const { GET } = await import('@/app/api/reports/dashboard/route');
     const res = await GET(new Request('http://x/api/reports/dashboard'), {} as never);
     const body = await res.json();
-    expect(tablesQueried.filter((x) => x === 'tour_orders')).toHaveLength(3);
+    // 2 個 head count ＋ 本月營收分頁 3 次（2 筆 + 1 次空頁，maxRows=1）
+    expect(tablesQueried.filter((x) => x === 'tour_orders')).toHaveLength(5);
     expect(tablesQueried).not.toContain('bookings');
     expect(body.data.todayBookings).toBe(3);
     expect(body.data.pendingBookings).toBe(3);
@@ -59,6 +71,19 @@ describe('#942 dashboard route 依業態切換資料來源', () => {
     expect(eqs).toContain('status=PENDING');
     expect(eqs).toContain('trip_plans.sales_mode=REQUEST');
     expect(filters.some((f) => f.op === 'neq' && f.args.join('=') === 'status=CANCELLED')).toBe(true);
+    // 已取消團次不算今日預約
+    expect(filters.some((f) => f.op === 'neq' && f.args.join('=') === 'trip_departures.status=CANCELLED')).toBe(true);
+  });
+
+  it('本月營收分頁加總：max_rows 截短每頁仍加總全部頁（800 = 1000-200 + 0）', async () => {
+    businessType = 'GUIDE';
+    maxRows = 1;
+    const { GET } = await import('@/app/api/reports/dashboard/route');
+    const body = await (await GET(new Request('http://x/api/reports/dashboard'), {} as never)).json();
+    expect(body.data.monthRevenue).toBe(800);
+    const ranges = filters.filter((f) => f.op === 'range').map((f) => f.args.join('-'));
+    expect(ranges).toEqual(['0-999', '1-1000', '2-1001']); // 以實際回傳筆數推進 offset，遇空頁才停
+    expect(filters.some((f) => f.op === 'order' && f.args[0] === 'id')).toBe(true);
   });
 
   it('LOCAL_SHOP：仍讀 bookings，不讀 tour_orders', async () => {
@@ -97,7 +122,10 @@ describe('#942 首頁連結依 MODE_PRESETS', () => {
     const g = MODE_PRESETS.GUIDE;
     expect(g.ordersHref).toBe('/tenant/tour-orders');
     expect(g.catalogHref).toBe('/tenant/trips');
-    expect(g.dashboardLinks.pendingQuery).toBe('?status=PENDING');
+    expect(g.dashboardLinks.pendingQuery).toBe('?status=PENDING&salesMode=REQUEST');
+    expect(g.dashboardLinks.unprocessedQuery).toBe('?status=PENDING&salesMode=REQUEST');
+    expect(MODE_PRESETS.LOCAL_SHOP.dashboardLinks.pendingQuery).toBe('?status=PENDING');
+    expect(MODE_PRESETS.CLINIC.dashboardLinks.unprocessedQuery).toBe('?status=UNPROCESSED');
     expect(navLabel(g.dashboardLinks.ordersNavKey, 'GUIDE')).toBe('旅遊訂單');
     expect(navLabel(g.dashboardLinks.catalogNavKey, 'GUIDE')).toBe('行程與方案');
     expect(MODE_PRESETS.LOCAL_SHOP.ordersHref).toBe('/tenant/bookings');
@@ -118,6 +146,20 @@ describe('#942 首頁連結依 MODE_PRESETS', () => {
     expect(page).not.toMatch(/businessType\s*===\s*'/);
     expect(page).toContain('ordersHref');
     expect(page).toContain('catalogHref');
+  });
+});
+
+describe('#942 警示卡文案依 preset', () => {
+  it('GUIDE 用「等待接受或婉拒」，其他業態維持「已過期但尚未處理」；頁面不寫業態分支', async () => {
+    expect(MODE_PRESETS.GUIDE.dashboardLinks.unprocessedCopyKey).toBe('AWAITING_ACCEPT');
+    expect(MODE_PRESETS.LOCAL_SHOP.dashboardLinks.unprocessedCopyKey).toBe('EXPIRED');
+    expect(MODE_PRESETS.CLINIC.dashboardLinks.unprocessedCopyKey).toBe('EXPIRED');
+    const { dashboardPage } = await import('@/i18n/zh-TW/pages/dashboard');
+    expect(dashboardPage.alertCards.unprocessedBookings.bodyAwaitingAccept(3)).toBe('3 筆預約申請等待您接受或婉拒');
+    expect(dashboardPage.alertCards.unprocessedBookings.body(3)).toBe('3 筆預約已過期但尚未處理');
+    const page = read('src/app/tenant/dashboard/page.tsx');
+    expect(page).toContain('dashboardLinks.unprocessedCopyKey');
+    expect(page).not.toMatch(/businessType\s*===\s*'/);
   });
 });
 

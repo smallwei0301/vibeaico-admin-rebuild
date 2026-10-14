@@ -62,11 +62,14 @@ export const tourOrdersPage = {
     status: (label: string) => `狀態：${label}`,
     payment: (label: string) => `付款：${label}`,
     source: (label: string) => `來源：${label}`,
+    salesMode: (label: string) => `販售方式：${label}`,
     activeOnly: '不含已取消訂單',
     repeatCustomers: '重複旅客的訂單（不含已取消）',
     sep: '、',
     clear: '清除報表下鑽篩選',
   },
+
+  salesMode: { FIXED_DEPARTURE: '固定團次', INSTANT: '自選時間', REQUEST: '先申請再確認' },
 
   status: {
     PENDING: '待確認',

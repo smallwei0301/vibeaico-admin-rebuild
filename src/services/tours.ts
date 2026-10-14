@@ -2,6 +2,7 @@ import { ApiError, adapt, request } from '@/lib/api';
 import type {
   DepartureConflict, Trip, TripAddon, TripDeparture, TripPlan, TripPlanSeason,
   TourOrder, TourOrderSummary, TourOrderSource, TourOrderStatus, TourPaymentStatus, Paged,
+  TripSalesMode,
 } from '@/lib/types';
 import { canDeleteTrip } from '@/lib/trip-deletion';
 import { tripsPage } from '@/i18n/zh-TW/pages/trips';
@@ -725,6 +726,8 @@ export type TourOrderQuery = {
   createdBefore?: string;
   /** #45：方案；只列非取消訂單（'1'）；只列重複旅客的訂單（'1'，需同時帶 createdFrom／createdTo） */
   planId?: string; activeOnly?: '1'; repeatCustomers?: '1';
+  /** 方案銷售模式篩選（trip_plans.sales_mode） */
+  salesMode?: TripSalesMode;
   /**
    * GUIDE 收件匣 REFUND_PENDING 卡片的 deep link（#43 類別 5）以 orderId 精準撈一筆，
    * 比照 `BookingQuery.bookingId`（`src/services/bookings.ts`）——不是分頁篩選條件，
@@ -790,6 +793,10 @@ export function listTourOrders(q: TourOrderQuery = {}): Promise<Paged<TourOrder>
         const plan = MOCK_TRIP_PLANS.find((p) => p.id === q.planId);
         rows = rows.filter((o) => plan !== undefined && o.tripId === plan.tripId && o.planName === plan.name);
       }
+      if (q.salesMode) {
+        const mode = q.salesMode;
+        rows = rows.filter((o) => MOCK_TRIP_PLANS.some((p) => p.tripId === o.tripId && p.name === o.planName && p.salesMode === mode));
+      }
       if (q.activeOnly === '1' || q.repeatCustomers === '1') rows = rows.filter((o) => o.status !== 'CANCELLED');
       // mock 以 Asia/Taipei 為店家時區，界線與真實 API 同為半開 [from 00:00, to+1 00:00)
       if (q.createdFrom) {
@@ -852,6 +859,8 @@ export type TourOrdersDeepLink = {
   status: TourOrderStatus | ''; tripId: string; createdFrom: string; createdTo: string;
   source: TourOrderSource | '';
   planId: string; activeOnly: boolean; repeatCustomers: boolean;
+  /** 方案銷售模式（未帶或不合法 → ''） */
+  salesMode: TripSalesMode | '';
   /** ISO-8601 瞬間（報表 asOf）；格式不合法 → '' */
   createdBefore: string;
   /** 顯示「資料截至」用的店家時區（報表帶入）；未帶 → ''，帶了但不合法 → 預設時區 */
@@ -859,6 +868,7 @@ export type TourOrdersDeepLink = {
   /** 通知連結帶的店家 id（多店帳號需先切換到該店）；未帶 → '' */
   tenantId: string;
 };
+const TRIP_SALES_MODE_VALUES: TripSalesMode[] = ['FIXED_DEPARTURE', 'INSTANT', 'REQUEST'];
 const TOUR_ORDER_SOURCE_VALUES: TourOrderSource[] = ['MIDAO', 'VIBEAI_SHOP', 'LINE', 'MANUAL'];
 
 export function parseTourOrdersDeepLink(search: string): TourOrdersDeepLink {
@@ -877,6 +887,8 @@ export function parseTourOrdersDeepLink(search: string): TourOrdersDeepLink {
   const createdTo = YMD_RE.test(ct) ? ct : '';
   const sr = params.get('source');
   const source = sr && (TOUR_ORDER_SOURCE_VALUES as string[]).includes(sr) ? (sr as TourOrderSource) : '';
+  const sm = params.get('salesMode');
+  const salesMode = sm && (TRIP_SALES_MODE_VALUES as string[]).includes(sm) ? (sm as TripSalesMode) : '';
   const cb = params.get('createdBefore') ?? '';
   const createdBefore = ISO_INSTANT_RE.test(cb) && Number.isFinite(Date.parse(cb)) ? cb : '';
   const tzRaw = params.get('tz');
@@ -886,7 +898,7 @@ export function parseTourOrdersDeepLink(search: string): TourOrdersDeepLink {
   const excl = status !== 'CANCELLED';
   const activeOnly = excl && params.get('activeOnly') === '1';
   const repeatCustomers = excl && params.get('repeatCustomers') === '1' && !!createdFrom && !!createdTo;
-  return { paymentStatus, orderId, status, tripId, createdFrom, createdTo, source, planId, activeOnly, repeatCustomers, createdBefore, tz, tenantId: params.get('tenantId') ?? '' };
+  return { paymentStatus, orderId, status, tripId, createdFrom, createdTo, source, planId, activeOnly, repeatCustomers, salesMode, createdBefore, tz, tenantId: params.get('tenantId') ?? '' };
 }
 
 /**
@@ -895,10 +907,10 @@ export function parseTourOrdersDeepLink(search: string): TourOrdersDeepLink {
  */
 export function buildTourOrdersLink(f: {
   status?: string; paymentStatus?: string; tripId?: string; createdFrom?: string; createdTo?: string; source?: string;
-  planId?: string; activeOnly?: boolean; repeatCustomers?: boolean; createdBefore?: string | null; tz?: string | null;
+  planId?: string; activeOnly?: boolean; repeatCustomers?: boolean; salesMode?: string; createdBefore?: string | null; tz?: string | null;
 }): string {
   const p = new URLSearchParams();
-  for (const k of ['status', 'paymentStatus', 'tripId', 'createdFrom', 'createdTo', 'createdBefore', 'tz', 'source', 'planId'] as const) {
+  for (const k of ['status', 'paymentStatus', 'tripId', 'createdFrom', 'createdTo', 'createdBefore', 'tz', 'source', 'planId', 'salesMode'] as const) {
     if (f[k]) p.set(k, f[k] as string);
   }
   if (f.activeOnly) p.set('activeOnly', '1');

@@ -54,6 +54,8 @@ export type ModePreset = {
     pendingQuery: string;
     /** 「未處理預約」警示卡的訂單篩選 query */
     unprocessedQuery: string;
+    /** 「未處理預約」警示卡文案：EXPIRED＝已過期未處理；AWAITING_ACCEPT＝等待導遊接受或婉拒（i18n alertCards.unprocessedBookings.body） */
+    unprocessedCopyKey: 'EXPIRED' | 'AWAITING_ACCEPT';
     /** 快速操作「訂單」按鈕的標籤 nav key */
     ordersNavKey: 'bookings' | 'tour_orders';
     /** 快速操作「目錄」按鈕的標籤 nav key */
@@ -107,6 +109,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     dashboardLinks: {
       pendingQuery: '?status=PENDING',
       unprocessedQuery: '?status=UNPROCESSED',
+      unprocessedCopyKey: 'EXPIRED',
       ordersNavKey: 'bookings',
       catalogNavKey: 'services',
     },
@@ -137,8 +140,9 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     showActionInbox: true,
     reportingMode: 'GUIDE_TOUR',
     dashboardLinks: {
-      pendingQuery: '?status=PENDING',
-      unprocessedQuery: '?status=PENDING',
+      pendingQuery: '?status=PENDING&salesMode=REQUEST',
+      unprocessedQuery: '?status=PENDING&salesMode=REQUEST',
+      unprocessedCopyKey: 'AWAITING_ACCEPT',
       ordersNavKey: 'tour_orders',
       catalogNavKey: 'trips',
     },
@@ -167,6 +171,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     dashboardLinks: {
       pendingQuery: '?status=PENDING',
       unprocessedQuery: '?status=UNPROCESSED',
+      unprocessedCopyKey: 'EXPIRED',
       ordersNavKey: 'bookings',
       catalogNavKey: 'services',
     },
