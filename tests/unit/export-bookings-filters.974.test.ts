@@ -1,10 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { bookingExportQuerySchema, buildBookingsCsvResponse } from '../../src/server/export-bookings';
 import { ilikeAnyOf } from '../../src/server/postgrest-filter';
 import { exportBookingsCsv } from '../../src/services/reports';
+
+// 讓 adapt() 走真實分支（mock 分支不會發出請求）
+vi.mock('@/config/env', async (orig) => ({ ...(await orig<object>()), USE_MOCK: false }));
 
 const read = (relative: string) =>
   readFileSync(fileURLToPath(new URL(`../../${relative}`, import.meta.url)), 'utf8');
@@ -86,10 +89,17 @@ describe('issue #974: 預約匯出套用列表篩選', () => {
         paymentStatus: 'UNPAID', keyword: ' 王 ', startBefore: '2026-10-14T00:00:00Z',
       }).catch(() => undefined);
     } finally { g.fetch = orig; }
-    const src = read('src/services/reports.ts');
-    for (const k of ['status', 'statuses', 'excludeCancelled', 'paymentStatus', 'keyword', 'startBefore']) {
-      expect(src).toContain(`params.set('${k}'`);
-    }
+    expect(urls).toHaveLength(1);
+    const u = new URL(urls[0], 'http://x');
+    expect(u.pathname).toMatch(/\/api\/export\/bookings\/csv$/);
+    expect(u.searchParams.get('status')).toBe('PENDING');
+    expect(u.searchParams.get('statuses')).toBe('PENDING,CONFIRMED');
+    expect(u.searchParams.get('excludeCancelled')).toBe('true');
+    expect(u.searchParams.get('paymentStatus')).toBe('UNPAID');
+    // 與列表一致：關鍵字原樣（含前後空白）送出，不 trim
+    expect(u.searchParams.get('keyword')).toBe(' 王 ');
+    expect(urls[0]).toContain('keyword=+%E7%8E%8B+');
+    expect(u.searchParams.get('startBefore')).toBe('2026-10-14T00:00:00Z');
   });
 
   it('頁面 runExport 傳入列表篩選', () => {

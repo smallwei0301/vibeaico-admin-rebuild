@@ -409,7 +409,8 @@ const bookingsExportUrl = (format: 'csv' | 'xlsx', q?: ExportBookingsQuery) => {
   if (q?.statuses?.length) params.set('statuses', q.statuses.join(','));
   if (q?.excludeCancelled) params.set('excludeCancelled', 'true');
   if (q?.paymentStatus) params.set('paymentStatus', q.paymentStatus);
-  if (q?.keyword?.trim()) params.set('keyword', q.keyword.trim());
+  // 與 listBookings 同樣原樣送出（不 trim），兩端 schema 皆無 trim，才會查到同一批資料。
+  if (q?.keyword) params.set('keyword', q.keyword);
   if (q?.startBefore) params.set('startBefore', q.startBefore);
   const query = params.toString();
   return `${API_BASE}/api/export/bookings/${format}${query ? `?${query}` : ''}`;
