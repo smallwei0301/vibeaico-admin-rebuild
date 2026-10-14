@@ -608,7 +608,7 @@ parent session ID／taskname／GitHublogin 不代填子角色。未知維持 UNE
 PR body 增加 `BUILDER_EXECUTION_RECEIPT: https://github.com/<owner>/<repo>/pull/<n>#issuecomment-<id>`（同 repo 的 Issue comment 亦可）；canonical `astra-review` 增加 `reviewerExecutionReceipt` 指向另一筆同 repo comment。兩個 locator 不作證據本身：GitHub adapter 必須 GET 回讀、驗 canonical html_url、可信 write/maintain/admin 提交者或既有 trusted bot，不執行 comment 內容。
 每筆 comment 只有一個 `agent-role-execution` fenced JSON，schema：`role`=BUILD|REVIEW、`repository`、`headSha`、`changeDigest`、runtime `actorId`／`sessionId`／`executionRef`、UTC `startedAt`／`completedAt`、`executionEvidence`=OPERATOR_ATTESTED；REVIEW 另有 `freshContext: true`。這是可信操作者對角色執行的背書，不是 provider-signed telemetry；缺實際 actor/session capture 就 pending，不能由 PR author／lane／requested model 推定。
 回讀內容必須綁 reviewed head/digest/repository；普通 Sol 是 current exact head，高風險純換底只可依下述 semantic reuse 沿用原 reviewed head。review actor/session/execution 與 builder 不同，review 開始不早於 builder 完成，review executionRef 等於 attestation executionRef。comment updatedAt 不能晚於 review submittedAt、completedAt 不能晚於 comment；編輯後須新 review。缺、foreign、stale、self-review 或 latest finding 未解均不 approval。歷史 source/model metadata 可只讀還原，不取代 live role gate。
-角色獨立不把 `actual=unknown` 升為 served verified。AUDIT／PREMIUM 保留原模型 identity 契約；無 selector 的 CURRENT_AGENT 如實 unknown，但仍需另一 actor/fresh context 的實際角色證據。沒有合規獨立 actor 就 park，不虛稱 PASS。
+角色獨立不把 `actual=unknown` 升為 served verified。AUDIT／PREMIUM 保留原模型 identity 契約；無 selector 的 CURRENT_AGENT 如實 unknown，但仍需另一 actor/fresh context 的實際角色證據。沒有合規 backend 來源或下述完整原生 source 角色證據就 park，不虛稱 PASS。
 
 普通 Product final Sol 也須獨立角色，不因 `ASTRA_RISK:NONE` 或 Final Risk `NOT_REQUIRED` 略過。是否進 final 准入由 live PR open/draft/lane 決定，不能用 payload 自填 BUILD 豁免；Draft 施工仍可收集 TEST 證據，純治理免 Product 角色收據。
 可信 canonical `sol-review` JSON 記 `repository/headSha/changeDigest/policyVersion/requestedModel/actualModel/identityEvidence/executionRef/reviewerExecutionReceipt/verdict/report/findings`；REVIEW 角色收據另記 `provider/providerEvidenceRef/requestedModel`，驗同 provider 的 Sol／Opus request。未知 actual 只能 `identityEvidence: UNKNOWN`、`servedVerified: false`，不能冒充模型已驗；普通審查不要求 Astra 諮詢或 ASTRA schema baseline。
@@ -620,97 +620,50 @@ OpenAI premium 只 Astra、Anthropic premium 只 Fable；audit 只同 provider �
 
 DB release preflight 尚未接入可信 role context；enabled policy 下缺此證據安全拒絕，不把本節 source review 當 Production 操作許可。
 
-#### 有界原生任務身分試行（Owner 2026-10-09；2026-10-10 精確範圍更新）
+#### 正式原生 source 角色准入（Owner 2026-10-14）
 
-當前 active singleton 只限 #848：trusted-main `model-routing.json.nativeRolePilot` 已啟用且
-repository=`smallwei0301/vibeaico-admin-rebuild`、PR=848、exact head
-`8e85baf04a3e9a8d556ed8abd71c2ad789be468b`、完整四檔 changeDigest
-`d9c1f7cffeeed4436e4bd31ea211e1235d70e83294c12a876c249793b1539790`、
-`PRODUCT_SOURCE_FINAL_RISK` 全相符，才可用 `executionIdentityKind=NATIVE_TASK`。
-Owner `2026-10-10T12:46:54.792160Z` 批准此有界治理改動；正常治理測試／獨立審查／main 合併及回讀後才生效。
-新的 BUILD 任務必須新鮮接手並完整驗證上述既有 source，明寫 adoption／full verification，不能冒稱原作者。
-#848 的 `nativeRolePilot.buildWorkScope` 與 BUILD `nativeTaskEvidence.performedWorkScope` 均須逐字等於：
-`Fresh adoption and full verification of existing PR #848 exact source; no original authorship claimed.`
-缺欄位、普通施工／原作者宣稱、改字／截短或追加矛盾字句均拒絕；private `publicWorkScope` 仍須逐字相等。
-這是固定公開聲明，不是原 spawn prompt；不能把它補填成未捕獲原文。兩角色 CAPTURED 原 message 必須是 string，
-不接受可被 String() 轉換的 object／array／number；WITHHELD_PRIVATE 的 null／commitment 契約不變。
-機械驗證只核聲明與證據一致性，不認證操作者真的完成全驗證、自然語言原 prompt 的語義或原作者身分真偽。
-不得重用或重建原 BUILD 缺失的 spawn UTC／actor/session，也沒有新增歷史身分或時間豁免。
-#848 的 `adoptionApprovedAt` 必須保留上述精確 UTC；BUILD／REVIEW spawn 均不得早於批准，
-以完整小數秒比較，不向下截成毫秒。BUILD 另保存親見 `nativeTaskEvidence.policyReadback`：
-`sourceKind=OPERATOR_WITNESSED`、當前 version、mainSha、observedAt；批准 ≤ BUILD policy 回讀 ≤ spawn ≤ work start。
-BUILD 與 REVIEW 的 policyReadback.mainSha 必須相同；canonical 路徑另比對既有 trusted
-`nativePolicyEvidence.reviewedMainSha`，沿 adapter 的真實 main bytes／ancestry／config generation 驗證。
-候選自填 main 或公開摘要不能自行啟用；缺回讀、不同 main/version、回讀晚於 spawn 均 pending。
-#848 也以完整 UTC 小數鏡映既有順序：兩角色 spawn ≤ started ≤ work.observed ≤ completed ≤ compiled ≤ now，
-completion.observed 與 completed 必須同一瞬間；BUILD completed ≤ builderReadback.updated ≤ observed ≤ FINAL spawn。
-canonical 路徑另核 compiled ≤ source.updated ≤ review.submitted ≤ now；不新增 REVIEW policy 回讀必須晚於 BUILD 完成的條件。
-這個精確採用時間窗只限 #848，#843 歷史時序／NOT_CAPTURED 條件不變。
-新 FINAL 必須另建獨立任務，沿下列原有完成、canonical BUILD 與 enabled-main 回讀順序執行。
+依 [Owner 裁示](decisions/2026-10-14-owner-native-source-role-admission.md)，沿既有 trusted-main
+`nativeRolePilot` 正式啟用 version `2026-10-14.1`、scopeMode `REPOSITORY_SOURCE`，只限 repo
+`smallwei0301/vibeaico-admin-rebuild` 的 `PRODUCT_SOURCE_FINAL_RISK`。不再需要逐 PR 的身份豁免；
+每次普通 Sol／適用高風險 source 審查仍精確綁 PR/head/changeDigest、完整必要測試與獨立 review。
+上方 backend-session receipt 路徑保留；平台不暴露 backend 身份时，可使用下列完整原生路徑，
+不得把原生 taskname 填入 backend actorId/sessionId。
 
-#843 的 exact47f `47f259db7b2f4ab50b08c0962cc8d6f676575fd0`／六檔 digest
-`18ee75322cafca9148e043cee7ba518ea767ab4f8449fd6eb655c8cb5192b6ba`（Owner 2026-10-10 01:09:48 UTC），以及
-原初版 exact07d `07d360c50c6eb60486fa4f3bc21d0f713d6e2bbb`／六檔 digest
-`8da954f36f1e6ea03bac4be9c24f203f75273494dab11b8f49829fca2d7664a3`（Owner 2026-10-09）保留為歷史設定／shape fixtures；
-兩者都不是當前准入範圍。沒有 multi-scope allowlist；其他 repo／PR／head／digest／surface、
-#836、DB release／G5／writer 均不適用。治理 bootstrap PR 不能用此規則自批。
-BUILD／REVIEW 仍是原角色；actorId／sessionId 必須 null、backendIdentityAvailability=UNEXPOSED，
-actualModel=unknown、identityEvidence=UNKNOWN、servedVerified=false。task_name／executionRef 是操作者限定範圍內的
-識別，不是平台 actor/session，也不宣稱全球唯一。舊完整 backend 來源契約維持不變。
+- BUILD／REVIEW 仍是兩個實際獨立任務，`executionIdentityKind=NATIVE_TASK`；actorId/sessionId=null、
+  backendIdentityAvailability=UNEXPOSED、actualModel=unknown、identityEvidence=UNKNOWN、servedVerified=false。
+  taskName/executionRef 是 operator 限定 namespace/capture generation 中的識別，不宣稱全球唯一。
+- 同 PR 兩筆 canonical `agent-role-execution` comment 保留可信 operatorLogin/id、schemaVersion=1、
+  executionRefBasis=OPERATOR_SCOPED_NATIVE_TASK、performedWorkScope、compiledAt；沿 shared
+  `nativeRoleShapeErrors` 檢查既有 spawn/work/completion 欄位與 exact source。
+- spawn 親見 `collaboration.spawn_agent` 原 request/result、角色及 UTC；原 message 必須逐字字串，
+  或 `WITHHELD_PRIVATE` + trusted policy `RETAINED_ORIGINAL_V1` 的原文受限保存 commitment。
+  commitment 沿既有 UTF-8 hash/byteLength/retention/attestation/publicWorkScope 與完整角色/source/time
+  綁定；hash 不是原文。沒有保存原文者 pending，不能用摘要或历史 NOT_CAPTURED 補位。
+- work 親見或明標 WORKER_REPORTED 起點、evidenceRef/artifactSha256；completion 親見
+  BOUNDED_WORK_COMPLETED、stoppedWriting=true、head/digest/UTC。OBSERVED_ROLE_WORK 是觀測工作區段，
+  不冒稱精確 first/last-write 或 backend session 生命週期，CI 結束不是角色完成。
+- 兩角色先親見同一已啟用 main 的 policyReadback/version/mainSha/UTC，再 spawn/work。
+  BUILD 停筆完成及 canonical BUILD comment sourceRef/bodySha256/updatedAt/observedAt 回讀後，
+  才另建 fresh FINAL reviewer；不同 task/execution/comment、fork_turns=none、freshContext=true、
+  contextIsolationAttested=true、participatedInBuild=false、reviewPhase=FINAL。EARLY 不重命名為 FINAL。
+- 保留完整 UTC 小數順序：policy回讀≤spawn≤started≤work.observed≤completed=completion.observed≤
+  compiled≤now；canonical compiled≤source.updated≤review.submitted≤now，BUILD完成≤canonical BUILD
+  updated≤observed≤FINAL spawn。不同 main/version、來源 bytes 變動或倒序即拒絕。
+- adapter 仍親自核可信 comment 作者權限/canonical URL/bytes、current-main policy blob hash、
+  config generation 與所錄 main ancestry；branch config/payload/local preflight 不能啟用。
+  local preflight 永遠 canonicalReadbackVerified=false。config generation 改變須新證據；
+  無關 main 前進而 config 不變不強迫重審。缺漏/矛盾/disabled/stale source/latest finding 均拒絕。
+- 沿既有同 PR comment edit/delete、review edit/dismiss 與 main wake-up 重查；讀取/status 寫入
+  失敗如實 REFRESH_UNVERIFIED，不宣稱舊綠已撤回。合併前核 live policy/guard/publication/全部 gates。
 
-同一 canonical 角色 comment 內的 `nativeTaskEvidence` schemaVersion=1 保存 operatorLogin/id、namespace、
-captureGeneration、taskName、executionRefBasis=OPERATOR_SCOPED_NATIVE_TASK、performedWorkScope、compiledAt，
-以及 spawn（親見 request/result、角色與 UTC）、work（親見或明標 WORKER_REPORTED、起點與成果 hash）、
-completion（親見 BOUNDED_WORK_COMPLETED、停筆、head/digest 與 UTC）。原 request message 應逐字保存；
-下列相容性只描述原初版 exact07d／原 digest 的既有 BUILD `/root/implement_843_pg_harness`，不移植至新版本。其親見 spawn 參數與工作／完成已記錄但
-原 message 未保存時，可明寫 `spawn.request.message=null`、`spawn.requestMessageAvailability=NOT_CAPTURED`。
-這是 capture 缺口，不准用後來的摘要補成原 prompt；不能省略其他必要親見事實、model／fork／reasoning／UTC／hash。
-有原文者維持非空 message，availability 可省略或為 CAPTURED；相矛盾或未知 availability 拒絕。
-新版本 BUILD 與所有新 REVIEW 必須保存真實原 message（公開 CAPTURED 或下列私下保留模式），不能沿用這個歷史 BUILD 表示；其他 task／PR／head／DB 不適用。
-此分支另綁既有 `executionRef=native-task:/root/implement_843_pg_harness`，以及2026-10-09 UTC的
-spawn觀測14:28:16Z、work起點14:32:26Z、bounded完成15:32:00Z；比較相同瞬間，不接受較晚同名任務或寬時間窗。
-起點來自既有 worker checkpoint、完成來自父方親見完成回報，仍不是精確first/last-write或backend生命週期。
-歷史namespace／capture generation未保存，保持UNKNOWN；receipt的scope labels只限定當次operator整理範圍，
-不補造歷史UUID。這組ref／時間只拒絕已表達的不同事件，仍不能認證完整倒填舊值的操作者背書真偽。
+這是可信操作者親見背書，GitHub 不獨立認證內嵌工具摘錄、隱藏 session/context 或私下原文；
+完整不實但自洽的背書仍可能無法辨識，沿既有試行限制如實保留。不補造歷史身份、時間、model或原文。
+#843/#848 固定 source/adoption/NOT_CAPTURED/private mode 只留原歷史 fixture／Owner Decision 回播；
+新正常 source 不能借它們的歷史缺證例外。#946 scoped deferral 不擴張。
 
-當前 #848 exact8e85／完整四檔 digestd9c 的私下保留模式，須由 trusted-main pilot 明開
-`privateMessageMode=PR848_RETAINED_ORIGINAL_V1`。BUILD／REVIEW 必須確實保存新任務的真實原 request message；可公開 CAPTURED，或使用下列 private commitment。
-歷史 #843 exact47f／digest18ee 的 `PR843_RETAINED_ORIGINAL_V1`（Owner 2026-10-10 02:25:29 UTC）
-只保留原精確 shape 回播，不是現行 active scope；舊模式不能接受 #848，新模式不能接受 #843。
-兩個模式共用以下真實保留／格式／角色綁定限制，不以 hash 冒充原文。私下保留時使用
-`spawn.requestMessageAvailability=WITHHELD_PRIVATE`、`spawn.request.message=null`，另放 `spawn.privateMessage`：
-- schemaVersion=1、encoding=UTF-8、sha256 為逐字原 message UTF-8 bytes 的完整 SHA256、byteLength 為正安全整數。
-- retention=ORIGINAL_VERBATIM_RETAINED_PRIVATELY；操作者必須確實私下保留原文，不公布私密原文或內部路徑。
-- attestation=OPERATOR_ATTESTS_ORIGINAL_CAPTURE_HASH_AND_SCOPE；publicWorkScope 是可公開的工作範圍，
-  必須等於 performedWorkScope，不是原始 message 或其逐字替代品。
-- repository／prNumber／headSha／changeDigest／role 綁精確來源；taskName／executionRef／operatorLogin／operatorId
-  綁該角色操作者；spawnObservedAt／workStartedAt／workCompletedAt／workArtifactSha256／attestedAt
-  分別逐字等於該角色的 spawn.observedAt／startedAt／completedAt／work.artifactSha256／compiledAt。
-原文與私密 commitment 不可混用；CAPTURED／NOT_CAPTURED 不得帶 privateMessage。沒有保存原文者不能使用此模式。
-GitHub 公開讀取端只驗格式、提交者及上述一致性，**無法重算私下原文的 hash、證明 byteLength、retention 或工作範圍背書真實**；
-完整偽造且自洽的操作者背書仍可能通過。Owner 明確接受此限制；hash 不冒充原文，也不宣稱防止所有偽造。
-既有 separate fresh FINAL REVIEW、BUILD 完成後及 main 政策／canonical BUILD 回讀後才 spawn 的時間關卡不變。
-其他 repo／PR／head／digest、DB／Production、治理 bootstrap 均不適用；歷史 NOT_CAPTURED 的精確條件完全不擴張。
-
-時間以 OBSERVED_ROLE_WORK 表示真實
-工作區段，不冒稱精確 first/last-write 或 backend session 起訖；CI 結束不能代替角色完成。
-REVIEW 另需不同 task/execution/comment、reviewPhase=FINAL、participatedInBuild=false、contextIsolationAttested=true；
-原 spawn request 必須 fork_turns=none，freshContext=true 是 receipt 背書，**不是 spawn 參數**。
-新 final REVIEW 必須在 BUILD 完成及 canonical receipt／已啟用 main 政策回讀後才新建，保留 builderReadback 的 URL／body hash／updatedAt／
-observedAt，以及已啟用 main 的 policyReadback（version／mainSha／observedAt）；兩項均明標親見。
-canonical review 另綁 nativeRolePolicyVersion；既有 EARLY 不重命名為 final。初版完整欄位由 shared
-`nativeRoleShapeErrors` 與 synthetic regression 定義；local preflight 永遠 canonicalReadbackVerified=false。
-
-這是 Owner 明確接受的**可信操作者親見背書**。GitHub 回讀核實 comment 提交者權限、bytes、時間與一致性，
-無法獨立認證內嵌工具摘錄、原 spawn 或隱藏 session 是否真的不同；完整不實背書仍可能無法辨識。
-沒有親見必要事實就 pending，不補造來源、時間或身份。新 reviewer 必須親見政策已進 main 後才開始工作。
-adapter 重新核 current-main policy bytes、當前 config generation 與所錄 main 的 ancestry；branch-only 設定不能啟用。
-config generation 改變（含中間 disable／re-enable）後須重新留證；無關 main 前進但 config 不變不強迫重審。
-policy 關閉、source 漂移、證據缺漏或矛盾即無 native 准入資格。沿既有同 PR comment edit/delete、review 及 main
-wake-up 重查；來源定位／讀取／status 寫入失敗記 REFRESH_UNVERIFIED，舊綠可能仍可見，不能聲稱已撤回。
-合併前必須核 live policy、有效 guard、body/files/base/head publication receipt 及其他全部 gates。
-#552 成本／provider／模型身份、source GOVERNANCE_GATE、最新 finding、ownership／容量、CI／TEST、發布保護不變。
-source-only transport 的 canonical TEST 仍是合併後另依授權執行；本試行不新增前置 TEST、不授予 DB／Production 權限。
+#552 成本/provider/model request、技術 review、source GOVERNANCE_GATE、finding、ownership/WIP、
+CI/TEST/publication/branch protection 不變；bootstrap 治理 PR 不以自己新規則自批。
+DB release/G5/writer、Production mutation、付款/退款/真實通知均不適用，本政策不授予這些權限。
 
 Product 高後果範圍才需要 Final Risk，例如：
 

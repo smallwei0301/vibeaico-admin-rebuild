@@ -494,10 +494,10 @@ describe('bounded native source-role pilot; structure and operator trust only', 
     expect((await run(f)).status).toBe('ASTRA_PENDING');
   });
   it('A848 activates only the exact four-file adoption scope, with truthful unknown identity', async () => {
-    expect(currentRouting.nativeRolePilot).toEqual(adoptionRouting.nativeRolePilot);
+    expect(currentRouting.nativeRolePilot.scopeMode).toBe('REPOSITORY_SOURCE');
     expect(changeDigestOf(adoptionFiles)).toBe(adoptionRouting.nativeRolePilot.changeDigest);
     for (const privatePrompt of [false, true]) {
-      const f = fixture(currentRouting);
+      const f = fixture(adoptionRouting);
       if (privatePrompt) withhold(f);
       for (const record of [f.builder, f.reviewer]) record.nativeTaskEvidence.performedWorkScope = record.role === 'BUILD'
         ? adoptionBuildScope
@@ -505,7 +505,7 @@ describe('bounded native source-role pilot; structure and operator trust only', 
       if (privatePrompt) for (const record of [f.builder, f.reviewer])
         record.nativeTaskEvidence.spawn.privateMessage.publicWorkScope = record.nativeTaskEvidence.performedWorkScope;
       await expectMessageAdmission(f, true);
-      expect(validateNativeRolePreflight(f.packet, f.current).canonicalReadbackVerified).toBe(false);
+      expect(validateNativeRolePreflight(f.packet, f.current, adoptionRouting).canonicalReadbackVerified).toBe(false);
       expect(f.builder).toMatchObject({ actorId: null, sessionId: null, actualModel: 'unknown', identityEvidence: 'UNKNOWN', servedVerified: false });
     }
   });
@@ -855,4 +855,83 @@ describe('bounded native source-role pilot; structure and operator trust only', 
     expect(source).not.toContain('child_process'); expect(source).not.toContain('TEST_VERIFIED');
     const f = fixture(); expect(evaluateAstra({ body, changedFiles: files.map(f => f.filename), context: f.context, reviews: [f.record()] }, routing).status).toBe('ASTRA_APPROVED');
   });
+
+// All events below remain synthetic: they verify admission, never certify a live native task.
+describe('repository source native admission', () => {
+  function generalFixture(prNumber = 977) {
+    const policy = { ...currentRouting, nativeRolePilot: { ...currentRouting.nativeRolePilot,
+      // Fixture source values; repository admission must not depend on these policy values.
+      prNumber, headSha: routing.nativeRolePilot.headSha, changeDigest: routing.nativeRolePilot.changeDigest } };
+    const f = fixture(policy);
+    f.builder.nativeTaskEvidence.policyReadback = { sourceKind: 'OPERATOR_WITNESSED', version: policy.nativeRolePilot.version,
+      mainSha: main, observedAt: '2026-10-09T14:59:00Z' };
+    f.reviewer.nativeTaskEvidence.builderReadback.bodySha256 = hash(block(f.builder));
+    Object.assign(f.context.roleEvidence.builder, f.builder, { sourceBodySha256: hash(block(f.builder)) });
+    return f;
+  }
+  it.each([977, 978])('admits new source PR %s through shared shape, local and trusted canonical paths', async pr => {
+    const f = generalFixture(pr);
+    expect(nativeRoleShapeErrors(f.review, f.context, currentRouting.nativeRolePilot)).toEqual([]);
+    expect(validateNativeRolePreflight(f.packet, f.current).errors).toEqual([]);
+    expect(validateNativeRolePreflight(f.packet, f.current).canonicalReadbackVerified).toBe(false);
+    expect((await run(f)).status).toBe('ASTRA_APPROVED');
+  });
+  it.each(['same-task', 'early-final', 'missing-build-policy', 'late-build-policy', 'missing-original', 'object-original',
+    'backend-invented', 'early-phase', 'stale-head', 'foreign-repo', 'wrong-digest', 'production-surface', 'wrong-policy-main',
+    'submillisecond-reversal'])('rejects %s', mode => {
+    const f = generalFixture(), b = f.context.roleEvidence.builder, r = f.context.roleEvidence.reviewer;
+    if (mode === 'same-task') r.nativeTaskEvidence.taskName = b.nativeTaskEvidence.taskName;
+    if (mode === 'early-final') r.nativeTaskEvidence.spawn.observedAt = b.startedAt;
+    if (mode === 'missing-build-policy') delete b.nativeTaskEvidence.policyReadback;
+    if (mode === 'late-build-policy') b.nativeTaskEvidence.policyReadback.observedAt = b.completedAt;
+    if (mode === 'missing-original') { b.nativeTaskEvidence.spawn.request.message = null; b.nativeTaskEvidence.spawn.requestMessageAvailability = 'NOT_CAPTURED'; }
+    if (mode === 'object-original') b.nativeTaskEvidence.spawn.request.message = { toString: () => 'Invented original string' };
+    if (mode === 'backend-invented') b.actorId = b.nativeTaskEvidence.taskName;
+    if (mode === 'early-phase') r.nativeTaskEvidence.reviewPhase = 'EARLY';
+    if (mode === 'stale-head') f.context.currentHeadSha = 'b'.repeat(40);
+    if (mode === 'foreign-repo') f.context.repository = 'foreign/repository';
+    if (mode === 'wrong-digest') f.review.changeDigest = 'b'.repeat(64);
+    if (mode === 'production-surface') f.context.reviewSurface = 'PRODUCTION_DB_RELEASE';
+    if (mode === 'wrong-policy-main') b.nativeTaskEvidence.policyReadback.mainSha = 'b'.repeat(40);
+    if (mode === 'submillisecond-reversal') {
+      b.nativeTaskEvidence.policyReadback.observedAt = '2026-10-09T15:00:00.000000002Z';
+      b.nativeTaskEvidence.spawn.observedAt = '2026-10-09T15:00:00.000000001Z';
+    }
+    expect(nativeRoleShapeErrors(f.review, f.context, currentRouting.nativeRolePilot).length).toBeGreaterThan(0);
+  });
+  it('ordinary Sol source review is admitted through the same canonical GitHub readback', async () => {
+    const f = generalFixture();
+    const ordinaryFiles = [{ filename: 'tests/e2e/tour-admin.spec.ts', status: 'modified', sha: 'c'.repeat(40) }];
+    const digest = changeDigestOf(ordinaryFiles);
+    f.current.changed_files = 1; f.current.body = f.current.body.replace('ASTRA_RISK: GOVERNANCE_GATE', 'ASTRA_RISK: NONE');
+    f.review.changeDigest = digest; f.review.requestedModel = 'gpt-6.1-sol';
+    for (const r of [f.builder, f.reviewer]) { r.changeDigest = digest; r.nativeTaskEvidence.completion.changeDigest = digest; }
+    f.reviewer.requestedModel = 'gpt-6.1-sol'; f.reviewer.nativeTaskEvidence.spawn.request.model = 'gpt-6.1-sol';
+    f.reviewer.nativeTaskEvidence.builderReadback.bodySha256 = hash(block(f.builder));
+    f.github.paginate.mockImplementation(async (method: any) => method === f.listFiles ? ordinaryFiles : method === f.listReviews
+      ? [{ ...f.record(), body: block(f.review, 'sol-review') }] : []);
+    const result = await run(f);
+    expect(result.status).toBe('SOL_REVIEW_APPROVED'); expect(result.errors).toEqual([]);
+    f.reviewer.nativeTaskEvidence.participatedInBuild = true;
+    expect((await run(f)).status).toBe('SOL_REVIEW_PENDING');
+  });
+  it('retains original private commitment bound to exact new source and rejects replay', async () => {
+    const f = generalFixture(); withhold(f);
+    f.reviewer.nativeTaskEvidence.builderReadback.bodySha256 = hash(block(f.builder));
+    Object.assign(f.context.roleEvidence.builder, f.builder, { sourceBodySha256: hash(block(f.builder)) });
+    Object.assign(f.context.roleEvidence.reviewer, f.reviewer);
+    expect(nativeRoleShapeErrors(f.review, f.context, currentRouting.nativeRolePilot)).toEqual([]);
+    expect((await run(f)).status).toBe('ASTRA_APPROVED');
+    f.context.roleEvidence.builder.nativeTaskEvidence.spawn.privateMessage.prNumber = 848;
+    expect(nativeRoleShapeErrors(f.review, f.context, currentRouting.nativeRolePilot).length).toBeGreaterThan(0);
+  });
+  it('rejects branch-only enablement and absent canonical independent role readback', async () => {
+    const f = generalFixture();
+    f.github.rest.repos.getContent.mockRejectedValue(new Error('current main unavailable'));
+    expect((await run(f)).status).toBe('ASTRA_PENDING');
+    delete f.context.nativePolicyEvidence;
+    expect(independentRoleErrors(f.review, f.context).length).toBeGreaterThan(0);
+  });
+});
+
 });

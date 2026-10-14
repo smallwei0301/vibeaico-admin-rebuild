@@ -140,12 +140,14 @@ export function selectFinalRiskReviewer(input = {}, policy = {}) {
 
 export const NATIVE_ROLE_POLICY_VERSION = '2026-10-09.1';
 const NATIVE_SOURCE_SURFACE = 'PRODUCT_SOURCE_FINAL_RISK';
+const repositoryNative = pilot => pilot?.version === '2026-10-14.1' && pilot?.scopeMode === 'REPOSITORY_SOURCE';
 const native = record => record?.executionIdentityKind === 'NATIVE_TASK';
 // Privacy is a distinct exact-source operator attestation, not public authentication of raw bytes.
 function privateNativeMessageValid(spawn, evidence, record, role, context, pilot) {
   const p = spawn?.privateMessage;
   // The historical #843 mode is shape-replay only when the active singleton is #848.
   const exactPrivateScope = context.repository === 'smallwei0301/vibeaico-admin-rebuild' && (
+    (repositoryNative(pilot) && pilot.privateMessageMode === 'RETAINED_ORIGINAL_V1') ||
     (pilot.privateMessageMode === 'PR843_RETAINED_ORIGINAL_V1' && context.prNumber === 843
       && context.headSha === '47f259db7b2f4ab50b08c0962cc8d6f676575fd0'
       && context.changeDigest === '18ee75322cafca9148e043cee7ba518ea767ab4f8449fd6eb655c8cb5192b6ba')
@@ -172,11 +174,11 @@ function nativeSpawnMessageValid(spawn, evidence, record, role, context, pilot) 
   if (spawn?.requestMessageAvailability === 'WITHHELD_PRIVATE')
     return privateNativeMessageValid(spawn, evidence, record, role, context, pilot);
   if (spawn?.privateMessage !== undefined) return false;
-  if (meaningful(spawn?.request?.message))
+  if (typeof spawn?.request?.message === 'string' && meaningful(spawn.request.message))
     return spawn.requestMessageAvailability === undefined || spawn.requestMessageAvailability === 'CAPTURED';
 // Compatibility matches only the claimed, already-observed #843 BUILD ref/instants; later tasks fail.
 // Missing prompt bytes remain missing; this does not authenticate the operator's other observations.
-  return role === 'BUILD' && spawn?.request?.message === null && spawn?.requestMessageAvailability === 'NOT_CAPTURED'
+  return !repositoryNative(pilot) && role === 'BUILD' && spawn?.request?.message === null && spawn?.requestMessageAvailability === 'NOT_CAPTURED'
     && context.repository === 'smallwei0301/vibeaico-admin-rebuild' && context.prNumber === 843
     && context.headSha === '07d360c50c6eb60486fa4f3bc21d0f713d6e2bbb'
     && context.changeDigest === '8da954f36f1e6ea03bac4be9c24f203f75273494dab11b8f49829fca2d7664a3'
@@ -199,7 +201,7 @@ function adoptionUtcNanos(value) {
   return BigInt(seconds) * 1_000_000n + BigInt((match[2] ?? '').padEnd(9, '0'));
 }
 function native848AdoptionErrors(builder, reviewer, review, context, pilot) {
-  if (context.repository !== 'smallwei0301/vibeaico-admin-rebuild' || context.prNumber !== 848) return [];
+  if (repositoryNative(pilot) || context.repository !== 'smallwei0301/vibeaico-admin-rebuild' || context.prNumber !== 848) return [];
   const b = builder?.nativeTaskEvidence, r = reviewer?.nativeTaskEvidence, readback = b?.policyReadback;
   // Exact public declaration, not a claim that hidden work or prompt contents were authenticated.
   if (pilot.buildWorkScope !== PR848_BUILD_WORK_SCOPE || b?.performedWorkScope !== PR848_BUILD_WORK_SCOPE)
@@ -231,16 +233,47 @@ function native848AdoptionErrors(builder, reviewer, review, context, pilot) {
   return [];
 }
 
+// Repository-wide source admission keeps the existing raw capture and canonical readback contract.
+function repositoryNativeTimingErrors(builder, reviewer, review, context, pilot) {
+  if (!repositoryNative(pilot)) return [];
+  const ordered = (...values) => {
+    const times = values.map(adoptionUtcNanos);
+    return times.every((value, index) => value !== null && (index === 0 || times[index - 1] <= value));
+  };
+  const now = context.now ?? new Date().toISOString();
+  for (const record of [builder, reviewer]) {
+    const e = record?.nativeTaskEvidence, p = e?.policyReadback;
+    if (p?.sourceKind !== 'OPERATOR_WITNESSED' || p?.version !== pilot.version
+      || !/^[a-f0-9]{40}$/.test(p?.mainSha ?? '')
+      || p.mainSha !== reviewer?.nativeTaskEvidence?.policyReadback?.mainSha
+      || (context.nativeCanonical === true && p.mainSha !== context.nativePolicyEvidence?.reviewedMainSha)
+      || !ordered(p?.observedAt, e?.spawn?.observedAt, record?.startedAt, e?.work?.observedAt,
+        record?.completedAt, e?.compiledAt, now)
+      || adoptionUtcNanos(record?.completedAt) !== adoptionUtcNanos(e?.completion?.observedAt)
+      || (context.nativeCanonical === true && !ordered(e?.compiledAt, record?.sourceUpdatedAt, review.submittedAt, now)))
+      return ['Native source roles require enabled-main readback before spawn and exact UTC work/source ordering'];
+  }
+  const r = reviewer.nativeTaskEvidence;
+  if (!ordered(builder.completedAt, r.builderReadback?.updatedAt, r.builderReadback?.observedAt, r.spawn?.observedAt))
+    return ['Native source FINAL must be spawned after completed BUILD and canonical BUILD readback'];
+  return [];
+}
+
 /** Shape/consistency only. A trusted operator's excerpts cannot authenticate hidden spawn events. */
 export function nativeRoleShapeErrors(review = {}, context = {}, pilot = {}) {
   const errors = [], proof = context.roleEvidence;
   const builder = proof?.builder, reviewer = proof?.reviewer;
   const now = millis(context.now ?? new Date().toISOString());
-  if (pilot.enabled !== true || pilot.version !== NATIVE_ROLE_POLICY_VERSION
+  const repositoryScope = repositoryNative(pilot);
+  if (pilot.enabled !== true || (!repositoryScope && pilot.version !== NATIVE_ROLE_POLICY_VERSION)
     || context.reviewSurface !== NATIVE_SOURCE_SURFACE || pilot.surface !== NATIVE_SOURCE_SURFACE
-    || context.repository !== pilot.repository || context.prNumber !== pilot.prNumber
-    || context.headSha !== pilot.headSha || context.currentHeadSha !== pilot.headSha
-    || context.changeDigest !== pilot.changeDigest || review.nativeRolePolicyVersion !== pilot.version
+    || context.repository !== pilot.repository
+    || (repositoryScope ? (!Number.isSafeInteger(context.prNumber) || context.prNumber < 1
+      || !/^[a-f0-9]{40}$/.test(context.headSha ?? '') || context.currentHeadSha !== context.headSha
+      || !/^[a-f0-9]{64}$/.test(context.changeDigest ?? ''))
+      : (context.prNumber !== pilot.prNumber || context.headSha !== pilot.headSha
+        || context.currentHeadSha !== pilot.headSha || context.changeDigest !== pilot.changeDigest))
+    || review.nativeRolePolicyVersion !== pilot.version
     || review.repository !== context.repository || review.headSha !== context.headSha || review.changeDigest !== context.changeDigest
     || review.actualModel !== 'unknown' || review.identityEvidence !== 'UNKNOWN' || review.servedVerified !== false
     || !Number.isFinite(now)) errors.push('Native role pilot is not enabled for this exact source scope');
@@ -291,6 +324,7 @@ export function nativeRoleShapeErrors(review = {}, context = {}, pilot = {}) {
   const b = builder?.nativeTaskEvidence, r = reviewer?.nativeTaskEvidence;
   if (!b || !r) return errors;
   errors.push(...native848AdoptionErrors(builder, reviewer, review, context, pilot));
+  errors.push(...repositoryNativeTimingErrors(builder, reviewer, review, context, pilot));
   if (b.operatorLogin !== r.operatorLogin || b.operatorId !== r.operatorId
     || b.namespace !== r.namespace || b.captureGeneration !== r.captureGeneration
     || b.taskName === r.taskName || builder.executionRef === reviewer.executionRef
