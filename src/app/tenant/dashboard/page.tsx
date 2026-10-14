@@ -970,7 +970,7 @@ export default function DashboardPage() {
               {t.todayBookings.title}
               <span className="form-text">{t.todayBookings.count(todayRows.length)}</span>
             </CardTitle>
-            <Link href={ordersHref} className="btn btn-primary btn-sm">
+            <Link href="/tenant/bookings" className="btn btn-primary btn-sm">
               {t.todayBookings.viewAll}
             </Link>
           </CardHeader>
