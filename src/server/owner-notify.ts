@@ -419,9 +419,31 @@ const OWNER_NOTIFY_TEXT_HARD_CAP = 1000;
  * 因此只在訂單實際帶有期限時才顯示，不自行推算。
  * 找不到訂單或店家查詢失敗就不推；整體吞錯只 log，呼叫端不受影響。
  */
+/**
+ * 每店每小時最多推播幾則「新團體訂單」LINE 通知（跨實例以資料庫計數，不依賴行程內記憶體限流）。
+ * 公開 REQUEST 申請不鎖位，匿名者可重複送出；超過上限只略過推播（訂單仍在後台可見），
+ * 避免耗盡店家每月 LINE 推播額度。
+ */
+export const OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP = 10;
+
 export async function notifyOwnerNewTourOrder(tenantId: string, orderId: string): Promise<void> {
   try {
     const admin = createAdminSupabase();
+    // 額度保護：先查近 60 分鐘該店建單數（含本筆）；超過上限或查詢失敗都不推（fail closed）。
+    const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count, error: cErr } = await admin
+      .from('tour_orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .gte('created_at', since);
+    if (cErr || typeof count !== 'number') {
+      console.error('[owner-notify] 團體訂單近一小時計數失敗，略過推播', tenantId, cErr);
+      return;
+    }
+    if (count > OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP) {
+      console.warn('[owner-notify] 團體訂單通知超過每小時上限，略過推播', tenantId);
+      return;
+    }
     const [{ data: row, error }, { data: tenant, error: tErr }] = await Promise.all([
       admin.from('tour_orders').select('*').eq('id', orderId).eq('tenant_id', tenantId).maybeSingle(),
       admin.from('tenants').select('name').eq('id', tenantId).maybeSingle(),
@@ -448,7 +470,9 @@ export async function notifyOwnerNewTourOrder(tenantId: string, orderId: string)
       lines.push('請到後台「團體訂單」接受或婉拒此申請。');
       if (order.holdExpiresAt) lines.push(`處理期限：${formatTaipeiForOwner(order.holdExpiresAt)}`);
     }
-    lines.push(`查看訂單：${APP_URL}/tenant/tour-orders?orderId=${encodeURIComponent(String(order.id))}`);
+    lines.push(
+      `查看訂單：${APP_URL}/tenant/tour-orders?orderId=${encodeURIComponent(String(order.id))}&tenantId=${encodeURIComponent(tenantId)}`,
+    );
     const text = lines.join('\n').slice(0, OWNER_NOTIFY_TEXT_HARD_CAP);
     await sendOwnerNotifyEvent(tenantId, 'notify_new_booking', text);
   } catch (e) {

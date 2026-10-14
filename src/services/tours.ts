@@ -856,6 +856,8 @@ export type TourOrdersDeepLink = {
   createdBefore: string;
   /** 顯示「資料截至」用的店家時區（報表帶入）；未帶 → ''，帶了但不合法 → 預設時區 */
   tz: string;
+  /** 通知連結帶的店家 id（多店帳號需先切換到該店）；未帶 → '' */
+  tenantId: string;
 };
 const TOUR_ORDER_SOURCE_VALUES: TourOrderSource[] = ['MIDAO', 'VIBEAI_SHOP', 'LINE', 'MANUAL'];
 
@@ -884,7 +886,7 @@ export function parseTourOrdersDeepLink(search: string): TourOrdersDeepLink {
   const excl = status !== 'CANCELLED';
   const activeOnly = excl && params.get('activeOnly') === '1';
   const repeatCustomers = excl && params.get('repeatCustomers') === '1' && !!createdFrom && !!createdTo;
-  return { paymentStatus, orderId, status, tripId, createdFrom, createdTo, source, planId, activeOnly, repeatCustomers, createdBefore, tz };
+  return { paymentStatus, orderId, status, tripId, createdFrom, createdTo, source, planId, activeOnly, repeatCustomers, createdBefore, tz, tenantId: params.get('tenantId') ?? '' };
 }
 
 /**
@@ -1033,3 +1035,19 @@ export const rejectTourOrder = (id: string, reason?: string) =>
     request<void>(`/api/tour-orders/${id}/reject`, {
       method: 'POST', body: JSON.stringify({ reason }),
     }));
+
+/**
+ * 深連結帶 tenantId 時的處理決策（純函式）：
+ * 無 tenantId 或與目前店家相同 → proceed；否則 switch（先切店再 reload）。
+ */
+export function decideTourOrdersTenantAction(linkTenantId: string, currentTenantId: string): 'proceed' | 'switch' {
+  return linkTenantId && linkTenantId !== currentTenantId ? 'switch' : 'proceed';
+}
+
+/** 移除 search 中的 tenantId 參數，回傳 `?…` 或空字串（供切店後 reload 用）。 */
+export function stripTenantIdParam(search: string): string {
+  const params = new URLSearchParams(search);
+  params.delete('tenantId');
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}

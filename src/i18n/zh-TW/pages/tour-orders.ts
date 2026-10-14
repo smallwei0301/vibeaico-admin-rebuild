@@ -193,6 +193,7 @@ export const tourOrdersPage = {
   },
 
   messages: {
+    deepLinkSwitchFailed: '無法切換到通知所屬的店家，請手動切換店家後再開啟此訂單',
     lineCopied: '已複製 LINE ID',
     lineCopyFailed: '無法複製，請手動選取 LINE ID',
     created: '訂單已建立',

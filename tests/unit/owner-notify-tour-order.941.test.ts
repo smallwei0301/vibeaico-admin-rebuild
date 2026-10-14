@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 type Row = Record<string, any>;
-const state = vi.hoisted(() => ({ tables: {} as Record<string, Row[]>, multicast: [] as any[], tenantErr: false, tenantDataErr: false }));
+const state = vi.hoisted(() => ({ tables: {} as Record<string, Row[]>, multicast: [] as any[], tenantErr: false, tenantDataErr: false, countErr: false, countCalls: 0 }));
 
 vi.mock('@/server/line', () => ({
   getLineCredentials: vi.fn(async () => ({ token: 'tok' })),
@@ -20,12 +20,19 @@ vi.mock('@/server/supabase', () => ({
     from(table: string) {
       const filters: Array<[string, any]> = [];
       const q: any = {
-        select: () => q,
+        select: (_c?: string, opts?: any) => { if (opts?.head) { q._count = true; } return q; },
+        gte: (f: string, v: any) => { filters.push([`gte:${f}`, v]); return q; },
         eq: (f: string, v: any) => { filters.push([f, v]); return q; },
         in: (f: string, v: any[]) => { filters.push([f, v]); return q; },
         then: (res: any, rej: any) => {
-          const rows = (state.tables[table] ?? []).filter((r) =>
-            filters.every(([f, v]) => (Array.isArray(v) ? v.includes(r[f]) : r[f] === v)));
+          const matches = (r: Row) => filters.every(([f, v]) =>
+            f.startsWith('gte:') ? String(r[f.slice(4)] ?? '') >= v : (Array.isArray(v) ? v.includes(r[f]) : r[f] === v));
+          if (q._count) {
+            state.countCalls += 1;
+            if (state.countErr) return Promise.resolve({ data: null, count: null, error: { message: 'db down' } }).then(res, rej);
+            return Promise.resolve({ data: null, count: (state.tables[table] ?? []).filter(matches).length, error: null }).then(res, rej);
+          }
+          const rows = (state.tables[table] ?? []).filter(matches);
           return Promise.resolve({ data: rows, error: null }).then(res, rej);
         },
         maybeSingle: async () => {
@@ -40,7 +47,7 @@ vi.mock('@/server/supabase', () => ({
   }),
 }));
 
-import { notifyOwnerNewTourOrder } from '@/server/owner-notify';
+import { notifyOwnerNewTourOrder, OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP } from '@/server/owner-notify';
 
 function seed(salesMode: 'INSTANT' | 'REQUEST') {
   state.tables = {
@@ -48,7 +55,7 @@ function seed(salesMode: 'INSTANT' | 'REQUEST') {
     owner_notify_recipients: [{ tenant_id: 't1', line_user_id: 'U1', notify_new_booking: true }],
     tour_orders: [{
       id: 'o1', tenant_id: 't1', order_no: 'TO-261201-001', trip_id: 'tr1', plan_id: 'p1', departure_id: 'd1',
-      contact: { name: '王小明', phone: '0912' }, party_size: 4, status: 'PENDING', payment_status: 'UNPAID',
+      contact: { name: '王小明', phone: '0912' }, party_size: 4, created_at: new Date().toISOString(), status: 'PENDING', payment_status: 'UNPAID',
     }],
     trips: [{ id: 'tr1', tenant_id: 't1', title: '九份散步' }],
     trip_plans: [{ id: 'p1', tenant_id: 't1', name: '半日方案', sales_mode: salesMode }],
@@ -58,7 +65,7 @@ function seed(salesMode: 'INSTANT' | 'REQUEST') {
 }
 
 describe('#941 notifyOwnerNewTourOrder', () => {
-  beforeEach(() => { state.multicast = []; state.tenantErr = false; state.tenantDataErr = false; vi.spyOn(console, 'error').mockImplementation(() => {}); });
+  beforeEach(() => { state.multicast = []; state.countErr = false; state.countCalls = 0; state.tenantErr = false; state.tenantDataErr = false; vi.spyOn(console, 'error').mockImplementation(() => {}); });
 
   it('即時預約：推「新團體預約」並含訂單編號／行程方案／日期／人數／旅客', async () => {
     seed('INSTANT');
@@ -145,6 +152,47 @@ describe('#941 notifyOwnerNewTourOrder', () => {
     seed('INSTANT');
     state.tenantErr = true;
     await expect(notifyOwnerNewTourOrder('t1', 'o1')).resolves.toBeUndefined();
+    expect(state.multicast).toHaveLength(0);
+  });
+
+  it('通知連結帶 tenantId', async () => {
+    seed('INSTANT');
+    await notifyOwnerNewTourOrder('t1', 'o1');
+    expect(state.multicast[0].msgs[0].text).toContain('/tenant/tour-orders?orderId=o1&tenantId=t1');
+  });
+
+  function addOrders(n: number, createdAt: string) {
+    for (let i = 0; i < n; i++) state.tables.tour_orders.push({ id: `x${i}`, tenant_id: 't1', created_at: createdAt });
+  }
+
+  it('近一小時建單數恰為上限：仍推播', async () => {
+    seed('INSTANT');
+    addOrders(OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP - 1, new Date().toISOString());
+    await notifyOwnerNewTourOrder('t1', 'o1');
+    expect(state.multicast).toHaveLength(1);
+  });
+
+  it('近一小時建單數超過上限：不推播、不消耗額度', async () => {
+    seed('REQUEST');
+    addOrders(OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP, new Date().toISOString());
+    const { consumePushQuota } = await import('@/server/line');
+    vi.mocked(consumePushQuota).mockClear();
+    await notifyOwnerNewTourOrder('t1', 'o1');
+    expect(state.multicast).toHaveLength(0);
+    expect(consumePushQuota).not.toHaveBeenCalled();
+  });
+
+  it('超過一小時的舊訂單不計入', async () => {
+    seed('INSTANT');
+    addOrders(50, new Date(Date.now() - 2 * 3600 * 1000).toISOString());
+    await notifyOwnerNewTourOrder('t1', 'o1');
+    expect(state.multicast).toHaveLength(1);
+  });
+
+  it('計數查詢失敗：fail closed 不推播', async () => {
+    seed('INSTANT');
+    state.countErr = true;
+    await notifyOwnerNewTourOrder('t1', 'o1');
     expect(state.multicast).toHaveLength(0);
   });
 });
