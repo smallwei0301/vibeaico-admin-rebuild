@@ -38,9 +38,11 @@ export async function loadPublicPaymentMethods(shopCode: string): Promise<Public
     .from('tenant_payment_methods')
     .select('id, method_type, display_name, qr_image_url, config, sort_order, created_at')
     .eq('tenant_id', tenant.id as string).eq('active', true)
+    // ONLINE_PAYMENT 尚未開通、無付款入口（0094／api/payment-methods），不列入公開清單。
+    .neq('method_type', 'ONLINE_PAYMENT')
     .order('sort_order', { ascending: true }).order('created_at', { ascending: true });
   if (error) throw new Error(`tenant_payment_methods 查詢失敗：${error.message}`);
   return (data ?? [])
     .map((r) => toPublicPaymentMethod(r as Record<string, unknown>))
-    .filter((m): m is PublicPaymentMethod => m !== null);
+    .filter((m): m is PublicPaymentMethod => m !== null && m.methodType !== 'ONLINE_PAYMENT'); // 與 .neq 雙保險
 }
