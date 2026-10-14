@@ -2,7 +2,7 @@ import { after } from 'next/server';
 import { readJsonBody, PUBLIC_JSON_BODY_LIMIT_BYTES, handle, ok, fail, ERR } from '@/server/http';
 import { isFeatureActive } from '@/server/features';
 import { notifyOwnerNewTourOrder } from '@/server/owner-notify';
-import { scheduleTravelerTourOrderNotice } from '@/server/email/tour-order-email';
+import { scheduleTravelerTourOrderNotice, allowTravelerConfirmEmail } from '@/server/email/tour-order-email';
 import { checkRateLimit, clientIpFromHeaders } from '@/server/rate-limit';
 import {
   PublicTourRequestError, loadPublicRequestPlan, submitPublicTourRequest,
@@ -52,7 +52,10 @@ export const POST = handle(async (req) => {
     // 失敗只 log、不影響回應。持久化 outbox 另案追蹤於 #945。
     after(() => notifyOwnerNewTourOrder(plan.tenantId, orderId));
     // 旅客確認信（#957）：有 contact.email 才寄；寄信失敗只 log，不影響回應
-    scheduleTravelerTourOrderNotice(plan.tenantId, orderId, 'SUBMITTED_REQUEST');
+    // 依收件人與 IP 節流，超限只略過寄信、仍回 201
+    if (allowTravelerConfirmEmail(body.contactEmail, ip)) {
+      scheduleTravelerTourOrderNotice(plan.tenantId, orderId, 'SUBMITTED_REQUEST');
+    }
     return ok({ orderId, orderNo }, { status: 201 });
   } catch (e) {
     if (e instanceof PublicTourRequestError) {

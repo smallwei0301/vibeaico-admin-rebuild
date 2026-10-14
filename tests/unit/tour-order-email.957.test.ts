@@ -11,10 +11,10 @@ const base = {
 };
 
 describe('tourOrderStatusHtml 送出確認', () => {
-  it('SUBMITTED_BOOKING：預約已送出、含應付金額並跳脫插值', () => {
+  it('SUBMITTED_BOOKING：預約已送出、含訂單金額並跳脫插值', () => {
     const h = tourOrderStatusHtml('SUBMITTED_BOOKING', { ...base, totalText: 'NT$ 12,000<x>' });
     expect(h).toContain('您的預約已送出');
-    expect(h).toContain('應付金額');
+    expect(h).toContain('訂單金額');
     expect(h).toContain('NT$ 12,000&lt;x&gt;');
     expect(h).toContain('海島&lt;店&gt;');
     expect(h).toContain('contact=a%40b.c&amp;x=1');
@@ -24,11 +24,11 @@ describe('tourOrderStatusHtml 送出確認', () => {
     const h = tourOrderStatusHtml('SUBMITTED_REQUEST', { ...base, totalText: 'NT$ 1', deadlineText: 'x' });
     expect(h).toContain('等候店家回覆');
     expect(h).toContain('付款期限');
-    expect(h).not.toContain('應付金額');
+    expect(h).not.toContain('訂單金額');
     expect(h).not.toContain('>x<');
   });
   it('SUBMITTED_BOOKING 無金額文字不渲染金額列', () => {
-    expect(tourOrderStatusHtml('SUBMITTED_BOOKING', base)).not.toContain('應付金額');
+    expect(tourOrderStatusHtml('SUBMITTED_BOOKING', base)).not.toContain('訂單金額');
   });
 });
 
@@ -80,7 +80,7 @@ describe('notifyTravelerTourOrderStatus 送出確認', () => {
     await notifyTravelerTourOrderStatus('t1', 'o1', 'SUBMITTED_REQUEST');
     const html = sendMock.mock.calls[0][0].html;
     expect(html).toContain('等候店家回覆');
-    expect(html).not.toContain('應付金額');
+    expect(html).not.toContain('訂單金額');
     expect(html).not.toContain('2026/10/20');
   });
 
@@ -104,4 +104,36 @@ describe('route wiring（原始碼斷言）', () => {
       expect(i).toBeLessThan(s.indexOf('} catch'));
     });
   }
+});
+
+describe('allowTravelerConfirmEmail 節流', () => {
+  it('同一 email 每小時 3 封，第 4 次拒絕；大小寫與空白視為同一人', async () => {
+    const { allowTravelerConfirmEmail } = await import('@/server/email/tour-order-email');
+    const e = 'Victim-A@Example.com';
+    expect(allowTravelerConfirmEmail(e, 'ip-a1')).toBe(true);
+    expect(allowTravelerConfirmEmail(` ${e.toLowerCase()} `, 'ip-a2')).toBe(true);
+    expect(allowTravelerConfirmEmail(e, 'ip-a3')).toBe(true);
+    expect(allowTravelerConfirmEmail(e, 'ip-a4')).toBe(false);
+    expect(allowTravelerConfirmEmail('other-a@example.com', 'ip-a5')).toBe(true);
+  });
+  it('同 IP 跨店每小時 10 封，第 11 次拒絕；被收件人擋下不消耗 IP 額度', async () => {
+    const { allowTravelerConfirmEmail } = await import('@/server/email/tour-order-email');
+    for (let i = 0; i < 10; i += 1) expect(allowTravelerConfirmEmail(`u${i}-b@example.com`, 'ip-b')).toBe(true);
+    expect(allowTravelerConfirmEmail('u11-b@example.com', 'ip-b')).toBe(false);
+    for (let i = 0; i < 3; i += 1) expect(allowTravelerConfirmEmail('same-c@example.com', 'ip-c')).toBe(true);
+    for (let i = 0; i < 5; i += 1) expect(allowTravelerConfirmEmail('same-c@example.com', 'ip-c')).toBe(false);
+    for (let i = 0; i < 7; i += 1) expect(allowTravelerConfirmEmail(`v${i}-c@example.com`, 'ip-c')).toBe(true);
+  });
+  it('沒有 email 一律放行且不佔額度', async () => {
+    const { allowTravelerConfirmEmail } = await import('@/server/email/tour-order-email');
+    for (let i = 0; i < 20; i += 1) expect(allowTravelerConfirmEmail('', 'ip-d')).toBe(true);
+    expect(allowTravelerConfirmEmail(undefined, 'ip-d')).toBe(true);
+  });
+  it('route 以 allowTravelerConfirmEmail 包住排程且不影響 201', () => {
+    for (const name of ['tour-bookings', 'tour-requests']) {
+      const s = readFileSync(`src/app/api/public/${name}/route.ts`, 'utf8');
+      expect(s).toMatch(/if \(allowTravelerConfirmEmail\(body\.contactEmail, ip\)\)/);
+      expect(s).toContain("return ok({ orderId, orderNo }, { status: 201 });");
+    }
+  });
 });

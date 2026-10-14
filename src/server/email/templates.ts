@@ -171,7 +171,7 @@ export interface TourOrderStatusEmailDetails {
   deadlineText?: string | null;
   /** REJECTED：導遊填的原因（呼叫端已判定旅客可見）；空白不渲染 */
   rejectReason?: string | null;
-  /** SUBMITTED_BOOKING：已格式化的應付金額（例如 NT$ 12,000）；空則不渲染 */
+  /** SUBMITTED_BOOKING：已格式化的訂單金額（例如 NT$ 12,000）；空則不渲染 */
   totalText?: string | null;
   statusUrl: string;
 }
@@ -196,7 +196,7 @@ export const tourOrderStatusHtml = (kind: TourOrderStatusEmailKind, p: TourOrder
     <tr><td style="color:#8E8E93;">訂單編號</td><td>${esc(p.orderNo)}</td></tr>
     <tr><td style="color:#8E8E93;">行程／方案</td><td>${esc(p.tripTitle)}／${esc(p.planName)}</td></tr>
     <tr><td style="color:#8E8E93;">出發日期</td><td>${esc(p.departsOn)}</td></tr>
-    ${kind === 'SUBMITTED_BOOKING' && total ? `<tr><td style="color:#8E8E93;">應付金額</td><td>${esc(total)}</td></tr>` : ''}
+    ${kind === 'SUBMITTED_BOOKING' && total ? `<tr><td style="color:#8E8E93;">訂單金額</td><td>${esc(total)}</td></tr>` : ''}
     ${kind === 'ACCEPTED' && deadline ? `<tr><td style="color:#8E8E93;">付款期限</td><td>${esc(deadline)}</td></tr>` : ''}
   </table>
   ${kind === 'REJECTED' && reason ? `<p style="font-size:14px;color:#3A3A3C;white-space:pre-wrap;margin:16px 0;
