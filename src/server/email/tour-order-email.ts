@@ -59,6 +59,17 @@ export async function notifyTravelerTourOrderStatus(
     const [order] = await hydrateTourOrders(admin, tenantId, [row]);
     if (!order) return;
 
+    // 上面的 tenant 查詢與 hydrate 都有 await，期間訂單可能又被取消／收款：寄送前再讀一次狀態。
+    // 只對有守門的 kind 多查一次。仍有極小空窗（讀完到 Resend 送出之間），徹底消除需 outbox（#945）。
+    if (kind === 'ACCEPTED' || kind === 'PAID' || kind === 'DEPOSIT_RECEIVED') {
+      const { data: fresh, error: fErr } = await admin.from('tour_orders').select('status, payment_status')
+        .eq('tenant_id', tenantId).eq('id', orderId).maybeSingle();
+      if (fErr || !fresh || !isStillCurrent(kind, fresh as Record<string, unknown>)) {
+        console.info('[tour-order-email] 寄送前訂單狀態已變動或無法確認，略過過時通知', kind, orderId);
+        return;
+      }
+    }
+
     const money = (n: unknown): number | null => {
       const v = typeof n === 'string' && n.trim() === '' ? NaN : Number(n);
       return n == null || !Number.isFinite(v) ? null : v;
