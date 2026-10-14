@@ -1,3 +1,4 @@
+import { scheduleTravelerTourOrderNotice } from '@/server/email/tour-order-email';
 import { z } from 'zod';
 import { handle, ok, fail, ERR, readOptionalJsonBody, PUBLIC_JSON_BODY_LIMIT_BYTES } from '@/server/http';
 import { requireTenantManager } from '@/server/tenant';
@@ -90,6 +91,9 @@ export const POST = handle(async (req, { params }: Context) => {
     .select('*').maybeSingle();
   if (error) throw error;
   if (!data) return fail(409, '此訂單狀態已變更', ERR.CONFLICT);
+  if (kind === 'FULL') {
+    scheduleTravelerTourOrderNotice(t.tenantId, id, 'PAID');
+  }
   const [order] = await hydrateTourOrders(t.supabase, t.tenantId, [data]);
   return ok(order);
 });
