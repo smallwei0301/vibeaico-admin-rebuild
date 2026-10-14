@@ -322,6 +322,7 @@ export const bookingsPage = {
     exported: '預約匯出成功',
     exportedAs: (fileName: string) => `預約匯出成功：${fileName}`,
     exportFailed: '匯出失敗，請稍後再試',
+    exportNotReady: '預約列表尚未載入完成，請稍後再匯出',
     exportFailedPrefix: '匯出失敗:',
 
     batchConfirmed: (n: number) => `成功確認 ${n} 筆預約`,

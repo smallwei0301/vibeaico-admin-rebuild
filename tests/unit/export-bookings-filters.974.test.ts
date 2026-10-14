@@ -102,11 +102,20 @@ describe('issue #974: 預約匯出套用列表篩選', () => {
     expect(u.searchParams.get('startBefore')).toBe('2026-10-14T00:00:00Z');
   });
 
-  it('頁面 runExport 傳入列表篩選', () => {
+  it('頁面 runExport 沿用 load 儲存的篩選，且不再自行取時間', () => {
     const page = read('src/app/tenant/bookings/page.tsx');
     const fn = page.slice(page.indexOf('const runExport'), page.indexOf('批次操作'));
-    for (const k of ['statuses:', 'status:', 'excludeCancelled:', 'paymentStatus: paymentStatusFilter', 'keyword:', 'startBefore:']) {
-      expect(fn).toContain(k);
+    // load 在成功取得列表後，把實際送出的篩選存進 ref
+    expect(page).toContain('lastListFiltersRef.current = filterParams');
+    expect(page).toContain('satisfies ExportBookingsQuery');
+    expect(page.indexOf('lastListFiltersRef.current = filterParams'))
+      .toBeGreaterThan(page.indexOf('await listBookings({ ...filterParams, page, size: PAGE_SIZE })'));
+    // runExport 直接使用該 ref，不重組篩選、不呼叫 new Date()
+    expect(fn).toContain('lastListFiltersRef.current');
+    expect(fn).toContain('download(filters)');
+    expect(fn).not.toContain('new Date');
+    for (const k of ['statuses:', 'excludeCancelled:', 'paymentStatus:', 'keyword:', 'startBefore:']) {
+      expect(fn).not.toContain(k);
     }
   });
 });
