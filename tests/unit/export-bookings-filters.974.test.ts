@@ -108,8 +108,19 @@ describe('issue #974: 預約匯出套用列表篩選', () => {
     // load 在成功取得列表後，把實際送出的篩選存進 ref
     expect(page).toContain('lastListFiltersRef.current = filterParams');
     expect(page).toContain('satisfies ExportBookingsQuery');
-    expect(page.indexOf('lastListFiltersRef.current = filterParams'))
-      .toBeGreaterThan(page.indexOf('await listBookings({ ...filterParams, page, size: PAGE_SIZE })'));
+    const assign = page.indexOf('lastListFiltersRef.current = filterParams');
+    // ref 寫入在 bookingId 補查 await 之後，且緊鄰 setRows（同一個同步區段）
+    expect(assign).toBeGreaterThan(page.indexOf('bookingId: requestedBookingId'));
+    expect(assign).toBeGreaterThan(page.indexOf('await listBookings({ ...filterParams, page, size: PAGE_SIZE })'));
+    expect(page.indexOf('setRows(list)', assign) - assign).toBeLessThan(120);
+    expect(page.slice(assign, page.indexOf('setRows(list)', assign))).not.toContain('await');
+    // 頁碼超出範圍的重載分支不寫入 ref
+    const reload = page.slice(page.indexOf('setPage(Math.max(0, res.totalPages - 1))'), assign);
+    expect(reload.indexOf('return;')).toBeGreaterThan(-1);
+    // catch 清空列表時同步把 ref 設為 null，匯出改顯示 exportNotReady
+    const catchBlock = page.slice(page.indexOf('} catch (e) {', assign), page.indexOf('} finally {', assign));
+    expect(catchBlock).toContain('setRows([])');
+    expect(catchBlock).toContain('lastListFiltersRef.current = null');
     // runExport 直接使用該 ref，不重組篩選、不呼叫 new Date()
     expect(fn).toContain('lastListFiltersRef.current');
     expect(fn).toContain('download(filters)');

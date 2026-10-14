@@ -164,7 +164,6 @@ export default function BookingsPage() {
         startBefore: status === 'UNPROCESSED' ? new Date().toISOString() : undefined,
       } satisfies ExportBookingsQuery;
       const res = await listBookings({ ...filterParams, page, size: PAGE_SIZE });
-      lastListFiltersRef.current = filterParams;
 
       /* 刪除／篩選後目前頁已超出範圍：退回最後一頁再查（避免空白頁卻有資料）。 */
       if (res.content.length === 0 && page > 0 && res.totalElements > 0) {
@@ -195,12 +194,16 @@ export default function BookingsPage() {
           && new Date(b.startAt).getTime() < now)
         .map((b) => b.id));
 
+      /* 篩選快照與列表同一個同步區段寫入（deep-link 補查 await 之後），兩者永遠成對更新。 */
+      lastListFiltersRef.current = filterParams;
       setTotal(res.totalElements);
       setRows(list);
     } catch (e) {
       toast.show(`${t.messages.loadFailed}${e instanceof Error ? e.message : t.messages.unknownError}`, 'danger');
       setRows([]);
       setTotal(0);
+      /* 列表已清空：停用匯出（顯示 exportNotReady），避免匯出與畫面不一致。 */
+      lastListFiltersRef.current = null;
     } finally {
       setLoading(false);
     }
