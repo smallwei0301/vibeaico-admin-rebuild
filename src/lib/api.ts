@@ -25,6 +25,49 @@ export class ApiError extends Error {
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
 
+export const NETWORK_ERROR_MESSAGE = '網路連線失敗，請確認網路後再試一次';
+
+/**
+ * fetch() 因網路中斷拋出的原生錯誤（Failed to fetch / Load failed / NetworkError…）
+ * 一律轉成中文 ApiError；AbortError 代表呼叫端主動取消，原樣回傳讓呼叫端自行判斷。
+ */
+export function toNetworkError(e: unknown, signal?: AbortSignal | null): unknown {
+  if (signal?.aborted) return e;
+  if (typeof e === 'object' && e !== null && (e as { name?: unknown }).name === 'AbortError') return e;
+  // 保留原始錯誤（CORS／混合內容／網域設定錯誤等）供 DevTools／Sentry 追查。
+  console.warn('[api] 網路請求失敗', e);
+  const err = new ApiError(NETWORK_ERROR_MESSAGE, 'NETWORK_ERROR');
+  (err as Error & { cause?: unknown }).cause = e;
+  return err;
+}
+
+/**
+ * 讀取並解析 JSON 回應。讀 body 與解析 JSON 分開處理：
+ * - 讀取途中斷線（fetch 已 resolve、body 尚未讀完）→ NETWORK_ERROR
+ * - 內容不是合法 JSON（含空 body）→「伺服器回應格式錯誤」，保留 status
+ * 相容：測試以 `{ json }` 假造 Response 而無 `text` 時，退回 res.json()。
+ */
+export async function readJsonBody<B>(res: Response, signal?: AbortSignal | null): Promise<B> {
+  if (typeof res.text !== 'function') {
+    try {
+      return (await res.json()) as B;
+    } catch {
+      throw new ApiError('伺服器回應格式錯誤', undefined, res.status);
+    }
+  }
+  let text: string;
+  try {
+    text = await res.text();
+  } catch (e) {
+    throw toNetworkError(e, signal);
+  }
+  try {
+    return JSON.parse(text) as B;
+  } catch {
+    throw new ApiError('伺服器回應格式錯誤', undefined, res.status);
+  }
+}
+
 export async function request<T>(
   path: string,
   init?: RequestInit & { query?: Record<string, string | number | boolean | undefined> },
@@ -39,25 +82,25 @@ export async function request<T>(
       ).toString()
     : '';
 
-  const res = await fetch(`${BASE}${path}${qs}`, {
-    ...rest,
-    headers: {
-      // Let the browser add the multipart boundary for FormData. Setting an
-      // application/json content type here makes /api/upload reject the body.
-      ...(typeof FormData !== 'undefined' && rest.body instanceof FormData
-        ? {}
-        : { 'Content-Type': 'application/json' }),
-      ...(rest.headers ?? {}),
-    },
-    credentials: 'include',
-  });
-
-  let body: ApiResponse<T>;
+  let res: Response;
   try {
-    body = (await res.json()) as ApiResponse<T>;
-  } catch {
-    throw new ApiError('伺服器回應格式錯誤', undefined, res.status);
+    res = await fetch(`${BASE}${path}${qs}`, {
+      ...rest,
+      headers: {
+        // Let the browser add the multipart boundary for FormData. Setting an
+        // application/json content type here makes /api/upload reject the body.
+        ...(typeof FormData !== 'undefined' && rest.body instanceof FormData
+          ? {}
+          : { 'Content-Type': 'application/json' }),
+        ...(rest.headers ?? {}),
+      },
+      credentials: 'include',
+    });
+  } catch (e) {
+    throw toNetworkError(e, rest.signal);
   }
+
+  const body = await readJsonBody<ApiResponse<T>>(res, rest.signal);
 
   if (!res.ok || body.success === false) {
     throw new ApiError(body.message ?? '操作失敗，請稍後再試', body.code, res.status, body.data);

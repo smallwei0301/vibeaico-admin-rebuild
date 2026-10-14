@@ -279,6 +279,10 @@
     {
       "ref": "issue/957",
       "title": "#46 旅客送出團體預約或申請後無確認信，無法再從信件找回訂單狀態頁"
+    },
+    {
+      "ref": "issue/959",
+      "title": "網路中斷時全站錯誤訊息顯示英文 Failed to fetch／Load failed"
     }
   ],
   "main": {
@@ -8501,13 +8505,30 @@
         "startedAt": "2026-10-14T05:24:19Z",
         "completedAt": "2026-10-14T05:24:28Z",
         "note": "Luna metrics capture 綁定 issue/957 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261014-luna-scout-959-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 959,
+        "count": 1,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-14T05:57:23Z",
+        "completedAt": "2026-10-14T05:57:49Z",
+        "note": "Luna metrics capture 綁定 issue/959 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +1。本次盤點由主 agent 於 source 盤點時直接發現（grep 到 128 處頁面顯示原生錯誤），無另外 Luna inventory。actual 未經平台驗證。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 72,
+    "issuesStarted": 73,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -8534,8 +8555,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 157,
-    "lunaAccepted": 148,
+    "lunaTasks": 158,
+    "lunaAccepted": 149,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -8815,7 +8836,8 @@
     "非計分紀錄：PR #950 merge 為 7f3fd668（2026-10-14T04:41:46Z）；#944 follow-up builder 74c3521d 與 Opus 審查兩次、Codex Code Review 一次 Failed 後以 @codex review 重跑；#952 快照 follow-up 開立；#951 Sonnet 預建 c6bd2d96（04:17:01Z–04:21:30Z）。",
     "非計分紀錄：PR #953 merge 為 2db45afa（2026-10-14T04:50:43Z）；#954 Sonnet 預建 dfdc3da8（04:48:39Z–04:59:52Z）。",
     "非計分紀錄：#957 Sonnet 預建 4769324e（05:03:50Z–05:06:50Z），cherry-pick 為 a5de2208。",
-    "非計分紀錄：#957 inventory 與 #954 為同一次盤點，依 Codex P2 移除重複計數。"
+    "非計分紀錄：#957 inventory 與 #954 為同一次盤點，依 Codex P2 移除重複計數。",
+    "非計分紀錄：#959 Sonnet 預建 05:38:17Z–05:43:28Z，原 commit 131dcd38，cherry-pick 為 9728428e；盤點由主 agent 執行，無 Luna inventory。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {

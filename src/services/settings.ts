@@ -1,4 +1,4 @@
-import { ApiError, adapt, request } from '@/lib/api';
+import { ApiError, adapt, request, toNetworkError } from '@/lib/api';
 import { APP_URL } from '@/config/env';
 import type { BusinessType } from '@/config/modes';
 import {
@@ -314,11 +314,16 @@ export const presignBannerVideo = (contentType: string, sizeBytes: number) =>
  * `fetch`，非 2xx 一律視為失敗並丟出錯誤訊息帶 HTTP 狀態碼方便除錯。
  */
 export const uploadBannerVideoToSignedUrl = async (signedUrl: string, file: File) => {
-  const res = await fetch(signedUrl, {
-    method: 'PUT',
-    headers: { 'content-type': file.type },
-    body: file,
-  });
+  let res: Response;
+  try {
+    res = await fetch(signedUrl, {
+      method: 'PUT',
+      headers: { 'content-type': file.type },
+      body: file,
+    });
+  } catch (e) {
+    throw toNetworkError(e);
+  }
   if (!res.ok) {
     throw new ApiError(`上傳到儲存空間失敗（HTTP ${res.status}）`, 'INTERNAL');
   }

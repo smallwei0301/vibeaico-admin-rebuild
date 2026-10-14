@@ -1,4 +1,4 @@
-import { adapt, ApiError, request } from '@/lib/api';
+import { adapt, ApiError, readJsonBody, request, toNetworkError } from '@/lib/api';
 import type {
   ApiResponse, Coupon, MembershipLevel, Product, ProductOrder, Service, Staff, StaffScheduleMode,
 } from '@/lib/types';
@@ -44,18 +44,18 @@ async function requestWithMessage<T>(
   path: string,
   init?: RequestInit,
 ): Promise<{ data: T; message?: string }> {
-  const res = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-    credentials: 'include',
-  });
-
-  let body: ApiResponse<T>;
+  let res: Response;
   try {
-    body = (await res.json()) as ApiResponse<T>;
-  } catch {
-    throw new ApiError('伺服器回應格式錯誤', undefined, res.status);
+    res = await fetch(`${BASE}${path}`, {
+      ...init,
+      headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+      credentials: 'include',
+    });
+  } catch (e) {
+    throw toNetworkError(e, init?.signal);
   }
+
+  const body = await readJsonBody<ApiResponse<T>>(res, init?.signal);
 
   if (!res.ok || body.success === false) {
     throw new ApiError(body.message ?? '操作失敗，請稍後再試', body.code, res.status);
