@@ -8486,23 +8486,6 @@
         "note": "Luna metrics capture 綁定 issue/954 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2。actual 未經平台驗證。"
       },
       {
-        "id": "20261014-luna-scout-957-inventory",
-        "role": "scout",
-        "requestedModel": "luna",
-        "actualModel": "unknown",
-        "contextClass": "compact",
-        "accepted": true,
-        "inputTokens": null,
-        "outputTokens": null,
-        "cachedTokens": null,
-        "issue": 957,
-        "count": 1,
-        "evidenceRef": "this commit",
-        "startedAt": "2026-10-14T04:47:30Z",
-        "completedAt": "2026-10-14T04:47:52Z",
-        "note": "Luna 窄盤點 #46 盤點：旅客建單後無確認信，與 #954 同一次盤點（時間沿用 20261014-luna-scout-954-inventory 的 scout 自報時間，不另計）。actual 未經平台驗證。"
-      },
-      {
         "id": "20261014-luna-scout-957-bind",
         "role": "scout",
         "requestedModel": "luna",
@@ -8551,8 +8534,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 158,
-    "lunaAccepted": 149,
+    "lunaTasks": 157,
+    "lunaAccepted": 148,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -8831,7 +8814,8 @@
     "非計分紀錄：PR #949 merge 為 b0820682（2026-10-14T04:12:00Z，owner 決定先合併、並發原子化交由 #945）；#948 follow-up builder ad5ed6a2 與 Opus 審查兩次；#944 Sonnet 預建 e3c19547 並重建於新 main 為 81729dbf（container 重啟前完成）。",
     "非計分紀錄：PR #950 merge 為 7f3fd668（2026-10-14T04:41:46Z）；#944 follow-up builder 74c3521d 與 Opus 審查兩次、Codex Code Review 一次 Failed 後以 @codex review 重跑；#952 快照 follow-up 開立；#951 Sonnet 預建 c6bd2d96（04:17:01Z–04:21:30Z）。",
     "非計分紀錄：PR #953 merge 為 2db45afa（2026-10-14T04:50:43Z）；#954 Sonnet 預建 dfdc3da8（04:48:39Z–04:59:52Z）。",
-    "非計分紀錄：#957 Sonnet 預建 4769324e（05:03:50Z–05:06:50Z），cherry-pick 為 a5de2208。"
+    "非計分紀錄：#957 Sonnet 預建 4769324e（05:03:50Z–05:06:50Z），cherry-pick 為 a5de2208。",
+    "非計分紀錄：#957 inventory 與 #954 為同一次盤點，依 Codex P2 移除重複計數。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
