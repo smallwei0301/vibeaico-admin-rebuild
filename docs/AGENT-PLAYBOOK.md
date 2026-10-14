@@ -889,6 +889,17 @@ normal prepare 的 reviewer packet 亦須列出獨立角色收據，正例以 cu
 
 ### PB-034 — 用 CI 當規則查詢器：靠一次次被退來湊出正確的 PR 中繼資料
 
+#### 2026-10-02～03 — #724／#736：publication receipt 必須涵蓋實際入口與完整證據
+
+- 本次補記一件既有 publication-preflight 覆蓋事件；九項 review findings 是同一修正鏈，不按 findings／測試／CI 次數另計。下方較早記錄的歷史次數與結果不改寫。
+- 事件與根因：已存在本機 preflight 不代表發布前真的執行；#736 初版新增 receipt 時，trusted workflow 的參數、適用條件與簽發順序又未完整覆蓋既有契約。canonical parser／validator 存在，仍可能因 caller 傳空 head、漏 created_at、使用另一份 WORK_ORIGIN regex，或在 ledger／schema／paired report 驗證前簽發 PASS，而留下錯誤准入。
+- 證據：[#736 live-head finding](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/736#discussion_r4172083189)、[canonical parser finding](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/736#discussion_r4172127746)、[完整 preflight 順序](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/736#discussion_r4172151020)、[paired report finding](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/736#discussion_r4172168874)。修正回覆及原 RED 證據保留於原 threads，不能以最後綠燈抹掉。
+- 修正：#736 已將 canonical live head／created_at／實際 changed-file ownership 接入共用 validator，base wakeup 改用既有 parser；新 Agent Draft 的 receipt 須等待自身 metadata、Run capture、schema-stage 與 exact-head JSON／Markdown paired report 全部通過。receipt 綁 body／files／base／head；grandfathering 依 #736 實際 merged_at 的固定邊界，不能因後來 base 前進而追討舊 PR。
+- 預防：測試直接執行真實 workflow caller，包含合法正例與缺 head、漏分類時間、fenced Owner 範例、錯 ownership、壞 ledger／schema／paired report 的反例；只測 helper 或只 grep 接線不足。簽發 receipt 前驗完整依賴，任何 body／files／base／head 變更都重驗，不造 no-op commit 或盲重跑。
+- 驗證：最終 source head `eb58bb10a49151bf4fe3af79558f3e3dd263680d` 的 [source CI 37107266283](https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/37107266283) 與 merge `6a3cb2998fa8f4bd59c5041579e9a165e2f59227` 的 [main CI 37107557577](https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/37107557577) 均 completed/success；九項 review threads 均 resolved。本次只回讀歷史證據，未重跑這些測試。
+- 限制：main-push inventory 讀取失敗時，舊 head 的成功 status 可能仍可見；merge 前仍須核 live base 與有效 guard。publication receipt 不是 final review、TEST、merge 或 Production approval；本補記不修改任何准入政策，也不宣稱 #724 完整 closeout 已完成。
+- 狀態：監看中；既有 source 修正已合併，後續依真實 publication／guard 結果判定，不以文件補記取代驗收。
+
 #### 2026-10-09 — #844 驗證入口與 native receipt 契約覆蓋
 
 - 本次新增兩件可核對同根因事件：Git Data API clean-install 入口遺漏、native 准入契約覆蓋不足；F1／F2／F3 是後者的 findings，不按每次重測累加事件。較早日期的次數及失敗結果保留。
