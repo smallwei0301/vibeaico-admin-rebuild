@@ -90,7 +90,7 @@ describe('notifyTravelerTourOrderStatus', () => {
 
   it('沒有 email 不寄；無 RESEND_API_KEY 不丟錯', async () => {
     const { notifyTravelerTourOrderStatus } = await import('@/server/email/tour-order-email');
-    orderRow = { id: 'o1', contact: { phone: '0912' } };
+    orderRow = { id: 'o1', contact: { phone: '0912' }, status: 'CONFIRMED', payment_status: 'UNPAID' };
     await notifyTravelerTourOrderStatus('t1', 'o1', 'ACCEPTED');
     expect(sendMock).not.toHaveBeenCalled();
     orderRow = { id: 'o1', contact: { email: 'a@b.co' }, status: 'CONFIRMED', payment_status: 'UNPAID' };

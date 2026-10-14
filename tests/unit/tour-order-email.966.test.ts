@@ -42,7 +42,7 @@ describe('#966 通知寄送前狀態守門', () => {
     orderRow = row('CONFIRMED', 'UNPAID'); await run('ACCEPTED');
     expect(sendMock).toHaveBeenCalledTimes(1);
   });
-  it.each([['CANCELLED', 'UNPAID'], ['CONFIRMED', 'PARTIAL']])('PAID 遇 %s＋%s 不寄', async (s, p) => {
+  it.each([['CANCELLED', 'UNPAID'], ['CANCELLED', 'PAID'], ['CONFIRMED', 'PARTIAL']])('PAID 遇 %s＋%s 不寄', async (s, p) => {
     orderRow = row(s, p); await run('PAID');
     expect(sendMock).not.toHaveBeenCalled();
   });

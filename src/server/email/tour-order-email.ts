@@ -24,7 +24,7 @@ function isStillCurrent(kind: TourOrderStatusEmailKind, row: Record<string, unkn
   switch (kind) {
     case 'ACCEPTED': return row.status === 'CONFIRMED' && row.payment_status === 'UNPAID';
     case 'DEPOSIT_RECEIVED': return row.status === 'CONFIRMED' && row.payment_status === 'PARTIAL';
-    case 'PAID': return row.payment_status === 'PAID';
+    case 'PAID': return row.status !== 'CANCELLED' && row.payment_status === 'PAID';
     default: return true;
   }
 }
