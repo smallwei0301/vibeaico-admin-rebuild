@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 type Row = Record<string, any>;
-const state = vi.hoisted(() => ({ tables: {} as Record<string, Row[]>, multicast: [] as any[], tenantErr: false }));
+const state = vi.hoisted(() => ({ tables: {} as Record<string, Row[]>, multicast: [] as any[], tenantErr: false, tenantDataErr: false }));
 
 vi.mock('@/server/line', () => ({
   getLineCredentials: vi.fn(async () => ({ token: 'tok' })),
@@ -31,6 +31,7 @@ vi.mock('@/server/supabase', () => ({
         maybeSingle: async () => {
           if (state.tenantErr && table === 'tenants') throw new Error('boom');
           const rows = (state.tables[table] ?? []).filter((r) => filters.every(([f, v]) => r[f] === v));
+          if (state.tenantDataErr && table === 'tenants') return { data: null, error: { message: 'db down' } };
           return { data: rows[0] ?? null, error: null };
         },
       };
@@ -57,7 +58,7 @@ function seed(salesMode: 'INSTANT' | 'REQUEST') {
 }
 
 describe('#941 notifyOwnerNewTourOrder', () => {
-  beforeEach(() => { state.multicast = []; state.tenantErr = false; vi.spyOn(console, 'error').mockImplementation(() => {}); });
+  beforeEach(() => { state.multicast = []; state.tenantErr = false; state.tenantDataErr = false; vi.spyOn(console, 'error').mockImplementation(() => {}); });
 
   it('即時預約：推「新團體預約」並含訂單編號／行程方案／日期／人數／旅客', async () => {
     seed('INSTANT');
@@ -76,7 +77,62 @@ describe('#941 notifyOwnerNewTourOrder', () => {
   it('REQUEST 申請：推「新預約申請（待審）」', async () => {
     seed('REQUEST');
     await notifyOwnerNewTourOrder('t1', 'o1');
-    expect(state.multicast[0].msgs[0].text).toContain('【祕島小舖】新預約申請（待審）');
+    const text = state.multicast[0].msgs[0].text as string;
+    expect(text).toContain('【祕島小舖】新預約申請（待審）');
+    expect(text).toContain('請到後台「團體訂單」接受或婉拒此申請。');
+    expect(text).toContain('/tenant/tour-orders?orderId=o1');
+    expect(text).not.toContain('處理期限');
+  });
+
+  it('REQUEST 訂單帶 hold_expires_at 時顯示處理期限（台北時間）', async () => {
+    seed('REQUEST');
+    state.tables.tour_orders[0].hold_expires_at = '2026-11-30T04:00:00.000Z';
+    await notifyOwnerNewTourOrder('t1', 'o1');
+    expect(state.multicast[0].msgs[0].text).toContain('處理期限：2026/11/30 12:00');
+  });
+
+  it('即時預約不含接受／婉拒指示', async () => {
+    seed('INSTANT');
+    await notifyOwnerNewTourOrder('t1', 'o1');
+    expect(state.multicast[0].msgs[0].text).not.toContain('接受或婉拒');
+  });
+
+  it('旅客姓名含換行／控制字元：壓成單行，不產生偽造的額外行', async () => {
+    seed('INSTANT');
+    state.tables.tour_orders[0].contact = { name: '王\r\n付款狀態：已付款\u2028\t假', phone: '0912' };
+    await notifyOwnerNewTourOrder('t1', 'o1');
+    const text = state.multicast[0].msgs[0].text as string;
+    const lines = text.split('\n');
+    expect(lines.some((l) => l.startsWith('付款狀態'))).toBe(false);
+    expect(lines.find((l) => l.startsWith('旅客：'))).toBe('旅客：王 付款狀態：已付款 假');
+    expect(text).not.toMatch(/[\r\t\u2028]/);
+  });
+
+  it('過長的行程名稱被截斷，整則訊息長度有上限', async () => {
+    seed('REQUEST');
+    state.tables.trips[0].title = '長'.repeat(5000);
+    state.tables.tour_orders[0].contact = { name: '名'.repeat(5000), phone: '0912' };
+    await notifyOwnerNewTourOrder('t1', 'o1');
+    const text = state.multicast[0].msgs[0].text as string;
+    expect(text).toContain('長'.repeat(60) + '…');
+    expect(text).not.toContain('長'.repeat(61));
+    expect(text.length).toBeLessThanOrEqual(1000);
+  });
+
+  it('tenants 查詢回 error：不發送', async () => {
+    seed('INSTANT');
+    state.tenantDataErr = true;
+    await notifyOwnerNewTourOrder('t1', 'o1');
+    expect(state.multicast).toHaveLength(0);
+  });
+
+  it('店家名稱為空：不出現空的【】前綴', async () => {
+    seed('INSTANT');
+    state.tables.tenants[0].name = '  ';
+    await notifyOwnerNewTourOrder('t1', 'o1');
+    const text = state.multicast[0].msgs[0].text as string;
+    expect(text).not.toContain('【');
+    expect(text.startsWith('新團體預約')).toBe(true);
   });
 
   it('找不到訂單：不推', async () => {
