@@ -21,6 +21,7 @@ import { loadPublicShopTimeZone, loadPublicTourRequestStatus } from '@/server/pu
 import { loadPublicPaymentMethods } from '@/server/public-payment-methods';
 import { shouldShowPaymentMethods } from '@/lib/public-payment-methods';
 import { PaymentMethodsSection } from '@/components/public/PaymentMethodsSection';
+import { SaveStatusLink } from '@/components/public/SaveStatusLink';
 import { publicTourRequestPage as t } from '@/i18n/zh-TW/pages/public-tour-request';
 import { formatCurrency } from '@/lib/utils';
 import { common } from '@/i18n/zh-TW/common';
@@ -147,9 +148,12 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
   // #938：存取驗證（contact 比對）已通過才會走到這裡；只在未付款且未取消時才查收款方式。
   const paymentMethods = shouldShowPaymentMethods(order) ? await loadPublicPaymentMethods(shopCode, { preferredId: order.paymentMethodId }) : null;
 
+  const justCreatedBanner = created === '1' && order.status === 'PENDING';
+  const justCreated = created === '1';
+
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-6">
-      {created === '1' && order.status === 'PENDING' ? (
+      {justCreatedBanner ? (
         <section className="card border border-success" role="status">
           <div className="card-body flex flex-col gap-1">
             <h2 className="text-base font-semibold text-success">
@@ -162,6 +166,7 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
         </section>
       ) : null}
       <StatusBody order={order} timeZone={timeZone} />
+      {justCreated ? <SaveStatusLink prominent /> : null}
 
       <section className="card">
         <div className="card-body flex flex-col gap-2">
@@ -209,6 +214,8 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
           </p>
         </div>
       </section>
+
+      {justCreated ? null : <SaveStatusLink prominent={false} />}
 
       <Link href={`/s/${shopCode}`} className="text-sm text-secondary underline">
         {t.status.backToShop}
