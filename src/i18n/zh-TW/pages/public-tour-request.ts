@@ -94,6 +94,12 @@ export const publicTourRequestPage = {
     createdRequestDescription: '店家已收到您的申請，正等待導遊確認；確認前不會鎖位，也不需要付款。請留意您填寫的聯絡方式。',
     createdBookingTitle: '訂單已送出',
     createdBookingDescription: '店家已收到您的預約並為您保留名額；付款方式與期限會由店家透過您填寫的聯絡方式通知，請以下方付款狀態為準。',
+    saveLink: {
+      hint: '請保存此頁連結，之後可隨時回來查看申請進度、付款資訊與店家說明',
+      copy: '複製連結',
+      copied: '已複製',
+      copyFailed: '無法自動複製，請手動複製網址列的連結',
+    },
     paymentTitle: '付款狀態',
     paymentMethods: {
       title: '付款方式',
