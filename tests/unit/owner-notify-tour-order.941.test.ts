@@ -6,7 +6,15 @@ import { resolve } from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 type Row = Record<string, any>;
-const state = vi.hoisted(() => ({ tables: {} as Record<string, Row[]>, multicast: [] as any[], tenantErr: false, tenantDataErr: false, countErr: false, countCalls: 0 }));
+const state = vi.hoisted(() => ({ tables: {} as Record<string, Row[]>, multicast: [] as any[], tenantErr: false, tenantDataErr: false, countErr: false, countCalls: 0, orFilters: [] as string[] }));
+
+// 解析 `created_at.lt."X",and(created_at.eq."X",id.lte."Y")`，並以字串序比較（ISO 時間戳可直接字串比較）。
+function matchOr(r: Row, expr: string): boolean {
+  const m = /^created_at\.lt\."([^"]*)",and\(created_at\.eq\."([^"]*)",id\.lte\."([^"]*)"\)$/.exec(expr);
+  if (!m) throw new Error(`unexpected or() shape: ${expr}`);
+  const c = String(r.created_at ?? '');
+  return c < m[1] || (c === m[2] && String(r.id) <= m[3]);
+}
 
 vi.mock('@/server/line', () => ({
   getLineCredentials: vi.fn(async () => ({ token: 'tok' })),
@@ -22,10 +30,14 @@ vi.mock('@/server/supabase', () => ({
       const q: any = {
         select: (_c?: string, opts?: any) => { if (opts?.head) { q._count = true; } return q; },
         gte: (f: string, v: any) => { filters.push([`gte:${f}`, v]); return q; },
+        gt: (f: string, v: any) => { filters.push([`gt:${f}`, v]); return q; },
+        or: (expr: string) => { state.orFilters.push(expr); filters.push(['or', expr]); return q; },
         eq: (f: string, v: any) => { filters.push([f, v]); return q; },
         in: (f: string, v: any[]) => { filters.push([f, v]); return q; },
         then: (res: any, rej: any) => {
           const matches = (r: Row) => filters.every(([f, v]) =>
+            f === 'or' ? matchOr(r, v) :
+            f.startsWith('gt:') ? String(r[f.slice(3)] ?? '') > v :
             f.startsWith('gte:') ? String(r[f.slice(4)] ?? '') >= v : (Array.isArray(v) ? v.includes(r[f]) : r[f] === v));
           if (q._count) {
             state.countCalls += 1;
@@ -65,7 +77,7 @@ function seed(salesMode: 'INSTANT' | 'REQUEST') {
 }
 
 describe('#941 notifyOwnerNewTourOrder', () => {
-  beforeEach(() => { state.multicast = []; state.countErr = false; state.countCalls = 0; state.tenantErr = false; state.tenantDataErr = false; vi.spyOn(console, 'error').mockImplementation(() => {}); });
+  beforeEach(() => { state.multicast = []; state.countErr = false; state.countCalls = 0; state.orFilters = []; state.tenantErr = false; state.tenantDataErr = false; vi.spyOn(console, 'error').mockImplementation(() => {}); });
 
   it('即時預約：推「新團體預約」並含訂單編號／行程方案／日期／人數／旅客', async () => {
     seed('INSTANT');
@@ -161,20 +173,25 @@ describe('#941 notifyOwnerNewTourOrder', () => {
     expect(state.multicast[0].msgs[0].text).toContain('/tenant/tour-orders?orderId=o1&tenantId=t1');
   });
 
-  function addOrders(n: number, createdAt: string) {
-    for (let i = 0; i < n; i++) state.tables.tour_orders.push({ id: `x${i}`, tenant_id: 't1', created_at: createdAt });
+  // 本筆 o1 的 created_at 固定為 T；before 筆建於 T 之前、after 筆建於 T 之後（同店）。
+  const T = '2026-12-01T10:00:00.000+00:00';
+  function addOrders(before: number, after = 0) {
+    state.tables.tour_orders[0].created_at = T;
+    for (let i = 0; i < before; i++) state.tables.tour_orders.push({ id: `b${i}`, tenant_id: 't1', created_at: `2026-12-01T09:${String(10 + i).padStart(2, '0')}:00.000+00:00` });
+    for (let i = 0; i < after; i++) state.tables.tour_orders.push({ id: `a${i}`, tenant_id: 't1', created_at: `2026-12-01T10:${String(1 + i).padStart(2, '0')}:00.000+00:00` });
   }
 
-  it('近一小時建單數恰為上限：仍推播', async () => {
+  it('本筆排名恰為上限：仍推播', async () => {
     seed('INSTANT');
-    addOrders(OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP - 1, new Date().toISOString());
+    addOrders(OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP - 1);
     await notifyOwnerNewTourOrder('t1', 'o1');
     expect(state.multicast).toHaveLength(1);
+    expect(state.multicast[0].msgs[0].text).toContain('新團體預約');
   });
 
-  it('近一小時建單數為上限+1：改送一則彙總提醒（額度只消耗一次）', async () => {
+  it('本筆排名為上限+1：改送一則彙總提醒（額度只消耗一次）', async () => {
     seed('REQUEST');
-    addOrders(OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP, new Date().toISOString());
+    addOrders(OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP);
     const { consumePushQuota } = await import('@/server/line');
     vi.mocked(consumePushQuota).mockClear();
     await notifyOwnerNewTourOrder('t1', 'o1');
@@ -187,9 +204,17 @@ describe('#941 notifyOwnerNewTourOrder', () => {
     expect(consumePushQuota).toHaveBeenCalledTimes(1);
   });
 
-  it('近一小時建單數為上限+2：不推播、不消耗額度', async () => {
+  it('並行灌單：視窗總數遠大於上限+1，排名為上限+1 的那筆仍送出彙總提醒', async () => {
     seed('REQUEST');
-    addOrders(OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP + 1, new Date().toISOString());
+    addOrders(OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP, 5); // 視窗內共 CAP+6 筆，但本筆排名 = CAP+1
+    await notifyOwnerNewTourOrder('t1', 'o1');
+    expect(state.multicast).toHaveLength(1);
+    expect(state.multicast[0].msgs[0].text).toContain(`已超過 ${OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP} 筆`);
+  });
+
+  it('本筆排名為上限+2：不推播、不消耗額度', async () => {
+    seed('REQUEST');
+    addOrders(OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP + 1);
     const { consumePushQuota } = await import('@/server/line');
     vi.mocked(consumePushQuota).mockClear();
     await notifyOwnerNewTourOrder('t1', 'o1');
@@ -197,9 +222,30 @@ describe('#941 notifyOwnerNewTourOrder', () => {
     expect(consumePushQuota).not.toHaveBeenCalled();
   });
 
+  it('created_at 相同時以 id 決定先後（id 較小者排前）', async () => {
+    seed('INSTANT');
+    state.tables.tour_orders[0].created_at = T;
+    state.tables.tour_orders[0].id = 'o5';
+    for (let i = 0; i < OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP; i++) {
+      state.tables.tour_orders.push({ id: `o${i < 5 ? i : i + 1}`.replace(/^o(\d)$/, 'o$1'), tenant_id: 't1', created_at: T });
+    }
+    // 同時間戳共 CAP+1 筆：id 小於 o5 的有 5 筆（o0..o4），其餘 5 筆 id 較大 -> 本筆排名 6
+    await notifyOwnerNewTourOrder('t1', 'o5');
+    expect(state.multicast).toHaveLength(1);
+    expect(state.multicast[0].msgs[0].text).toContain('新團體預約');
+  });
+
+  it('or() 過濾字串含本筆 created_at 與 id（雙引號包住）', async () => {
+    seed('INSTANT');
+    addOrders(0);
+    await notifyOwnerNewTourOrder('t1', 'o1');
+    expect(state.orFilters).toEqual([`created_at.lt."${T}",and(created_at.eq."${T}",id.lte."o1")`]);
+  });
+
   it('超過一小時的舊訂單不計入', async () => {
     seed('INSTANT');
-    addOrders(50, new Date(Date.now() - 2 * 3600 * 1000).toISOString());
+    state.tables.tour_orders[0].created_at = T;
+    for (let i = 0; i < 50; i++) state.tables.tour_orders.push({ id: `old${i}`, tenant_id: 't1', created_at: '2026-12-01T08:00:00.000+00:00' });
     await notifyOwnerNewTourOrder('t1', 'o1');
     expect(state.multicast).toHaveLength(1);
   });
@@ -209,6 +255,14 @@ describe('#941 notifyOwnerNewTourOrder', () => {
     state.countErr = true;
     await notifyOwnerNewTourOrder('t1', 'o1');
     expect(state.multicast).toHaveLength(0);
+  });
+
+  it('本筆缺少 created_at：fail closed 不推播', async () => {
+    seed('INSTANT');
+    delete state.tables.tour_orders[0].created_at;
+    await notifyOwnerNewTourOrder('t1', 'o1');
+    expect(state.multicast).toHaveLength(0);
+    expect(state.countCalls).toBe(0);
   });
 });
 
