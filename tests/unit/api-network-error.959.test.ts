@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, request } from '@/lib/api';
+import { ApiError, readJsonBody, request } from '@/lib/api';
+import { downloadAttachment } from '@/services/download';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -66,5 +67,69 @@ describe('request() 網路錯誤 (#959)', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json('<html>', 502)));
     const err = (await request('/api/x').catch((e: unknown) => e)) as ApiError;
     expect(err).toMatchObject({ message: '伺服器回應格式錯誤', status: 502 });
+  });
+
+  it('body 讀取途中斷線（text reject TypeError）→ NETWORK_ERROR', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const res = { ok: true, status: 200, text: () => Promise.reject(new TypeError('network error')) };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res));
+    const err = (await request('/api/x').catch((e: unknown) => e)) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe('NETWORK_ERROR');
+    expect(err.message).toBe('網路連線失敗，請確認網路後再試一次');
+  });
+
+  it('空 body 仍是伺服器回應格式錯誤', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json('', 502)));
+    const err = (await request('/api/x').catch((e: unknown) => e)) as ApiError;
+    expect(err).toMatchObject({ message: '伺服器回應格式錯誤', status: 502 });
+  });
+
+  it('只有 json() 的假 Response 仍可用（相容）', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ success: true, data: 7 }) }),
+    );
+    await expect(request('/api/x')).resolves.toBe(7);
+  });
+});
+
+describe('downloadAttachment / catalog 讀取途中斷線 (#959)', () => {
+  it('blob() reject TypeError → NETWORK_ERROR', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const res = {
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      blob: () => Promise.reject(new TypeError('Failed to fetch')),
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res));
+    const err = (await downloadAttachment('/api/export').catch((e: unknown) => e)) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe('NETWORK_ERROR');
+  });
+
+  it('!ok 時讀錯誤 body 斷線 → NETWORK_ERROR', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const res = {
+      ok: false,
+      status: 500,
+      headers: new Headers(),
+      text: () => Promise.reject(new TypeError('Failed to fetch')),
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res));
+    const err = (await downloadAttachment('/api/export').catch((e: unknown) => e)) as ApiError;
+    expect(err.code).toBe('NETWORK_ERROR');
+  });
+
+  it('readJsonBody：非法 JSON 保留 status；text 斷線 → NETWORK_ERROR（catalog 共用）', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const bad = await readJsonBody(json('<html>', 502)).catch((e: unknown) => e);
+    expect(bad).toMatchObject({ message: '伺服器回應格式錯誤', status: 502 });
+    const cut = await readJsonBody({
+      status: 200,
+      text: () => Promise.reject(new TypeError('x')),
+    } as unknown as Response).catch((e: unknown) => e);
+    expect((cut as ApiError).code).toBe('NETWORK_ERROR');
   });
 });

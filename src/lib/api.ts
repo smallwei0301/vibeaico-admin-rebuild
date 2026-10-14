@@ -41,6 +41,33 @@ export function toNetworkError(e: unknown, signal?: AbortSignal | null): unknown
   return err;
 }
 
+/**
+ * 讀取並解析 JSON 回應。讀 body 與解析 JSON 分開處理：
+ * - 讀取途中斷線（fetch 已 resolve、body 尚未讀完）→ NETWORK_ERROR
+ * - 內容不是合法 JSON（含空 body）→「伺服器回應格式錯誤」，保留 status
+ * 相容：測試以 `{ json }` 假造 Response 而無 `text` 時，退回 res.json()。
+ */
+export async function readJsonBody<B>(res: Response, signal?: AbortSignal | null): Promise<B> {
+  if (typeof res.text !== 'function') {
+    try {
+      return (await res.json()) as B;
+    } catch {
+      throw new ApiError('伺服器回應格式錯誤', undefined, res.status);
+    }
+  }
+  let text: string;
+  try {
+    text = await res.text();
+  } catch (e) {
+    throw toNetworkError(e, signal);
+  }
+  try {
+    return JSON.parse(text) as B;
+  } catch {
+    throw new ApiError('伺服器回應格式錯誤', undefined, res.status);
+  }
+}
+
 export async function request<T>(
   path: string,
   init?: RequestInit & { query?: Record<string, string | number | boolean | undefined> },
@@ -73,12 +100,7 @@ export async function request<T>(
     throw toNetworkError(e, rest.signal);
   }
 
-  let body: ApiResponse<T>;
-  try {
-    body = (await res.json()) as ApiResponse<T>;
-  } catch {
-    throw new ApiError('伺服器回應格式錯誤', undefined, res.status);
-  }
+  const body = await readJsonBody<ApiResponse<T>>(res, rest.signal);
 
   if (!res.ok || body.success === false) {
     throw new ApiError(body.message ?? '操作失敗，請稍後再試', body.code, res.status, body.data);

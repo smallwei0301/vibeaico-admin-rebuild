@@ -48,8 +48,15 @@ export async function downloadAttachment(url: string): Promise<AttachmentDownloa
   if (!response.ok) {
     let message = '匯出失敗，請稍後再試';
     let code: string | undefined;
+    let text: string | undefined;
     try {
-      const body = (await response.json()) as { message?: string; code?: string };
+      text = await response.text();
+    } catch (e) {
+      // 讀錯誤 body 途中斷線：與 fetch 失敗同樣視為網路錯誤。
+      throw toNetworkError(e);
+    }
+    try {
+      const body = JSON.parse(text) as { message?: string; code?: string };
       if (body.message) message = body.message;
       code = body.code;
     } catch {
@@ -61,7 +68,12 @@ export async function downloadAttachment(url: string): Promise<AttachmentDownloa
   const fileName = fileNameFromContentDisposition(
     response.headers.get('Content-Disposition'),
   );
-  const blob = await response.blob();
+  let blob: Blob;
+  try {
+    blob = await response.blob();
+  } catch (e) {
+    throw toNetworkError(e);
+  }
   const href = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = href;
