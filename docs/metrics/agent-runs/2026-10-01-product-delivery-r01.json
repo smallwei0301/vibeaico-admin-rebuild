@@ -295,6 +295,10 @@
     {
       "ref": "issue/966",
       "title": "#964 審查 LOW／INFO：接受／收款通知信寄送前未確認訂單狀態仍相符"
+    },
+    {
+      "ref": "issue/968",
+      "title": "#46 導遊團體訂單列表待處理申請沒有接受／婉拒按鈕，列上只有紅色取消容易誤按"
     }
   ],
   "main": {
@@ -8602,13 +8606,30 @@
         "startedAt": "2026-10-14T06:39:05Z",
         "completedAt": "2026-10-14T06:39:05Z",
         "note": "Luna metrics capture 綁定 issue/965 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2。#965 盤點為 Luna（TASK_ID 20261014-luna-scout-next-46），盤點同時產出另一候選（tour-orders 列表缺接受按鈕）未採用。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261014-luna-scout-968-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 968,
+        "count": 1,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-14T07:04:12Z",
+        "completedAt": "2026-10-14T07:04:12Z",
+        "note": "Luna metrics capture 綁定 issue/968 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +1。#968 來自 #965 盤點（20261014-luna-scout-965-inventory）第二候選，該盤點已計數，本次不重複計 inventory。actual 未經平台驗證。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 76,
+    "issuesStarted": 77,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -8635,8 +8656,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 162,
-    "lunaAccepted": 153,
+    "lunaTasks": 163,
+    "lunaAccepted": 154,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -8920,7 +8941,9 @@
     "非計分紀錄：#959 Sonnet 預建 05:38:17Z–05:43:28Z，原 commit 131dcd38，cherry-pick 為 9728428e；盤點由主 agent 執行，無 Luna inventory。",
     "非計分補充（#963）：#963 由 Sonnet 預建，時間 2026-10-14T05:59:19Z–06:02:32Z，原 commit f820bc94，cherry-pick 為 1ce3c616；來源為 #954 審查 LOW-3（DEPOSIT 不通知），無 Luna inventory。此段僅為來源說明，不計入 Scorecard 計數。",
     "非計分補充（#965）：#965 由 Sonnet 預建，時間 2026-10-14T06:31:06Z–06:37:59Z，原 commit 35267ad8，cherry-pick 為 4909e215；盤點由 Luna 執行（見 modelUsage.tasks），此段僅為來源說明，不計入 Scorecard 計數。",
-    "非計分補充（#966）：#966 由 Sonnet 預建，時間 2026-10-14T06:39:10Z–06:42:07Z，原 commit 4e701e83，cherry-pick 為 063e6928；來源為 PR #964 審查，無 Luna inventory。此段僅為來源說明，不計入 Scorecard 計數。"
+    "非計分補充（#966）：#966 由 Sonnet 預建，時間 2026-10-14T06:39:10Z–06:42:07Z，原 commit 4e701e83，cherry-pick 為 063e6928；來源為 PR #964 審查，無 Luna inventory。此段僅為來源說明，不計入 Scorecard 計數。",
+    "非計分補充（#968）：#968 由 Sonnet 預建，時間 2026-10-14T06:47:36Z–06:52:08Z，原 commit a5a0c817，cherry-pick 為 386b9c74；來源為 #965 盤點的第二候選（tour-orders 列表缺接受按鈕），不重複計 inventory。此段僅為來源說明，不計入 Scorecard 計數。",
+    "流程失誤紀錄（2026-10-14T07:02Z）：主 agent 對 PR #969 發出合併請求時，Agent WIP Policy 剛回到 pending，合併回傳 405，但同一指令鏈未在失敗時中止，於 issue #966 誤發 SOURCE COMPLETE 留言；隨即更正為 MERGE PENDING，07:03:02Z WIP 通過後重新合併（merge commit 591f4d29）並驗證，再更新留言。與 #942 先前同類失誤相同；改進：合併後續步驟（留言、關單、交接）以合併成功為前提條件。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
