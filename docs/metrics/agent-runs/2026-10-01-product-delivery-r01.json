@@ -287,6 +287,10 @@
     {
       "ref": "issue/963",
       "title": "#46 導遊確認收到訂金後旅客收不到任何通知，不知道訂金是否入帳與尾款金額"
+    },
+    {
+      "ref": "issue/965",
+      "title": "#46 旅客訂單狀態頁要求聯絡店家，但頁面沒有店家 LINE／電話按鈕"
     }
   ],
   "main": {
@@ -8543,13 +8547,47 @@
         "startedAt": "2026-10-14T06:27:50Z",
         "completedAt": "2026-10-14T06:27:50Z",
         "note": "Luna metrics capture 綁定 issue/963 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +1。#963 由主 agent 依 #954 審查 LOW-3（DEPOSIT 不通知）直接開立，無 Luna inventory；本次僅為綁定記帳。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261014-luna-scout-965-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 965,
+        "count": 1,
+        "evidenceRef": "TASK_ID 20261014-luna-scout-next-46",
+        "startedAt": "2026-10-14T06:28:57Z",
+        "completedAt": "2026-10-14T06:30:03Z",
+        "note": "Luna scout 盤點 #46 下一缺口（TASK_ID 20261014-luna-scout-next-46），產出 #965（訂單狀態頁缺店家 LINE／電話聯絡按鈕）；盤點同時產出另一候選（tour-orders 列表缺接受按鈕）未採用。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261014-luna-scout-965-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 965,
+        "count": 1,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-14T06:39:05Z",
+        "completedAt": "2026-10-14T06:39:05Z",
+        "note": "Luna metrics capture 綁定 issue/965 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2。#965 盤點為 Luna（TASK_ID 20261014-luna-scout-next-46），盤點同時產出另一候選（tour-orders 列表缺接受按鈕）未採用。actual 未經平台驗證。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 74,
+    "issuesStarted": 75,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -8576,8 +8614,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 159,
-    "lunaAccepted": 150,
+    "lunaTasks": 161,
+    "lunaAccepted": 152,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -8859,7 +8897,8 @@
     "非計分紀錄：#957 Sonnet 預建 4769324e（05:03:50Z–05:06:50Z），cherry-pick 為 a5de2208。",
     "非計分紀錄：#957 inventory 與 #954 為同一次盤點，依 Codex P2 移除重複計數。",
     "非計分紀錄：#959 Sonnet 預建 05:38:17Z–05:43:28Z，原 commit 131dcd38，cherry-pick 為 9728428e；盤點由主 agent 執行，無 Luna inventory。",
-    "非計分補充（#963）：#963 由 Sonnet 預建，時間 2026-10-14T05:59:19Z–06:02:32Z，原 commit f820bc94，cherry-pick 為 1ce3c616；來源為 #954 審查 LOW-3（DEPOSIT 不通知），無 Luna inventory。此段僅為來源說明，不計入 Scorecard 計數。"
+    "非計分補充（#963）：#963 由 Sonnet 預建，時間 2026-10-14T05:59:19Z–06:02:32Z，原 commit f820bc94，cherry-pick 為 1ce3c616；來源為 #954 審查 LOW-3（DEPOSIT 不通知），無 Luna inventory。此段僅為來源說明，不計入 Scorecard 計數。",
+    "非計分補充（#965）：#965 由 Sonnet 預建，時間 2026-10-14T06:31:06Z–06:37:59Z，原 commit 35267ad8，cherry-pick 為 4909e215；盤點由 Luna 執行（見 modelUsage.tasks），此段僅為來源說明，不計入 Scorecard 計數。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
