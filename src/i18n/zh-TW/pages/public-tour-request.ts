@@ -134,6 +134,8 @@ export const publicTourRequestPage = {
     confirmedDescription: (deadline: string) => `請於 ${deadline} 前完成付款，逾期名額將被釋放。`,
     confirmedNoDeadlineDescription: '店家已確認，請與店家確認付款方式與期限。',
     cancelledTitle: '此訂單已取消',
+    /** #944：店家拒絕申請時留下的說明區塊標題。 */
+    shopMessageTitle: '店家說明',
     cancelledDescription: '此訂單已取消（可能是店家未確認、無法成行，或逾期未付款）。如需再次預約，請回到行程頁重新選擇，或改用 LINE／電話聯絡店家。',
     /** #917：已付款（PAID／PARTIAL／REFUND_PENDING）的取消單不可說「導遊婉拒」。 */
     cancelledPaidDescription: '此訂單已取消。您已付款的部分，退款事宜請與店家確認。',

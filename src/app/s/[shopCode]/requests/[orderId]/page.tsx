@@ -29,6 +29,7 @@ import {
   formatInstantInTimeZone,
   formatPlainDateWithWeekday,
   isLockedBooking,
+  travelerVisibleRejectReason,
 } from '@/lib/public-order-format';
 import type { TourOrder } from '@/lib/types';
 
@@ -97,7 +98,9 @@ function StatusBody({ order, timeZone }: { order: TourOrder; timeZone: string })
     );
   }
   if (order.status === 'CANCELLED') {
+    const shopMessage = travelerVisibleRejectReason(order);
     return (
+      <>
       <section className="card">
         <div className="card-body flex flex-col gap-2">
           <h1 className="text-xl font-semibold text-danger">{t.status.cancelledTitle}</h1>
@@ -110,6 +113,15 @@ function StatusBody({ order, timeZone }: { order: TourOrder; timeZone: string })
           </p>
         </div>
       </section>
+      {shopMessage ? (
+        <section className="card">
+          <div className="card-body flex flex-col gap-1">
+            <h2 className="text-base font-medium">{t.status.shopMessageTitle}</h2>
+            <p className="whitespace-pre-line text-sm text-secondary">{shopMessage}</p>
+          </div>
+        </section>
+      ) : null}
+      </>
     );
   }
   return (

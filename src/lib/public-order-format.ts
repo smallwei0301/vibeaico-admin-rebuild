@@ -1,3 +1,4 @@
+import { TOUR_ORDER_AUTO_EXPIRE_REASON } from '@/lib/tour-reject-reason';
 import { PUBLIC_DEFAULT_TIME_ZONE, resolvePublicTimeZone } from '@/lib/public-time-zone';
 
 /**
@@ -47,4 +48,26 @@ export function cancelledCopyKind(paymentStatus: string | null | undefined): Can
 /** 已鎖位的非申請制訂單（FIXED_DEPARTURE／INSTANT）；salesMode 未知時視同申請制，與 PENDING 分支一致。 */
 export function isLockedBooking(order: { salesMode?: string | null }): boolean {
   return order.salesMode !== undefined && order.salesMode !== null && order.salesMode !== 'REQUEST';
+}
+
+/**
+ * #944：旅客狀態頁可見的「店家說明」。`cancel_reason` 是自由文字欄位、沒有寫入者欄位，
+ * 所以用最保守的組合判斷（缺一不顯示）：
+ *   - 已取消、方案為 REQUEST（拒絕申請只存在於 REQUEST 單）；
+ *   - 未付款（已付款／退款流程的取消單理由可能含退款備註，不對外）；
+ *   - 理由非空，且不是 `expire_tour_order` 的系統逾期標記（唯一已知的系統寫入者，見 cron）。
+ * 其餘一律回 null。回傳為純文字，呼叫端以 React 文字節點渲染（自動跳脫）。
+ */
+export function travelerVisibleRejectReason(order: {
+  status: string;
+  paymentStatus: string;
+  salesMode?: string | null;
+  cancelReason?: string | null;
+}): string | null {
+  if (order.status !== 'CANCELLED') return null;
+  if (order.salesMode !== 'REQUEST') return null;
+  if (order.paymentStatus !== 'UNPAID') return null;
+  const reason = (order.cancelReason ?? '').trim();
+  if (!reason || reason === TOUR_ORDER_AUTO_EXPIRE_REASON) return null;
+  return reason;
 }

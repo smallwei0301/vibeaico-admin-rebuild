@@ -13,6 +13,7 @@
  */
 import { mapTourOrder } from './mappers';
 import type { TourOrder } from '@/lib/types';
+import { TOUR_ORDER_AUTO_EXPIRE_REASON } from '@/lib/tour-reject-reason';
 
 type AnyClient = {
   from: (table: string) => any;
@@ -25,7 +26,7 @@ type AnyClient = {
  * 自硬編同一段中文字面值而日後漂移——那正是 #44 用來把「系統因逾期未付款取消」
  * 與「人工取消」分開判讀的唯一可靠訊號，因為現有 schema 沒有另外的取消者欄位。
  */
-export const TOUR_ORDER_AUTO_EXPIRE_REASON = '未在保留期限內完成付款，系統自動取消';
+export { TOUR_ORDER_AUTO_EXPIRE_REASON };
 
 /** 一批 tour_orders 列 → TourOrder[]，關聯值以 4 趟 `.in()` 查詢補齊 */
 export async function hydrateTourOrders(

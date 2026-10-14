@@ -997,7 +997,7 @@ export const cancelTourOrder = (id: string, reason?: string) =>
     requireMockTourOrderTransition(o, 'CANCELLED');
     if (shouldReleaseSeats(o.status)) releaseMockDeparture(o);
     o.status = 'CANCELLED';
-    void reason;
+    o.cancelReason = reason?.trim() || undefined;
   }, () =>
     request<void>(`/api/tour-orders/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }));
 

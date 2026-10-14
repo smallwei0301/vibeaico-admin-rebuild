@@ -648,6 +648,8 @@ export type TourOrder = {
   seatsReserved?: boolean;
   /** #938：訂單指定的收款方式 id（tour_orders.payment_method_id）；未指定為 undefined。 */
   paymentMethodId?: string;
+  /** #944：tour_orders.cancel_reason 原值（可能是系統逾期標記）；面向旅客請一律經 travelerVisibleRejectReason。 */
+  cancelReason?: string;
 };
 
 /* -------------------------------------------------------------- 行事曆 */
