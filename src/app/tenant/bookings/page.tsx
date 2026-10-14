@@ -271,6 +271,13 @@ export default function BookingsPage() {
       const result = await download({
         from: startDate || undefined,
         to: endDate || undefined,
+        /* #974：匯出套用與列表相同的篩選。 */
+        statuses: status === 'UNPROCESSED' ? ['PENDING', 'CONFIRMED'] : undefined,
+        status: (REAL_STATUSES as string[]).includes(status) ? status : undefined,
+        excludeCancelled: !showCancelled && status !== 'CANCELLED' ? true : undefined,
+        paymentStatus: paymentStatusFilter || undefined,
+        keyword: keyword || undefined,
+        startBefore: status === 'UNPROCESSED' ? new Date().toISOString() : undefined,
       });
       // 檔名一律取自後端的 Content-Disposition（見 services/download.ts），
       // 前端不自組——自組檔名正是 #246 修掉的缺陷之一。

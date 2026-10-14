@@ -379,6 +379,13 @@ export const exportCustomersExcel = () =>
 export type ExportBookingsQuery = {
   from?: string;
   to?: string;
+  /** #974：與預約列表同語意的篩選，匯出所見即所得。 */
+  status?: string;
+  statuses?: string[];
+  excludeCancelled?: boolean;
+  paymentStatus?: string;
+  keyword?: string;
+  startBefore?: string;
 };
 
 /**
@@ -398,6 +405,12 @@ const bookingsExportUrl = (format: 'csv' | 'xlsx', q?: ExportBookingsQuery) => {
   const params = new URLSearchParams();
   if (q?.from) params.set('from', q.from);
   if (q?.to) params.set('to', q.to);
+  if (q?.status) params.set('status', q.status);
+  if (q?.statuses?.length) params.set('statuses', q.statuses.join(','));
+  if (q?.excludeCancelled) params.set('excludeCancelled', 'true');
+  if (q?.paymentStatus) params.set('paymentStatus', q.paymentStatus);
+  if (q?.keyword?.trim()) params.set('keyword', q.keyword.trim());
+  if (q?.startBefore) params.set('startBefore', q.startBefore);
   const query = params.toString();
   return `${API_BASE}/api/export/bookings/${format}${query ? `?${query}` : ''}`;
 };
