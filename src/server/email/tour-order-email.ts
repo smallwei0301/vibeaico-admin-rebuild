@@ -19,6 +19,16 @@ import { checkRateLimit, peekRateLimit } from '@/server/rate-limit';
 import { sendTourOrderStatusEmail } from './send';
 import type { TourOrderStatusEmailKind } from './templates';
 
+/** 重讀後的訂單是否仍符合該通知的情境（接受後為 CONFIRMED＋UNPAID；收訂金為 CONFIRMED＋PARTIAL；收款為 PAID）。 */
+function isStillCurrent(kind: TourOrderStatusEmailKind, row: Record<string, unknown>): boolean {
+  switch (kind) {
+    case 'ACCEPTED': return row.status === 'CONFIRMED' && row.payment_status === 'UNPAID';
+    case 'DEPOSIT_RECEIVED': return row.status === 'CONFIRMED' && row.payment_status === 'PARTIAL';
+    case 'PAID': return row.payment_status === 'PAID';
+    default: return true;
+  }
+}
+
 export async function notifyTravelerTourOrderStatus(
   tenantId: string, orderId: string, kind: TourOrderStatusEmailKind,
 ): Promise<void> {
@@ -28,9 +38,9 @@ export async function notifyTravelerTourOrderStatus(
       .eq('tenant_id', tenantId).eq('id', orderId).maybeSingle();
     if (error) throw error;
     if (!row) return;
-    // after() 時才重讀：若導遊連點（補尾款 PARTIAL→PAID）或訂單已取消，訂金信內容會過時，直接略過。
-    if (kind === 'DEPOSIT_RECEIVED' && (row.payment_status !== 'PARTIAL' || row.status !== 'CONFIRMED')) {
-      console.info('[tour-order-email] 訂單已非已收訂金狀態，略過訂金信', orderId);
+    // after() 時才重讀：若狀態在回應後又變動（導遊連點、訂單取消），原通知內容已過時，直接略過。
+    if (!isStillCurrent(kind, row as Record<string, unknown>)) {
+      console.info('[tour-order-email] 訂單狀態已變動，略過過時通知', kind, orderId);
       return;
     }
     const contact = (row.contact ?? {}) as Record<string, unknown>;
