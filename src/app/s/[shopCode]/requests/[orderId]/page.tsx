@@ -18,6 +18,8 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { loadPublicShopTimeZone, loadPublicTourRequestStatus } from '@/server/public-tour-request';
+import { loadPublicShopContact } from '@/server/public-shop';
+import { PublicContactActions } from '@/components/public/PublicContactActions';
 import { loadPublicPaymentMethods } from '@/server/public-payment-methods';
 import { shouldShowPaymentMethods } from '@/lib/public-payment-methods';
 import { PaymentMethodsSection } from '@/components/public/PaymentMethodsSection';
@@ -148,6 +150,11 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
   // #938：存取驗證（contact 比對）已通過才會走到這裡；只在未付款且未取消時才查收款方式。
   const paymentMethods = shouldShowPaymentMethods(order) ? await loadPublicPaymentMethods(shopCode, { preferredId: order.paymentMethodId }) : null;
 
+  // #965：存取驗證已通過；店家頁同一套公開規則取得聯絡方式。完全沒填就不渲染（不出現死按鈕）。
+  const contactShop = await loadPublicShopContact(shopCode);
+  const hasShopContact = contactShop != null
+    && Boolean(contactShop.lineBasicId || contactShop.phone || contactShop.email);
+
   const justCreatedBanner = created === '1' && order.status === 'PENDING';
   const justCreated = created === '1';
 
@@ -214,6 +221,15 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
           </p>
         </div>
       </section>
+
+      {contactShop && hasShopContact ? (
+        <section className="card">
+          <div className="card-body flex flex-col gap-3">
+            <h2 className="text-base font-medium">{t.status.contact.title}</h2>
+            <PublicContactActions shop={contactShop} labels={t.status.contact} />
+          </div>
+        </section>
+      ) : null}
 
       {justCreated ? null : <SaveStatusLink prominent={false} />}
 
