@@ -19,6 +19,16 @@ import { checkRateLimit, peekRateLimit } from '@/server/rate-limit';
 import { sendTourOrderStatusEmail } from './send';
 import type { TourOrderStatusEmailKind } from './templates';
 
+/** 重讀後的訂單是否仍符合該通知的情境（接受後為 CONFIRMED＋UNPAID；收訂金為 CONFIRMED＋PARTIAL；收款為 PAID）。 */
+function isStillCurrent(kind: TourOrderStatusEmailKind, row: Record<string, unknown>): boolean {
+  switch (kind) {
+    case 'ACCEPTED': return row.status === 'CONFIRMED' && row.payment_status === 'UNPAID';
+    case 'DEPOSIT_RECEIVED': return row.status === 'CONFIRMED' && row.payment_status === 'PARTIAL';
+    case 'PAID': return row.status !== 'CANCELLED' && row.payment_status === 'PAID';
+    default: return true;
+  }
+}
+
 export async function notifyTravelerTourOrderStatus(
   tenantId: string, orderId: string, kind: TourOrderStatusEmailKind,
 ): Promise<void> {
@@ -28,9 +38,9 @@ export async function notifyTravelerTourOrderStatus(
       .eq('tenant_id', tenantId).eq('id', orderId).maybeSingle();
     if (error) throw error;
     if (!row) return;
-    // after() 時才重讀：若導遊連點（補尾款 PARTIAL→PAID）或訂單已取消，訂金信內容會過時，直接略過。
-    if (kind === 'DEPOSIT_RECEIVED' && (row.payment_status !== 'PARTIAL' || row.status !== 'CONFIRMED')) {
-      console.info('[tour-order-email] 訂單已非已收訂金狀態，略過訂金信', orderId);
+    // after() 時才重讀：若狀態在回應後又變動（導遊連點、訂單取消），原通知內容已過時，直接略過。
+    if (!isStillCurrent(kind, row as Record<string, unknown>)) {
+      console.info('[tour-order-email] 訂單狀態已變動，略過過時通知', kind, orderId);
       return;
     }
     const contact = (row.contact ?? {}) as Record<string, unknown>;
@@ -48,6 +58,17 @@ export async function notifyTravelerTourOrderStatus(
 
     const [order] = await hydrateTourOrders(admin, tenantId, [row]);
     if (!order) return;
+
+    // 上面的 tenant 查詢與 hydrate 都有 await，期間訂單可能又被取消／收款：寄送前再讀一次狀態。
+    // 只對有守門的 kind 多查一次。仍有極小空窗（讀完到 Resend 送出之間），徹底消除需 outbox（#945）。
+    if (kind === 'ACCEPTED' || kind === 'PAID' || kind === 'DEPOSIT_RECEIVED') {
+      const { data: fresh, error: fErr } = await admin.from('tour_orders').select('status, payment_status')
+        .eq('tenant_id', tenantId).eq('id', orderId).maybeSingle();
+      if (fErr || !fresh || !isStillCurrent(kind, fresh as Record<string, unknown>)) {
+        console.info('[tour-order-email] 寄送前訂單狀態已變動或無法確認，略過過時通知', kind, orderId);
+        return;
+      }
+    }
 
     const money = (n: unknown): number | null => {
       const v = typeof n === 'string' && n.trim() === '' ? NaN : Number(n);

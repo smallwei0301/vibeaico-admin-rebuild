@@ -59,7 +59,7 @@ describe('notifyTravelerTourOrderStatus', () => {
   beforeEach(() => {
     sendMock.mockClear();
     process.env.RESEND_API_KEY = 'k';
-    orderRow = { id: 'o1', contact: { email: ' T@Example.com ' } };
+    orderRow = { id: 'o1', contact: { email: ' T@Example.com ' }, status: 'CONFIRMED', payment_status: 'UNPAID' };
     hydrated = {
       orderNo: 'N1', tripTitle: '行程', planName: '方案', departsOn: '2026-11-01',
       holdExpiresAt: '2026-10-20T10:00:00.000Z', status: 'CANCELLED', paymentStatus: 'UNPAID',
@@ -82,6 +82,7 @@ describe('notifyTravelerTourOrderStatus', () => {
     const { notifyTravelerTourOrderStatus } = await import('@/server/email/tour-order-email');
     await notifyTravelerTourOrderStatus('t1', 'o1', 'REJECTED');
     expect(sendMock.mock.calls[0][0].html).toContain('行程調整');
+    orderRow = { ...orderRow, payment_status: 'PAID' };
     await notifyTravelerTourOrderStatus('t1', 'o1', 'PAID');
     expect(sendMock.mock.calls[1][0].html).not.toContain('行程調整');
     expect(sendMock.mock.calls[1][0].html).not.toContain('付款期限');
@@ -89,10 +90,10 @@ describe('notifyTravelerTourOrderStatus', () => {
 
   it('沒有 email 不寄；無 RESEND_API_KEY 不丟錯', async () => {
     const { notifyTravelerTourOrderStatus } = await import('@/server/email/tour-order-email');
-    orderRow = { id: 'o1', contact: { phone: '0912' } };
+    orderRow = { id: 'o1', contact: { phone: '0912' }, status: 'CONFIRMED', payment_status: 'UNPAID' };
     await notifyTravelerTourOrderStatus('t1', 'o1', 'ACCEPTED');
     expect(sendMock).not.toHaveBeenCalled();
-    orderRow = { id: 'o1', contact: { email: 'a@b.co' } };
+    orderRow = { id: 'o1', contact: { email: 'a@b.co' }, status: 'CONFIRMED', payment_status: 'UNPAID' };
     delete process.env.RESEND_API_KEY;
     await expect(notifyTravelerTourOrderStatus('t1', 'o1', 'ACCEPTED')).resolves.toBeUndefined();
     expect(sendMock).not.toHaveBeenCalled();
