@@ -256,6 +256,7 @@ export const tripsPage = {
       childPriceRemove: '取消兒童價格',
       activeHelp: '暫停後，這個方案不會提供新的旅客訂單選擇。',
       previewTitle: '公開頁預覽',
+      previewPricePlaceholder: '—',
       previewEmpty: '儲存方案名稱與內容後，這裡會顯示公開頁預覽摘要。',
       previewLink: '開啟商店頁預覽',
       listedAdvancedHint: '可開啟進階設定檢視販售方式、人數、成團規則、訂金、時長與季節定價，目前僅供檢視。',

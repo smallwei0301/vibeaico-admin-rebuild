@@ -546,9 +546,15 @@ export default function TripDetailPage() {
 
       if (USE_MOCK) {
         const isNew = !planDraft.id;
+        // 進階存檔不驗證 basePrice：快速編輯清空後切過來時 planDraft.basePrice 為 NaN，
+        // 不得寫回列表；以原方案值補回（新方案則為 0）。
+        const original = plans.find((p) => p.id === planDraft.id);
+        const safeDraft: TripPlan = Number.isFinite(planDraft.basePrice)
+          ? planDraft
+          : { ...planDraft, basePrice: original?.basePrice ?? 0 };
         const saved: TripPlan = isNew
-          ? { ...planDraft, id: `pl_new_${plans.length + 1}`, sortOrder: plans.length + 1 }
-          : planDraft;
+          ? { ...safeDraft, id: `pl_new_${plans.length + 1}`, sortOrder: plans.length + 1 }
+          : safeDraft;
         setPlans((prev) => (isNew
           ? [...prev, saved]
           : prev.map((p) => (p.id === saved.id ? saved : p))));
@@ -1599,7 +1605,7 @@ export default function TripDetailPage() {
                       <p className="mt-1 text-sm text-secondary">{planDraft.description.trim()}</p>
                     ) : null}
                     <p className="mt-2 text-sm font-semibold text-primary">
-                      {formatCurrency(planDraft.basePrice)}{t.plans.priceTypeSuffix[planDraft.priceType]}
+                      {Number.isFinite(planDraft.basePrice) ? formatCurrency(planDraft.basePrice) : t.plans.quick.previewPricePlaceholder}{t.plans.priceTypeSuffix[planDraft.priceType]}
                     </p>
                   </div>
                 </div>

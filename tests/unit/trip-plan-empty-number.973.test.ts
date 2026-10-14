@@ -33,3 +33,18 @@ describe('#973 清空數字欄位不得默默變 0', () => {
     expect(src).toContain("durationMinutes') {");
   });
 });
+
+describe('#973 基本價 NaN 不外洩到預覽卡與 mock 列表', () => {
+  const src = readFileSync(resolve(__dirname, '../../src/app/tenant/trips/[id]/page.tsx'), 'utf8');
+
+  it('預覽卡對非有限基本價顯示佔位，不呼叫 formatCurrency(NaN)', () => {
+    expect(src).toContain('Number.isFinite(planDraft.basePrice) ? formatCurrency(planDraft.basePrice)');
+    expect(src).toContain('t.plans.quick.previewPricePlaceholder');
+  });
+
+  it('mock 存檔不直接寫回含 NaN 的 planDraft', () => {
+    expect(src).toContain('const safeDraft: TripPlan = Number.isFinite(planDraft.basePrice)');
+    expect(src).toContain('original?.basePrice ?? 0');
+    expect(src).not.toMatch(/\{ \.\.\.planDraft, id: `pl_new_/);
+  });
+});
