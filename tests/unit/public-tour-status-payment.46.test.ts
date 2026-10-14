@@ -30,6 +30,8 @@ const imports: Record<string, unknown> = {
   'next/navigation': { notFound },
   'next/link': { default: (props: React.ComponentProps<'a'>) => React.createElement('a', props) },
   '@/server/public-tour-request': { loadPublicTourRequestStatus: loader, loadPublicShopTimeZone: tzLoader },
+  '@/server/public-shop': { loadPublicShopContact: async () => null },
+  '@/components/public/PublicContactActions': { PublicContactActions: () => null },
   '@/server/public-payment-methods': { loadPublicPaymentMethods: async () => [] },
   '@/components/public/PaymentMethodsSection': { PaymentMethodsSection },
   '@/components/public/SaveStatusLink': { SaveStatusLink },

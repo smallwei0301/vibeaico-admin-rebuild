@@ -754,6 +754,24 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
  */
 export const loadPublicShop = cache(loadPublicShopUncached);
 
+/**
+ * #965：旅客訂單狀態頁用的店家公開聯絡資訊。只讀店家本體（不查行程／方案／團次），
+ * 並套用與行程詳情頁相同的輸出邊界 `limitPublicShopText`（phone／email／lineBasicId
+ * 超長或格式不合就不輸出），所以公開的欄位不會比店家頁／行程詳情頁多。
+ * 找不到店家、或讀取失敗都回 null——聯絡按鈕是輔助資訊，不應讓狀態頁整頁失敗。
+ */
+async function loadPublicShopContactUncached(shopCode: string): Promise<PublicShop | null> {
+  try {
+    const core = await loadPublicShopCore(createAdminSupabase(), shopCode);
+    return core ? limitPublicShopText(core.shop) : null;
+  } catch (error) {
+    console.error('[public-shop] 讀取店家聯絡資訊失敗', { shopCode, error });
+    return null;
+  }
+}
+
+export const loadPublicShopContact = cache(loadPublicShopContactUncached);
+
 function queryTripDetailsFailed(stage: string, cause: unknown): Error {
   return new Error(`PUBLIC_TRIP_DETAILS_QUERY_FAILED:${stage}`, { cause });
 }

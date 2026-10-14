@@ -100,6 +100,14 @@ export const publicTourRequestPage = {
       copied: '已複製',
       copyFailed: '無法自動複製，請手動複製網址列的連結',
     },
+    /** #965：狀態頁的店家聯絡區塊（文案提到「請聯絡店家」時要真的有入口）。 */
+    contact: {
+      title: '聯絡店家',
+      viaLine: '用 LINE 聯絡店家',
+      viaPhone: (phone: string) => `撥打 ${phone}`,
+      viaEmail: (email: string) => `寄信到 ${email}`,
+      noContact: '',
+    },
     paymentTitle: '付款狀態',
     paymentMethods: {
       title: '付款方式',
