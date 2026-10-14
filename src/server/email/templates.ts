@@ -158,7 +158,7 @@ export const productOrderReceiptHtml = (p: ProductOrderReceiptDetails): string =
 
 /** SUBMITTED_BOOKING／SUBMITTED_REQUEST 為旅客送出當下的確認信（#957） */
 export type TourOrderStatusEmailKind =
-  | 'ACCEPTED' | 'REJECTED' | 'PAID' | 'SUBMITTED_BOOKING' | 'SUBMITTED_REQUEST';
+  | 'ACCEPTED' | 'REJECTED' | 'PAID' | 'DEPOSIT_RECEIVED' | 'SUBMITTED_BOOKING' | 'SUBMITTED_REQUEST';
 
 export interface TourOrderStatusEmailDetails {
   shopName: string;
@@ -173,6 +173,10 @@ export interface TourOrderStatusEmailDetails {
   rejectReason?: string | null;
   /** SUBMITTED_BOOKING：已格式化的訂單金額（例如 NT$ 12,000）；空則不渲染 */
   totalText?: string | null;
+  /** DEPOSIT_RECEIVED：已格式化的已收訂金（例如 NT$ 3,000）；空則不渲染 */
+  paidText?: string | null;
+  /** DEPOSIT_RECEIVED：已格式化的尚餘尾款；空（含 0）則不渲染 */
+  balanceText?: string | null;
   statusUrl: string;
 }
 
@@ -180,6 +184,7 @@ export const TOUR_ORDER_STATUS_EMAIL_COPY: Record<TourOrderStatusEmailKind, { su
   ACCEPTED: { subject: '申請已被接受，請完成付款', title: '您的申請已被接受', lead: '店家已接受您的申請，名額已為您保留。請在期限內完成付款。' },
   REJECTED: { subject: '很抱歉，申請未能成立', title: '您的申請未能成立', lead: '很抱歉，店家這次無法接受您的申請。' },
   PAID: { subject: '已確認收款', title: '店家已確認收款', lead: '店家已確認收到您的款項，感謝您的預訂。' },
+  DEPOSIT_RECEIVED: { subject: '已確認收到訂金', title: '店家已確認收到訂金', lead: '店家已確認收到您的訂金，名額已為您保留；尾款請依店家指示於出發前付清。' },
   SUBMITTED_BOOKING: { subject: '預約已送出', title: '您的預約已送出', lead: '我們已收到您的預約，以下是訂單摘要。您可隨時由下方連結查看訂單狀態。' },
   SUBMITTED_REQUEST: { subject: '申請已送出，等候店家回覆', title: '您的申請已送出，等候店家回覆', lead: '我們已收到您的申請，目前等候店家回覆。店家接受後，會再寄信通知您付款期限；您也可隨時由下方連結查看訂單狀態。' },
 };
@@ -189,6 +194,8 @@ export const tourOrderStatusHtml = (kind: TourOrderStatusEmailKind, p: TourOrder
   const reason = (p.rejectReason ?? '').trim();
   const deadline = (p.deadlineText ?? '').trim();
   const total = (p.totalText ?? '').trim();
+  const paid = (p.paidText ?? '').trim();
+  const balance = (p.balanceText ?? '').trim();
   return shell(c.title, `
   <p style="font-size:14px;color:#3A3A3C;">${c.lead}</p>
   <table style="font-size:14px;color:#3A3A3C;line-height:2;">
@@ -197,6 +204,8 @@ export const tourOrderStatusHtml = (kind: TourOrderStatusEmailKind, p: TourOrder
     <tr><td style="color:#8E8E93;">行程／方案</td><td>${esc(p.tripTitle)}／${esc(p.planName)}</td></tr>
     <tr><td style="color:#8E8E93;">出發日期</td><td>${esc(p.departsOn)}</td></tr>
     ${kind === 'SUBMITTED_BOOKING' && total ? `<tr><td style="color:#8E8E93;">訂單金額</td><td>${esc(total)}</td></tr>` : ''}
+    ${kind === 'DEPOSIT_RECEIVED' && paid ? `<tr><td style="color:#8E8E93;">已收訂金</td><td>${esc(paid)}</td></tr>` : ''}
+    ${kind === 'DEPOSIT_RECEIVED' && balance ? `<tr><td style="color:#8E8E93;">尚餘尾款</td><td>${esc(balance)}</td></tr>` : ''}
     ${kind === 'ACCEPTED' && deadline ? `<tr><td style="color:#8E8E93;">付款期限</td><td>${esc(deadline)}</td></tr>` : ''}
   </table>
   ${kind === 'REJECTED' && reason ? `<p style="font-size:14px;color:#3A3A3C;white-space:pre-wrap;margin:16px 0;

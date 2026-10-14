@@ -93,6 +93,8 @@ export const POST = handle(async (req, { params }: Context) => {
   if (!data) return fail(409, '此訂單狀態已變更', ERR.CONFLICT);
   if (kind === 'FULL') {
     scheduleTravelerTourOrderNotice(t.tenantId, id, 'PAID');
+  } else {
+    scheduleTravelerTourOrderNotice(t.tenantId, id, 'DEPOSIT_RECEIVED');
   }
   const [order] = await hydrateTourOrders(t.supabase, t.tenantId, [data]);
   return ok(order);

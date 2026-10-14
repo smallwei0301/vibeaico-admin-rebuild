@@ -283,6 +283,10 @@
     {
       "ref": "issue/959",
       "title": "網路中斷時全站錯誤訊息顯示英文 Failed to fetch／Load failed"
+    },
+    {
+      "ref": "issue/963",
+      "title": "#46 導遊確認收到訂金後旅客收不到任何通知，不知道訂金是否入帳與尾款金額"
     }
   ],
   "main": {
@@ -8522,13 +8526,30 @@
         "startedAt": "2026-10-14T05:57:23Z",
         "completedAt": "2026-10-14T05:57:49Z",
         "note": "Luna metrics capture 綁定 issue/959 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +1。本次盤點由主 agent 於 source 盤點時直接發現（grep 到 128 處頁面顯示原生錯誤），無另外 Luna inventory。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261014-luna-scout-963-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 963,
+        "count": 1,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-14T06:27:50Z",
+        "completedAt": "2026-10-14T06:27:50Z",
+        "note": "Luna metrics capture 綁定 issue/963 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +1。#963 由主 agent 依 #954 審查 LOW-3（DEPOSIT 不通知）直接開立，無 Luna inventory；本次僅為綁定記帳。actual 未經平台驗證。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 73,
+    "issuesStarted": 74,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -8555,8 +8576,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 158,
-    "lunaAccepted": 149,
+    "lunaTasks": 159,
+    "lunaAccepted": 150,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -8837,7 +8858,8 @@
     "非計分紀錄：PR #953 merge 為 2db45afa（2026-10-14T04:50:43Z）；#954 Sonnet 預建 dfdc3da8（04:48:39Z–04:59:52Z）。",
     "非計分紀錄：#957 Sonnet 預建 4769324e（05:03:50Z–05:06:50Z），cherry-pick 為 a5de2208。",
     "非計分紀錄：#957 inventory 與 #954 為同一次盤點，依 Codex P2 移除重複計數。",
-    "非計分紀錄：#959 Sonnet 預建 05:38:17Z–05:43:28Z，原 commit 131dcd38，cherry-pick 為 9728428e；盤點由主 agent 執行，無 Luna inventory。"
+    "非計分紀錄：#959 Sonnet 預建 05:38:17Z–05:43:28Z，原 commit 131dcd38，cherry-pick 為 9728428e；盤點由主 agent 執行，無 Luna inventory。",
+    "非計分補充（#963）：#963 由 Sonnet 預建，時間 2026-10-14T05:59:19Z–06:02:32Z，原 commit f820bc94，cherry-pick 為 1ce3c616；來源為 #954 審查 LOW-3（DEPOSIT 不通知），無 Luna inventory。此段僅為來源說明，不計入 Scorecard 計數。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
