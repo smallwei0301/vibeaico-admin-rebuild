@@ -5,6 +5,18 @@
 import { publicTourRequestPage as t } from '@/i18n/zh-TW/pages/public-tour-request';
 import type { PublicPaymentMethod } from '@/lib/public-payment-methods';
 
+/** QR 網址：trim 後以 URL parser 解析，只有 https: 才回傳可渲染的網址。 */
+export function safeHttpsUrl(raw: string): string | null {
+  const v = raw.trim();
+  if (!v) return null;
+  try {
+    const u = new URL(v);
+    return u.protocol === 'https:' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 export function PaymentMethodsSection({ methods }: { methods: PublicPaymentMethod[] }) {
   const pm = t.status.paymentMethods;
   return (
@@ -18,6 +30,7 @@ export function PaymentMethodsSection({ methods }: { methods: PublicPaymentMetho
             <p className="text-sm text-secondary">{pm.intro}</p>
             <ul className="flex flex-col gap-3">
               {methods.map((m) => {
+                const qrUrl = safeHttpsUrl(m.qrImageUrl);
                 const bank = [m.bankName, m.bankCode].filter(Boolean).join(' ');
                 return (
                   <li key={m.id} className="flex flex-col gap-1 rounded-lg border border-neutral p-3 text-sm">
@@ -33,15 +46,17 @@ export function PaymentMethodsSection({ methods }: { methods: PublicPaymentMetho
                       </dl>
                     ) : null}
                     {m.instructions ? <p className="whitespace-pre-line text-secondary">{m.instructions}</p> : null}
-                    {m.qrImageUrl.startsWith('https://') ? (
+                    {qrUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={m.qrImageUrl} alt={pm.qrAlt(m.displayName || pm.types[m.methodType])} className="h-40 w-40 max-w-full object-contain" />
+                      <img src={qrUrl} alt={pm.qrAlt(m.displayName || pm.types[m.methodType])} className="h-40 w-40 max-w-full object-contain" />
                     ) : null}
                   </li>
                 );
               })}
             </ul>
-            <p className="text-sm text-secondary">{pm.afterTransferNote}</p>
+            {methods.some((m) => m.methodType === 'BANK_TRANSFER') ? (
+              <p className="text-sm text-secondary">{pm.afterTransferNote}</p>
+            ) : null}
           </>
         )}
       </div>

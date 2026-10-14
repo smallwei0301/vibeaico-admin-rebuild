@@ -27,7 +27,9 @@ export function toPublicPaymentMethod(r: Record<string, unknown>): PublicPayment
   };
 }
 
-export async function loadPublicPaymentMethods(shopCode: string): Promise<PublicPaymentMethod[]> {
+export async function loadPublicPaymentMethods(
+  shopCode: string, opts: { preferredId?: string } = {},
+): Promise<PublicPaymentMethod[]> {
   if (!SHOP_CODE_PATTERN.test(shopCode)) return [];
   const admin = createAdminSupabase();
   const { data: tenant, error: tErr } = await admin
@@ -42,7 +44,13 @@ export async function loadPublicPaymentMethods(shopCode: string): Promise<Public
     .neq('method_type', 'ONLINE_PAYMENT')
     .order('sort_order', { ascending: true }).order('created_at', { ascending: true });
   if (error) throw new Error(`tenant_payment_methods 查詢失敗：${error.message}`);
-  return (data ?? [])
+  const all = (data ?? [])
     .map((r) => toPublicPaymentMethod(r as Record<string, unknown>))
     .filter((m): m is PublicPaymentMethod => m !== null && m.methodType !== 'ONLINE_PAYMENT'); // 與 .neq 雙保險
+  // 訂單指定了收款方式且仍啟用（同 tenant、非 ONLINE_PAYMENT）→ 只顯示該筆；否則回退全部。
+  if (opts.preferredId) {
+    const hit = all.find((m) => m.id === opts.preferredId);
+    if (hit) return [hit];
+  }
+  return all;
 }

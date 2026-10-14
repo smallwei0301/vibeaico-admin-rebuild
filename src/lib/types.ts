@@ -644,6 +644,10 @@ export type TourOrder = {
   salesMode?: TripSalesMode;
   /** #46：成交當下取消／退款政策 snapshot；null/undefined 代表尚未提供。 */
   refundPolicySnapshot?: 'STANDARD' | 'FLEXIBLE' | 'STRICT' | null;
+  /** #938：訂單是否實際占位（tour_orders.seats_reserved，0111）；欄位缺失時保持 undefined。 */
+  seatsReserved?: boolean;
+  /** #938：訂單指定的收款方式 id（tour_orders.payment_method_id）；未指定為 undefined。 */
+  paymentMethodId?: string;
 };
 
 /* -------------------------------------------------------------- 行事曆 */

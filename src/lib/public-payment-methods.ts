@@ -3,7 +3,7 @@
  * 純函式，不依賴 server；loader 在 `src/server/public-payment-methods.ts`。
  */
 import type { TourOrder } from '@/lib/types';
-import { isLockedBooking } from '@/lib/public-order-format';
+import { isAwaitingPayment } from '@/server/tour-domain';
 
 export type PublicPaymentMethodType =
   'LINE_PAY' | 'JKOPAY' | 'BANK_TRANSFER' | 'CASH' | 'ONLINE_PAYMENT' | 'OTHER';
@@ -22,14 +22,21 @@ export type PublicPaymentMethod = {
 };
 
 /**
- * 僅「尚未付款且訂單未取消／未完成」時才向旅客展示收款方式。
- * PENDING 時只有已鎖位（isLockedBooking：INSTANT／FIXED_DEPARTURE）才顯示；
- * 申請制（REQUEST 或 salesMode 未知）導遊尚未接受、名額未鎖，不鼓勵旅客先付款。
+ * 僅「仍待付款且訂單未取消／未完成／未逾期」時才向旅客展示收款方式。
+ * - 待付款沿用 `isAwaitingPayment`（UNPAID 與仍有尾款的 PARTIAL）；PAID／REFUND_* 不顯示。
+ * - PENDING 時須訂單本身已占位（`seatsReserved === true`，tour_orders.seats_reserved）；
+ *   未占位（申請制尚未被接受、或欄位缺失）不鼓勵旅客先付款。CONFIRMED 照舊。
+ * - `holdExpiresAt` 已過（< now）代表保留期限已到，不再顯示。
  */
 export function shouldShowPaymentMethods(
-  order: Pick<TourOrder, 'status' | 'paymentStatus' | 'salesMode'>,
+  order: Pick<TourOrder, 'status' | 'paymentStatus' | 'seatsReserved' | 'holdExpiresAt'>,
+  now: Date = new Date(),
 ): boolean {
   if (order.status === 'CANCELLED' || order.status === 'COMPLETED') return false;
-  if (order.status === 'PENDING' && !isLockedBooking(order)) return false;
-  return order.paymentStatus === 'UNPAID';
+  if (order.status === 'PENDING' && order.seatsReserved !== true) return false;
+  if (order.holdExpiresAt) {
+    const t = Date.parse(order.holdExpiresAt);
+    if (Number.isFinite(t) && t < now.getTime()) return false;
+  }
+  return isAwaitingPayment(order);
 }

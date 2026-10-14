@@ -133,7 +133,7 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
   ]);
   if (!order) notFound();
   // #938：存取驗證（contact 比對）已通過才會走到這裡；只在未付款且未取消時才查收款方式。
-  const paymentMethods = shouldShowPaymentMethods(order) ? await loadPublicPaymentMethods(shopCode) : null;
+  const paymentMethods = shouldShowPaymentMethods(order) ? await loadPublicPaymentMethods(shopCode, { preferredId: order.paymentMethodId }) : null;
 
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-6">
