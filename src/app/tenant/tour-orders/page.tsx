@@ -957,8 +957,9 @@ export default function TourOrdersPage() {
                 : action.kind === 'reject' ? (
                   <>
                     <span className="block mb-2">{t.request.rejectConfirm(action.order.orderNo)}</span>
-                    <Label>{t.request.rejectReasonLabel}</Label>
+                    <Label htmlFor="rejectReason">{t.request.rejectReasonLabel}</Label>
                     <Textarea
+                      id="rejectReason"
                       rows={3}
                       maxLength={REJECT_REASON_MAX_LENGTH}
                       placeholder={t.request.rejectReasonPlaceholder}

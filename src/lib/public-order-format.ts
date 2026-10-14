@@ -53,7 +53,9 @@ export function isLockedBooking(order: { salesMode?: string | null }): boolean {
 /**
  * #944：旅客狀態頁可見的「店家說明」。`cancel_reason` 是自由文字欄位、沒有寫入者欄位，
  * 所以用最保守的組合判斷（缺一不顯示）：
- *   - 已取消、方案為 REQUEST（拒絕申請只存在於 REQUEST 單）；
+ *   - 已取消、方案為 REQUEST（拒絕申請只存在於 REQUEST 單）、且非手動建單；
+ *     殘餘風險：tour_orders 無不可變的 sales_mode 快照，公開 FIXED／INSTANT 單（source=LINE）
+ *     若方案日後改為 REQUEST 且店家取消時寫了備註，仍無法與申請單區分（需另案 migration 加快照欄位）；
  *   - 未付款（已付款／退款流程的取消單理由可能含退款備註，不對外）；
  *   - 理由非空，且不是 `expire_tour_order` 的系統逾期標記（唯一已知的系統寫入者，見 cron）。
  * 其餘一律回 null。回傳為純文字，呼叫端以 React 文字節點渲染（自動跳脫）。
@@ -62,10 +64,14 @@ export function travelerVisibleRejectReason(order: {
   status: string;
   paymentStatus: string;
   salesMode?: string | null;
+  source?: string | null;
   cancelReason?: string | null;
 }): string | null {
   if (order.status !== 'CANCELLED') return null;
   if (order.salesMode !== 'REQUEST') return null;
+  // 手動建單（source=MANUAL）一律不是旅客申請；方案 sales_mode 可事後被店家改成 REQUEST，
+  // 不能單靠它判斷來源。hold_expires_at 無法區分（公開 FIXED／INSTANT 與手動單建立時也是 null），故不採用。
+  if (order.source === 'MANUAL') return null;
   if (order.paymentStatus !== 'UNPAID') return null;
   const reason = (order.cancelReason ?? '').trim();
   if (!reason || reason === TOUR_ORDER_AUTO_EXPIRE_REASON) return null;

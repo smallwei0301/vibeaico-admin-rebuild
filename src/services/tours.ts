@@ -1042,7 +1042,7 @@ export const rejectTourOrder = (id: string, reason?: string) =>
     const o = findMockTourOrder(id);
     if (o.status !== 'PENDING') throw new ApiError('此訂單目前無法拒絕（非待處理的先申請再確認訂單）', 'TOUR_002', 409);
     o.status = 'CANCELLED';
-    void reason;
+    o.cancelReason = reason?.trim() || undefined;
   }, () =>
     request<void>(`/api/tour-orders/${id}/reject`, {
       method: 'POST', body: JSON.stringify({ reason }),

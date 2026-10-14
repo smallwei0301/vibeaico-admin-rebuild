@@ -45,6 +45,11 @@ describe('#944 travelerVisibleRejectReason', () => {
     expect(serverConst).toBe(TOUR_ORDER_AUTO_EXPIRE_REASON);
     expect(travelerVisibleRejectReason({ ...base, cancelReason: TOUR_ORDER_AUTO_EXPIRE_REASON })).toBeNull();
   });
+  it('手動建單（source=MANUAL）即使方案現為 REQUEST 也不顯示；LINE／其他來源仍顯示', () => {
+    expect(travelerVisibleRejectReason({ ...base, source: 'MANUAL' })).toBeNull();
+    expect(travelerVisibleRejectReason({ ...base, source: 'LINE' })).toBe('該日額滿');
+    expect(travelerVisibleRejectReason({ ...base, source: undefined })).toBe('該日額滿');
+  });
   it('空、缺失、非取消、非 REQUEST、已付款／退款中一律不顯示', () => {
     expect(travelerVisibleRejectReason({ ...base, cancelReason: '' })).toBeNull();
     expect(travelerVisibleRejectReason({ ...base, cancelReason: undefined })).toBeNull();

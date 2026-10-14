@@ -130,7 +130,19 @@ describe('tour-orders 頁狀態動作（mock 分支）真的把異動寫回 MOCK
 
     const { content } = await listTourOrders({ orderId: target!.id });
     expect(content[0]?.status).toBe('CANCELLED');
+    expect(content[0]?.cancelReason).toBe('名額已滿');
 
+    Object.assign(target!, snapshot);
+  });
+
+  it('rejectTourOrder：理由前後空白修剪，空白理由存為 undefined', async () => {
+    const target = MOCK_TOUR_ORDERS.find((o) => o.status === 'PENDING');
+    const snapshot = { ...target! };
+    await rejectTourOrder(target!.id, '  額滿  ');
+    expect(target!.cancelReason).toBe('額滿');
+    Object.assign(target!, snapshot);
+    await rejectTourOrder(target!.id, '   ');
+    expect(target!.cancelReason).toBeUndefined();
     Object.assign(target!, snapshot);
   });
 
