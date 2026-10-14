@@ -105,7 +105,8 @@ describe('#942 首頁連結依 MODE_PRESETS', () => {
   });
 
   it('頁面不再寫死 bookings／services 連結，也沒有業態 if 判斷', () => {
-    expect(page).not.toContain('href="/tenant/bookings');
+    // 收件匣 BOOKING_* 標頭按鈕是唯一允許的固定 /tenant/bookings 連結（跟著項目種類，不跟業態）
+    expect((page.match(/href="\/tenant\/bookings/g) ?? []).length).toBe(2);
     expect(page).not.toContain("'/tenant/bookings'");
     expect(page).not.toMatch(/href: '\/tenant\/services'/);
     expect(page).not.toMatch(/businessType\s*===\s*'/);
@@ -120,5 +121,13 @@ describe('#942 警示載入失敗不顯示 0', () => {
     expect(page).not.toMatch(/alerts\?\.(unprocessedBookings|lowStockProducts|atRiskCustomers) \?\? 0/);
     expect(page).toContain('setAlertsFailed(true)');
     expect(page).toContain('t.errors.alertValue');
+  });
+});
+
+describe('#942 收件匣一般預約按鈕維持連到預約管理', () => {
+  const page = read('src/app/tenant/dashboard/page.tsx');
+  it('BOOKING_REQUEST／BOOKING_PAYMENT 標頭按鈕連 /tenant/bookings，不隨 ordersHref', () => {
+    expect(page).toContain('<Link href="/tenant/bookings?status=PENDING" className="btn btn-outline min-h-11 text-md">');
+    expect(page).toContain('<Link href="/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID" className="btn btn-outline min-h-11 text-md">');
   });
 });

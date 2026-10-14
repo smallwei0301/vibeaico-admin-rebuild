@@ -486,12 +486,12 @@ export default function DashboardPage() {
             </CardTitle>
             <div className="flex flex-wrap gap-2">
               {actionInbox.some((item) => item.kind === 'BOOKING_REQUEST') ? (
-                <Link href={`${ordersHref}${dashboardLinks.pendingQuery}`} className="btn btn-outline min-h-11 text-md">
+                <Link href="/tenant/bookings?status=PENDING" className="btn btn-outline min-h-11 text-md">
                   {t.actionInbox.viewBookings}
                 </Link>
               ) : null}
               {actionInbox.some((item) => item.kind === 'BOOKING_PAYMENT') ? (
-                <Link href={`${ordersHref}?status=CONFIRMED&paymentStatus=UNPAID`} className="btn btn-outline min-h-11 text-md">
+                <Link href="/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID" className="btn btn-outline min-h-11 text-md">
                   {t.actionInbox.viewPayments}
                 </Link>
               ) : null}
