@@ -299,6 +299,10 @@
     {
       "ref": "issue/968",
       "title": "#46 導遊團體訂單列表待處理申請沒有接受／婉拒按鈕，列上只有紅色取消容易誤按"
+    },
+    {
+      "ref": "issue/971",
+      "title": "註冊驗證碼寄送失敗後可連點無冷卻；忘記密碼送出後可反覆重送且未提示檢查垃圾信"
     }
   ],
   "main": {
@@ -8623,13 +8627,47 @@
         "startedAt": "2026-10-14T07:04:12Z",
         "completedAt": "2026-10-14T07:04:12Z",
         "note": "Luna metrics capture 綁定 issue/968 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +1。#968 來自 #965 盤點（20261014-luna-scout-965-inventory）第二候選，該盤點已計數，本次不重複計 inventory。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261014-luna-scout-971-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 971,
+        "count": 1,
+        "evidenceRef": "TASK_ID 20261014-luna-scout-next-product-2",
+        "startedAt": "2026-10-14T07:05:24Z",
+        "completedAt": "2026-10-14T07:06:50Z",
+        "note": "Luna scout 盤點 Product 下一缺口（TASK_ID 20261014-luna-scout-next-product-2），產出 #971（註冊驗證碼寄送失敗後無冷卻；忘記密碼送出後可反覆重送且未提示檢查垃圾信）。盤點另兩候選：tour-orders 非 ApiError 錯誤原因空白（未採用）、忘記密碼（併入本 issue）。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261014-luna-scout-971-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 971,
+        "count": 1,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-14T07:13:32Z",
+        "completedAt": "2026-10-14T07:13:32Z",
+        "note": "Luna metrics capture 綁定 issue/971 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2。#971 盤點為 Luna（TASK_ID 20261014-luna-scout-next-product-2），盤點另兩候選（tour-orders 非 ApiError 錯誤原因空白、忘記密碼）中忘記密碼併入本 issue，前者未採用。actual 未經平台驗證。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 77,
+    "issuesStarted": 78,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -8656,8 +8694,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 163,
-    "lunaAccepted": 154,
+    "lunaTasks": 165,
+    "lunaAccepted": 156,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -8943,7 +8981,8 @@
     "非計分補充（#965）：#965 由 Sonnet 預建，時間 2026-10-14T06:31:06Z–06:37:59Z，原 commit 35267ad8，cherry-pick 為 4909e215；盤點由 Luna 執行（見 modelUsage.tasks），此段僅為來源說明，不計入 Scorecard 計數。",
     "非計分補充（#966）：#966 由 Sonnet 預建，時間 2026-10-14T06:39:10Z–06:42:07Z，原 commit 4e701e83，cherry-pick 為 063e6928；來源為 PR #964 審查，無 Luna inventory。此段僅為來源說明，不計入 Scorecard 計數。",
     "非計分補充（#968）：#968 由 Sonnet 預建，時間 2026-10-14T06:47:36Z–06:52:08Z，原 commit a5a0c817，cherry-pick 為 386b9c74；來源為 #965 盤點的第二候選（tour-orders 列表缺接受按鈕），不重複計 inventory。此段僅為來源說明，不計入 Scorecard 計數。",
-    "流程失誤紀錄（2026-10-14T07:02Z）：主 agent 對 PR #969 發出合併請求時，Agent WIP Policy 剛回到 pending，合併回傳 405，但同一指令鏈未在失敗時中止，於 issue #966 誤發 SOURCE COMPLETE 留言；隨即更正為 MERGE PENDING，07:03:02Z WIP 通過後重新合併（merge commit 591f4d29）並驗證，再更新留言。與 #942 先前同類失誤相同；改進：合併後續步驟（留言、關單、交接）以合併成功為前提條件。"
+    "流程失誤紀錄（2026-10-14T07:02Z）：主 agent 對 PR #969 發出合併請求時，Agent WIP Policy 剛回到 pending，合併回傳 405，但同一指令鏈未在失敗時中止，於 issue #966 誤發 SOURCE COMPLETE 留言；隨即更正為 MERGE PENDING，07:03:02Z WIP 通過後重新合併（merge commit 591f4d29）並驗證，再更新留言。與 #942 先前同類失誤相同；改進：合併後續步驟（留言、關單、交接）以合併成功為前提條件。",
+    "非計分補充（#971）：#971 由 Sonnet 預建，時間 2026-10-14T07:07:48Z–07:12:19Z，原 commit e44157e0，cherry-pick 為 b8e32147；盤點由 Luna 執行（見 modelUsage.tasks），盤點另兩候選中忘記密碼併入本 issue、tour-orders 非 ApiError 錯誤原因空白未採用。此段僅為來源說明，不計入 Scorecard 計數。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {

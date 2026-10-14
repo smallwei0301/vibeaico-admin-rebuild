@@ -10,6 +10,7 @@ import { AuthCardHeading } from '@/components/layout/AuthShell';
 import { useToast } from '@/components/ui/Toast';
 import { forgotPasswordPage as t } from '@/i18n/zh-TW/pages/forgot-password';
 import { ApiError } from '@/lib/api';
+import { isRateLimitError, RESEND_COOLDOWN_SECONDS } from '@/lib/auth-cooldown';
 import { forgotPassword } from '@/services';
 
 export default function ForgotPasswordPage() {
@@ -18,9 +19,18 @@ export default function ForgotPasswordPage() {
   const [email, setEmail] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
   const [sent, setSent] = React.useState(false);
+  const [countdown, setCountdown] = React.useState(0);
+
+  /** 倒數：計時器只在 effect 內跑，render 期不取時間 */
+  React.useEffect(() => {
+    if (countdown <= 0) return;
+    const id = setTimeout(() => setCountdown((n) => n - 1), 1000);
+    return () => clearTimeout(id);
+  }, [countdown]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (countdown > 0) return;
     if (!email.trim()) {
       toast.show(t.messages.emailRequired, 'warning');
       return;
@@ -29,8 +39,10 @@ export default function ForgotPasswordPage() {
     try {
       await forgotPassword(email.trim());
       setSent(true);
+      setCountdown(RESEND_COOLDOWN_SECONDS);
       toast.show(t.messages.sent);
     } catch (err) {
+      if (isRateLimitError(err)) setCountdown(RESEND_COOLDOWN_SECONDS);
       toast.show(
         `${t.messages.sendFailedPrefix}${err instanceof ApiError ? err.message : t.messages.unknownError}`,
         'danger',
@@ -46,7 +58,10 @@ export default function ForgotPasswordPage() {
         <AuthCardHeading title={t.title} description={t.subheading} />
 
         {sent ? (
-          <Alert tone="success" className="mb-4">{t.messages.sent}</Alert>
+          <Alert tone="success" className="mb-4">
+            {t.messages.sent}
+            {t.messages.checkSpam}
+          </Alert>
         ) : null}
 
         <form onSubmit={submit} noValidate>
@@ -69,9 +84,10 @@ export default function ForgotPasswordPage() {
             block
             loading={submitting}
             loadingText={t.form.submitting}
+            disabled={countdown > 0}
           >
             <Mail size={16} />
-            {t.form.submit}
+            {countdown > 0 ? `${countdown}${t.form.resendSuffix}` : t.form.submit}
           </Button>
         </form>
 
