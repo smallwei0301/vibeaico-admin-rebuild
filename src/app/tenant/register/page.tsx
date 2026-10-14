@@ -15,6 +15,7 @@ import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
 import { common } from '@/i18n/zh-TW/common';
 import { registerPage as t } from '@/i18n/zh-TW/pages/register';
 import { ApiError } from '@/lib/api';
+import { isRateLimitError } from '@/lib/auth-cooldown';
 import { getOAuthStatus, registerTenant, sendVerificationCode } from '@/services';
 import type { OAuthStatus } from '@/lib/types';
 
@@ -118,6 +119,8 @@ export default function RegisterPage() {
       setCountdown(RESEND_SECONDS);
       toast.show(`${t.messages.codeSentToPrefix}${form.email.trim()}`);
     } catch (e) {
+      // 限流失敗（429）也要倒數，避免使用者連按；其他失敗維持可立即重試
+      if (isRateLimitError(e)) setCountdown(RESEND_SECONDS);
       toast.show(
         `${t.messages.sendCodeFailedPrefix}${e instanceof ApiError ? e.message : t.messages.unknownError}`,
         'danger',

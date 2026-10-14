@@ -14,11 +14,14 @@ export const forgotPasswordPage = {
     emailPlaceholder: '請輸入電子郵件',
     submit: '發送重設連結',
     submitting: '發送中...',
+    /** `${秒數}${resendSuffix}`，例：58 秒後可重新發送 */
+    resendSuffix: ' 秒後可重新發送',
   },
 
   messages: {
     emailRequired: '請輸入電子郵件',
     sent: '重設密碼連結已發送到您的信箱，請查收。',
+    checkSpam: '若未收到，請檢查垃圾信件匣或稍後再試。',
     sendFailedPrefix: '發送失敗:',
     unknownError: '未知錯誤',
   },
