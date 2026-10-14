@@ -1,5 +1,5 @@
 /**
- * src/server/email/tour-order-email.ts — 導遊處理團體訂單後通知旅客（#954）
+ * src/server/email/tour-order-email.ts — 導遊處理團體訂單後通知旅客（#954）；旅客送出預約／申請的確認信（#957）
  * -----------------------------------------------------------------------------
  * 由 accept／reject／confirm-payment 三支路由在狀態變更成功後以 `after()` 呼叫。
  * 只在 `tour_orders.contact.email` 有值時寄；整體吞錯只 log，絕不丟進路由。
@@ -54,6 +54,8 @@ export async function notifyTravelerTourOrderStatus(
       departsOn: order.departsOn,
       deadlineText: kind === 'ACCEPTED' && order.holdExpiresAt
         ? formatInstantInTimeZone(order.holdExpiresAt, timeZone) : null,
+      totalText: kind === 'SUBMITTED_BOOKING' && Number.isFinite(order.totalAmount)
+        ? `NT$ ${Number(order.totalAmount).toLocaleString('en-US')}` : null,
       rejectReason: kind === 'REJECTED' ? travelerVisibleRejectReason(order) : null,
       statusUrl,
     });
