@@ -68,7 +68,7 @@ describe('notifyTravelerTourOrderStatus DEPOSIT_RECEIVED', () => {
   beforeEach(() => {
     sendMock.mockClear();
     process.env.RESEND_API_KEY = 'k';
-    orderRow = { id: 'o1', contact: { email: 't@example.com' }, paid_amount: 3000 };
+    orderRow = { id: 'o1', contact: { email: 't@example.com' }, paid_amount: 3000, payment_status: 'PARTIAL', status: 'CONFIRMED' };
     hydrated = { orderNo: 'N1', tripTitle: '行程', planName: '方案', departsOn: '2026-11-01', totalAmount: 12000 };
   });
   it('寄出含已收訂金與尚餘尾款', async () => {
@@ -79,6 +79,18 @@ describe('notifyTravelerTourOrderStatus DEPOSIT_RECEIVED', () => {
     expect(arg.subject).toContain('已確認收到訂金');
     expect(arg.html).toContain('NT$ 3,000');
     expect(arg.html).toContain('NT$ 9,000');
+  });
+  it('訂單已是 PAID 時不寄訂金信', async () => {
+    orderRow.payment_status = 'PAID';
+    const { notifyTravelerTourOrderStatus } = await import('@/server/email/tour-order-email');
+    await notifyTravelerTourOrderStatus('t1', 'o1', 'DEPOSIT_RECEIVED');
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+  it('訂單已 CANCELLED 時不寄訂金信', async () => {
+    orderRow.status = 'CANCELLED';
+    const { notifyTravelerTourOrderStatus } = await import('@/server/email/tour-order-email');
+    await notifyTravelerTourOrderStatus('t1', 'o1', 'DEPOSIT_RECEIVED');
+    expect(sendMock).not.toHaveBeenCalled();
   });
   it('尾款為 0 不顯示尾款列', async () => {
     orderRow.paid_amount = 12000;

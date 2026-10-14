@@ -28,6 +28,11 @@ export async function notifyTravelerTourOrderStatus(
       .eq('tenant_id', tenantId).eq('id', orderId).maybeSingle();
     if (error) throw error;
     if (!row) return;
+    // after() 時才重讀：若導遊連點（補尾款 PARTIAL→PAID）或訂單已取消，訂金信內容會過時，直接略過。
+    if (kind === 'DEPOSIT_RECEIVED' && (row.payment_status !== 'PARTIAL' || row.status !== 'CONFIRMED')) {
+      console.info('[tour-order-email] 訂單已非已收訂金狀態，略過訂金信', orderId);
+      return;
+    }
     const contact = (row.contact ?? {}) as Record<string, unknown>;
     const email = typeof contact.email === 'string' ? contact.email.trim() : '';
     if (!email) return;
