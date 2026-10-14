@@ -30,6 +30,23 @@ describe('request() 網路錯誤 (#959)', () => {
     await expect(request('/api/x')).rejects.toBe(abort);
   });
 
+  it('保留原始錯誤為 cause 並 console.warn', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const original = new TypeError('Failed to fetch');
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(original));
+    const err = (await request('/api/x').catch((e: unknown) => e)) as ApiError & { cause?: unknown };
+    expect(err.cause).toBe(original);
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it('signal 已取消且 reason 為自訂值時原樣丟出', async () => {
+    const reason = new Error('custom reason');
+    const controller = new AbortController();
+    controller.abort(reason);
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(reason));
+    await expect(request('/api/x', { signal: controller.signal })).rejects.toBe(reason);
+  });
+
   it('正常回應不變', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ success: true, data: { a: 1 } })));
     await expect(request('/api/x')).resolves.toEqual({ a: 1 });

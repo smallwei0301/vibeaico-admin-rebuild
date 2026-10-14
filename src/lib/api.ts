@@ -31,9 +31,14 @@ export const NETWORK_ERROR_MESSAGE = '網路連線失敗，請確認網路後再
  * fetch() 因網路中斷拋出的原生錯誤（Failed to fetch / Load failed / NetworkError…）
  * 一律轉成中文 ApiError；AbortError 代表呼叫端主動取消，原樣回傳讓呼叫端自行判斷。
  */
-export function toNetworkError(e: unknown): unknown {
+export function toNetworkError(e: unknown, signal?: AbortSignal | null): unknown {
+  if (signal?.aborted) return e;
   if (typeof e === 'object' && e !== null && (e as { name?: unknown }).name === 'AbortError') return e;
-  return new ApiError(NETWORK_ERROR_MESSAGE, 'NETWORK_ERROR');
+  // 保留原始錯誤（CORS／混合內容／網域設定錯誤等）供 DevTools／Sentry 追查。
+  console.warn('[api] 網路請求失敗', e);
+  const err = new ApiError(NETWORK_ERROR_MESSAGE, 'NETWORK_ERROR');
+  (err as Error & { cause?: unknown }).cause = e;
+  return err;
 }
 
 export async function request<T>(
@@ -65,7 +70,7 @@ export async function request<T>(
       credentials: 'include',
     });
   } catch (e) {
-    throw toNetworkError(e);
+    throw toNetworkError(e, rest.signal);
   }
 
   let body: ApiResponse<T>;

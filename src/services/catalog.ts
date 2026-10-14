@@ -52,7 +52,7 @@ async function requestWithMessage<T>(
       credentials: 'include',
     });
   } catch (e) {
-    throw toNetworkError(e);
+    throw toNetworkError(e, init?.signal);
   }
 
   let body: ApiResponse<T>;
