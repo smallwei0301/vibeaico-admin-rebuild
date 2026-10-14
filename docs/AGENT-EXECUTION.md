@@ -590,14 +590,19 @@ Closeability：5 幾乎可關；4 差一步；3 最多兩步可 Audit；2 需明
 
 #### 獨立角色來源與 provider-local catalog 准入
 
-Owner 2026-10-13 單次裁示：「這次由我授權先不補其身分資料」。僅 #855 exact
-`3f9055cf12f13d0db1b0a63882e851d853f5800e`／十檔 digest
-`517bac549fbd89f2189a3c2e5db7ecb1d6798cbb268144da88895756e1a9ffc4` 的 source 審查，
-依 [有界裁示](decisions/2026-10-13-owner-pr855-source-identity-deferral.md) 延後 backend BUILD／REVIEW
-身分資料與無可靠來源的 served identity。仍須實際獨立技術審查、exact source／CI、可信 COMMENT review、
-真實 requested audit model、actual unknown／UNKNOWN／OPERATOR_ATTESTED execution、零 unresolved finding。
-trusted adapter 必須回讀 current-main 設定與 pinned Owner directive comment 原 bytes；branch／payload 不能自啟。
-不適用其他 PR／head／digest、普通 Sol、native #848 pilot、Production G5／writer。沒有此精確例外仍走下列規則。
+Owner 2026-10-14 單次指示：「紀錄到playbook中，這次先授權繼續，接下來請避免再發生」。
+依 [有界裁示](decisions/2026-10-14-owner-pr946-source-identity-deferral.md)，current-main
+`sourceIdentityDataDeferral` 只啟用 #946 exact `291b0c92f6c44208cc7ff1aff776120512f1ef2e`／
+唯一檔案 digest `286e413654e007af705549ee080b40f1894ba6101c8c2f7401695d74513a47a9` 的 source review。
+延後缺失的 backend BUILD／REVIEW 身分收據與不可證明的 served identity，普通 Sol review 沿既有
+trusted-main scope、pinned Owner 指示及獨立技術報告 bytes 回讀承接。仍須真實獨立技術 review、
+exact source／CI、可信 COMMENT review、requested audit model、actualunknown／UNKNOWN／
+OPERATOR_ATTESTED、prior finding 核對與零 unresolved finding；publication/WIP/branch protection 不變。
+#855 的 2026-10-13 [原裁示](decisions/2026-10-13-owner-pr855-source-identity-deferral.md) 保留歷史，
+不再是 active scope，也不回寫當時 evidence。其他 PR/head/digest、native #848、Production G5/writer 不適用。
+治理變更正常驗證／審查／merge/main 回讀後才啟用，branch/payload 不能自啟；沒有此精確例外仍走下列規則。
+後續 Product 委派在施工前確認 role capture 能力，並於 spawn/work/completion 留存原始可得資料；
+parent session ID／taskname／GitHublogin 不代填子角色。未知維持 UNEXPOSED，不補造舊身分或時間。
 
 `openaiBuilderDecision.independentReviewerRequired=true` 時，live review approval 必須有 current builder 與 reviewer 的獨立執行來源；只設 flag、換模型 ID 或在 review 自填 `trusted=true` 不足以放行。
 PR body 增加 `BUILDER_EXECUTION_RECEIPT: https://github.com/<owner>/<repo>/pull/<n>#issuecomment-<id>`（同 repo 的 Issue comment 亦可）；canonical `astra-review` 增加 `reviewerExecutionReceipt` 指向另一筆同 repo comment。兩個 locator 不作證據本身：GitHub adapter 必須 GET 回讀、驗 canonical html_url、可信 write/maintain/admin 提交者或既有 trusted bot，不執行 comment 內容。

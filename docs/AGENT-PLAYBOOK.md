@@ -1537,8 +1537,8 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 ### PB-040 — 把埋點欄位建好，然後沒有埋
 
-- 首次／最近：2026-09-14／2026-09-14
-- 發生次數：1（但它讓一整輪的 B+ loop 形同虛設）
+- 首次／最近：2026-09-14／2026-10-14
+- 發生次數：2（原 2026-09-14 事件保留；2026-10-14 新增 #946 角色原始 capture 不完整事件，不回填歷史 Run）
 - Issue／PR／CI：#411、PR #418、PR #428；`docs/metrics/agent-runs/2026-09-14-product-delivery-r01.json`
 - 分類：治理／記帳誠實度
 - 事件：同一天之內，我先做對了一件事，然後把它抵銷掉。
@@ -1578,6 +1578,16 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
   4. **違規要記成違規。** `flow.lunaTasks: 0`、`solTouches: 0`、`TERRA_BUILD` 跑在
      Opus 上，都是如實的違規記錄，不是「還沒填」。
 - 狀態：監看中。下一輪若 `modelUsage.tasks` 仍為空而該輪確實有委派，視為第二次。
+
+#### 2026-10-14 — #946 技術工作有紀錄，角色身分 capture 卻不能重建
+
+- Issue／PR／CI：[#755](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/755#issuecomment-6159742053)、[#946](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/946)、Source CI [38496883737](https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/38496883737)；Owner 本次指示 [6161669369](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/946#issuecomment-6161669369)，原獨立 review 報告 [6161670687](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/946#issuecomment-6161670687)。
+- 事件：主 session 委派不同 BUILD／fresh-context REVIEW 任務，保存 requested model、WORKER_REPORTED 工作 UTC、exact commit、測試與技術 review。但 backend actorId/sessionId 記為 UNEXPOSED，未保存可讀的原 spawn response archive；技術結果完成後才遇到 ordinary final preflight 缺 scope/role receipts。後續查得主 CODEX_SESSION_ID／THREAD_ID，不能代替兩個子角色的獨立來源。已完成子任務不在當前 agent 清單，本地 session archive 未找到；尚不能判定平台原本未回傳或回傳後未留存。
+- 根因：把工作結果 capture 與角色准入 capture 當成同一件事，施工前未確認現行收據需要的欄位能否取得及 durable 留存。static Run readiness 驗現有帳本 bytes 不代表新 handoff 已由 owning writer reconcile，也不替代角色來源驗證。
+- 影響：唯一 CSV wait literal100→20 修正、6674 unit tests／Source CI／技術 review PASS 都無法直接完成合法 source merge；不是 GitHub 網路、模型 actualunknown 本身或忘填技術結果。
+- 本次修正：Owner 明確授權只延後 #946 exact291b0c9／digest286e4136 的 source 身分資料，沿既有 trusted-main deferral／immutable directive與獨立報告回讀接線；保留正常 sourceCI、finding、publication/WIP/branch protection與DB G0–G7。不補造舊身份、spawn原文或歷史模型／時間；例外不是之後工作的預設。
+- 預防：下一次 Product 委派前，先對照 current role receipt schema 與 runtime 能力；spawn 當下保存原 request/result、觀測UTC與可得的真實識別，work/completion 當下保存 exactsource／結果，兩角色分別留證。保留需要的原始資料於受限位置，公開證據不得洩漏秘密。未知欄位如實記 UNEXPOSED；taskname、GitHub登入或主 session ID 不代填子角色。缺 capture 能力就在投入完整施工前指出准入限制並尋找既有合法路徑，不以反覆「繼續」或重跑測試期待身份出現。canonical角色回讀與結果review分開驗，不到收尾才第一次檢查。
+- 驗證／狀態：實際查找結果保留未知，ordinary source deferral 實跑 RED1failed/60passed 後完成最小接線；最終 scoped、exact-head CI與main回讀以本次治理 PR 記錄為準。程序面預防已記錄，未宣稱平台原始子角色身份已找回、已建機械 capture collector或 Production acceptance 完成。
 
 ### PB-044 — 破壞性動作前的查證，有效期只有幾分鐘
 

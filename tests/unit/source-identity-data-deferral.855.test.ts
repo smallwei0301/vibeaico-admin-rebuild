@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { evaluateAstra, evaluateGithubAstra, routing, changeDigestOf } from '../../scripts/agents/astra-review-policy.mjs';
+import { evaluateAstra, evaluateGithubAstra, evaluateOrdinaryReview, routing, changeDigestOf } from '../../scripts/agents/astra-review-policy.mjs';
 import { finalRiskReviewerErrors } from '../../scripts/agents/final-risk-cost-policy.mjs';
 
 const scope = routing.sourceIdentityDataDeferral;
@@ -22,7 +22,7 @@ const review = () => ({ id: 1, state: 'COMMENTED', commit_id: scope.headSha, sub
 const evaluate = (ctx: Record<string, unknown> = context, reviews = [review()], policy = routing) => evaluateAstra({
   body, changedFiles: ['scripts/db/controlled-production-db-release.mjs'], context: ctx, reviews }, policy);
 
-describe('Owner #855 identity-data deferral keeps source and DB gates distinct', () => {
+describe('Bounded source identity-data deferral keeps source and DB gates distinct', () => {
   it('accepts only the current trusted exact source with truthful unknown identity', () => {
     expect(evaluate().status).toBe('ASTRA_APPROVED');
     expect(evaluate().errors).toEqual([]);
@@ -68,7 +68,7 @@ describe('actual source GitHub adapter requires main bytes and unchanged pinned 
   const technicalReview = { html_url: scope.technicalReviewComment, user: approval.user, body: 'Frozen independent technical PASS, not built by reviewer' };
   const scoped = { ...scope, changeDigest: digest, approvalBodySha256: createHash('sha256').update(approval.body).digest('hex'), technicalReviewBodySha256: createHash('sha256').update(technicalReview.body).digest('hex') };
   const policy = { ...routing, sourceIdentityDataDeferral: scoped };
-  const current = { number: 855, state: 'open', draft: false, created_at: '2026-10-12T16:00:00Z', body: body + '\nLANE_STATE: ACTIVE',
+  const current = { number: scope.prNumber, state: 'open', draft: false, created_at: '2026-10-12T16:00:00Z', body: body + '\nLANE_STATE: ACTIVE',
     changed_files: 1, head: { sha: scope.headSha }, base: { sha: 'a'.repeat(40) } };
   const rawReview = { ...review(), user: { login: 'smallwei0301', id: 206991894, type: 'User' },
     body: '```astra-review\n' + JSON.stringify({ ...payload, changeDigest: digest }) + '\n```' };
@@ -83,16 +83,31 @@ describe('actual source GitHub adapter requires main bytes and unchanged pinned 
         getCommit: async () => ({ data: { sha: overrides.mainMoved && ++commits > 1 ? 'b'.repeat(40) : 'a'.repeat(40) } }),
         getContent: async () => ({ data: overrides.file ?? file }) },
       issues: { getComment: async ({ comment_id }: { comment_id: number }) => {
-        if (comment_id === 6138187919) {
+        if (comment_id === Number(scope.technicalReviewComment.split("issuecomment-")[1])) {
           if (overrides.reviewDeleted) throw Error('missing independent review');
           return { data: overrides.technicalReview ?? technicalReview };
         }
-        if (overrides.deleted || comment_id !== 6137971029) throw Error('missing source');
+        if (overrides.deleted || comment_id !== Number(scope.approvalComment.split("issuecomment-")[1])) throw Error('missing source');
         return { data: overrides.approval ?? approval };
       } } } };
   }
   it('accepts a real-adapter synthetic positive control without role receipts', async () => {
     expect((await evaluateGithubAstra({ github: github(), owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', current }, policy)).status).toBe('ASTRA_APPROVED');
+  });
+  it.each([false, true])('ordinary adapter preserves trusted-main admission (edited approval=%s)', async edited => {
+    const ordinaryFiles = [{ ...files[0], filename: 'tests/e2e/bookings-export.spec.ts' }];
+    const ordinaryDigest = changeDigestOf(ordinaryFiles);
+    const ordinaryScope = { ...scoped, changeDigest: ordinaryDigest };
+    const ordinaryPolicy = { ...routing, sourceIdentityDataDeferral: ordinaryScope };
+    const bytes = Buffer.from(JSON.stringify({ sourceIdentityDataDeferral: ordinaryScope }));
+    const client = github(edited ? { approval: { ...approval, body: 'edited directive' } } : {});
+    client.rest.repos.getContent = async () => ({ data: { type: 'file', encoding: 'base64', content: bytes.toString('base64'),
+      sha: createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex') } });
+    client.paginate = async method => method === 'files' ? ordinaryFiles : [{ ...rawReview,
+      body: '```sol-review\n' + JSON.stringify({ ...payload, changeDigest: ordinaryDigest }) + '\n```' }];
+    const ordinaryCurrent = { ...current, body: 'WORKSTREAM: PRODUCT_MAINLINE\nASTRA_RISK: NONE\nASTRA_RATIONALE: One CSV wait literal with unchanged HTTP and download assertions\nLANE_STATE: ACTIVE' };
+    expect((await evaluateGithubAstra({ github: client, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild',
+      current: ordinaryCurrent }, ordinaryPolicy)).status).toBe(edited ? 'SOL_REVIEW_PENDING' : 'SOL_REVIEW_APPROVED');
   });
   it.each([{ deleted: true }, { approval: { ...approval, body: 'edited approval' } },
     { approval: { ...approval, user: { ...approval.user, id: 1 } } },
@@ -103,5 +118,35 @@ describe('actual source GitHub adapter requires main bytes and unchanged pinned 
     { technicalReview: { ...technicalReview, user: { ...technicalReview.user, id: 1 } } },
     { technicalReview: { ...technicalReview, html_url: scope.approvalComment } }])('rejects revoked/foreign/corrupt/racing source %j', async overrides => {
     expect((await evaluateGithubAstra({ github: github(overrides), owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', current }, policy)).status).toBe('ASTRA_PENDING');
+  });
+});
+
+
+describe('bounded ordinary source review identity deferral', () => {
+  const ordinary = { ...payload, commitId: scope.headSha, reviewState: 'COMMENTED' };
+  const run = (ctx: Record<string, unknown> = context, record = ordinary, policy = routing) => evaluateOrdinaryReview([record], ctx, policy);
+  it('uses the same trusted-main exact scope and pinned independent report, without backend fabrication', () => {
+    expect(run()).toEqual({ status: 'SOL_REVIEW_APPROVED', errors: [] });
+  });
+  it.each([
+    { prNumber: scope.prNumber + 1 }, { repository: 'other/repository' },
+    { headSha: 'b'.repeat(40) }, { currentHeadSha: 'b'.repeat(40) }, { changeDigest: 'b'.repeat(64) },
+    { reviewSurface: 'PRODUCTION_DB_FINAL_RISK' }, { sourceIdentityDataDeferralEvidence: undefined },
+    { sourceIdentityDataDeferralEvidence: { ...proof, trusted: false } },
+  ])('does not bypass ordinary roles outside admitted scope %j', patch => {
+    expect(run({ ...context, ...patch }).status).toBe('SOL_REVIEW_PENDING');
+  });
+  it.each([
+    { verdict: 'FIX_REQUIRED' }, { reviewState: 'DISMISSED' }, { reviewState: 'CHANGES_REQUESTED' },
+    { commitId: 'b'.repeat(40) }, { policyVersion: 'stale' }, { unresolvedFindingCount: 1 },
+    { priorFindingsReviewed: false }, { report: scope.approvalComment }, { findings: 'none' },
+    { servedVerified: true }, { identityEvidence: 'OPERATOR_ATTESTED' }, { executionEvidence: 'UNKNOWN' },
+    { requestedModel: 'gpt-6-astra' },
+  ])('retains exact source, latest verdict, substantive findings and honest identity %j', patch => {
+    expect(run(context, { ...ordinary, ...patch }).status).toBe('SOL_REVIEW_PENDING');
+  });
+  it('missing review and disabled scope remain pending', () => {
+    expect(evaluateOrdinaryReview([], context, routing).status).toBe('SOL_REVIEW_PENDING');
+    expect(run(context, ordinary, { ...routing, sourceIdentityDataDeferral: { ...scope, enabled: false } }).status).toBe('SOL_REVIEW_PENDING');
   });
 });
