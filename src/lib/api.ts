@@ -25,6 +25,17 @@ export class ApiError extends Error {
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
 
+export const NETWORK_ERROR_MESSAGE = '網路連線失敗，請確認網路後再試一次';
+
+/**
+ * fetch() 因網路中斷拋出的原生錯誤（Failed to fetch / Load failed / NetworkError…）
+ * 一律轉成中文 ApiError；AbortError 代表呼叫端主動取消，原樣回傳讓呼叫端自行判斷。
+ */
+export function toNetworkError(e: unknown): unknown {
+  if (typeof e === 'object' && e !== null && (e as { name?: unknown }).name === 'AbortError') return e;
+  return new ApiError(NETWORK_ERROR_MESSAGE, 'NETWORK_ERROR');
+}
+
 export async function request<T>(
   path: string,
   init?: RequestInit & { query?: Record<string, string | number | boolean | undefined> },
@@ -39,18 +50,23 @@ export async function request<T>(
       ).toString()
     : '';
 
-  const res = await fetch(`${BASE}${path}${qs}`, {
-    ...rest,
-    headers: {
-      // Let the browser add the multipart boundary for FormData. Setting an
-      // application/json content type here makes /api/upload reject the body.
-      ...(typeof FormData !== 'undefined' && rest.body instanceof FormData
-        ? {}
-        : { 'Content-Type': 'application/json' }),
-      ...(rest.headers ?? {}),
-    },
-    credentials: 'include',
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}${qs}`, {
+      ...rest,
+      headers: {
+        // Let the browser add the multipart boundary for FormData. Setting an
+        // application/json content type here makes /api/upload reject the body.
+        ...(typeof FormData !== 'undefined' && rest.body instanceof FormData
+          ? {}
+          : { 'Content-Type': 'application/json' }),
+        ...(rest.headers ?? {}),
+      },
+      credentials: 'include',
+    });
+  } catch (e) {
+    throw toNetworkError(e);
+  }
 
   let body: ApiResponse<T>;
   try {

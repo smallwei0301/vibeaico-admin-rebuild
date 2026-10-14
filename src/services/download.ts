@@ -6,7 +6,7 @@
 // 缺陷之一，不該在修它的同時又製造第二個來源。
 //
 // inventory-export.ts 仍 re-export 既有名稱，既有呼叫端與測試不受影響。
-import { ApiError } from '@/lib/api';
+import { ApiError, toNetworkError } from '@/lib/api';
 
 export type AttachmentDownloadResult = {
   downloaded: boolean;
@@ -39,7 +39,12 @@ export function fileNameFromContentDisposition(header: string | null | undefined
 }
 
 export async function downloadAttachment(url: string): Promise<AttachmentDownloadResult> {
-  const response = await fetch(url, { credentials: 'include' });
+  let response: Response;
+  try {
+    response = await fetch(url, { credentials: 'include' });
+  } catch (e) {
+    throw toNetworkError(e);
+  }
   if (!response.ok) {
     let message = '匯出失敗，請稍後再試';
     let code: string | undefined;
