@@ -24,7 +24,7 @@
  * 沒有基礎設施支撐的方案。
  */
 
-type Bucket = { count: number; windowStartMs: number };
+type Bucket = { count: number; windowStartMs: number; windowMs: number };
 
 const buckets = new Map<string, Bucket>();
 
@@ -32,11 +32,12 @@ const buckets = new Map<string, Bucket>();
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 let lastCleanupAt = Date.now();
 
-function cleanupExpired(nowMs: number, windowMs: number): void {
+function cleanupExpired(nowMs: number): void {
   if (nowMs - lastCleanupAt < CLEANUP_INTERVAL_MS) return;
   lastCleanupAt = nowMs;
   for (const [key, bucket] of buckets) {
-    if (nowMs - bucket.windowStartMs >= windowMs) buckets.delete(key);
+    // 依各 bucket 自身的視窗判斷過期，避免短視窗呼叫者提前清掉長視窗 bucket。
+    if (nowMs - bucket.windowStartMs >= bucket.windowMs) buckets.delete(key);
   }
 }
 
@@ -52,11 +53,11 @@ export function checkRateLimit(
   { max, windowMs }: { max: number; windowMs: number },
 ): boolean {
   const now = Date.now();
-  cleanupExpired(now, windowMs);
+  cleanupExpired(now);
 
   const existing = buckets.get(key);
   if (!existing || now - existing.windowStartMs >= windowMs) {
-    buckets.set(key, { count: 1, windowStartMs: now });
+    buckets.set(key, { count: 1, windowStartMs: now, windowMs });
     return true;
   }
 
