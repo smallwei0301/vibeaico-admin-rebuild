@@ -122,6 +122,15 @@ export default function TourOrdersPage() {
   const [acceptHoldHours, setAcceptHoldHours] = React.useState('');
   /** #944：拒絕申請的選填原因；空白＝不附原因。 */
   const [rejectReason, setRejectReason] = React.useState('');
+  /** #968：列表列「接受」開啟詳情後，把接受／保留時數區塊捲入視窗並聚焦。 */
+  const [focusRequest, setFocusRequest] = React.useState(false);
+  const requestSectionRef = React.useRef<HTMLElement | null>(null);
+  React.useEffect(() => {
+    if (!focusRequest || !detail || !requestSectionRef.current) return;
+    requestSectionRef.current.scrollIntoView?.({ block: 'center' });
+    requestSectionRef.current.querySelector<HTMLInputElement>('input')?.focus();
+    setFocusRequest(false);
+  }, [focusRequest, detail]);
 
   const [draft, setDraft] = React.useState({
     tripId: '', planId: '', departureId: '', customerName: '',
@@ -539,7 +548,24 @@ export default function TourOrdersPage() {
               <BadgeDollarSign size={13} />
             </Button>
           ) : null}
-          {o.status === 'PENDING' || o.status === 'CONFIRMED' ? (
+          {isPendingTourRequest(o) ? (
+            <>
+              <Button
+                variant="outline" size="sm"
+                title={t.actions.accept} aria-label={t.actions.accept}
+                onClick={() => { setAcceptHoldHours(''); setFocusRequest(true); setDetail(o); }}
+              >
+                <CheckCircle2 size={13} className="text-success" />
+              </Button>
+              <Button
+                variant="outlineDanger" size="sm"
+                title={t.actions.reject} aria-label={t.actions.reject}
+                onClick={() => { setRejectReason(''); setAction({ kind: 'reject', order: o }); }}
+              >
+                <XCircle size={13} />
+              </Button>
+            </>
+          ) : o.status === 'PENDING' || o.status === 'CONFIRMED' ? (
             <Button
               variant="outlineDanger" size="sm"
               title={t.actions.cancel} aria-label={t.actions.cancel}
@@ -757,7 +783,7 @@ export default function TourOrdersPage() {
 
             {/* #46：只有「還在等待導遊決定的 REQUEST 申請」才顯示這一段。 */}
             {isPendingTourRequest(detail) ? (
-              <section className="rounded-md border border-warning p-3">
+              <section ref={requestSectionRef} className="rounded-md border border-warning p-3">
                 <h4 className="mb-1 text-sm font-bold text-warning">
                   {t.detail.sections.request}
                 </h4>
