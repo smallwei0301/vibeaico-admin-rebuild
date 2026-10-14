@@ -28,7 +28,7 @@ import {
 import { canMarkPaidOffline, syncDetailFinalPrice } from '@/lib/booking-detail-sync';
 import { createCustomer, listCustomers } from '@/services/customers';
 import { listServices, listStaff } from '@/services/catalog';
-import { exportBookingsCsv, exportBookingsXlsx } from '@/services/reports';
+import { exportBookingsCsv, exportBookingsXlsx, type ExportBookingsQuery } from '@/services/reports';
 import { USE_MOCK } from '@/config/env';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
@@ -117,6 +117,8 @@ export default function BookingsPage() {
   const [detailTarget, setDetailTarget] = React.useState<Booking | null>(null);
   const [requestedBookingId, setRequestedBookingId] = React.useState('');
   const openedDeepLinkId = React.useRef('');
+  /* #974：列表最近一次成功載入實際送出的篩選（不含分頁／bookingId）；匯出直接沿用，避免兩邊各組一次而漂移。 */
+  const lastListFiltersRef = React.useRef<ExportBookingsQuery | null>(null);
 
   /* 確認類彈窗 */
   const [confirmTarget, setConfirmTarget] = React.useState<Booking | null>(null);
@@ -160,7 +162,7 @@ export default function BookingsPage() {
         to: endDate || undefined,
         /* 未處理＝開始時間已過：獨立 startBefore（server 嚴格 <），不與店家時區日界線混用。 */
         startBefore: status === 'UNPROCESSED' ? new Date().toISOString() : undefined,
-      };
+      } satisfies ExportBookingsQuery;
       const res = await listBookings({ ...filterParams, page, size: PAGE_SIZE });
 
       /* 刪除／篩選後目前頁已超出範圍：退回最後一頁再查（避免空白頁卻有資料）。 */
@@ -192,12 +194,16 @@ export default function BookingsPage() {
           && new Date(b.startAt).getTime() < now)
         .map((b) => b.id));
 
+      /* 篩選快照與列表同一個同步區段寫入（deep-link 補查 await 之後），兩者永遠成對更新。 */
+      lastListFiltersRef.current = filterParams;
       setTotal(res.totalElements);
       setRows(list);
     } catch (e) {
       toast.show(`${t.messages.loadFailed}${e instanceof Error ? e.message : t.messages.unknownError}`, 'danger');
       setRows([]);
       setTotal(0);
+      /* 列表已清空：停用匯出（顯示 exportNotReady），避免匯出與畫面不一致。 */
+      lastListFiltersRef.current = null;
     } finally {
       setLoading(false);
     }
@@ -268,10 +274,9 @@ export default function BookingsPage() {
   const runExport = async (format: 'csv' | 'xlsx') => {
     try {
       const download = format === 'xlsx' ? exportBookingsXlsx : exportBookingsCsv;
-      const result = await download({
-        from: startDate || undefined,
-        to: endDate || undefined,
-      });
+      const filters = lastListFiltersRef.current;
+      if (!filters) { toast.show(t.messages.exportNotReady, 'warning'); return; }
+      const result = await download(filters);
       // 檔名一律取自後端的 Content-Disposition（見 services/download.ts），
       // 前端不自組——自組檔名正是 #246 修掉的缺陷之一。
       toast.show(result.fileName ? t.messages.exportedAs(result.fileName) : t.messages.exported);

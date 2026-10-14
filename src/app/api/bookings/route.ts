@@ -1,6 +1,8 @@
 // GET：04-API-CONTRACTS.md §0 參考實作，逐字採用。POST：§B-1 手動建立預約。
 import { z } from 'zod';
-import { ilikeAnyOf } from '@/server/postgrest-filter';
+import {
+  BOOKING_STATUS, BOOKING_PAYMENT_STATUS, bookingStatusesParam, bookingExcludeCancelledParam, applyBookingFilters,
+} from '@/server/bookings-filter';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { pageRange, toPaged } from '@/server/paging';
@@ -16,28 +18,15 @@ const INVALID_DATE_MESSAGE = '日期不存在，請重新選擇';
 /** 純日期形狀（YYYY-MM-DD）必須是真實日曆日期；完整 ISO 時間照舊接受。 */
 const filterDate = z.string().optional()
   .refine((v) => v === undefined || !isDateOnlyShape(v) || isValidYmd(v), INVALID_DATE_MESSAGE);
-const BOOKING_STATUS = z.enum(['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW']);
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(0).default(0),
   size: z.coerce.number().int().min(1).max(100).default(20),
   status: BOOKING_STATUS.optional(),
-  // #934：逗號分隔多值（如 PENDING,CONFIRMED），每個值都須在白名單內；與單值 status 並存（皆套用）。
-  statuses: z.string().optional().transform((v, ctx) => {
-    if (v === undefined || v === '') return undefined;
-    const out: z.infer<typeof BOOKING_STATUS>[] = [];
-    for (const part of v.split(',').map((x) => x.trim()).filter(Boolean)) {
-      const r = BOOKING_STATUS.safeParse(part);
-      if (!r.success) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'statuses 含不合法的狀態值' });
-        return z.NEVER;
-      }
-      if (!out.includes(r.data)) out.push(r.data);
-    }
-    return out.length ? out : undefined;
-  }),
-  excludeCancelled: z.enum(['true', 'false']).optional().transform((v) => v === 'true'),
-  paymentStatus: z.enum(['UNPAID', 'PAID_ONLINE', 'PAID_OFFLINE', 'REFUNDED']).optional(),
+  // #934：逗號分隔多值（如 PENDING,CONFIRMED），與單值 status 並存（皆套用）。
+  statuses: bookingStatusesParam,
+  excludeCancelled: bookingExcludeCancelledParam,
+  paymentStatus: BOOKING_PAYMENT_STATUS.optional(),
   keyword: z.string().optional(),
   from: filterDate, // ISO 日期
   to: filterDate,
@@ -61,10 +50,7 @@ export const GET = handle(async (req) => {
     .order('id', { ascending: false })
     .range(from, to);
   if (q.bookingId) query = query.eq('id', q.bookingId);
-  if (q.status) query = query.eq('status', q.status);
-  if (q.statuses) query = query.in('status', q.statuses);
-  if (q.excludeCancelled) query = query.neq('status', 'CANCELLED');
-  if (q.paymentStatus) query = query.eq('payment_status', q.paymentStatus);
+  query = applyBookingFilters(query, q);
   if (q.staffId) query = query.eq('staff_id', q.staffId);
   if (q.from || q.to) {
     // #933：只有至少一個界線是純日期才需要店家時區（ISO 界線與時區無關，不多查一次）。純日期依店家時區（basic.timezone，缺值回退 Asia/Taipei）日界線，與匯出一致，結束日含當天。
@@ -79,8 +65,6 @@ export const GET = handle(async (req) => {
     if (q.to) query = query.lte('start_at', bookingFilterBound(q.to, 'to', zone));
   }
   if (q.startBefore) query = query.lt('start_at', q.startBefore);
-  if (q.keyword) query = query.or(
-    ilikeAnyOf(['customer_name', 'customer_phone', 'booking_no'], q.keyword));
 
   const { data, count, error } = await query;
   if (error) throw error;

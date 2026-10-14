@@ -14,6 +14,9 @@ import { z } from 'zod';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { taipeiTodayDateString } from '@/server/tz';
 import { buildXlsx, xlsxResponse } from '@/server/xlsx';
+import {
+  BOOKING_STATUS, BOOKING_PAYMENT_STATUS, bookingStatusesParam, bookingExcludeCancelledParam, applyBookingFilters,
+} from '@/server/bookings-filter';
 import { common } from '@/i18n/zh-TW/common';
 
 const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
@@ -22,6 +25,14 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 export const bookingExportQuerySchema = z.object({
   from: z.string().regex(DATE_RE, 'from 需為 YYYY-MM-DD').optional(),
   to: z.string().regex(DATE_RE, 'to 需為 YYYY-MM-DD').optional(),
+  // #974：與預約列表同語意的篩選（共用 src/server/bookings-filter.ts）。
+  status: BOOKING_STATUS.optional(),
+  statuses: bookingStatusesParam,
+  excludeCancelled: bookingExcludeCancelledParam,
+  paymentStatus: BOOKING_PAYMENT_STATUS.optional(),
+  keyword: z.string().optional(),
+  // 「未處理」＝開始時間已過；與列表相同的獨立 ISO 上界（嚴格小於）。
+  startBefore: z.string().datetime({ offset: true, message: 'startBefore 須為有效的 ISO 時間' }).optional(),
 });
 
 function taipeiDayIso(ymd: string, offsetDays = 0): string {
@@ -77,6 +88,8 @@ async function fetchBookingCells(
     .select('booking_no, start_at, customer_name, customer_phone, service_name, staff_name, final_price, status')
     .eq('tenant_id', tenantId)
     .order('start_at', { ascending: false });
+  query = applyBookingFilters(query, q);
+  if (q.startBefore) query = query.lt('start_at', q.startBefore);
   if (q.from) query = query.gte('start_at', taipeiDayIso(q.from));
   if (q.to) query = query.lt('start_at', taipeiDayIso(q.to, 1));
 
