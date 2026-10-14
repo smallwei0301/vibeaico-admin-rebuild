@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { REJECT_REASON_MAX_LENGTH } from '@/lib/tour-reject-reason';
 import { MAX_TRIP_GALLERY_IMAGES } from '@/lib/trip-gallery';
 import {
   MAX_PUBLIC_LONG_TEXT_CHARS, MAX_PUBLIC_SHORT_TEXT_CHARS,
@@ -400,7 +401,7 @@ export const acceptTourRequestSchema = z.object({
 });
 
 export const rejectTourRequestSchema = z.object({
-  reason: optionalText,
+  reason: z.string().trim().max(REJECT_REASON_MAX_LENGTH).optional(),
 });
 
 /**

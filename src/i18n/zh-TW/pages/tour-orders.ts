@@ -149,6 +149,9 @@ export const tourOrdersPage = {
     holdHoursLabel: '付款保留時數（留空使用方案預設值）',
     holdHoursPlaceholder: (defaultHours: number) => `預設 ${defaultHours} 小時`,
     acceptConfirm: (orderNo: string) => `確定要接受訂單 ${orderNo} 的申請嗎？系統會重新確認名額並鎖定。`,
+    rejectReasonLabel: '拒絕原因（選填，旅客會在訂單狀態頁看到）',
+    rejectReasonPlaceholder: '例如：該日期已額滿，歡迎改選其他梯次',
+    rejectReasonCounter: (n: number, max: number) => `${n} / ${max}`,
     rejectConfirm: (orderNo: string) => `確定要拒絕訂單 ${orderNo} 的申請嗎？旅客不會被鎖住任何名額。`,
   },
 

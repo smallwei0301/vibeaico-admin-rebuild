@@ -22,6 +22,7 @@ import {
   createManualTourOrder, getTourOrderSummary, listTourOrders, listTripDepartures, listTripPlans, listTrips,
   cleanedUrlForProceed, decideTourOrdersTenantAction, parseTourOrdersDeepLink, rejectTourOrder, stripTenantIdParam,
 } from '@/services/tours';
+import { REJECT_REASON_MAX_LENGTH } from '@/lib/tour-reject-reason';
 import { listPaymentMethods, type PaymentMethodRow } from '@/services/payment-methods';
 import { ApiError } from '@/lib/api';
 import { AUTH_REAL } from '@/config/env';
@@ -119,6 +120,8 @@ export default function TourOrdersPage() {
   >(null);
   /** #46：接受申請的付款保留時數覆寫——空字串＝不覆寫，用方案的預設值。 */
   const [acceptHoldHours, setAcceptHoldHours] = React.useState('');
+  /** #944：拒絕申請的選填原因；空白＝不附原因。 */
+  const [rejectReason, setRejectReason] = React.useState('');
 
   const [draft, setDraft] = React.useState({
     tripId: '', planId: '', departureId: '', customerName: '',
@@ -308,11 +311,12 @@ export default function TourOrdersPage() {
       : kind === 'complete'
         ? [() => completeTourOrder(order.id), t.messages.completed] as const
         : kind === 'reject'
-          ? [() => rejectTourOrder(order.id), t.messages.rejected] as const
+          ? [() => rejectTourOrder(order.id, rejectReason.trim() || undefined), t.messages.rejected] as const
           : [() => cancelTourOrder(order.id), t.messages.cancelled] as const;
     const ok = await runOrderAction(call, message);
     if (ok) {
       setAction(null);
+      setRejectReason('');
       // 詳情 Modal 內的訂單資料已過期（可能不在目前列表），收款成功後一併關閉
       if (detail?.id === order.id) setDetail(null);
     }
@@ -776,7 +780,7 @@ export default function TourOrdersPage() {
                   </Button>
                   <Button
                     variant="outlineDanger" size="sm"
-                    onClick={() => setAction({ kind: 'reject', order: detail })}
+                    onClick={() => { setRejectReason(''); setAction({ kind: 'reject', order: detail }); }}
                   >
                     <XCircle size={13} />{t.actions.reject}
                   </Button>
@@ -931,7 +935,7 @@ export default function TourOrdersPage() {
 
       <ConfirmModal
         open={!!action}
-        onClose={() => setAction(null)}
+        onClose={() => { setAction(null); setRejectReason(''); }}
         onConfirm={runAction}
         title={
           action?.kind === 'confirmPayment' ? t.confirm.confirmPaymentTitle
@@ -950,7 +954,21 @@ export default function TourOrdersPage() {
               : action.kind === 'confirmFull' ? t.confirm.confirmFull(action.order.orderNo)
               : action.kind === 'confirmBalance' ? t.confirm.confirmBalance(action.order.orderNo)
               : action.kind === 'complete' ? t.confirm.complete(action.order.orderNo)
-                : action.kind === 'reject' ? t.request.rejectConfirm(action.order.orderNo)
+                : action.kind === 'reject' ? (
+                  <>
+                    <span className="block mb-2">{t.request.rejectConfirm(action.order.orderNo)}</span>
+                    <Label htmlFor="rejectReason">{t.request.rejectReasonLabel}</Label>
+                    <Textarea
+                      id="rejectReason"
+                      rows={3}
+                      maxLength={REJECT_REASON_MAX_LENGTH}
+                      placeholder={t.request.rejectReasonPlaceholder}
+                      value={rejectReason}
+                      onChange={(e) => setRejectReason(e.target.value)}
+                    />
+                    <FormText>{t.request.rejectReasonCounter(rejectReason.length, REJECT_REASON_MAX_LENGTH)}</FormText>
+                  </>
+                )
                   : t.confirm.cancel(action.order.orderNo)
             : ''
         }
