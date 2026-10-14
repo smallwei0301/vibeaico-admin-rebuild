@@ -5,6 +5,10 @@
 > 最後更新：2026-10-10。
 > 模型版本決策最後更新：2026-10-01；本次只新增有界角色證據政策，未變更模型型號。
 
+## 2026-10-14 已裁示
+
+- #946 source 身分資料單次延後：Owner 指示「紀錄到playbook中，這次先授權繼續，接下來請避免再發生」。只限 exact291b0c9／唯一檔案 digest286e4136，保留真實獨立 review／CI／publication／WIP／正常 merge。沿既有單一 scoped deferral 承接普通 Sol，不啟用通用豁免、不適用 DB G5/writer 或其他 PR。#855 原裁示保留歷史。canonical：[有界裁示](decisions/2026-10-14-owner-pr946-source-identity-deferral.md)、`AGENT-EXECUTION.md` §7.2、PB-040。
+
 ## 2026-10-10 已裁示
 
 Owner `2026-10-10T12:46:54.792160Z` 確認只針對 #848 修改原生角色准入，之後由新執行者接手完整驗證、再另做獨立正式審查。

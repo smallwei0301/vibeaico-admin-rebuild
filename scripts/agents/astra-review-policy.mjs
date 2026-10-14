@@ -397,12 +397,17 @@ export function evaluateOrdinaryReview(reviews = [], context = {}, policy = {}) 
     }
     if (review.commitId !== context.headSha || !['APPROVED', 'COMMENTED'].includes(review.reviewState)
       || review.verdict !== 'PASS') errors.push('Latest ordinary review is not current PASS');
-    errors.push(...independentRoleErrors(review, context));
+    // The existing single-source deferral is admitted only by trusted-main
+    // policy and unchanged pinned Owner/independent-review comments.
+    const identityDeferred = sourceIdentityDataDeferred(review, policy, context);
+    if (!identityDeferred) errors.push(...independentRoleErrors(review, context));
+    else if (review.unresolvedFindingCount !== 0 || review.priorFindingsReviewed !== true)
+      errors.push('Deferred source review still requires zero unresolved findings and prior finding checks');
     const reviewer = context.roleEvidence?.reviewer;
     const model = reviewer?.provider === 'OPENAI' ? policy.models?.audit
       : reviewer?.provider === 'ANTHROPIC' ? policy.anthropicEquivalents?.audit : null;
-    if (!model || !ordinaryConcrete(reviewer?.providerEvidenceRef) || reviewer?.requestedModel !== model
-      || review.requestedModel !== model) errors.push('Ordinary reviewer needs attested provider-local Sol/Opus request');
+    if (!identityDeferred && (!model || !ordinaryConcrete(reviewer?.providerEvidenceRef) || reviewer?.requestedModel !== model
+      || review.requestedModel !== model)) errors.push('Ordinary reviewer needs attested provider-local Sol/Opus request');
     if (review.servedVerified !== undefined && typeof review.servedVerified !== 'boolean') errors.push('Malformed ordinary served verification claim');
     if (review.actualModel === 'unknown') {
       if (review.identityEvidence !== 'UNKNOWN' || review.servedVerified === true) errors.push('Ordinary unknown actual cannot claim served identity');
