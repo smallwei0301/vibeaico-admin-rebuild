@@ -99,7 +99,10 @@ describe('#941 公開建單 route 呼叫點', () => {
       const src = readFileSync(resolve(__dirname, `../../src/app/api/public/${name}/route.ts`), 'utf8');
       expect(src.match(/notifyOwnerNewTourOrder\(/g)).toHaveLength(1);
       const submitAt = src.search(/await submitPublicTour/);
-      const notifyAt = src.indexOf('void notifyOwnerNewTourOrder(');
+      expect(src).not.toContain('void notifyOwnerNewTourOrder');
+      expect(src).toContain("import { after } from 'next/server'");
+      const notifyAt = src.indexOf('after(() => notifyOwnerNewTourOrder(');
+      expect(notifyAt).toBeGreaterThan(-1);
       const catchAt = src.indexOf('} catch');
       expect(notifyAt).toBeGreaterThan(submitAt);
       expect(notifyAt).toBeLessThan(catchAt);
