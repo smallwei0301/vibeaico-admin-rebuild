@@ -1063,3 +1063,12 @@ export function stripTenantIdParam(search: string): string {
   const qs = params.toString();
   return qs ? `?${qs}` : '';
 }
+
+/**
+ * 深連結 proceed（同店或無 tenantId）時要顯示的乾淨 URL；沒有 tenantId 參數則回 null（不需改寫）。
+ * 保留 orderId 等其他參數，只移除 tenantId。
+ */
+export function cleanedUrlForProceed(pathname: string, search: string, hash: string): string | null {
+  if (!new URLSearchParams(search).has('tenantId')) return null;
+  return `${pathname}${stripTenantIdParam(search)}${hash}`;
+}

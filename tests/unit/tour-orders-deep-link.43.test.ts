@@ -238,7 +238,7 @@ describe('route.ts behaviour: /api/tour-orders orderId 精準查詢（#43 類別
   );
 });
 
-import { decideTourOrdersTenantAction, stripTenantIdParam } from '@/services/tours';
+import { cleanedUrlForProceed, decideTourOrdersTenantAction, stripTenantIdParam } from '@/services/tours';
 describe('#941 深連結 tenantId', () => {
   it('解析 tenantId；未帶為空字串', () => {
     expect(parseTourOrdersDeepLink('?orderId=o1&tenantId=t9').tenantId).toBe('t9');
@@ -248,6 +248,11 @@ describe('#941 深連結 tenantId', () => {
     expect(decideTourOrdersTenantAction('', 't1')).toBe('proceed');
     expect(decideTourOrdersTenantAction('t1', 't1')).toBe('proceed');
     expect(decideTourOrdersTenantAction('t2', 't1')).toBe('switch');
+  });
+  it('proceed 時 cleanedUrlForProceed 移除 tenantId 但保留 orderId 與 hash', () => {
+    expect(cleanedUrlForProceed('/tenant/tour-orders', '?orderId=o1&tenantId=t1', '#x')).toBe('/tenant/tour-orders?orderId=o1#x');
+    expect(cleanedUrlForProceed('/tenant/tour-orders', '?tenantId=t1', '')).toBe('/tenant/tour-orders');
+    expect(cleanedUrlForProceed('/tenant/tour-orders', '?orderId=o1', '')).toBeNull();
   });
   it('stripTenantIdParam 只移除 tenantId', () => {
     expect(stripTenantIdParam('?orderId=o1&tenantId=t2')).toBe('?orderId=o1');

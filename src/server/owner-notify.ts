@@ -19,6 +19,7 @@ import { getLineCredentials, lineBotInfo, lineMulticast, consumePushQuota } from
 import { ApiHttpError, ERR } from './http';
 import { hydrateTourOrders } from './tour-orders';
 import { APP_URL } from '@/config/env';
+import { quotePostgrestValue } from './postgrest-filter';
 
 export const OWNER_NOTIFY_MAX_RECIPIENTS = 3;
 
@@ -429,28 +430,54 @@ export const OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP = 10;
 export async function notifyOwnerNewTourOrder(tenantId: string, orderId: string): Promise<void> {
   try {
     const admin = createAdminSupabase();
-    // 額度保護：先查近 60 分鐘該店建單數（含本筆）；超過上限或查詢失敗都不推（fail closed）。
-    const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    const { count, error: cErr } = await admin
+    // 先載入本筆訂單：額度判斷以「本筆自己的 created_at」為錨，而不是「查詢當下」的視窗總數。
+    const { data: row, error } = await admin
+      .from('tour_orders').select('*').eq('id', orderId).eq('tenant_id', tenantId).maybeSingle();
+    if (error) throw error;
+    if (!row) return;
+    const ownCreatedAt = typeof row.created_at === 'string' ? row.created_at : '';
+    const ownMs = Date.parse(ownCreatedAt);
+    if (!ownCreatedAt || Number.isNaN(ownMs)) {
+      console.error('[owner-notify] 團體訂單缺少有效 created_at，略過推播', tenantId, orderId);
+      return;
+    }
+    // 排名 = 本筆之前（含本筆）在其一小時視窗內、同店的建單數，以 (created_at, id) 全序決定先後。
+    // 排名只取決於資料本身，與 after() 何時執行無關；因此並行灌單時每筆訂單的排名互異，
+    // 恰好一筆得到 CAP+1，彙總提醒不會因為查詢時已全部寫入而整批漏送。
+    // 值一律以雙引號包起來（quotePostgrestValue），避免時間戳內的 `+`、`:` 與 id 被 or() 語法誤解。
+    const windowStart = new Date(ownMs - 60 * 60 * 1000).toISOString();
+    const ownIso = quotePostgrestValue(ownCreatedAt);
+    const ownId = quotePostgrestValue(String(row.id));
+    const { count: rank, error: cErr } = await admin
       .from('tour_orders')
       .select('id', { count: 'exact', head: true })
       .eq('tenant_id', tenantId)
-      .gte('created_at', since);
-    if (cErr || typeof count !== 'number') {
-      console.error('[owner-notify] 團體訂單近一小時計數失敗，略過推播', tenantId, cErr);
+      .gt('created_at', windowStart)
+      .or(`created_at.lt.${ownIso},and(created_at.eq.${ownIso},id.lte.${ownId})`);
+    if (cErr || typeof rank !== 'number') {
+      console.error('[owner-notify] 團體訂單視窗排名計數失敗，略過推播', tenantId, cErr);
       return;
     }
-    if (count > OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP) {
+    if (rank > OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP + 1) {
       console.warn('[owner-notify] 團體訂單通知超過每小時上限，略過推播', tenantId);
       return;
     }
-    const [{ data: row, error }, { data: tenant, error: tErr }] = await Promise.all([
-      admin.from('tour_orders').select('*').eq('id', orderId).eq('tenant_id', tenantId).maybeSingle(),
-      admin.from('tenants').select('name').eq('id', tenantId).maybeSingle(),
-    ]);
-    if (error) throw error;
+    if (rank === OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP + 1) {
+      // 本筆是其視窗內第一筆超額訂單：改送一則彙總提醒（不逐筆），避免匿名灌單把真實通知整小時封死。
+      // 每個視窗內恰好一筆訂單的排名為 CAP+1，與查詢時機無關；滑動視窗下較晚的訂單可能再各自成為
+      // 自己視窗的 CAP+1 而再送一則，數量有界（仍受每月推播額度保護）。
+      const { data: tn, error: tnErr } = await admin.from('tenants').select('name').eq('id', tenantId).maybeSingle();
+      if (tnErr) throw tnErr;
+      const shopName = cleanNotifyField(tn?.name);
+      const pre = shopName ? `【${shopName}】` : '';
+      const reminder =
+        `${pre}本小時新訂單已超過 ${OWNER_NOTIFY_TOUR_ORDER_HOURLY_CAP} 筆，後續訂單暫停逐筆通知，請至後台「團體訂單」查看。\n` +
+        `查看訂單：${APP_URL}/tenant/tour-orders?tenantId=${encodeURIComponent(tenantId)}`;
+      await sendOwnerNotifyEvent(tenantId, 'notify_new_booking', reminder.slice(0, OWNER_NOTIFY_TEXT_HARD_CAP));
+      return;
+    }
+    const { data: tenant, error: tErr } = await admin.from('tenants').select('name').eq('id', tenantId).maybeSingle();
     if (tErr) throw tErr;
-    if (!row) return;
     const [order] = await hydrateTourOrders(admin, tenantId, [row]);
     if (!order) return;
     const shop = cleanNotifyField(tenant?.name);

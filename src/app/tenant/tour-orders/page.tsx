@@ -20,7 +20,7 @@ import { useToast } from '@/components/ui/Toast';
 import {
   acceptTourOrder, cancelTourOrder, completeTourOrder, confirmTourOrderPayment,
   createManualTourOrder, getTourOrderSummary, listTourOrders, listTripDepartures, listTripPlans, listTrips,
-  decideTourOrdersTenantAction, parseTourOrdersDeepLink, rejectTourOrder, stripTenantIdParam,
+  cleanedUrlForProceed, decideTourOrdersTenantAction, parseTourOrdersDeepLink, rejectTourOrder, stripTenantIdParam,
 } from '@/services/tours';
 import { listPaymentMethods, type PaymentMethodRow } from '@/services/payment-methods';
 import { ApiError } from '@/lib/api';
@@ -165,6 +165,9 @@ export default function TourOrdersPage() {
       setReady(true);
       return;
     }
+    // proceed：同店（或無 tenantId）→ 移除 tenantId 但保留 orderId，避免日後重整／分享網址時誤觸切店。
+    const proceedUrl = cleanedUrlForProceed(window.location.pathname, window.location.search, window.location.hash);
+    if (proceedUrl !== null) window.history.replaceState(null, '', proceedUrl);
     if (dl.status) setStatusFilter(dl.status);
     if (dl.source) setSourceFilter(dl.source);
     if (dl.tripId) setTripFilter(dl.tripId);
