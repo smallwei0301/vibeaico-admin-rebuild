@@ -1589,6 +1589,13 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 預防：下一次 Product 委派前，先對照 current role receipt schema 與 runtime 能力；spawn 當下保存原 request/result、觀測UTC與可得的真實識別，work/completion 當下保存 exactsource／結果，兩角色分別留證。保留需要的原始資料於受限位置，公開證據不得洩漏秘密。未知欄位如實記 UNEXPOSED；taskname、GitHub登入或主 session ID 不代填子角色。缺 capture 能力就在投入完整施工前指出准入限制並尋找既有合法路徑，不以反覆「繼續」或重跑測試期待身份出現。canonical角色回讀與結果review分開驗，不到收尾才第一次檢查。
 - 驗證／狀態：實際查找結果保留未知，ordinary source deferral 實跑 RED1failed/60passed 後完成最小接線；最終 scoped、exact-head CI與main回讀以本次治理 PR 記錄為準。程序面預防已記錄，未宣稱平台原始子角色身份已找回、已建機械 capture collector或 Production acceptance 完成。
 
+#### 2026-10-14 — #977：即時 capture 成功仍被 backend-only 准入阻塞
+
+- 證據：[#755 checkpoint 6168970044](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/755#issuecomment-6168970044)、[#977](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/977)。此次保存原 request/result/UTC/work report hash，工具只回 native task_name，actorId/sessionId 未暴露。
+- 根因更正：#960 只完成 #946 單次解鎖與程序面 capture 防遺失，不代表平台欄位缺口已修復。紀錄保存成功與規則能接受 runtime 證據是兩個條件；不能把「已寫 Playbook」報成常態出貨恢復。
+- 修正：Owner 新指示「讓規則正式接受可驗證的原生執行紀錄」。沿既有 source native verifier/trusted adapter 正式 repository-source 准入，不新增 collector/framework/逐PR豁免。不同 BUILD/fresh FINAL、完整原始 capture、exact source/comment bytes、enabled-main generation 及所有技術 gates 仍必須成立；DB G5/writer 不適用。
+- 預防與驗證：施工前確認原生完整捕獲可滿足共用 validator；spawn/work/completion 即時保存，不捏造 backend 身份，不借歷史 NOT_CAPTURED。測試新 PR 正例與自審/過早 FINAL/缺原文/branch-only/stale source/Production surface 反例；正式啟用只認正常 CI/review/merge 後 main 回讀。結果由 #977 對應 PR closeout 補證，歷史 counter/model/時間不改寫。
+
 ### PB-044 — 破壞性動作前的查證，有效期只有幾分鐘
 
 #### 2026-10-09 — #844 CI recovery 沿用舊空清單，重複喚醒已受理的工作

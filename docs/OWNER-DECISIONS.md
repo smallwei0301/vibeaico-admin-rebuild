@@ -5,6 +5,10 @@
 > 最後更新：2026-10-10。
 > 模型版本決策最後更新：2026-10-01；本次只新增有界角色證據政策，未變更模型型號。
 
+## 2026-10-14 — 正式原生 source 角色准入（#977）
+
+Owner 指示「讓規則正式接受可驗證的原生執行紀錄」。沿既有 native-role verifier/trusted adapter 啟用 `2026-10-14.1 / REPOSITORY_SOURCE`，以完整原生 BUILD 與 fresh FINAL REVIEW 常態滿足本 repo source 的獨立角色來源；每筆仍綁 exact PR/head/digest、原始捕獲、可信 comment bytes、完成/政策回讀順序及所有技術 gates。backend/model unknown 保留，不追造歷史。DB G5/writer/Production 操作不適用。canonical：[本次裁示](decisions/2026-10-14-owner-native-source-role-admission.md)、`AGENT-EXECUTION.md` §7.2。下方 #848 singleton 與 #946 單次 deferral 保留歷史，不限制已正常 merge/main 啟用的新 source 政策。
+
 ## 2026-10-14 已裁示
 
 - #946 source 身分資料單次延後：Owner 指示「紀錄到playbook中，這次先授權繼續，接下來請避免再發生」。只限 exact291b0c9／唯一檔案 digest286e4136，保留真實獨立 review／CI／publication／WIP／正常 merge。沿既有單一 scoped deferral 承接普通 Sol，不啟用通用豁免、不適用 DB G5/writer 或其他 PR。#855 原裁示保留歷史。canonical：[有界裁示](decisions/2026-10-14-owner-pr946-source-identity-deferral.md)、`AGENT-EXECUTION.md` §7.2、PB-040。

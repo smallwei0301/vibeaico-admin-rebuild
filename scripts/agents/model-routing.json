@@ -20,16 +20,13 @@
     "technicalReviewActorId": 206991894
   },
   "nativeRolePilot": {
-    "version": "2026-10-09.1",
+    "version": "2026-10-14.1",
     "enabled": true,
+    "scopeMode": "REPOSITORY_SOURCE",
     "surface": "PRODUCT_SOURCE_FINAL_RISK",
     "repository": "smallwei0301/vibeaico-admin-rebuild",
-    "prNumber": 848,
-    "headSha": "8e85baf04a3e9a8d556ed8abd71c2ad789be468b",
-    "changeDigest": "d9c1f7cffeeed4436e4bd31ea211e1235d70e83294c12a876c249793b1539790",
-    "privateMessageMode": "PR848_RETAINED_ORIGINAL_V1",
-    "adoptionApprovedAt": "2026-10-10T12:46:54.792160Z",
-    "buildWorkScope": "Fresh adoption and full verification of existing PR #848 exact source; no original authorship claimed."
+    "privateMessageMode": "RETAINED_ORIGINAL_V1",
+    "ownerDecision": "docs/decisions/2026-10-14-owner-native-source-role-admission.md"
   },
   "openaiBuilderDecision": {
     "effectiveAt": "2026-10-01T00:01:00Z",
