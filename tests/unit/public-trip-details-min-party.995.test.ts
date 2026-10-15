@@ -14,7 +14,8 @@ describe('#995 方案詳情頁：名額少於最低成團人數的團次不標�
   it('元件使用 candidateIsBookable 並僅對可訂團次套用 badge-primary', () => {
     expect(src).toContain("import { candidateIsBookable } from '@/lib/public-departure-candidates'");
     expect(src).toContain('!candidateIsBookable(departure.seatsLeft, plan.minParty)');
-    expect(src).toContain("bookable ? 'badge badge-primary' : 'badge text-secondary'");
+    expect(src).toContain("`badge flex-col items-start ${bookable ? 'badge-primary' : 'text-secondary'}`");
+    expect(src).toContain('flex-col items-start');
     expect(src).toContain('t.departures.belowMinParty');
   });
   it('申請制（REQUEST）方案不套用名額不足狀態：RequestForm 不鎖團次、request API 不保留名額', () => {

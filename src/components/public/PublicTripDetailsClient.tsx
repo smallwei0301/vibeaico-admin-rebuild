@@ -268,10 +268,12 @@ export function PublicTripDetailsClient({ shopCode, slug, initialData }: Props) 
                             const belowMinParty = plan.salesMode !== 'REQUEST' && !departure.soldOut && !candidateIsBookable(departure.seatsLeft, plan.minParty);
                             const bookable = !departure.soldOut && !belowMinParty;
                             return (
-                              <li key={departure.id} className={bookable ? 'badge badge-primary' : 'badge text-secondary'}>
-                                {formatDepartureDate(departure.departsOn)}{' '}
-                                {departure.startTime || t.departures.noStartTime}{' · '}
-                                {departure.soldOut ? t.departures.soldOut : t.departures.seatsLeft(departure.seatsLeft)}
+                              <li key={departure.id} className={`badge flex-col items-start ${bookable ? 'badge-primary' : 'text-secondary'}`}>
+                                <span>
+                                  {formatDepartureDate(departure.departsOn)}{' '}
+                                  {departure.startTime || t.departures.noStartTime}{' · '}
+                                  {departure.soldOut ? t.departures.soldOut : t.departures.seatsLeft(departure.seatsLeft)}
+                                </span>
                                 {belowMinParty ? <span className="block text-2xs">{t.departures.belowMinParty}</span> : null}
                                 {departure.unitPrice !== undefined
                                   ? <span className="block text-2xs">{t.plans.price(formatCurrency(departure.unitPrice), t.plans.priceUnit[plan.priceType])}</span>
