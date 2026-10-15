@@ -975,9 +975,9 @@ export default function TripDetailPage() {
         : <span className="text-muted">—</span>),
     },
     {
-      key: 'actions', header: t.departures.columns.actions, width: '200px',
+      key: 'actions', header: t.departures.columns.actions, width: '200px', sticky: 'right',
       render: (d) => (
-        <div className="btn-group">
+        <div className="btn-group btn-group-wrap">
           <Button
             variant="outline" size="sm" title={t.actions.edit} aria-label={t.actions.edit}
             onClick={() => openDepartureEditor(d)}
