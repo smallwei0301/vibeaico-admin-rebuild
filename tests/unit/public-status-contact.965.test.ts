@@ -10,6 +10,7 @@ import * as publicOrderFormat from '@/lib/public-order-format';
 import * as publicPaymentMethodsLib from '@/lib/public-payment-methods';
 import * as utils from '@/lib/utils';
 import * as partialPayment from '@/lib/public-partial-payment';
+import * as tourOrderPaymentDisplay from '@/lib/tour-order-payment-display';
 import type { PublicShop } from '@/server/public-shop';
 import type { TourOrder } from '@/lib/types';
 
@@ -34,6 +35,7 @@ const imports: Record<string, unknown> = {
   '@/lib/public-order-format': publicOrderFormat,
   '@/lib/utils': utils,
   '@/lib/public-partial-payment': partialPayment,
+  '@/lib/tour-order-payment-display': tourOrderPaymentDisplay,
 };
 const compiled = ts.transpileModule(source, {
   compilerOptions: { jsx: ts.JsxEmit.React, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },

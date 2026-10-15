@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import ts from 'typescript';
 import * as utils from '@/lib/utils';
 import * as partialPayment from '@/lib/public-partial-payment';
+import * as tourOrderPaymentDisplay from '@/lib/tour-order-payment-display';
 import { common } from '@/i18n/zh-TW/common';
 import * as publicOrderFormat from '@/lib/public-order-format';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -40,6 +41,7 @@ const imports: Record<string, unknown> = {
   '@/i18n/zh-TW/pages/public-tour-request': { publicTourRequestPage: t },
   '@/lib/utils': utils,
   '@/lib/public-partial-payment': partialPayment,
+  '@/lib/tour-order-payment-display': tourOrderPaymentDisplay,
   '@/i18n/zh-TW/common': { common },
   '@/lib/public-order-format': publicOrderFormat,
 };
@@ -72,8 +74,9 @@ describe('#46 旅客付款狀態顯示', () => {
     const html = await render({ paymentStatus });
     expect(html).toContain(t.status.paymentTitle);
     expect(html).toContain(t.status.paymentState[paymentStatus]);
-    expect(html).toContain(t.status.paymentDescription[paymentStatus]);
-    expect(html.includes('前完成付款')).toBe(paymentStatus === 'UNPAID');
+    // #1017：fixture 為 CONFIRMED+UNPAID 且 0<depositAmount<totalAmount，改顯示訂金文案。
+    expect(html).toContain(paymentStatus === 'UNPAID' ? t.status.paymentDepositDueDescription('NT$500') : t.status.paymentDescription[paymentStatus]);
+    expect(html.includes('前支付訂金')).toBe(paymentStatus === 'UNPAID'); // #1017：原「前完成付款」改為「前支付訂金」
     expect(html.includes('逾期名額將被釋放')).toBe(paymentStatus === 'UNPAID');
     if (paymentStatus === 'PARTIAL') {
       expect(html).not.toContain(t.status.paymentState.PAID);
@@ -121,7 +124,8 @@ describe('#46 旅客付款狀態顯示', () => {
   });
 
   it('無付款期限時未付款請向店家確認；已付清仍不邀請付款', async () => {
-    expect(await render({ holdExpiresAt: null })).toContain(t.status.confirmedNoDeadlineDescription);
+    expect(await render({ holdExpiresAt: null })).toContain(t.status.confirmedDepositNoDeadlineDescription('NT$500')); // #1017 訂金文案
+    expect(await render({ holdExpiresAt: null, depositAmount: 0 })).toContain(t.status.confirmedNoDeadlineDescription);
     expect(await render({ holdExpiresAt: null, paymentStatus: 'PAID' })).not.toContain(t.status.confirmedNoDeadlineDescription);
   });
 
