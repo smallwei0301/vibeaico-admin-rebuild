@@ -63,6 +63,30 @@ export async function isFeatureActive(tenantId: string, code: string): Promise<b
   return !data.expires_at || new Date(data.expires_at) > new Date();
 }
 
+/**
+ * 區分「確定未啟用」與「查詢失敗」（isFeatureActive 兩者都回 false）。
+ * 查詢 error 或 throw → 'error'；呼叫端（如 AI shop context）應交真人，不得當成未啟用。
+ */
+export async function featureActiveStatus(
+  tenantId: string,
+  code: string,
+): Promise<'active' | 'inactive' | 'error'> {
+  try {
+    const admin = createAdminSupabase();
+    const { data, error } = await admin.from('feature_subscriptions')
+      .select('active, expires_at').eq('tenant_id', tenantId).eq('code', code).maybeSingle();
+    if (error) {
+      console.error('[features] featureActiveStatus 查詢失敗', error);
+      return 'error';
+    }
+    if (!data?.active) return 'inactive';
+    return !data.expires_at || new Date(data.expires_at) > new Date() ? 'active' : 'inactive';
+  } catch (e) {
+    console.error('[features] featureActiveStatus 查詢拋錯', e);
+    return 'error';
+  }
+}
+
 export async function getEntitlement(
   tenant: TenantEntitlementContext,
   capability: string,
