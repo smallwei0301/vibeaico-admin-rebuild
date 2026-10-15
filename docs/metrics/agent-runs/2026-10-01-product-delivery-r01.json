@@ -9687,8 +9687,8 @@
     "unresolvedP1": 0,
     "reopenedIssues": 1,
     "postMergeRegressions": 0,
-    "safetyViolations": 0,
-    "hardFailReasons": []
+    "safetyViolations": 1,
+    "hardFailReasons": ["OBSERVED_2026_10_15_PR1002_PUSHED_4b239101_WHILE_PARKED"]
   },
   "flow": {
     "lunaTasks": 183,

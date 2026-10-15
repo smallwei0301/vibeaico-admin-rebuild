@@ -18,6 +18,11 @@
 
 - run is still in progress
 
+## 結案前必須修正的硬性問題
+
+- OBSERVED_2026_10_15_PR1002_PUSHED_4b239101_WHILE_PARKED
+- quality.safetyViolations > 0
+
 ---
 
 同一張 Issue 重複 claim 只算一次。Delivery Truth v3 必須依序驗證 source、main、Vercel、Production schema 與登入正式站後的真實操作；只合併、只部署 App、只套 TEST migration 或只看到成功提示，都不能冒充正式出貨。舊 v2.2 完成輪次維持原計分語意，不回寫歷史。
