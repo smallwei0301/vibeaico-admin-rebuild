@@ -14,17 +14,17 @@ describe('#1000 店家團體訂單：依實收金額顯示', () => {
   it('PARTIAL：顯示實收與待收尾款（total − paid）', () => {
     const o = { ...base, paymentStatus: 'PARTIAL', paidAmount: 4000 } as const;
     expect(listPaymentLine(o)).toEqual({ kind: 'paid', amount: 4000 });
-    expect(detailPaymentRows(o)).toEqual({ depositDue: 3000, paid: 4000, balanceDue: 6000 });
+    expect(detailPaymentRows(o)).toEqual({ depositDue: null, paid: 4000, balanceDue: 6000 });
   });
   it('PAID：不顯示待收尾款，顯示已收金額', () => {
     const o = { ...base, paymentStatus: 'PAID', paidAmount: 10000 } as const;
     expect(listPaymentLine(o)).toBeNull();
-    expect(detailPaymentRows(o)).toEqual({ depositDue: 3000, paid: 10000, balanceDue: null });
+    expect(detailPaymentRows(o)).toEqual({ depositDue: null, paid: 10000, balanceDue: null });
   });
   it('PARTIAL 但 paidAmount 缺失（mock）：視為未知，不顯示已收與尾款', () => {
     const o = { ...base, paymentStatus: 'PARTIAL' } as const;
     expect(listPaymentLine(o)).toBeNull();
-    expect(detailPaymentRows(o)).toEqual({ depositDue: 3000, paid: null, balanceDue: null });
+    expect(detailPaymentRows(o)).toEqual({ depositDue: null, paid: null, balanceDue: null });
   });
   it('CANCELLED + PARTIAL：保留已收金額、不顯示待收尾款', () => {
     const o = { ...base, status: 'CANCELLED', paymentStatus: 'PARTIAL', paidAmount: 4000 } as const;
@@ -45,6 +45,24 @@ describe('#1000 店家團體訂單：依實收金額顯示', () => {
   });
   it('CANCELLED + UNPAID 有定金：詳情不顯示應收定金', () => {
     expect(detailPaymentRows({ ...base, status: 'CANCELLED' })).toEqual({ depositDue: null, paid: null, balanceDue: null });
+  });
+  it('應收定金：UNPAID 未取消才有；PARTIAL／PAID 沒有', () => {
+    expect(detailPaymentRows({ ...base }).depositDue).toBe(3000);
+    expect(detailPaymentRows({ ...base, paymentStatus: 'PARTIAL', paidAmount: 4000 }).depositDue).toBeNull();
+    expect(detailPaymentRows({ ...base, paymentStatus: 'PAID', paidAmount: 10000 }).depositDue).toBeNull();
+    expect(detailPaymentRows({ ...base, depositAmount: 0 }).depositDue).toBeNull();
+  });
+  it('列表與詳情的應收定金在所有 status／paymentStatus 組合一致', () => {
+    for (const status of ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'] as const) {
+      for (const paymentStatus of ['UNPAID', 'PARTIAL', 'PAID', 'REFUNDED'] as const) {
+        for (const paidAmount of [undefined, 4000]) {
+          const o = { ...base, status, paymentStatus, paidAmount } as never;
+          const list = listPaymentLine(o);
+          const listDue = list?.kind === 'depositDue' ? list.amount : null;
+          expect(detailPaymentRows(o).depositDue, `${status}/${paymentStatus}/${paidAmount}`).toBe(listDue);
+        }
+      }
+    }
   });
   it('mock 種子：PARTIAL／PAID 訂單皆有合法 paidAmount', () => {
     for (const o of MOCK_TOUR_ORDERS) {
