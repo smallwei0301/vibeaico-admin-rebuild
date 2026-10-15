@@ -23,7 +23,8 @@ const body = `<!-- pr-lifecycle\nissue: 755\nstate: ACTIVE\nsupersedes: none\n--
   SCORECARD_PATH: 'docs/metrics/agent-runs/2026-10-05-issue-755-atomic-publication-r01.json',
 }).map(([k,v]) => `${k}: ${v}`).join('\n');
 const pr = { number: 755, state: 'open', body, head: { sha, ref: 'feature', repo: { full_name: 'owner/repo' } }, base: { sha: base } };
-async function run({ event = 'pull_request', live = pr, holders = [live], main = sha, apiFails = false } = {}) {
+type Options = { event?: string; live?: typeof pr; holders?: (typeof pr)[]; main?: string; apiFails?: boolean };
+async function run({ event = 'pull_request', live = pr, holders = [live], main = sha, apiFails = false }: Options = {}) {
   const inputs = { dispatch_reason: 'lane_transition', test_lane_pr: '755', expected_head: sha, base_revision: base };
   const context = { eventName: event, ref: event === 'pull_request' ? 'refs/pull/755/merge' : 'refs/heads/feature', sha,
     repo: { owner: 'owner', repo: 'repo' }, payload: { pull_request: pr, inputs } };
