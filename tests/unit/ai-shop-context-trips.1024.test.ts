@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   AI_DEPARTURE_LIMIT,
+  TRIP_LIMIT,
   buildCatalogContext,
   buildTourCatalogContext,
   loadListableDepartures,
@@ -284,6 +285,33 @@ describe('loadListableDepartures 截斷旗標', () => {
 
   it('AI_DEPARTURE_LIMIT 大於 LINE 清單上限 10', () => {
     expect(AI_DEPARTURE_LIMIT).toBe(60);
+  });
+});
+
+describe('trips 查詢上限', () => {
+  const adminWithTrips = (n: number) => {
+    const make = (table: string) => {
+      const q: any = {
+        select: () => q, eq: () => q, in: () => q, gte: () => q, lte: () => q, order: () => q, limit: () => q, is: () => q,
+        maybeSingle: async () => ({ data: { basic: { timezone: 'Asia/Taipei' } }, error: null }),
+        then: (resolve: any) => resolve({
+          data: table === 'trips' ? Array.from({ length: n }, (_, i) => ({ id: `t${i}`, title: `T${i}` })) : [],
+          error: null,
+        }),
+      };
+      return q;
+    };
+    return { from: make };
+  };
+
+  it('trips 取滿 TRIP_LIMIT → ok:false（不得把截斷的目錄當完整）', async () => {
+    const r = await loadListableDepartures(adminWithTrips(TRIP_LIMIT), 'x', 'test', 10);
+    expect(r).toEqual({ ok: false });
+  });
+
+  it('trips 未達上限 → 正常回傳', async () => {
+    const r = await loadListableDepartures(adminWithTrips(TRIP_LIMIT - 1), 'x', 'test', 10);
+    expect(r.ok && r.trips).toHaveLength(TRIP_LIMIT - 1);
   });
 });
 

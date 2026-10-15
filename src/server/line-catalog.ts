@@ -22,6 +22,9 @@ export const AI_DEPARTURE_LIMIT = 60;
  */
 export const TRIP_PLAN_LIMIT = 200;
 
+/** 已發布行程查詢上限；同 TRIP_PLAN_LIMIT，取滿即無法證明目錄完整 → { ok: false } */
+export const TRIP_LIMIT = 200;
+
 export type CatalogTrip = { id: string; title: string };
 export type CatalogPlan = {
   id: string;
@@ -86,9 +89,15 @@ export async function loadListableDepartures(
     .from('trips')
     .select('id, title')
     .eq('tenant_id', tenantId)
-    .eq('status', 'PUBLISHED');
+    .eq('status', 'PUBLISHED')
+    .order('id')
+    .limit(TRIP_LIMIT);
   if (tripError) {
     console.error(`[line] ${logTag} 查詢 trips 失敗`, tripError);
+    return { ok: false };
+  }
+  if ((tripRows ?? []).length >= TRIP_LIMIT) {
+    console.error(`[line] ${logTag} trips 取滿 ${TRIP_LIMIT} 列，無法證明完整`);
     return { ok: false };
   }
   const trips = (tripRows ?? []) as CatalogTrip[];

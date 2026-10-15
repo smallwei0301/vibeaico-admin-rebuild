@@ -135,6 +135,41 @@ describe('featureActiveStatus / buildShopContext', () => {
     expect(shop.catalogUnavailable).toBeUndefined();
     expect(shop.trips).toEqual([]);
   });
+
+  // 業態只是預設、可加開模組：非 GUIDE 只要 TOUR_MODULE active，就與 replyTrips 一致帶入行程與團次。
+  const tourAdmin = {
+    from: (table: string) => {
+      const rows: Record<string, any[]> = {
+        trips: [{ id: 't1', title: '賞鯨' }],
+        trip_plans: [{ id: 'pf', trip_id: 't1', name: '固定團', sales_mode: 'FIXED_DEPARTURE', active: true, min_party: 1 }],
+        trip_departures: [{
+          id: 'd1', trip_id: 't1', plan_id: 'pf', departs_on: '2099-01-02', start_time: null, capacity: 10, seats_booked: 2,
+          trip_plans: { id: 'pf', name: '固定團', sales_mode: 'FIXED_DEPARTURE', active: true, min_party: 1 },
+        }],
+      };
+      const q: any = {
+        select: () => q, eq: () => q, in: () => q, gte: () => q, lte: () => q, order: () => q, limit: () => q, is: () => q, range: () => q,
+        maybeSingle: async () => ({ data: { basic: { timezone: 'Asia/Taipei' } }, error: null }),
+        then: (r: any) => r({ data: rows[table] ?? [], error: null }),
+      };
+      return q;
+    },
+  } as any;
+
+  it.each(['LOCAL_SHOP', 'CLINIC'])('%s 租戶 TOUR_MODULE active 且有已發布行程 → AI context 含行程與團次', async (business_type) => {
+    featureResult.value = { data: { active: true, expires_at: null }, error: null, throws: false };
+    const shop = await buildShopContext(tourAdmin, { ...tenant, business_type }, {}, {}, {});
+    expect(shop.catalogUnavailable).toBeFalsy();
+    expect(shop.trips.join('\n')).toContain('賞鯨');
+    expect(shop.departures.join('\n')).toContain('固定團');
+  });
+
+  it('LOCAL_SHOP 未啟用 TOUR_MODULE → 維持空目錄（與 main 相同）', async () => {
+    const shop = await buildShopContext(tourAdmin, { ...tenant, business_type: 'LOCAL_SHOP' }, {}, {}, {});
+    expect(shop.catalogUnavailable).toBeUndefined();
+    expect(shop.trips).toEqual([]);
+    expect(shop.departures).toEqual([]);
+  });
 });
 
 describe('AI context 套用預約頁候選上限（每個方案前 12 個）', () => {

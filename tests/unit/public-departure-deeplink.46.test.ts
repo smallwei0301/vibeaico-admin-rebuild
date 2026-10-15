@@ -224,7 +224,7 @@ describe('LINE「近期團次」深連結（連結資格＝預約頁載入器 + 
       return c;
     };
     const trips = () => {
-      const c: any = { select: () => c, eq: () => c, then: (res: (v: unknown) => unknown) => Promise.resolve({ data: [{ id: 'tr', title: '行程' }], error: null }).then(res) };
+      const c: any = { select: () => c, eq: () => c, order: () => c, limit: () => c, then: (res: (v: unknown) => unknown) => Promise.resolve({ data: [{ id: 'tr', title: '行程' }], error: null }).then(res) };
       return c;
     };
     return { from: (t: string) => t === 'tenant_settings' ? settings() : t === 'trips' ? trips() : departures() };

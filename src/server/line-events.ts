@@ -1308,7 +1308,8 @@ export async function buildShopContext(
   if (biz.closedDays.length)
     businessHours += `，公休：${biz.closedDays.map((d) => `週${dayNames[d]}`).join('、')}`;
 
-  // 非 GUIDE／未啟用 TOUR_MODULE：沒有行程，維持空陣列。團次與名額每次即時查、不快取。
+  // 未啟用 TOUR_MODULE：沒有行程，維持空陣列（業態只是預設，任何業態加開 TOUR_MODULE 後都帶入行程，與 replyTrips 一致）。
+  // 團次與名額每次即時查、不快取。
   let catalog: ShopCatalogContext = {
     trips: [],
     departures: [],
@@ -1316,7 +1317,7 @@ export async function buildShopContext(
   };
   // TOUR_MODULE 狀態用 featureActiveStatus 區分「確定未啟用」與「查詢失敗」：
   // error → catalogUnavailable（交真人，不套「沒開團」規則）；inactive → 維持空目錄；active → 查 catalog。
-  const tourStatus = businessTypeOf(tenant) === 'GUIDE' ? await featureActiveStatus(tenant.id, 'TOUR_MODULE') : 'inactive';
+  const tourStatus = await featureActiveStatus(tenant.id, 'TOUR_MODULE');
   if (tourStatus === 'error') {
     catalog = { trips: [], departures: [], catalogUnavailable: true };
   } else if (tourStatus === 'active') {
