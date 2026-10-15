@@ -34,6 +34,12 @@ export const POST = handle(async (req) => {
   const { error: updateError } = await admin.auth.admin.updateUserById(uid, { password: b.newPassword });
   if (updateError) return updateFailure(updateError);
   // 只有密碼確實更新成功後才消耗驗證碼（條件式，防並發重用）。
-  await markCodeConsumed(codeId);
+  // 密碼此時已改成功：消耗失敗（DB error／並發已消耗）不得讓使用者看到失敗，只記 log（不含 email／密碼／驗證碼）。
+  try {
+    await markCodeConsumed(codeId);
+  } catch (e) {
+    const err = e as { code?: string; message?: string };
+    console.error('[reset-password] markCodeConsumed failed after password reset', err?.code, err?.message);
+  }
   return ok({ reset: true });
 });

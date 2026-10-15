@@ -32,6 +32,7 @@ vi.mock('next/headers', () => ({ cookies: () => Promise.resolve({ get: () => und
 
 import { POST } from '@/app/api/auth/reset-password/route';
 import { consumeCode } from '@/server/verify-code';
+import { ERR } from '@/server/http';
 
 function request() {
   return new Request('http://localhost/api/auth/reset-password', {
@@ -67,7 +68,43 @@ describe('POST /api/auth/reset-password (#1028)', () => {
     const body = await res.json();
     expect(body.success).toBe(false);
     expect(body.message).toBe('新密碼不符合安全規則，請換一組更長或更複雜的密碼');
+    expect(body.code).toBe('REQ_001');
+    expect(body.code).toBe(ERR.VALIDATION);
     expect(mocks.updatePayloads).toHaveLength(0);
+  });
+
+  it('same_password：400 ERR.VALIDATION，驗證碼不消耗', async () => {
+    mocks.updateUserById.mockResolvedValue({ data: null, error: { code: 'same_password', status: 422, message: 'same' } });
+    const res = await POST(request(), {});
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.code).toBe('REQ_001');
+    expect(body.code).toBe(ERR.VALIDATION);
+    expect(body.message).toBe('新密碼不可與目前密碼相同，請換一組新的密碼');
+    expect(mocks.updatePayloads).toHaveLength(0);
+  });
+
+  it('user_not_found：400 CODE_INVALID，驗證碼不消耗', async () => {
+    mocks.updateUserById.mockResolvedValue({ data: null, error: { code: 'user_not_found', status: 404, message: 'nf' } });
+    const res = await POST(request(), {});
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe('AUTH_004');
+    expect(mocks.updatePayloads).toHaveLength(0);
+  });
+
+  it('密碼已更新但消耗遇 DB error：仍回 200 reset:true 並記 console.error', async () => {
+    mocks.updateSelect.mockResolvedValue({ data: null, error: { message: 'db down' } });
+    const res = await POST(request(), {});
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ success: true, data: { reset: true } });
+    expect(console.error).toHaveBeenCalled();
+  });
+
+  it('密碼已更新但條件更新 0 列（並發已消耗）：仍回 200 reset:true', async () => {
+    mocks.updateSelect.mockResolvedValue({ data: [], error: null });
+    const res = await POST(request(), {});
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ success: true, data: { reset: true } });
   });
 
   it('5xx／未知更新錯誤：500 中文訊息，驗證碼不消耗且不外洩 provider 訊息', async () => {
@@ -103,13 +140,6 @@ describe('POST /api/auth/reset-password (#1028)', () => {
     expect(res.status).toBe(400);
     expect((await res.json()).code).toBe('AUTH_004');
     expect(mocks.rpc).not.toHaveBeenCalled();
-  });
-
-  it('消耗條件更新沒更新到列（並發重用）：400 CODE_INVALID', async () => {
-    mocks.updateSelect.mockResolvedValue({ data: [], error: null });
-    const res = await POST(request(), {});
-    expect(res.status).toBe(400);
-    expect((await res.json()).code).toBe('AUTH_004');
   });
 });
 
