@@ -45,6 +45,8 @@ import type {
   TripSalesMode,
 } from '@/lib/types';
 
+import { previewManualOrderPrice } from '@/lib/manual-order-price';
+
 const PAGE_SIZE = 20;
 
 /**
@@ -403,9 +405,17 @@ export default function TourOrdersPage() {
     (d) => d.planId === draft.planId && d.status === 'OPEN' && d.capacity > d.seatsBooked,
   );
   const draftPlan = draftPlans.find((p) => p.id === draft.planId);
-  const draftTotal = draftPlan
-    ? draftPlan.priceType === 'PER_PERSON' ? draftPlan.basePrice * draft.partySize : draftPlan.basePrice
-    : 0;
+  const draftDeparture = draftDepartures.find((d) => d.id === draft.departureId);
+  const draftPreview = draftPlan
+    ? previewManualOrderPrice({
+      priceType: draftPlan.priceType,
+      basePrice: draftPlan.basePrice,
+      seasons: draftPlan.seasons ?? [],
+      departsOn: draftDeparture?.departsOn,
+      partySize: draft.partySize,
+    })
+    : null;
+  const draftTotal = draftPreview?.total ?? 0;
   const draftDeposit = draftPlan ? depositOf(draftPlan, draftTotal, draft.partySize) : 0;
 
   /**
@@ -946,7 +956,12 @@ export default function TourOrdersPage() {
 
           {draftPlan ? (
             <div className="rounded-md bg-neutral-50 px-3 py-2 text-sm font-semibold text-dark">
-              {t.create.totalPreview(formatCurrency(draftTotal))}
+              {draftPreview?.basis === 'DEPARTURE'
+                ? t.create.totalPreview(formatCurrency(draftTotal))
+                : t.create.totalPreviewBase(formatCurrency(draftTotal))}
+              {draftPreview?.seasonalPending ? (
+                <div className="mt-0.5 text-2xs font-normal text-warning">{t.create.seasonalPendingHint}</div>
+              ) : null}
               {draftDeposit > 0 ? (
                 <div className="mt-0.5 text-2xs font-normal text-warning">
                   {t.detail.fields.deposit} {formatCurrency(draftDeposit)}
