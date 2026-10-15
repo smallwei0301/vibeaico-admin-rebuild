@@ -375,6 +375,10 @@
     {
       "ref": "issue/1017",
       "title": "#46 旅客訂單狀態頁看不到店家要求的訂金，與店家後台「應收定金」不一致"
+    },
+    {
+      "ref": "issue/1020",
+      "title": "預約列表從首頁「待收款」進入時帶入看不見也清不掉的付款篩選"
     }
   ],
   "main": {
@@ -10314,6 +10318,74 @@
         "startedAt": "2026-10-15T09:48:45Z",
         "completedAt": "2026-10-15T09:52:16Z",
         "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）於 #1018 等待 CI 期間以 RESERVE 預建 #769 旅客頁文案誠實化（source-only，一個 commit），原 commit 5f90fdef，cherry-pick 為 4dcb5afd。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-sol-review-769",
+        "role": "audit",
+        "requestedModel": "sol",
+        "issue": 769,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/1019#issuecomment-6189431391",
+        "startedAt": "2026-10-15T09:57:45Z",
+        "completedAt": "2026-10-15T09:58:43Z",
+        "note": "REVIEW：fresh-context Opus subagent（requested claude-opus-5-5）審查 PR #1019 head e06698cb → PASS（僅 LOW）；於 #1020 綁定 commit 補記。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-luna-scout-1020-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1020,
+        "evidenceRef": "issue/1020",
+        "startedAt": "2026-10-15T09:59:33Z",
+        "completedAt": "2026-10-15T10:02:18Z",
+        "note": "Luna 窄盤點：Haiku subagent（requested claude-haiku-4-5）掃預約管理／Quick Edit，找到付款篩選看不見也清不掉（另兩項查證後排除）；主 agent 讀原始碼確認後開 #1020。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-luna-scout-1020-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1020,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-15T10:12:20Z",
+        "completedAt": "2026-10-15T10:12:20Z",
+        "note": "Luna metrics capture 綁定 issue/1020 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2（盤點＋綁定）；補記 #769 review 與 #1020 build 原始事件；flow.solTouches +1、solIssues +1。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-terra-build-1020",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 1020,
+        "evidenceRef": "commit 7b623c59 (cherry-pick of 68961317)",
+        "startedAt": "2026-10-15T10:03:25Z",
+        "completedAt": "2026-10-15T10:11:37Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）施工 #1020（單一 commit），原 commit 68961317，cherry-pick 為 7b623c59。actual 未經平台驗證。"
       }
 ,
       {
@@ -10355,7 +10427,7 @@
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 96,
+    "issuesStarted": 97,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -10382,14 +10454,14 @@
     "hardFailReasons": ["OBSERVED_2026_10_15_PR1002_PUSHED_4b239101_WHILE_PARKED"]
   },
   "flow": {
-    "lunaTasks": 198,
-    "lunaAccepted": 189,
+    "lunaTasks": 200,
+    "lunaAccepted": 191,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 259,
-    "solIssues": 39
+    "solTouches": 260,
+    "solIssues": 40
   },
   "auditability": {
     "evidenceFieldsCompletePercent": null,

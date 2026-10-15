@@ -1389,7 +1389,7 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
     expect(pageSource).toContain('openPayment');
     expect(pageSource).toContain('departureDay');
     expect(pageSource).toContain('w-full flex-shrink-0 sm:w-auto');
-    expect(bookingsPageSource).toContain("params.get('paymentStatus') === 'UNPAID'");
+    expect(bookingsPageSource).toContain("parsePaymentStatusParam(params.get('paymentStatus'))");
     expect(bookingsPageSource).toContain("params.get('bookingId')");
     expect(bookingsPageSource).toContain('requestedBookingId');
     expect(bookingsPageSource).toContain('bookingId: requestedBookingId');

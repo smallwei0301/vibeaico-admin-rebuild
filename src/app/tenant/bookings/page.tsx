@@ -34,6 +34,7 @@ import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { bookingsPage as t } from '@/i18n/zh-TW/pages/bookings';
 import { tenantDateString } from '@/lib/bookings-query-range';
+import { BOOKING_PAYMENT_FILTER_VALUES, isLatestRequest, parsePaymentStatusParam } from '@/lib/booking-payment-filter';
 import { buildStaffOptions, summarizeBatch } from '@/lib/booking-batch';
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
 import type {
@@ -142,13 +143,17 @@ export default function BookingsPage() {
     const params = new URLSearchParams(window.location.search);
     const s = params.get('status');
     if (s) setStatus(s);
-    if (params.get('paymentStatus') === 'UNPAID') setPaymentStatusFilter('UNPAID');
+    setPaymentStatusFilter(parsePaymentStatusParam(params.get('paymentStatus')));
     const bookingId = params.get('bookingId');
     if (bookingId) setRequestedBookingId(bookingId);
     if (params.get('action') === 'create') setCreateOpen(true);
   }, []);
 
+  /* #1020：請求序號——較舊的回應較晚到達時不得覆寫新篩選的結果。 */
+  const loadSeq = React.useRef(0);
+
   const load = React.useCallback(async () => {
+    const seq = ++loadSeq.current;
     setLoading(true);
     try {
       const isRealStatus = (REAL_STATUSES as string[]).includes(status);
@@ -165,6 +170,7 @@ export default function BookingsPage() {
         startBefore: status === 'UNPROCESSED' ? new Date().toISOString() : undefined,
       } satisfies ExportBookingsQuery;
       const res = await listBookings({ ...filterParams, page, size: PAGE_SIZE });
+      if (!isLatestRequest(seq, loadSeq.current)) return;
 
       /* 刪除／篩選後目前頁已超出範圍：退回最後一頁再查（避免空白頁卻有資料）。 */
       if (res.content.length === 0 && page > 0 && res.totalElements > 0) {
@@ -181,6 +187,7 @@ export default function BookingsPage() {
           const exact = await listBookings({
             ...filterParams, page: 0, size: 1, bookingId: requestedBookingId,
           });
+          if (!isLatestRequest(seq, loadSeq.current)) return;
           requested = exact.content.find((b) => b.id === requestedBookingId);
         }
         if (requested) {
@@ -200,13 +207,14 @@ export default function BookingsPage() {
       setTotal(res.totalElements);
       setRows(list);
     } catch (e) {
+      if (!isLatestRequest(seq, loadSeq.current)) return;
       toast.show(`${t.messages.loadFailed}${e instanceof Error ? e.message : t.messages.unknownError}`, 'danger');
       setRows([]);
       setTotal(0);
       /* 列表已清空：停用匯出（顯示 exportNotReady），避免匯出與畫面不一致。 */
       lastListFiltersRef.current = null;
     } finally {
-      setLoading(false);
+      if (isLatestRequest(seq, loadSeq.current)) setLoading(false);
     }
   }, [page, keyword, status, paymentStatusFilter, startDate, endDate, showCancelled, requestedBookingId, toast]);
 
@@ -497,6 +505,16 @@ export default function BookingsPage() {
                 <option value="">{t.filters.statusAll}</option>
                 {Object.entries(t.filters.status).map(([k, v]) => (
                   <option key={k} value={k}>{v}</option>
+                ))}
+              </Select>
+              <Select
+                className="form-select-sm w-auto" value={paymentStatusFilter}
+                aria-label={t.filters.paymentAriaLabel}
+                onChange={(e) => { setPaymentStatusFilter(parsePaymentStatusParam(e.target.value)); setPage(0); }}
+              >
+                <option value="">{t.filters.paymentAll}</option>
+                {BOOKING_PAYMENT_FILTER_VALUES.map((k) => (
+                  <option key={k} value={k}>{common.paymentStatus[k]}</option>
                 ))}
               </Select>
               <label className="flex items-center gap-1.5 text-xs text-secondary">
