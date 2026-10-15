@@ -4,7 +4,7 @@ import { partialPaymentBreakdown } from '@/lib/public-partial-payment';
 import { mapTourOrder } from '@/server/mappers';
 import { publicTourRequestPage as i18n } from '@/i18n/zh-TW/pages/public-tour-request';
 
-const base = { totalAmount: 10000 } as const;
+const base = { totalAmount: 10000, status: 'CONFIRMED' } as const;
 const src = (p: string) => readFileSync(p, 'utf8');
 
 describe('#988 partialPaymentBreakdown', () => {
@@ -20,6 +20,13 @@ describe('#988 partialPaymentBreakdown', () => {
   it('PAID／UNPAID：null', () => {
     expect(partialPaymentBreakdown({ ...base, paymentStatus: 'PAID', paidAmount: 10000 })).toBeNull();
     expect(partialPaymentBreakdown({ ...base, paymentStatus: 'UNPAID', paidAmount: 0 })).toBeNull();
+  });
+  it('已取消訂單即使 PARTIAL 也回 null；其他狀態仍回明細', () => {
+    const o = { totalAmount: 10000, paymentStatus: 'PARTIAL' as const, paidAmount: 3000 };
+    expect(partialPaymentBreakdown({ ...o, status: 'CANCELLED' })).toBeNull();
+    for (const status of ['PENDING', 'CONFIRMED', 'COMPLETED'] as const) {
+      expect(partialPaymentBreakdown({ ...o, status })).toEqual({ paidAmount: 3000, balanceDue: 7000 });
+    }
   });
   it('含退款：尾款不扣 refundedAmount（沿用 guide-action-inbox 的 total − paid）', () => {
     const o = { ...base, paymentStatus: 'PARTIAL' as const, paidAmount: 3000, refundedAmount: 1000 };
