@@ -9,6 +9,7 @@ import { common } from '@/i18n/zh-TW/common';
 import * as publicOrderFormat from '@/lib/public-order-format';
 import * as publicPaymentMethodsLib from '@/lib/public-payment-methods';
 import * as utils from '@/lib/utils';
+import * as partialPayment from '@/lib/public-partial-payment';
 import type { PublicShop } from '@/server/public-shop';
 import type { TourOrder } from '@/lib/types';
 
@@ -32,6 +33,7 @@ const imports: Record<string, unknown> = {
   '@/i18n/zh-TW/common': { common },
   '@/lib/public-order-format': publicOrderFormat,
   '@/lib/utils': utils,
+  '@/lib/public-partial-payment': partialPayment,
 };
 const compiled = ts.transpileModule(source, {
   compilerOptions: { jsx: ts.JsxEmit.React, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },

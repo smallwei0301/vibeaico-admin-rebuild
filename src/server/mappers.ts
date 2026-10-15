@@ -510,6 +510,8 @@ export function mapTourOrder(r: any, derived: {
     refundedAmount: Number.isFinite(Number(r.refunded_amount)) ? Number(r.refunded_amount) : 0,
     depositModeSnapshot: DEPOSIT_MODE_SNAPSHOT.has(r.deposit_mode_snapshot)
       ? r.deposit_mode_snapshot : null,
+    // #988：實際已收；null／缺失／非有限數字一律 undefined（不猜 0），讓 UI 不顯示已付／尾款。
+    paidAmount: r.paid_amount != null && Number.isFinite(Number(r.paid_amount)) ? Number(r.paid_amount) : undefined,
     salesMode: derived.salesMode,
     /**
      * #46：`refund_policy_snapshot` 由一支獨立的 migration PR 加在

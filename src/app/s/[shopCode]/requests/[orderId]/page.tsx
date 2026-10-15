@@ -26,6 +26,7 @@ import { PaymentMethodsSection } from '@/components/public/PaymentMethodsSection
 import { SaveStatusLink } from '@/components/public/SaveStatusLink';
 import { publicTourRequestPage as t } from '@/i18n/zh-TW/pages/public-tour-request';
 import { formatCurrency } from '@/lib/utils';
+import { partialPaymentBreakdown } from '@/lib/public-partial-payment';
 import { common } from '@/i18n/zh-TW/common';
 import {
   cancelledCopyKind,
@@ -48,6 +49,9 @@ function paymentDescriptionFor(order: TourOrder): string {
   }
   if (order.paymentStatus === 'REFUND_PENDING' && refunded > 0) {
     return t.status.paymentRefundPendingWithAmount(formatCurrency(refunded));
+  }
+  if (partialPaymentBreakdown(order)) {
+    return t.status.paymentPartialWithBreakdownDescription;
   }
   return t.status.paymentDescription[order.paymentStatus];
 }
@@ -155,6 +159,9 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
   const hasShopContact = contactShop != null
     && Boolean(contactShop.lineBasicId || contactShop.phone || contactShop.email);
 
+  // #988：PARTIAL 且已收金額可靠時才算已付／尾款；否則 null，保留「請向店家確認」說明。
+  const partial = partialPaymentBreakdown(order);
+
   const justCreatedBanner = created === '1' && order.status === 'PENDING';
   const justCreated = created === '1';
 
@@ -199,9 +206,18 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
             <dt className="text-secondary">{t.status.fields.submittedAt}</dt>
             <dd>{showInstant(order.createdAt, timeZone)}</dd>
           </dl>
-          <div className="mt-1 text-sm font-medium text-dark">
-            {formatCurrency(order.totalAmount)}
-          </div>
+          <dl className="grid grid-cols-[7rem_1fr] gap-y-1 text-sm">
+            <dt className="text-secondary">{t.status.fields.totalAmount}</dt>
+            <dd className="font-medium text-dark">{formatCurrency(order.totalAmount)}</dd>
+            {partial ? (
+              <>
+                <dt className="text-secondary">{t.status.fields.paidAmount}</dt>
+                <dd>{formatCurrency(partial.paidAmount)}</dd>
+                <dt className="text-secondary">{t.status.fields.balanceDue}</dt>
+                <dd>{formatCurrency(partial.balanceDue)}</dd>
+              </>
+            ) : null}
+          </dl>
           {(order.refundedAmount ?? 0) > 0 ? (
             <dl className="grid grid-cols-[7rem_1fr] gap-y-1 text-sm">
               <dt className="text-secondary">{t.status.fields.refunded}</dt>

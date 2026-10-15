@@ -642,6 +642,8 @@ export type TourOrder = {
   refundedAmount?: number;
   /** 18 分冊 §4：成交當下的收款政策 snapshot；null = 尚未補這個欄位。#41，選填。 */
   depositModeSnapshot?: TourDepositModeSnapshot | null;
+  /** #988：tour_orders.paid_amount（實際已收；0109 CHECK：PARTIAL 時 0 < paid < total）；欄位缺失或非有限數字時保持 undefined。 */
+  paidAmount?: number;
   /** #46：方案販售方式；查不到方案時保持 undefined，不做推測。 */
   salesMode?: TripSalesMode;
   /** #46：成交當下取消／退款政策 snapshot；null/undefined 代表尚未提供。 */

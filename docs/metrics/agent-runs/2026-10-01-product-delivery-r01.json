@@ -323,6 +323,10 @@
     {
       "ref": "issue/985",
       "title": "導遊團次表操作欄在手機寬度被推出可視區，需橫向捲動才點得到編輯／截止／成團決策"
+    },
+    {
+      "ref": "issue/988",
+      "title": "#46 旅客訂單狀態頁「已付部分款項」時只顯示無標籤總額，看不到已付金額與待付尾款"
     }
   ],
   "main": {
@@ -8800,6 +8804,74 @@
         "startedAt": "2026-10-15T00:33:12Z",
         "completedAt": "2026-10-15T00:33:12Z",
         "note": "Luna metrics capture 綁定 issue/985 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +1。#985 來自 #980 盤點（20261014-luna-scout-980-inventory）第二候選，該盤點已計數，本次不重複計 inventory。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261015-luna-scout-988-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 988,
+        "count": 1,
+        "evidenceRef": "TASK_ID 20261015-luna-scout-status-plans-dashboard",
+        "startedAt": "2026-10-15T00:33:18Z",
+        "completedAt": "2026-10-15T00:34:48Z",
+        "note": "Luna scout 盤點旅客訂單狀態頁／公開方案團次頁／導遊首頁待辦（TASK_ID 20261015-luna-scout-status-plans-dashboard），一個候選：部分付款時狀態頁看不到已付金額與尾款（#988，採用）；其餘範圍查無新缺口或已由既有 issue 涵蓋。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261015-luna-scout-988-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 988,
+        "count": 1,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-15T03:20:23Z",
+        "completedAt": "2026-10-15T03:20:23Z",
+        "note": "Luna metrics capture 綁定 issue/988 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2（盤點＋綁定），並記 Sonnet build 原始事件。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261015-terra-build-988",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 988,
+        "count": 1,
+        "evidenceRef": "commit b8d761d7 (cherry-pick of 756c7e33)",
+        "startedAt": "2026-10-15T00:35:24Z",
+        "completedAt": "2026-10-15T00:36:37Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）預建 #988，原 commit 756c7e33，cherry-pick 為 b8d761d7；時間戳為 subagent transcript 實際起訖。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261015-sol-review-985c",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 985,
+        "count": 1,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/987#issuecomment-6183565284",
+        "startedAt": "2026-10-15T03:12:33Z",
+        "completedAt": "2026-10-15T03:13:14Z",
+        "note": "REVIEW：fresh-context Opus subagent（requested claude-opus-5-5）對 PR #987 最終 exact head 45422197（Sol 計數 delta）複審 PASS；該 head 已合併，故於下一片 #988 的綁定 commit 補記。actual 未經平台驗證。"
       }
 ,
       {
@@ -8841,7 +8913,7 @@
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 83,
+    "issuesStarted": 84,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -8868,13 +8940,13 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 172,
-    "lunaAccepted": 163,
+    "lunaTasks": 174,
+    "lunaAccepted": 165,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 229,
+    "solTouches": 230,
     "solIssues": 27
   },
   "auditability": {
