@@ -76,14 +76,16 @@ const DEPARTURE_COLUMNS = 'id, trip_id, plan_id, departs_on, start_time, capacit
 /**
  * 已發布行程 → 未來 14 天（店家時區）可列團次。與「團次」指令（replyDepartures）為同一組查詢：
  * 沒有已發布行程時回 ok:true 且皆空（不查後續表）；任一查詢失敗回 { ok: false }（含 tenant_settings）。
- * includeTripPlans：另查各行程的啟用方案名稱（AI shop context 用），replyDepartures 不需要。
+ * includeTripPlans：另查啟用方案的價格／季節資料（AI shop context 與 replyDepartures 的可預約判定用）。
+ * tripPlansScope：'ALL'（預設）查全部已發布行程的啟用方案；'LISTED_DEPARTURES' 只查本次可列團次所屬的方案
+ * （至多 limit 個 id，有界；replyDepartures 用，不受「方案取滿 200 列」影響）。
  */
 export async function loadListableDepartures(
   admin: any,
   tenantId: string,
   logTag = 'loadListableDepartures',
   limit = DEPARTURE_LIMIT,
-  options: { includeTripPlans?: boolean; timeZone?: string } = {},
+  options: { includeTripPlans?: boolean; tripPlansScope?: 'ALL' | 'LISTED_DEPARTURES'; timeZone?: string } = {},
 ): Promise<ListableDeparturesResult> {
   const { data: tripRows, error: tripError } = await admin
     .from('trips')
@@ -183,13 +185,16 @@ export async function loadListableDepartures(
   }
 
   let tripPlans: CatalogPlan[] = [];
-  if (options.includeTripPlans) {
-    const { data: tripPlanRows, error: tripPlanError } = await admin
+  const listedPlanIds = [...new Set(planRows.map((p) => p.id))];
+  const scopeListed = options.tripPlansScope === 'LISTED_DEPARTURES';
+  if (options.includeTripPlans && !(scopeListed && !listedPlanIds.length)) {
+    let planQuery = admin
       .from('trip_plans')
       .select('id, trip_id, name, sales_mode, active, min_party, price_per_person, price_type')
       .eq('tenant_id', tenantId)
-      .eq('active', true)
-      .in('trip_id', tripIds)
+      .eq('active', true);
+    planQuery = scopeListed ? planQuery.in('id', listedPlanIds) : planQuery.in('trip_id', tripIds);
+    const { data: tripPlanRows, error: tripPlanError } = await planQuery
       .order('id', { ascending: true })
       .limit(TRIP_PLAN_LIMIT);
     if (tripPlanError) {
@@ -242,8 +247,10 @@ export const INSTANT_PLAN_MARK = '（需與店家確認時段）';
  */
 export const BEYOND_CANDIDATES_MARK = '（請聯絡店家確認）';
 
-/** 方案價格不能給確定數字時（季節定價、價格 ≤0 或無法解析）的標示；與公開頁「價格依出發日期而定」語意一致。 */
+/** 季節定價方案不能給確定數字時的標示；與公開頁「價格依出發日期而定」語意一致。 */
 export const PRICE_BY_DATE_MARK = '（價格依日期而定，請見預約頁或聯絡店家）';
+/** 非季節方案但價格 ≤0 或無法解析時的標示（不是「依日期而定」，不可誤導顧客）。 */
+export const PRICE_ASK_SHOP_MARK = '（價格請洽店家）';
 
 export type CatalogLabels = {
   seatsLeft: (n: number) => string;
@@ -276,7 +283,8 @@ function planIsSeasonal(p: CatalogPlan): boolean {
 function planPriceText(p: CatalogPlan): string {
   if (p.price_per_person === undefined) return '';
   const price = Number(p.price_per_person);
-  if (planIsSeasonal(p) || !Number.isFinite(price) || price <= 0) return PRICE_BY_DATE_MARK;
+  if (planIsSeasonal(p)) return PRICE_BY_DATE_MARK;
+  if (!Number.isFinite(price) || price <= 0) return PRICE_ASK_SHOP_MARK;
   return ` NT$${price.toLocaleString('zh-TW')}/${p.price_type === 'PER_GROUP' ? '團' : '人'}`;
 }
 
@@ -302,17 +310,24 @@ export type ShopCatalogContext = {
   hasInstantPlan?: boolean;
 };
 
-/** 查詢結果 → shop context 欄位；查詢失敗時 catalogUnavailable 為 true、清單為空。 */
-export function buildCatalogContext(result: ListableDeparturesResult, labels: CatalogLabels): ShopCatalogContext {
-  if (!result.ok) return { trips: [], departures: [], catalogUnavailable: true };
-  const titleById = new Map(result.trips.map((t) => [t.id, t.title] as const));
-  const planNameById = new Map(result.plans.map((p) => [p.id, p.name] as const));
+/** 可預約規則判定後的單一團次：display 決定名額文字；只有 NORMAL 可附直達預約連結。 */
+export type BookableDeparture = {
+  departure: CatalogDeparture;
+  /** NORMAL＝照常列剩餘名額；FULL＝剩餘名額 < 方案最低人數，以額滿標示；CONTACT_SHOP＝候選上限外或季節單價解析不出，請聯絡店家 */
+  display: 'NORMAL' | 'FULL' | 'CONTACT_SHOP';
+};
+
+/**
+ * 「公開頁可預約」規則的單一實作（AI 目錄與 replyDepartures 共用，不得各寫各的）：
+ * - 排除 INSTANT 方案、今天已開始（店家時區）、plan_id 為 null 的團次；
+ * - 預約頁每個方案只提供前 MAX_BOOKING_CANDIDATE_DEPARTURES 個候選（selectBookingCandidates）：候選外、或季節單價解析不出
+ *   （需 tripPlans 帶季節資料）的團次 → CONTACT_SHOP（仍列出，不寫名額）；
+ * - 剩餘名額 > 0 但 < min_party（REQUEST 除外）→ FULL。
+ * 截斷判定（truncated／lastListedDate）已在 loadListableDepartures 以原始列算好，這裡的過濾不影響它；不修改 result。
+ */
+export function selectBookableDepartures(result: Extract<ListableDeparturesResult, { ok: true }>): BookableDeparture[] {
   const planById = new Map(result.plans.map((p) => [p.id, p] as const));
   const tripPlanById = new Map(result.tripPlans.map((p) => [p.id, p] as const));
-  // 「可報名團次」須與公開頁同規則（只套用在 AI context；replyDepartures 直接用 result.departures，行為不變）。
-  // 截斷判定（truncated／lastListedDate）已在 loadListableDepartures 以原始列算好，這裡的過濾不影響它。
-  // 預約頁每個方案只提供前 MAX_BOOKING_CANDIDATE_DEPARTURES 個候選團次（selectBookingCandidates，依 departs_on、start_time、id）：
-  // 在此對每個 plan_id 用同一個函式算出候選集合，集合外但仍屬候選（未開始、未額滿）的團次改標示請聯絡店家。
   const now = result.now;
   const inCandidates = new Set<CatalogDeparture>();
   const byPlan = new Map<string, CatalogDeparture[]>();
@@ -330,37 +345,53 @@ export function buildCatalogContext(result: ListableDeparturesResult, labels: Ca
       for (const c of selectBookingCandidates(list, now)) inCandidates.add(c.row);
     }
   }
-  const beyondCandidates = new Set<CatalogDeparture>();
-  const aiDepartures = result.departures.flatMap((d): CatalogDeparture[] => {
-    // 公開頁看不到 plan_id 為 null 的團次 → AI 也不列為可報名（只影響 AI；replyDepartures 不變）。
+  return result.departures.flatMap((d): BookableDeparture[] => {
+    // 公開頁看不到 plan_id 為 null 的團次。
     if (!d.plan_id) return [];
-    const plan = d.plan_id ? planById.get(d.plan_id) : undefined;
+    const plan = planById.get(d.plan_id);
     // 對應 public-shop.ts hasPublicDepartureList／selectPlansWithDepartures：INSTANT 方案的 OPEN 團次是手動／私人用途，公開頁不列。
     if (plan?.sales_mode === 'INSTANT') return [];
     // 對應 public-shop.ts hasStartedToday 排除（今天已到開始時間；start_time 為 null 維持列出）。
-    if (result.now && hasStartedToday(d, result.now)) return [];
+    if (now && hasStartedToday(d, now)) return [];
     // 對應 public-booking-price.ts isDepartureBookableOnPage 的價格條件：季節定價方案的該團次必須解析得出 unitPrice
-    // （seasonUnitPriceFor，與預約頁同一份季節資料）；季節資料不完整時解析不出 → 預約頁拒絕，AI 不得宣稱可報名。
+    // （seasonUnitPriceFor，與預約頁同一份季節資料）；季節資料不完整時解析不出 → 預約頁拒絕，不得宣稱可報名。
     const priceInfo = tripPlanById.get(d.plan_id);
     const priceUnresolved = !!priceInfo && planIsSeasonal(priceInfo)
       && seasonUnitPriceFor(
         { seasons: priceInfo.seasons ?? [], incomplete: priceInfo.seasonsIncomplete === true },
         d.departs_on, Number(priceInfo.price_per_person ?? 0),
       ) === undefined;
-    // 對應 public-departure-candidates.ts candidateIsBookable／public-booking-price.ts isDepartureBookableOnPage：
+    // 對應 public-departure-candidates.ts candidateIsBookable／public-booking-price.ts isDepartureBookableOnPage。
     if (now && (!inCandidates.has(d) || priceUnresolved) && bookingCandidateSeatsLeft(d, now) !== null) {
-      beyondCandidates.add(d);
-      return [d];
+      return [{ departure: d, display: 'CONTACT_SHOP' }];
     }
-    // 剩餘名額 < 方案最低人數，預約頁不可預選 → 不得描述為可報名，改以「額滿」標示（與公開頁客滿一致，不提供名額數字）。
-    const left = Number(d.capacity) - Number(d.seats_booked);
+    // 剩餘名額 < 方案最低人數，預約頁不可預選 → 以「額滿」標示（與公開頁客滿一致，不提供名額數字）。
     // REQUEST 方案公開頁不顯示 belowMinParty、RequestForm 也不停用 → 照常列出剩餘名額。
-    if (plan?.sales_mode !== 'REQUEST' && left > 0 && left < normalizeMinParty(plan?.min_party)) return [{ ...d, seats_booked: d.capacity }];
-    return [d];
+    const left = Number(d.capacity) - Number(d.seats_booked);
+    if (plan?.sales_mode !== 'REQUEST' && left > 0 && left < normalizeMinParty(plan?.min_party)) return [{ departure: d, display: 'FULL' }];
+    return [{ departure: d, display: 'NORMAL' }];
   });
+}
+
+/** BookableDeparture → 一行文字（AI 目錄與 replyDepartures 共用）。 */
+export function formatBookableDepartureLine(
+  b: BookableDeparture,
+  titleById: ReadonlyMap<string, string>,
+  planNameById: ReadonlyMap<string, string>,
+  labels: CatalogLabels,
+): string {
+  const override = b.display === 'FULL' ? labels.full : b.display === 'CONTACT_SHOP' ? BEYOND_CANDIDATES_MARK : undefined;
+  return formatDepartureLine(b.departure, titleById, planNameById, labels, override);
+}
+
+/** 查詢結果 → shop context 欄位；查詢失敗時 catalogUnavailable 為 true、清單為空。 */
+export function buildCatalogContext(result: ListableDeparturesResult, labels: CatalogLabels): ShopCatalogContext {
+  if (!result.ok) return { trips: [], departures: [], catalogUnavailable: true };
+  const titleById = new Map(result.trips.map((t) => [t.id, t.title] as const));
+  const planNameById = new Map(result.plans.map((p) => [p.id, p.name] as const));
   return {
     trips: result.trips.map((t) => formatTripLine(t, result.tripPlans)),
-    departures: aiDepartures.map((d) => formatDepartureLine(d, titleById, planNameById, labels, beyondCandidates.has(d) ? BEYOND_CANDIDATES_MARK : undefined)),
+    departures: selectBookableDepartures(result).map((b) => formatBookableDepartureLine(b, titleById, planNameById, labels)),
     catalogUnavailable: false,
     ...(result.tripPlans.some((p) => p.sales_mode === 'INSTANT') ? { hasInstantPlan: true } : {}),
     ...(result.window ? { departureWindow: { today: result.window.from, ...result.window } } : {}),

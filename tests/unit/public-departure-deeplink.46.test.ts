@@ -304,7 +304,7 @@ describe('LINE「近期團次」深連結（連結資格＝預約頁載入器 + 
     expect(text).not.toContain('dep-off');
   });
 
-  it('有方案與無方案團次合併後依日期（再時間）排序並截到 10 筆', async () => {
+  it('有方案與無方案團次合併後依日期（再時間）排序並截到 10 筆，無方案者不列', async () => {
     fx.bookingPlansById = {};
     const mk = (id: string, planId: string | null, day: string, time: string | null = null) => ({
       id, trip_id: 'tr', plan_id: planId, departs_on: day, start_time: time, capacity: 5, seats_booked: 1,
@@ -318,12 +318,11 @@ describe('LINE「近期團次」深連結（連結資格＝預約頁載入器 + 
     const ok = await replyDepartures(baseCtx(lineAdmin(deps, fixedPlans)));
     expect(ok).toBe(true);
     const days = fx.lineReplies[0][0].text.split('\n').filter((l) => l.startsWith('・')).map((l) => l.slice(1, 11));
-    expect(days).toHaveLength(10);
+    // 合併後依日期（再時間）排序並截到 10 筆；plan_id 為 null 的團次佔名額但依公開頁規則不列（#1026），
+    // 所以只剩有方案的 late-time（01-01 15:00）與 p0（01-10），且仍依日期排序。
     expect(days).toEqual([...days].sort());
-    expect(days[0]).toBe('2098-01-01');
-    expect(days.at(-1)).toBe('2098-01-10');
-    // 同日：無時間（空字串）排在有時間者之前
-    expect(fx.lineReplies[0][0].text.indexOf('2098-01-01 15:00')).toBeGreaterThan(fx.lineReplies[0][0].text.indexOf('2098-01-01 行程'));
+    expect(days).toEqual(['2098-01-01', '2098-01-10']);
+    expect(fx.lineReplies[0][0].text).toContain('2098-01-01 15:00');
   });
 
   it('方案內嵌為陣列時同樣可解析名稱', async () => {

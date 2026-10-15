@@ -1,9 +1,9 @@
 /**
  * #1024 Codex review 修正：方案價格、季節價可用性、方案查詢上限、INSTANT 截斷反向區間、catalogUnavailable 降級範圍。
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
-  buildCatalogContext, formatTripLine, loadListableDepartures, BEYOND_CANDIDATES_MARK, PRICE_BY_DATE_MARK, TRIP_PLAN_LIMIT,
+  buildCatalogContext, formatTripLine, loadListableDepartures, BEYOND_CANDIDATES_MARK, PRICE_BY_DATE_MARK, PRICE_ASK_SHOP_MARK, TRIP_PLAN_LIMIT,
   type ListableDeparturesResult,
 } from '@/server/line-catalog';
 import { buildAiSystemPrompt, type ShopContext } from '@/server/ai-reply';
@@ -21,14 +21,16 @@ describe('formatTripLine 方案價格', () => {
     expect(line).toBe('龜山島賞鯨 · 標準團 NT$1,280/人、包船 NT$18,000/團');
   });
 
-  it('季節定價（含季節資料不完整）或價格 <= 0：不給數字', () => {
+  it('季節定價（含季節資料不完整）：不給數字，標價格依日期而定；非季節價格 <= 0：標價格請洽店家', () => {
     const line = formatTripLine(trip, [
       { id: 'p1', trip_id: 't1', name: '旺季', price_per_person: 1000, seasons: [{ id: 's', startMonth: 7, startDay: 1, endMonth: 8, endDay: 31, priceOverride: 1500, sortOrder: 0 }] },
       { id: 'p2', trip_id: 't1', name: '未知', price_per_person: 1000, seasonsIncomplete: true },
       { id: 'p3', trip_id: 't1', name: '零元', price_per_person: 0 },
     ]);
     expect(line).not.toContain('NT$');
-    expect(line.split(PRICE_BY_DATE_MARK).length - 1).toBe(3);
+    expect(line.split(PRICE_BY_DATE_MARK).length - 1).toBe(2);
+    expect(line.split(PRICE_ASK_SHOP_MARK).length - 1).toBe(1);
+    expect(line).toContain(`零元${PRICE_ASK_SHOP_MARK}`);
   });
 });
 
@@ -117,5 +119,51 @@ describe('catalogUnavailable 降級範圍', () => {
     expect(p).toContain('服務項目');
     expect(p).toContain('含服務價格');
     expect(p).not.toContain('被問到日期、名額、價格時');
+  });
+});
+
+describe('trip_plan_seasons 查詢失敗（端到端：loadListableDepartures → buildCatalogContext）', () => {
+  const dep = dayFromNow(3);
+  const seasonErrorAdmin = () => {
+    const make = (table: string) => {
+      let noPlan = false;
+      const q: any = {
+        select: () => q, eq: () => q, in: () => q, gte: () => q, lte: () => q, order: () => q, limit: () => q, range: () => q,
+        is: () => { noPlan = true; return q; },
+        maybeSingle: async () => ({ data: { basic: { timezone: 'Asia/Taipei' } }, error: null }),
+        then: (resolve: any) => {
+          if (table === 'trips') return resolve({ data: [{ id: 't1', title: '龜山島賞鯨' }], error: null });
+          if (table === 'trip_plan_seasons') return resolve({ data: null, error: { message: 'boom' } });
+          if (table === 'trip_plans') {
+            return resolve({ data: [{ id: 'p1', trip_id: 't1', name: '旺季團', sales_mode: 'FIXED_DEPARTURE', active: true, min_party: 1, price_per_person: 1000, price_type: 'PER_PERSON' }], error: null });
+          }
+          if (table === 'trip_departures') {
+            return resolve({
+              data: noPlan ? [] : [{
+                id: 'd1', trip_id: 't1', plan_id: 'p1', departs_on: dep, start_time: null, capacity: 10, seats_booked: 2,
+                trip_plans: { id: 'p1', name: '旺季團', sales_mode: 'FIXED_DEPARTURE', active: true, min_party: 1 },
+              }],
+              error: null,
+            });
+          }
+          return resolve({ data: [], error: null });
+        },
+      };
+      return q;
+    };
+    return { from: (t: string) => make(t) };
+  };
+
+  it('季節查詢 error：方案不給確定價格，其團次標請聯絡店家且不給名額', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const r = await loadListableDepartures(seasonErrorAdmin(), 'x', 'test', 10, { includeTripPlans: true, timeZone: 'Asia/Taipei' });
+    warn.mockRestore();
+    expect(r.ok).toBe(true);
+    const ctx = buildCatalogContext(r, labels);
+    expect(ctx.trips[0]).not.toContain('NT$');
+    expect(ctx.trips[0]).toContain(PRICE_BY_DATE_MARK);
+    expect(ctx.departures).toHaveLength(1);
+    expect(ctx.departures[0]).toContain(BEYOND_CANDIDATES_MARK);
+    expect(ctx.departures[0]).not.toContain('剩');
   });
 });

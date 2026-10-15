@@ -20,7 +20,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { lineReply, lineProfile } from './line';
 import { buildFlexMenuOutcome } from './flex-menu';
-import { loadListableDepartures, formatDepartureLine, buildTourCatalogContext, type ShopCatalogContext, AI_DEPARTURE_LIMIT } from './line-catalog';
+import { loadListableDepartures, selectBookableDepartures, formatBookableDepartureLine, buildTourCatalogContext, type ShopCatalogContext, AI_DEPARTURE_LIMIT } from './line-catalog';
 import { buildTripCarousel, minNonSeasonalPriceByTrip, TRIP_CAROUSEL_MAX, type TripCardSource } from './trip-flex';
 import { hasSeasonalPricing, readPlanSeasons } from './public-plan-seasons';
 import { isFeatureActive, featureActiveStatus } from './features';
@@ -832,10 +832,16 @@ async function replyTrips(ctx: BuiltinCtx): Promise<boolean> {
  * ⚠️ TOUR_MODULE 閘門同樣在**任何 tour-domain 查詢之前**，理由見 `replyTrips()`。
  */
 export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
-  if (businessTypeOf(ctx.tenant) !== 'GUIDE') return false;
+  // 閘門只看 TOUR_MODULE（與 replyTrips 一致，#1026）：業態只是預設，任何業態加開 TOUR_MODULE 後都能查團次；
+  // 未啟用的店家（含 LOCAL_SHOP／CLINIC）維持回 false 落到 ⑤ AI／⑥ defaultReply。
   if (!(await isFeatureActive(ctx.tenant.id, 'TOUR_MODULE'))) return false;
 
-  const catalog = await loadListableDepartures(ctx.admin, ctx.tenant.id, 'replyDepartures', SERVICE_LIST_LIMIT);
+  // includeTripPlans＋LISTED_DEPARTURES：只多查「可列團次所屬方案」（至多 SERVICE_LIST_LIMIT 個 id）的價格與季節，
+  // 供 selectBookableDepartures 判定季節單價解析不出；任一查詢失敗 → ok:false（fail closed，不當成沒有團次）。
+  const catalog = await loadListableDepartures(ctx.admin, ctx.tenant.id, 'replyDepartures', SERVICE_LIST_LIMIT, {
+    includeTripPlans: true,
+    tripPlansScope: 'LISTED_DEPARTURES',
+  });
   if (!catalog.ok) return false; // 查詢失敗不是「沒有團次」：交由預設回覆
   if (!catalog.trips.length) return replyText(ctx, MSG.departureEmpty);
 
@@ -846,8 +852,11 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
     planNameById.set(p.id, p.name);
     if (p.sales_mode === 'FIXED_DEPARTURE') fixedPlanIds.add(p.id);
   }
-  const listable = catalog.departures as any[];
-  if (!listable.length) return replyText(ctx, MSG.departureEmpty);
+  // 與 AI 目錄同一套「公開頁可預約」規則（selectBookableDepartures）；過濾後沒有可列團次 → 沒有團次回覆。
+  const labels = { seatsLeft: MSG.departureSeatsLeft, full: MSG.departureFull };
+  const bookable = selectBookableDepartures(catalog);
+  if (!bookable.length) return replyText(ctx, MSG.departureEmpty);
+  const listable = bookable.map((b) => b.departure as any);
 
   // 直達預約連結只給「目的預約頁真的可預選且可送出」的團次：對每個出現的 FIXED_DEPARTURE 方案呼叫預約頁同一支
   // loadPublicBookingPlan（至多 SERVICE_LIST_LIMIT 個方案的有界查詢），再用預約頁共用的 isDepartureBookableOnPage 判定。
@@ -862,8 +871,11 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
     }
   }));
 
-  const lines = listable.map((d: any) => {
-    const line = `・${formatDepartureLine(d, titleById, planNameById, { seatsLeft: MSG.departureSeatsLeft, full: MSG.departureFull })}`;
+  const lines = bookable.map((b) => {
+    const d: any = b.departure;
+    const line = `・${formatBookableDepartureLine(b, titleById, planNameById, labels)}`;
+    // 額滿（< min_party）與請聯絡店家（候選外／季節價未知）一律不附連結。
+    if (b.display !== 'NORMAL') return line;
     // 直達預約：只給預約頁自己判定可預選且可送出的團次（isDepartureBookableOnPage）；其餘維持無連結。
     const bookingPlan = bookingPlanById.get(d.plan_id);
     if (!d.id || !fixedPlanIds.has(d.plan_id) || !bookingPlan || !isDepartureBookableOnPage(bookingPlan, String(d.id))) return line;
@@ -1272,7 +1284,7 @@ export function isLikelyChitchat(raw: string): boolean {
 /* ------------------------------------------------------------ AI context */
 /**
  * 組 AI 客服的 ShopContext（09 §7.2）。
- * services 由 services 表即時組；GUIDE 且有 TOUR_MODULE 時，trips/departures 與「團次」指令共用
+ * services 由 services 表即時組；啟用 TOUR_MODULE 的店家（不限業態，與 replyTrips 一致）trips/departures 與「團次」指令共用
  * `loadListableDepartures`（#1024），確保 AI 講的與 LINE 團次清單一致。查詢失敗時
  * `catalogUnavailable` 為 true，AI 不得把失敗當成「沒開團」。
  */
