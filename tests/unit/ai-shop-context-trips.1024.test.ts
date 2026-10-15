@@ -118,14 +118,14 @@ describe('團次清單截斷（AI 路徑）', () => {
   it('未截斷：prompt 與無旗標逐字相同，不含「只列到」', () => {
     const base = baseShop({ departures: ['x'] });
     expect(buildAiSystemPrompt({ ...base, departuresTruncatedAfter: undefined })).toBe(buildAiSystemPrompt(base));
-    expect(buildAiSystemPrompt(base)).not.toContain('只列到');
+    expect(buildAiSystemPrompt(base)).not.toContain('被截斷');
   });
 
-  it('截斷：含「只列到 {date}」規則，「沒開團」只適用 {date} 之前，之後 UNSURE', () => {
+  it('截斷：{date} 當天（含）之後一律 UNSURE，「沒開團」只適用早於 {date}', () => {
     const prompt = buildAiSystemPrompt(baseShop({ departures: ['x'], departuresTruncatedAfter: '2026-10-25' }));
-    expect(prompt).toContain('團次只列到 2026-10-25');
-    expect(prompt).toContain('2026-10-25（含）之前，上面沒有的日期就說「那天目前沒有開團」');
-    expect(prompt).toContain('2026-10-25 之後的日期、名額時只回覆「UNSURE」');
+    expect(prompt).toContain('團次清單在 2026-10-25 被截斷：2026-10-25（含）之後的日期、時段、名額只回覆「UNSURE」');
+    expect(prompt).toContain('2026-10-25 之前上面沒有的日期才說「那天目前沒有開團」');
+    expect(prompt).not.toContain('2026-10-25（含）之前');
     expect(prompt).not.toContain('\n   上面沒有的日期就說「那天目前沒有開團」。');
   });
 
