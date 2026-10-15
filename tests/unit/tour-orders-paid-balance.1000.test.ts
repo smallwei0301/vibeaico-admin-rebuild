@@ -80,13 +80,18 @@ describe('#1000 店家團體訂單：依實收金額顯示', () => {
       expect(detailPaymentRows(o).depositDue, String(salesMode)).toBe(3000);
     }
   });
-  it('mock 種子：PENDING 的 REQUEST 訂單不顯示應收定金', () => {
-    for (const o of MOCK_TOUR_ORDERS) {
-      if (o.salesMode === 'REQUEST' && o.status === 'PENDING') {
-        expect(detailPaymentRows(o).depositDue, o.id).toBeNull();
-        expect(listPaymentLine(o)?.kind, o.id).not.toBe('depositDue');
-      }
-    }
+  it('mock 種子 to_9（包船專案，REQUEST／PENDING）：有定金時不顯示應收定金', () => {
+    expect.assertions(6);
+    const seed = MOCK_TOUR_ORDERS.find((x) => x.id === 'to_9');
+    expect(seed).toBeDefined();
+    // 種子本身無 salesMode 且 depositAmount 為 0，覆寫後才真正走到「未接受申請」判斷
+    const o = { ...seed!, salesMode: 'REQUEST', depositAmount: 3000 } as const;
+    expect(o.status).toBe('PENDING');
+    expect(o.paymentStatus).toBe('UNPAID');
+    expect(listPaymentLine(o)).toBeNull();
+    expect(detailPaymentRows(o).depositDue).toBeNull();
+    // 對照：同一筆改為非 REQUEST 時應顯示，證明前述 null 來自 REQUEST 判斷而非缺定金
+    expect(detailPaymentRows({ ...o, salesMode: 'INSTANT' }).depositDue).toBe(3000);
   });
   it('mock 種子：PARTIAL／PAID 訂單皆有合法 paidAmount', () => {
     for (const o of MOCK_TOUR_ORDERS) {
