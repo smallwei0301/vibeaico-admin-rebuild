@@ -44,6 +44,7 @@ vi.mock('@/server/supabase', () => ({
           eq: (k: string, v: string) => { f[k] = v; return q; },
           neq: (k: string, v: string) => { neq[k] = v; return q; },
           is: () => { onlyUnconsumed = true; return q; },
+          gt: () => q,
           select: async () => ({ data: [{ id: 'code-1' }], error: null }),
           then: (res: any) => {
             for (const r of st.rows as Row[]) {
