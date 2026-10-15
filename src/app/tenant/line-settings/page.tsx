@@ -31,7 +31,7 @@ import { lineSettingsPage as t } from '@/i18n/zh-TW/pages/line-settings';
 import { MODE_PRESETS } from '@/config/modes';
 import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { OwnerNotifySection } from '@/components/line-settings/OwnerNotifySection';
-import { lineChannelIdWarning, lineSecretWarning, lineTokenWarning } from '@/lib/line-credential-warnings';
+import { lineChannelIdWarning, lineCredentialPresence, lineSecretWarning, lineTokenWarning } from '@/lib/line-credential-warnings';
 
 /* -------------------------------------------------------------------------- */
 /* 常數                                                                        */
@@ -247,6 +247,12 @@ export default function LineSettingsPage() {
       toast.show(credentialWarning, 'warning');
       return;
     }
+    /* 存檔前先判定：空字串＝保留原值，缺 Secret／Token 時 Bot 仍未連線（#1003） */
+    const presence = lineCredentialPresence({
+      existingSecret: settings?.line.channelSecret,
+      existingToken: settings?.line.channelAccessToken,
+      secretEditing, secretInput, tokenEditing, tokenInput,
+    });
     setSavingLine(true);
     try {
       /* 🔐 沒重新輸入 → 送空字串＝不變更；重新輸入 → 送新明文由後端加密覆蓋 */
@@ -274,7 +280,8 @@ export default function LineSettingsPage() {
       setTokenEditing(false);
       setTokenInput('');
       setTokenVisible(false);
-      toast.show(t.form.saved);
+      if (presence.missing) toast.show(t.form.savedMissingCredentials, 'warning');
+      else toast.show(t.form.saved);
     } catch (e) {
       toast.show(
         `${t.form.saveFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
