@@ -546,15 +546,17 @@ export default function TripDetailPage() {
 
       if (USE_MOCK) {
         const isNew = !planDraft.id;
-        // 進階存檔不驗證 basePrice：快速編輯清空後切過來時 planDraft.basePrice 為 NaN，
-        // 不得寫回列表；以原方案值補回（新方案則為 0）。
+        // 以原方案（新方案為預設空白方案）為底，只合併本次儲存模式實際送出的欄位，
+        // 與真實模式送到 API 的 payload 一致；未送出的欄位（含可能為 NaN 的草稿值）不寫回列表。
         const original = plans.find((p) => p.id === planDraft.id);
-        const safeDraft: TripPlan = Number.isFinite(planDraft.basePrice)
-          ? planDraft
-          : { ...planDraft, basePrice: original?.basePrice ?? 0 };
+        const base: TripPlan = original ?? emptyPlan(tripId);
+        const { id: _payloadId, ...payloadFields } = planEditorMode === 'advanced'
+          ? toAdvancedPlanPayload(planDraft)
+          : toQuickPlanPayload(planDraft);
+        const merged: TripPlan = { ...base, ...payloadFields };
         const saved: TripPlan = isNew
-          ? { ...safeDraft, id: `pl_new_${plans.length + 1}`, sortOrder: plans.length + 1 }
-          : safeDraft;
+          ? { ...merged, id: `pl_new_${plans.length + 1}`, sortOrder: plans.length + 1 }
+          : merged;
         setPlans((prev) => (isNew
           ? [...prev, saved]
           : prev.map((p) => (p.id === saved.id ? saved : p))));
@@ -1809,7 +1811,10 @@ export default function TripDetailPage() {
                                 t.seasons.monthDay(season.endMonth, season.endDay),
                               )}
                               {' · '}
-                              {formatCurrency(season.priceOverride ?? planDraft.basePrice)}
+                              {(() => {
+                                const seasonPrice = season.priceOverride ?? planDraft.basePrice;
+                                return Number.isFinite(seasonPrice) ? formatCurrency(seasonPrice) : t.plans.quick.previewPricePlaceholder;
+                              })()}
                             </div>
                           </div>
                           {!listedPlanWritesBlocked ? (

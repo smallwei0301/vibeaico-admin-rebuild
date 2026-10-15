@@ -42,9 +42,17 @@ describe('#973 基本價 NaN 不外洩到預覽卡與 mock 列表', () => {
     expect(src).toContain('t.plans.quick.previewPricePlaceholder');
   });
 
-  it('mock 存檔不直接寫回含 NaN 的 planDraft', () => {
-    expect(src).toContain('const safeDraft: TripPlan = Number.isFinite(planDraft.basePrice)');
-    expect(src).toContain('original?.basePrice ?? 0');
+  it('季節價清單以 Number.isFinite 守門，不對 NaN 呼叫 formatCurrency', () => {
+    expect(src).toContain('const seasonPrice = season.priceOverride ?? planDraft.basePrice;');
+    expect(src).toContain('Number.isFinite(seasonPrice) ? formatCurrency(seasonPrice)');
+    expect(src).not.toContain('formatCurrency(season.priceOverride ?? planDraft.basePrice)');
+  });
+
+  it('mock 存檔以原方案為底，只合併該模式送出的 payload 欄位', () => {
+    expect(src).toContain('original ?? emptyPlan(tripId)');
+    expect(src).toContain('toAdvancedPlanPayload(planDraft)\n          : toQuickPlanPayload(planDraft)');
+    expect(src).toContain('{ ...base, ...payloadFields }');
+    expect(src).not.toContain('safeDraft');
     expect(src).not.toMatch(/\{ \.\.\.planDraft, id: `pl_new_/);
   });
 });
