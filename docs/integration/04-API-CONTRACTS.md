@@ -108,7 +108,7 @@ export const POST = handle(async (_req, { params }) => {
 | PUT `/api/settings/line` | body = `Partial<LineSettings>`。**秘密欄位規則（鐵則 6）**：`channelSecret`/`channelAccessToken` 為空字串 → 不動 DB 舊值；非空 → `encryptSecret()` 後寫 `*_enc` 欄位。其餘欄位寫進 `line` jsonb（jsonb 內永不存這兩個 secret）。需 `MANAGER` |
 | POST `/api/settings/line/test` | 解密 token → `GET https://api.line.me/v2/bot/info`。200 → `{ok:true,message:'連線正常'}`；否則 `{ok:false,message:<LINE 錯誤>}`（HTTP 仍 200，錯誤放 data） |
 | POST `/api/settings/line/verify` | 回 `{checks:[{key,status,pass,message}]}`，key 依序 `CREDENTIALS`/`TOKEN`/`ID_SECRET_PAIR`/`BOT_MODE`/`WEBHOOK`/`WEBHOOK_TEST`/`AUTO_REPLY`。`status:'PASS'\|'FAIL'\|'INFO'`（`INFO` 僅 `AUTO_REPLY` 專用，不計入通過／失敗）為主欄位（issue #477，2026-09-15 首次修正三態語意，同日依 Owner 新版報告設計重構為六項可查證檢查＋一項 INFO 提示）；`pass:boolean` 保留供既有呼叫端相容，永遠是 `status==='PASS'` 的衍生欄位，不再獨立判定。無 token 時只回六項可查證檢查（皆 FAIL），無 `AUTO_REPLY`。實作見 06 分冊 §7 |
-| GET `/api/settings/setup-status` | 回 `SetupStatus`。步驟判定：SHOP_INFO=basic.tenantPhone/Address 有值；STAFF=staff 至少 1；SERVICE 依模式（`MODE_PRESETS.setupInventory`）：LOCAL_SHOP／CLINIC=services active=true 至少 1；GUIDE=至少 1 個公開店家頁有預約入口的方案（`bookingCta` 為 fixed／request：行程 PUBLISHED、方案 active、有未來 OPEN 團次且剩餘座位 ≥ minParty、價格可解析；INSTANT 方案公開頁無入口，不計）；BUSINESS_HOURS=business 曾儲存（jsonb ≠ '{}'）；LINE_BOT=token 已設定。percent = done 數/5*100 |
+| GET `/api/settings/setup-status` | 回 `SetupStatus`。步驟判定：SHOP_INFO=basic.tenantPhone/Address 有值；STAFF=staff 至少 1；SERVICE 依模式（`MODE_PRESETS.setupInventory`）：LOCAL_SHOP／CLINIC=services active=true 至少 1；GUIDE=至少 1 個公開店家頁有預約入口的方案（`bookingCta` 為 fixed／request：行程 PUBLISHED、方案 active、有未來 OPEN 團次且剩餘座位 ≥ minParty、價格可解析；INSTANT 方案公開頁無入口，不計）；BUSINESS_HOURS=business 曾儲存（jsonb ≠ '{}'）；LINE_BOT=Channel ID（`line.channelId` 非空）、Channel Secret、Access Token（兩個加密欄位非空）三者皆已設定才 done（與 line-settings `configured`、verify endpoint 一致）。percent = done 數/5*100 |
 | GET `/api/feature-store` | 回 `FeatureSubscription[]`：讀 `feature_subscriptions`，`active = active && (expires_at is null or expires_at > now())` |
 
 
@@ -219,7 +219,7 @@ export const POST = handle(async (_req, { params }) => {
 
 | 端點 | data 組法（皆以租戶時區 Asia/Taipei 計「今天／本月」） |
 |---|---|
-| GET `/api/reports/dashboard` | `DashboardStats`：todayBookings=start_at 在今日的 bookings count；pendingBookings=status PENDING count；monthRevenue=本月 COMPLETED sum(final_price)；totalCustomers=customers count；pushQuotaUsed=push_quota_usage 本月 used；pushQuotaTotal=有效 EXTRA_PUSH 訂閱為 700，否則 200（依 09 分冊 §2 有效性與 §5 額度規則，與發送端一致）；linePlatformStatus=token 未設 `NOT_CONFIGURED`，設了取 `/v2/bot/info` 快取結果 `CONNECTED`/`ERROR` |
+| GET `/api/reports/dashboard` | `DashboardStats`：todayBookings=start_at 在今日的 bookings count；pendingBookings=status PENDING count；monthRevenue=本月 COMPLETED sum(final_price)；totalCustomers=customers count；pushQuotaUsed=push_quota_usage 本月 used；pushQuotaTotal=有效 EXTRA_PUSH 訂閱為 700，否則 200（依 09 分冊 §2 有效性與 §5 額度規則，與發送端一致）；linePlatformStatus=現況：Channel ID（`line.channelId` 非空）、Channel Secret、Access Token（加密欄位非空）三者皆已設定為 `CONNECTED`，否則 `NOT_CONFIGURED`（不打 LINE 外部 API）；Phase 6 規劃：已設定者改取 `/v2/bot/info` 快取驗證結果 `CONNECTED`/`ERROR`（尚未實作） |
 | GET `/api/reports/dashboard-alerts` | `DashboardAlerts`：unprocessedBookings=PENDING count；lowStockProducts=stock<=safety_stock count；atRiskCustomers=customers_view at_risk count；bookingCutoff*=business 設定比對今天；pushQuotaExhausted=used>=total；expired/expiringFeatures 依 `FEATURE_EXPIRY_WARNING_DAYS` |
 | GET `/api/reports/staff-performance` | query `?from&to`（預設本月）：group by staff → bookingCount(全部)、completionRate(COMPLETED/全部)、revenue(COMPLETED sum) |
 

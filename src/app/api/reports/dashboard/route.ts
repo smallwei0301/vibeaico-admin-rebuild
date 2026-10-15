@@ -47,7 +47,7 @@ export const GET = handle(async () => {
       .eq('tenant_id', t.tenantId).eq('active', true),
     t.supabase.from('push_quota_usage').select('used')
       .eq('tenant_id', t.tenantId).eq('month', taipeiCurrentMonthKey()).maybeSingle(),
-    t.supabase.from('tenant_settings').select('line_channel_access_token_enc, line_channel_secret_enc')
+    t.supabase.from('tenant_settings').select('line, line_channel_access_token_enc, line_channel_secret_enc')
       .eq('tenant_id', t.tenantId).maybeSingle(),
     pushQuotaLimit(t.tenantId),
   ]);

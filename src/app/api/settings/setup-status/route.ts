@@ -14,7 +14,7 @@ import { countSetupInventory } from '@/server/setup-inventory';
  *                   為 fixed／request：已發布行程、啟用方案、未來 OPEN 團次且座位足夠；
  *                   INSTANT 方案公開頁無入口，不算）
  *   BUSINESS_HOURS  business jsonb ≠ '{}'（曾儲存過）
- *   LINE_BOT        line_channel_access_token_enc 與 line_channel_secret_enc 皆非空（#1007）
+ *   LINE_BOT        line.channelId、line_channel_access_token_enc、line_channel_secret_enc 皆非空（#1007）
  * percent = done 數 / 5 * 100（整數）
  */
 export const GET = handle(async () => {
@@ -23,7 +23,7 @@ export const GET = handle(async () => {
   const [{ data: settingsRow, error: serr }, { count: staffCount, error: staffErr },
     serviceCount] = await Promise.all([
     t.supabase.from('tenant_settings')
-      .select('basic, business, line_channel_access_token_enc, line_channel_secret_enc')
+      .select('basic, business, line, line_channel_access_token_enc, line_channel_secret_enc')
       .eq('tenant_id', t.tenantId).maybeSingle(),
     t.supabase.from('staff').select('id', { count: 'exact', head: true }).eq('tenant_id', t.tenantId),
     countSetupInventory(t.supabase, t.tenantId, t.businessType, t.shopCode),
