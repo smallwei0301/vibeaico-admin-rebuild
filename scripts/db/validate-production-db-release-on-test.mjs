@@ -24,8 +24,8 @@ const LOCK_KEY = `vibeaico-g3-test-release:${TEST_PROJECT_REF}`;
 const SHA = /^[0-9a-f]{40}$/;
 const TEST_SESSION_POOLER_HOST = /^aws-\d+-ap-northeast-1\.pooler\.supabase\.com$/i;
 // #755's TEST baseline prerequisite is separate from every Production plan.
-// This is an apply-only, closed selection; an existing identity needs read-only
-// reconciliation, never replay or a manually repaired ledger.
+// Closed selection: existing identity reconciliation is strictly read-only,
+// never replay or a manually repaired ledger.
 const TEST_BASELINE_0098 = Object.freeze({
   repoFile: '0098_reconcile_tour_orders_legacy_contact_columns',
   path: 'supabase/migrations/0098_reconcile_tour_orders_legacy_contact_columns.sql',
@@ -506,20 +506,26 @@ export function buildAtomic0098TestBaselineSql({ sql, liveLedgerRows, liveColumn
   return { sql: statements.join('\n\n'), expectedLedger, expectedColumns, ledger };
 }
 
-async function capture0098TestColumns({ token, connectionString, directQuery, projectRef, fetchImpl }) {
+async function capture0098TestSnapshot({ token, connectionString, directQuery, projectRef, fetchImpl }) {
+  // One SELECT gives ledger and columns the same PostgreSQL statement snapshot.
+  const query = `select s.*, (select coalesce(jsonb_agg(jsonb_build_object(
+    'version', version, 'name', name, 'created_by', created_by, 'idempotency_key', idempotency_key)
+    order by version, name), '[]'::jsonb) from supabase_migrations.schema_migrations) as ledger
+    from (${BASELINE_COLUMNS_QUERY}) s`;
   let rows;
   if (connectionString) {
-    rows = await directQuery({ connectionString, sql: BASELINE_COLUMNS_QUERY, readOnly: true });
+    rows = await directQuery({ connectionString, sql: query, readOnly: true });
   } else {
     const response = await fetchImpl(`${API}/v1/projects/${projectRef}/database/query/read-only`, {
       method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: BASELINE_COLUMNS_QUERY }),
+      body: JSON.stringify({ query }),
     });
     rows = await response.json().catch(() => null);
     if (!response.ok) fail('TEST_BASELINE_COLUMN_READ_FAILED', 'TEST column metadata read failed');
   }
   if (!Array.isArray(rows) || rows.length !== 1) fail('TEST_BASELINE_COLUMN_READ_FAILED', 'one column metadata snapshot is required');
-  return assertBaselineColumns(rows[0]);
+  baselineLedgerSnapshot(rows[0].ledger);
+  return { ledger: rows[0].ledger, columns: assertBaselineColumns(rows[0]) };
 }
 
 /** TEST-only baseline evidence, not a Production plan, G3 or G2 approval. */
@@ -543,8 +549,34 @@ export async function validate0098TestBaselineFromCheckout({
   const sql = canonicalReader(repoRoot)(TEST_BASELINE_0098.path);
   if (sha256(sql) !== source.migrationSha256) fail('TEST_BASELINE_SOURCE_PIN_MISMATCH', 'source bytes changed after admission');
   const capture = { token, connectionString: directConnectionString, directQuery, projectRef: target, fetchImpl };
-  const beforeLedger = await captureTestProviderLedger(capture);
-  const beforeColumns = await capture0098TestColumns(capture);
+  const before = await capture0098TestSnapshot(capture);
+  const beforeLedger = before.ledger;
+  const beforeColumns = before.columns;
+  const history = beforeLedger.filter((row) => row.version === TEST_BASELINE_0098.version
+    || row.name === 'reconcile_tour_orders_legacy_contact_columns' || /^0098(?:_|$)/.test(row.name)
+    || row.idempotency_key?.startsWith('test-baseline-0098:'));
+  if (history.length) {
+    const ledger = { version: TEST_BASELINE_0098.version, name: TEST_BASELINE_0098.repoFile,
+      created_by: TEST_BASELINE_0098.created_by, idempotency_key: `test-baseline-0098:${TEST_BASELINE_0098.sha256}` };
+    if (history.length !== 1 || stableStringify(history[0]) !== stableStringify(ledger)) {
+      fail('TEST_BASELINE_0098_HISTORY_CONFLICT', 'existing baseline must have exactly the canonical identity and provenance');
+    }
+    if (beforeColumns.columns.length !== 2 || beforeColumns.columns.some((column) =>
+      column.is_nullable !== 'YES' || column.column_default !== "''::text")) {
+      fail('TEST_BASELINE_COLUMN_SHAPE_NOT_ADMITTED', 'existing baseline requires both nullable legacy text columns with empty-text defaults');
+    }
+    const after = await capture0098TestSnapshot(capture);
+    if (stableStringify(baselineLedgerSnapshot(beforeLedger)) !== stableStringify(baselineLedgerSnapshot(after.ledger))
+      || stableStringify(beforeColumns) !== stableStringify(after.columns)) {
+      fail('TEST_BASELINE_READ_ONLY_SNAPSHOT_CHANGED', 'ledger or columns changed during read-only verification');
+    }
+    return { schemaVersion: 1, status: 'TEST_BASELINE_0098_VERIFIED', repository: REPOSITORY,
+      testProjectRef: target, mainSha: exactMain, sourceRunId: runId, sourceRunAttempt: runAttempt,
+      migration: { repoFile: TEST_BASELINE_0098.repoFile, sha256: source.migrationSha256, ledger },
+      columnFingerprints: { before: sha256(stableStringify(beforeColumns)), after: sha256(stableStringify(after.columns)) },
+      verificationMode: 'EXISTING_BASELINE_READ_ONLY', testMutationPerformed: false,
+      productionMutationPerformed: false, databaseMutationAuthorized: false };
+  }
   const built = buildAtomic0098TestBaselineSql({ sql, liveLedgerRows: beforeLedger, liveColumns: beforeColumns });
   try {
     await executeAtomicTestRelease({ ...capture, sql: built.sql });
@@ -552,8 +584,9 @@ export async function validate0098TestBaselineFromCheckout({
     fail('TEST_BASELINE_APPLY_UNKNOWN', 'mutable request outcome is unverified; read back before any further action, do not retry');
   }
   try {
-    const afterLedger = baselineLedgerSnapshot(await captureTestProviderLedger(capture));
-    const afterColumns = await capture0098TestColumns(capture);
+    const after = await capture0098TestSnapshot(capture);
+    const afterLedger = baselineLedgerSnapshot(after.ledger);
+    const afterColumns = after.columns;
     if (stableStringify(afterLedger) !== stableStringify(built.expectedLedger)
       || stableStringify(afterColumns) !== stableStringify(built.expectedColumns)) {
       fail('TEST_BASELINE_POSTCHECK_MISMATCH', 'actual ledger or column metadata differs from the atomic baseline result');

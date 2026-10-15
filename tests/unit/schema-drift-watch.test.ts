@@ -333,6 +333,18 @@ describe('#755 separately verified historical TEST 0098 comparison binding', () 
     baseline.artifact[field] = field === 'expired' ? true : field === 'id' ? '' : 'wrong';
     expect(() => verifyTestBaseline0098Binding({ binding: baseline, ...sourceOptions })).toThrow();
   });
+  it('admits only explicit unchanged read-only receipts and retains source binding', () => {
+    const { baseline, sourceOptions } = baselineFixture();
+    baseline.receipt.testMutationPerformed = false;
+    expect(() => verifyTestBaseline0098Binding({ binding: baseline, ...sourceOptions })).toThrow(/RECEIPT/);
+    baseline.receipt.verificationMode = 'EXISTING_BASELINE_READ_ONLY';
+    expect(() => verifyTestBaseline0098Binding({ binding: baseline, ...sourceOptions })).toThrow(/RECEIPT/);
+    baseline.receipt.columnFingerprints.after = baseline.receipt.columnFingerprints.before;
+    expect(verifyTestBaseline0098Binding({ binding: baseline, ...sourceOptions }).receipt.testMutationPerformed).toBe(false);
+    baseline.receipt.verificationMode = 'unknown';
+    expect(() => verifyTestBaseline0098Binding({ binding: baseline, ...sourceOptions })).toThrow(/RECEIPT/);
+  });
+
   it.each(['schemaVersion', 'status', 'repository', 'testProjectRef', 'mainSha', 'sourceRunId', 'sourceRunAttempt', 'testMutationPerformed', 'productionMutationPerformed', 'databaseMutationAuthorized'])('rejects wrong receipt %s', (field) => {
     const { baseline, sourceOptions } = baselineFixture();
     baseline.receipt[field] = typeof baseline.receipt[field] === 'boolean' ? !baseline.receipt[field] : 'wrong';

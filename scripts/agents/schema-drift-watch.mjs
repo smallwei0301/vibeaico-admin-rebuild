@@ -469,9 +469,13 @@ export function verifyTestBaseline0098Binding({ binding, currentMainSha, readSou
   const mainSha = validSha(currentMainSha, 'currentMainSha');
   const { receipt, sourceRun, artifact } = binding ?? {};
   const spec = BASELINE_0098;
+  const readOnly = receipt?.verificationMode === 'EXISTING_BASELINE_READ_ONLY'
+    && receipt.testMutationPerformed === false
+    && receipt.columnFingerprints?.before === receipt.columnFingerprints?.after;
+  const applied = receipt?.verificationMode === undefined && receipt?.testMutationPerformed === true;
   if (!receipt || receipt.schemaVersion !== 1 || receipt.status !== 'TEST_BASELINE_0098_VERIFIED'
     || receipt.repository !== spec.repository || receipt.testProjectRef !== EXPECTED_PROJECT_REFS.TEST
-    || !SHA.test(receipt.mainSha) || receipt.testMutationPerformed !== true
+    || !SHA.test(receipt.mainSha) || (!readOnly && !applied)
     || receipt.productionMutationPerformed !== false || receipt.databaseMutationAuthorized !== false) {
     fail('TEST_BASELINE_RECEIPT_INVALID', 'the closed TEST-only baseline receipt is required');
   }
