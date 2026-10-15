@@ -8801,6 +8801,41 @@
         "completedAt": "2026-10-15T00:33:12Z",
         "note": "Luna metrics capture 綁定 issue/985 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +1。#985 來自 #980 盤點（20261014-luna-scout-980-inventory）第二候選，該盤點已計數，本次不重複計 inventory。actual 未經平台驗證。"
       }
+,
+      {
+        "id": "20261015-terra-build-985",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 985,
+        "count": 1,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/987#issuecomment-6181602990",
+        "startedAt": "2026-10-15T00:21:29Z",
+        "completedAt": "2026-10-15T00:22:22Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）預建 #985，原 commit 03a58ee8，cherry-pick 為 4c040715。原僅記為非計分補充，依 Codex P2（PR #987）改記原始事件；記錄時間晚於事件，時間戳為 subagent transcript 實際起訖。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261015-sol-review-985",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 985,
+        "count": 1,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/987#issuecomment-6181621769",
+        "startedAt": "2026-10-15T00:34:25Z",
+        "completedAt": "2026-10-15T00:35:14Z",
+        "note": "REVIEW：fresh-context Opus subagent（requested claude-opus-5-5）對 exact head 907bc24b 對抗審查 PASS。記錄時間晚於事件，時間戳為 subagent transcript 實際起訖。actual 未經平台驗證。"
+      }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
