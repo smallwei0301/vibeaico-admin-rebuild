@@ -9,7 +9,7 @@ import { publicTourBookingPage as t, NOTE_MAX_LENGTH } from '@/i18n/zh-TW/pages/
 import { formatCurrency } from '@/lib/utils';
 import { priceChangedQuoteFromError, isPriceChangedError, type PriceChangedQuote } from '@/lib/public-price-change';
 import { candidateIsBookable } from '@/lib/public-departure-candidates';
-import { bookingPartyIssue, canSubmitBooking, effectiveMaxParty, isDepartureBookableOnPage, resolveBookingTotal, seasonalHeadlineKind } from '@/lib/public-booking-price';
+import { shouldBlockSubmit, bookingPartyIssue, canSubmitBooking, effectiveMaxParty, isDepartureBookableOnPage, resolveBookingTotal, seasonalHeadlineKind } from '@/lib/public-booking-price';
 import type { PublicBookingPlan } from '@/server/public-tour-booking';
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
@@ -57,6 +57,8 @@ export function BookingForm({
   const [contactEmail, setContactEmail] = React.useState('');
   const [note, setNote] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
+  // #1015：同一 tick 連點兩次時 state 尚未重繪，以 ref 同步擋下第二次送出；成功後不重置，直到導頁。
+  const inFlight = React.useRef(false);
   const [error, setError] = React.useState('');
   // #749：頁面金額與實際金額不符時，後端回的現價；旅客確認後以此金額再送出。改團次或人數即作廢。
   const [confirmedQuote, setConfirmedQuote] = React.useState<PriceChangedQuote | null>(null);
@@ -81,7 +83,8 @@ export function BookingForm({
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canSubmit) return;
+    if (shouldBlockSubmit({ canSubmit, inFlight: inFlight.current })) return;
+    inFlight.current = true;
     setSubmitting(true);
     setError('');
     try {
@@ -97,10 +100,13 @@ export function BookingForm({
         }),
       });
       const contact = pickRedirectContact(contactPhone, contactLine, contactEmail);
+      // #1015：成功路徑刻意不重置 submitting／inFlight，按鈕保持停用直到導頁完成，避免重複建單。
       router.replace(
         `/s/${shopCode}/requests/${res.orderId}?contact=${encodeURIComponent(contact)}&created=1`,
       );
     } catch (err) {
+      inFlight.current = false;
+      setSubmitting(false);
       const quote = priceChangedQuoteFromError(err);
       if (quote) {
         setConfirmedQuote(quote);
@@ -115,8 +121,6 @@ export function BookingForm({
         }
         setError(messageForError(err));
       }
-    } finally {
-      setSubmitting(false);
     }
   };
 

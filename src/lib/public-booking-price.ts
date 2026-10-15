@@ -116,3 +116,8 @@ export function canSubmitBooking(input: {
   if (input.seasonalPricing) return base && input.bookingTotal !== null;
   return base;
 }
+
+/** #1015：送出前的同步防重複閘門。canSubmit 來自重繪後的 state；inFlight 為 ref，可擋同一 tick 的連點。 */
+export function shouldBlockSubmit(input: { canSubmit: boolean; inFlight: boolean }): boolean {
+  return !input.canSubmit || input.inFlight;
+}
