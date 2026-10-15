@@ -313,6 +313,14 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 預防：派送前核對 pinned commit、SQL bytes／digest、來源 ancestry 與同 exact head 的 alias 分類，不能引用舊基線的本機結果。
 - 驗證：Source／bootstrap／LOCAL 全 SUCCESS；current native 36 cases、whole integration 804 PASS／3 skipped、E2E 23 PASS／3 skipped，cleanup 於 2026-10-01T07:28:50Z verified。獨立 final review 0 unresolved，僅批准 source prep；#719 的 final head `7a05bbcd` 已合併，merge/current main `701845e4783f9eb87a19e3b3da52f49018134ea9`。remote `0135` NOT_APPLIED／RPC absent，不宣稱 remote TEST／Production readiness 或驗收。 歷史 findings／counters 保留。
 
+#### 2026-10-15 — #755：歷史 baseline 未過期，不代表當前 producer 相容
+
+- 實跑證據：[collect38670828278](https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/38670828278) 在 admission 因 `TEST_BASELINE_SOURCE_CHANGED: .github/workflows/ci.yml` 停止；[獨立0098baseline38671068138](https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/38671068138) 因 `TEST_BASELINE_0098_HISTORY_PRESENT` 在 integration/E2E 前停止。兩者都不是 G2/G4 成功，沒有 Production 寫入。
+- 根因：consumer 綁完整 producer source；producer 僅支援初次 apply。artifact 存在／未過期不證明 source 相容；既有 history 不能靠原樣重送解決。
+- 修補：[PR #992](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/992) 已合併 `e73f0660850af2a724a3067282de040034a32715`。沿既有 producer/consumer 嚴格唯讀核對唯一0098 identity/provenance、closed SQL hash、TEST project、欄位與一致快照，明記 `EXISTING_BASELINE_READ_ONLY`／`testMutationPerformed=false`。保留 apply-only 對既有 history 的拒絕、完整 producer/source/run/artifact 綁定；不 replay、不修 ledger、不移除 ci.yml 綁定。
+- 驗證：exact source `596e268c` 的 [SourceCI38682532387](https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/38682532387) 452檔／6920unit、typecheck/build PASS；獨立 Final SourceRisk 63探針／97focused tests PASS。這不證明新 baseline workflow、G2 或 Production 已成功；結果依 #755 最新回讀更新。
+- 預防：dispatch 前分開核對 producer 相容性與 history；deterministic 拒絕先判明 apply-only／read-only，不能 blind retry。main 前進後依現行 exact-main workflow 取證，不改標舊 G3 SHA。本段不新增 release framework、validator 或 DB 授權。
+
 ### PB-016 — 管線或後續命令的退出碼會蓋掉失敗，讓紅燈顯示成綠燈
 
 - 首次／最近：2026-09-07／2026-09-07
@@ -1579,6 +1587,13 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
      Opus 上，都是如實的違規記錄，不是「還沒填」。
 - 狀態：監看中。下一輪若 `modelUsage.tasks` 仍為空而該輪確實有委派，視為第二次。
 
+#### 2026-10-15 — #992：保存原派工，仍須先核對既有 schema 的必填欄位
+
+- 實際缺口：第一次 BUILD 的原始 spawn request 未明寫 `reasoning_effort`，既有 `nativeRoleShapeErrors` 要求此欄；不能在收尾時把預設／猜測值填成原始 request。原始 bytes 與 Source commit 保留。
+- 修正：另做真實 `SOURCE_ADOPTION_AND_LOCAL_BUILD`，明確 Sol／reasoning／fork 參數，保存新任務的 policy/spawn/work/completion；實際建置既有 exact source，無新 Source commit、不冒原作者。之後才回讀 canonical BUILD，再建立 fresh FINAL REVIEW。
+- 驗證：[BUILD6184544894](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/992#issuecomment-6184544894)、[FINAL6184712319](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/992#issuecomment-6184712319)、[canonical SourceRisk5528250074](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/992#pullrequestreview-5528250074) 經現行遠端 ENFORCED guard 接受並正常合併。
+- 預防：派工前先讀既有 role validator 必填 schema，明寫實際 model／reasoning／fork；事件當下保存完整原 request/result。unknown/backend null 不改造為已驗身份，不回填舊 Run/counter/model/time。僅 Source 角色准入，不能延伸成 DB G5/writer 許可。
+
 #### 2026-10-14 — #946 技術工作有紀錄，角色身分 capture 卻不能重建
 
 - Issue／PR／CI：[#755](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/755#issuecomment-6159742053)、[#946](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/946)、Source CI [38496883737](https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/38496883737)；Owner 本次指示 [6161669369](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/946#issuecomment-6161669369)，原獨立 review 報告 [6161670687](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/946#issuecomment-6161670687)。
@@ -1875,6 +1890,12 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 **2026-10-02 #741 延遲 review wake-up 補充：** 已觀測兩個 failed consumer（36956941251/job110681893706、36968116362/job110716174530），皆為 `Review wake-up needs one canonical PR association`；不是 Astra 執行失敗或 #739 close guard 回歸。#737 已 merged 後，成功 producer36956929013/36956868232 的 `pull_requests=[]`，舊 fallback 只查 open PR，漏掉 exact producer head 的 closed PR。原歷史次數保留；本次記錄的是兩筆同家族 consumer failure，不推算所有通知為獨立事故。
 
 修正僅 resolver：查 all、驗 canonical repo/ref，優先唯一 open；無 open 才接受唯一 closed exact producer SHA，且 live 回讀仍需同 SHA。既有 consumer 對 closed PR 在 status/comment/label/TEST dispatch 前 return，不製造 PASS 或重開 PR。外 repo、錯 head、歧義、未知 API 仍拒絕。預防以實際 github-script branch 驗零副作用；RED3FAIL61PASS→GREEN64PASS/typecheckPASS、獨立六個對抗 mock PASS。source/main CI 與 merge 回讀由 #741 的獨立 PR/closeout 留證，局部測試不當遠端驗收，不盲重試或改模型 gate。
+
+#### 2026-10-15 — #992：GitHub 秒精度 created_at 不能替代原生小數 UTC
+
+- 本地既有共享 preflight 實跑拒絕第一筆 REVIEW staging：GitHub `created_at=04:51:02Z`，parent 親見停筆為 `04:51:02.001008Z`，前者在可驗證順序上較早；回 `Failure diagnosis must be saved separately before replacement review`。原任務技術 PASS 不會消除這個發布時間差。
+- 修正：保留原 [6184681963](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/992#issuecomment-6184681963)，建立真正較晚的 [6184712319](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/992#issuecomment-6184712319)，不改工作時間、不削弱比較、不重派 reviewer。新 comment 與 canonical review 順序通過既有 local shared preflight 及遠端 guard。
+- 預防：親見完成後再建立最終發布物；compiled 後等跨過 GitHub 秒精度邊界再送出，回讀 created/updated/submitted 與原始小數 UTC。若被秒精度截斷拒絕，重新發布較晚的合法 record，不能倒填／取整工作事件或拿舊 PASS 蓋掉失敗。
 
 ### PB-050 — 埋了點，卻整輪沒跑過驗證器；欄位有值，但值在另一套詞彙裡
 
