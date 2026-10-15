@@ -29,6 +29,8 @@ export type ShopContext = {
   departures: string[];
   /** 行程／團次查詢失敗（#1024）：為 true 時 AI 不得把「沒資料」當成「沒開團」，一律交真人 */
   catalogUnavailable?: boolean;
+  /** 團次清單被查詢上限截斷時，清單涵蓋到的最後日期（YYYY-MM-DD）；其後的日期不得說成沒開團 */
+  departuresTruncatedAfter?: string;
   ai: { personaNotes?: string; faq?: { q: string; a: string }[] };
   shopUrl: string; // buildPublicBookingUrl()，引導下單用
 };
@@ -36,15 +38,22 @@ export type ShopContext = {
 /** 組 AI 客服 system prompt（純函式，可單獨測試）。 */
 export function buildAiSystemPrompt(shop: ShopContext): string {
   const faq = (shop.ai.faq ?? []).map((f) => `Q: ${f.q}\nA: ${f.a}`).join('\n\n');
+  const cut = shop.departuresTruncatedAfter;
   const dataRule = shop.catalogUnavailable
     ? [
         '2. 行程與團次資料暫時無法取得：被問到日期、名額、價格時，只回覆「UNSURE」讓真人接手，',
         '   **絕對不要說「沒有開團」，也不要推測或編造**。',
       ]
-    : [
-        '2. 名額、價格、日期一律以上面提供的資料為準，**絕對不要推測或編造**；',
-        '   上面沒有的日期就說「那天目前沒有開團」。',
-      ];
+    : cut
+      ? [
+          '2. 名額、價格、日期一律以上面提供的資料為準，**絕對不要推測或編造**；',
+          `   ${cut}（含）之前，上面沒有的日期就說「那天目前沒有開團」。`,
+          `   團次只列到 ${cut}；被問到 ${cut} 之後的日期、名額時只回覆「UNSURE」。`,
+        ]
+      : [
+          '2. 名額、價格、日期一律以上面提供的資料為準，**絕對不要推測或編造**；',
+          '   上面沒有的日期就說「那天目前沒有開團」。',
+        ];
   return [
     `你是「${shop.name}」的 LINE 客服助理，用繁體中文、口語、簡短（100 字內）回覆顧客。`,
     `店家介紹：${shop.description}`,

@@ -20,7 +20,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { lineReply, lineProfile } from './line';
 import { buildFlexMenuOutcome } from './flex-menu';
-import { loadListableDepartures, formatDepartureLine, buildCatalogContext } from './line-catalog';
+import { loadListableDepartures, formatDepartureLine, buildTourCatalogContext, AI_DEPARTURE_LIMIT } from './line-catalog';
 import { buildTripCarousel, minNonSeasonalPriceByTrip, TRIP_CAROUSEL_MAX, type TripCardSource } from './trip-flex';
 import { hasSeasonalPricing, readPlanSeasons } from './public-plan-seasons';
 import { isFeatureActive } from './features';
@@ -1309,14 +1309,21 @@ async function buildShopContext(
     businessHours += `，公休：${biz.closedDays.map((d) => `週${dayNames[d]}`).join('、')}`;
 
   // 非 GUIDE／未啟用 TOUR_MODULE：沒有行程，維持空陣列。團次與名額每次即時查、不快取。
-  let catalog: { trips: string[]; departures: string[]; catalogUnavailable: boolean } = {
+  let catalog: { trips: string[]; departures: string[]; catalogUnavailable: boolean; departuresTruncatedAfter?: string } = {
     trips: [],
     departures: [],
     catalogUnavailable: false,
   };
+  // 已知限制（main 既有、另案追蹤）：features.ts 的 isFeatureActive 查詢失敗時回 false 而非回報錯誤，
+  // 此時 GUIDE 店家會被當成未啟用 TOUR_MODULE（trips/departures 空、catalogUnavailable=false）。
+  // 本 PR 刻意不動 features.ts（還有其他呼叫者）。
   if (businessTypeOf(tenant) === 'GUIDE' && (await isFeatureActive(tenant.id, 'TOUR_MODULE'))) {
-    catalog = buildCatalogContext(
-      await loadListableDepartures(admin, tenant.id, 'buildShopContext', SERVICE_LIST_LIMIT, { includeTripPlans: true }),
+    const tz = typeof basic.timezone === 'string' && basic.timezone ? basic.timezone : undefined;
+    catalog = await buildTourCatalogContext(
+      () => loadListableDepartures(admin, tenant.id, 'buildShopContext', AI_DEPARTURE_LIMIT, {
+        includeTripPlans: true,
+        ...(tz ? { timeZone: tz } : {}),
+      }),
       { seatsLeft: MSG.departureSeatsLeft, full: MSG.departureFull },
     );
   }
@@ -1329,6 +1336,7 @@ async function buildShopContext(
     trips: catalog.trips,
     departures: catalog.departures,
     ...(catalog.catalogUnavailable ? { catalogUnavailable: true } : {}),
+    ...(catalog.departuresTruncatedAfter ? { departuresTruncatedAfter: catalog.departuresTruncatedAfter } : {}),
     ai: { personaNotes: ai.personaNotes, faq: ai.faq },
     // 公開商店頁 Phase 8 落地；URL 規則以 tenant-settings.ts 的 helper 為單一事實來源
     shopUrl: buildPublicBookingUrl(APP_URL, tenant.shop_code),

@@ -9,6 +9,9 @@ import { departureWindow, filterListableDepartures } from './line-departures';
 /** 與 line-events 的 SERVICE_LIST_LIMIT 相同；團次清單上限 */
 const DEPARTURE_LIMIT = 10;
 
+/** AI shop context 用的團次上限（遠大於 LINE 清單的 10，降低 14 天內被截斷的機率；仍截斷時由 truncated 告知 AI） */
+export const AI_DEPARTURE_LIMIT = 60;
+
 export type CatalogTrip = { id: string; title: string };
 export type CatalogPlan = {
   id: string;
@@ -37,6 +40,10 @@ export type ListableDeparturesResult =
       /** 已發布行程底下的全部啟用方案；僅在 includeTripPlans 時查詢，否則為空陣列 */
       tripPlans: CatalogPlan[];
       departures: CatalogDeparture[];
+      /** 查詢 A／B 任一取滿 limit，或合併後被截斷 → 清單不完整，未列出的日期不代表沒開團 */
+      truncated: boolean;
+      /** 截斷時清單涵蓋到的最後日期；未截斷為 undefined */
+      lastListedDate?: string;
     }
   | { ok: false };
 
@@ -52,7 +59,7 @@ export async function loadListableDepartures(
   tenantId: string,
   logTag = 'loadListableDepartures',
   limit = DEPARTURE_LIMIT,
-  options: { includeTripPlans?: boolean } = {},
+  options: { includeTripPlans?: boolean; timeZone?: string } = {},
 ): Promise<ListableDeparturesResult> {
   const { data: tripRows, error: tripError } = await admin
     .from('trips')
@@ -64,14 +71,15 @@ export async function loadListableDepartures(
     return { ok: false };
   }
   const trips = (tripRows ?? []) as CatalogTrip[];
-  if (!trips.length) return { ok: true, trips: [], plans: [], tripPlans: [], departures: [] };
+  if (!trips.length) return { ok: true, trips: [], plans: [], tripPlans: [], departures: [], truncated: false };
   const tripIds = trips.map((t) => t.id);
 
   // 日期窗用店家時區（tenant_settings.basic.timezone，#1022）。
   // 查詢失敗（error 或 throw）不可假設台北：非台北店家會得到錯誤日期窗，一律 ok:false。
   // 只有「查詢成功但沒設定／設定無效」才由 resolvePublicTimeZone 回退 Asia/Taipei。
-  let timeZoneSetting: unknown;
-  try {
+  // 呼叫端已持有 basic.timezone 時（options.timeZone）直接用，不再重複查 tenant_settings。
+  let timeZoneSetting: unknown = options.timeZone;
+  if (options.timeZone === undefined) try {
     const { data: settingsRow, error: settingsQueryError } = await admin
       .from('tenant_settings').select('basic').eq('tenant_id', tenantId).maybeSingle();
     if (settingsQueryError) {
@@ -125,10 +133,22 @@ export async function loadListableDepartures(
     if (plan?.id) planRows.push({ id: plan.id, name: plan.name, sales_mode: plan.sales_mode, active: plan.active === true });
     return d;
   });
-  const merged = [...withPlan, ...((noPlanRes.data ?? []) as any[])]
+  const noPlan = (noPlanRes.data ?? []) as any[];
+  const sorted = [...withPlan, ...noPlan]
     .sort((x, y) => String(x.departs_on).localeCompare(String(y.departs_on))
-      || String(x.start_time ?? '').localeCompare(String(y.start_time ?? '')))
-    .slice(0, limit);
+      || String(x.start_time ?? '').localeCompare(String(y.start_time ?? '')));
+  const merged = sorted.slice(0, limit);
+  // 任一查詢取滿 limit → 該查詢後面還有團次沒被撈到；其最後一筆日期之後的清單不完整。
+  const fullQueryLastDates = [withPlan, noPlan]
+    .filter((rows) => rows.length >= limit)
+    .map((rows) => String(rows[rows.length - 1].departs_on));
+  const truncated = fullQueryLastDates.length > 0 || sorted.length > merged.length;
+  let lastListedDate: string | undefined;
+  if (truncated) {
+    const candidates = [...fullQueryLastDates];
+    if (merged.length) candidates.push(String(merged[merged.length - 1].departs_on));
+    lastListedDate = candidates.sort()[0];
+  }
 
   let tripPlans: CatalogPlan[] = [];
   if (options.includeTripPlans) {
@@ -151,6 +171,8 @@ export async function loadListableDepartures(
     plans: planRows,
     tripPlans,
     departures: filterListableDepartures(merged as CatalogDeparture[], planRows),
+    truncated,
+    ...(lastListedDate ? { lastListedDate } : {}),
   };
 }
 
@@ -185,6 +207,8 @@ export type ShopCatalogContext = {
   trips: string[];
   departures: string[];
   catalogUnavailable: boolean;
+  /** 團次清單被截斷時，清單涵蓋到的最後日期（之後的日期不可說成沒開團） */
+  departuresTruncatedAfter?: string;
 };
 
 /** 查詢結果 → shop context 欄位；查詢失敗時 catalogUnavailable 為 true、清單為空。 */
@@ -196,5 +220,22 @@ export function buildCatalogContext(result: ListableDeparturesResult, labels: Ca
     trips: result.trips.map((t) => formatTripLine(t, result.tripPlans)),
     departures: result.departures.map((d) => formatDepartureLine(d, titleById, planNameById, labels)),
     catalogUnavailable: false,
+    ...(result.truncated && result.lastListedDate ? { departuresTruncatedAfter: result.lastListedDate } : {}),
   };
+}
+
+/**
+ * 執行 catalog 查詢並組成 shop context；查詢 throw 一律視為 catalogUnavailable，
+ * 不讓整個 AI 回覆因為 supabase 直接拋錯而失敗。
+ */
+export async function buildTourCatalogContext(
+  load: () => Promise<ListableDeparturesResult>,
+  labels: CatalogLabels,
+): Promise<ShopCatalogContext> {
+  try {
+    return buildCatalogContext(await load(), labels);
+  } catch (error) {
+    console.error('[line] buildTourCatalogContext 查詢拋錯', error);
+    return { trips: [], departures: [], catalogUnavailable: true };
+  }
 }
