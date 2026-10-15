@@ -860,14 +860,41 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
   }
   const { from, to } = departureWindow(Date.now(), timeZoneSetting);
 
-  const { data: departures, error } = await ctx.admin
+  // 先取「已發布行程底下啟用中的方案」，再查團次：停用／查無方案的團次必須在 .limit 之前就被排除，
+  // 否則最早的 N 筆全是停用方案時，會把後面可報名的團次擠出清單、誤回「沒有團次」（#1022）。
+  // 同一次查詢也供方案名稱、sales_mode 判定使用。查詢失敗與 trips／trip_departures 一致：return false 交由預設回覆。
+  const { data: plans, error: planError } = await ctx.admin
+    .from('trip_plans')
+    .select('id, name, sales_mode, active, min_party')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('active', true)
+    .in('trip_id', [...titleById.keys()]);
+  if (planError) {
+    console.error('[line] replyDepartures 查詢 trip_plans 失敗', planError);
+    return false;
+  }
+  const planRows = ((plans ?? []) as any[]).filter((p) => p.active === true);
+  const planNameById = new Map<string, string>();
+  const fixedPlanIds = new Set<string>();
+  for (const p of planRows) {
+    planNameById.set(p.id, p.name);
+    if (p.sales_mode === 'FIXED_DEPARTURE') fixedPlanIds.add(p.id);
+  }
+  // id 全來自上面的資料庫查詢結果（uuid），不含使用者輸入；無啟用方案時只剩 plan_id 為 null 的團次。
+  const activePlanIds = planRows.map((p) => String(p.id));
+
+  let departureQuery = ctx.admin
     .from('trip_departures')
     .select('id, trip_id, plan_id, departs_on, start_time, capacity, seats_booked')
     .eq('tenant_id', ctx.tenant.id)
     .eq('status', 'OPEN')
     .in('trip_id', [...titleById.keys()])
     .gte('departs_on', from)
-    .lte('departs_on', to)
+    .lte('departs_on', to);
+  departureQuery = activePlanIds.length
+    ? departureQuery.or(`plan_id.is.null,plan_id.in.(${activePlanIds.join(',')})`)
+    : departureQuery.is('plan_id', null);
+  const { data: departures, error } = await departureQuery
     .order('departs_on', { ascending: true })
     .limit(SERVICE_LIST_LIMIT);
   if (error) {
@@ -875,29 +902,6 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
     return false;
   }
   if (!departures?.length) return replyText(ctx, MSG.departureEmpty);
-
-  // 方案查詢同時決定「哪些團次可列出」（#1022）：方案已停用或查無此方案的團次，旅客點進公開頁找不到，不列。
-  // 查詢失敗時與 trips／trip_departures 一致：return false 交由預設回覆，不回「沒有團次」。
-  const planIds = [...new Set(departures.map((d: any) => d.plan_id).filter(Boolean))];
-  const planNameById = new Map<string, string>();
-  const fixedPlanIds = new Set<string>();
-  let planRows: any[] = [];
-  if (planIds.length) {
-    const { data: plans, error: planError } = await ctx.admin
-      .from('trip_plans')
-      .select('id, name, sales_mode, active, min_party')
-      .eq('tenant_id', ctx.tenant.id)
-      .in('id', planIds);
-    if (planError) {
-      console.error('[line] replyDepartures 查詢 trip_plans 失敗', planError);
-      return false;
-    }
-    planRows = (plans ?? []) as any[];
-    for (const p of planRows) {
-      planNameById.set(p.id, p.name);
-      if (p.active === true && p.sales_mode === 'FIXED_DEPARTURE') fixedPlanIds.add(p.id);
-    }
-  }
 
   const listable = filterListableDepartures(departures as any[], planRows);
   if (!listable.length) return replyText(ctx, MSG.departureEmpty);

@@ -188,7 +188,7 @@ describe('LINE「近期團次」深連結（連結資格＝預約頁載入器 + 
   const lineAdmin = (deps: unknown[], plans: unknown[], planError: unknown = null) => {
     const chain = (data: unknown, error: unknown = null) => {
       const c: any = { then: (res: (v: unknown) => unknown) => Promise.resolve({ data, error }).then(res) };
-      for (const m of ['select', 'eq', 'in', 'gte', 'lte', 'order', 'limit', 'range', 'maybeSingle']) c[m] = () => c;
+      for (const m of ['select', 'eq', 'in', 'gte', 'lte', 'order', 'limit', 'range', 'maybeSingle', 'or', 'is']) c[m] = () => c;
       return c;
     };
     return { from: (t: string) => t === 'tenant_settings' ? chain(null)
@@ -222,6 +222,45 @@ describe('LINE「近期團次」深連結（連結資格＝預約頁載入器 + 
     spy.mockRestore();
     expect(ok).toBe(false);
     expect(fx.lineReplies).toHaveLength(0);
+  });
+
+  it('前 10 筆團次都屬停用方案、第 11 筆屬啟用方案 → 查詢在 limit 前帶 plan_id 過濾，仍列出啟用團次', async () => {
+    fx.bookingPlansById = { pf: bp(['dep-live']) };
+    const stale = Array.from({ length: 10 }, (_, i) => dep(`dep-off-${i}`, 'pi'));
+    const all = [...stale, dep('dep-live', 'pf')];
+    const orArgs: string[] = [];
+    let limitSeen: number | undefined;
+    const admin = {
+      from: (t: string) => {
+        const c: any = { _or: '' };
+        c.then = (res: (v: unknown) => unknown) => {
+          let data: unknown = [];
+          if (t === 'trips') data = [{ id: 'tr', title: '行程' }];
+          else if (t === 'trip_plans') data = fixedPlans;
+          else if (t === 'trip_departures') {
+            // 模擬 PostgREST：先套 plan_id 過濾，再取 limit
+            const ids = /plan_id\.in\.\(([^)]*)\)/.exec(c._or)?.[1]?.split(',') ?? [];
+            data = all.filter((d) => ids.includes(d.plan_id)).slice(0, limitSeen ?? 1000);
+          }
+          return Promise.resolve({ data, error: null }).then(res);
+        };
+        for (const m of ['select', 'eq', 'in', 'gte', 'lte', 'order', 'range', 'maybeSingle', 'is']) c[m] = () => c;
+        c.or = (f: string) => { c._or = f; orArgs.push(f); return c; };
+        c.limit = (n: number) => { limitSeen = n; return c; };
+        return t === 'tenant_settings' ? { select: () => c, eq: () => c, maybeSingle: () => Promise.resolve({ data: null, error: null }) } : c;
+      },
+    };
+    fx.lineReplies.length = 0;
+    const ok = await replyDepartures({
+      admin, token: 'k', replyToken: 'r', userId: 'u', lineConfig: {},
+      tenant: { id: 'ten', shop_code: 'demo', name: 'D', business_type: 'GUIDE' },
+    } as any);
+    expect(ok).toBe(true);
+    const text = fx.lineReplies[0][0].text;
+    expect(orArgs).toEqual(['plan_id.is.null,plan_id.in.(pf)']);
+    expect(text).toContain('固定');
+    expect(text).toContain('departure=dep-live');
+    expect(text).not.toContain('dep-off');
   });
 
   it('只有啟用中的 FIXED_DEPARTURE 方案附深連結，連結緊接在對應團次行下方', async () => {
