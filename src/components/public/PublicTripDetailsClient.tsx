@@ -10,6 +10,7 @@ import { publicTripDetailsPage as t } from '@/i18n/zh-TW/pages/public-trip-detai
 import { formatCurrency } from '@/lib/utils';
 import { seasonalHeadlineKind } from '@/lib/public-booking-price';
 import { candidateIsBookable } from '@/lib/public-departure-candidates';
+import { departureBookHref } from '@/lib/public-departure-link';
 import { formationLines } from '@/lib/public-departure-formation';
 import {
   initialLoadState,
@@ -267,8 +268,9 @@ export function PublicTripDetailsClient({ shopCode, slug, initialData }: Props) 
                           {plan.departures.map((departure) => {
                             const belowMinParty = plan.salesMode !== 'REQUEST' && !departure.soldOut && !candidateIsBookable(departure.seatsLeft, plan.minParty);
                             const bookable = !departure.soldOut && !belowMinParty;
-                            return (
-                              <li key={departure.id} className={`badge flex-col items-start ${bookable ? 'badge-primary' : 'text-secondary'}`}>
+                            const bookHref = bookingCtaState(plan) === 'fixed' ? departureBookHref(shopCode, plan, departure) : null;
+                            const content = (
+                              <>
                                 <span>
                                   {formatDepartureDate(departure.departsOn)}{' '}
                                   {departure.startTime || t.departures.noStartTime}{' · '}
@@ -281,6 +283,19 @@ export function PublicTripDetailsClient({ shopCode, slug, initialData }: Props) 
                                 {formationLines(plan.salesMode, departure, timeZone).map((line) => (
                                   <span key={line} className="block text-2xs text-secondary">{line}</span>
                                 ))}
+                              </>
+                            );
+                            return (
+                              <li key={departure.id} className={bookHref ? undefined : `badge flex-col items-start ${bookable ? 'badge-primary' : 'text-secondary'}`}>
+                                {bookHref ? (
+                                  <Link
+                                    href={bookHref}
+                                    className="badge badge-primary inline-flex min-h-11 flex-col items-start justify-center underline underline-offset-4"
+                                  >
+                                    <span className="sr-only">{t.departures.bookSrPrefix}</span>
+                                    {content}
+                                  </Link>
+                                ) : content}
                               </li>
                             );
                           })}
