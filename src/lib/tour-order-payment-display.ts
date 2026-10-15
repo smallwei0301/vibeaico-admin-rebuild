@@ -3,11 +3,11 @@
  *
  * `depositAmount` = 建單時設定的「應收定金」（不是已收）；實收金額是 `paidAmount`（paid_amount）。
  * paidAmount 缺失／非有限／<=0（例如 mock 資料無此欄位）視為未知，不顯示已收。
- * 待收尾款只在 PARTIAL 且 total − paid > 0 時顯示；已取消的部分付款訂單仍顯示已收金額（退款脈絡），但不顯示待收尾款；應收定金（列表與詳情共用 `isDepositDue`）只在未付款（UNPAID）、未取消、非「尚未被嚮導接受的申請」（REQUEST 且 PENDING，接受前不提示收款）且 depositAmount > 0 時顯示；PARTIAL／PAID 已有實收，不再顯示應收定金。
+ * 待收尾款只在 PARTIAL 且 total − paid > 0 時顯示；已取消的部分付款訂單仍顯示已收金額（退款脈絡），但不顯示待收尾款；應收定金（列表與詳情共用 `isDepositDue`）與收款動作同源：只在 `tourPaymentActions` 提供「確認收到訂金」（`confirmDeposit`）時顯示，即 CONFIRMED、UNPAID、非待接受 REQUEST 且 0 < 定金 < 總額；其餘狀態系統只能登記全額，不提示定金，避免顯示與實際記帳不一致。
  */
 import type { TourOrder } from '@/lib/types';
 import { partialPaymentBreakdown } from '@/lib/public-partial-payment';
-import { isPendingTourRequest } from '@/lib/tour-order-payment-actions';
+import { tourPaymentActions } from '@/lib/tour-order-payment-actions';
 
 type PaymentFields = Pick<TourOrder, 'status' | 'paymentStatus' | 'totalAmount' | 'depositAmount' | 'paidAmount'> &
   Partial<Pick<TourOrder, 'salesMode'>>;
@@ -17,16 +17,9 @@ export function validPaidAmount(order: Pick<TourOrder, 'paidAmount'>): number | 
   return p != null && Number.isFinite(p) && p > 0 ? p : null;
 }
 
-/** 應收定金的唯一判斷：列表與詳情共用，避免兩處規則分歧。 */
-export function isDepositDue(
-  order: Pick<TourOrder, 'status' | 'paymentStatus' | 'depositAmount'> & Partial<Pick<TourOrder, 'salesMode'>>,
-): boolean {
-  return (
-    order.paymentStatus === 'UNPAID' &&
-    order.status !== 'CANCELLED' &&
-    !isPendingTourRequest(order) &&
-    order.depositAmount > 0
-  );
+/** 應收定金的唯一判斷：與「確認收到訂金」動作同源，顯示與可登記的收款一致。 */
+export function isDepositDue(order: Parameters<typeof tourPaymentActions>[0]): boolean {
+  return tourPaymentActions(order).includes('confirmDeposit');
 }
 
 export type ListPaymentLine =

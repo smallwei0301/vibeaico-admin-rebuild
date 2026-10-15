@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { listPaymentLine, detailPaymentRows } from '@/lib/tour-order-payment-display';
+import { tourPaymentActions } from '@/lib/tour-order-payment-actions';
 import { MOCK_TOUR_ORDERS } from '@/mock/tours';
 import { tourOrdersPage as t } from '@/i18n/zh-TW/pages/tour-orders';
 
@@ -74,11 +75,39 @@ describe('#1000 店家團體訂單：依實收金額顯示', () => {
     expect(listPaymentLine(o)).toEqual({ kind: 'depositDue', amount: 3000 });
     expect(detailPaymentRows(o).depositDue).toBe(3000);
   });
-  it('非 REQUEST（FIXED_DEPARTURE／INSTANT／未提供）PENDING + UNPAID 有定金：仍顯示', () => {
+  it('非 REQUEST（FIXED_DEPARTURE／INSTANT／未提供）PENDING + UNPAID 有定金：只能登記全額，不顯示應收定金', () => {
     for (const salesMode of ['FIXED_DEPARTURE', 'INSTANT', undefined]) {
       const o = { ...base, status: 'PENDING', salesMode } as never;
-      expect(detailPaymentRows(o).depositDue, String(salesMode)).toBe(3000);
+      expect(detailPaymentRows(o).depositDue, String(salesMode)).toBeNull();
+      expect(listPaymentLine(o), String(salesMode)).toBeNull();
     }
+  });
+  it('CONFIRMED + UNPAID：0 < 定金 < 總額才顯示；定金 >= 總額不顯示', () => {
+    expect(detailPaymentRows({ ...base }).depositDue).toBe(3000);
+    expect(listPaymentLine({ ...base })).toEqual({ kind: 'depositDue', amount: 3000 });
+    for (const depositAmount of [10000, 12000, 0]) {
+      expect(detailPaymentRows({ ...base, depositAmount }).depositDue, String(depositAmount)).toBeNull();
+      expect(listPaymentLine({ ...base, depositAmount }), String(depositAmount)).toBeNull();
+    }
+  });
+  it('矩陣：應收定金顯示若且唯若可登記定金動作', () => {
+    let shown = 0;
+    for (const status of ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'] as const) {
+      for (const paymentStatus of ['UNPAID', 'PARTIAL', 'PAID', 'REFUNDED'] as const) {
+        for (const salesMode of ['REQUEST', 'INSTANT', 'FIXED_DEPARTURE', undefined]) {
+          for (const depositAmount of [0, 3000, 10000, 12000]) {
+            const o = { ...base, status, paymentStatus, salesMode, depositAmount } as never;
+            const expected = tourPaymentActions(o).includes('confirmDeposit');
+            const key = `${status}/${paymentStatus}/${salesMode}/${depositAmount}`;
+            expect(detailPaymentRows(o).depositDue != null, key).toBe(expected);
+            const line = listPaymentLine(o);
+            expect(line?.kind === 'depositDue', key).toBe(expected);
+            if (expected) shown++;
+          }
+        }
+      }
+    }
+    expect(shown).toBeGreaterThan(0);
   });
   it('mock 種子 to_9（包船專案，REQUEST／PENDING）：有定金時不顯示應收定金', () => {
     expect.assertions(6);
@@ -90,8 +119,8 @@ describe('#1000 店家團體訂單：依實收金額顯示', () => {
     expect(o.paymentStatus).toBe('UNPAID');
     expect(listPaymentLine(o)).toBeNull();
     expect(detailPaymentRows(o).depositDue).toBeNull();
-    // 對照：同一筆改為非 REQUEST 時應顯示，證明前述 null 來自 REQUEST 判斷而非缺定金
-    expect(detailPaymentRows({ ...o, salesMode: 'INSTANT' }).depositDue).toBe(3000);
+    // 對照：同一筆改為已接受（CONFIRMED）的非 REQUEST 時應顯示，證明 null 並非因缺定金
+    expect(detailPaymentRows({ ...o, status: 'CONFIRMED', salesMode: 'INSTANT' }).depositDue).toBe(3000);
   });
   it('mock 種子：PARTIAL／PAID 訂單皆有合法 paidAmount', () => {
     for (const o of MOCK_TOUR_ORDERS) {
