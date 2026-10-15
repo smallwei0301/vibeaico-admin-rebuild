@@ -20,7 +20,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { lineReply, lineProfile } from './line';
 import { buildFlexMenuOutcome } from './flex-menu';
-import { buildTripCarousel, TRIP_CAROUSEL_MAX, type TripCardSource } from './trip-flex';
+import { buildTripCarousel, minNonSeasonalPriceByTrip, TRIP_CAROUSEL_MAX, type TripCardSource } from './trip-flex';
+import { hasSeasonalPricing, readPlanSeasons } from './public-plan-seasons';
 import { isFeatureActive } from './features';
 import { grantCampaignRewards } from './campaign-rewards';
 import { aiReply, type ShopContext } from './ai-reply';
@@ -765,19 +766,32 @@ async function replyTrips(ctx: BuiltinCtx): Promise<boolean> {
    */
   const { data: plans, error: planError } = await ctx.admin
     .from('trip_plans')
-    .select('trip_id, price_per_person, active')
+    .select('id, trip_id, price_per_person, active')
     .eq('tenant_id', ctx.tenant.id)
     .in('trip_id', trips.map((t: any) => t.id));
   if (planError) console.error('[line] replyTrips 查詢 trip_plans 失敗', planError);
 
-  const minPriceByTrip = new Map<string, number>();
-  for (const p of (plans ?? []) as any[]) {
-    if (!p.active) continue;
-    const price = Number(p.price_per_person);
-    if (!Number.isFinite(price)) continue;
-    const current = minPriceByTrip.get(p.trip_id);
-    if (current === undefined || price < current) minPriceByTrip.set(p.trip_id, price);
+  /*
+   * #1012：季節定價方案的 `price_per_person` 只是基本價，不是確定售價——首頁（#895）已排除，
+   * 輪播必須同一規則（readPlanSeasons／hasSeasonalPricing）。季節資料查詢失敗時 readPlanSeasons
+   * 會降級為「全部不完整」→ 視為季節定價 → 排除；全排除就是「價格洽詢」，不是 NT$ 0。
+   */
+  const planRows = (plans ?? []) as any[];
+  const seasonalPlanIds = new Set<string>();
+  const activePlanIds = planRows.filter((p) => p.active).map((p) => String(p.id));
+  try {
+    const seasonReader = await readPlanSeasons(ctx.admin as any, ctx.tenant.id, activePlanIds);
+    for (const id of activePlanIds) {
+      if (hasSeasonalPricing({ seasons: seasonReader.byPlan.get(id) ?? [], incomplete: seasonReader.isIncomplete(id) })) {
+        seasonalPlanIds.add(id);
+      }
+    }
+  } catch (seasonError) {
+    console.error('[line] replyTrips 查詢 trip_plan_seasons 失敗', seasonError);
+    for (const id of activePlanIds) seasonalPlanIds.add(id);
   }
+
+  const minPriceByTrip = minNonSeasonalPriceByTrip(planRows, seasonalPlanIds);
 
   const shopUrl = buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code);
   const cards: TripCardSource[] = trips.map((t: any) => ({
