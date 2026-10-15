@@ -185,13 +185,15 @@ describe('LINE「近期團次」深連結（連結資格＝預約頁載入器 + 
   const dep = (id: string, planId: string, seatsBooked = 1) => ({
     id, trip_id: 'tr', plan_id: planId, departs_on: '2098-01-01', start_time: null, capacity: 5, seats_booked: seatsBooked,
   });
-  const lineAdmin = (deps: unknown[], plans: unknown[]) => {
-    const chain = (data: unknown) => {
-      const c: any = { then: (res: (v: unknown) => unknown) => Promise.resolve({ data, error: null }).then(res) };
-      for (const m of ['select', 'eq', 'in', 'gte', 'lte', 'order', 'limit', 'range']) c[m] = () => c;
+  const lineAdmin = (deps: unknown[], plans: unknown[], planError: unknown = null) => {
+    const chain = (data: unknown, error: unknown = null) => {
+      const c: any = { then: (res: (v: unknown) => unknown) => Promise.resolve({ data, error }).then(res) };
+      for (const m of ['select', 'eq', 'in', 'gte', 'lte', 'order', 'limit', 'range', 'maybeSingle']) c[m] = () => c;
       return c;
     };
-    return { from: (t: string) => chain(t === 'trips' ? [{ id: 'tr', title: '行程' }] : t === 'trip_departures' ? deps : plans) };
+    return { from: (t: string) => t === 'tenant_settings' ? chain(null)
+      : t === 'trips' ? chain([{ id: 'tr', title: '行程' }]) : t === 'trip_departures' ? chain(deps)
+      : planError ? chain(null, planError) : chain(plans) };
   };
   const runLine = async (deps: unknown[], plans: unknown[]) => {
     fx.lineReplies.length = 0;
@@ -208,6 +210,18 @@ describe('LINE「近期團次」深連結（連結資格＝預約頁載入器 + 
     departures: ids.map((x) => typeof x === 'string'
       ? { id: x, departsOn: '2098-01-01', startTime: '', seatsLeft: 4 } : { departsOn: '2098-01-01', startTime: '', seatsLeft: 4, ...x }),
     ...over,
+  });
+
+  it('trip_plans 查詢失敗 → 回 false 且不送出「沒有團次」回覆', async () => {
+    fx.lineReplies.length = 0;
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const ok = await replyDepartures({
+      admin: lineAdmin([dep('d1', 'pf')], [], { message: 'boom' }), token: 'k', replyToken: 'r', userId: 'u', lineConfig: {},
+      tenant: { id: 'ten', shop_code: 'demo', name: 'D', business_type: 'GUIDE' },
+    } as any);
+    spy.mockRestore();
+    expect(ok).toBe(false);
+    expect(fx.lineReplies).toHaveLength(0);
   });
 
   it('只有啟用中的 FIXED_DEPARTURE 方案附深連結，連結緊接在對應團次行下方', async () => {

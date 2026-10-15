@@ -17,21 +17,16 @@ const plans = [
 
 describe('filterListableDepartures', () => {
   it('排除 inactive 與查無方案的團次，保留 active', () => {
-    const ids = filterListableDepartures(deps, plans, false).map((d) => d.id);
+    const ids = filterListableDepartures(deps, plans).map((d) => d.id);
     expect(ids).toEqual(['d1', 'd4']);
   });
 
   it('plan_id 為 null 的團次維持列出', () => {
-    expect(filterListableDepartures([{ plan_id: null }], [], false)).toHaveLength(1);
-  });
-
-  it('方案查詢失敗時 fail-closed：排除所有帶 plan_id 的團次', () => {
-    const ids = filterListableDepartures(deps, plans, true).map((d) => d.id);
-    expect(ids).toEqual(['d4']);
+    expect(filterListableDepartures([{ plan_id: null }], [])).toHaveLength(1);
   });
 
   it('全部被排除時回空陣列', () => {
-    expect(filterListableDepartures(deps.slice(1, 3), plans, false)).toEqual([]);
+    expect(filterListableDepartures(deps.slice(1, 3), plans)).toEqual([]);
   });
 });
 

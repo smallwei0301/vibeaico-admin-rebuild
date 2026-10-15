@@ -21,19 +21,17 @@ export function departureWindow(nowMs: number, timeZone: unknown): { from: strin
 type DepartureLike = { plan_id?: string | null };
 
 /**
- * 排除「plan_id 存在但方案非 active 或查無此方案」的團次：公開頁只列 active 方案，
- * 旅客點進去會找不到。plan_id 為 null 的團次維持列出（公開頁同樣列出無方案團次，且不附連結）。
- * 方案查詢失敗（planQueryFailed）時 fail-closed：排除所有帶 plan_id 的團次。
+ * 排除買不到的團次（停用或查無方案）；公開首頁目前仍以無連結 badge 列出停用方案團次，LINE 刻意更嚴格。
+ * plan_id 為 null 的團次維持列出（不附連結）。
+ * 呼叫端須先處理方案查詢失敗（交由預設回覆），不得把失敗當成「沒有團次」。
  */
 export function filterListableDepartures<T extends DepartureLike>(
   departures: T[],
   plans: Array<{ id: string; active?: boolean | null }>,
-  planQueryFailed: boolean,
 ): T[] {
   const activeIds = new Set(plans.filter((p) => p.active === true).map((p) => p.id));
   return departures.filter((d) => {
     if (!d.plan_id) return true;
-    if (planQueryFailed) return false;
     return activeIds.has(d.plan_id);
   });
 }

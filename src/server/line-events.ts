@@ -851,9 +851,10 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
   // 日期窗用店家時區（tenant_settings.basic.timezone，缺值／無效回退 Asia/Taipei），不是 UTC（#1022）。
   let timeZoneSetting: unknown;
   try {
-    const { data: settingsRow } = await ctx.admin
+    const { data: settingsRow, error: settingsQueryError } = await ctx.admin
       .from('tenant_settings').select('basic').eq('tenant_id', ctx.tenant.id).maybeSingle();
-    timeZoneSetting = (settingsRow as { basic?: { timezone?: unknown } } | null)?.basic?.timezone;
+    if (settingsQueryError) console.error('[line] replyDepartures 查詢 tenant_settings 失敗', settingsQueryError);
+    else timeZoneSetting = (settingsRow as { basic?: { timezone?: unknown } } | null)?.basic?.timezone;
   } catch (settingsError) {
     console.error('[line] replyDepartures 查詢 tenant_settings 失敗', settingsError);
   }
@@ -876,12 +877,11 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
   if (!departures?.length) return replyText(ctx, MSG.departureEmpty);
 
   // 方案查詢同時決定「哪些團次可列出」（#1022）：方案已停用或查無此方案的團次，旅客點進公開頁找不到，不列。
-  // 查詢失敗時 fail-closed：帶 plan_id 的團次一律不列（無方案團次維持原行為）。
+  // 查詢失敗時與 trips／trip_departures 一致：return false 交由預設回覆，不回「沒有團次」。
   const planIds = [...new Set(departures.map((d: any) => d.plan_id).filter(Boolean))];
   const planNameById = new Map<string, string>();
   const fixedPlanIds = new Set<string>();
   let planRows: any[] = [];
-  let planQueryFailed = false;
   if (planIds.length) {
     const { data: plans, error: planError } = await ctx.admin
       .from('trip_plans')
@@ -890,7 +890,7 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
       .in('id', planIds);
     if (planError) {
       console.error('[line] replyDepartures 查詢 trip_plans 失敗', planError);
-      planQueryFailed = true;
+      return false;
     }
     planRows = (plans ?? []) as any[];
     for (const p of planRows) {
@@ -899,7 +899,7 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
     }
   }
 
-  const listable = filterListableDepartures(departures as any[], planRows, planQueryFailed);
+  const listable = filterListableDepartures(departures as any[], planRows);
   if (!listable.length) return replyText(ctx, MSG.departureEmpty);
 
   // 直達預約連結只給「目的預約頁真的可預選且可送出」的團次：對每個出現的 FIXED_DEPARTURE 方案呼叫預約頁同一支
