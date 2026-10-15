@@ -1139,6 +1139,14 @@ normal prepare 的 reviewer packet 亦須列出獨立角色收據，正例以 cu
 
 - 最終驗證：Source／bootstrap／LOCAL 全 SUCCESS；current native 36 cases、whole integration 804 PASS／3 skipped、E2E 23 PASS／3 skipped，cleanup 於 2026-10-01T07:28:50Z verified。獨立 final review 0 unresolved，僅批准 source prep；#719 的 final head `7a05bbcd` 已合併，merge/current main `701845e4783f9eb87a19e3b3da52f49018134ea9`。remote `0135` NOT_APPLIED／RPC absent，不宣稱 remote TEST／Production readiness 或驗收。
 
+#### 2026-10-14 — #946：Draft 的 prospective final 檢查被 lifecycle 早退覆蓋
+
+- 新增一件有實跑反例的入口覆蓋事件，不按三個 regression case 或重測次數累加。來源：[#946 exact291b0c9](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/946)，source／技術審查已完成，但正常 BUILD／REVIEW backend 來源未捕獲；平台未提供或 adapter 漏存的成因仍未證明。
+- 確定的程式根因：current-main `agent-wip-preflight.mjs` 的普通審查先按 live Draft／PARKED 早退，忽略明確 `prospectiveFinal=true`。相同缺證據輸入，不帶 snapshot 會拒絕，帶真實 Draft snapshot 反而 `NOT_REQUIRED`。這是可重現的 local coverage gap，不證明 #946 原始捕獲缺口全由它造成。
+- 修正／驗證：原程式加上三個 open Draft／PARKED 反例，Node 22 為 3 FAIL／38 PASS；讓明確 prospective final 優先後，相關 ordinary／preflight 測試通過。正常 Draft、closed 歷史、snapshot 格式核對、獨立角色與 unknown actual 規則不變；local shape 仍不等於 canonical approval。
+
+- 預防：explicit prospective final 與 live lifecycle 必須分別測試；施工前 capture 檢查沿 PB-040／canonical §7.2，不另造第二份角色規格。此修正不改 current-main #848／#946 精確例外，也不重建 #946 的歷史身份或 Run capture。
+
 ### PB-035 — 從欄位定義推斷「這筆 insert 會失敗」，卻沒查參與寫入的 trigger
 
 - 首次／最近：2026-09-11／2026-09-11
@@ -1587,6 +1595,7 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 影響：唯一 CSV wait literal100→20 修正、6674 unit tests／Source CI／技術 review PASS 都無法直接完成合法 source merge；不是 GitHub 網路、模型 actualunknown 本身或忘填技術結果。
 - 本次修正：Owner 明確授權只延後 #946 exact291b0c9／digest286e4136 的 source 身分資料，沿既有 trusted-main deferral／immutable directive與獨立報告回讀接線；保留正常 sourceCI、finding、publication/WIP/branch protection與DB G0–G7。不補造舊身份、spawn原文或歷史模型／時間；例外不是之後工作的預設。
 - 預防：下一次 Product 委派前，先對照 current role receipt schema 與 runtime 能力；spawn 當下保存原 request/result、觀測UTC與可得的真實識別，work/completion 當下保存 exactsource／結果，兩角色分別留證。保留需要的原始資料於受限位置，公開證據不得洩漏秘密。未知欄位如實記 UNEXPOSED；taskname、GitHub登入或主 session ID 不代填子角色。缺 capture 能力就在投入完整施工前指出准入限制並尋找既有合法路徑，不以反覆「繼續」或重跑測試期待身份出現。canonical角色回讀與結果review分開驗，不到收尾才第一次檢查。
+- #961 可執行補強：正常 backend 路徑依 canonical §7.2 執行既有 preflight 的 `--role-capability`；缺欄位／fresh reviewer 途徑以非零退出，成功仍標 `ROLE_CAPTURE_CAPABILITY_RECORDED_UNVERIFIED`。只驗操作者觀測契約，不能認證 backend 身分／平台能力，也無法阻止省略命令的外部派工；不要求未來完成收據、不新增例外。獨立的 prospectiveFinal precedence bug 與 RED 證據記於 PB-034，不把原 capture 事件再計一次。
 - 驗證／狀態：實際查找結果保留未知，ordinary source deferral 實跑 RED1failed/60passed 後完成最小接線；最終 scoped、exact-head CI與main回讀以本次治理 PR 記錄為準。程序面預防已記錄，未宣稱平台原始子角色身份已找回、已建機械 capture collector或 Production acceptance 完成。
 
 #### 2026-10-14 — #977：即時 capture 成功仍被 backend-only 准入阻塞
