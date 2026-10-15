@@ -468,6 +468,12 @@ export function decideTestValidation({
       if (productionDbReleaseId && productionDbPlannedAt) {
         return result(true, "manual_main_g3_exact_head");
       }
+      // GitHub's typed inputs use booleans; context.payload.inputs uses strings.
+      // Only explicit true requests the TEST-only baseline. Its closed scope and
+      // release-input/holder restrictions remain enforced by ci.yml downstream.
+      if (inputs.test_baseline_0098 === true || inputs.test_baseline_0098 === "true") {
+        return result(true, "manual_main_baseline_0098_exact_head");
+      }
       return docsOnly
         ? result(false, "docs_only")
         : result(true, "manual_main_exact_head");

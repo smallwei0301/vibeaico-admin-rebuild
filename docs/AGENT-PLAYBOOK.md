@@ -321,6 +321,13 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 驗證：exact source `596e268c` 的 [SourceCI38682532387](https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/38682532387) 452檔／6920unit、typecheck/build PASS；獨立 Final SourceRisk 63探針／97focused tests PASS。這不證明新 baseline workflow、G2 或 Production 已成功；結果依 #755 最新回讀更新。
 - 預防：dispatch 前分開核對 producer 相容性與 history；deterministic 拒絕先判明 apply-only／read-only，不能 blind retry。main 前進後依現行 exact-main workflow 取證，不改標舊 G3 SHA。本段不新增 release framework、validator 或 DB 授權。
 
+
+#### 2026-10-15 — #755：明確 0098 baseline 被 docs-only 最佳化略過
+
+- 實跑證據：[ci38686516380](https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/38686516380)，exact `a7a8b6976dfb777eb55b616d364ed85d497bcebc`／first parent `c41ae6e3fa2290e1cf98879619e376f5acc8daa0`。integration job `116262624774` 於 `05:23:58Z` 因 `BASELINE_0098=true`、`RUN_TEST_VALIDATION=false` exit 1；baseline 未執行。
+- 根因／修補：既有 main dispatch 只為明確 G3 略過 docs-only；在同一 authenticated head／first-parent 分支接納 `test_baseline_0098` 的 boolean `true` 與 GitHub payload 字串 `"true"`。一般 docs-only、false／malformed input、branch dispatch 與唯一 holder 驗證維持原判定；ci.yml 下游的 TEST project、closed0098 SQL/history、Production inputs 互斥及禁止 Production 門檻不變。
+- 預防／驗證：沿既有 unit suite 重現實際 docs-only baseline 的兩個 RED，並驗證兩種 true、false／malformed、bad head/base/ref、branch holder 與既有 G3／ordinary docs 行為。source PASS 不代表 baseline workflow、G2/G3 或 Production 成功；後續仍由 #755 的 canonical workflow/artifact 回讀證明。
+
 ### PB-016 — 管線或後續命令的退出碼會蓋掉失敗，讓紅燈顯示成綠燈
 
 - 首次／最近：2026-09-07／2026-09-07

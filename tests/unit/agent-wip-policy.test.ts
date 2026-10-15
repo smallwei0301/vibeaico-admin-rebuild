@@ -456,6 +456,83 @@ describe("shared TEST owner policy", () => {
       .toMatchObject({ runTestValidation: false, reason: "invalid_branch_dispatch_reason" });
   });
 
+  const baselineDispatch = {
+    eventName: "workflow_dispatch",
+    ref: "refs/heads/main",
+    sha: "a7a8b6976dfb777eb55b616d364ed85d497bcebc",
+    docsOnly: true,
+    inputs: {
+      dispatch_reason: "main_manual",
+      expected_head: "a7a8b6976dfb777eb55b616d364ed85d497bcebc",
+      base_revision: "c41ae6e3fa2290e1cf98879619e376f5acc8daa0",
+      production_db_release_scope: "FULL_PENDING_SET",
+      test_baseline_0098: true as unknown,
+    },
+    currentCommit: {
+      sha: "a7a8b6976dfb777eb55b616d364ed85d497bcebc",
+      parents: [{ sha: "c41ae6e3fa2290e1cf98879619e376f5acc8daa0" }],
+    },
+  };
+
+  it.each([true, "true"])("admits authenticated docs-only main 0098 baseline with GitHub input %j", (flag) => {
+    expect(decideTestValidation({
+      ...baselineDispatch,
+      inputs: { ...baselineDispatch.inputs, test_baseline_0098: flag },
+    })).toMatchObject({ runTestValidation: true, reason: "manual_main_baseline_0098_exact_head", error: null });
+  });
+
+  it.each([false, "false", undefined, null, "", "TRUE", " true ", 1, "1", {}, ["true"]])(
+    "does not grant a docs-only override for baseline input %j", (flag) => {
+      expect(decideTestValidation({
+        ...baselineDispatch,
+        inputs: { ...baselineDispatch.inputs, test_baseline_0098: flag },
+      })).toMatchObject({ runTestValidation: false, reason: "docs_only", error: null });
+    },
+  );
+
+  it("authenticates baseline head, first parent, reason and main ref before overriding docs-only", () => {
+    const dispatch = baselineDispatch;
+    expect(decideTestValidation({ ...dispatch, inputs: { ...dispatch.inputs, expected_head: shaFor(88) } }))
+      .toMatchObject({ runTestValidation: false, reason: "invalid_dispatch_expected_head" });
+    expect(decideTestValidation({ ...dispatch, inputs: { ...dispatch.inputs, base_revision: "bad" } }))
+      .toMatchObject({ runTestValidation: false, reason: "invalid_dispatch_revision" });
+    expect(decideTestValidation({ ...dispatch, inputs: { ...dispatch.inputs, base_revision: shaFor(88) } }))
+      .toMatchObject({ runTestValidation: false, reason: "invalid_main_dispatch_base" });
+    expect(decideTestValidation({ ...dispatch, currentCommit: null }))
+      .toMatchObject({ runTestValidation: false, reason: "invalid_main_dispatch_base" });
+    expect(decideTestValidation({ ...dispatch, inputs: { ...dispatch.inputs, dispatch_reason: "lane_transition" } }))
+      .toMatchObject({ runTestValidation: false, reason: "invalid_main_dispatch_reason" });
+    expect(decideTestValidation({ ...dispatch, inputs: { ...dispatch.inputs, test_lane_pr: "30" } }))
+      .toMatchObject({ runTestValidation: false, reason: "invalid_main_dispatch_pr" });
+    expect(decideTestValidation({ ...dispatch, ref: "refs/heads/other" }))
+      .toMatchObject({ runTestValidation: false, reason: "invalid_branch_dispatch_reason" });
+    expect(decideTestValidation({ ...dispatch, ref: "refs/tags/main", inputs: { ...dispatch.inputs, dispatch_reason: "lane_transition" } }))
+      .toMatchObject({ runTestValidation: false, reason: "invalid_branch_dispatch_ref" });
+  });
+
+  it("keeps branch docs-only and sole TEST holder admission when baseline is requested", () => {
+    const current = testPr(30);
+    const dispatch = {
+      ...baselineDispatch,
+      ref: "refs/heads/branch-30",
+      sha: current.head.sha,
+      currentPullRequest: current,
+      openPullRequests: [current],
+      repoFullName: "owner/repo",
+      inputs: { ...baselineDispatch.inputs, dispatch_reason: "lane_transition", test_lane_pr: "30",
+        expected_head: current.head.sha, base_revision: current.base.sha },
+    };
+    expect(decideTestValidation(dispatch)).toMatchObject({ runTestValidation: false, reason: "docs_only" });
+    expect(decideTestValidation({ ...dispatch, docsOnly: false }))
+      .toMatchObject({ runTestValidation: true, reason: "validated_lane_transition_exact_head" });
+    expect(decideTestValidation({ ...dispatch, openPullRequests: [] }))
+      .toMatchObject({ runTestValidation: false, reason: "invalid_dispatch_test_lane_0" });
+    expect(decideTestValidation({ ...dispatch, openPullRequests: [current, testPr(31)] }))
+      .toMatchObject({ runTestValidation: false, reason: "invalid_dispatch_test_lane_2" });
+    expect(decideTestValidation({ ...dispatch, inputs: { ...dispatch.inputs, base_revision: shaFor(88) } }))
+      .toMatchObject({ runTestValidation: false, reason: "invalid_dispatch_pr_contract" });
+  });
+
   it("never runs heavy TEST for ordinary docs-only changes", () => {
     const current = testPr(30);
     expect(decideTestValidation({
