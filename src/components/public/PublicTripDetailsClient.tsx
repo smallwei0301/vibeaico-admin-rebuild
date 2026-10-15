@@ -9,6 +9,7 @@ import { publicShopPage } from '@/i18n/zh-TW/pages/public-shop';
 import { publicTripDetailsPage as t } from '@/i18n/zh-TW/pages/public-trip-details';
 import { formatCurrency } from '@/lib/utils';
 import { seasonalHeadlineKind } from '@/lib/public-booking-price';
+import { candidateIsBookable } from '@/lib/public-departure-candidates';
 import { formationLines } from '@/lib/public-departure-formation';
 import {
   initialLoadState,
@@ -263,19 +264,26 @@ export function PublicTripDetailsClient({ shopCode, slug, initialData }: Props) 
                       <div className="flex flex-col gap-1">
                         <h4 className="text-sm font-medium">{t.departures.title}</h4>
                         <ul className="flex flex-wrap gap-2">
-                          {plan.departures.map((departure) => (
-                            <li key={departure.id} className={departure.soldOut ? 'badge text-secondary' : 'badge badge-primary'}>
-                              {formatDepartureDate(departure.departsOn)}{' '}
-                              {departure.startTime || t.departures.noStartTime}{' · '}
-                              {departure.soldOut ? t.departures.soldOut : t.departures.seatsLeft(departure.seatsLeft)}
-                              {departure.unitPrice !== undefined
-                                ? <span className="block text-2xs">{t.plans.price(formatCurrency(departure.unitPrice), t.plans.priceUnit[plan.priceType])}</span>
-                                : null}
-                              {formationLines(plan.salesMode, departure, timeZone).map((line) => (
-                                <span key={line} className="block text-2xs text-secondary">{line}</span>
-                              ))}
-                            </li>
-                          ))}
+                          {plan.departures.map((departure) => {
+                            const belowMinParty = plan.salesMode !== 'REQUEST' && !departure.soldOut && !candidateIsBookable(departure.seatsLeft, plan.minParty);
+                            const bookable = !departure.soldOut && !belowMinParty;
+                            return (
+                              <li key={departure.id} className={`badge flex-col items-start ${bookable ? 'badge-primary' : 'text-secondary'}`}>
+                                <span>
+                                  {formatDepartureDate(departure.departsOn)}{' '}
+                                  {departure.startTime || t.departures.noStartTime}{' · '}
+                                  {departure.soldOut ? t.departures.soldOut : t.departures.seatsLeft(departure.seatsLeft)}
+                                </span>
+                                {belowMinParty ? <span className="block text-2xs">{t.departures.belowMinParty}</span> : null}
+                                {departure.unitPrice !== undefined
+                                  ? <span className="block text-2xs">{t.plans.price(formatCurrency(departure.unitPrice), t.plans.priceUnit[plan.priceType])}</span>
+                                  : null}
+                                {formationLines(plan.salesMode, departure, timeZone).map((line) => (
+                                  <span key={line} className="block text-2xs text-secondary">{line}</span>
+                                ))}
+                              </li>
+                            );
+                          })}
                         </ul>
                         <p className="text-2xs text-secondary">{t.departures.availabilityNote}</p>
                       </div>
