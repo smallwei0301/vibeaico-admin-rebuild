@@ -70,7 +70,7 @@ export const bookingsPage = {
 
   labels: {
     unprocessed: '未處理',
-    memberPrice: '(會員價)',
+    originalPrice: (amount: string) => `原價 ${amount}`,
     deletedService: '（此服務已刪除）',
     discounted: (amount: string) => `（已折抵 ${amount}）`,
     unassigned: '未指定',
