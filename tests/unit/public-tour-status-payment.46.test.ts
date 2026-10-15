@@ -77,7 +77,7 @@ describe('#46 旅客付款狀態顯示', () => {
     // #1017：fixture 為 CONFIRMED+UNPAID 且 0<depositAmount<totalAmount，改顯示訂金文案。
     expect(html).toContain(paymentStatus === 'UNPAID' ? t.status.paymentDepositDueDescription('NT$500') : t.status.paymentDescription[paymentStatus]);
     expect(html.includes('前支付訂金')).toBe(paymentStatus === 'UNPAID'); // #1017：原「前完成付款」改為「前支付訂金」
-    expect(html.includes('逾期名額將被釋放')).toBe(paymentStatus === 'UNPAID');
+    expect(html.includes('店家可能取消訂單並釋放名額')).toBe(paymentStatus === 'UNPAID');
     if (paymentStatus === 'PARTIAL') {
       expect(html).not.toContain(t.status.paymentState.PAID);
       expect(html).not.toContain('1,500'); // depositAmount is not authoritative paidAmount.
