@@ -26,6 +26,11 @@ describe('#982 LINE 憑證格式警告時不送出儲存', () => {
       );
     });
 
+    it(`${p.name}: 警告規則來自共用 helper，不再本地複製`, () => {
+      expect(src).toMatch(/from '@\/lib\/line-credential-warnings'/);
+      expect(src).not.toMatch(/const (isUrlLike|CHANNEL_SECRET_LENGTH|ACCESS_TOKEN_MIN_LENGTH)\b/);
+    });
+
     it(`${p.name}: 無中文字面量`, () => {
       const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
       expect(code).not.toMatch(/[一-鿿]/);
