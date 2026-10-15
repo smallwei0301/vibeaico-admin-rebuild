@@ -91,6 +91,7 @@ export const registerPage = {
   messages: {
     requiredFields: '請填寫所有必填欄位',
     codeFormat: '店家代碼只能包含小寫英文、數字和連字號，且不超過 64 字',
+    passwordTooShort: '密碼至少需 8 個字元',
     passwordMismatch: '兩次輸入的密碼不一致',
     phone10: '請輸入 10 位數電話號碼',
     code6: '請輸入 6 位數驗證碼',

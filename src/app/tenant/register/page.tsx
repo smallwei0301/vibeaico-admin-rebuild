@@ -150,7 +150,7 @@ export default function RegisterPage() {
     }
     if (normalizeTenantPhone(form.phone).length !== TENANT_PHONE_LENGTH) next.phone = t.messages.phone10;
     if (form.password.length < PASSWORD_MIN_LENGTH) {
-      next.password = t.form.passwordPlaceholder;
+      next.password = t.messages.passwordTooShort;
     }
     if (form.password !== form.confirmPassword) {
       next.confirmPassword = t.messages.passwordMismatch;
@@ -158,7 +158,7 @@ export default function RegisterPage() {
     setErrors(next);
     if (Object.keys(next).length > 0) {
       toast.show(next.code ?? next.email ?? next.verificationCode
-        ?? next.phone ?? next.confirmPassword ?? t.messages.requiredFields, 'warning');
+        ?? next.phone ?? next.password ?? next.confirmPassword ?? t.messages.requiredFields, 'warning');
       return false;
     }
     return true;
