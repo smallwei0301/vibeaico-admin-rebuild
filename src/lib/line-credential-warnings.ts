@@ -35,3 +35,20 @@ export const lineSecretWarning = (value: string, editing: boolean): LineLengthWa
 
 export const lineTokenWarning = (value: string, editing: boolean): LineLengthWarning =>
   lengthWarning(value, editing, ACCESS_TOKEN_MIN_LENGTH);
+
+/**
+ * 儲存後 Secret／Token 是否都會存在（#1003）。
+ * 重新輸入（editing 且 trim 後非空）或已存有遮罩值皆算存在；空字串＝保留原值，不會補上缺少的值。
+ */
+export function lineCredentialPresence(args: {
+  existingSecret: string | null | undefined;
+  existingToken: string | null | undefined;
+  secretEditing: boolean;
+  secretInput: string;
+  tokenEditing: boolean;
+  tokenInput: string;
+}): { hasSecret: boolean; hasToken: boolean; missing: boolean } {
+  const hasSecret = args.secretEditing ? !!args.secretInput.trim() || !!args.existingSecret : !!args.existingSecret;
+  const hasToken = args.tokenEditing ? !!args.tokenInput.trim() || !!args.existingToken : !!args.existingToken;
+  return { hasSecret, hasToken, missing: !hasSecret || !hasToken };
+}

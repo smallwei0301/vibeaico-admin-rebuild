@@ -172,6 +172,7 @@ export const lineSettingsPage = {
     save: '儲存設定',
     saving: '儲存中...',
     saved: 'LINE 設定已儲存',
+    savedMissingCredentials: '已儲存，但尚缺 Channel Secret 或 Access Token，LINE 尚未連線。',
     saveFailed: '儲存設定失敗，請重試',
     saveFailedPrefix: '儲存失敗：',
   },
