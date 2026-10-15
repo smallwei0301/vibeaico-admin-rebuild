@@ -38,7 +38,7 @@ import { APP_URL, USE_MOCK } from '@/config/env';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
 import { ApiError } from '@/lib/api';
-import { batchZeroReason } from '@/lib/trip-batch-zero-reason';
+import { batchDatePlan } from '@/lib/trip-batch-zero-reason';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import { resolveGuideInboxDepartureFocus } from '@/lib/guide-action-inbox';
 import { canManageTripCover, omitTripCover, removeTripCover, tripCoverBlockedByListing, uploadTripCover, validateTripCoverFile } from '@/lib/trip-cover';
@@ -677,18 +677,7 @@ export default function TripDetailPage() {
     if (ok) setDepartureDraft(null);
   };
 
-  const batchCount = React.useMemo(() => {
-    if (!batch.from || !batch.to) return 0;
-    const from = new Date(batch.from);
-    const to = new Date(batch.to);
-    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || to < from) return 0;
-    let n = 0;
-    for (const d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
-      if (batch.weekdays.includes(d.getDay())) n += 1;
-    }
-    return n;
-  }, [batch]);
-  const zeroReason = batchCount === 0 ? batchZeroReason(batch) : null;
+  const { count: batchCount, reason: zeroReason } = React.useMemo(() => batchDatePlan(batch), [batch]);
 
   /**
    * 批次開團的日期展開由**後端**負責（`POST /api/trips/:id/departures/batch`）。
