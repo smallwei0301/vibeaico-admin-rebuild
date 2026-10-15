@@ -1596,6 +1596,14 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 修正：Owner 新指示「讓規則正式接受可驗證的原生執行紀錄」。沿既有 source native verifier/trusted adapter 正式 repository-source 准入，不新增 collector/framework/逐PR豁免。不同 BUILD/fresh FINAL、完整原始 capture、exact source/comment bytes、enabled-main generation 及所有技術 gates 仍必須成立；DB G5/writer 不適用。
 - 預防與驗證：施工前確認原生完整捕獲可滿足共用 validator；spawn/work/completion 即時保存，不捏造 backend 身份，不借歷史 NOT_CAPTURED。測試新 PR 正例與自審/過早 FINAL/缺原文/branch-only/stale source/Production surface 反例；正式啟用只認正常 CI/review/merge 後 main 回讀。結果由 #977 對應 PR closeout 補證，歷史 counter/model/時間不改寫。
 
+#### 2026-10-14 — #755：G3 失敗日誌列出 trace 路徑，卻沒有可回讀 artifact
+
+- 證據：release-specific G3 [38558882810](https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/38558882810)，exact74dd9af，integration841PASS/23skip、CSV E2E PASS、tour-admin E2E FAIL；REST artifact count=0。Playwright 日誌列出 retry trace/error-context 路徑，job log 未包含能判根因的 trips/auth HTTP 回應。
+- 根因：trace 設定存在不等於 durable evidence 已保存；既有成功後才執行的 G3 upload 不保存失敗的 test-results。不能將未取回的 trace 當已檢查，也不能將 unordered tenant membership 的競爭條件候選直接當成已證實根因。
+- 修正：只在已准入 shared TEST 且 job failure 時，以既有 actions/upload-artifact 保存 test-results/，檔名綁 SHA/run ID/attempt、14天保存，無檔案明記 warn。失敗 outcome、測試命令/斷言/retry、release scope、TEST/Production 權限皆不變，不產生 TEST_VERIFIED。
+- 預防：診斷先回讀真正 artifact inventory/bytes；失敗執行的必要診斷輸出不能依賴 success-only step。只讀 metadata 與 trace 要分開驗證，原始 capture 是否存在與 canonical gate 是否通过分開回報。
+- 驗證狀態：修正走正常 scoped CI-wiring regression/typecheck/Source CI/差異與反例審查/merge/main 回讀；下一次 G3 失敗 artifact 實跑回讀前，不宣稱已取得 tour-admin 根因或正式驗收完成。
+
 ### PB-044 — 破壞性動作前的查證，有效期只有幾分鐘
 
 #### 2026-10-09 — #844 CI recovery 沿用舊空清單，重複喚醒已受理的工作
