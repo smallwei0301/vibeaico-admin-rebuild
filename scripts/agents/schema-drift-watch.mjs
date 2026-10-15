@@ -73,7 +73,8 @@ select json_build_object(
    join pg_roles m on m.oid=a.member join pg_roles r on r.oid=a.roleid), '[]'::json),
  'authTarget', (select json_build_object('type',format_type(a.atttypid,a.atttypmod),'notNull',a.attnotnull,
    'primaryKey',exists(select 1 from pg_constraint con where con.conrelid=a.attrelid and con.contype='p' and con.conkey=array[a.attnum]))
-   from pg_attribute a where a.attrelid='auth.users'::regclass and a.attname='id' and not a.attisdropped),
+   from pg_attribute a where a.attrelid=(select c.oid from pg_class c join pg_namespace n on n.oid=c.relnamespace
+     where n.nspname='auth' and c.relname='users') and a.attname='id' and not a.attisdropped),
  'defaults', coalesce((select json_agg(json_build_object('table',n.nspname || '.' || c.relname,'column',a.attname,
    'expression',pg_get_expr(d.adbin,d.adrelid),
    'functions',coalesce((select json_agg(json_build_object('name',pn.nspname || '.' || p.proname,
