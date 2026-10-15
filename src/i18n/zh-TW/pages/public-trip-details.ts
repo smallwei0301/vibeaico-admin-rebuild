@@ -58,6 +58,8 @@ export const publicTripDetailsPage = {
     truncated: '本頁僅列出部分日期；如需確認其他日期，請聯絡店家。',
     seatsLeft: (count: number) => `剩 ${count} 位`,
     soldOut: '客滿',
+    /** #1011：可預約團次連結的螢幕閱讀器前綴。 */
+    bookSrPrefix: '預約此團次：',
     /** Issue 995：剩餘名額少於方案最低成團人數，無法預約（與預約表單「名額不足」一致）。 */
     belowMinParty: '名額不足，無法預約',
     soldOutOmitted: '另有更多客滿日期未列出。',
