@@ -60,7 +60,7 @@ function instantRule(shopUrl: string, win: { from: string; to: string }, cut?: s
   return [
     '2. 名額、價格、日期一律以上面提供的資料為準，**絕對不要推測或編造**；',
     '   只能以上面列出的團次回答具體團次與名額；**不得說任何日期「沒有開團」**（部分方案需與店家確認時段）；',
-    `   被問到上面沒列出的日期，請顧客聯絡店家確認可預約時段並附上 ${shopUrl}；涉及名額或價格不確定時只回覆「UNSURE」；`,
+    `   被問到 ${win.from}～${cut ? addCalendarDays(cut, -1) : win.to} 之間、上面沒列出的日期，請顧客聯絡店家確認可預約時段並附上 ${shopUrl}；涉及名額或價格不確定時只回覆「UNSURE」；`,
     cut
       ? `   團次清單在 ${cut} 被截斷：${cut}（含）之後的日期、時段、名額只回覆「UNSURE」；${win.to} 之後或今天之前同樣只回覆「UNSURE」。`
       : `   ${win.to} 之後（或今天之前）的日期、時段、名額只回覆「UNSURE」。`,

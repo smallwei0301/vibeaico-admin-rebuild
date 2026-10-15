@@ -136,3 +136,30 @@ describe('featureActiveStatus / buildShopContext', () => {
     expect(shop.trips).toEqual([]);
   });
 });
+
+describe('AI context 套用預約頁候選上限（每個方案前 12 個）', () => {
+  it('單一方案 15 個未滿團次：前 12 個標名額，第 13～15 個標請聯絡店家確認且仍列出', () => {
+    const departures = Array.from({ length: 15 }, (_, i) =>
+      d({ id: `d${String(i).padStart(2, '0')}`, departs_on: `2026-10-${String(16 + i).padStart(2, '0')}`, capacity: 20, seats_booked: i }));
+    const ctx = buildCatalogContext({ ...base, departures: [...departures].reverse() }, labels);
+    expect(ctx.departures).toHaveLength(15);
+    const byDate = (day: number) => ctx.departures.find((l) => l.startsWith(`2026-10-${day}`))!;
+    for (let i = 0; i < 12; i++) expect(byDate(16 + i)).toContain(`剩 ${20 - i} 位`);
+    for (let i = 12; i < 15; i++) {
+      const line = byDate(16 + i);
+      expect(line).toContain('（請聯絡店家確認）');
+      expect(line).not.toMatch(/剩 \d+ 位|已額滿/);
+    }
+  });
+
+  it('候選上限依方案分別計算', () => {
+    const planB = { id: 'pg', name: '另一團', sales_mode: 'FIXED_DEPARTURE', active: true, min_party: 1 };
+    const departures = [
+      ...Array.from({ length: 13 }, (_, i) => d({ id: `a${i}`, departs_on: `2026-10-${String(16 + i).padStart(2, '0')}` })),
+      d({ id: 'b0', plan_id: 'pg', departs_on: '2026-10-29' }),
+    ];
+    const ctx = buildCatalogContext({ ...base, plans: [...base.plans, planB], departures }, labels);
+    expect(ctx.departures.filter((l) => l.includes('請聯絡店家確認'))).toHaveLength(1);
+    expect(ctx.departures.find((l) => l.includes('另一團'))).toContain('剩 10 位');
+  });
+});
