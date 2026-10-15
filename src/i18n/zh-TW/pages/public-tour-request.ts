@@ -146,8 +146,8 @@ export const publicTourRequestPage = {
     },
     /** #988：PARTIAL 且頁面已顯示實際已付／待付金額時，不再請旅客向店家確認金額，只確認尾款期限與方式（#917 慣例）。 */
     paymentPartialWithBreakdownDescription: '已收到部分款項，尾款的付款期限與方式請向店家確認。',
-    /** #994：已取消且 PARTIAL（取消不改 payment_status）時，不可暗示仍有待付款項，改為退款事宜請向店家確認。 */
-    paymentPartialCancelledDescription: '此訂單已取消；已付部分的退款事宜請與店家確認。',
+    /** #994：已取消且 PARTIAL（取消不改 payment_status）時，不可暗示仍有待付款項；退款事宜已由 cancelledPaidDescription 說明，此處只描述付款狀態，避免重複。 */
+    paymentPartialCancelledDescription: '已收到部分款項；此訂單已取消，不需再支付尾款。',
     confirmedTitle: '已確認，名額已保留',
     confirmedDescription: (deadline: string) => `請於 ${deadline} 前完成付款，逾期名額將被釋放。`,
     confirmedNoDeadlineDescription: '店家已確認，請與店家確認付款方式與期限。',

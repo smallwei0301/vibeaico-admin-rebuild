@@ -17,10 +17,13 @@ describe('#994 已取消且 PARTIAL 的付款說明', () => {
     expect(iFallback).toBeGreaterThan(iBreakdown);
     expect(fn).toContain('t.status.paymentPartialCancelledDescription');
   });
-  it('文案不暗示待付，且與取消通知一致導向退款', () => {
+  it('文案不暗示待付，且不與取消說明重複退款句', () => {
     const d = i18n.status.paymentPartialCancelledDescription;
-    expect(d).toBe('此訂單已取消；已付部分的退款事宜請與店家確認。');
-    expect(d).toContain('退款');
+    expect(d).toBe('已收到部分款項；此訂單已取消，不需再支付尾款。');
+    expect(d).not.toBe(i18n.status.cancelledPaidDescription);
+    expect(d).not.toContain('退款');
+    expect(d).not.toContain('待付金額');
+    expect(d).not.toContain('期限');
     expect(d).not.toContain('待付');
     expect(d).not.toContain('尚未全額');
     expect(d).not.toBe(i18n.status.paymentDescription.PARTIAL);
