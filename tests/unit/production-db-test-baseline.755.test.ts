@@ -119,7 +119,7 @@ function transport(options: { failApply?: boolean; afterLedger?: any[]; afterCol
       return new Response('[]', { status: 200 });
     }
     const rows = query.includes('to_regclass')
-      ? [applied ? (options.afterColumns ?? built.expectedColumns) : present]
+      ? [{ ...(applied ? (options.afterColumns ?? built.expectedColumns) : present), ledger: applied ? (options.afterLedger ?? Object.values(built.expectedLedger)) : [row()] }]
       : applied ? (options.afterLedger ?? Object.values(built.expectedLedger)) : [row()];
     return new Response(JSON.stringify(rows), { status: 200 });
   });
@@ -186,7 +186,7 @@ describe('closed canonical 0098 TEST baseline #755', () => {
   it('requires actual post-ledger provenance and unchanged/repaired shape, without Production-plan evidence', async () => {
     const mock = transport();
     const evidence = await validate0098TestBaselineFromCheckout({ ...input, fetchImpl: mock.fetchImpl });
-    expect(mock.calls.map((call) => call.readOnly)).toEqual([true, true, false, true, true]);
+    expect(mock.calls.map((call) => call.readOnly)).toEqual([true, false, true]);
     expect(evidence).toMatchObject({ status: 'TEST_BASELINE_0098_VERIFIED', testProjectRef: TEST,
       mainSha, sourceRunId: '1234', testMutationPerformed: true, productionMutationPerformed: false,
       databaseMutationAuthorized: false, migration: { repoFile: FILE, ledger: { version: '0098' } } });
@@ -202,9 +202,55 @@ describe('closed canonical 0098 TEST baseline #755', () => {
     await expect(validate0098TestBaselineFromCheckout({ ...input, fetchImpl: changed.fetchImpl })).rejects.toThrow(/POSTCHECK_UNKNOWN/);
   });
 
+  it('reconciles exact existing history with consistent read-only snapshots and zero execute calls', async () => {
+    const built = build([row()]);
+    const state = { ...built.expectedColumns, ledger: Object.values(built.expectedLedger) };
+    const directQuery = vi.fn(async ({ readOnly, sql }: any) => {
+      expect(readOnly).toBe(true);
+      expect(sql).toContain('as ledger');
+      expect(sql).toContain('to_regclass');
+      return [state];
+    });
+    const evidence = await validate0098TestBaselineFromCheckout({ ...input, token: undefined,
+      connectionString: `postgres://postgres.${TEST}:fake@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres?sslmode=verify-full`, directQuery });
+    expect(directQuery).toHaveBeenCalledTimes(2);
+    expect(evidence).toMatchObject({ verificationMode: 'EXISTING_BASELINE_READ_ONLY', testMutationPerformed: false });
+    expect(evidence.columnFingerprints.before).toBe(evidence.columnFingerprints.after);
+  });
+
+  it('rejects existing-history provenance, aliases, duplicates, schema drift and changed snapshots without mutation', async () => {
+    const built = build([row()]);
+    const valid: any = { ...built.expectedColumns, ledger: Object.values(built.expectedLedger) };
+    const canonical = built.ledger;
+    const cases = [
+      { ...valid, ledger: [row(), { ...canonical, created_by: 'other' }] },
+      { ...valid, ledger: [row(), { ...canonical, idempotency_key: 'test-baseline-0098:wrong' }] },
+      { ...valid, ledger: [row(), { ...canonical, name: 'reconcile_tour_orders_legacy_contact_columns' }] },
+      { ...valid, ledger: [...valid.ledger, { ...canonical, version: '20261009000000' }] },
+      { ...valid, ledger: [...valid.ledger, canonical] },
+      ...['data_type', 'is_nullable', 'column_default'].map((key) => ({ ...valid,
+        columns: valid.columns.map((column: any) => ({ ...column, [key]: key === 'data_type' ? 'integer' : key === 'is_nullable' ? 'NO' : null })) })),
+      { ...valid, columns: [] },
+    ];
+    for (const state of cases) {
+      const fetchImpl = vi.fn(async (url: any) => {
+        expect(String(url)).toMatch(/read-only$/);
+        return new Response(JSON.stringify([state]));
+      });
+      await expect(validate0098TestBaselineFromCheckout({ ...input, fetchImpl })).rejects.toThrow(/BASELINE/);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+    }
+    let count = 0;
+    const fetchImpl = vi.fn(async (url: any) => {
+      expect(String(url)).toMatch(/read-only$/);
+      return new Response(JSON.stringify([count++ ? { ...valid, ledger: [...valid.ledger, row('9999', 'new')] } : valid]));
+    });
+    await expect(validate0098TestBaselineFromCheckout({ ...input, fetchImpl })).rejects.toThrow(/SNAPSHOT_CHANGED/);
+  });
+
   it('leaves a lost mutable outcome unknown and never retries', async () => {
     const mock = transport({ failApply: true });
     await expect(validate0098TestBaselineFromCheckout({ ...input, fetchImpl: mock.fetchImpl })).rejects.toThrow(/APPLY_UNKNOWN/);
-    expect(mock.calls.map((call) => call.readOnly)).toEqual([true, true, false]);
+    expect(mock.calls.map((call) => call.readOnly)).toEqual([true, false]);
   });
 });
