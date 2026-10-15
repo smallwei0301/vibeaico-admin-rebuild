@@ -152,6 +152,10 @@ export const publicTourRequestPage = {
     confirmedTitle: '已確認，名額已保留',
     confirmedDescription: (deadline: string) => `請於 ${deadline} 前完成付款，逾期名額將被釋放。`,
     confirmedNoDeadlineDescription: '店家已確認，請與店家確認付款方式與期限。',
+    /** #1017：應付訂金（與店家後台「應收定金」同源 isDepositDue）；金額已格式化為字串。 */
+    confirmedDepositDescription: (deadline: string, amount: string) => `請於 ${deadline} 前支付訂金 ${amount}，逾期名額將被釋放。`,
+    confirmedDepositNoDeadlineDescription: (amount: string) => `店家已確認，請先支付訂金 ${amount} 保留名額；付款期限請向店家確認。`,
+    paymentDepositDueDescription: (amount: string) => `店家已確認，請先支付訂金 ${amount} 保留名額；尾款請依店家指示支付。`,
     cancelledTitle: '此訂單已取消',
     /** #944：店家拒絕申請時留下的說明區塊標題。 */
     shopMessageTitle: '店家說明',
@@ -169,6 +173,7 @@ export const publicTourRequestPage = {
       party: '人數',
       submittedAt: '送出時間',
       totalAmount: '訂單金額',
+      depositDue: '應付訂金',
       paidAmount: '已付金額',
       balanceDue: '待付尾款',
       refunded: '已退金額',

@@ -35,6 +35,7 @@ import {
   isLockedBooking,
   travelerVisibleRejectReason,
 } from '@/lib/public-order-format';
+import { travelerDepositDue } from '@/lib/tour-order-payment-display';
 import type { TourOrder } from '@/lib/types';
 
 // 時間點以店家時區（loadPublicShopTimeZone，無效回退 Asia/Taipei）顯示；無法解析時退回原值，不顯示 Invalid Date。
@@ -49,6 +50,10 @@ function paymentDescriptionFor(order: TourOrder): string {
   }
   if (order.paymentStatus === 'REFUND_PENDING' && refunded > 0) {
     return t.status.paymentRefundPendingWithAmount(formatCurrency(refunded));
+  }
+  const depositDue = travelerDepositDue(order);
+  if (depositDue != null) {
+    return t.status.paymentDepositDueDescription(formatCurrency(depositDue));
   }
   if (order.status === 'CANCELLED' && order.paymentStatus === 'PARTIAL') {
     return t.status.paymentPartialCancelledDescription;
@@ -65,6 +70,20 @@ type Params = {
 };
 
 export const metadata: Metadata = { title: t.status.metaTitle };
+
+function confirmedUnpaidDescription(order: TourOrder, timeZone: string): string {
+  // #1017：應付訂金與店家後台同源（travelerDepositDue）；非訂金情境維持原文案。
+  const depositDue = travelerDepositDue(order);
+  if (depositDue != null) {
+    const amount = formatCurrency(depositDue);
+    return order.holdExpiresAt
+      ? t.status.confirmedDepositDescription(showInstant(order.holdExpiresAt, timeZone), amount)
+      : t.status.confirmedDepositNoDeadlineDescription(amount);
+  }
+  return order.holdExpiresAt
+    ? t.status.confirmedDescription(showInstant(order.holdExpiresAt, timeZone))
+    : t.status.confirmedNoDeadlineDescription;
+}
 
 function StatusBody({ order, timeZone }: { order: TourOrder; timeZone: string }) {
   if (order.status === 'PENDING') {
@@ -98,9 +117,7 @@ function StatusBody({ order, timeZone }: { order: TourOrder; timeZone: string })
           <h1 className="text-xl font-semibold text-success">{t.status.confirmedTitle}</h1>
           <p className="text-sm text-secondary">
             {order.paymentStatus === 'UNPAID'
-              ? order.holdExpiresAt
-                ? t.status.confirmedDescription(showInstant(order.holdExpiresAt, timeZone))
-                : t.status.confirmedNoDeadlineDescription
+              ? confirmedUnpaidDescription(order, timeZone)
               : t.status.confirmedPaymentDescription}
           </p>
         </div>
@@ -164,6 +181,8 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
 
   // #988：PARTIAL 且已收金額可靠時才算已付／尾款；否則 null，保留「請向店家確認」說明。
   const partial = partialPaymentBreakdown(order);
+  // #1017：與店家後台「應收定金」同源（isDepositDue）。
+  const depositDue = travelerDepositDue(order);
 
   const justCreatedBanner = created === '1' && order.status === 'PENDING';
   const justCreated = created === '1';
@@ -212,6 +231,12 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
           <dl className="grid grid-cols-[7rem_1fr] gap-y-1 text-sm">
             <dt className="text-secondary">{t.status.fields.totalAmount}</dt>
             <dd className="font-medium text-dark">{formatCurrency(order.totalAmount)}</dd>
+            {depositDue != null ? (
+              <>
+                <dt className="text-secondary">{t.status.fields.depositDue}</dt>
+                <dd>{formatCurrency(depositDue)}</dd>
+              </>
+            ) : null}
             {partial ? (
               <>
                 <dt className="text-secondary">{t.status.fields.paidAmount}</dt>

@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import ts from 'typescript';
 import * as utils from '@/lib/utils';
 import * as partialPayment from '@/lib/public-partial-payment';
+import * as tourOrderPaymentDisplay from '@/lib/tour-order-payment-display';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TourOrder } from '@/lib/types';
@@ -72,6 +73,7 @@ const imports: Record<string, unknown> = {
   '@/i18n/zh-TW/pages/public-tour-request': { publicTourRequestPage: t },
   '@/lib/utils': utils,
   '@/lib/public-partial-payment': partialPayment,
+  '@/lib/tour-order-payment-display': tourOrderPaymentDisplay,
   '@/i18n/zh-TW/common': { common },
   '@/lib/public-order-format': publicOrderFormat,
 };

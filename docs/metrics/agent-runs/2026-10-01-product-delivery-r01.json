@@ -371,6 +371,10 @@
     {
       "ref": "issue/1015",
       "title": "#46 預約／申請送出成功後按鈕立刻恢復可點，導頁前再按會重複建單、重複鎖名額"
+    },
+    {
+      "ref": "issue/1017",
+      "title": "#46 旅客訂單狀態頁看不到店家要求的訂金，與店家後台「應收定金」不一致"
     }
   ],
   "main": {
@@ -10174,6 +10178,74 @@
         "startedAt": "2026-10-15T09:03:59Z",
         "completedAt": "2026-10-15T09:04:46Z",
         "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）於 #1012 審查期間以 RESERVE 預建 #1015（source-only，一個 commit），原 commit 5e7e5705，cherry-pick 為 8b56fcea。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-sol-review-1015",
+        "role": "audit",
+        "requestedModel": "sol",
+        "issue": 1015,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/1016#issuecomment-6188721801",
+        "startedAt": "2026-10-15T09:17:03Z",
+        "completedAt": "2026-10-15T09:17:37Z",
+        "note": "REVIEW：fresh-context Opus subagent（requested claude-opus-5-5）審查 PR #1016 head a32d7660 → PASS（僅 LOW）；於 #1017 綁定 commit 補記。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-luna-scout-1017-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1017,
+        "evidenceRef": "issue/1017",
+        "startedAt": "2026-10-15T09:07:58Z",
+        "completedAt": "2026-10-15T09:09:19Z",
+        "note": "Luna 窄盤點：Haiku subagent（requested claude-haiku-4-5）掃 #46 旅客查訂單／店家後台同一筆，找到旅客狀態頁不顯示應付訂金；主 agent 讀原始碼（含 0132 deposit 計算）確認後開 #1017。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-luna-scout-1017-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1017,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-15T09:32:48Z",
+        "completedAt": "2026-10-15T09:32:48Z",
+        "note": "Luna metrics capture 綁定 issue/1017 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2（盤點＋綁定）；補記 #1015 review 與 #1017 RESERVE 預建 build 原始事件；flow.solTouches +1、solIssues +1。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-terra-build-1017",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 1017,
+        "evidenceRef": "commit fe6876f7 (cherry-pick of 114c63e0)",
+        "startedAt": "2026-10-15T09:29:01Z",
+        "completedAt": "2026-10-15T09:30:04Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）於 #1015 審查期間以 RESERVE 預建 #1017（source-only，一個 commit），原 commit 114c63e0，cherry-pick 為 fe6876f7。actual 未經平台驗證。"
       }
 ,
       {
@@ -10215,7 +10287,7 @@
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 95,
+    "issuesStarted": 96,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -10242,14 +10314,14 @@
     "hardFailReasons": ["OBSERVED_2026_10_15_PR1002_PUSHED_4b239101_WHILE_PARKED"]
   },
   "flow": {
-    "lunaTasks": 195,
-    "lunaAccepted": 186,
+    "lunaTasks": 197,
+    "lunaAccepted": 188,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 257,
-    "solIssues": 38
+    "solTouches": 258,
+    "solIssues": 39
   },
   "auditability": {
     "evidenceFieldsCompletePercent": null,

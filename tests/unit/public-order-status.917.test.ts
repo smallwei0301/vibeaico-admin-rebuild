@@ -8,6 +8,7 @@ import { cancelledCopyKind, formatInstantInTimeZone, formatPlainDateWithWeekday 
 import { common } from '@/i18n/zh-TW/common';
 import * as utils from '@/lib/utils';
 import * as partialPayment from '@/lib/public-partial-payment';
+import * as tourOrderPaymentDisplay from '@/lib/tour-order-payment-display';
 import * as publicOrderFormat from '@/lib/public-order-format';
 import * as publicPaymentMethodsLib from '@/lib/public-payment-methods';
 import { PaymentMethodsSection } from '@/components/public/PaymentMethodsSection';
@@ -70,6 +71,7 @@ const imports: Record<string, unknown> = {
   '@/lib/public-order-format': publicOrderFormat,
   '@/lib/utils': utils,
   '@/lib/public-partial-payment': partialPayment,
+  '@/lib/tour-order-payment-display': tourOrderPaymentDisplay,
 };
 new Function('require', 'exports', 'React', compiled)((id: string) => {
   if (!(id in imports)) throw new Error(`Unexpected page import: ${id}`);

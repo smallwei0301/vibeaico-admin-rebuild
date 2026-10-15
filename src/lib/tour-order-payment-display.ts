@@ -22,6 +22,11 @@ export function isDepositDue(order: Parameters<typeof tourPaymentActions>[0]): b
   return tourPaymentActions(order).includes('confirmDeposit');
 }
 
+/** #1017：旅客端應付訂金；成立（與店家後台應收定金同源 isDepositDue）回 depositAmount，否則 null。 */
+export function travelerDepositDue(order: Parameters<typeof isDepositDue>[0]): number | null {
+  return isDepositDue(order) ? (order.depositAmount as number) : null;
+}
+
 export type ListPaymentLine =
   | { kind: 'paid'; amount: number }
   | { kind: 'depositDue'; amount: number }
