@@ -314,6 +314,7 @@ export const MOCK_TOUR_ORDERS: TourOrder[] = [
     paymentMethodLabel: '線上刷卡付款', paymentRef: 'ECPay 2608140002119',
     source: 'MIDAO', holdExpiresAt: null, note: '因海況取消，已全額退款',
     createdAt: '2026-08-14T16:38:00+08:00',
+    paidAmount: 3840, refundedAmount: 3840,
   },
   {
     // #43 類別 5：REFUND_PENDING（退款尚未完成，18 分冊 §9.3 不可顯示成
@@ -326,7 +327,7 @@ export const MOCK_TOUR_ORDERS: TourOrder[] = [
     paymentMethodLabel: '線上刷卡付款', paymentRef: 'ECPay 2608220014882',
     source: 'VIBEAI_SHOP', holdExpiresAt: null, note: '旅客因病取消，退款申請已送出，等待金流商處理',
     createdAt: '2026-08-22T11:05:00+08:00',
-    refundedAmount: 0,
+    paidAmount: 2670, refundedAmount: 0,
   },
   {
     // #43 類別 1：待導遊接受／拒絕的 REQUEST（先申請再確認，19 分冊 §1.6／§2.3）。
@@ -377,7 +378,7 @@ export const MOCK_TOUR_ORDERS: TourOrder[] = [
     unitPrice: 2200, totalAmount: 4400, depositAmount: 0, status: 'CANCELLED', paymentStatus: 'REFUNDED',
     paymentMethodLabel: '線上刷卡付款', paymentRef: 'ECPay 2607200011650',
     source: 'MIDAO', holdExpiresAt: null, note: '旅客改期未成，已全額退款', createdAt: '2026-07-20T09:40:00+08:00',
-    refundedAmount: 4400,
+    paidAmount: 4400, refundedAmount: 4400,
   },
   {
     // #43 類別 2：導遊已接受的 REQUEST，CONFIRMED + UNPAID、名額已保留，等旅客付訂金或全額

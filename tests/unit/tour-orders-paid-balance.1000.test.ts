@@ -71,7 +71,19 @@ describe('#1000 店家團體訂單：依實收金額顯示', () => {
         expect(o.paidAmount, o.id).toBeGreaterThan(0);
         expect(o.paidAmount, o.id).toBeLessThan(o.totalAmount);
       }
+      // DB 約束 tour_orders_refunded_paid_amount_ck
+      if (o.paymentStatus === 'REFUND_PENDING') expect(o.paidAmount, o.id).toBeGreaterThan(0);
+      if (o.paymentStatus === 'REFUNDED') {
+        expect(o.paidAmount, o.id).toBeGreaterThan(0);
+        expect(o.refundedAmount, o.id).toBeGreaterThan(0);
+      }
     }
+  });
+  it('mock 種子 to_8（退款中）：詳情顯示實收 2670，無應收定金', () => {
+    const o = MOCK_TOUR_ORDERS.find((x) => x.id === 'to_8')!;
+    const r = detailPaymentRows(o);
+    expect(r.paid).toBe(2670);
+    expect(r.depositDue).toBeNull();
   });
   it('文案與頁面接線', () => {
     expect(t.depositBadge).toBe('應收定金');
