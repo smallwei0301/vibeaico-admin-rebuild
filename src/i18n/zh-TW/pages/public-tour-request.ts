@@ -150,10 +150,11 @@ export const publicTourRequestPage = {
     /** #994：已取消且 PARTIAL（取消不改 payment_status）時，不可暗示仍有待付款項；退款事宜已由 cancelledPaidDescription 說明，此處只描述付款狀態，避免重複。 */
     paymentPartialCancelledDescription: '已收到部分款項；此訂單已取消，不需再支付尾款。',
     confirmedTitle: '已確認，名額已保留',
-    confirmedDescription: (deadline: string) => `請於 ${deadline} 前完成付款，逾期名額將被釋放。`,
+    /** #769：migration 0138 上線前 CONFIRMED 訂單不會被系統自動釋放，因此不寫「將被釋放」，只說明店家可能取消。 */
+    confirmedDescription: (deadline: string) => `請於 ${deadline} 前完成付款；逾期未付款，店家可能取消訂單並釋放名額。`,
     confirmedNoDeadlineDescription: '店家已確認，請與店家確認付款方式與期限。',
     /** #1017：應付訂金（與店家後台「應收定金」同源 isDepositDue）；金額已格式化為字串。 */
-    confirmedDepositDescription: (deadline: string, amount: string) => `請於 ${deadline} 前支付訂金 ${amount}，逾期名額將被釋放。`,
+    confirmedDepositDescription: (deadline: string, amount: string) => `請於 ${deadline} 前支付訂金 ${amount}；逾期未付款，店家可能取消訂單並釋放名額。`,
     confirmedDepositNoDeadlineDescription: (amount: string) => `店家已確認，請先支付訂金 ${amount} 保留名額；付款期限請向店家確認。`,
     paymentDepositDueDescription: (amount: string) => `店家已確認，請先支付訂金 ${amount} 保留名額；尾款請依店家指示支付。`,
     cancelledTitle: '此訂單已取消',
