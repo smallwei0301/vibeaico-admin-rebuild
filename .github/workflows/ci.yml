@@ -354,12 +354,15 @@ jobs:
           LINE_DATA_API_BASE: http://localhost:4123
           RESEND_BASE_URL: http://localhost:4124
           RESEND_API_KEY: re_test_ci_local_mock
+      - name: Export safe failed E2E API metadata
+        if: ${{ failure() && needs.classify-changes.outputs.run_test_validation == 'true' }}
+        run: python3 scripts/agents/e2e-safe-diagnostics.py test-results "$RUNNER_TEMP/e2e-safe-diagnostics"
       - name: Preserve failed E2E diagnostics
         if: ${{ failure() && needs.classify-changes.outputs.run_test_validation == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: failed-e2e-diagnostics-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: test-results/
+          path: ${{ runner.temp }}/e2e-safe-diagnostics/api-metadata.json
           if-no-files-found: warn
           retention-days: 14
       - name: Emit trusted-main shared TEST raw evidence
