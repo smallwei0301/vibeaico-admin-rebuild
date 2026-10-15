@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  rpc: vi.fn(), updateUserById: vi.fn(), maybeSingle: vi.fn(), updateSelect: vi.fn(),
-  updatePayloads: [] as unknown[], isCalls: [] as unknown[][],
+  rpc: vi.fn(), releaseResult: vi.fn(), updateUserById: vi.fn(), maybeSingle: vi.fn(), updateSelect: vi.fn(),
+  updatePayloads: [] as unknown[], isCalls: [] as unknown[][], eqCalls: [] as unknown[][], order: [] as string[],
 }));
 
 vi.mock('@/server/supabase', () => ({
@@ -19,9 +19,12 @@ vi.mock('@/server/supabase', () => ({
       update: (payload: unknown) => {
         mocks.updatePayloads.push(payload);
         const q: any = {};
-        q.eq = () => q;
+        q.eq = (...a: unknown[]) => { mocks.eqCalls.push(a); return q; };
         q.is = (...a: unknown[]) => { mocks.isCalls.push(a); return q; };
         q.select = mocks.updateSelect;
+        // release 路徑沒有 .select()，直接 await 條件更新
+        q.then = (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) =>
+          Promise.resolve(mocks.releaseResult()).then(res, rej);
         return q;
       },
     }),
@@ -44,24 +47,46 @@ function request() {
 describe('POST /api/auth/reset-password (#1028)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.updatePayloads.length = 0; mocks.isCalls.length = 0;
+    mocks.updatePayloads.length = 0; mocks.isCalls.length = 0; mocks.eqCalls.length = 0;
     vi.spyOn(console, 'error').mockImplementation(() => {});
     mocks.maybeSingle.mockResolvedValue({ data: { id: 'code-1' } });
     mocks.rpc.mockResolvedValue({ data: 'user-1', error: null });
     mocks.updateUserById.mockResolvedValue({ data: {}, error: null });
     mocks.updateSelect.mockResolvedValue({ data: [{ id: 'code-1' }], error: null });
+    mocks.releaseResult.mockReturnValue({ error: null });
   });
 
-  it('成功：更新密碼後才消耗驗證碼並回 reset:true', async () => {
+  const claimPayload = () => mocks.updatePayloads[0] as { consumed_at: string };
+  const releaseCall = () => mocks.updatePayloads[1] as { consumed_at: null } | undefined;
+
+  it('成功：先占用再更新密碼，且之後不再消耗', async () => {
     const res = await POST(request(), {});
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ success: true, data: { reset: true } });
     expect(mocks.updateUserById).toHaveBeenCalledWith('user-1', { password: 'new-password-1' });
     expect(mocks.updatePayloads).toHaveLength(1);
+    expect(typeof claimPayload().consumed_at).toBe('string');
     expect(mocks.isCalls).toEqual([['consumed_at', null]]);
+    expect(mocks.updateSelect.mock.invocationCallOrder[0]).toBeLessThan(mocks.updateUserById.mock.invocationCallOrder[0]);
   });
 
-  it('weak_password：400 中文訊息，驗證碼不消耗', async () => {
+  it('並發敗方（占用 0 列）：400 CODE_INVALID 且不呼叫 updateUserById', async () => {
+    mocks.updateSelect.mockResolvedValue({ data: [], error: null });
+    const res = await POST(request(), {});
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe('AUTH_004');
+    expect(mocks.updateUserById).not.toHaveBeenCalled();
+    expect(mocks.updatePayloads).toHaveLength(1); // 只有占用嘗試，沒有 release
+  });
+
+  it('占用遇 DB error：500，不更新密碼', async () => {
+    mocks.updateSelect.mockResolvedValue({ data: null, error: { message: 'db down' } });
+    const res = await POST(request(), {});
+    expect(res.status).toBe(500);
+    expect(mocks.updateUserById).not.toHaveBeenCalled();
+  });
+
+  it('weak_password：400 中文訊息，釋放占用（帶正確 claimTs）', async () => {
     mocks.updateUserById.mockResolvedValue({ data: null, error: { code: 'weak_password', status: 422, message: 'weak' } });
     const res = await POST(request(), {});
     expect(res.status).toBe(400);
@@ -70,55 +95,59 @@ describe('POST /api/auth/reset-password (#1028)', () => {
     expect(body.message).toBe('新密碼不符合安全規則，請換一組更長或更複雜的密碼');
     expect(body.code).toBe('REQ_001');
     expect(body.code).toBe(ERR.VALIDATION);
-    expect(mocks.updatePayloads).toHaveLength(0);
+    expect(mocks.updatePayloads).toHaveLength(2);
+    expect(releaseCall()).toEqual({ consumed_at: null });
+    expect(mocks.eqCalls).toContainEqual(['consumed_at', claimPayload().consumed_at]);
   });
 
-  it('same_password：400 ERR.VALIDATION，驗證碼消耗並提示重新申請', async () => {
+  it('same_password：400 ERR.VALIDATION，不釋放並提示重新申請', async () => {
     mocks.updateUserById.mockResolvedValue({ data: null, error: { code: 'same_password', status: 422, message: 'same' } });
     const res = await POST(request(), {});
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.code).toBe('REQ_001');
     expect(body.code).toBe(ERR.VALIDATION);
     expect(body.message).toBe('新密碼不可與目前密碼相同，請重新申請驗證碼後換一組新的密碼');
     expect(body.message).toContain('重新申請驗證碼');
-    expect(mocks.updatePayloads).toHaveLength(1);
+    expect(mocks.updatePayloads).toHaveLength(1); // 只有占用
   });
 
-  it('user_not_found：400 CODE_INVALID，驗證碼不消耗', async () => {
+  it('user_not_found：400 CODE_INVALID，釋放占用', async () => {
     mocks.updateUserById.mockResolvedValue({ data: null, error: { code: 'user_not_found', status: 404, message: 'nf' } });
     const res = await POST(request(), {});
     expect(res.status).toBe(400);
     expect((await res.json()).code).toBe('AUTH_004');
-    expect(mocks.updatePayloads).toHaveLength(0);
+    expect(releaseCall()).toEqual({ consumed_at: null });
+    expect(mocks.eqCalls).toContainEqual(['consumed_at', claimPayload().consumed_at]);
   });
 
-  it('密碼已更新但消耗遇 DB error：仍回 200 reset:true 並記 console.error', async () => {
-    mocks.updateSelect.mockResolvedValue({ data: null, error: { message: 'db down' } });
-    const res = await POST(request(), {});
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ success: true, data: { reset: true } });
-    expect(console.error).toHaveBeenCalled();
-  });
-
-  it('密碼已更新但條件更新 0 列（並發已消耗）：仍回 200 reset:true', async () => {
-    mocks.updateSelect.mockResolvedValue({ data: [], error: null });
-    const res = await POST(request(), {});
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ success: true, data: { reset: true } });
-  });
-
-  it('5xx／未知更新錯誤：500 中文訊息，驗證碼不消耗且不外洩 provider 訊息', async () => {
+  it('5xx／未知更新錯誤：500 中文訊息、釋放占用且不外洩 provider 訊息', async () => {
     mocks.updateUserById.mockResolvedValue({ data: null, error: { status: 503, message: 'upstream down' } });
     const res = await POST(request(), {});
     expect(res.status).toBe(500);
     const text = await res.text();
     expect(text).toContain('密碼重設失敗，請稍後再試');
     expect(text).not.toContain('upstream down');
-    expect(mocks.updatePayloads).toHaveLength(0);
+    expect(releaseCall()).toEqual({ consumed_at: null });
   });
 
-  it('rpc error：500 而非 CODE_INVALID，驗證碼不消耗、不更新密碼', async () => {
+  it('釋放失敗（DB error）：只記 log，回應不變', async () => {
+    mocks.updateUserById.mockResolvedValue({ data: null, error: { code: 'weak_password', status: 422, message: 'weak' } });
+    mocks.releaseResult.mockReturnValue({ error: { code: 'X', message: 'db down' } });
+    const res = await POST(request(), {});
+    expect(res.status).toBe(400);
+    expect((await res.json()).message).toBe('新密碼不符合安全規則，請換一組更長或更複雜的密碼');
+    expect(console.error).toHaveBeenCalled();
+  });
+
+  it('釋放丟例外：吞掉，回應不變', async () => {
+    mocks.updateUserById.mockResolvedValue({ data: null, error: { code: 'user_not_found', status: 404, message: 'nf' } });
+    mocks.releaseResult.mockImplementation(() => { throw new Error('boom'); });
+    const res = await POST(request(), {});
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe('AUTH_004');
+  });
+
+  it('rpc error：500 而非 CODE_INVALID，尚未占用、不更新密碼', async () => {
     mocks.rpc.mockResolvedValue({ data: null, error: { message: 'db down' } });
     const res = await POST(request(), {});
     expect(res.status).toBe(500);
@@ -147,7 +176,7 @@ describe('POST /api/auth/reset-password (#1028)', () => {
 describe('consumeCode 行為不變', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.updatePayloads.length = 0; mocks.isCalls.length = 0;
+    mocks.updatePayloads.length = 0; mocks.isCalls.length = 0; mocks.eqCalls.length = 0;
     mocks.maybeSingle.mockResolvedValue({ data: { id: 'code-1' } });
     mocks.updateSelect.mockResolvedValue({ data: [{ id: 'code-1' }], error: null });
   });
