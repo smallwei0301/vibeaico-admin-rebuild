@@ -5,6 +5,7 @@ import {
   BadgeDollarSign, CalendarClock, CheckCircle2, ClipboardList, Eye,
   MessageSquareText, Plus, Wallet, XCircle,
 } from 'lucide-react';
+import { listPaymentLine, detailPaymentRows } from '@/lib/tour-order-payment-display';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -494,11 +495,15 @@ export default function TourOrdersPage() {
       render: (o) => (
         <div>
           <Badge tone={PAYMENT_TONE[o.paymentStatus]}>{t.paymentStatus[o.paymentStatus]}</Badge>
-          {o.depositAmount > 0 ? (
-            <div className="text-2xs text-warning">
-              {t.depositBadge} {formatCurrency(o.depositAmount)}
-            </div>
-          ) : null}
+          {(() => {
+            const line = listPaymentLine(o);
+            if (!line) return null;
+            return (
+              <div className={line.kind === 'paid' ? 'text-2xs text-secondary' : 'text-2xs text-warning'}>
+                {line.kind === 'paid' ? t.paidBadge : t.depositBadge} {formatCurrency(line.amount)}
+              </div>
+            );
+          })()}
           <div className="mt-0.5 truncate text-2xs text-secondary">{o.paymentMethodLabel || t.detail.noMethod}</div>
           {o.holdExpiresAt ? (
             <div className="text-2xs text-warning">
@@ -743,16 +748,31 @@ export default function TourOrdersPage() {
                 <dd>{formatCurrency(detail.unitPrice)}</dd>
                 <dt className="text-secondary">{t.detail.fields.total}</dt>
                 <dd className="font-bold text-dark">{formatCurrency(detail.totalAmount)}</dd>
-                {detail.depositAmount > 0 ? (
-                  <>
-                    <dt className="text-secondary">{t.detail.fields.deposit}</dt>
-                    <dd>{formatCurrency(detail.depositAmount)}</dd>
-                    <dt className="text-secondary">{t.detail.fields.balance}</dt>
-                    <dd className="text-warning">
-                      {formatCurrency(detail.totalAmount - detail.depositAmount)}
-                    </dd>
-                  </>
-                ) : null}
+                {(() => {
+                  const rows = detailPaymentRows(detail);
+                  return (
+                    <>
+                      {rows.depositDue != null ? (
+                        <>
+                          <dt className="text-secondary">{t.detail.fields.deposit}</dt>
+                          <dd>{formatCurrency(rows.depositDue)}</dd>
+                        </>
+                      ) : null}
+                      {rows.paid != null ? (
+                        <>
+                          <dt className="text-secondary">{t.detail.fields.paid}</dt>
+                          <dd>{formatCurrency(rows.paid)}</dd>
+                        </>
+                      ) : null}
+                      {rows.balanceDue != null ? (
+                        <>
+                          <dt className="text-secondary">{t.detail.fields.balance}</dt>
+                          <dd className="text-warning">{formatCurrency(rows.balanceDue)}</dd>
+                        </>
+                      ) : null}
+                    </>
+                  );
+                })()}
                 <dt className="text-secondary">{t.detail.fields.method}</dt><dd>{detail.paymentMethodLabel || <span className="text-muted">{t.detail.noMethod}</span>}</dd>
                 <dt className="text-secondary">{t.detail.fields.ref}</dt>
                 <dd>{detail.paymentRef || <span className="text-muted">{t.detail.noRef}</span>}</dd>

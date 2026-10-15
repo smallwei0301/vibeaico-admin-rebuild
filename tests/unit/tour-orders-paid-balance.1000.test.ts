@@ -1,0 +1,156 @@
+import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { listPaymentLine, detailPaymentRows } from '@/lib/tour-order-payment-display';
+import { tourPaymentActions } from '@/lib/tour-order-payment-actions';
+import { MOCK_TOUR_ORDERS } from '@/mock/tours';
+import { tourOrdersPage as t } from '@/i18n/zh-TW/pages/tour-orders';
+
+const base = { status: 'CONFIRMED', paymentStatus: 'UNPAID', totalAmount: 10000, depositAmount: 3000 } as const;
+
+describe('#1000 店家團體訂單：依實收金額顯示', () => {
+  it('UNPAID 有定金：列表只顯示應收定金，不顯示已收', () => {
+    expect(listPaymentLine({ ...base })).toEqual({ kind: 'depositDue', amount: 3000 });
+    expect(detailPaymentRows({ ...base })).toEqual({ depositDue: 3000, paid: null, balanceDue: null });
+  });
+  it('PARTIAL：顯示實收與待收尾款（total − paid）', () => {
+    const o = { ...base, paymentStatus: 'PARTIAL', paidAmount: 4000 } as const;
+    expect(listPaymentLine(o)).toEqual({ kind: 'paid', amount: 4000 });
+    expect(detailPaymentRows(o)).toEqual({ depositDue: null, paid: 4000, balanceDue: 6000 });
+  });
+  it('PAID：不顯示待收尾款，顯示已收金額', () => {
+    const o = { ...base, paymentStatus: 'PAID', paidAmount: 10000 } as const;
+    expect(listPaymentLine(o)).toBeNull();
+    expect(detailPaymentRows(o)).toEqual({ depositDue: null, paid: 10000, balanceDue: null });
+  });
+  it('PARTIAL 但 paidAmount 缺失（mock）：視為未知，不顯示已收與尾款', () => {
+    const o = { ...base, paymentStatus: 'PARTIAL' } as const;
+    expect(listPaymentLine(o)).toBeNull();
+    expect(detailPaymentRows(o)).toEqual({ depositDue: null, paid: null, balanceDue: null });
+  });
+  it('CANCELLED + PARTIAL：保留已收金額、不顯示待收尾款', () => {
+    const o = { ...base, status: 'CANCELLED', paymentStatus: 'PARTIAL', paidAmount: 4000 } as const;
+    expect(detailPaymentRows(o)).toEqual({ depositDue: null, paid: 4000, balanceDue: null });
+  });
+  it('CANCELLED + UNPAID 有定金：列表不顯示應收定金', () => {
+    const o = { ...base, status: 'CANCELLED' } as const;
+    expect(listPaymentLine(o)).toBeNull();
+  });
+  it('CANCELLED + PARTIAL：列表仍顯示已收', () => {
+    const o = { ...base, status: 'CANCELLED', paymentStatus: 'PARTIAL', paidAmount: 4000 } as const;
+    expect(listPaymentLine(o)).toEqual({ kind: 'paid', amount: 4000 });
+  });
+  it('paidAmount 非有限／<=0 視為未知', () => {
+    for (const paidAmount of [0, -1, NaN, Infinity]) {
+      expect(detailPaymentRows({ ...base, paymentStatus: 'PARTIAL', paidAmount }).paid).toBeNull();
+    }
+  });
+  it('CANCELLED + UNPAID 有定金：詳情不顯示應收定金', () => {
+    expect(detailPaymentRows({ ...base, status: 'CANCELLED' })).toEqual({ depositDue: null, paid: null, balanceDue: null });
+  });
+  it('應收定金：UNPAID 未取消才有；PARTIAL／PAID 沒有', () => {
+    expect(detailPaymentRows({ ...base }).depositDue).toBe(3000);
+    expect(detailPaymentRows({ ...base, paymentStatus: 'PARTIAL', paidAmount: 4000 }).depositDue).toBeNull();
+    expect(detailPaymentRows({ ...base, paymentStatus: 'PAID', paidAmount: 10000 }).depositDue).toBeNull();
+    expect(detailPaymentRows({ ...base, depositAmount: 0 }).depositDue).toBeNull();
+  });
+  it('列表與詳情的應收定金在所有 status／paymentStatus 組合一致', () => {
+    for (const status of ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'] as const) {
+      for (const paymentStatus of ['UNPAID', 'PARTIAL', 'PAID', 'REFUNDED'] as const) {
+        for (const paidAmount of [undefined, 4000]) {
+          const o = { ...base, status, paymentStatus, paidAmount } as never;
+          const list = listPaymentLine(o);
+          const listDue = list?.kind === 'depositDue' ? list.amount : null;
+          expect(detailPaymentRows(o).depositDue, `${status}/${paymentStatus}/${paidAmount}`).toBe(listDue);
+        }
+      }
+    }
+  });
+  it('REQUEST + PENDING + UNPAID 有定金：尚未接受，列表與詳情皆不顯示應收定金', () => {
+    const o = { ...base, status: 'PENDING', salesMode: 'REQUEST' } as const;
+    expect(listPaymentLine(o)).toBeNull();
+    expect(detailPaymentRows(o).depositDue).toBeNull();
+  });
+  it('REQUEST + CONFIRMED + UNPAID 有定金：已接受，顯示應收定金', () => {
+    const o = { ...base, status: 'CONFIRMED', salesMode: 'REQUEST' } as const;
+    expect(listPaymentLine(o)).toEqual({ kind: 'depositDue', amount: 3000 });
+    expect(detailPaymentRows(o).depositDue).toBe(3000);
+  });
+  it('非 REQUEST（FIXED_DEPARTURE／INSTANT／未提供）PENDING + UNPAID 有定金：只能登記全額，不顯示應收定金', () => {
+    for (const salesMode of ['FIXED_DEPARTURE', 'INSTANT', undefined]) {
+      const o = { ...base, status: 'PENDING', salesMode } as never;
+      expect(detailPaymentRows(o).depositDue, String(salesMode)).toBeNull();
+      expect(listPaymentLine(o), String(salesMode)).toBeNull();
+    }
+  });
+  it('CONFIRMED + UNPAID：0 < 定金 < 總額才顯示；定金 >= 總額不顯示', () => {
+    expect(detailPaymentRows({ ...base }).depositDue).toBe(3000);
+    expect(listPaymentLine({ ...base })).toEqual({ kind: 'depositDue', amount: 3000 });
+    for (const depositAmount of [10000, 12000, 0]) {
+      expect(detailPaymentRows({ ...base, depositAmount }).depositDue, String(depositAmount)).toBeNull();
+      expect(listPaymentLine({ ...base, depositAmount }), String(depositAmount)).toBeNull();
+    }
+  });
+  it('矩陣：應收定金顯示若且唯若可登記定金動作', () => {
+    let shown = 0;
+    for (const status of ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'] as const) {
+      for (const paymentStatus of ['UNPAID', 'PARTIAL', 'PAID', 'REFUNDED'] as const) {
+        for (const salesMode of ['REQUEST', 'INSTANT', 'FIXED_DEPARTURE', undefined]) {
+          for (const depositAmount of [0, 3000, 10000, 12000]) {
+            const o = { ...base, status, paymentStatus, salesMode, depositAmount } as never;
+            const expected = tourPaymentActions(o).includes('confirmDeposit');
+            const key = `${status}/${paymentStatus}/${salesMode}/${depositAmount}`;
+            expect(detailPaymentRows(o).depositDue != null, key).toBe(expected);
+            const line = listPaymentLine(o);
+            expect(line?.kind === 'depositDue', key).toBe(expected);
+            if (expected) shown++;
+          }
+        }
+      }
+    }
+    expect(shown).toBeGreaterThan(0);
+  });
+  it('mock 種子 to_9（包船專案，REQUEST／PENDING）：有定金時不顯示應收定金', () => {
+    expect.assertions(6);
+    const seed = MOCK_TOUR_ORDERS.find((x) => x.id === 'to_9');
+    expect(seed).toBeDefined();
+    // 種子本身無 salesMode 且 depositAmount 為 0，覆寫後才真正走到「未接受申請」判斷
+    const o = { ...seed!, salesMode: 'REQUEST', depositAmount: 3000 } as const;
+    expect(o.status).toBe('PENDING');
+    expect(o.paymentStatus).toBe('UNPAID');
+    expect(listPaymentLine(o)).toBeNull();
+    expect(detailPaymentRows(o).depositDue).toBeNull();
+    // 對照：同一筆改為已接受（CONFIRMED）的非 REQUEST 時應顯示，證明 null 並非因缺定金
+    expect(detailPaymentRows({ ...o, status: 'CONFIRMED', salesMode: 'INSTANT' }).depositDue).toBe(3000);
+  });
+  it('mock 種子：PARTIAL／PAID 訂單皆有合法 paidAmount', () => {
+    for (const o of MOCK_TOUR_ORDERS) {
+      if (o.paymentStatus === 'PAID') expect(o.paidAmount, o.id).toBe(o.totalAmount);
+      if (o.paymentStatus === 'PARTIAL') {
+        expect(o.paidAmount, o.id).toBeGreaterThan(0);
+        expect(o.paidAmount, o.id).toBeLessThan(o.totalAmount);
+      }
+      // DB 約束 tour_orders_refunded_paid_amount_ck
+      if (o.paymentStatus === 'REFUND_PENDING') expect(o.paidAmount, o.id).toBeGreaterThan(0);
+      if (o.paymentStatus === 'REFUNDED') {
+        expect(o.paidAmount, o.id).toBeGreaterThan(0);
+        expect(o.refundedAmount, o.id).toBeGreaterThan(0);
+      }
+    }
+  });
+  it('mock 種子 to_8（退款中）：詳情顯示實收 2670，無應收定金', () => {
+    const o = MOCK_TOUR_ORDERS.find((x) => x.id === 'to_8')!;
+    const r = detailPaymentRows(o);
+    expect(r.paid).toBe(2670);
+    expect(r.depositDue).toBeNull();
+  });
+  it('文案與頁面接線', () => {
+    expect(t.depositBadge).toBe('應收定金');
+    expect(t.paidBadge).toBe('已收');
+    expect(t.detail.fields.deposit).toBe('應收定金');
+    expect(t.detail.fields.paid).toBe('已收金額');
+    const page = readFileSync('src/app/tenant/tour-orders/page.tsx', 'utf8');
+    expect(page).toContain('listPaymentLine(o)');
+    expect(page).toContain('detailPaymentRows(detail)');
+    expect(page).not.toContain('detail.totalAmount - detail.depositAmount');
+  });
+});

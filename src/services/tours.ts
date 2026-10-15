@@ -968,6 +968,7 @@ export const confirmTourOrderPayment = (id: string, kind: 'DEPOSIT' | 'FULL' = '
         depositAmount: o.depositAmount, totalAmount: o.totalAmount,
       })) throw conflict();
       o.paymentStatus = 'PARTIAL';
+      o.paidAmount = o.depositAmount; // 與真實路由一致：paid_amount = deposit_amount
       o.holdExpiresAt = null;
       return;
     }
@@ -979,6 +980,7 @@ export const confirmTourOrderPayment = (id: string, kind: 'DEPOSIT' | 'FULL' = '
     }
     o.status = 'CONFIRMED';
     o.paymentStatus = 'PAID';
+    o.paidAmount = o.totalAmount; // 與真實路由一致：paid_amount = total_amount
     o.holdExpiresAt = null;
   }, () => request<void>(`/api/tour-orders/${id}/confirm-payment`, {
     method: 'POST', body: JSON.stringify({ kind }),
