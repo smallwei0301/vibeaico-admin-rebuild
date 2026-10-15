@@ -9,3 +9,8 @@ export const BOOKING_PAYMENT_FILTER_VALUES: readonly PaymentStatus[] = [
 export function parsePaymentStatusParam(value: string | null | undefined): PaymentStatus | '' {
   return BOOKING_PAYMENT_FILTER_VALUES.find((v) => v === value) ?? '';
 }
+
+/** #1020：列表查詢序號檢查——只有最新一次請求的回應可以寫入畫面狀態。 */
+export function isLatestRequest(seq: number, current: number): boolean {
+  return seq === current;
+}
