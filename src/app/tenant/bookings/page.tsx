@@ -33,6 +33,7 @@ import { USE_MOCK } from '@/config/env';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { bookingsPage as t } from '@/i18n/zh-TW/pages/bookings';
+import { tenantDateString } from '@/lib/bookings-query-range';
 import { buildStaffOptions, summarizeBatch } from '@/lib/booking-batch';
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
 import type {
@@ -358,7 +359,7 @@ export default function BookingsPage() {
         <div className="min-w-0">
           <div>{formatCurrency(b.finalPrice)}</div>
           {b.finalPrice !== b.price ? (
-            <div className="text-2xs text-secondary">{t.labels.memberPrice}</div>
+            <div className="text-2xs text-secondary">{t.labels.originalPrice(formatCurrency(b.price))}</div>
           ) : null}
         </div>
       ),
@@ -971,7 +972,7 @@ function BookingFormModal({
     if (!date) return c.dateInvalid;
     if (USE_MOCK && !isEdit && checkoutDate && checkoutDate <= date) return c.checkoutInvalid;
     if (!time) return c.timeInvalid;
-    if (!isEdit && date < new Date().toISOString().slice(0, 10)) return t.messages.pastDate;
+    if (!isEdit && date < tenantDateString()) return t.messages.pastDate;
     return '';
   };
 
