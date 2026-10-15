@@ -50,6 +50,9 @@ function paymentDescriptionFor(order: TourOrder): string {
   if (order.paymentStatus === 'REFUND_PENDING' && refunded > 0) {
     return t.status.paymentRefundPendingWithAmount(formatCurrency(refunded));
   }
+  if (partialPaymentBreakdown(order)) {
+    return t.status.paymentPartialWithBreakdownDescription;
+  }
   return t.status.paymentDescription[order.paymentStatus];
 }
 

@@ -144,6 +144,8 @@ export const publicTourRequestPage = {
       REFUND_PENDING: '退款仍在處理中，尚未完成；退款進度請向店家確認。',
       REFUNDED: '此訂單已退款；實際退款金額請向店家確認。',
     },
+    /** #988：PARTIAL 且頁面已顯示實際已付／待付金額時，不再請旅客向店家確認金額，只確認尾款期限與方式（#917 慣例）。 */
+    paymentPartialWithBreakdownDescription: '已收到部分款項，尾款的付款期限與方式請向店家確認。',
     confirmedTitle: '已確認，名額已保留',
     confirmedDescription: (deadline: string) => `請於 ${deadline} 前完成付款，逾期名額將被釋放。`,
     confirmedNoDeadlineDescription: '店家已確認，請與店家確認付款方式與期限。',

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { partialPaymentBreakdown } from '@/lib/public-partial-payment';
 import { mapTourOrder } from '@/server/mappers';
+import { publicTourRequestPage as i18n } from '@/i18n/zh-TW/pages/public-tour-request';
 
 const base = { totalAmount: 10000 } as const;
 const src = (p: string) => readFileSync(p, 'utf8');
@@ -42,6 +43,18 @@ describe('#988 mapper 與頁面', () => {
     expect(page).toContain('t.status.fields.balanceDue');
     const code = page.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
     expect(code).not.toMatch(/[一-鿿]/);
+  });
+  it('PARTIAL 有明細：改用只確認尾款期限的文案，不再請旅客確認金額', () => {
+    const page = src('src/app/s/[shopCode]/requests/[orderId]/page.tsx');
+    expect(page).toContain('t.status.paymentPartialWithBreakdownDescription');
+    const withBreakdown = i18n.status.paymentPartialWithBreakdownDescription;
+    expect(withBreakdown).not.toBe(i18n.status.paymentDescription.PARTIAL);
+    expect(withBreakdown).not.toContain('金額');
+    expect(withBreakdown).toContain('尾款');
+  });
+  it('PARTIAL 無明細（partialPaymentBreakdown 為 null）仍保留原通用文案', () => {
+    expect(partialPaymentBreakdown({ ...base, paymentStatus: 'PARTIAL', paidAmount: undefined })).toBeNull();
+    expect(i18n.status.paymentDescription.PARTIAL).toContain('實際已付金額、待付金額與期限請向店家確認');
   });
   it('公開查詢 select * 帶出 paid_amount', () => {
     expect(src('src/server/public-tour-request.ts')).toMatch(/from\('tour_orders'\)\.select\('\*'\)/);
