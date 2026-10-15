@@ -149,3 +149,24 @@ export function buildTripCarousel(
     contents: { type: 'carousel', contents: bubbles },
   };
 }
+
+/**
+ * #1012：各行程「起 NT$」最低價。只算 active、價格為有限且 > 0、且**非季節定價**的方案
+ * （季節方案的 price_per_person 只是基本價，與公開首頁 #895 同一規則；0 元／負數方案與首頁一樣不計入）。
+ * 沒有符合的方案就不會有該行程的 entry → 呼叫端顯示「價格洽詢」，不是 NT$ 0。
+ */
+export function minNonSeasonalPriceByTrip(
+  plans: ReadonlyArray<{ id?: unknown; trip_id: string; price_per_person: unknown; active?: unknown }>,
+  seasonalPlanIds: ReadonlySet<string>,
+): Map<string, number> {
+  const result = new Map<string, number>();
+  for (const p of plans) {
+    if (!p.active) continue;
+    if (seasonalPlanIds.has(String(p.id))) continue;
+    const price = Number(p.price_per_person);
+    if (!Number.isFinite(price) || price <= 0) continue;
+    const current = result.get(p.trip_id);
+    if (current === undefined || price < current) result.set(p.trip_id, price);
+  }
+  return result;
+}
