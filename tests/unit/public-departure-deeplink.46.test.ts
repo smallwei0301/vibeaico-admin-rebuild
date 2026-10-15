@@ -185,13 +185,49 @@ describe('LINE「近期團次」深連結（連結資格＝預約頁載入器 + 
   const dep = (id: string, planId: string, seatsBooked = 1) => ({
     id, trip_id: 'tr', plan_id: planId, departs_on: '2098-01-01', start_time: null, capacity: 5, seats_booked: seatsBooked,
   });
-  const lineAdmin = (deps: unknown[], plans: unknown[]) => {
-    const chain = (data: unknown) => {
-      const c: any = { then: (res: (v: unknown) => unknown) => Promise.resolve({ data, error: null }).then(res) };
-      for (const m of ['select', 'eq', 'in', 'gte', 'lte', 'order', 'limit', 'range']) c[m] = () => c;
+  /**
+   * 模擬 PostgREST：trip_departures 有兩種查詢——
+   *  A（帶 trip_plans!inner 內嵌）：只回有方案的團次，內嵌方案；若有 .eq('trip_plans.active', true) 則先濾掉停用方案，再取 limit。
+   *  B（.is('plan_id', null)）：只回無方案團次。
+   * planError 表示方案內嵌查詢（A）失敗；depError 表示無方案查詢（B）失敗。
+   */
+  const lineAdmin = (deps: any[], plans: any[], opts: { planError?: unknown; depError?: unknown; settingsError?: unknown; settingsThrow?: boolean; log?: Array<{ eq: Array<[string, unknown]>; noPlan: boolean; limit?: number }> } = {}) => {
+    const settings = () => {
+      const c: any = { select: () => c, eq: () => c };
+      c.maybeSingle = () => {
+        if (opts.settingsThrow) return Promise.reject(new Error('settings boom'));
+        return Promise.resolve({ data: null, error: opts.settingsError ?? null });
+      };
       return c;
     };
-    return { from: (t: string) => chain(t === 'trips' ? [{ id: 'tr', title: '行程' }] : t === 'trip_departures' ? deps : plans) };
+    const departures = () => {
+      const q = { eq: [] as Array<[string, unknown]>, noPlan: false, limit: undefined as number | undefined };
+      opts.log?.push(q);
+      const c: any = {};
+      c.then = (res: (v: unknown) => unknown) => {
+        if (q.noPlan) {
+          const data = deps.filter((d) => d.plan_id == null).slice(0, q.limit ?? 1000);
+          return Promise.resolve({ data, error: opts.depError ?? null }).then(res);
+        }
+        const activeOnly = q.eq.some(([k, v]) => k === 'trip_plans.active' && v === true);
+        const data = deps
+          .filter((d) => d.plan_id != null)
+          .map((d) => ({ ...d, trip_plans: plans.find((p) => p.id === d.plan_id) ?? null }))
+          .filter((d) => d.trip_plans && (!activeOnly || d.trip_plans.active === true))
+          .slice(0, q.limit ?? 1000);
+        return Promise.resolve({ data, error: opts.planError ?? null }).then(res);
+      };
+      for (const m of ['select', 'in', 'gte', 'lte', 'order', 'range']) c[m] = () => c;
+      c.eq = (k: string, v: unknown) => { q.eq.push([k, v]); return c; };
+      c.is = (k: string, v: unknown) => { if (k === 'plan_id' && v === null) q.noPlan = true; return c; };
+      c.limit = (n: number) => { q.limit = n; return c; };
+      return c;
+    };
+    const trips = () => {
+      const c: any = { select: () => c, eq: () => c, then: (res: (v: unknown) => unknown) => Promise.resolve({ data: [{ id: 'tr', title: '行程' }], error: null }).then(res) };
+      return c;
+    };
+    return { from: (t: string) => t === 'tenant_settings' ? settings() : t === 'trips' ? trips() : departures() };
   };
   const runLine = async (deps: unknown[], plans: unknown[]) => {
     fx.lineReplies.length = 0;
@@ -210,6 +246,101 @@ describe('LINE「近期團次」深連結（連結資格＝預約頁載入器 + 
     ...over,
   });
 
+  const baseCtx = (admin: unknown) => ({
+    admin, token: 'k', replyToken: 'r', userId: 'u', lineConfig: {},
+    tenant: { id: 'ten', shop_code: 'demo', name: 'D', business_type: 'GUIDE' },
+  }) as any;
+
+  it('方案內嵌查詢失敗 → 回 false 且不送出「沒有團次」回覆', async () => {
+    fx.lineReplies.length = 0;
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const ok = await replyDepartures(baseCtx(lineAdmin([dep('d1', 'pf')], fixedPlans, { planError: { message: 'boom' } })));
+    spy.mockRestore();
+    expect(ok).toBe(false);
+    expect(fx.lineReplies).toHaveLength(0);
+  });
+
+  it('無方案團次查詢失敗 → 回 false 且不送出回覆', async () => {
+    fx.lineReplies.length = 0;
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const ok = await replyDepartures(baseCtx(lineAdmin([dep('d1', 'pf')], fixedPlans, { depError: { message: 'boom' } })));
+    spy.mockRestore();
+    expect(ok).toBe(false);
+    expect(fx.lineReplies).toHaveLength(0);
+  });
+
+  it('tenant_settings 回 error → 回 false 且不送出回覆（不假設 Asia/Taipei）', async () => {
+    fx.lineReplies.length = 0;
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const ok = await replyDepartures(baseCtx(lineAdmin([dep('d1', 'pf')], fixedPlans, { settingsError: { message: 'boom' } })));
+    expect(ok).toBe(false);
+    expect(fx.lineReplies).toHaveLength(0);
+    const thrown = await replyDepartures(baseCtx(lineAdmin([dep('d1', 'pf')], fixedPlans, { settingsThrow: true })));
+    spy.mockRestore();
+    expect(thrown).toBe(false);
+    expect(fx.lineReplies).toHaveLength(0);
+  });
+
+  it('tenant_settings 查詢成功但無設定 → 回退預設時區並正常列出', async () => {
+    fx.bookingPlansById = { pf: bp(['d1']) };
+    expect(await runLine([dep('d1', 'pf')], fixedPlans)).toContain('固定');
+  });
+
+  it('前 10 筆團次都屬停用方案 → 查詢 A 帶 trip_plans.active=true 於 limit 前過濾，仍列出啟用團次', async () => {
+    fx.bookingPlansById = { pf: bp(['dep-live']) };
+    const plans = [...fixedPlans, { id: 'pi', name: '停用', sales_mode: 'FIXED_DEPARTURE', active: false }];
+    const stale = Array.from({ length: 10 }, (_, i) => dep(`dep-off-${i}`, 'pi'));
+    const log: Array<{ eq: Array<[string, unknown]>; noPlan: boolean; limit?: number }> = [];
+    fx.lineReplies.length = 0;
+    const ok = await replyDepartures(baseCtx(lineAdmin([...stale, dep('dep-live', 'pf')], plans, { log })));
+    expect(ok).toBe(true);
+    const text = fx.lineReplies[0][0].text;
+    const queryA = log.find((q) => !q.noPlan)!;
+    expect(queryA.eq).toContainEqual(['trip_plans.active', true]);
+    expect(queryA.limit).toBe(10);
+    expect(log.find((q) => q.noPlan)?.limit).toBe(10);
+    expect(text).toContain('固定');
+    expect(text).toContain('departure=dep-live');
+    expect(text).not.toContain('dep-off');
+  });
+
+  it('有方案與無方案團次合併後依日期（再時間）排序並截到 10 筆', async () => {
+    fx.bookingPlansById = {};
+    const mk = (id: string, planId: string | null, day: string, time: string | null = null) => ({
+      id, trip_id: 'tr', plan_id: planId, departs_on: day, start_time: time, capacity: 5, seats_booked: 1,
+    });
+    const deps = [
+      ...Array.from({ length: 8 }, (_, i) => mk(`p${i}`, 'pf', `2098-01-${String(10 + i).padStart(2, '0')}`)),
+      ...Array.from({ length: 8 }, (_, i) => mk(`n${i}`, null, `2098-01-${String(1 + i).padStart(2, '0')}`)),
+      mk('late-time', 'pf', '2098-01-01', '15:00:00'),
+    ];
+    fx.lineReplies.length = 0;
+    const ok = await replyDepartures(baseCtx(lineAdmin(deps, fixedPlans)));
+    expect(ok).toBe(true);
+    const days = fx.lineReplies[0][0].text.split('\n').filter((l) => l.startsWith('・')).map((l) => l.slice(1, 11));
+    expect(days).toHaveLength(10);
+    expect(days).toEqual([...days].sort());
+    expect(days[0]).toBe('2098-01-01');
+    expect(days.at(-1)).toBe('2098-01-10');
+    // 同日：無時間（空字串）排在有時間者之前
+    expect(fx.lineReplies[0][0].text.indexOf('2098-01-01 15:00')).toBeGreaterThan(fx.lineReplies[0][0].text.indexOf('2098-01-01 行程'));
+  });
+
+  it('方案內嵌為陣列時同樣可解析名稱', async () => {
+    fx.bookingPlansById = { pf: bp(['d1']) };
+    const base = lineAdmin([dep('d1', 'pf')], fixedPlans);
+    const wrapped = { from: (t: string) => {
+      const c = base.from(t);
+      if (t !== 'trip_departures') return c;
+      const origThen = c.then;
+      c.then = (res: (v: any) => unknown) => origThen((r: any) => res({ ...r, data: r.data.map((d: any) => ({ ...d, trip_plans: d.trip_plans ? [d.trip_plans] : d.trip_plans })) }));
+      return c;
+    } };
+    fx.lineReplies.length = 0;
+    expect(await replyDepartures(baseCtx(wrapped))).toBe(true);
+    expect(fx.lineReplies[0][0].text).toContain('固定');
+  });
+
   it('只有啟用中的 FIXED_DEPARTURE 方案附深連結，連結緊接在對應團次行下方', async () => {
     fx.bookingPlansById = { pf: bp(['dep/1']), pi: bp(['dep-2']), pr: bp(['dep-3']), pq: bp(['dep-4']) };
     const plans = [
@@ -226,7 +357,9 @@ describe('LINE「近期團次」深連結（連結資格＝預約頁載入器 + 
     const lines = text.split('\n');
     const i = lines.findIndex((l) => l.includes('固定'));
     expect(lines[i + 1]).toBe(`${base}/plans/pf/book?departure=dep%2F1`);
-    expect(lines[i + 2]).toContain('停用');
+    // #1022：已停用方案的團次不再列出（旅客點進公開頁找不到該方案）。
+    expect(text).not.toContain('停用');
+    expect(lines[i + 2]).toContain('申請');
   });
 
   it('預約頁載入的方案不含該團次（額滿／已開始／超出前 12 個候選）→ 不附連結，清單仍列出', async () => {

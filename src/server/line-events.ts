@@ -37,6 +37,7 @@ import { MODE_PRESETS, type BusinessType } from '@/config/modes';
 import { keywordRepliesPage } from '@/i18n/zh-TW/pages/keyword-replies';
 import { isDepartureBookableOnPage } from '@/lib/public-booking-price';
 import { loadPublicBookingPlan } from './public-tour-booking';
+import { departureWindow, filterListableDepartures } from './line-departures';
 
 /** webhook 端已查好的店家列（route.ts select id, shop_code, name） */
 export type WebhookTenant = {
@@ -847,49 +848,86 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
 
   const titleById = new Map<string, string>(trips.map((t: any) => [t.id, t.title]));
 
-  const today = new Date();
-  const from = today.toISOString().slice(0, 10);
-  const to = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-
-  const { data: departures, error } = await ctx.admin
-    .from('trip_departures')
-    .select('id, trip_id, plan_id, departs_on, start_time, capacity, seats_booked')
-    .eq('tenant_id', ctx.tenant.id)
-    .eq('status', 'OPEN')
-    .in('trip_id', [...titleById.keys()])
-    .gte('departs_on', from)
-    .lte('departs_on', to)
-    .order('departs_on', { ascending: true })
-    .limit(SERVICE_LIST_LIMIT);
-  if (error) {
-    console.error('[line] replyDepartures 查詢 trip_departures 失敗', error);
+  // 日期窗用店家時區（tenant_settings.basic.timezone，#1022）。
+  // 查詢失敗（error 或 throw）不可假設台北：非台北店家會得到錯誤日期窗，與 trips／plans／departures 一致 return false。
+  // 只有「查詢成功但沒設定／設定無效」才由 resolvePublicTimeZone 回退 Asia/Taipei。
+  let timeZoneSetting: unknown;
+  try {
+    const { data: settingsRow, error: settingsQueryError } = await ctx.admin
+      .from('tenant_settings').select('basic').eq('tenant_id', ctx.tenant.id).maybeSingle();
+    if (settingsQueryError) {
+      console.error('[line] replyDepartures 查詢 tenant_settings 失敗', settingsQueryError);
+      return false;
+    }
+    timeZoneSetting = (settingsRow as { basic?: { timezone?: unknown } } | null)?.basic?.timezone;
+  } catch (settingsError) {
+    console.error('[line] replyDepartures 查詢 tenant_settings 失敗', settingsError);
     return false;
   }
-  if (!departures?.length) return replyText(ctx, MSG.departureEmpty);
+  const { from, to } = departureWindow(Date.now(), timeZoneSetting);
 
-  // 方案名稱是錦上添花（顯示成「（標準團）」）。查不到就不顯示那一段，
-  // 不讓它擋掉整份團次清單。
-  const planIds = [...new Set(departures.map((d: any) => d.plan_id).filter(Boolean))];
+  // 啟用方案的過濾在資料庫端以關聯完成（trip_plans!inner + trip_plans.active），不再把方案 id 清單塞進 URL，
+  // 也不受方案查詢 max_rows 截斷影響；停用方案的團次在 .limit 之前就被排除，不會擠掉可報名的團次（#1022）。
+  // 查詢 A＝有方案的團次（內嵌方案供名稱／sales_mode 使用），查詢 B＝無方案（plan_id is null）的團次；
+  // 兩者各自 limit 後合併排序再截斷。任一查詢失敗與 trips 一致：return false 交由預設回覆。
+  const DEPARTURE_COLUMNS = 'id, trip_id, plan_id, departs_on, start_time, capacity, seats_booked';
+  const tripIds = [...titleById.keys()];
+  const [withPlanRes, noPlanRes] = await Promise.all([
+    ctx.admin
+      .from('trip_departures')
+      .select(`${DEPARTURE_COLUMNS}, trip_plans!inner(id, name, sales_mode, active)`)
+      .eq('tenant_id', ctx.tenant.id)
+      .eq('status', 'OPEN')
+      .in('trip_id', tripIds)
+      .gte('departs_on', from)
+      .lte('departs_on', to)
+      .eq('trip_plans.active', true)
+      .order('departs_on', { ascending: true })
+      .limit(SERVICE_LIST_LIMIT),
+    ctx.admin
+      .from('trip_departures')
+      .select(DEPARTURE_COLUMNS)
+      .eq('tenant_id', ctx.tenant.id)
+      .eq('status', 'OPEN')
+      .in('trip_id', tripIds)
+      .gte('departs_on', from)
+      .lte('departs_on', to)
+      .is('plan_id', null)
+      .order('departs_on', { ascending: true })
+      .limit(SERVICE_LIST_LIMIT),
+  ]);
+  if (withPlanRes.error || noPlanRes.error) {
+    console.error('[line] replyDepartures 查詢 trip_departures 失敗', withPlanRes.error ?? noPlanRes.error);
+    return false;
+  }
+
   const planNameById = new Map<string, string>();
   const fixedPlanIds = new Set<string>();
-  if (planIds.length) {
-    const { data: plans, error: planError } = await ctx.admin
-      .from('trip_plans')
-      .select('id, name, sales_mode, active, min_party')
-      .eq('tenant_id', ctx.tenant.id)
-      .in('id', planIds);
-    if (planError) console.error('[line] replyDepartures 查詢 trip_plans 失敗', planError);
-    for (const p of (plans ?? []) as any[]) {
-      planNameById.set(p.id, p.name);
-      if (p.active === true && p.sales_mode === 'FIXED_DEPARTURE') fixedPlanIds.add(p.id);
+  const planRows: Array<{ id: string; active: boolean }> = [];
+  const withPlan = ((withPlanRes.data ?? []) as any[]).map((row) => {
+    const { trip_plans: embedded, ...d } = row;
+    const plan = Array.isArray(embedded) ? embedded[0] : embedded;
+    if (plan?.id) {
+      planNameById.set(plan.id, plan.name);
+      if (plan.sales_mode === 'FIXED_DEPARTURE') fixedPlanIds.add(plan.id);
+      planRows.push({ id: plan.id, active: plan.active === true });
     }
-  }
+    return d;
+  });
+  const departures = [...withPlan, ...((noPlanRes.data ?? []) as any[])]
+    .sort((x, y) => String(x.departs_on).localeCompare(String(y.departs_on))
+      || String(x.start_time ?? '').localeCompare(String(y.start_time ?? '')))
+    .slice(0, SERVICE_LIST_LIMIT);
+  if (!departures?.length) return replyText(ctx, MSG.departureEmpty);
+
+  const listable = filterListableDepartures(departures as any[], planRows);
+  if (!listable.length) return replyText(ctx, MSG.departureEmpty);
 
   // 直達預約連結只給「目的預約頁真的可預選且可送出」的團次：對每個出現的 FIXED_DEPARTURE 方案呼叫預約頁同一支
   // loadPublicBookingPlan（至多 SERVICE_LIST_LIMIT 個方案的有界查詢），再用預約頁共用的 isDepartureBookableOnPage 判定。
   // 載入失敗或回傳 null → 該方案不附連結（fail closed），不影響團次清單本身。
   const bookingPlanById = new Map<string, Awaited<ReturnType<typeof loadPublicBookingPlan>>>();
-  const linkPlanIds = [...new Set(departures.map((d: any) => d.plan_id as string).filter((id: string) => fixedPlanIds.has(id)))];
+  const linkPlanIds = [...new Set(listable.map((d: any) => d.plan_id as string).filter((id: string) => fixedPlanIds.has(id)))];
   await Promise.all(linkPlanIds.map(async (planId) => {
     try {
       bookingPlanById.set(planId, await loadPublicBookingPlan(ctx.tenant.shop_code, planId));
@@ -898,7 +936,7 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
     }
   }));
 
-  const lines = departures.map((d: any) => {
+  const lines = listable.map((d: any) => {
     // capacity - seats_booked 可能因為並發而暫時為負；夾到 0，不顯示「剩 -1 位」
     const left = Math.max(0, Number(d.capacity) - Number(d.seats_booked));
     const time = typeof d.start_time === 'string' ? ` ${d.start_time.slice(0, 5)}` : '';
