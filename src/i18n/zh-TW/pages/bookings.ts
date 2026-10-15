@@ -19,6 +19,8 @@ export const bookingsPage = {
       CANCELLED: '已取消',
       NO_SHOW: '爽約',
     },
+    paymentAll: '全部付款狀態',
+    paymentAriaLabel: '付款狀態篩選',
     showCancelled: '含已取消',
     searchPlaceholder: '搜尋顧客姓名或電話...',
     selectedCount: (n: number) => `已選 ${n} 筆`,
