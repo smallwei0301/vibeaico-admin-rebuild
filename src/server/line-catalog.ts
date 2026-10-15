@@ -145,6 +145,8 @@ export async function loadListableDepartures(
       .eq('trip_plans.active', true)
       .neq('trip_plans.sales_mode', 'INSTANT')
       .order('departs_on', { ascending: true })
+      .order('start_time', { ascending: true, nullsFirst: true })
+      .order('id', { ascending: true })
       .limit(limit),
     options.skipNoPlanDepartures
       ? Promise.resolve({ data: [], error: null })
@@ -158,6 +160,8 @@ export async function loadListableDepartures(
         .lte('departs_on', to)
         .is('plan_id', null)
         .order('departs_on', { ascending: true })
+        .order('start_time', { ascending: true, nullsFirst: true })
+        .order('id', { ascending: true })
         .limit(limit),
   ]);
   if (withPlanRes.error || noPlanRes.error) {
