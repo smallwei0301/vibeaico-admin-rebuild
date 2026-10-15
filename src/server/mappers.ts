@@ -330,6 +330,15 @@ const TOUR_PAYMENT_STATUS = new Set(['UNPAID', 'PARTIAL', 'PAID', 'REFUND_PENDIN
  * issue #42：`trip_plan_seasons`（`0127`）子表列 → `TripPlanSeason`。
  * `price_override` 是 `number | null`——null 代表沿用方案基本價，不是 0。
  */
+/** 與 create_tour_order 一致：sort_order 升冪，相同時比 id（uuid 以小寫字串比較）。 */
+export function compareSeasonRows(a: any, b: any): number {
+  const d = (a.sort_order ?? 0) - (b.sort_order ?? 0);
+  if (d !== 0) return d;
+  const x = String(a.id ?? '').toLowerCase();
+  const y = String(b.id ?? '').toLowerCase();
+  return x < y ? -1 : x > y ? 1 : 0;
+}
+
 export function mapTripPlanSeason(r: any): TripPlanSeason {
   return {
     id: r.id,
@@ -340,6 +349,7 @@ export function mapTripPlanSeason(r: any): TripPlanSeason {
     endDay: Number(r.end_day),
     priceOverride: r.price_override == null ? null : Number(r.price_override),
     active: r.active ?? true,
+    sortOrder: r.sort_order == null ? undefined : Number(r.sort_order),
   };
 }
 
@@ -387,7 +397,7 @@ export function mapTripPlan(r: any): TripPlan {
     // PostgREST embed 不保證回傳順序，所以在這裡依 sort_order 排序一次。
     seasons: Array.isArray(r.trip_plan_seasons)
       ? [...r.trip_plan_seasons]
-        .sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+        .sort(compareSeasonRows)
         .map(mapTripPlanSeason)
       : [],
     reviewState: 'NONE',

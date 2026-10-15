@@ -173,6 +173,8 @@ export const tourOrdersPage = {
     paymentEmptyLink: '前往設定收款方式',
     noteLabel: '備註',
     totalPreview: (amount: string) => `訂單金額 ${amount}`,
+    totalPreviewBase: (amount: string) => `訂單金額 ${amount}（以基本價估算）`,
+    seasonalPendingHint: '此方案有季節定價，金額與訂金依團次出發日計算，請先選擇團次；以建立後的訂單金額與訂金為準。',
     seatsLeft: (n: number) => `（剩 ${n} 位）`,
     submit: '建立訂單',
   },
