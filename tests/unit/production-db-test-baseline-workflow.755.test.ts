@@ -45,7 +45,47 @@ describe('explicit canonical TEST 0098 workflow entry #755', () => {
     expect(decideTestValidation({ ...input, inputs: { ...inputs, expected_head: 'c'.repeat(40) } }).runTestValidation).toBe(false);
     expect(decideTestValidation({ ...input, ref: 'refs/heads/feature' }).runTestValidation).toBe(false);
     expect(decideTestValidation({ ...input, eventName: 'pull_request' }).runTestValidation).toBe(false);
-    expect(decideTestValidation({ ...input, docsOnly: true }).runTestValidation).toBe(false);
+    const docsOnlyDecision = decideTestValidation({ ...input, docsOnly: true });
+    expect(docsOnlyDecision).toMatchObject({ runTestValidation: true, reason: 'manual_main_baseline_0098_exact_head' });
+    expect(() => validate({ RUN_TEST_VALIDATION: String(docsOnlyDecision.runTestValidation),
+      TEST_LANE_HOLDERS: docsOnlyDecision.holders.join(',') })).not.toThrow();
+  });
+
+  it.each([true, 'true'])('passes the existing bash contract with the docs-only policy output for baseline input %j', (flag) => {
+    const decision = decideTestValidation({ eventName: 'workflow_dispatch', ref: 'refs/heads/main', sha, docsOnly: true,
+      inputs: { ...inputs, test_baseline_0098: flag }, currentCommit: { sha, parents: [{ sha: base }] } });
+    expect(decision.runTestValidation).toBe(true);
+    expect(() => validate({ BASELINE_0098: String(flag), RUN_TEST_VALIDATION: String(decision.runTestValidation),
+      TEST_LANE_HOLDERS: decision.holders.join(',') })).not.toThrow();
+  });
+
+  it.each([undefined, false, 'false', 'TRUE', ' true ', 1, 'yes'])('does not grant docs-only admission for non-true input %j', (flag) => {
+    const decision = decideTestValidation({ eventName: 'workflow_dispatch', ref: 'refs/heads/main', sha, docsOnly: true,
+      inputs: { ...inputs, test_baseline_0098: flag }, currentCommit: { sha, parents: [{ sha: base }] } });
+    expect(decision).toMatchObject({ runTestValidation: false, reason: 'docs_only' });
+  });
+
+  it('retains authenticated main identity and rejects actual holder output at the downstream baseline contract', () => {
+    const input = { eventName: 'workflow_dispatch', ref: 'refs/heads/main', sha, docsOnly: true, inputs,
+      currentCommit: { sha, parents: [{ sha: base }] } };
+    for (const change of [
+      { ref: 'refs/heads/feature' },
+      { inputs: { ...inputs, expected_head: 'c'.repeat(40) } },
+      { inputs: { ...inputs, base_revision: 'c'.repeat(40) } },
+    ]) {
+      const decision = decideTestValidation({ ...input, ...change });
+      expect(decision.runTestValidation).toBe(false);
+      expect(() => validate({ RUN_TEST_VALIDATION: String(decision.runTestValidation),
+        TEST_LANE_HOLDERS: decision.holders.join(',') })).toThrow();
+    }
+    const holder = { number: 727, state: 'open', body: [
+      'WORK_ORIGIN: AGENT', 'AGENT_LANE: TEST_VALIDATION', 'LANE_STATE: ACTIVE',
+      'ACTIVE_CANDIDATE: false', 'TEST_LANE_REQUIRED: true', 'BPLUS_MODE: true',
+    ].join('\n') };
+    const decision = decideTestValidation({ ...input, openPullRequests: [holder] });
+    expect(decision.holders).toEqual([727]);
+    expect(() => validate({ RUN_TEST_VALIDATION: String(decision.runTestValidation),
+      TEST_LANE_HOLDERS: decision.holders.join(',') })).toThrow();
   });
 
   it('only invokes the baseline on authenticated manual main, before integration, with existing TEST credential and CA', () => {
