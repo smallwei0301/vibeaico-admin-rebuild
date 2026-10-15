@@ -529,6 +529,8 @@ export type TripPlanSeason = {
   /** 該季節售價；null = 用方案基本價 */
   priceOverride: number | null;
   active: boolean;
+  /** 後端 sort_order；同跨度季節的決勝次序（選填，只新增不改既有欄位） */
+  sortOrder?: number;
 };
 
 export type DepartureStatus = 'OPEN' | 'CLOSED' | 'CANCELLED';

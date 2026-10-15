@@ -49,20 +49,6 @@ import { previewManualOrderPrice } from '@/lib/manual-order-price';
 
 const PAGE_SIZE = 20;
 
-/**
- * 應收定金（10 分冊 §1）：每人計價 → 定金×人數；每團計價 → 收一筆。
- * FULL = 全額線上收（定金欄位記 0）；NONE = 不線上收。
- */
-function depositOf(plan: TripPlan, total: number, partySize = 1): number {
-  if (plan.depositMode === 'DEPOSIT_FIXED') {
-    return plan.priceType === 'PER_PERSON' ? plan.depositValue * partySize : plan.depositValue;
-  }
-  if (plan.depositMode === 'DEPOSIT_PERCENT') {
-    return Math.round((total * plan.depositValue) / 100);
-  }
-  return 0;
-}
-
 const STATUS_TONE: Record<TourOrderStatus, 'warning' | 'success' | 'primary' | 'neutral'> = {
   PENDING: 'warning', CONFIRMED: 'success', COMPLETED: 'primary', CANCELLED: 'neutral',
 };
@@ -413,10 +399,12 @@ export default function TourOrdersPage() {
       seasons: draftPlan.seasons ?? [],
       departsOn: draftDeparture?.departsOn,
       partySize: draft.partySize,
+      depositMode: draftPlan.depositMode,
+      depositValue: draftPlan.depositValue,
     })
     : null;
   const draftTotal = draftPreview?.total ?? 0;
-  const draftDeposit = draftPlan ? depositOf(draftPlan, draftTotal, draft.partySize) : 0;
+  const draftDeposit = draftPreview?.deposit ?? 0;
 
   /**
    * 建單原本完全不打端點：自己組一個 TourOrder 物件 `setRows` 進去、
@@ -956,9 +944,9 @@ export default function TourOrdersPage() {
 
           {draftPlan ? (
             <div className="rounded-md bg-neutral-50 px-3 py-2 text-sm font-semibold text-dark">
-              {draftPreview?.basis === 'DEPARTURE'
-                ? t.create.totalPreview(formatCurrency(draftTotal))
-                : t.create.totalPreviewBase(formatCurrency(draftTotal))}
+              {draftPreview?.seasonalPending
+                ? t.create.totalPreviewBase(formatCurrency(draftTotal))
+                : t.create.totalPreview(formatCurrency(draftTotal))}
               {draftPreview?.seasonalPending ? (
                 <div className="mt-0.5 text-2xs font-normal text-warning">{t.create.seasonalPendingHint}</div>
               ) : null}
