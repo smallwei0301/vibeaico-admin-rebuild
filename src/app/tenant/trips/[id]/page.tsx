@@ -546,9 +546,17 @@ export default function TripDetailPage() {
 
       if (USE_MOCK) {
         const isNew = !planDraft.id;
+        // 以原方案（新方案為預設空白方案）為底，只合併本次儲存模式實際送出的欄位，
+        // 與真實模式送到 API 的 payload 一致；未送出的欄位（含可能為 NaN 的草稿值）不寫回列表。
+        const original = plans.find((p) => p.id === planDraft.id);
+        const base: TripPlan = original ?? emptyPlan(tripId);
+        const { id: _payloadId, ...payloadFields } = planEditorMode === 'advanced'
+          ? toAdvancedPlanPayload(planDraft)
+          : toQuickPlanPayload(planDraft);
+        const merged: TripPlan = { ...base, ...payloadFields };
         const saved: TripPlan = isNew
-          ? { ...planDraft, id: `pl_new_${plans.length + 1}`, sortOrder: plans.length + 1 }
-          : planDraft;
+          ? { ...merged, id: `pl_new_${plans.length + 1}`, sortOrder: plans.length + 1 }
+          : merged;
         setPlans((prev) => (isNew
           ? [...prev, saved]
           : prev.map((p) => (p.id === saved.id ? saved : p))));
@@ -1599,7 +1607,7 @@ export default function TripDetailPage() {
                       <p className="mt-1 text-sm text-secondary">{planDraft.description.trim()}</p>
                     ) : null}
                     <p className="mt-2 text-sm font-semibold text-primary">
-                      {formatCurrency(planDraft.basePrice)}{t.plans.priceTypeSuffix[planDraft.priceType]}
+                      {Number.isFinite(planDraft.basePrice) ? formatCurrency(planDraft.basePrice) : t.plans.quick.previewPricePlaceholder}{t.plans.priceTypeSuffix[planDraft.priceType]}
                     </p>
                   </div>
                 </div>
@@ -1803,7 +1811,10 @@ export default function TripDetailPage() {
                                 t.seasons.monthDay(season.endMonth, season.endDay),
                               )}
                               {' · '}
-                              {formatCurrency(season.priceOverride ?? planDraft.basePrice)}
+                              {(() => {
+                                const seasonPrice = season.priceOverride ?? planDraft.basePrice;
+                                return Number.isFinite(seasonPrice) ? formatCurrency(seasonPrice) : t.plans.quick.previewPricePlaceholder;
+                              })()}
                             </div>
                           </div>
                           {!listedPlanWritesBlocked ? (

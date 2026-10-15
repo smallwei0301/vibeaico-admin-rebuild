@@ -33,3 +33,26 @@ describe('#973 清空數字欄位不得默默變 0', () => {
     expect(src).toContain("durationMinutes') {");
   });
 });
+
+describe('#973 基本價 NaN 不外洩到預覽卡與 mock 列表', () => {
+  const src = readFileSync(resolve(__dirname, '../../src/app/tenant/trips/[id]/page.tsx'), 'utf8');
+
+  it('預覽卡對非有限基本價顯示佔位，不呼叫 formatCurrency(NaN)', () => {
+    expect(src).toContain('Number.isFinite(planDraft.basePrice) ? formatCurrency(planDraft.basePrice)');
+    expect(src).toContain('t.plans.quick.previewPricePlaceholder');
+  });
+
+  it('季節價清單以 Number.isFinite 守門，不對 NaN 呼叫 formatCurrency', () => {
+    expect(src).toContain('const seasonPrice = season.priceOverride ?? planDraft.basePrice;');
+    expect(src).toContain('Number.isFinite(seasonPrice) ? formatCurrency(seasonPrice)');
+    expect(src).not.toContain('formatCurrency(season.priceOverride ?? planDraft.basePrice)');
+  });
+
+  it('mock 存檔以原方案為底，只合併該模式送出的 payload 欄位', () => {
+    expect(src).toContain('original ?? emptyPlan(tripId)');
+    expect(src).toContain('toAdvancedPlanPayload(planDraft)\n          : toQuickPlanPayload(planDraft)');
+    expect(src).toContain('{ ...base, ...payloadFields }');
+    expect(src).not.toContain('safeDraft');
+    expect(src).not.toMatch(/\{ \.\.\.planDraft, id: `pl_new_/);
+  });
+});
