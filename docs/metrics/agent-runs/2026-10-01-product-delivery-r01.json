@@ -391,6 +391,10 @@
     {
       "ref": "issue/1026",
       "title": "#46 LINE「團次」指令列出公開頁不可預約的團次（INSTANT、今日已開始、低於成團人數），且非 GUIDE 加開行程模組時不回應"
+    },
+    {
+      "ref": "issue/1028",
+      "title": "忘記密碼：重設時密碼實際更新失敗仍顯示「密碼重設成功」，驗證碼也被用掉"
     }
   ],
   "main": {
@@ -10976,6 +10980,125 @@
         "startedAt": "2026-10-15T14:10:00Z",
         "completedAt": "2026-10-15T14:13:59Z",
         "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）依主 agent 查證追加修正：INSTANT 排除下推查詢、截斷後過濾為空不誤報沒團次，commit 2b7d7602。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-sol-review-1026",
+        "role": "audit",
+        "requestedModel": "sol",
+        "issue": 1026,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/1027#issuecomment-6194421099",
+        "startedAt": "2026-10-15T14:22:10Z",
+        "completedAt": "2026-10-15T14:24:30Z",
+        "note": "REVIEW：fresh-context Opus subagent（requested claude-opus-5-5）審查 PR #1027 head 58879f81 → FIX_REQUIRED（M1：團次查詢缺 start_time／id 排序）；於 #1028 綁定 commit 補記。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-terra-build-1026c",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 1026,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/1027#issuecomment-6194681245",
+        "startedAt": "2026-10-15T14:25:07Z",
+        "completedAt": "2026-10-15T14:33:11Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）修正 M1 並補 L2 測試，commit 343bb960；主 agent 以修正前版本對照確認測試會失敗。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-sol-review-1026b",
+        "role": "audit",
+        "requestedModel": "sol",
+        "issue": 1026,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/1027#issuecomment-6194724161",
+        "startedAt": "2026-10-15T14:37:18Z",
+        "completedAt": "2026-10-15T14:38:23Z",
+        "note": "REVIEW：fresh-context Opus subagent（requested claude-opus-5-5）重審最終 head 343bb960 → PASS，已合併 1107ed52。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-luna-scout-46-gap",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 46,
+        "evidenceRef": "scout report (session transcript)",
+        "startedAt": "2026-10-15T14:36:00Z",
+        "completedAt": "2026-10-15T14:39:30Z",
+        "note": "Luna scout（requested claude-haiku-4-5）盤點 #46 黃金流程不需 migration 的旅客／店家可見斷點 → GAP（列出的 open issue 均已在 main 修正、待 Production 驗收）。時間為主 agent 派發與收件時間估計。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-luna-scout-fallback",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1028,
+        "evidenceRef": "scout report (session transcript)",
+        "startedAt": "2026-10-15T14:40:30Z",
+        "completedAt": "2026-10-15T14:43:45Z",
+        "note": "Luna scout（requested claude-haiku-4-5）盤點註冊／忘記密碼、LINE 精靈、首頁待辦 → 候選 1 重設密碼假成功，主 agent 以 origin/main 原始碼查證後開 #1028。時間為主 agent 派發與收件時間估計。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-luna-scout-1028-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1028,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-15T14:55:04Z",
+        "completedAt": "2026-10-15T14:55:04Z",
+        "note": "Luna metrics capture 綁定 issue/1028 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +3（#46 GAP 盤點、備選盤點、本綁定）；補記 #1026 兩輪 review（solTouches +2）與 M1 修正 build；solIssues +1（#1028 TRIAGE）。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-terra-build-1028",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 1028,
+        "evidenceRef": "commit 742a4283 (prebuild 64a42206)",
+        "startedAt": "2026-10-15T14:44:59Z",
+        "completedAt": "2026-10-15T14:53:53Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）以 RESERVE 於 #1027 驗證期間預建 #1028（commit 64a42206），#1027 合併後 cherry-pick 為 742a4283。actual 未經平台驗證。"
       }
 ,
       {
@@ -11017,7 +11140,7 @@
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 100,
+    "issuesStarted": 101,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -11044,14 +11167,14 @@
     "hardFailReasons": ["OBSERVED_2026_10_15_PR1002_PUSHED_4b239101_WHILE_PARKED"]
   },
   "flow": {
-    "lunaTasks": 204,
-    "lunaAccepted": 195,
+    "lunaTasks": 207,
+    "lunaAccepted": 198,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 274,
-    "solIssues": 43
+    "solTouches": 276,
+    "solIssues": 44
   },
   "auditability": {
     "evidenceFieldsCompletePercent": null,
