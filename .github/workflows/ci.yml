@@ -214,11 +214,36 @@ jobs:
     concurrency:
       group: ${{ needs.classify-changes.outputs.run_test_validation == 'true' && 'shared-test-supabase-integration' || needs.classify-changes.outputs.docs_only == 'true' && format('docs-integration-{0}', github.run_id) || format('source-only-integration-{0}', github.run_id) }}
       cancel-in-progress: false
+      queue: max
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
+      - name: Revalidate shared TEST admission after queue
+        if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' }}
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const path = require('node:path');
+            const policy = await import(pathToFileURL(path.join(process.env.GITHUB_WORKSPACE, 'scripts/agents/agent-wip-policy.mjs')).href);
+            const inputs = context.payload.inputs ?? {};
+            if (context.eventName === 'pull_request' || (context.eventName === 'workflow_dispatch' && context.ref !== 'refs/heads/main')) {
+              const number = context.eventName === 'pull_request' ? context.payload.pull_request.number : Number(inputs.test_lane_pr);
+              const currentPullRequest = (await github.rest.pulls.get({ ...context.repo, pull_number: number })).data;
+              const expected = context.eventName === 'pull_request' ? context.payload.pull_request.head.sha : inputs.expected_head;
+              if (currentPullRequest.state !== 'open' || currentPullRequest.head.sha !== expected) throw new Error('STALE_QUEUED_TEST_HEAD');
+              const openPullRequests = await github.paginate(github.rest.pulls.list, { ...context.repo, state: 'open', per_page: 100 });
+              const decision = policy.decideTestValidation({ eventName: context.eventName, ref: context.ref, sha: context.sha,
+                currentPullRequest, openPullRequests, inputs, repoFullName: `${context.repo.owner}/${context.repo.repo}` });
+              if (!decision.runTestValidation) throw new Error(`STALE_QUEUED_TEST_ADMISSION: ${decision.reason}`);
+            } else if (context.eventName === 'workflow_dispatch') {
+              const main = (await github.rest.repos.getCommit({ ...context.repo, ref: 'main' })).data;
+              if (main.sha !== context.sha || main.sha !== inputs.expected_head) throw new Error('STALE_QUEUED_MAIN_DISPATCH');
+            } else if (context.eventName !== 'push' || context.ref !== 'refs/heads/main') {
+              throw new Error('UNSUPPORTED_QUEUED_TEST_EVENT');
+            }
       - name: Validate optional Production DB G3 dispatch contract
         if: ${{ github.event_name == 'workflow_dispatch' }}
         shell: bash
