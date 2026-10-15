@@ -73,15 +73,16 @@ describe('POST /api/auth/reset-password (#1028)', () => {
     expect(mocks.updatePayloads).toHaveLength(0);
   });
 
-  it('same_password：400 ERR.VALIDATION，驗證碼不消耗', async () => {
+  it('same_password：400 ERR.VALIDATION，驗證碼消耗並提示重新申請', async () => {
     mocks.updateUserById.mockResolvedValue({ data: null, error: { code: 'same_password', status: 422, message: 'same' } });
     const res = await POST(request(), {});
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.code).toBe('REQ_001');
     expect(body.code).toBe(ERR.VALIDATION);
-    expect(body.message).toBe('新密碼不可與目前密碼相同，請換一組新的密碼');
-    expect(mocks.updatePayloads).toHaveLength(0);
+    expect(body.message).toBe('新密碼不可與目前密碼相同，請重新申請驗證碼後換一組新的密碼');
+    expect(body.message).toContain('重新申請驗證碼');
+    expect(mocks.updatePayloads).toHaveLength(1);
   });
 
   it('user_not_found：400 CODE_INVALID，驗證碼不消耗', async () => {

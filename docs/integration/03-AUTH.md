@@ -40,7 +40,7 @@
 
 - 碼為 6 位數字，`crypto.randomInt(100000, 999999)`。
 - 有效 10 分鐘；同一 email + purpose 60 秒內不可重寄（依原始、區分大小寫的 email 字串；大小寫變體見殘餘 (e)；查最近一筆 `created_at`）。
-- 驗證成功即寫 `consumed_at`，一碼一次。
+- 註冊流程：驗證成功即寫 `consumed_at`，一碼一次。重設密碼流程：先驗證不消耗 → 密碼更新成功後才消耗（條件更新，必須剛好一列）；更新被拒（`weak_password`／`user_not_found`／系統錯誤）不消耗、可在有效期內重試；`same_password` 會消耗以防探測現有密碼。
 - 為防 email 枚舉：email 已存在時 `send-verification-code(REGISTER)` 與
   不存在時 `forgot-password` 在正常運作時**都回成功**，只是不寄信、也不寄任何提醒信（帳號狀態近 60 秒內改變者除外，見殘餘風險 (f)；寄信失敗與 parity 視窗見下）。
 - **寄信失敗契約（#754／#758）**：該寄信卻發生 provider／設定層級失敗時（無 API key、provider 401／403、5xx、429、網路錯誤等），
