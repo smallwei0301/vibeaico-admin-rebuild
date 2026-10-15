@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
@@ -30,6 +31,7 @@ import { lineSettingsPage as t } from '@/i18n/zh-TW/pages/line-settings';
 import { MODE_PRESETS } from '@/config/modes';
 import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { OwnerNotifySection } from '@/components/line-settings/OwnerNotifySection';
+import { lineChannelIdWarning, lineSecretWarning, lineTokenWarning } from '@/lib/line-credential-warnings';
 
 /* -------------------------------------------------------------------------- */
 /* 常數                                                                        */
@@ -60,10 +62,6 @@ const TEXT_COLOR_PRESETS: { key: keyof typeof t.richMenu.textColors; value: stri
 /** LINE 設定的 schema 預設值（「恢復預設」與初始 state 用），不在頁面重寫顏色字面值 */
 const LINE_DEFAULTS = lineSettingsSchema.parse({});
 
-const CHANNEL_SECRET_LENGTH = 32;
-const ACCESS_TOKEN_MIN_LENGTH = 100;
-
-const isUrlLike = (v: string) => /^https?:\/\//i.test(v.trim());
 
 type VerifyCheckStatus = 'PASS' | 'FAIL' | 'INFO';
 type VerifyCheck = { key: string; status: VerifyCheckStatus; pass: boolean; message: string };
@@ -214,30 +212,12 @@ export default function LineSettingsPage() {
   const hasToken = tokenEditing ? !!tokenInput : !!settings?.line.channelAccessToken;
   const configured = !!channelId && hasSecret && hasToken;
 
-  const channelIdWarning = (() => {
-    if (!channelId) return '';
-    if (isUrlLike(channelId)) return t.form.channelIdIsUrl;
-    if (!/^\d+$/.test(channelId)) return t.form.channelIdNotNumber;
-    return '';
-  })();
-
-  const secretWarning = (() => {
-    if (!secretEditing || !secretInput) return '';
-    if (isUrlLike(secretInput)) return t.form.channelSecretIsUrl;
-    if (secretInput.length < CHANNEL_SECRET_LENGTH) {
-      return t.form.channelSecretTooShort(secretInput.length);
-    }
-    return '';
-  })();
-
-  const tokenWarning = (() => {
-    if (!tokenEditing || !tokenInput) return '';
-    if (isUrlLike(tokenInput)) return t.form.channelAccessTokenIsUrl;
-    if (tokenInput.length < ACCESS_TOKEN_MIN_LENGTH) {
-      return t.form.channelAccessTokenTooShort(tokenInput.length);
-    }
-    return '';
-  })();
+  const channelIdW = lineChannelIdWarning(channelId);
+  const channelIdWarning = !channelIdW ? '' : channelIdW.kind === 'url' ? t.form.channelIdIsUrl : t.form.channelIdNotNumber;
+  const secretW = lineSecretWarning(secretInput, secretEditing);
+  const secretWarning = !secretW ? '' : secretW.kind === 'url' ? t.form.channelSecretIsUrl : t.form.channelSecretTooShort(secretW.length);
+  const tokenW = lineTokenWarning(tokenInput, tokenEditing);
+  const tokenWarning = !tokenW ? '' : tokenW.kind === 'url' ? t.form.channelAccessTokenIsUrl : t.form.channelAccessTokenTooShort(tokenW.length);
 
   /* -------------------------------------------------------------- 動作 */
 
@@ -260,6 +240,11 @@ export default function LineSettingsPage() {
   const saveLine = async () => {
     if (!channelId.trim()) {
       toast.show(t.form.channelIdRequired, 'warning');
+      return;
+    }
+    const credentialWarning = channelIdWarning || secretWarning || tokenWarning;
+    if (credentialWarning) {
+      toast.show(credentialWarning, 'warning');
       return;
     }
     setSavingLine(true);
@@ -757,7 +742,7 @@ export default function LineSettingsPage() {
           </FormGroup>
 
           <div className="flex justify-end">
-            <Button loading={savingLine} loadingText={t.form.saving} onClick={() => void saveLine()}>
+            <Button loading={savingLine} disabled={!!(channelIdWarning || secretWarning || tokenWarning)} loadingText={t.form.saving} onClick={() => void saveLine()}>
               <Save size={14} />
               {t.form.save}
             </Button>

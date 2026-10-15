@@ -28,10 +28,8 @@ import {
   deriveStartingStep, shouldEditCredentialByDefault, shouldOfferWebhookFix, stepAfterVerifyRetry, stepStatus, createWizardRequestGate,
   type VerifyCheck, type WizardStepKey,
 } from '@/lib/line-setup-wizard';
+import { lineChannelIdWarning, lineSecretWarning, lineTokenWarning } from '@/lib/line-credential-warnings';
 
-const CHANNEL_SECRET_LENGTH = 32;
-const ACCESS_TOKEN_MIN_LENGTH = 100;
-const isUrlLike = (v: string) => /^https?:\/\//i.test(v.trim());
 
 const ACK_STORAGE_KEY = 'line-setup-wizard.autoReplyAck';
 
@@ -183,24 +181,12 @@ export default function LineSetupWizardPage() {
   }, [loadSettings]);
 
   /* -------------------------------------------------------------- 衍生值 */
-  const channelIdWarning = (() => {
-    if (!channelId) return '';
-    if (isUrlLike(channelId)) return t.credentials.channelIdIsUrl;
-    if (!/^\d+$/.test(channelId)) return t.credentials.channelIdNotNumber;
-    return '';
-  })();
-  const secretWarning = (() => {
-    if (!secretEditing || !secretInput) return '';
-    if (isUrlLike(secretInput)) return t.credentials.channelSecretIsUrl;
-    if (secretInput.length < CHANNEL_SECRET_LENGTH) return t.credentials.channelSecretTooShort(secretInput.length);
-    return '';
-  })();
-  const tokenWarning = (() => {
-    if (!tokenEditing || !tokenInput) return '';
-    if (isUrlLike(tokenInput)) return t.credentials.channelAccessTokenIsUrl;
-    if (tokenInput.length < ACCESS_TOKEN_MIN_LENGTH) return t.credentials.channelAccessTokenTooShort(tokenInput.length);
-    return '';
-  })();
+  const channelIdW = lineChannelIdWarning(channelId);
+  const channelIdWarning = !channelIdW ? '' : channelIdW.kind === 'url' ? t.credentials.channelIdIsUrl : t.credentials.channelIdNotNumber;
+  const secretW = lineSecretWarning(secretInput, secretEditing);
+  const secretWarning = !secretW ? '' : secretW.kind === 'url' ? t.credentials.channelSecretIsUrl : t.credentials.channelSecretTooShort(secretW.length);
+  const tokenW = lineTokenWarning(tokenInput, tokenEditing);
+  const tokenWarning = !tokenW ? '' : tokenW.kind === 'url' ? t.credentials.channelAccessTokenIsUrl : t.credentials.channelAccessTokenTooShort(tokenW.length);
 
   const checkByKey = (key: string) => checks?.find((c) => c.key === key) ?? null;
 
@@ -231,6 +217,11 @@ export default function LineSetupWizardPage() {
             : t.credentials.tokenRequired,
         'warning',
       );
+      return;
+    }
+    const credentialWarning = channelIdWarning || secretWarning || tokenWarning;
+    if (credentialWarning) {
+      toast.show(credentialWarning, 'warning');
       return;
     }
     setSavingCredentials(true);
@@ -506,7 +497,7 @@ export default function LineSetupWizardPage() {
             </FormGroup>
 
             <div className="flex justify-end">
-              <Button loading={savingCredentials} loadingText={t.credentials.saving} onClick={() => void saveCredentials()}>
+              <Button loading={savingCredentials} disabled={!!(channelIdWarning || secretWarning || tokenWarning)} loadingText={t.credentials.saving} onClick={() => void saveCredentials()}>
                 {t.credentials.save}
                 <ArrowRight size={14} />
               </Button>
