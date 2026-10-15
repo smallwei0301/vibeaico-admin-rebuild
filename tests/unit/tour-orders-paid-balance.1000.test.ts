@@ -29,6 +29,14 @@ describe('#1000 店家團體訂單：依實收金額顯示', () => {
     const o = { ...base, status: 'CANCELLED', paymentStatus: 'PARTIAL', paidAmount: 4000 } as const;
     expect(detailPaymentRows(o)).toEqual({ depositDue: 3000, paid: 4000, balanceDue: null });
   });
+  it('CANCELLED + UNPAID 有定金：列表不顯示應收定金', () => {
+    const o = { ...base, status: 'CANCELLED' } as const;
+    expect(listPaymentLine(o)).toBeNull();
+  });
+  it('CANCELLED + PARTIAL：列表仍顯示已收', () => {
+    const o = { ...base, status: 'CANCELLED', paymentStatus: 'PARTIAL', paidAmount: 4000 } as const;
+    expect(listPaymentLine(o)).toEqual({ kind: 'paid', amount: 4000 });
+  });
   it('paidAmount 非有限／<=0 視為未知', () => {
     for (const paidAmount of [0, -1, NaN, Infinity]) {
       expect(detailPaymentRows({ ...base, paymentStatus: 'PARTIAL', paidAmount }).paid).toBeNull();
