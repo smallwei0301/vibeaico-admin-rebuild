@@ -319,6 +319,10 @@
     {
       "ref": "issue/982",
       "title": "LINE 開通精靈憑證欄位已顯示格式警告仍可儲存，顯示「已儲存」後才在驗證失敗"
+    },
+    {
+      "ref": "issue/985",
+      "title": "導遊團次表操作欄在手機寬度被推出可視區，需橫向捲動才點得到編輯／截止／成團決策"
     }
   ],
   "main": {
@@ -8779,13 +8783,30 @@
         "startedAt": "2026-10-15T00:21:10Z",
         "completedAt": "2026-10-15T00:21:10Z",
         "note": "Luna metrics capture 綁定 issue/982 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +1。#982 來自 #980 盤點（20261014-luna-scout-980-inventory）第三候選，該盤點已計數，本次不重複計 inventory。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261015-luna-scout-985-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "issue": 985,
+        "count": 1,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-15T00:33:12Z",
+        "completedAt": "2026-10-15T00:33:12Z",
+        "note": "Luna metrics capture 綁定 issue/985 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +1。#985 來自 #980 盤點（20261014-luna-scout-980-inventory）第二候選，該盤點已計數，本次不重複計 inventory。actual 未經平台驗證。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 82,
+    "issuesStarted": 83,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -8812,8 +8833,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 171,
-    "lunaAccepted": 162,
+    "lunaTasks": 172,
+    "lunaAccepted": 163,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -9104,7 +9125,8 @@
     "非計分補充（#973）：#973 由 Sonnet 施工，時間 2026-10-14T07:30:53Z–07:31:44Z，原 commit 01f03426，cherry-pick 為 f05eda05；盤點由 Luna 執行（見 modelUsage.tasks）。此段僅為來源說明，不計入 Scorecard 計數。",
     "非計分補充（#974）：#974 由 Sonnet 預建，時間 2026-10-14T07:31:29Z–07:33:18Z，原 commit 85c9eef0，cherry-pick 為 be63ba8e；盤點由 Luna 執行（見 modelUsage.tasks，與 #973 同一盤點）。此段僅為來源說明，不計入 Scorecard 計數。",
     "非計分補充（#980）：#980 由 Sonnet 預建，時間 2026-10-15T00:01:57Z–00:03:05Z，原 commit a0c96276，cherry-pick 為 6e000537；盤點由 Luna 執行（見 modelUsage.tasks）。此段僅為來源說明，不計入 Scorecard 計數。",
-    "非計分補充（#982）：#982 由 Sonnet 預建，時間 2026-10-15T00:07:27Z–00:07:57Z，原 commit d3efa6e6，cherry-pick 為 c5db71a7；盤點由 Luna 執行（見 modelUsage.tasks，與 #980 同一盤點）。此段僅為來源說明，不計入 Scorecard 計數。"
+    "非計分補充（#982）：#982 由 Sonnet 預建，時間 2026-10-15T00:07:27Z–00:07:57Z，原 commit d3efa6e6，cherry-pick 為 c5db71a7；盤點由 Luna 執行（見 modelUsage.tasks，與 #980 同一盤點）。此段僅為來源說明，不計入 Scorecard 計數。",
+    "非計分補充（#985）：#985 由 Sonnet 預建，時間 2026-10-15T00:21:29Z–00:22:22Z，原 commit 03a58ee8，cherry-pick 為 4c040715；盤點由 Luna 執行（見 modelUsage.tasks，與 #980 同一盤點）。此段僅為來源說明，不計入 Scorecard 計數。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
