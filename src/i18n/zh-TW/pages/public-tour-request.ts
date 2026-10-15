@@ -71,6 +71,7 @@ export const publicTourRequestPage = {
 
   status: {
     metaTitle: '申請狀態',
+    detailsTitle: '訂單明細',
     notFoundTitle: '找不到這筆申請',
     notFoundDescription: '請確認網址與申請時填寫的聯絡方式是否正確。',
     /**

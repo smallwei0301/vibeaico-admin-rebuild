@@ -38,6 +38,7 @@ import { APP_URL, USE_MOCK } from '@/config/env';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
 import { ApiError } from '@/lib/api';
+import { batchDatePlan } from '@/lib/trip-batch-zero-reason';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import { resolveGuideInboxDepartureFocus } from '@/lib/guide-action-inbox';
 import { canManageTripCover, omitTripCover, removeTripCover, tripCoverBlockedByListing, uploadTripCover, validateTripCoverFile } from '@/lib/trip-cover';
@@ -676,17 +677,7 @@ export default function TripDetailPage() {
     if (ok) setDepartureDraft(null);
   };
 
-  const batchCount = React.useMemo(() => {
-    if (!batch.from || !batch.to) return 0;
-    const from = new Date(batch.from);
-    const to = new Date(batch.to);
-    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || to < from) return 0;
-    let n = 0;
-    for (const d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
-      if (batch.weekdays.includes(d.getDay())) n += 1;
-    }
-    return n;
-  }, [batch]);
+  const { count: batchCount, reason: zeroReason } = React.useMemo(() => batchDatePlan(batch), [batch]);
 
   /**
    * 批次開團的日期展開由**後端**負責（`POST /api/trips/:id/departures/batch`）。
@@ -820,7 +811,7 @@ export default function TripDetailPage() {
               <div className="truncate text-2xs text-secondary">{p.description}</div>
             ) : null}
             <div className="mt-0.5 inline-flex items-center gap-1 text-2xs text-muted">
-              <Clock size={11} />{formatNumber(p.durationMinutes)}{' 分鐘'}
+              <Clock size={11} />{t.plans.durationMinutes(formatNumber(p.durationMinutes))}
             </div>
           </div>
         </div>
@@ -2083,6 +2074,9 @@ export default function TripDetailPage() {
             })}
           />
           <Alert tone="info">{t.departures.batch.preview(batchCount)}</Alert>
+          {batchCount === 0 && zeroReason ? (
+            <Alert tone="warning">{t.departures.batch.noDatesHint[zeroReason]}</Alert>
+          ) : null}
           {batchConflicts.length > 0 ? (
             <Alert tone="warning">
               <div className="font-medium">{t.departures.guide.conflictTitle}</div>

@@ -355,6 +355,10 @@
     {
       "ref": "issue/1007",
       "title": "首頁 LINE 卡只看 Access Token 就顯示「已連線」，缺 Channel Secret 時與 LINE 設定頁矛盾"
+    },
+    {
+      "ref": "issue/1009",
+      "title": "批次開團按鈕停用不說原因、方案時長單位寫死、旅客狀態頁區塊標題與欄位名重複"
     }
   ],
   "main": {
@@ -9801,6 +9805,108 @@
         "startedAt": "2026-10-15T07:56:44Z",
         "completedAt": "2026-10-15T07:57:37Z",
         "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）預建 #1007，原 commit 2907201a，cherry-pick 為 c4ca25f2；同時修正 setup-status LINE_BOT 步驟的同類 token-only 判斷。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-sol-review-1007",
+        "role": "audit",
+        "requestedModel": "sol",
+        "issue": 1007,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/1008#issuecomment-6187460640",
+        "startedAt": "2026-10-15T08:03:27Z",
+        "completedAt": "2026-10-15T08:04:22Z",
+        "note": "REVIEW：fresh-context Opus subagent（requested claude-opus-5-5）審查 PR #1008 head 97cfc95d PASS（LOW：line-settings 徽章需 channelId）；於 #1009 綁定 commit 補記。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-terra-build-1007b",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 1007,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/1008#issuecomment-6187606982",
+        "startedAt": "2026-10-15T08:09:16Z",
+        "completedAt": "2026-10-15T08:10:07Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）依兩則 Codex P2 將 Channel ID 納入已連線判斷並同步 04-API-CONTRACTS，commit 962bff59。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-sol-review-1007b",
+        "role": "audit",
+        "requestedModel": "sol",
+        "issue": 1007,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/1008#issuecomment-6187629630",
+        "startedAt": "2026-10-15T08:13:46Z",
+        "completedAt": "2026-10-15T08:14:42Z",
+        "note": "REVIEW：fresh-context Opus subagent 複審 PR #1008 最終 head 962bff59 PASS；於 #1009 綁定 commit 補記。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-luna-scout-1009-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1009,
+        "evidenceRef": "TASK_ID 20261015-luna-scout-guide-trips",
+        "startedAt": "2026-10-15T08:05:25Z",
+        "completedAt": "2026-10-15T08:07:07Z",
+        "note": "Luna scout 盤點導遊行程／方案／團次與旅客狀態頁：GAP；候選批次開團停用無原因、狀態頁區塊標題重複、方案時長寫死「分鐘」（主 agent 讀 origin/main 確認，合併為 #1009 採用）。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-luna-scout-1009-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1009,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-15T08:19:33Z",
+        "completedAt": "2026-10-15T08:19:33Z",
+        "note": "Luna metrics capture 綁定 issue/1009 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2（盤點＋綁定）；補記 #1007 修正 build 與兩次 review、#1009 build 原始事件；flow.solTouches +2、solIssues +1。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-terra-build-1009",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 1009,
+        "evidenceRef": "commit 3d464320 (cherry-pick of fa35b7b2)",
+        "startedAt": "2026-10-15T08:07:38Z",
+        "completedAt": "2026-10-15T08:09:02Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）預建 #1009，原 commit fa35b7b2，cherry-pick 為 3d464320。actual 未經平台驗證。"
       }
 ,
       {
@@ -9842,7 +9948,7 @@
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 91,
+    "issuesStarted": 92,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -9869,14 +9975,14 @@
     "hardFailReasons": ["OBSERVED_2026_10_15_PR1002_PUSHED_4b239101_WHILE_PARKED"]
   },
   "flow": {
-    "lunaTasks": 188,
-    "lunaAccepted": 179,
+    "lunaTasks": 190,
+    "lunaAccepted": 181,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 250,
-    "solIssues": 34
+    "solTouches": 252,
+    "solIssues": 35
   },
   "auditability": {
     "evidenceFieldsCompletePercent": null,

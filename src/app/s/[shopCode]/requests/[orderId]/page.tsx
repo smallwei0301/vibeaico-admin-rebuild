@@ -197,7 +197,7 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
 
       <section className="card">
         <div className="card-body flex flex-col gap-1">
-          <h2 className="text-base font-medium">{t.status.fields.orderNo}</h2>
+          <h2 className="text-base font-medium">{t.status.detailsTitle}</h2>
           <dl className="grid grid-cols-[7rem_1fr] gap-y-1 text-sm">
             <dt className="text-secondary">{t.status.fields.orderNo}</dt><dd>{order.orderNo}</dd>
             <dt className="text-secondary">{t.status.fields.trip}</dt><dd>{order.tripTitle}</dd>

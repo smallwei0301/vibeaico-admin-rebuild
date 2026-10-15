@@ -144,6 +144,7 @@ export const tripsPage = {
 
   /* --------------------------------------------------------------- 方案 */
   plans: {
+    durationMinutes: (n: string) => `${n} 分鐘`,
     sectionTitle: '方案',
     sectionHint: '同一個行程可以有多個方案。旅客下單時先選方案，再選出團日期。',
     create: '新增方案',
@@ -412,6 +413,12 @@ export const tripsPage = {
       weekdaysLabel: '星期',
       weekdaysHelp: '只在勾選的星期開團。',
       preview: (n: number) => `將建立 ${n} 個團次`,
+      noDatesHint: {
+        missingDates: '請選擇開始與結束日期',
+        endBeforeStart: '結束日不可早於開始日',
+        noWeekdays: '請至少勾選一個開團星期',
+        noMatchingDays: '這段期間沒有符合勾選星期的日期',
+      },
       confirm: '建立團次',
     },
     seatsText: (booked: number, capacity: number) => `${booked} / ${capacity}`,
