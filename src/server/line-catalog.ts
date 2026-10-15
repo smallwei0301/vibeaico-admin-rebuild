@@ -5,6 +5,8 @@
  * 查詢失敗一律回 { ok: false }，呼叫端不得把失敗當成「沒有團次」。
  */
 import { departureWindow, filterListableDepartures } from './line-departures';
+import { normalizeMinParty } from '@/lib/public-departure-candidates';
+import { hasStartedToday, resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
 
 /** 與 line-events 的 SERVICE_LIST_LIMIT 相同；團次清單上限 */
 const DEPARTURE_LIMIT = 10;
@@ -46,6 +48,8 @@ export type ListableDeparturesResult =
       lastListedDate?: string;
       /** 查詢用的日期窗（店家時區，YYYY-MM-DD）；沒有已發布行程時不查詢，故為 undefined */
       window?: { from: string; to: string };
+      /** 查詢當下的店家時區「現在」（日期＋HH:mm）；AI context 用它排除今天已開始的團次 */
+      now?: { today: string; hm: string };
     }
   | { ok: false };
 
@@ -93,7 +97,9 @@ export async function loadListableDepartures(
     console.error(`[line] ${logTag} 查詢 tenant_settings 失敗`, settingsError);
     return { ok: false };
   }
-  const { from, to } = departureWindow(Date.now(), timeZoneSetting);
+  const nowMs = Date.now();
+  const { from, to } = departureWindow(nowMs, timeZoneSetting);
+  const now = tenantNowParts(resolvePublicTimeZone(timeZoneSetting), nowMs);
 
   // 啟用方案的過濾在資料庫端以關聯完成（trip_plans!inner + trip_plans.active），不再把方案 id 清單塞進 URL，
   // 也不受方案查詢 max_rows 截斷影響；停用方案的團次在 .limit 之前就被排除，不會擠掉可報名的團次（#1022）。
@@ -102,7 +108,7 @@ export async function loadListableDepartures(
   const [withPlanRes, noPlanRes] = await Promise.all([
     admin
       .from('trip_departures')
-      .select(`${DEPARTURE_COLUMNS}, trip_plans!inner(id, name, sales_mode, active)`)
+      .select(`${DEPARTURE_COLUMNS}, trip_plans!inner(id, name, sales_mode, active, min_party)`)
       .eq('tenant_id', tenantId)
       .eq('status', 'OPEN')
       .in('trip_id', tripIds)
@@ -132,7 +138,7 @@ export async function loadListableDepartures(
   const withPlan = ((withPlanRes.data ?? []) as any[]).map((row) => {
     const { trip_plans: embedded, ...d } = row;
     const plan = Array.isArray(embedded) ? embedded[0] : embedded;
-    if (plan?.id) planRows.push({ id: plan.id, name: plan.name, sales_mode: plan.sales_mode, active: plan.active === true });
+    if (plan?.id) planRows.push({ id: plan.id, name: plan.name, sales_mode: plan.sales_mode, active: plan.active === true, min_party: plan.min_party });
     return d;
   });
   const noPlan = (noPlanRes.data ?? []) as any[];
@@ -176,6 +182,7 @@ export async function loadListableDepartures(
     truncated,
     ...(lastListedDate ? { lastListedDate } : {}),
     window: { from, to },
+    now,
   };
 }
 
@@ -221,9 +228,24 @@ export function buildCatalogContext(result: ListableDeparturesResult, labels: Ca
   if (!result.ok) return { trips: [], departures: [], catalogUnavailable: true };
   const titleById = new Map(result.trips.map((t) => [t.id, t.title] as const));
   const planNameById = new Map(result.plans.map((p) => [p.id, p.name] as const));
+  const planById = new Map(result.plans.map((p) => [p.id, p] as const));
+  // 「可報名團次」須與公開頁同規則（只套用在 AI context；replyDepartures 直接用 result.departures，行為不變）。
+  // 截斷判定（truncated／lastListedDate）已在 loadListableDepartures 以原始列算好，這裡的過濾不影響它。
+  const aiDepartures = result.departures.flatMap((d): CatalogDeparture[] => {
+    const plan = d.plan_id ? planById.get(d.plan_id) : undefined;
+    // 對應 public-shop.ts hasPublicDepartureList／selectPlansWithDepartures：INSTANT 方案的 OPEN 團次是手動／私人用途，公開頁不列。
+    if (plan?.sales_mode === 'INSTANT') return [];
+    // 對應 public-shop.ts hasStartedToday 排除（今天已到開始時間；start_time 為 null 維持列出）。
+    if (result.now && hasStartedToday(d, result.now)) return [];
+    // 對應 public-departure-candidates.ts candidateIsBookable／public-booking-price.ts isDepartureBookableOnPage：
+    // 剩餘名額 < 方案最低人數，預約頁不可預選 → 不得描述為可報名，改以「額滿」標示（與公開頁客滿一致，不提供名額數字）。
+    const left = Number(d.capacity) - Number(d.seats_booked);
+    if (left > 0 && left < normalizeMinParty(plan?.min_party)) return [{ ...d, seats_booked: d.capacity }];
+    return [d];
+  });
   return {
     trips: result.trips.map((t) => formatTripLine(t, result.tripPlans)),
-    departures: result.departures.map((d) => formatDepartureLine(d, titleById, planNameById, labels)),
+    departures: aiDepartures.map((d) => formatDepartureLine(d, titleById, planNameById, labels)),
     catalogUnavailable: false,
     ...(result.window ? { departureWindow: { today: result.window.from, ...result.window } } : {}),
     ...(result.truncated && result.lastListedDate ? { departuresTruncatedAfter: result.lastListedDate } : {}),

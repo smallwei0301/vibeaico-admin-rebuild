@@ -23,7 +23,7 @@ import { buildFlexMenuOutcome } from './flex-menu';
 import { loadListableDepartures, formatDepartureLine, buildTourCatalogContext, type ShopCatalogContext, AI_DEPARTURE_LIMIT } from './line-catalog';
 import { buildTripCarousel, minNonSeasonalPriceByTrip, TRIP_CAROUSEL_MAX, type TripCardSource } from './trip-flex';
 import { hasSeasonalPricing, readPlanSeasons } from './public-plan-seasons';
-import { isFeatureActive } from './features';
+import { isFeatureActive, featureActiveStatus } from './features';
 import { grantCampaignRewards } from './campaign-rewards';
 import { aiReply, type ShopContext } from './ai-reply';
 import {
@@ -1276,7 +1276,7 @@ export function isLikelyChitchat(raw: string): boolean {
  * `loadListableDepartures`（#1024），確保 AI 講的與 LINE 團次清單一致。查詢失敗時
  * `catalogUnavailable` 為 true，AI 不得把失敗當成「沒開團」。
  */
-async function buildShopContext(
+export async function buildShopContext(
   admin: SupabaseClient,
   tenant: WebhookTenant,
   basicRaw: unknown,
@@ -1314,10 +1314,12 @@ async function buildShopContext(
     departures: [],
     catalogUnavailable: false,
   };
-  // 已知限制（main 既有、另案追蹤）：features.ts 的 isFeatureActive 查詢失敗時回 false 而非回報錯誤，
-  // 此時 GUIDE 店家會被當成未啟用 TOUR_MODULE（trips/departures 空、catalogUnavailable=false）。
-  // 本 PR 刻意不動 features.ts（還有其他呼叫者）。
-  if (businessTypeOf(tenant) === 'GUIDE' && (await isFeatureActive(tenant.id, 'TOUR_MODULE'))) {
+  // TOUR_MODULE 狀態用 featureActiveStatus 區分「確定未啟用」與「查詢失敗」：
+  // error → catalogUnavailable（交真人，不套「沒開團」規則）；inactive → 維持空目錄；active → 查 catalog。
+  const tourStatus = businessTypeOf(tenant) === 'GUIDE' ? await featureActiveStatus(tenant.id, 'TOUR_MODULE') : 'inactive';
+  if (tourStatus === 'error') {
+    catalog = { trips: [], departures: [], catalogUnavailable: true };
+  } else if (tourStatus === 'active') {
     const tz = typeof basic.timezone === 'string' && basic.timezone ? basic.timezone : undefined;
     catalog = await buildTourCatalogContext(
       () => loadListableDepartures(admin, tenant.id, 'buildShopContext', AI_DEPARTURE_LIMIT, {
