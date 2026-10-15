@@ -42,14 +42,13 @@ jobs:
     runs-on: ubuntu-latest
     # ⚠️ 共用 TEST 資料庫的排隊道（勿改）：這支 spec 會寫入 bookings、
     # tenant_settings、products。ci.yml 的 integration job 就是用這個 group
-    # 與 cancel-in-progress: false 串行化共用 TEST。
+    # 與 cancel-in-progress: false 串行化共用 TEST（ci.yml:193-195）。
     # 加入**同一個** group 才能保證不會和 CI 的 integration/E2E 同時寫同一個
     # 資料庫 —— repo 已有 PB-002、PB-018 兩次併發寫入事故。
-    # cancel-in-progress: false 保留正在執行者；queue: max 保留最多 100 個待執行者。
+    # cancel-in-progress: false：排隊等它跑完，不是把別人砍掉。
     concurrency:
       group: shared-test-supabase-integration
       cancel-in-progress: false
-      queue: max
     steps:
       - uses: actions/checkout@v4
 

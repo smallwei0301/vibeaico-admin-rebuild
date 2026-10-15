@@ -1609,7 +1609,8 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 - 實際證據：G3 [38659085682](https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/38659085682)，exact `ba1fb398effd0eeabc041abab8e61d6c80450c0e`；classifier/check PASS，integration job116177039677 在 pending 時 cancelled，steps=[]，未執行 TEST，不是 TEST_VERIFIED。其後 main 前進，沒有重啟舊 head。
 - 根因：shared TEST group 的 `cancel-in-progress: false` 只保護 running job；原生預設 `queue: single` 仍以後到 job 取代 pending job。#795 曾出現同型取消，不能把排隊設定存在當成排隊已完成。
-- 修正：兩個使用 `shared-test-supabase-integration` 的既有 workflow（ci 與 issue-27-preview-acceptance）一致使用 GitHub 原生 `queue: max`；保留原 group、cancel-in-progress=false、TEST admission/exact-head/release gates，不增加 writer 或自行取消正在執行者。
+- 修正：既有 ci integration job 使用 GitHub 原生 `queue: max`；保留原 group、cancel-in-progress=false、TEST admission/exact-head/release gates，不增加 writer 或自行取消正在執行者。
+- 範圍限制：issue-27-preview-acceptance 也用同 group，但不在現行治理白名單；preflight 實際拒絕後移出本修補，未改白名單。它仍使用預設 single，若被手動 dispatch 仍可能取代 pending；目前沒有該 workflow 活躍 run。不得宣稱所有入口已修復。
 - 依據：[GitHub concurrency 官方文件](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)，2026-10-15 實際 HTTP200 回讀。最多100個 pending、最多1個 running；queue滿會拒絕新增者，FIFO依開始等待 group 的時間，不保證 dispatch 順序。不得搭配 cancel-in-progress=true，也不使舊 head evidence 成為 current-main evidence。
 - 驗證：既有 CI dispatch/G3 wiring regression、typecheck、exact-head Source CI 與 final diff/counterexample review；merge/main回讀及下一次 G3 實際進入 TEST 分別記錄，不提前宣稱 queue recovery 或 Production acceptance。
 
