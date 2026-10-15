@@ -1605,6 +1605,14 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 安全 finding：PR #981 首版原樣上傳 trace 被 [P1 4277597504](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/981#discussion_r4277597504) 指出可能發布 session cookie/JWT；保留初版 PASS 與 finding 歷史，回 Draft 後改白名單匯出，不以來源都是 TEST 略過 credential boundary。
 - 驗證狀態：修正走含敏感 sentinel 之真 ZIP 對抗 regression、scoped CI-wiring/typecheck/Source CI/差異與反例審查/merge/main 回讀；下一次 G3 失敗 artifact 實跑回讀前，不宣稱已取得 tour-admin 根因或正式驗收完成。
 
+#### 2026-10-15 — #755：cancel-in-progress=false 不保證保留 pending G3
+
+- 實際證據：G3 [38659085682](https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/38659085682)，exact `ba1fb398effd0eeabc041abab8e61d6c80450c0e`；classifier/check PASS，integration job116177039677 在 pending 時 cancelled，steps=[]，未執行 TEST，不是 TEST_VERIFIED。其後 main 前進，沒有重啟舊 head。
+- 根因：shared TEST group 的 `cancel-in-progress: false` 只保護 running job；原生預設 `queue: single` 仍以後到 job 取代 pending job。#795 曾出現同型取消，不能把排隊設定存在當成排隊已完成。
+- 修正：兩個使用 `shared-test-supabase-integration` 的既有 workflow（ci 與 issue-27-preview-acceptance）一致使用 GitHub 原生 `queue: max`；保留原 group、cancel-in-progress=false、TEST admission/exact-head/release gates，不增加 writer 或自行取消正在執行者。
+- 依據：[GitHub concurrency 官方文件](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)，2026-10-15 實際 HTTP200 回讀。最多100個 pending、最多1個 running；queue滿會拒絕新增者，FIFO依開始等待 group 的時間，不保證 dispatch 順序。不得搭配 cancel-in-progress=true，也不使舊 head evidence 成為 current-main evidence。
+- 驗證：既有 CI dispatch/G3 wiring regression、typecheck、exact-head Source CI 與 final diff/counterexample review；merge/main回讀及下一次 G3 實際進入 TEST 分別記錄，不提前宣稱 queue recovery 或 Production acceptance。
+
 ### PB-044 — 破壞性動作前的查證，有效期只有幾分鐘
 
 #### 2026-10-09 — #844 CI recovery 沿用舊空清單，重複喚醒已受理的工作

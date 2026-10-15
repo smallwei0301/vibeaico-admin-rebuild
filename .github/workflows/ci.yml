@@ -214,6 +214,7 @@ jobs:
     concurrency:
       group: ${{ needs.classify-changes.outputs.run_test_validation == 'true' && 'shared-test-supabase-integration' || needs.classify-changes.outputs.docs_only == 'true' && format('docs-integration-{0}', github.run_id) || format('source-only-integration-{0}', github.run_id) }}
       cancel-in-progress: false
+      queue: max
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
