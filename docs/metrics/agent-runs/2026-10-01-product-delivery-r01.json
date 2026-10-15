@@ -351,6 +351,10 @@
     {
       "ref": "issue/1005",
       "title": "註冊頁密碼太短時提示「請填寫所有必填欄位」，店家找不到哪裡沒填"
+    },
+    {
+      "ref": "issue/1007",
+      "title": "首頁 LINE 卡只看 Access Token 就顯示「已連線」，缺 Channel Secret 時與 LINE 設定頁矛盾"
     }
   ],
   "main": {
@@ -9729,6 +9733,74 @@
         "startedAt": "2026-10-15T07:36:39Z",
         "completedAt": "2026-10-15T07:38:54Z",
         "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）預建 #1005，原 commit e1d29ba1，cherry-pick 為 14be83c1；時間戳為 subagent transcript 實際起訖。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-sol-review-1005",
+        "role": "audit",
+        "requestedModel": "sol",
+        "issue": 1005,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/1006#issuecomment-6187312432",
+        "startedAt": "2026-10-15T07:54:26Z",
+        "completedAt": "2026-10-15T07:55:12Z",
+        "note": "REVIEW：fresh-context Opus subagent（requested claude-opus-5-5）審查 PR #1006 head b20140dc PASS（僅 LOW）；於 #1007 綁定 commit 補記。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-luna-scout-1007-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1007,
+        "evidenceRef": "TASK_ID 20261015-luna-scout-next-after-1005",
+        "startedAt": "2026-10-15T07:54:36Z",
+        "completedAt": "2026-10-15T07:56:07Z",
+        "note": "Luna scout 盤點 LINE 精靈／首頁待辦／預約／Quick Edit／旅客狀態頁／手機版：GAP；最接近候選為首頁 LINE 卡只看 token 顯示已連線（#1007，主 agent 讀 origin/main 確認後判定可不改契約小修而採用），預約失敗 toast 前綴不一致（證據弱，未採用）。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-luna-scout-1007-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1007,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-15T07:59:30Z",
+        "completedAt": "2026-10-15T07:59:30Z",
+        "note": "Luna metrics capture 綁定 issue/1007 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2（盤點＋綁定）；補記 #1005 review、#1007 build 原始事件；flow.solTouches +1、solIssues +1。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-terra-build-1007",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 1007,
+        "evidenceRef": "commit c4ca25f2 (cherry-pick of 2907201a)",
+        "startedAt": "2026-10-15T07:56:44Z",
+        "completedAt": "2026-10-15T07:57:37Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）預建 #1007，原 commit 2907201a，cherry-pick 為 c4ca25f2；同時修正 setup-status LINE_BOT 步驟的同類 token-only 判斷。actual 未經平台驗證。"
       }
 ,
       {
@@ -9770,7 +9842,7 @@
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 90,
+    "issuesStarted": 91,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -9797,14 +9869,14 @@
     "hardFailReasons": ["OBSERVED_2026_10_15_PR1002_PUSHED_4b239101_WHILE_PARKED"]
   },
   "flow": {
-    "lunaTasks": 186,
-    "lunaAccepted": 177,
+    "lunaTasks": 188,
+    "lunaAccepted": 179,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 249,
-    "solIssues": 33
+    "solTouches": 250,
+    "solIssues": 34
   },
   "auditability": {
     "evidenceFieldsCompletePercent": null,

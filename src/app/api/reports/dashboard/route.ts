@@ -4,6 +4,7 @@ import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { taipeiTodayRange, taipeiMonthRange, taipeiCurrentMonthKey } from '@/server/tz';
 import { pushQuotaLimit } from '@/server/line';
+import { linePlatformStatusFromRow } from '@/server/line-connection';
 import { MODE_PRESETS } from '@/config/modes';
 import {
   countPendingTourRequests, countTodayTourDepartureOrders, selectMonthTourReceipts, sumNetReceived,
@@ -46,7 +47,7 @@ export const GET = handle(async () => {
       .eq('tenant_id', t.tenantId).eq('active', true),
     t.supabase.from('push_quota_usage').select('used')
       .eq('tenant_id', t.tenantId).eq('month', taipeiCurrentMonthKey()).maybeSingle(),
-    t.supabase.from('tenant_settings').select('line_channel_access_token_enc')
+    t.supabase.from('tenant_settings').select('line, line_channel_access_token_enc, line_channel_secret_enc')
       .eq('tenant_id', t.tenantId).maybeSingle(),
     pushQuotaLimit(t.tenantId),
   ]);
@@ -70,11 +71,11 @@ export const GET = handle(async () => {
     pushQuotaUsed: quotaRow?.used ?? 0,
     // 與發送端同一來源：EXTRA_PUSH 生效 700，否則 200（line.ts pushQuotaLimit）。
     pushQuotaTotal,
-    // Phase 3 先只用「token 是否已設定」判斷：*_enc 空字串 → NOT_CONFIGURED，
-    // 非空 → 直接回 CONNECTED。真正打 LINE `/v2/bot/info` 驗證＋結果快取
+    // Phase 3 先只看憑證是否已設定：Access Token 與 Channel Secret 都非空才 CONNECTED
+    // （缺 Secret 則 webhook 驗簽必失敗，#1007），否則 NOT_CONFIGURED。真正打 LINE `/v2/bot/info` 驗證＋結果快取
     // （才會出現 ERROR 狀態）屬 Phase 6，這裡不打外部 API，避免每次載入
     // dashboard 都對 LINE 平台發一次請求。
-    linePlatformStatus: settingsRow?.line_channel_access_token_enc ? 'CONNECTED' : 'NOT_CONFIGURED',
+    linePlatformStatus: linePlatformStatusFromRow(settingsRow),
   };
   return ok(stats);
 });
