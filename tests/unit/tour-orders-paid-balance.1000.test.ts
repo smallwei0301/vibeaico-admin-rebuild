@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { listPaymentLine, detailPaymentRows } from '@/lib/tour-order-payment-display';
+import { MOCK_TOUR_ORDERS } from '@/mock/tours';
 import { tourOrdersPage as t } from '@/i18n/zh-TW/pages/tour-orders';
 
 const base = { status: 'CONFIRMED', paymentStatus: 'UNPAID', totalAmount: 10000, depositAmount: 3000 } as const;
@@ -27,7 +28,7 @@ describe('#1000 店家團體訂單：依實收金額顯示', () => {
   });
   it('CANCELLED + PARTIAL：保留已收金額、不顯示待收尾款', () => {
     const o = { ...base, status: 'CANCELLED', paymentStatus: 'PARTIAL', paidAmount: 4000 } as const;
-    expect(detailPaymentRows(o)).toEqual({ depositDue: 3000, paid: 4000, balanceDue: null });
+    expect(detailPaymentRows(o)).toEqual({ depositDue: null, paid: 4000, balanceDue: null });
   });
   it('CANCELLED + UNPAID 有定金：列表不顯示應收定金', () => {
     const o = { ...base, status: 'CANCELLED' } as const;
@@ -40,6 +41,18 @@ describe('#1000 店家團體訂單：依實收金額顯示', () => {
   it('paidAmount 非有限／<=0 視為未知', () => {
     for (const paidAmount of [0, -1, NaN, Infinity]) {
       expect(detailPaymentRows({ ...base, paymentStatus: 'PARTIAL', paidAmount }).paid).toBeNull();
+    }
+  });
+  it('CANCELLED + UNPAID 有定金：詳情不顯示應收定金', () => {
+    expect(detailPaymentRows({ ...base, status: 'CANCELLED' })).toEqual({ depositDue: null, paid: null, balanceDue: null });
+  });
+  it('mock 種子：PARTIAL／PAID 訂單皆有合法 paidAmount', () => {
+    for (const o of MOCK_TOUR_ORDERS) {
+      if (o.paymentStatus === 'PAID') expect(o.paidAmount, o.id).toBe(o.totalAmount);
+      if (o.paymentStatus === 'PARTIAL') {
+        expect(o.paidAmount, o.id).toBeGreaterThan(0);
+        expect(o.paidAmount, o.id).toBeLessThan(o.totalAmount);
+      }
     }
   });
   it('文案與頁面接線', () => {

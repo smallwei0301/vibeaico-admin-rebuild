@@ -3,7 +3,7 @@
  *
  * `depositAmount` = 建單時設定的「應收定金」（不是已收）；實收金額是 `paidAmount`（paid_amount）。
  * paidAmount 缺失／非有限／<=0（例如 mock 資料無此欄位）視為未知，不顯示已收。
- * 待收尾款只在 PARTIAL 且 total − paid > 0 時顯示；已取消的部分付款訂單仍顯示已收金額（退款脈絡），但不顯示待收尾款；已取消且未付款的訂單列表不顯示應收定金。
+ * 待收尾款只在 PARTIAL 且 total − paid > 0 時顯示；已取消的部分付款訂單仍顯示已收金額（退款脈絡），但不顯示待收尾款；已取消訂單的列表與詳情都不顯示應收定金。
  */
 import type { TourOrder } from '@/lib/types';
 import { partialPaymentBreakdown } from '@/lib/public-partial-payment';
@@ -32,7 +32,7 @@ export type DetailPaymentRows = { depositDue: number | null; paid: number | null
 
 export function detailPaymentRows(order: PaymentFields): DetailPaymentRows {
   return {
-    depositDue: order.depositAmount > 0 ? order.depositAmount : null,
+    depositDue: order.status !== 'CANCELLED' && order.depositAmount > 0 ? order.depositAmount : null,
     paid: validPaidAmount(order),
     balanceDue: partialPaymentBreakdown(order)?.balanceDue ?? null,
   };
