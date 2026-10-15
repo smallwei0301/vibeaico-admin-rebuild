@@ -191,7 +191,7 @@ describe('LINE「近期團次」深連結（連結資格＝預約頁載入器 + 
    *  B（.is('plan_id', null)）：只回無方案團次。
    * planError 表示方案內嵌查詢（A）失敗；depError 表示無方案查詢（B）失敗。
    */
-  const lineAdmin = (deps: any[], plans: any[], opts: { planError?: unknown; depError?: unknown; settingsError?: unknown; settingsThrow?: boolean; log?: Array<{ eq: Array<[string, unknown]>; noPlan: boolean; limit?: number }> } = {}) => {
+  const lineAdmin = (deps: any[], plans: any[], opts: { planError?: unknown; depError?: unknown; settingsError?: unknown; settingsThrow?: boolean; log?: Array<{ eq: Array<[string, unknown]>; neq: Array<[string, unknown]>; noPlan: boolean; limit?: number }> } = {}) => {
     const settings = () => {
       const c: any = { select: () => c, eq: () => c };
       c.maybeSingle = () => {
@@ -201,7 +201,7 @@ describe('LINE「近期團次」深連結（連結資格＝預約頁載入器 + 
       return c;
     };
     const departures = () => {
-      const q = { eq: [] as Array<[string, unknown]>, noPlan: false, limit: undefined as number | undefined };
+      const q = { eq: [] as Array<[string, unknown]>, neq: [] as Array<[string, unknown]>, noPlan: false, limit: undefined as number | undefined };
       opts.log?.push(q);
       const c: any = {};
       c.then = (res: (v: unknown) => unknown) => {
@@ -214,11 +214,13 @@ describe('LINE「近期團次」深連結（連結資格＝預約頁載入器 + 
           .filter((d) => d.plan_id != null)
           .map((d) => ({ ...d, trip_plans: plans.find((p) => p.id === d.plan_id) ?? null }))
           .filter((d) => d.trip_plans && (!activeOnly || d.trip_plans.active === true))
+          .filter((d) => q.neq.every(([k, v]) => k !== 'trip_plans.sales_mode' || d.trip_plans.sales_mode !== v))
           .slice(0, q.limit ?? 1000);
         return Promise.resolve({ data, error: opts.planError ?? null }).then(res);
       };
-      for (const m of ['select', 'in', 'gte', 'lte', 'order', 'range']) c[m] = () => c;
+      for (const m of ['select', 'in', 'gte', 'lte', 'neq', 'order', 'range']) c[m] = () => c;
       c.eq = (k: string, v: unknown) => { q.eq.push([k, v]); return c; };
+      c.neq = (k: string, v: unknown) => { q.neq.push([k, v]); return c; };
       c.is = (k: string, v: unknown) => { if (k === 'plan_id' && v === null) q.noPlan = true; return c; };
       c.limit = (n: number) => { q.limit = n; return c; };
       return c;
@@ -260,13 +262,13 @@ describe('LINE「近期團次」深連結（連結資格＝預約頁載入器 + 
     expect(fx.lineReplies).toHaveLength(0);
   });
 
-  it('無方案團次查詢失敗 → 回 false 且不送出回覆', async () => {
+  it('replyDepartures 不查 plan_id 為 null 的團次（公開頁不列，避免佔掉 limit）', async () => {
+    fx.bookingPlansById = { pf: bp(['d1']) };
+    const log: Array<{ eq: Array<[string, unknown]>; neq: Array<[string, unknown]>; noPlan: boolean; limit?: number }> = [];
     fx.lineReplies.length = 0;
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const ok = await replyDepartures(baseCtx(lineAdmin([dep('d1', 'pf')], fixedPlans, { depError: { message: 'boom' } })));
-    spy.mockRestore();
-    expect(ok).toBe(false);
-    expect(fx.lineReplies).toHaveLength(0);
+    const ok = await replyDepartures(baseCtx(lineAdmin([dep('d1', 'pf')], fixedPlans, { log, depError: { message: 'boom' } })));
+    expect(ok).toBe(true);
+    expect(log.some((q) => q.noPlan)).toBe(false);
   });
 
   it('tenant_settings 回 error → 回 false 且不送出回覆（不假設 Asia/Taipei）', async () => {
@@ -290,7 +292,7 @@ describe('LINE「近期團次」深連結（連結資格＝預約頁載入器 + 
     fx.bookingPlansById = { pf: bp(['dep-live']) };
     const plans = [...fixedPlans, { id: 'pi', name: '停用', sales_mode: 'FIXED_DEPARTURE', active: false }];
     const stale = Array.from({ length: 10 }, (_, i) => dep(`dep-off-${i}`, 'pi'));
-    const log: Array<{ eq: Array<[string, unknown]>; noPlan: boolean; limit?: number }> = [];
+    const log: Array<{ eq: Array<[string, unknown]>; neq: Array<[string, unknown]>; noPlan: boolean; limit?: number }> = [];
     fx.lineReplies.length = 0;
     const ok = await replyDepartures(baseCtx(lineAdmin([...stale, dep('dep-live', 'pf')], plans, { log })));
     expect(ok).toBe(true);
@@ -298,32 +300,33 @@ describe('LINE「近期團次」深連結（連結資格＝預約頁載入器 + 
     const queryA = log.find((q) => !q.noPlan)!;
     expect(queryA.eq).toContainEqual(['trip_plans.active', true]);
     expect(queryA.limit).toBe(10);
-    expect(log.find((q) => q.noPlan)?.limit).toBe(10);
+    expect(queryA.neq).toContainEqual(['trip_plans.sales_mode', 'INSTANT']);
+    expect(log.some((q) => q.noPlan)).toBe(false);
     expect(text).toContain('固定');
     expect(text).toContain('departure=dep-live');
     expect(text).not.toContain('dep-off');
   });
 
-  it('有方案與無方案團次合併後依日期（再時間）排序並截到 10 筆', async () => {
+  it('有方案團次依日期（再時間）排序並截到 10 筆；無方案團次不查、不佔名額', async () => {
     fx.bookingPlansById = {};
     const mk = (id: string, planId: string | null, day: string, time: string | null = null) => ({
       id, trip_id: 'tr', plan_id: planId, departs_on: day, start_time: time, capacity: 5, seats_booked: 1,
     });
     const deps = [
-      ...Array.from({ length: 8 }, (_, i) => mk(`p${i}`, 'pf', `2098-01-${String(10 + i).padStart(2, '0')}`)),
+      mk('late-time', 'pf', '2098-01-10', '15:00:00'),
+      ...Array.from({ length: 12 }, (_, i) => mk(`p${i}`, 'pf', `2098-01-${String(10 + i).padStart(2, '0')}`)),
       ...Array.from({ length: 8 }, (_, i) => mk(`n${i}`, null, `2098-01-${String(1 + i).padStart(2, '0')}`)),
-      mk('late-time', 'pf', '2098-01-01', '15:00:00'),
     ];
     fx.lineReplies.length = 0;
     const ok = await replyDepartures(baseCtx(lineAdmin(deps, fixedPlans)));
     expect(ok).toBe(true);
-    const days = fx.lineReplies[0][0].text.split('\n').filter((l) => l.startsWith('・')).map((l) => l.slice(1, 11));
+    const text = fx.lineReplies[0][0].text;
+    const days = text.split('\n').filter((l) => l.startsWith('・')).map((l) => l.slice(1, 11));
     expect(days).toHaveLength(10);
     expect(days).toEqual([...days].sort());
-    expect(days[0]).toBe('2098-01-01');
-    expect(days.at(-1)).toBe('2098-01-10');
+    expect(days[0]).toBe('2098-01-10');
     // 同日：無時間（空字串）排在有時間者之前
-    expect(fx.lineReplies[0][0].text.indexOf('2098-01-01 15:00')).toBeGreaterThan(fx.lineReplies[0][0].text.indexOf('2098-01-01 行程'));
+    expect(text.indexOf('2098-01-10 15:00')).toBeGreaterThan(text.indexOf('2098-01-10 行程'));
   });
 
   it('方案內嵌為陣列時同樣可解析名稱', async () => {
