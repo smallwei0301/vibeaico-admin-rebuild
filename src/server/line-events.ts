@@ -20,7 +20,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { lineReply, lineProfile } from './line';
 import { buildFlexMenuOutcome } from './flex-menu';
-import { loadListableDepartures, formatDepartureLine, buildTourCatalogContext, AI_DEPARTURE_LIMIT } from './line-catalog';
+import { loadListableDepartures, formatDepartureLine, buildTourCatalogContext, type ShopCatalogContext, AI_DEPARTURE_LIMIT } from './line-catalog';
 import { buildTripCarousel, minNonSeasonalPriceByTrip, TRIP_CAROUSEL_MAX, type TripCardSource } from './trip-flex';
 import { hasSeasonalPricing, readPlanSeasons } from './public-plan-seasons';
 import { isFeatureActive } from './features';
@@ -1309,7 +1309,7 @@ async function buildShopContext(
     businessHours += `，公休：${biz.closedDays.map((d) => `週${dayNames[d]}`).join('、')}`;
 
   // 非 GUIDE／未啟用 TOUR_MODULE：沒有行程，維持空陣列。團次與名額每次即時查、不快取。
-  let catalog: { trips: string[]; departures: string[]; catalogUnavailable: boolean; departuresTruncatedAfter?: string } = {
+  let catalog: ShopCatalogContext = {
     trips: [],
     departures: [],
     catalogUnavailable: false,
@@ -1336,6 +1336,7 @@ async function buildShopContext(
     trips: catalog.trips,
     departures: catalog.departures,
     ...(catalog.catalogUnavailable ? { catalogUnavailable: true } : {}),
+    ...(catalog.departureWindow ? { departureWindow: catalog.departureWindow } : {}),
     ...(catalog.departuresTruncatedAfter ? { departuresTruncatedAfter: catalog.departuresTruncatedAfter } : {}),
     ai: { personaNotes: ai.personaNotes, faq: ai.faq },
     // 公開商店頁 Phase 8 落地；URL 規則以 tenant-settings.ts 的 helper 為單一事實來源

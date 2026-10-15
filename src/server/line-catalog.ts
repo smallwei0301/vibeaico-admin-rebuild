@@ -44,6 +44,8 @@ export type ListableDeparturesResult =
       truncated: boolean;
       /** 截斷時清單涵蓋到的最後日期；未截斷為 undefined */
       lastListedDate?: string;
+      /** 查詢用的日期窗（店家時區，YYYY-MM-DD）；沒有已發布行程時不查詢，故為 undefined */
+      window?: { from: string; to: string };
     }
   | { ok: false };
 
@@ -173,6 +175,7 @@ export async function loadListableDepartures(
     departures: filterListableDepartures(merged as CatalogDeparture[], planRows),
     truncated,
     ...(lastListedDate ? { lastListedDate } : {}),
+    window: { from, to },
   };
 }
 
@@ -209,6 +212,8 @@ export type ShopCatalogContext = {
   catalogUnavailable: boolean;
   /** 團次清單被截斷時，清單涵蓋到的最後日期（之後的日期不可說成沒開團） */
   departuresTruncatedAfter?: string;
+  /** 有行程目錄時的日期窗（today = from，店家時區） */
+  departureWindow?: { today: string; from: string; to: string };
 };
 
 /** 查詢結果 → shop context 欄位；查詢失敗時 catalogUnavailable 為 true、清單為空。 */
@@ -220,6 +225,7 @@ export function buildCatalogContext(result: ListableDeparturesResult, labels: Ca
     trips: result.trips.map((t) => formatTripLine(t, result.tripPlans)),
     departures: result.departures.map((d) => formatDepartureLine(d, titleById, planNameById, labels)),
     catalogUnavailable: false,
+    ...(result.window ? { departureWindow: { today: result.window.from, ...result.window } } : {}),
     ...(result.truncated && result.lastListedDate ? { departuresTruncatedAfter: result.lastListedDate } : {}),
   };
 }

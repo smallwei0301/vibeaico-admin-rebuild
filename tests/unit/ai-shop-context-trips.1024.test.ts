@@ -114,6 +114,90 @@ describe('buildAiSystemPrompt', () => {
   });
 });
 
+// main（origin/main:src/server/ai-reply.ts）原 system prompt 寫法的逐字複本；
+// 沒有行程目錄的店家 prompt 必須與它完全相同。
+const mainPrompt = (shop: ShopContext): string => {
+  const faq = (shop.ai.faq ?? []).map((f) => `Q: ${f.q}\nA: ${f.a}`).join('\n\n');
+  return [
+    `你是「${shop.name}」的 LINE 客服助理，用繁體中文、口語、簡短（100 字內）回覆顧客。`,
+    `店家介紹：${shop.description}`,
+    `營業時間：${shop.businessHours}`,
+    shop.services.length ? `服務項目：\n${shop.services.join('\n')}` : '',
+    shop.trips.length ? `行程與方案：\n${shop.trips.join('\n')}` : '',
+    shop.departures.length
+      ? `未來 14 天可報名團次（剩餘名額為即時資料）：\n${shop.departures.join('\n')}`
+      : '',
+    shop.ai.personaNotes ?? '',
+    faq ? `常見問答：\n${faq}` : '',
+    [
+      '規則：',
+      '1. 只回答與本店相關的問題。',
+      '2. 名額、價格、日期一律以上面提供的資料為準，**絕對不要推測或編造**；',
+      '   上面沒有的日期就說「那天目前沒有開團」。',
+      `3. 顧客想預約時，附上訂購連結 ${shop.shopUrl} 或請他輸入「預約」。`,
+      '4. 不確定，或涉及改期／退費／客訴／議價時，只回覆「UNSURE」讓真人接手。',
+    ].join('\n'),
+  ].filter(Boolean).join('\n\n');
+};
+
+describe('沒有行程目錄的店家：prompt 與 main 原文逐字相同', () => {
+  it('非 GUIDE 店家（無日期窗、無旗標）', () => {
+    const shop = baseShop({ services: ['剪髮 · 60 分鐘 · NT$800'], ai: { personaNotes: '親切', faq: [{ q: '停車？', a: '有' }] } });
+    expect(buildAiSystemPrompt(shop)).toBe(mainPrompt(shop));
+  });
+
+  it('沒有已發布行程（buildCatalogContext 空目錄）也相同', () => {
+    const ctx = buildCatalogContext({ ok: true, trips: [], plans: [], tripPlans: [], departures: [], truncated: false }, labels);
+    const shop = baseShop({ ...ctx });
+    expect(buildAiSystemPrompt(shop)).toBe(mainPrompt(shop));
+  });
+});
+
+describe('日期窗（有行程目錄的店家）', () => {
+  const window = { today: '2026-10-15', from: '2026-10-15', to: '2026-10-29' };
+
+  it('團次為空：仍輸出今天與日期窗，並寫明此期間沒有團次；窗外 UNSURE', () => {
+    const prompt = buildAiSystemPrompt(baseShop({ trips: ['T'], departureWindow: window }));
+    expect(prompt).toContain('今天是 2026-10-15（店家時區）。2026-10-15～2026-10-29 可報名團次（剩餘名額為即時資料）：\n（此期間沒有可報名團次）');
+    expect(prompt).toContain('只有 2026-10-15～2026-10-29 之間、上面沒有列出的日期，才說「那天目前沒有開團」；2026-10-29 之後（或 2026-10-15 之前）的日期、時段、名額只回覆「UNSURE」。');
+    expect(prompt).not.toContain('上面沒有的日期就說');
+  });
+
+  it('有團次未截斷：列出團次，範圍只有一條規則', () => {
+    const prompt = buildAiSystemPrompt(baseShop({ departures: ['2026-10-20 T　剩 3 位'], departureWindow: window }));
+    expect(prompt).toContain('2026-10-15～2026-10-29 可報名團次（剩餘名額為即時資料）：\n2026-10-20 T　剩 3 位');
+    expect(prompt.match(/那天目前沒有開團/g)).toHaveLength(1);
+    expect(prompt).not.toContain('被截斷');
+  });
+
+  it('截斷：「沒開團」只到截斷日前一天，截斷日（含）之後 UNSURE，範圍描述只有一條', () => {
+    const prompt = buildAiSystemPrompt(baseShop({ departures: ['x'], departureWindow: window, departuresTruncatedAfter: '2026-10-25' }));
+    expect(prompt).toContain('只有 2026-10-15～2026-10-24 之間、上面沒有列出的日期，才說「那天目前沒有開團」；2026-10-25（含）之後（或 2026-10-15 之前）的日期、時段、名額只回覆「UNSURE」。');
+    expect(prompt.match(/那天目前沒有開團/g)).toHaveLength(1);
+    expect(prompt).not.toContain('2026-10-29 之後');
+    expect(prompt).not.toContain('被截斷');
+  });
+
+  it('截斷日就是今天：不存在可說沒開團的日期，全部 UNSURE', () => {
+    const prompt = buildAiSystemPrompt(baseShop({ departures: ['x'], departureWindow: window, departuresTruncatedAfter: '2026-10-15' }));
+    expect(prompt).not.toContain('才說「那天目前沒有開團」');
+    expect(prompt).toContain('2026-10-15 起的日期、時段、名額一律只回覆「UNSURE」');
+  });
+
+  it('catalogUnavailable 優先：不輸出團次段落與日期窗規則', () => {
+    const prompt = buildAiSystemPrompt(baseShop({ catalogUnavailable: true, departureWindow: window }));
+    expect(prompt).toContain('暫時無法取得');
+    expect(prompt).not.toContain('今天是');
+  });
+
+  it('buildCatalogContext 帶出 departureWindow（today = from）；loadListableDepartures 回傳查詢用的 window', async () => {
+    const r = await loadListableDepartures(fakeAdmin({ withPlan: [], noPlan: [], tz: 'Asia/Taipei' }), 'x', 'test', 10);
+    expect(r.ok && r.window).toEqual({ from: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), to: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
+    const ctx = buildCatalogContext({ ...ok, window: { from: '2026-10-15', to: '2026-10-29' } }, labels);
+    expect(ctx.departureWindow).toEqual({ today: '2026-10-15', from: '2026-10-15', to: '2026-10-29' });
+  });
+});
+
 describe('團次清單截斷（AI 路徑）', () => {
   it('未截斷：prompt 與無旗標逐字相同，不含「只列到」', () => {
     const base = baseShop({ departures: ['x'] });
@@ -180,6 +264,7 @@ describe('loadListableDepartures 截斷旗標', () => {
     const admin = fakeAdmin({ withPlan: [dep(20)], noPlan: [dep(21, false)] });
     const r = await loadListableDepartures(admin, 'x', 'test', 1);
     expect(r.ok && r.truncated).toBe(true);
+    expect(r.ok && r.lastListedDate).toBe('2026-10-20');
   });
 
   it('未取滿：truncated=false 且無 lastListedDate', async () => {

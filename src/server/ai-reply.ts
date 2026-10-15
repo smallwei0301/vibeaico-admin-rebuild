@@ -15,6 +15,7 @@
  *    改為函式內、確認 ANTHROPIC_API_KEY 存在後才建構，行為不變。
  */
 import Anthropic from '@anthropic-ai/sdk';
+import { addCalendarDays } from '@/server/line-departures';
 
 /** LINE 客服上下文；trips/departures 只在該租戶有 TOUR_MODULE 時才有值 */
 export type ShopContext = {
@@ -31,38 +32,62 @@ export type ShopContext = {
   catalogUnavailable?: boolean;
   /** 團次清單被查詢上限截斷時，清單涵蓋到的最後日期（YYYY-MM-DD）；其後的日期不得說成沒開團 */
   departuresTruncatedAfter?: string;
+  /** 團次查詢的日期窗（店家時區；today = from）。有行程目錄時一定有；沒有行程目錄的店家為 undefined */
+  departureWindow?: { today: string; from: string; to: string };
   ai: { personaNotes?: string; faq?: { q: string; a: string }[] };
   shopUrl: string; // buildPublicBookingUrl()，引導下單用
 };
+
+/** 有日期窗時的規則 2：「沒開團」只適用日期窗內（截斷時只到截斷日前一天）、上面沒列出的日期，其餘一律 UNSURE。 */
+function windowRule(win: { today: string; from: string; to: string }, cut?: string): string[] {
+  const head = '2. 名額、價格、日期一律以上面提供的資料為準，**絕對不要推測或編造**；';
+  const end = cut ? addCalendarDays(cut, -1) : win.to;
+  const outside = cut ? `${cut}（含）之後` : `${win.to} 之後`;
+  if (end < win.from) {
+    return [head, `   ${win.from} 起的日期、時段、名額一律只回覆「UNSURE」，不要說「那天目前沒有開團」。`];
+  }
+  return [
+    head,
+    `   只有 ${win.from}～${end} 之間、上面沒有列出的日期，才說「那天目前沒有開團」；` +
+      `${outside}（或 ${win.today} 之前）的日期、時段、名額只回覆「UNSURE」。`,
+  ];
+}
 
 /** 組 AI 客服 system prompt（純函式，可單獨測試）。 */
 export function buildAiSystemPrompt(shop: ShopContext): string {
   const faq = (shop.ai.faq ?? []).map((f) => `Q: ${f.q}\nA: ${f.a}`).join('\n\n');
   const cut = shop.departuresTruncatedAfter;
+  const win = shop.departureWindow;
   const dataRule = shop.catalogUnavailable
     ? [
         '2. 行程與團次資料暫時無法取得：被問到日期、名額、價格時，只回覆「UNSURE」讓真人接手，',
         '   **絕對不要說「沒有開團」，也不要推測或編造**。',
       ]
-    : cut
-      ? [
-          '2. 名額、價格、日期一律以上面提供的資料為準，**絕對不要推測或編造**；',
-          `   團次清單在 ${cut} 被截斷：${cut}（含）之後的日期、時段、名額只回覆「UNSURE」；`,
-          `   ${cut} 之前上面沒有的日期才說「那天目前沒有開團」。`,
-        ]
-      : [
-          '2. 名額、價格、日期一律以上面提供的資料為準，**絕對不要推測或編造**；',
-          '   上面沒有的日期就說「那天目前沒有開團」。',
-        ];
+    : win
+      ? windowRule(win, cut)
+      : cut
+        ? [
+            '2. 名額、價格、日期一律以上面提供的資料為準，**絕對不要推測或編造**；',
+            `   團次清單在 ${cut} 被截斷：${cut}（含）之後的日期、時段、名額只回覆「UNSURE」；`,
+            `   ${cut} 之前上面沒有的日期才說「那天目前沒有開團」。`,
+          ]
+        : [
+            '2. 名額、價格、日期一律以上面提供的資料為準，**絕對不要推測或編造**；',
+            '   上面沒有的日期就說「那天目前沒有開團」。',
+          ];
   return [
     `你是「${shop.name}」的 LINE 客服助理，用繁體中文、口語、簡短（100 字內）回覆顧客。`,
     `店家介紹：${shop.description}`,
     `營業時間：${shop.businessHours}`,
     shop.services.length ? `服務項目：\n${shop.services.join('\n')}` : '',
     shop.trips.length ? `行程與方案：\n${shop.trips.join('\n')}` : '',
-    shop.departures.length
-      ? `未來 14 天可報名團次（剩餘名額為即時資料）：\n${shop.departures.join('\n')}`
-      : '',
+    win && !shop.catalogUnavailable
+      ? `今天是 ${win.today}（店家時區）。${win.from}～${win.to} 可報名團次（剩餘名額為即時資料）：\n${
+          shop.departures.length ? shop.departures.join('\n') : '（此期間沒有可報名團次）'
+        }`
+      : shop.departures.length
+        ? `未來 14 天可報名團次（剩餘名額為即時資料）：\n${shop.departures.join('\n')}`
+        : '',
     shop.ai.personaNotes ?? '',
     faq ? `常見問答：\n${faq}` : '',
     [
