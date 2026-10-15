@@ -223,7 +223,7 @@ describe('團次清單截斷（AI 路徑）', () => {
 function fakeAdmin(opts: { withPlan: any[]; noPlan: any[]; tz?: string; settingsCalls?: { n: number } }) {
   const make = (table: string, noPlanQuery: { v: boolean }) => {
     const q: any = {
-      select: () => q, eq: () => q, in: () => q, gte: () => q, lte: () => q, order: () => q, limit: () => q,
+      select: () => q, eq: () => q, in: () => q, gte: () => q, lte: () => q, neq: () => q, order: () => q, limit: () => q,
       is: () => { noPlanQuery.v = true; return q; },
       maybeSingle: async () => {
         if (table === 'tenant_settings' && opts.settingsCalls) opts.settingsCalls.n++;
@@ -292,7 +292,7 @@ describe('trips 查詢上限', () => {
   const adminWithTrips = (n: number) => {
     const make = (table: string) => {
       const q: any = {
-        select: () => q, eq: () => q, in: () => q, gte: () => q, lte: () => q, order: () => q, limit: () => q, is: () => q,
+        select: () => q, eq: () => q, in: () => q, gte: () => q, lte: () => q, neq: () => q, order: () => q, limit: () => q, is: () => q,
         maybeSingle: async () => ({ data: { basic: { timezone: 'Asia/Taipei' } }, error: null }),
         then: (resolve: any) => resolve({
           data: table === 'trips' ? Array.from({ length: n }, (_, i) => ({ id: `t${i}`, title: `T${i}` })) : [],

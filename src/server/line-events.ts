@@ -235,6 +235,7 @@ const MSG = {
   departureEmpty:
     '未來 14 天目前沒有開放報名的團次。\n請輸入「行程」看看有哪些行程，或直接留言告訴我們您想出發的日期，我們會幫您安排。',
   departureFull: '已額滿',
+  departureSeePage: '近期團次請見預約頁：',
   departureSeatsLeft: (n: number) => `剩 ${n} 位`,
   /**
    * 尚未開放的功能一律用這組文案。
@@ -841,6 +842,7 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
   const catalog = await loadListableDepartures(ctx.admin, ctx.tenant.id, 'replyDepartures', SERVICE_LIST_LIMIT, {
     includeTripPlans: true,
     tripPlansScope: 'LISTED_DEPARTURES',
+    skipNoPlanDepartures: true,
   });
   if (!catalog.ok) return false; // 查詢失敗不是「沒有團次」：交由預設回覆
   if (!catalog.trips.length) return replyText(ctx, MSG.departureEmpty);
@@ -855,7 +857,11 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
   // 與 AI 目錄同一套「公開頁可預約」規則（selectBookableDepartures）；過濾後沒有可列團次 → 沒有團次回覆。
   const labels = { seatsLeft: MSG.departureSeatsLeft, full: MSG.departureFull };
   const bookable = selectBookableDepartures(catalog);
-  if (!bookable.length) return replyText(ctx, MSG.departureEmpty);
+  if (!bookable.length) {
+    // 查詢已 limit 過：被過濾（例如今天已開始）後為空，但清單被截斷時 limit 之外可能還有可報名團次，不得宣稱沒有團次。
+    if (catalog.truncated) return replyText(ctx, `${MSG.departureSeePage}\n${buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code)}`);
+    return replyText(ctx, MSG.departureEmpty);
+  }
   const listable = bookable.map((b) => b.departure as any);
 
   // 直達預約連結只給「目的預約頁真的可預選且可送出」的團次：對每個出現的 FIXED_DEPARTURE 方案呼叫預約頁同一支

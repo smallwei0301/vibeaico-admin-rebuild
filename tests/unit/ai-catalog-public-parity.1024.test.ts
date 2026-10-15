@@ -88,7 +88,7 @@ describe('AI context 與公開頁同規則', () => {
     const rows = [mk(20), mk(21), mk(22)];
     const make = (table: string, np: { v: boolean }) => {
       const q: any = {
-        select: () => q, eq: () => q, in: () => q, gte: () => q, lte: () => q, order: () => q, limit: () => q,
+        select: () => q, eq: () => q, in: () => q, gte: () => q, lte: () => q, neq: () => q, order: () => q, limit: () => q,
         is: () => { np.v = true; return q; },
         maybeSingle: async () => ({ data: { basic: { timezone: 'Asia/Taipei' } }, error: null }),
         then: (res: any) => table === 'trips' ? res({ data: [{ id: 't1', title: 'T' }], error: null })
@@ -148,7 +148,7 @@ describe('featureActiveStatus / buildShopContext', () => {
         }],
       };
       const q: any = {
-        select: () => q, eq: () => q, in: () => q, gte: () => q, lte: () => q, order: () => q, limit: () => q, is: () => q, range: () => q,
+        select: () => q, eq: () => q, in: () => q, gte: () => q, lte: () => q, neq: () => q, order: () => q, limit: () => q, is: () => q, range: () => q,
         maybeSingle: async () => ({ data: { basic: { timezone: 'Asia/Taipei' } }, error: null }),
         then: (r: any) => r({ data: rows[table] ?? [], error: null }),
       };

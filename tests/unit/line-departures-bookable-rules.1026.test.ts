@@ -44,11 +44,15 @@ const bookingPlan = (departureId: string, seatsLeft = 4, minParty = 1) => ({
   departures: [{ id: departureId, departsOn: FUTURE, startTime: '', seatsLeft }],
 });
 
-function makeAdmin(deps: any[], plans: Plan[], opts: { seasonsError?: boolean; seasons?: unknown[] } = {}) {
+function makeAdmin(deps: any[], plans: Plan[], opts: { seasonsError?: boolean; seasons?: unknown[]; neqLog?: Array<[string, unknown]>; limitLog?: number[] } = {}) {
   const build = (table: string) => {
     let noPlan = false;
+    let limit = 1000;
+    const neqs: Array<[string, unknown]> = [];
     const q: any = {
-      select: () => q, eq: () => q, in: () => q, gte: () => q, lte: () => q, order: () => q, limit: () => q, range: () => q,
+      select: () => q, eq: () => q, in: () => q, gte: () => q, lte: () => q,
+      neq: (k: string, v: unknown) => { neqs.push([k, v]); opts.neqLog?.push([k, v]); return q; },
+      limit: (n: number) => { limit = n; opts.limitLog?.push(n); return q; }, order: () => q, range: () => q,
       is: () => { noPlan = true; return q; },
       maybeSingle: async () => ({ data: null, error: null }),
       then: (resolve: any) => {
@@ -58,8 +62,9 @@ function makeAdmin(deps: any[], plans: Plan[], opts: { seasonsError?: boolean; s
         if (table === 'trip_departures') {
           const data = noPlan
             ? deps.filter((d) => d.plan_id == null)
-            : deps.filter((d) => d.plan_id != null).map((d) => ({ ...d, trip_plans: plans.find((p) => p.id === d.plan_id) ?? null })).filter((d) => d.trip_plans);
-          return resolve({ data, error: null });
+            : deps.filter((d) => d.plan_id != null).map((d) => ({ ...d, trip_plans: plans.find((p) => p.id === d.plan_id) ?? null })).filter((d) => d.trip_plans)
+              .filter((d) => neqs.every(([k, v]) => k !== 'trip_plans.sales_mode' || d.trip_plans.sales_mode !== v));
+          return resolve({ data: data.slice(0, limit), error: null });
         }
         return resolve({ data: [], error: null });
       },
@@ -182,5 +187,36 @@ describe('replyDepartures：TOUR_MODULE 閘門（不限業態）', () => {
     expect(r.handled).toBe(false);
     expect(fx.lineReplies).toHaveLength(0);
     expect(from).not.toHaveBeenCalled();
+  });
+});
+
+describe('replyDepartures：limit 先於過濾的問題（#1026 追加）', () => {
+  it('INSTANT 在查詢端排除（neq）：大量 INSTANT 團次不吃掉 limit，可報名團次仍列出', async () => {
+    const neqLog: Array<[string, unknown]> = [];
+    const instants = Array.from({ length: 12 }, (_, i) => dep(`i${i}`, 'pi', { departs_on: dayFromNow(1) }));
+    const r = await run(makeAdmin([...instants, dep('ok', 'pf', { departs_on: dayFromNow(9) })], [plan('pi', { sales_mode: 'INSTANT' }), plan('pf')], { neqLog }));
+    expect(neqLog).toContainEqual(['trip_plans.sales_mode', 'INSTANT']);
+    expect(linesOf(r.text)).toHaveLength(1);
+    expect(r.text).toContain('方案pf');
+  });
+
+  it('不查 plan_id null 的團次：它們不佔 limit', async () => {
+    const nulls = Array.from({ length: 12 }, (_, i) => dep(`n${i}`, null, { departs_on: dayFromNow(1) }));
+    const r = await run(makeAdmin([...nulls, dep('ok', 'pf', { departs_on: dayFromNow(9) })], [plan('pf')]));
+    expect(linesOf(r.text)).toHaveLength(1);
+  });
+
+  it('最近 10 筆都已開始（被過濾）且被截斷：不回「沒有團次」，改引導看預約頁', async () => {
+    const started = Array.from({ length: 10 }, (_, i) => dep(`s${i}`, 'pf', { departs_on: today, start_time: '00:00:00' }));
+    const r = await run(makeAdmin([...started, dep('later', 'pf', { departs_on: dayFromNow(9) })], [plan('pf')]));
+    expect(r.handled).toBe(true);
+    expect(r.text).toContain('近期團次請見預約頁');
+    expect(r.text).toContain('/s/demo');
+    expect(r.text).not.toContain('目前沒有');
+  });
+
+  it('未截斷且過濾後為空：仍回「沒有團次」', async () => {
+    const r = await run(makeAdmin([dep('s0', 'pf', { departs_on: today, start_time: '00:00:00' })], [plan('pf')]));
+    expect(r.text).toContain('目前沒有');
   });
 });

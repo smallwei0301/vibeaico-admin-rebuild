@@ -77,6 +77,8 @@ const DEPARTURE_COLUMNS = 'id, trip_id, plan_id, departs_on, start_time, capacit
  * 已發布行程 → 未來 14 天（店家時區）可列團次。與「團次」指令（replyDepartures）為同一組查詢：
  * 沒有已發布行程時回 ok:true 且皆空（不查後續表）；任一查詢失敗回 { ok: false }（含 tenant_settings）。
  * includeTripPlans：另查啟用方案的價格／季節資料（AI shop context 與 replyDepartures 的可預約判定用）。
+ * skipNoPlanDepartures：不查 plan_id 為 null 的團次（公開頁不列，replyDepartures 用；避免它們佔掉 limit）。
+ * 查詢 A 一律在資料庫端排除 INSTANT 方案（公開頁不列固定團次），不佔 limit；AI 與 replyDepartures 同規則。
  * tripPlansScope：'ALL'（預設）查全部已發布行程的啟用方案；'LISTED_DEPARTURES' 只查本次可列團次所屬的方案
  * （至多 limit 個 id，有界；replyDepartures 用，不受「方案取滿 200 列」影響）。
  */
@@ -85,7 +87,7 @@ export async function loadListableDepartures(
   tenantId: string,
   logTag = 'loadListableDepartures',
   limit = DEPARTURE_LIMIT,
-  options: { includeTripPlans?: boolean; tripPlansScope?: 'ALL' | 'LISTED_DEPARTURES'; timeZone?: string } = {},
+  options: { includeTripPlans?: boolean; tripPlansScope?: 'ALL' | 'LISTED_DEPARTURES'; skipNoPlanDepartures?: boolean; timeZone?: string } = {},
 ): Promise<ListableDeparturesResult> {
   const { data: tripRows, error: tripError } = await admin
     .from('trips')
@@ -141,19 +143,22 @@ export async function loadListableDepartures(
       .gte('departs_on', from)
       .lte('departs_on', to)
       .eq('trip_plans.active', true)
+      .neq('trip_plans.sales_mode', 'INSTANT')
       .order('departs_on', { ascending: true })
       .limit(limit),
-    admin
-      .from('trip_departures')
-      .select(DEPARTURE_COLUMNS)
-      .eq('tenant_id', tenantId)
-      .eq('status', 'OPEN')
-      .in('trip_id', tripIds)
-      .gte('departs_on', from)
-      .lte('departs_on', to)
-      .is('plan_id', null)
-      .order('departs_on', { ascending: true })
-      .limit(limit),
+    options.skipNoPlanDepartures
+      ? Promise.resolve({ data: [], error: null })
+      : admin
+        .from('trip_departures')
+        .select(DEPARTURE_COLUMNS)
+        .eq('tenant_id', tenantId)
+        .eq('status', 'OPEN')
+        .in('trip_id', tripIds)
+        .gte('departs_on', from)
+        .lte('departs_on', to)
+        .is('plan_id', null)
+        .order('departs_on', { ascending: true })
+        .limit(limit),
   ]);
   if (withPlanRes.error || noPlanRes.error) {
     console.error(`[line] ${logTag} 查詢 trip_departures 失敗`, withPlanRes.error ?? noPlanRes.error);

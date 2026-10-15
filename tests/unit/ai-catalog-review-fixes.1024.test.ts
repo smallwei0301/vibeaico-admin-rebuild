@@ -64,7 +64,7 @@ describe('季節定價方案的團次可用性（與預約頁 isDepartureBookabl
 function planAdmin(planRows: unknown[]) {
   const make = (table: string) => {
     const q: any = {
-      select: () => q, eq: () => q, in: () => q, gte: () => q, lte: () => q, order: () => q, limit: () => q, is: () => q, range: () => q,
+      select: () => q, eq: () => q, in: () => q, gte: () => q, lte: () => q, neq: () => q, order: () => q, limit: () => q, is: () => q, range: () => q,
       maybeSingle: async () => ({ data: { basic: { timezone: 'Asia/Taipei' } }, error: null }),
       then: (resolve: any) => {
         if (table === 'trips') return resolve({ data: [{ id: 't1', title: 'T' }], error: null });
@@ -128,7 +128,7 @@ describe('trip_plan_seasons 查詢失敗（端到端：loadListableDepartures �
     const make = (table: string) => {
       let noPlan = false;
       const q: any = {
-        select: () => q, eq: () => q, in: () => q, gte: () => q, lte: () => q, order: () => q, limit: () => q, range: () => q,
+        select: () => q, eq: () => q, in: () => q, gte: () => q, lte: () => q, neq: () => q, order: () => q, limit: () => q, range: () => q,
         is: () => { noPlan = true; return q; },
         maybeSingle: async () => ({ data: { basic: { timezone: 'Asia/Taipei' } }, error: null }),
         then: (resolve: any) => {
