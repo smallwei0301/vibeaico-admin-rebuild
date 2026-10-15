@@ -37,6 +37,7 @@ import { MODE_PRESETS, type BusinessType } from '@/config/modes';
 import { keywordRepliesPage } from '@/i18n/zh-TW/pages/keyword-replies';
 import { isDepartureBookableOnPage } from '@/lib/public-booking-price';
 import { loadPublicBookingPlan } from './public-tour-booking';
+import { departureWindow, filterListableDepartures } from './line-departures';
 
 /** webhook 端已查好的店家列（route.ts select id, shop_code, name） */
 export type WebhookTenant = {
@@ -847,9 +848,16 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
 
   const titleById = new Map<string, string>(trips.map((t: any) => [t.id, t.title]));
 
-  const today = new Date();
-  const from = today.toISOString().slice(0, 10);
-  const to = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  // 日期窗用店家時區（tenant_settings.basic.timezone，缺值／無效回退 Asia/Taipei），不是 UTC（#1022）。
+  let timeZoneSetting: unknown;
+  try {
+    const { data: settingsRow } = await ctx.admin
+      .from('tenant_settings').select('basic').eq('tenant_id', ctx.tenant.id).maybeSingle();
+    timeZoneSetting = (settingsRow as { basic?: { timezone?: unknown } } | null)?.basic?.timezone;
+  } catch (settingsError) {
+    console.error('[line] replyDepartures 查詢 tenant_settings 失敗', settingsError);
+  }
+  const { from, to } = departureWindow(Date.now(), timeZoneSetting);
 
   const { data: departures, error } = await ctx.admin
     .from('trip_departures')
@@ -867,29 +875,38 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
   }
   if (!departures?.length) return replyText(ctx, MSG.departureEmpty);
 
-  // 方案名稱是錦上添花（顯示成「（標準團）」）。查不到就不顯示那一段，
-  // 不讓它擋掉整份團次清單。
+  // 方案查詢同時決定「哪些團次可列出」（#1022）：方案已停用或查無此方案的團次，旅客點進公開頁找不到，不列。
+  // 查詢失敗時 fail-closed：帶 plan_id 的團次一律不列（無方案團次維持原行為）。
   const planIds = [...new Set(departures.map((d: any) => d.plan_id).filter(Boolean))];
   const planNameById = new Map<string, string>();
   const fixedPlanIds = new Set<string>();
+  let planRows: any[] = [];
+  let planQueryFailed = false;
   if (planIds.length) {
     const { data: plans, error: planError } = await ctx.admin
       .from('trip_plans')
       .select('id, name, sales_mode, active, min_party')
       .eq('tenant_id', ctx.tenant.id)
       .in('id', planIds);
-    if (planError) console.error('[line] replyDepartures 查詢 trip_plans 失敗', planError);
-    for (const p of (plans ?? []) as any[]) {
+    if (planError) {
+      console.error('[line] replyDepartures 查詢 trip_plans 失敗', planError);
+      planQueryFailed = true;
+    }
+    planRows = (plans ?? []) as any[];
+    for (const p of planRows) {
       planNameById.set(p.id, p.name);
       if (p.active === true && p.sales_mode === 'FIXED_DEPARTURE') fixedPlanIds.add(p.id);
     }
   }
 
+  const listable = filterListableDepartures(departures as any[], planRows, planQueryFailed);
+  if (!listable.length) return replyText(ctx, MSG.departureEmpty);
+
   // 直達預約連結只給「目的預約頁真的可預選且可送出」的團次：對每個出現的 FIXED_DEPARTURE 方案呼叫預約頁同一支
   // loadPublicBookingPlan（至多 SERVICE_LIST_LIMIT 個方案的有界查詢），再用預約頁共用的 isDepartureBookableOnPage 判定。
   // 載入失敗或回傳 null → 該方案不附連結（fail closed），不影響團次清單本身。
   const bookingPlanById = new Map<string, Awaited<ReturnType<typeof loadPublicBookingPlan>>>();
-  const linkPlanIds = [...new Set(departures.map((d: any) => d.plan_id as string).filter((id: string) => fixedPlanIds.has(id)))];
+  const linkPlanIds = [...new Set(listable.map((d: any) => d.plan_id as string).filter((id: string) => fixedPlanIds.has(id)))];
   await Promise.all(linkPlanIds.map(async (planId) => {
     try {
       bookingPlanById.set(planId, await loadPublicBookingPlan(ctx.tenant.shop_code, planId));
@@ -898,7 +915,7 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
     }
   }));
 
-  const lines = departures.map((d: any) => {
+  const lines = listable.map((d: any) => {
     // capacity - seats_booked 可能因為並發而暫時為負；夾到 0，不顯示「剩 -1 位」
     const left = Math.max(0, Number(d.capacity) - Number(d.seats_booked));
     const time = typeof d.start_time === 'string' ? ` ${d.start_time.slice(0, 5)}` : '';

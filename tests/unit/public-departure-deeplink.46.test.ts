@@ -226,7 +226,9 @@ describe('LINE「近期團次」深連結（連結資格＝預約頁載入器 + 
     const lines = text.split('\n');
     const i = lines.findIndex((l) => l.includes('固定'));
     expect(lines[i + 1]).toBe(`${base}/plans/pf/book?departure=dep%2F1`);
-    expect(lines[i + 2]).toContain('停用');
+    // #1022：已停用方案的團次不再列出（旅客點進公開頁找不到該方案）。
+    expect(text).not.toContain('停用');
+    expect(lines[i + 2]).toContain('申請');
   });
 
   it('預約頁載入的方案不含該團次（額滿／已開始／超出前 12 個候選）→ 不附連結，清單仍列出', async () => {
