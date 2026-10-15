@@ -27,14 +27,48 @@ export type ShopContext = {
   trips: string[];
   /** 未來 14 天可售團次與即時剩餘名額：「龜山島賞鯨 標準團 8/23(六) 09:00 剩 3 位」 */
   departures: string[];
+  /** 行程／團次查詢失敗（#1024）：為 true 時 AI 不得把「沒資料」當成「沒開團」，一律交真人 */
+  catalogUnavailable?: boolean;
   ai: { personaNotes?: string; faq?: { q: string; a: string }[] };
   shopUrl: string; // buildPublicBookingUrl()，引導下單用
 };
 
+/** 組 AI 客服 system prompt（純函式，可單獨測試）。 */
+export function buildAiSystemPrompt(shop: ShopContext): string {
+  const faq = (shop.ai.faq ?? []).map((f) => `Q: ${f.q}\nA: ${f.a}`).join('\n\n');
+  const dataRule = shop.catalogUnavailable
+    ? [
+        '2. 行程與團次資料暫時無法取得：被問到日期、名額、價格時，只回覆「UNSURE」讓真人接手，',
+        '   **絕對不要說「沒有開團」，也不要推測或編造**。',
+      ]
+    : [
+        '2. 名額、價格、日期一律以上面提供的資料為準，**絕對不要推測或編造**；',
+        '   上面沒有的日期就說「那天目前沒有開團」。',
+      ];
+  return [
+    `你是「${shop.name}」的 LINE 客服助理，用繁體中文、口語、簡短（100 字內）回覆顧客。`,
+    `店家介紹：${shop.description}`,
+    `營業時間：${shop.businessHours}`,
+    shop.services.length ? `服務項目：\n${shop.services.join('\n')}` : '',
+    shop.trips.length ? `行程與方案：\n${shop.trips.join('\n')}` : '',
+    shop.departures.length
+      ? `未來 14 天可報名團次（剩餘名額為即時資料）：\n${shop.departures.join('\n')}`
+      : '',
+    shop.ai.personaNotes ?? '',
+    faq ? `常見問答：\n${faq}` : '',
+    [
+      '規則：',
+      '1. 只回答與本店相關的問題。',
+      ...dataRule,
+      `3. 顧客想預約時，附上訂購連結 ${shop.shopUrl} 或請他輸入「預約」。`,
+      '4. 不確定，或涉及改期／退費／客訴／議價時，只回覆「UNSURE」讓真人接手。',
+    ].join('\n'),
+  ].filter(Boolean).join('\n\n');
+}
+
 export async function aiReply(question: string, shop: ShopContext): Promise<string | null> {
   if (!process.env.ANTHROPIC_API_KEY) return null; // 平台未開 AI → 靜默停用
 
-  const faq = (shop.ai.faq ?? []).map((f) => `Q: ${f.q}\nA: ${f.a}`).join('\n\n');
   try {
     const anthropic = new Anthropic();
     const response = await anthropic.messages.create(
@@ -44,26 +78,7 @@ export async function aiReply(question: string, shop: ShopContext): Promise<stri
         // 低 effort：客服回覆是從固定上下文答題，不需要深度推理，且 LINE reply token
         // 有時效（見上方逾時規約），latency 比推理深度重要
         output_config: { effort: 'low' },
-        system: [
-          `你是「${shop.name}」的 LINE 客服助理，用繁體中文、口語、簡短（100 字內）回覆顧客。`,
-          `店家介紹：${shop.description}`,
-          `營業時間：${shop.businessHours}`,
-          shop.services.length ? `服務項目：\n${shop.services.join('\n')}` : '',
-          shop.trips.length ? `行程與方案：\n${shop.trips.join('\n')}` : '',
-          shop.departures.length
-            ? `未來 14 天可報名團次（剩餘名額為即時資料）：\n${shop.departures.join('\n')}`
-            : '',
-          shop.ai.personaNotes ?? '',
-          faq ? `常見問答：\n${faq}` : '',
-          [
-            '規則：',
-            '1. 只回答與本店相關的問題。',
-            '2. 名額、價格、日期一律以上面提供的資料為準，**絕對不要推測或編造**；',
-            '   上面沒有的日期就說「那天目前沒有開團」。',
-            `3. 顧客想預約時，附上訂購連結 ${shop.shopUrl} 或請他輸入「預約」。`,
-            '4. 不確定，或涉及改期／退費／客訴／議價時，只回覆「UNSURE」讓真人接手。',
-          ].join('\n'),
-        ].filter(Boolean).join('\n\n'),
+        system: buildAiSystemPrompt(shop),
         messages: [{ role: 'user', content: question }],
       },
       // LINE replyToken 有時效：10 秒逾時，逾時丟 AbortError 進下面的 catch

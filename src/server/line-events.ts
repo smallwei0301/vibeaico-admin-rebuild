@@ -12,7 +12,7 @@
  *
  * 佔位（本波不實作，落點見各處註解）：
  * - chat_sessions 下單對話 → 10 分冊 §6.2（Phase 9/10，表併入 0012 之後）
- * - 「行程」輪播 → trips 表尚不存在（Phase 10）
+ * - 「行程」輪播 → replyTrips
  * - 自動綁定（06 §4.2）：LINE 端個資收集流程收到手機號 → 比對 customers.phone
  *   自動綁定／建新顧客。該流程屬 chat_sessions 個資收集（Phase 9/10），本波
  *   僅支援後台手動綁定（B-5 bind-line 端點），此處不實作。
@@ -20,6 +20,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { lineReply, lineProfile } from './line';
 import { buildFlexMenuOutcome } from './flex-menu';
+import { loadListableDepartures, formatDepartureLine, buildCatalogContext } from './line-catalog';
 import { buildTripCarousel, minNonSeasonalPriceByTrip, TRIP_CAROUSEL_MAX, type TripCardSource } from './trip-flex';
 import { hasSeasonalPricing, readPlanSeasons } from './public-plan-seasons';
 import { isFeatureActive } from './features';
@@ -37,7 +38,6 @@ import { MODE_PRESETS, type BusinessType } from '@/config/modes';
 import { keywordRepliesPage } from '@/i18n/zh-TW/pages/keyword-replies';
 import { isDepartureBookableOnPage } from '@/lib/public-booking-price';
 import { loadPublicBookingPlan } from './public-tour-booking';
-import { departureWindow, filterListableDepartures } from './line-departures';
 
 /** webhook 端已查好的店家列（route.ts select id, shop_code, name） */
 export type WebhookTenant = {
@@ -835,92 +835,18 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
   if (businessTypeOf(ctx.tenant) !== 'GUIDE') return false;
   if (!(await isFeatureActive(ctx.tenant.id, 'TOUR_MODULE'))) return false;
 
-  const { data: trips, error: tripError } = await ctx.admin
-    .from('trips')
-    .select('id, title')
-    .eq('tenant_id', ctx.tenant.id)
-    .eq('status', 'PUBLISHED');
-  if (tripError) {
-    console.error('[line] replyDepartures 查詢 trips 失敗', tripError);
-    return false;
-  }
-  if (!trips?.length) return replyText(ctx, MSG.departureEmpty);
+  const catalog = await loadListableDepartures(ctx.admin, ctx.tenant.id, 'replyDepartures', SERVICE_LIST_LIMIT);
+  if (!catalog.ok) return false; // 查詢失敗不是「沒有團次」：交由預設回覆
+  if (!catalog.trips.length) return replyText(ctx, MSG.departureEmpty);
 
-  const titleById = new Map<string, string>(trips.map((t: any) => [t.id, t.title]));
-
-  // 日期窗用店家時區（tenant_settings.basic.timezone，#1022）。
-  // 查詢失敗（error 或 throw）不可假設台北：非台北店家會得到錯誤日期窗，與 trips／plans／departures 一致 return false。
-  // 只有「查詢成功但沒設定／設定無效」才由 resolvePublicTimeZone 回退 Asia/Taipei。
-  let timeZoneSetting: unknown;
-  try {
-    const { data: settingsRow, error: settingsQueryError } = await ctx.admin
-      .from('tenant_settings').select('basic').eq('tenant_id', ctx.tenant.id).maybeSingle();
-    if (settingsQueryError) {
-      console.error('[line] replyDepartures 查詢 tenant_settings 失敗', settingsQueryError);
-      return false;
-    }
-    timeZoneSetting = (settingsRow as { basic?: { timezone?: unknown } } | null)?.basic?.timezone;
-  } catch (settingsError) {
-    console.error('[line] replyDepartures 查詢 tenant_settings 失敗', settingsError);
-    return false;
-  }
-  const { from, to } = departureWindow(Date.now(), timeZoneSetting);
-
-  // 啟用方案的過濾在資料庫端以關聯完成（trip_plans!inner + trip_plans.active），不再把方案 id 清單塞進 URL，
-  // 也不受方案查詢 max_rows 截斷影響；停用方案的團次在 .limit 之前就被排除，不會擠掉可報名的團次（#1022）。
-  // 查詢 A＝有方案的團次（內嵌方案供名稱／sales_mode 使用），查詢 B＝無方案（plan_id is null）的團次；
-  // 兩者各自 limit 後合併排序再截斷。任一查詢失敗與 trips 一致：return false 交由預設回覆。
-  const DEPARTURE_COLUMNS = 'id, trip_id, plan_id, departs_on, start_time, capacity, seats_booked';
-  const tripIds = [...titleById.keys()];
-  const [withPlanRes, noPlanRes] = await Promise.all([
-    ctx.admin
-      .from('trip_departures')
-      .select(`${DEPARTURE_COLUMNS}, trip_plans!inner(id, name, sales_mode, active)`)
-      .eq('tenant_id', ctx.tenant.id)
-      .eq('status', 'OPEN')
-      .in('trip_id', tripIds)
-      .gte('departs_on', from)
-      .lte('departs_on', to)
-      .eq('trip_plans.active', true)
-      .order('departs_on', { ascending: true })
-      .limit(SERVICE_LIST_LIMIT),
-    ctx.admin
-      .from('trip_departures')
-      .select(DEPARTURE_COLUMNS)
-      .eq('tenant_id', ctx.tenant.id)
-      .eq('status', 'OPEN')
-      .in('trip_id', tripIds)
-      .gte('departs_on', from)
-      .lte('departs_on', to)
-      .is('plan_id', null)
-      .order('departs_on', { ascending: true })
-      .limit(SERVICE_LIST_LIMIT),
-  ]);
-  if (withPlanRes.error || noPlanRes.error) {
-    console.error('[line] replyDepartures 查詢 trip_departures 失敗', withPlanRes.error ?? noPlanRes.error);
-    return false;
-  }
-
+  const titleById = new Map<string, string>(catalog.trips.map((t) => [t.id, t.title]));
   const planNameById = new Map<string, string>();
   const fixedPlanIds = new Set<string>();
-  const planRows: Array<{ id: string; active: boolean }> = [];
-  const withPlan = ((withPlanRes.data ?? []) as any[]).map((row) => {
-    const { trip_plans: embedded, ...d } = row;
-    const plan = Array.isArray(embedded) ? embedded[0] : embedded;
-    if (plan?.id) {
-      planNameById.set(plan.id, plan.name);
-      if (plan.sales_mode === 'FIXED_DEPARTURE') fixedPlanIds.add(plan.id);
-      planRows.push({ id: plan.id, active: plan.active === true });
-    }
-    return d;
-  });
-  const departures = [...withPlan, ...((noPlanRes.data ?? []) as any[])]
-    .sort((x, y) => String(x.departs_on).localeCompare(String(y.departs_on))
-      || String(x.start_time ?? '').localeCompare(String(y.start_time ?? '')))
-    .slice(0, SERVICE_LIST_LIMIT);
-  if (!departures?.length) return replyText(ctx, MSG.departureEmpty);
-
-  const listable = filterListableDepartures(departures as any[], planRows);
+  for (const p of catalog.plans) {
+    planNameById.set(p.id, p.name);
+    if (p.sales_mode === 'FIXED_DEPARTURE') fixedPlanIds.add(p.id);
+  }
+  const listable = catalog.departures as any[];
   if (!listable.length) return replyText(ctx, MSG.departureEmpty);
 
   // 直達預約連結只給「目的預約頁真的可預選且可送出」的團次：對每個出現的 FIXED_DEPARTURE 方案呼叫預約頁同一支
@@ -937,13 +863,7 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
   }));
 
   const lines = listable.map((d: any) => {
-    // capacity - seats_booked 可能因為並發而暫時為負；夾到 0，不顯示「剩 -1 位」
-    const left = Math.max(0, Number(d.capacity) - Number(d.seats_booked));
-    const time = typeof d.start_time === 'string' ? ` ${d.start_time.slice(0, 5)}` : '';
-    const planName = planNameById.get(d.plan_id);
-    const plan = planName ? `（${planName}）` : '';
-    const seats = left > 0 ? MSG.departureSeatsLeft(left) : MSG.departureFull;
-    const line = `・${d.departs_on}${time} ${titleById.get(d.trip_id) ?? ''}${plan}　${seats}`;
+    const line = `・${formatDepartureLine(d, titleById, planNameById, { seatsLeft: MSG.departureSeatsLeft, full: MSG.departureFull })}`;
     // 直達預約：只給預約頁自己判定可預選且可送出的團次（isDepartureBookableOnPage）；其餘維持無連結。
     const bookingPlan = bookingPlanById.get(d.plan_id);
     if (!d.id || !fixedPlanIds.has(d.plan_id) || !bookingPlan || !isDepartureBookableOnPage(bookingPlan, String(d.id))) return line;
@@ -1352,9 +1272,9 @@ export function isLikelyChitchat(raw: string): boolean {
 /* ------------------------------------------------------------ AI context */
 /**
  * 組 AI 客服的 ShopContext（09 §7.2）。
- * services 由 services 表即時組；trips/departures：資料表尚不存在（10 分冊），
- * 先回空陣列 —— Phase 10 改接 11 分冊 catalog 端點的同一組查詢（規格明定
- * 不得另外實作一份查詢，確保 AI 講的與商店頁、LINE 輪播完全一致）。
+ * services 由 services 表即時組；GUIDE 且有 TOUR_MODULE 時，trips/departures 與「團次」指令共用
+ * `loadListableDepartures`（#1024），確保 AI 講的與 LINE 團次清單一致。查詢失敗時
+ * `catalogUnavailable` 為 true，AI 不得把失敗當成「沒開團」。
  */
 async function buildShopContext(
   admin: SupabaseClient,
@@ -1388,13 +1308,27 @@ async function buildShopContext(
   if (biz.closedDays.length)
     businessHours += `，公休：${biz.closedDays.map((d) => `週${dayNames[d]}`).join('、')}`;
 
+  // 非 GUIDE／未啟用 TOUR_MODULE：沒有行程，維持空陣列。團次與名額每次即時查、不快取。
+  let catalog: { trips: string[]; departures: string[]; catalogUnavailable: boolean } = {
+    trips: [],
+    departures: [],
+    catalogUnavailable: false,
+  };
+  if (businessTypeOf(tenant) === 'GUIDE' && (await isFeatureActive(tenant.id, 'TOUR_MODULE'))) {
+    catalog = buildCatalogContext(
+      await loadListableDepartures(admin, tenant.id, 'buildShopContext', SERVICE_LIST_LIMIT, { includeTripPlans: true }),
+      { seatsLeft: MSG.departureSeatsLeft, full: MSG.departureFull },
+    );
+  }
+
   return {
     name: basic.tenantName || tenant.name,
     description: String(basic.tenantDescription ?? ''),
     businessHours,
     services,
-    trips: [], // trips 表尚不存在（Phase 10 接 catalog 統一查詢）
-    departures: [], // 同上：未來 14 天團次與即時剩餘名額（每次即時查、不快取）
+    trips: catalog.trips,
+    departures: catalog.departures,
+    ...(catalog.catalogUnavailable ? { catalogUnavailable: true } : {}),
     ai: { personaNotes: ai.personaNotes, faq: ai.faq },
     // 公開商店頁 Phase 8 落地；URL 規則以 tenant-settings.ts 的 helper 為單一事實來源
     shopUrl: buildPublicBookingUrl(APP_URL, tenant.shop_code),
