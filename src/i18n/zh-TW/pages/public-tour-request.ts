@@ -163,6 +163,9 @@ export const publicTourRequestPage = {
       departsOn: '出發日期',
       party: '人數',
       submittedAt: '送出時間',
+      totalAmount: '訂單金額',
+      paidAmount: '已付金額',
+      balanceDue: '待付尾款',
       refunded: '已退金額',
     },
     /** #917：有實際金額時不再要求旅客向店家確認金額（金額已格式化為字串）。 */
