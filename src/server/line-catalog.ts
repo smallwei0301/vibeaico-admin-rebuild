@@ -209,7 +209,11 @@ export function formatDepartureLine(
 
 /** 行程一行：行程名 + 其啟用方案名稱（不含價格——季節定價判定留給輪播，不在此重算）。 */
 export function formatTripLine(trip: CatalogTrip, plans: CatalogPlan[]): string {
-  const names = plans.filter((p) => p.trip_id === trip.id).map((p) => p.name).filter(Boolean);
+  const names = plans
+    .filter((p) => p.trip_id === trip.id)
+    .filter((p) => p.name)
+    // INSTANT 方案不列固定團次（公開頁：尚未開放線上預約，請先聯絡店家確認可預約時段），讓 AI 能分辨
+    .map((p) => (p.sales_mode === 'INSTANT' ? `${p.name}（需與店家確認時段）` : p.name));
   return names.length ? `${trip.title} · ${names.join('、')}` : trip.title;
 }
 
@@ -221,6 +225,8 @@ export type ShopCatalogContext = {
   departuresTruncatedAfter?: string;
   /** 有行程目錄時的日期窗（today = from，店家時區） */
   departureWindow?: { today: string; from: string; to: string };
+  /** 任一啟用中方案為 INSTANT（公開頁不列固定團次、需聯絡店家確認時段）；此時未列出的日期不得說成沒開團 */
+  hasInstantPlan?: boolean;
 };
 
 /** 查詢結果 → shop context 欄位；查詢失敗時 catalogUnavailable 為 true、清單為空。 */
@@ -232,6 +238,8 @@ export function buildCatalogContext(result: ListableDeparturesResult, labels: Ca
   // 「可報名團次」須與公開頁同規則（只套用在 AI context；replyDepartures 直接用 result.departures，行為不變）。
   // 截斷判定（truncated／lastListedDate）已在 loadListableDepartures 以原始列算好，這裡的過濾不影響它。
   const aiDepartures = result.departures.flatMap((d): CatalogDeparture[] => {
+    // 公開頁看不到 plan_id 為 null 的團次 → AI 也不列為可報名（只影響 AI；replyDepartures 不變）。
+    if (!d.plan_id) return [];
     const plan = d.plan_id ? planById.get(d.plan_id) : undefined;
     // 對應 public-shop.ts hasPublicDepartureList／selectPlansWithDepartures：INSTANT 方案的 OPEN 團次是手動／私人用途，公開頁不列。
     if (plan?.sales_mode === 'INSTANT') return [];
@@ -240,13 +248,15 @@ export function buildCatalogContext(result: ListableDeparturesResult, labels: Ca
     // 對應 public-departure-candidates.ts candidateIsBookable／public-booking-price.ts isDepartureBookableOnPage：
     // 剩餘名額 < 方案最低人數，預約頁不可預選 → 不得描述為可報名，改以「額滿」標示（與公開頁客滿一致，不提供名額數字）。
     const left = Number(d.capacity) - Number(d.seats_booked);
-    if (left > 0 && left < normalizeMinParty(plan?.min_party)) return [{ ...d, seats_booked: d.capacity }];
+    // REQUEST 方案公開頁不顯示 belowMinParty、RequestForm 也不停用 → 照常列出剩餘名額。
+    if (plan?.sales_mode !== 'REQUEST' && left > 0 && left < normalizeMinParty(plan?.min_party)) return [{ ...d, seats_booked: d.capacity }];
     return [d];
   });
   return {
     trips: result.trips.map((t) => formatTripLine(t, result.tripPlans)),
     departures: aiDepartures.map((d) => formatDepartureLine(d, titleById, planNameById, labels)),
     catalogUnavailable: false,
+    ...(result.tripPlans.some((p) => p.sales_mode === 'INSTANT') ? { hasInstantPlan: true } : {}),
     ...(result.window ? { departureWindow: { today: result.window.from, ...result.window } } : {}),
     ...(result.truncated && result.lastListedDate ? { departuresTruncatedAfter: result.lastListedDate } : {}),
   };

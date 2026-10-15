@@ -1339,6 +1339,7 @@ export async function buildShopContext(
     departures: catalog.departures,
     ...(catalog.catalogUnavailable ? { catalogUnavailable: true } : {}),
     ...(catalog.departureWindow ? { departureWindow: catalog.departureWindow } : {}),
+    ...(catalog.hasInstantPlan ? { hasInstantPlan: true } : {}),
     ...(catalog.departuresTruncatedAfter ? { departuresTruncatedAfter: catalog.departuresTruncatedAfter } : {}),
     ai: { personaNotes: ai.personaNotes, faq: ai.faq },
     // 公開商店頁 Phase 8 落地；URL 規則以 tenant-settings.ts 的 helper 為單一事實來源

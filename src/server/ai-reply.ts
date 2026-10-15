@@ -34,6 +34,8 @@ export type ShopContext = {
   departuresTruncatedAfter?: string;
   /** 團次查詢的日期窗（店家時區；today = from）。有行程目錄時一定有；沒有行程目錄的店家為 undefined */
   departureWindow?: { today: string; from: string; to: string };
+  /** 有啟用中的 INSTANT 方案（不列固定團次）：未列出的日期不得說成沒開團，改請顧客聯絡店家確認 */
+  hasInstantPlan?: boolean;
   ai: { personaNotes?: string; faq?: { q: string; a: string }[] };
   shopUrl: string; // buildPublicBookingUrl()，引導下單用
 };
@@ -53,6 +55,18 @@ function windowRule(win: { today: string; from: string; to: string }, cut?: stri
   ];
 }
 
+/** 有 INSTANT 方案時的規則 2：不得說任何日期沒開團，未列出的日期請顧客聯絡店家確認可預約時段（與公開頁 instantNote 語意一致）。 */
+function instantRule(shopUrl: string, win: { from: string; to: string }, cut?: string): string[] {
+  return [
+    '2. 名額、價格、日期一律以上面提供的資料為準，**絕對不要推測或編造**；',
+    '   只能以上面列出的團次回答具體團次與名額；**不得說任何日期「沒有開團」**（部分方案需與店家確認時段）；',
+    `   被問到上面沒列出的日期，請顧客聯絡店家確認可預約時段並附上 ${shopUrl}；涉及名額或價格不確定時只回覆「UNSURE」；`,
+    cut
+      ? `   團次清單在 ${cut} 被截斷：${cut}（含）之後的日期、時段、名額只回覆「UNSURE」；${win.to} 之後或今天之前同樣只回覆「UNSURE」。`
+      : `   ${win.to} 之後（或今天之前）的日期、時段、名額只回覆「UNSURE」。`,
+  ];
+}
+
 /** 組 AI 客服 system prompt（純函式，可單獨測試）。 */
 export function buildAiSystemPrompt(shop: ShopContext): string {
   const faq = (shop.ai.faq ?? []).map((f) => `Q: ${f.q}\nA: ${f.a}`).join('\n\n');
@@ -63,6 +77,8 @@ export function buildAiSystemPrompt(shop: ShopContext): string {
         '2. 行程與團次資料暫時無法取得：被問到日期、名額、價格時，只回覆「UNSURE」讓真人接手，',
         '   **絕對不要說「沒有開團」，也不要推測或編造**。',
       ]
+    : win && shop.hasInstantPlan
+      ? instantRule(shop.shopUrl, win, cut)
     : win
       ? windowRule(win, cut)
       : cut
@@ -83,7 +99,10 @@ export function buildAiSystemPrompt(shop: ShopContext): string {
     shop.trips.length ? `行程與方案：\n${shop.trips.join('\n')}` : '',
     win && !shop.catalogUnavailable
       ? `今天是 ${win.today}（店家時區）。${win.from}～${win.to} 可報名團次（剩餘名額為即時資料）：\n${
-          shop.departures.length ? shop.departures.join('\n') : '（此期間沒有可報名團次）'
+          shop.departures.length ? shop.departures.join('\n')
+            : shop.hasInstantPlan
+              ? '（此期間沒有固定出發的團次；部分方案可另與店家確認時段）'
+              : '（此期間沒有可報名團次）'
         }`
       : shop.departures.length
         ? `未來 14 天可報名團次（剩餘名額為即時資料）：\n${shop.departures.join('\n')}`
