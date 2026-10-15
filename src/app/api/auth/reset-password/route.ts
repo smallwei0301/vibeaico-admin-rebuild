@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { readJsonBody, PUBLIC_JSON_BODY_LIMIT_BYTES, handle, ok, fail, ERR } from '@/server/http';
 import { createAdminSupabase } from '@/server/supabase';
 import { findValidCode, claimCode, releaseClaim } from '@/server/verify-code';
+import { assertCodeAttemptsAllowed, recordCodeFailureIfInvalid } from '@/server/verify-code-throttle';
 
 const bodySchema = z.object({
   email: z.string().email(),
@@ -31,7 +32,15 @@ async function updateFailure(error: { code?: string; status?: number }, codeId: 
 export const POST = handle(async (req) => {
   const b = bodySchema.parse(await readJsonBody(req, PUBLIC_JSON_BODY_LIMIT_BYTES));
   // 先驗證（無碼一律在此 400，維持列舉安全）。
-  const codeId = await findValidCode(b.email, b.code, 'RESET_PASSWORD');
+  // #1030：驗證前先檢查失敗額度（即使碼正確，額度已滿也先擋）；碼無效才記一次失敗。
+  assertCodeAttemptsAllowed(req.headers, b.email, 'RESET_PASSWORD');
+  let codeId: string;
+  try {
+    codeId = await findValidCode(b.email, b.code, 'RESET_PASSWORD');
+  } catch (e) {
+    recordCodeFailureIfInvalid(req.headers, b.email, 'RESET_PASSWORD', e);
+    throw e;
+  }
   const admin = createAdminSupabase();
   const { data: uid, error: rpcError } = await admin.rpc('user_id_by_email', { p_email: b.email });
   if (rpcError) throw rpcError; // 查詢失敗是系統錯誤（handle() → 500）；尚未占用，無需釋放
