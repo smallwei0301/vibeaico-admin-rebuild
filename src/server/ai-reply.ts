@@ -57,10 +57,15 @@ function windowRule(win: { today: string; from: string; to: string }, cut?: stri
 
 /** 有 INSTANT 方案時的規則 2：不得說任何日期沒開團，未列出的日期請顧客聯絡店家確認可預約時段（與公開頁 instantNote 語意一致）。 */
 function instantRule(shopUrl: string, win: { from: string; to: string }, cut?: string): string[] {
+  // 截斷日 <= 日期窗起點（含 cut === today）時，聯絡店家區間會變成反向的「from～from-1」→ 省略該行，整段交給 UNSURE。
+  const contactEnd = cut ? addCalendarDays(cut, -1) : win.to;
+  const contactLine = contactEnd < win.from
+    ? []
+    : [`   被問到 ${win.from}～${contactEnd} 之間、上面沒列出的日期，請顧客聯絡店家確認可預約時段並附上 ${shopUrl}；涉及名額或價格不確定時只回覆「UNSURE」；`];
   return [
     '2. 名額、價格、日期一律以上面提供的資料為準，**絕對不要推測或編造**；',
     '   只能以上面列出的團次回答具體團次與名額；**不得說任何日期「沒有開團」**（部分方案需與店家確認時段）；',
-    `   被問到 ${win.from}～${cut ? addCalendarDays(cut, -1) : win.to} 之間、上面沒列出的日期，請顧客聯絡店家確認可預約時段並附上 ${shopUrl}；涉及名額或價格不確定時只回覆「UNSURE」；`,
+    ...contactLine,
     cut
       ? `   團次清單在 ${cut} 被截斷：${cut}（含）之後的日期、時段、名額只回覆「UNSURE」；${win.to} 之後或今天之前同樣只回覆「UNSURE」。`
       : `   ${win.to} 之後（或今天之前）的日期、時段、名額只回覆「UNSURE」。`,
@@ -74,8 +79,8 @@ export function buildAiSystemPrompt(shop: ShopContext): string {
   const win = shop.departureWindow;
   const dataRule = shop.catalogUnavailable
     ? [
-        '2. 行程與團次資料暫時無法取得：被問到日期、名額、價格時，只回覆「UNSURE」讓真人接手，',
-        '   **絕對不要說「沒有開團」，也不要推測或編造**。',
+        '2. 行程與團次資料暫時無法取得：被問到行程／方案價格、團次日期或名額時，只回覆「UNSURE」讓真人接手，',
+        '   **絕對不要說「沒有開團」，也不要推測或編造**；上面「服務項目」等已提供的資料照常以其內容回答（含服務價格）。',
       ]
     : win && shop.hasInstantPlan
       ? instantRule(shop.shopUrl, win, cut)
