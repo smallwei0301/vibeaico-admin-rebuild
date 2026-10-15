@@ -848,59 +848,76 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
 
   const titleById = new Map<string, string>(trips.map((t: any) => [t.id, t.title]));
 
-  // 日期窗用店家時區（tenant_settings.basic.timezone，缺值／無效回退 Asia/Taipei），不是 UTC（#1022）。
+  // 日期窗用店家時區（tenant_settings.basic.timezone，#1022）。
+  // 查詢失敗（error 或 throw）不可假設台北：非台北店家會得到錯誤日期窗，與 trips／plans／departures 一致 return false。
+  // 只有「查詢成功但沒設定／設定無效」才由 resolvePublicTimeZone 回退 Asia/Taipei。
   let timeZoneSetting: unknown;
   try {
     const { data: settingsRow, error: settingsQueryError } = await ctx.admin
       .from('tenant_settings').select('basic').eq('tenant_id', ctx.tenant.id).maybeSingle();
-    if (settingsQueryError) console.error('[line] replyDepartures 查詢 tenant_settings 失敗', settingsQueryError);
-    else timeZoneSetting = (settingsRow as { basic?: { timezone?: unknown } } | null)?.basic?.timezone;
+    if (settingsQueryError) {
+      console.error('[line] replyDepartures 查詢 tenant_settings 失敗', settingsQueryError);
+      return false;
+    }
+    timeZoneSetting = (settingsRow as { basic?: { timezone?: unknown } } | null)?.basic?.timezone;
   } catch (settingsError) {
     console.error('[line] replyDepartures 查詢 tenant_settings 失敗', settingsError);
+    return false;
   }
   const { from, to } = departureWindow(Date.now(), timeZoneSetting);
 
-  // 先取「已發布行程底下啟用中的方案」，再查團次：停用／查無方案的團次必須在 .limit 之前就被排除，
-  // 否則最早的 N 筆全是停用方案時，會把後面可報名的團次擠出清單、誤回「沒有團次」（#1022）。
-  // 同一次查詢也供方案名稱、sales_mode 判定使用。查詢失敗與 trips／trip_departures 一致：return false 交由預設回覆。
-  const { data: plans, error: planError } = await ctx.admin
-    .from('trip_plans')
-    .select('id, name, sales_mode, active, min_party')
-    .eq('tenant_id', ctx.tenant.id)
-    .eq('active', true)
-    .in('trip_id', [...titleById.keys()]);
-  if (planError) {
-    console.error('[line] replyDepartures 查詢 trip_plans 失敗', planError);
+  // 啟用方案的過濾在資料庫端以關聯完成（trip_plans!inner + trip_plans.active），不再把方案 id 清單塞進 URL，
+  // 也不受方案查詢 max_rows 截斷影響；停用方案的團次在 .limit 之前就被排除，不會擠掉可報名的團次（#1022）。
+  // 查詢 A＝有方案的團次（內嵌方案供名稱／sales_mode 使用），查詢 B＝無方案（plan_id is null）的團次；
+  // 兩者各自 limit 後合併排序再截斷。任一查詢失敗與 trips 一致：return false 交由預設回覆。
+  const DEPARTURE_COLUMNS = 'id, trip_id, plan_id, departs_on, start_time, capacity, seats_booked';
+  const tripIds = [...titleById.keys()];
+  const [withPlanRes, noPlanRes] = await Promise.all([
+    ctx.admin
+      .from('trip_departures')
+      .select(`${DEPARTURE_COLUMNS}, trip_plans!inner(id, name, sales_mode, active)`)
+      .eq('tenant_id', ctx.tenant.id)
+      .eq('status', 'OPEN')
+      .in('trip_id', tripIds)
+      .gte('departs_on', from)
+      .lte('departs_on', to)
+      .eq('trip_plans.active', true)
+      .order('departs_on', { ascending: true })
+      .limit(SERVICE_LIST_LIMIT),
+    ctx.admin
+      .from('trip_departures')
+      .select(DEPARTURE_COLUMNS)
+      .eq('tenant_id', ctx.tenant.id)
+      .eq('status', 'OPEN')
+      .in('trip_id', tripIds)
+      .gte('departs_on', from)
+      .lte('departs_on', to)
+      .is('plan_id', null)
+      .order('departs_on', { ascending: true })
+      .limit(SERVICE_LIST_LIMIT),
+  ]);
+  if (withPlanRes.error || noPlanRes.error) {
+    console.error('[line] replyDepartures 查詢 trip_departures 失敗', withPlanRes.error ?? noPlanRes.error);
     return false;
   }
-  const planRows = ((plans ?? []) as any[]).filter((p) => p.active === true);
+
   const planNameById = new Map<string, string>();
   const fixedPlanIds = new Set<string>();
-  for (const p of planRows) {
-    planNameById.set(p.id, p.name);
-    if (p.sales_mode === 'FIXED_DEPARTURE') fixedPlanIds.add(p.id);
-  }
-  // id 全來自上面的資料庫查詢結果（uuid），不含使用者輸入；無啟用方案時只剩 plan_id 為 null 的團次。
-  const activePlanIds = planRows.map((p) => String(p.id));
-
-  let departureQuery = ctx.admin
-    .from('trip_departures')
-    .select('id, trip_id, plan_id, departs_on, start_time, capacity, seats_booked')
-    .eq('tenant_id', ctx.tenant.id)
-    .eq('status', 'OPEN')
-    .in('trip_id', [...titleById.keys()])
-    .gte('departs_on', from)
-    .lte('departs_on', to);
-  departureQuery = activePlanIds.length
-    ? departureQuery.or(`plan_id.is.null,plan_id.in.(${activePlanIds.join(',')})`)
-    : departureQuery.is('plan_id', null);
-  const { data: departures, error } = await departureQuery
-    .order('departs_on', { ascending: true })
-    .limit(SERVICE_LIST_LIMIT);
-  if (error) {
-    console.error('[line] replyDepartures 查詢 trip_departures 失敗', error);
-    return false;
-  }
+  const planRows: Array<{ id: string; active: boolean }> = [];
+  const withPlan = ((withPlanRes.data ?? []) as any[]).map((row) => {
+    const { trip_plans: embedded, ...d } = row;
+    const plan = Array.isArray(embedded) ? embedded[0] : embedded;
+    if (plan?.id) {
+      planNameById.set(plan.id, plan.name);
+      if (plan.sales_mode === 'FIXED_DEPARTURE') fixedPlanIds.add(plan.id);
+      planRows.push({ id: plan.id, active: plan.active === true });
+    }
+    return d;
+  });
+  const departures = [...withPlan, ...((noPlanRes.data ?? []) as any[])]
+    .sort((x, y) => String(x.departs_on).localeCompare(String(y.departs_on))
+      || String(x.start_time ?? '').localeCompare(String(y.start_time ?? '')))
+    .slice(0, SERVICE_LIST_LIMIT);
   if (!departures?.length) return replyText(ctx, MSG.departureEmpty);
 
   const listable = filterListableDepartures(departures as any[], planRows);
