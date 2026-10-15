@@ -28,7 +28,8 @@ import { selectBookableDepartures, BEYOND_CANDIDATES_MARK, type ListableDepartur
 import { resolvePublicTimeZone, tenantNowParts } from '@/lib/public-time-zone';
 
 const today = tenantNowParts(resolvePublicTimeZone('Asia/Taipei'), Date.now()).today;
-const dayFromNow = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+// 以租戶（台北）今天為基準推算日期；用 UTC 日期在 UTC 16:00–24:00 會把台北的「今天」當成明天（時段性紅燈）。
+const dayFromNow = (offset: number) => new Date(Date.parse(`${today}T00:00:00Z`) + offset * 86_400_000).toISOString().slice(0, 10);
 const FUTURE = dayFromNow(4);
 
 type Plan = Record<string, unknown>;
