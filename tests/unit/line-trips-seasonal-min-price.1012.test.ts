@@ -25,4 +25,16 @@ describe('#1012 minNonSeasonalPriceByTrip', () => {
     expect(m.has('t1')).toBe(false);
     expect(m.get('t2')).toBe(700);
   });
+  it('0 元與 1200 並存：取 1200（與首頁 n > 0 一致）', () => {
+    const m = minNonSeasonalPriceByTrip([plan('a', 't1', 0), plan('b', 't1', 1200)], new Set());
+    expect(m.get('t1')).toBe(1200);
+  });
+  it('只有 0 元方案：沒有 entry（價格洽詢）', () => {
+    const m = minNonSeasonalPriceByTrip([plan('a', 't1', 0)], new Set());
+    expect(m.has('t1')).toBe(false);
+  });
+  it('負數被忽略', () => {
+    const m = minNonSeasonalPriceByTrip([plan('a', 't1', -50), plan('b', 't1', 900)], new Set());
+    expect(m.get('t1')).toBe(900);
+  });
 });

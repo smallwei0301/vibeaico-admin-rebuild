@@ -779,16 +779,20 @@ async function replyTrips(ctx: BuiltinCtx): Promise<boolean> {
   const planRows = (plans ?? []) as any[];
   const seasonalPlanIds = new Set<string>();
   const activePlanIds = planRows.filter((p) => p.active).map((p) => String(p.id));
-  try {
-    const seasonReader = await readPlanSeasons(ctx.admin as any, ctx.tenant.id, activePlanIds);
-    for (const id of activePlanIds) {
-      if (hasSeasonalPricing({ seasons: seasonReader.byPlan.get(id) ?? [], incomplete: seasonReader.isIncomplete(id) })) {
-        seasonalPlanIds.add(id);
+  // 與公開首頁相同，方案 id 依 100 分塊查詢；任一塊失敗（throw）只讓該塊方案視為季節未知（排除）。
+  for (let i = 0; i < activePlanIds.length; i += 100) {
+    const chunk = activePlanIds.slice(i, i + 100);
+    try {
+      const seasonReader = await readPlanSeasons(ctx.admin as any, ctx.tenant.id, chunk);
+      for (const id of chunk) {
+        if (hasSeasonalPricing({ seasons: seasonReader.byPlan.get(id) ?? [], incomplete: seasonReader.isIncomplete(id) })) {
+          seasonalPlanIds.add(id);
+        }
       }
+    } catch (seasonError) {
+      console.error('[line] replyTrips 查詢 trip_plan_seasons 失敗', seasonError);
+      for (const id of chunk) seasonalPlanIds.add(id);
     }
-  } catch (seasonError) {
-    console.error('[line] replyTrips 查詢 trip_plan_seasons 失敗', seasonError);
-    for (const id of activePlanIds) seasonalPlanIds.add(id);
   }
 
   const minPriceByTrip = minNonSeasonalPriceByTrip(planRows, seasonalPlanIds);
