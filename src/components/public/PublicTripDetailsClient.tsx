@@ -265,20 +265,21 @@ export function PublicTripDetailsClient({ shopCode, slug, initialData }: Props) 
                         <h4 className="text-sm font-medium">{t.departures.title}</h4>
                         <ul className="flex flex-wrap gap-2">
                           {plan.departures.map((departure) => {
-                            const bookable = !departure.soldOut && candidateIsBookable(departure.seatsLeft, plan.minParty);
+                            const belowMinParty = plan.salesMode !== 'REQUEST' && !departure.soldOut && !candidateIsBookable(departure.seatsLeft, plan.minParty);
+                            const bookable = !departure.soldOut && !belowMinParty;
                             return (
-                            <li key={departure.id} className={bookable ? 'badge badge-primary' : 'badge text-secondary'}>
-                              {formatDepartureDate(departure.departsOn)}{' '}
-                              {departure.startTime || t.departures.noStartTime}{' · '}
-                              {departure.soldOut ? t.departures.soldOut : t.departures.seatsLeft(departure.seatsLeft)}
-                              {!departure.soldOut && !bookable ? <span className="block text-2xs">{t.departures.belowMinParty}</span> : null}
-                              {departure.unitPrice !== undefined
-                                ? <span className="block text-2xs">{t.plans.price(formatCurrency(departure.unitPrice), t.plans.priceUnit[plan.priceType])}</span>
-                                : null}
-                              {formationLines(plan.salesMode, departure, timeZone).map((line) => (
-                                <span key={line} className="block text-2xs text-secondary">{line}</span>
-                              ))}
-                            </li>
+                              <li key={departure.id} className={bookable ? 'badge badge-primary' : 'badge text-secondary'}>
+                                {formatDepartureDate(departure.departsOn)}{' '}
+                                {departure.startTime || t.departures.noStartTime}{' · '}
+                                {departure.soldOut ? t.departures.soldOut : t.departures.seatsLeft(departure.seatsLeft)}
+                                {belowMinParty ? <span className="block text-2xs">{t.departures.belowMinParty}</span> : null}
+                                {departure.unitPrice !== undefined
+                                  ? <span className="block text-2xs">{t.plans.price(formatCurrency(departure.unitPrice), t.plans.priceUnit[plan.priceType])}</span>
+                                  : null}
+                                {formationLines(plan.salesMode, departure, timeZone).map((line) => (
+                                  <span key={line} className="block text-2xs text-secondary">{line}</span>
+                                ))}
+                              </li>
                             );
                           })}
                         </ul>
