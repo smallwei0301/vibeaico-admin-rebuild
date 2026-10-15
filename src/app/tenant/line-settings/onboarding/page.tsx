@@ -233,6 +233,11 @@ export default function LineSetupWizardPage() {
       );
       return;
     }
+    const credentialWarning = channelIdWarning || secretWarning || tokenWarning;
+    if (credentialWarning) {
+      toast.show(credentialWarning, 'warning');
+      return;
+    }
     setSavingCredentials(true);
     try {
       await saveLineSettings({
@@ -506,7 +511,7 @@ export default function LineSetupWizardPage() {
             </FormGroup>
 
             <div className="flex justify-end">
-              <Button loading={savingCredentials} loadingText={t.credentials.saving} onClick={() => void saveCredentials()}>
+              <Button loading={savingCredentials} disabled={!!(channelIdWarning || secretWarning || tokenWarning)} loadingText={t.credentials.saving} onClick={() => void saveCredentials()}>
                 {t.credentials.save}
                 <ArrowRight size={14} />
               </Button>

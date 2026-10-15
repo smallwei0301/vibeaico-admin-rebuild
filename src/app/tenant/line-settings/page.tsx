@@ -262,6 +262,11 @@ export default function LineSettingsPage() {
       toast.show(t.form.channelIdRequired, 'warning');
       return;
     }
+    const credentialWarning = channelIdWarning || secretWarning || tokenWarning;
+    if (credentialWarning) {
+      toast.show(credentialWarning, 'warning');
+      return;
+    }
     setSavingLine(true);
     try {
       /* 🔐 沒重新輸入 → 送空字串＝不變更；重新輸入 → 送新明文由後端加密覆蓋 */
@@ -757,7 +762,7 @@ export default function LineSettingsPage() {
           </FormGroup>
 
           <div className="flex justify-end">
-            <Button loading={savingLine} loadingText={t.form.saving} onClick={() => void saveLine()}>
+            <Button loading={savingLine} disabled={!!(channelIdWarning || secretWarning || tokenWarning)} loadingText={t.form.saving} onClick={() => void saveLine()}>
               <Save size={14} />
               {t.form.save}
             </Button>
