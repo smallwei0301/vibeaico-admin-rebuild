@@ -148,4 +148,9 @@ describe('production-db-release-orchestrator postcheck mode #447', () => {
     expect(order('Bind the collect run to the exact evidence the EXECUTE run used')).toBeLessThan(order('Download release pre-apply G2 drift report from the collect run'));
     expect(order('Download release pre-apply G2 drift report from the collect run')).toBeLessThan(order('G7 finalize Production schema readiness'));
   });
+
+  it('retains the review bundle at least as long as the G2 drift report (14 days)', () => {
+    const upload = workflow.jobs.collect.steps.find((step: any) => step.name === 'Publish G1-G4 evidence for release-bound review');
+    expect(upload.with['retention-days']).toBe(14);
+  });
 });

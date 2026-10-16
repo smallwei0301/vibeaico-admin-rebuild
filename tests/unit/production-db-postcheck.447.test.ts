@@ -44,6 +44,11 @@ describe('Production DB G7 scoped postcheck #447',()=>{
     expect(run({report:report(ledger,'DRIFT_BLOCKED')})).toMatchObject({status:'PRODUCTION_SCHEMA_READY'});
   });
 
+  it('fails closed when both the canonical and the applied ledger identity exist in Production',()=>{
+    const applied=[diff('migrationLedger','20261016093644/0136_issue_755_create_tour_order_invoker',null,'3'.repeat(64))]; // canonical row present => not reported missing
+    expect(failure({report:report(applied,'DRIFT_BLOCKED')})).toMatch(/POSTCHECK_DUPLICATE_LEDGER_IDENTITY|both its canonical and applied/);
+  });
+
   it('fails when a planned object still differs from canonical',()=>{
     const message=failure({report:report([diff('routines','public.create_tour_order(uuid)','1'.repeat(64),'8'.repeat(64))],'DRIFT_BLOCKED')});
     expect(message).toMatch(/still differs/);

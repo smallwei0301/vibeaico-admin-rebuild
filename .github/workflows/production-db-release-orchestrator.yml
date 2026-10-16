@@ -550,7 +550,7 @@ jobs:
             ${{ runner.temp }}/production-db-base-release-packet.json
             ${{ runner.temp }}/g3/production-db-release-plan.json
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 14
 
   prepare:
     needs: admission
