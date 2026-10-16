@@ -4,6 +4,7 @@ import {
   evaluateAstra,
   isTrustedFinalRiskAgentUser,
   loadFallbackSourceEvidence,
+  loadRoleEvidenceFromGithub,
   parseAstraReviews,
   routing,
 } from './astra-review-policy.mjs';
@@ -97,6 +98,7 @@ export function buildProductionDbFinalRiskEvidence({
     releaseId,
     trustSource: latest.trustSource,
     databaseMutationAuthorized: false,
+    ...(context.roleEvidence !== undefined ? { roleEvidence: context.roleEvidence } : {}),
     ...(latest.reviewerTier === 'EVIDENCE_FALLBACK' ? { fallbackSourceEvidence: context.fallbackSourceEvidence } : {}),
   };
 }
@@ -197,8 +199,13 @@ export async function buildProductionDbFinalRiskEvidenceFromGithub({
   const body = current.body ?? '';
   const reviews = await loadTrustedGithubReviews({ github, owner, repo, prNumber }, policy);
   const fallbackSourceEvidence = await loadFallbackSourceEvidence({ github, owner, repo, reviews, prNumber }, policy);
+  const roleEvidence = await loadRoleEvidenceFromGithub({
+    github, owner, repo, body, latestReview: parseAstraReviews(reviews)[0],
+    roleHead: current.head.sha, changeDigest, policy,
+  });
   const context = {
     fallbackSourceEvidence,
+    roleEvidence,
     repository,
     baseSha: current.base.sha,
     headSha: current.head.sha,

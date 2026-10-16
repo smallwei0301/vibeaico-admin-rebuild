@@ -167,7 +167,13 @@ function assertCommon(packet, nowMs) {
   const evidenceDigest = releaseEvidenceDigestOf(packet);
   const finalRisk = packet.finalRisk ?? {};
   assertStatus(finalRisk.status, 'ASTRA_APPROVED', 'finalRisk.status');
-  if (finalRiskReviewerErrors(finalRisk, routing).length) {
+  if (finalRiskReviewerErrors(finalRisk, routing, {
+    repository: finalRisk.repository ?? packet.repository,
+    headSha: finalRisk.headSha,
+    changeDigest: finalRisk.changeDigest,
+    roleEvidence: finalRisk.roleEvidence,
+    fallbackSourceEvidence: finalRisk.fallbackSourceEvidence,
+  }).length) {
     fail('FINAL_RISK_MODEL_UNVERIFIED', 'Final Risk reviewer identity or downgrade evidence is invalid');
   }
   if (validDigest(finalRisk.planDigest, 'finalRisk.planDigest') !== planDigest) fail('FINAL_RISK_PLAN_MISMATCH', 'Final Risk is for another plan');
