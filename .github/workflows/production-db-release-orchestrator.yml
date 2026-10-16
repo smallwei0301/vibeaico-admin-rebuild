@@ -33,6 +33,10 @@ on:
         description: Optional successful main CI dispatch with the separate TEST-only 0098 baseline receipt
         required: false
         type: string
+      collect_run_id:
+        description: Postcheck only - the collect run ID whose g2 drift report is the release's pre-apply baseline
+        required: false
+        type: string
       final_risk_pr:
         description: PR number whose live reviews contain the release-bound Final Risk decision
         required: false
@@ -72,6 +76,7 @@ jobs:
           FINAL_RISK_PR: ${{ inputs.final_risk_pr }}
           MODE: ${{ inputs.mode }}
           EVIDENCE_RUN_ID: ${{ inputs.evidence_run_id }}
+          COLLECT_RUN_ID: ${{ inputs.collect_run_id }}
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = 'refs/heads/main'
@@ -91,6 +96,7 @@ jobs:
           fi
           if [ "$MODE" = postcheck ]; then
             [[ "$EVIDENCE_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+            [[ "$COLLECT_RUN_ID" =~ ^[1-9][0-9]*$ ]]
             test -z "$TEST_BASELINE_RUN_ID"
           fi
 
@@ -840,6 +846,14 @@ jobs:
           name: schema-drift-report-${{ github.run_id }}-g7
           path: ${{ runner.temp }}/g7
 
+      - name: Download release pre-apply G2 drift report from the collect run
+        uses: actions/download-artifact@v4
+        with:
+          name: schema-drift-report-${{ inputs.evidence_run_id }}-g2
+          path: ${{ runner.temp }}/g2
+          run-id: ${{ inputs.evidence_run_id }}
+          github-token: ${{ github.token }}
+
       - name: G7 finalize Production schema readiness
         shell: bash
         run: |
@@ -849,7 +863,8 @@ jobs:
             "$RUNNER_TEMP/apply/production-db-apply-result.json" \
             "$RUNNER_TEMP/g7/report.json" \
             "$RUNNER_TEMP/prepared/production-db-consistency-evidence.json" \
-            "$RUNNER_TEMP/production-db-terminal-result.json"
+            "$RUNNER_TEMP/production-db-terminal-result.json" \
+            "$RUNNER_TEMP/g2/report.json"
 
       - name: Upload production-db-terminal-result
         if: ${{ always() }}
@@ -936,6 +951,14 @@ jobs:
           name: schema-drift-report-${{ github.run_id }}-g7-recheck
           path: ${{ runner.temp }}/g7
 
+      - name: Download release pre-apply G2 drift report from the collect run
+        uses: actions/download-artifact@v4
+        with:
+          name: schema-drift-report-${{ inputs.collect_run_id }}-g2
+          path: ${{ runner.temp }}/g2
+          run-id: ${{ inputs.collect_run_id }}
+          github-token: ${{ github.token }}
+
       - name: Require APPLIED_CONFIRMED apply result for the same release and plan
         shell: bash
         env:
@@ -973,6 +996,7 @@ jobs:
             "$RUNNER_TEMP/g7/report.json" \
             "$RUNNER_TEMP/prepared/production-db-consistency-evidence.json" \
             "$RUNNER_TEMP/production-db-terminal-result.json" \
+            "$RUNNER_TEMP/g2/report.json" \
             "${flag[@]}"
 
       - name: Upload production-db-terminal-result

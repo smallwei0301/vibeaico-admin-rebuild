@@ -18,7 +18,7 @@ function applied(){
 function report(differences:any[]=[],status='MATCH',extra:any={}){return {observedMainSha:MAIN,status,differences,environmentStatuses:{TEST:'MATCH',PRODUCTION:status},exceptionSummary:{expired:0,unmatched:0},safety:{authorizesDatabaseWrite:false},...extra};}
 const diff=(surface:string,objectKey:string,expectedFingerprint:string|null='9'.repeat(64),observedFingerprint:string|null=null,classification:string|null=null)=>
   ({environment:'PRODUCTION',surface,objectKey,expectedFingerprint,observedFingerprint,classification,exception:null});
-const run=(over:any={})=>finalizeProductionDbPostcheck({report:report(),plan,journal:applied(),consistency:consistency(),now:'2026-09-14T13:03:00Z',...over});
+const run=(over:any={})=>finalizeProductionDbPostcheck({report:report(),preApplyReport:report(),plan,journal:applied(),consistency:consistency(),now:'2026-09-14T13:03:00Z',...over});
 function failure(over:any){
   try { run(over); } catch (error:any) {
     expect(error.code).toBe('POSTCHECK_FAILED');
@@ -35,7 +35,7 @@ describe('Production DB G7 scoped postcheck #447',()=>{
 
   it('ignores unrelated Production drift outside the release scope even when overall status is DRIFT_BLOCKED',()=>{
     const unrelated=[diff('columns','public.other.col'),diff('migrationLedger','0138/0138_other_pending',undefined,null,'EXPECTED_PENDING_PRODUCTION'),diff('acl','table:public.other')];
-    expect(run({report:report(unrelated,'DRIFT_BLOCKED')})).toMatchObject({status:'PRODUCTION_SCHEMA_READY'});
+    expect(run({report:report(unrelated,'DRIFT_BLOCKED'),preApplyReport:report(unrelated,'DRIFT_BLOCKED')})).toMatchObject({status:'PRODUCTION_SCHEMA_READY'});
   });
 
   it('accepts the applied ledger identity (14-digit version present, canonical key missing)',()=>{
@@ -72,6 +72,28 @@ describe('Production DB G7 scoped postcheck #447',()=>{
     expect(failure({report:moved})).toMatch(/POSTCHECK_MAIN_MISMATCH|release main SHA/);
     expect(failure({report:moved,migrationsUnchangedSincePlan:false})).toMatch(/release main SHA/);
     expect(run({report:moved,migrationsUnchangedSincePlan:true})).toMatchObject({status:'PRODUCTION_SCHEMA_READY'});
+  });
+
+  describe('pre-apply G2 baseline for unrelated Production drift',()=>{
+    const pre=[diff('columns','public.other.col','9'.repeat(64),'4'.repeat(64)),diff('acl','table:public.other','9'.repeat(64),'5'.repeat(64))];
+    const post=(fp='4'.repeat(64),aclFp='6'.repeat(64))=>[diff('columns','public.other.col','9'.repeat(64),fp),diff('acl','table:public.other','9'.repeat(64),aclFp)];
+    it('is READY when unrelated drift already existed before apply (ACL fingerprint algorithm may differ)',()=>{
+      expect(run({report:report(post(),'DRIFT_BLOCKED'),preApplyReport:report(pre,'DRIFT_BLOCKED')})).toMatchObject({status:'PRODUCTION_SCHEMA_READY'});
+    });
+    it('fails on a new non-planned Production difference absent from G2',()=>{
+      const added=[...post(),diff('acl','table:public.new_after_apply','9'.repeat(64),'7'.repeat(64))];
+      expect(failure({report:report(added,'DRIFT_BLOCKED'),preApplyReport:report(pre,'DRIFT_BLOCKED')})).toMatch(/was not present before apply/);
+    });
+    it('fails when a pre-existing non-acl drift changed its observed fingerprint',()=>{
+      expect(failure({report:report(post('8'.repeat(64)),'DRIFT_BLOCKED'),preApplyReport:report(pre,'DRIFT_BLOCKED')})).toMatch(/changed since the pre-apply report/);
+    });
+    it.each([
+      ['missing',{preApplyReport:undefined}],
+      ['unavailable',{preApplyReport:report([],'EVIDENCE_UNAVAILABLE')}],
+      ['no differences array',{preApplyReport:{...report(),differences:undefined}}],
+      ['another main',{preApplyReport:report([],'MATCH',{observedMainSha:NEW_MAIN})}],
+      ['not bound by the consistency evidence',{consistency:{...consistency(),rawObserverStatus:'DRIFT_BLOCKED',rawObserverDifferenceCount:3}}],
+    ])('fails closed on a %s G2 report',(_label,over)=>{ expect(failure(over)).toMatch(/pre-apply|G2/); });
   });
 
   it('keeps a terminal POSTCHECK_FAILED journal that cannot be blindly retried',()=>{

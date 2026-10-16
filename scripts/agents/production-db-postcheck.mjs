@@ -15,7 +15,7 @@ function plannedLedgerKeys(migration) {
   return { canonical, applied };
 }
 
-function verifyPostReport(report, plan, consistency, migrationsUnchangedSincePlan) {
+function verifyPostReport(report, plan, consistency, migrationsUnchangedSincePlan, preApplyReport) {
   if (!report || report.status === 'EVIDENCE_UNAVAILABLE') fail('POSTCHECK_EVIDENCE_UNAVAILABLE', 'postcheck report is missing or evidence is unavailable');
   if (report.observedMainSha !== plan.mainSha && migrationsUnchangedSincePlan !== true) {
     fail('POSTCHECK_MAIN_MISMATCH', 'postcheck report is not for the release main SHA');
@@ -48,9 +48,40 @@ function verifyPostReport(report, plan, consistency, migrationsUnchangedSincePla
     const appliedPresent = ledger.some((item) => keys.applied.includes(item.objectKey) && item.observedFingerprint !== null);
     if (missing && !appliedPresent) fail('POSTCHECK_PENDING_REMAINS', `planned migration ${migration.repoFile} is still pending in the Production ledger`);
   }
+  verifyNoNewUnplannedDrift({ differences, plan, preApplyReport, consistency, ownLedgerKeys: plan.migrations.flatMap((migration) => {
+    const keys = plannedLedgerKeys(migration);
+    return [...keys.canonical, ...keys.applied];
+  }) });
   const intentional = differences.filter((item) => item.classification === 'INTENTIONAL_DIFFERENCE');
   if (intentional.some((item) => !item?.exception?.issue || !item?.exception?.expiresAt)) {
     fail('POSTCHECK_UNBOUND_INTENTIONAL_DIFFERENCE', 'Production intentional difference lacks durable exception evidence');
+  }
+}
+
+// Unrelated Production drift is tolerated only if it already existed in the release's own pre-apply G2
+// report: otherwise the apply itself introduced it. ACL fingerprints changed algorithm between G2 and
+// G7 (owner normalization), so acl is compared by presence only; every other surface also by observedFingerprint.
+function verifyNoNewUnplannedDrift({ differences, plan, preApplyReport, consistency, ownLedgerKeys }) {
+  const g2 = preApplyReport;
+  if (!g2 || typeof g2 !== 'object' || !Array.isArray(g2.differences) || g2.status === 'EVIDENCE_UNAVAILABLE'
+    || g2.observedMainSha !== plan.mainSha || g2.safety?.authorizesDatabaseWrite !== false) {
+    fail('POSTCHECK_PREAPPLY_REPORT_REQUIRED', 'the release pre-apply G2 drift report is required and must be valid for the release main');
+  }
+  if ((consistency?.rawObserverStatus !== undefined && consistency.rawObserverStatus !== g2.status)
+    || (consistency?.rawObserverDifferenceCount !== undefined && consistency.rawObserverDifferenceCount !== g2.differenceCount)) {
+    fail('POSTCHECK_PREAPPLY_REPORT_MISMATCH', 'pre-apply G2 report is not the one bound by the release consistency evidence');
+  }
+  const before = new Map(g2.differences.filter((item) => item?.environment === 'PRODUCTION')
+    .map((item) => [`${item.surface}\0${item.objectKey}`, item]));
+  const planned = new Set((consistency?.plannedProductionDifferences ?? []).map((item) => `${item.surface}\0${item.objectKey}`));
+  for (const item of differences) {
+    if (item.surface === 'migrationLedger' && ownLedgerKeys.includes(item.objectKey)) continue;
+    if (planned.has(`${item.surface}\0${item.objectKey}`)) continue;
+    const prior = before.get(`${item.surface}\0${item.objectKey}`);
+    if (!prior) fail('POSTCHECK_NEW_PRODUCTION_DRIFT', `Production difference ${item.surface}:${item.objectKey} was not present before apply`);
+    if (item.surface !== 'acl' && (prior.observedFingerprint ?? null) !== (item.observedFingerprint ?? null)) {
+      fail('POSTCHECK_NEW_PRODUCTION_DRIFT', `Production difference ${item.surface}:${item.objectKey} changed since the pre-apply report`);
+    }
   }
 }
 
@@ -60,15 +91,16 @@ function verifyPostReport(report, plan, consistency, migrationsUnchangedSincePla
  *   plan?: any,
  *   consistency?: any,
  *   migrationsUnchangedSincePlan?: boolean,
+ *   preApplyReport?: any,
  *   journal?: any,
  *   now?: string,
  * }} [input]
  */
-export function finalizeProductionDbPostcheck({ report, plan, journal, consistency, migrationsUnchangedSincePlan = false, now = new Date().toISOString() } = {}) {
+export function finalizeProductionDbPostcheck({ report, plan, journal, consistency, migrationsUnchangedSincePlan = false, preApplyReport, now = new Date().toISOString() } = {}) {
   assertReleaseJournalMatchesPlan(journal, plan);
   if (journal.status !== 'APPLIED_CONFIRMED') fail('POSTCHECK_JOURNAL_NOT_APPLIED', `journal status is ${journal.status}`);
   try {
-    verifyPostReport(report, plan, consistency, migrationsUnchangedSincePlan);
+    verifyPostReport(report, plan, consistency, migrationsUnchangedSincePlan, preApplyReport);
     const readyJournal = advanceReleaseJournal(journal, {
       status: 'PRODUCTION_SCHEMA_READY', at: now, evidenceRef: 'postcheck:schema-acl-rls-match',
     });

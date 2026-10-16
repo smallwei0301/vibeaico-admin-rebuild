@@ -224,7 +224,7 @@ export async function executeProductionDbPreparedRelease({
   });
 }
 
-export function finalizeProductionDbRelease({ plan, applyResult, postcheckReport, consistencyEvidence, migrationsUnchangedSincePlan = false, now = new Date().toISOString() } = /** @type {any} */ ({})) {
+export function finalizeProductionDbRelease({ plan, applyResult, postcheckReport, consistencyEvidence, preApplyReport, migrationsUnchangedSincePlan = false, now = new Date().toISOString() } = /** @type {any} */ ({})) {
   if (!applyResult || applyResult.status !== 'APPLY_NEEDS_SCHEMA_POSTCHECK') fail('APPLY_RESULT_REQUIRED', 'verified apply result is required before G7');
   if (applyResult.releaseId !== plan?.releaseId || applyResult.mainSha !== plan?.mainSha || applyResult.planDigest !== plan?.planDigest) {
     fail('APPLY_RESULT_PLAN_MISMATCH', 'apply result belongs to another release plan');
@@ -234,6 +234,7 @@ export function finalizeProductionDbRelease({ plan, applyResult, postcheckReport
     plan,
     consistency: consistencyEvidence,
     migrationsUnchangedSincePlan,
+    preApplyReport,
     journal: applyResult.journal,
     now,
   });
@@ -301,14 +302,14 @@ async function main() {
     }
     if (command === 'postcheck') {
       const flag = args.filter((arg) => arg.startsWith('--'));
-      const [planPath, applyPath, reportPath, consistencyPath, outputPath] = args.filter((arg) => !arg.startsWith('--'));
-      if (!planPath || !applyPath || !reportPath || !consistencyPath || !outputPath || flag.some((arg) => arg !== '--migrations-unchanged-since-plan')) {
-        fail('USAGE', 'postcheck <plan> <apply-result> <drift-report> <consistency-evidence> <output> [--migrations-unchanged-since-plan]');
+      const [planPath, applyPath, reportPath, consistencyPath, outputPath, preApplyPath] = args.filter((arg) => !arg.startsWith('--'));
+      if (!planPath || !applyPath || !reportPath || !consistencyPath || !outputPath || !preApplyPath || flag.some((arg) => arg !== '--migrations-unchanged-since-plan')) {
+        fail('USAGE', 'postcheck <plan> <apply-result> <drift-report> <consistency-evidence> <output> <pre-apply-g2-report> [--migrations-unchanged-since-plan]');
       }
       try {
         writeJson(outputPath, finalizeProductionDbRelease({
           plan: readJson(planPath), applyResult: readJson(applyPath), postcheckReport: readJson(reportPath),
-          consistencyEvidence: readJson(consistencyPath), migrationsUnchangedSincePlan: flag.length === 1,
+          consistencyEvidence: readJson(consistencyPath), preApplyReport: readJson(preApplyPath), migrationsUnchangedSincePlan: flag.length === 1,
         }));
       } catch (error) {
         if (error?.code === 'POSTCHECK_FAILED') {

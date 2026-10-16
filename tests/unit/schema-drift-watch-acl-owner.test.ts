@@ -13,9 +13,10 @@ const aclRaw = (owner: string, extra: any[] = [], fnPrivs: any[] = [], securityD
   },
   ledger: [{ version: '0105', name: '0105_previous_migration' }],
 });
-const aclOf = (value: any) => buildObserverSnapshotFromRaw({
-  environment: 'PRODUCTION', projectRef: 'egehnijjpgijmccagxac', observedAt: '2026-09-14T01:18:00Z',
-  observedMainSha: MAIN, evidenceRef: 'supabase:production/schema-observer', raw: value,
+const REFS: Record<string, string> = { PRODUCTION: 'egehnijjpgijmccagxac', TEST: 'nmwhwngojosmagjuvxol' };
+const aclOf = (value: any, environment = 'TEST') => buildObserverSnapshotFromRaw({
+  environment, projectRef: REFS[environment], observedAt: '2026-09-14T01:18:00Z',
+  observedMainSha: MAIN, evidenceRef: `supabase:${environment.toLowerCase()}/schema-observer`, raw: value,
 }).acl;
 const testLike = () => aclRaw('postgres', [grant('postgres', 'SELECT')], [grant('postgres', 'EXECUTE')]);
 
@@ -29,7 +30,14 @@ describe('ACL fingerprint ignores owner-equivalent roles only', () => {
     const production = aclRaw('production_migration_owner',
       [grant('production_migration_owner', 'DELETE'), grant('postgres', 'SELECT')],
       [grant('postgres', 'EXECUTE'), grant('production_migration_owner', 'EXECUTE')]);
-    expect(aclOf(production)).toEqual(aclOf(testLike()));
+    expect(aclOf(production, 'PRODUCTION')).toEqual(aclOf(testLike(), 'TEST'));
+  });
+  it('is environment-aware: owner drift stays visible', () => {
+    const prodOwner = () => aclRaw('production_migration_owner', [grant('postgres', 'SELECT')], [grant('postgres', 'EXECUTE')]);
+    expect(aclOf(prodOwner(), 'PRODUCTION').items).toEqual(aclOf(testLike(), 'TEST').items);
+    expect(aclOf(testLike(), 'PRODUCTION').items).not.toEqual(aclOf(testLike(), 'TEST').items); // PROD owner postgres
+    expect(aclOf(prodOwner(), 'TEST').items).not.toEqual(aclOf(prodOwner(), 'PRODUCTION').items); // TEST owner production_migration_owner
+    expect(aclOf(prodOwner(), 'TEST').items).not.toEqual(aclOf(testLike(), 'TEST').items);
   });
   it.each([
     ['anon EXECUTE added', aclRaw('postgres', [], [grant('anon', 'EXECUTE')])],

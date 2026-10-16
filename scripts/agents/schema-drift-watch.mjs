@@ -293,18 +293,22 @@ function sortAcl(value) {
 // by production_migration_owner, TEST/local by postgres) and never describe
 // client-visible access. Every other grantee and owner value stays compared verbatim.
 export const OWNER_EQUIVALENT_ACL_ROLES = Object.freeze(['postgres', 'production_migration_owner']);
-function normalizeAclItemForFingerprint(item) {
+// Owner normalization is environment-aware so owner drift stays visible: Production maps only
+// production_migration_owner, LOCAL_EXPECTED/TEST map only postgres; any other owner (including a
+// Production function owned by postgres) stays verbatim and therefore differs.
+const ENVIRONMENT_OWNER_ROLE = Object.freeze({ PRODUCTION: 'production_migration_owner', TEST: 'postgres', LOCAL_EXPECTED: 'postgres' });
+function normalizeAclItemForFingerprint(item, environment) {
   const normalized = { ...item };
   if (Array.isArray(item.privileges)) {
     normalized.privileges = item.privileges.filter((privilege) => !OWNER_EQUIVALENT_ACL_ROLES.includes(privilege?.grantee));
   }
-  if (typeof item.owner === 'string' && OWNER_EQUIVALENT_ACL_ROLES.includes(item.owner)) normalized.owner = 'OWNER_ROLE';
+  if (typeof item.owner === 'string' && item.owner === ENVIRONMENT_OWNER_ROLE[environment]) normalized.owner = 'OWNER_ROLE';
   return normalized;
 }
-function aclItems(acl) {
+function aclItems(acl, environment) {
   const items = [
-    ...acl.tables.map((item) => ({ key: `table:${item.schema}.${item.name}`, fingerprint: sha256(stableStringify(normalizeAclItemForFingerprint(item))) })),
-    ...acl.functions.map((item) => ({ key: `function:${item.schema}.${item.name}(${item.identityArguments})`, fingerprint: sha256(stableStringify(normalizeAclItemForFingerprint(item))) })),
+    ...acl.tables.map((item) => ({ key: `table:${item.schema}.${item.name}`, fingerprint: sha256(stableStringify(normalizeAclItemForFingerprint(item, environment))) })),
+    ...acl.functions.map((item) => ({ key: `function:${item.schema}.${item.name}(${item.identityArguments})`, fingerprint: sha256(stableStringify(normalizeAclItemForFingerprint(item, environment))) })),
   ];
   return items.sort((left, right) => compareText(left.key, right.key));
 }
@@ -313,7 +317,7 @@ function outputSnapshot({ normalized, environment, projectRef, metadataItems, ac
     const items = metadataItems[surface];
     return [surface, { count: items.length, digest: digest(items), items }];
   }));
-  const aclEntries = aclItems(acl);
+  const aclEntries = aclItems(acl, environment);
   const core = {
     schemaVersion: DRIFT_WATCH_SCHEMA_VERSION, status: 'CAPTURED', queryVersion: normalized.queryVersion,
     queryDigest: normalized.queryDigest, environment, projectRef, observedAt: normalized.observedAt,

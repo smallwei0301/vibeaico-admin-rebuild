@@ -317,7 +317,7 @@ describe('#755 trusted G3 writer to observer identity binding', () => {
       const consistency = { status: 'CONSISTENCY_VERIFIED', mainSha: MAIN, planDigest: plan.planDigest, plannedProductionDifferences: [
         { surface: 'routines', objectKey: 'public.create_tour_order(uuid)', expectedFingerprint: '1'.repeat(64) },
         { surface: 'migrationLedger', objectKey: `0136/${MIGRATION}`, expectedFingerprint: '2'.repeat(64) }] };
-      expect(finalizeProductionDbPostcheck({ report, plan, journal, consistency, now: '2026-10-16T09:03:00Z' }))
+      expect(finalizeProductionDbPostcheck({ report, preApplyReport: compareObserverSnapshots(writerFixture().args), plan, journal, consistency, now: '2026-10-16T09:03:00Z' }))
         .toMatchObject({ status: 'PRODUCTION_SCHEMA_READY', databaseMutationAuthorized: false });
     });
     it('collect g2 keeps the pre_apply default and the consistency assembly; only g7/g7-recheck pass post_apply', () => {

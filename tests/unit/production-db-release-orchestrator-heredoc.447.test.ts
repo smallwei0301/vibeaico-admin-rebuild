@@ -108,4 +108,16 @@ describe('production-db-release-orchestrator postcheck mode #447', () => {
     expect(finalize).toContain('$RUNNER_TEMP/prepared/production-db-consistency-evidence.json');
     expect(finalize).not.toContain('--migrations-unchanged-since-plan');
   });
+
+  it('feeds the release pre-apply G2 report to both postcheck jobs', () => {
+    for (const [job, id] of [['postcheck', 'evidence_run_id'], ['postcheck-recheck', 'collect_run_id']] as const) {
+      const steps = workflow.jobs[job].steps;
+      const download = steps.find((step: any) => step.name === 'Download release pre-apply G2 drift report from the collect run');
+      expect(download.with.name).toBe(`schema-drift-report-\${{ inputs.${id} }}-g2`);
+      expect(download.with['run-id']).toBe(`\${{ inputs.${id} }}`);
+      expect(download.with['github-token']).toBe('${{ github.token }}');
+      expect(steps.find((step: any) => step.name === 'G7 finalize Production schema readiness').run).toContain('$RUNNER_TEMP/g2/report.json');
+    }
+    expect(workflow.on.workflow_dispatch.inputs.collect_run_id).toBeDefined();
+  });
 });
