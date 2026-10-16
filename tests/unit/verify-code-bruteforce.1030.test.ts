@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 type Row = { id: string; email: string; purpose: string; code: string; consumed_at: string | null; created_at: string };
 const st = vi.hoisted(() => ({
-  rows: [] as any[], exists: false, delayMs: 0, codeQueries: 0, validCodes: new Set<string>(), uidFound: true,
+  rows: [] as any[], exists: false, delayMs: 0, codeQueries: 0, validCodes: new Set<string>(), uidFound: true, lookupError: false,
 }));
 const mail = vi.hoisted(() => ({ fn: vi.fn() }));
 const updateUserById = vi.hoisted(() => vi.fn());
@@ -26,6 +26,7 @@ vi.mock('@/server/supabase', () => ({
         q.is = () => q; q.gt = () => q; q.order = () => q; q.limit = () => q;
         q.maybeSingle = async () => {
           if ('code' in f) { st.codeQueries += 1; if (st.delayMs) await new Promise((r) => setTimeout(r, st.delayMs)); }
+          if ('code' in f && st.lookupError) return { data: null, error: { code: 'XX000', message: 'db down' } };
           if ('code' in f) return { data: st.validCodes.has(`${f.email}|${f.code}`) ? { id: 'code-1' } : null };
           return { data: null };
         };
@@ -79,7 +80,7 @@ beforeEach(() => {
   seq += 1;
   ip = `10.0.${Math.floor(seq / 250)}.${seq % 250}`;
   email = `user${seq}@example.com`;
-  st.rows = []; st.delayMs = 0; st.codeQueries = 0; st.exists = false; st.validCodes = new Set(); st.uidFound = true;
+  st.rows = []; st.delayMs = 0; st.codeQueries = 0; st.exists = false; st.validCodes = new Set(); st.uidFound = true; st.lookupError = false;
   mail.fn.mockReset(); __resetMailConfigFailureFlag();
   updateUserById.mockReset(); updateUserById.mockResolvedValue({ data: {}, error: null });
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -201,6 +202,19 @@ describe('reset-password 驗證失敗節流 (#1030)', () => {
       expect(r.status).toBe(429);
     }
     expect(__rateLimitBucketCountForTest()).toBe(before);
+  });
+
+  it('驗證碼查詢失敗（DB error）是系統錯誤：回 5xx、不計入額度，5 次後正確碼仍可成功', async () => {
+    st.validCodes.add(`${email}|654321`);
+    st.lookupError = true;
+    for (let i = 0; i < 6; i += 1) {
+      const r = await reset('654321');
+      expect(r.status).toBeGreaterThanOrEqual(500);
+      expect((await r.json()).code).not.toBe('AUTH_004');
+    }
+    st.lookupError = false;
+    const ok = await reset('654321');
+    expect(ok.status).toBe(200);
   });
 
   it('存在與不存在的 email：失敗回應與節流行為完全一致', async () => {

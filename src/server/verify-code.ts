@@ -21,10 +21,11 @@ function codeInvalid() {
 /** 找出一筆有效（未消耗、未過期）的驗證碼，回傳其 id；不消耗。無效丟 400 CODE_INVALID。 */
 export async function findValidCode(email: string, code: string, purpose: CodePurpose): Promise<string> {
   const admin = createAdminSupabase();
-  const { data } = await admin.from('auth_verification_codes').select('*')
+  const { data, error } = await admin.from('auth_verification_codes').select('*')
     .eq('email', email).eq('purpose', purpose).eq('code', code)
     .is('consumed_at', null).gt('expires_at', new Date().toISOString())
     .order('created_at', { ascending: false }).limit(1).maybeSingle();
+  if (error) throw error; // 查詢失敗是系統錯誤（與 claimCode 一致），不得偽裝成 CODE_INVALID，否則節流會把它當猜錯計次
   if (!data) throw codeInvalid();
   return data.id as string;
 }
