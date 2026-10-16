@@ -1,6 +1,11 @@
-import { handle, ok } from '@/server/http';
+import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { lineSettingsSchema } from '@/config/tenant-settings';
+import {
+  canonicalizeRichmenuLine,
+  cleanupRemovedRichmenuAssetsBestEffort,
+  isRetiredRichmenuAssetError,
+} from '@/server/storage-cleanup';
 
 /**
  * POST /api/settings/line/flex-menu —— 儲存 Flex 主選單設定（06 分冊 §6）。
@@ -45,7 +50,8 @@ export const POST = handle(async (req) => {
     .maybeSingle();
   if (rerr) throw rerr;
 
-  const line = { ...((row?.line ?? {}) as Record<string, unknown>) };
+  const previousLine = { ...((row?.line ?? {}) as Record<string, unknown>) };
+  const line = { ...previousLine };
   for (const [k, v] of Object.entries(b)) {
     if (v !== undefined) line[k] = v;
   }
@@ -53,10 +59,23 @@ export const POST = handle(async (req) => {
   delete line.channelSecret;
   delete line.channelAccessToken;
 
+  // Canonicalize tenant-owned richmenu-assets URLs before the retirement
+  // trigger sees this Flex-specific writer.
+  const canonicalNextLine = canonicalizeRichmenuLine(line, t.tenantId);
+
   const { error } = await t.supabase
     .from('tenant_settings')
-    .upsert({ tenant_id: t.tenantId, line }, { onConflict: 'tenant_id' });
+    .upsert({ tenant_id: t.tenantId, line: canonicalNextLine }, { onConflict: 'tenant_id' });
+  if (isRetiredRichmenuAssetError(error)) {
+    throw new ApiHttpError(409, '此 Rich Menu 圖片已失效，請重新上傳圖片', ERR.CONFLICT);
+  }
   if (error) throw error;
+
+  await cleanupRemovedRichmenuAssetsBestEffort({
+    previousLine,
+    nextLine: canonicalNextLine,
+    tenantId: t.tenantId,
+  });
 
   return ok();
 });
