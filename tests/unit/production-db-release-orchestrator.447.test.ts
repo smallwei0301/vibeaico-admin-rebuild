@@ -290,7 +290,9 @@ describe('Production DB trusted-main release orchestrator #447', () => {
       exceptionSummary: { expired: 0, unmatched: 0 },
       safety: { authorizesDatabaseWrite: false },
     };
-    expect(finalizeProductionDbRelease({ plan: plan(), applyResult: applied, postcheckReport: report, now: '2026-09-15T00:30:03Z' }))
+    const consistencyEvidence = { status: 'CONSISTENCY_VERIFIED', mainSha: MAIN, planDigest: PLAN,
+      plannedProductionDifferences: [{ surface: 'columns', objectKey: 'public.x.y', expectedFingerprint: 'f'.repeat(64) }] };
+    expect(finalizeProductionDbRelease({ plan: plan(), applyResult: applied, postcheckReport: report, consistencyEvidence, preApplyReport: report, now: '2026-09-15T00:30:03Z' }))
       .toMatchObject({ status: 'PRODUCTION_SCHEMA_READY', journal: { status: 'PRODUCTION_SCHEMA_READY' } });
   });
 });

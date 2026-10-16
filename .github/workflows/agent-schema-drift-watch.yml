@@ -27,6 +27,11 @@ name: agent-schema-drift-watch
         required: false
         default: ''
         type: string
+      release_phase:
+        description: pre_apply (default) assembles the pre-apply consistency evidence; post_apply only compares, readiness is decided by the scoped postcheck
+        required: false
+        default: pre_apply
+        type: string
     secrets:
       SCHEMA_OBSERVER_TOKEN:
         required: true
@@ -45,6 +50,7 @@ jobs:
       EXPECTED_HEAD: ${{ inputs.expected_main_sha }}
       TEST_PROFILE: SOURCE_ONLY
       RELEASE_LEDGER_BINDING: ${{ inputs.release_ledger_binding }}
+      RELEASE_PHASE: ${{ inputs.release_phase || 'pre_apply' }}
       LOCAL_PROJECT_ID: schema-proof-observer-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.artifact_suffix }}
     steps:
       - uses: actions/checkout@v4
@@ -77,7 +83,8 @@ jobs:
           const binding = process.env.RELEASE_LEDGER_BINDING ? JSON.parse(process.env.RELEASE_LEDGER_BINDING) : null;
           const selected = binding?.plan?.migrationScope === ISSUE_46_0110_0136_CLOSURE;
           if (selected) {
-            if (binding.plan.mainSha !== process.env.EXPECTED_MAIN_SHA || binding.plan.migrations.length !== 8) throw new Error('RELEASE_SCOPE_MISMATCH');
+            const laterMain = binding.migrationsUnchangedSincePlan === true && binding.planMainSha === binding.plan.mainSha;
+            if ((binding.plan.mainSha !== process.env.EXPECTED_MAIN_SHA && !laterMain) || binding.plan.migrations.length !== 8) throw new Error('RELEASE_SCOPE_MISMATCH');
             verifyProductionDbReleasePlan({ plan: binding.plan, aliasMap: JSON.parse(fs.readFileSync('supabase/ledger-alias-map.json')),
               readCanonicalSql: path => fs.readFileSync(path, 'utf8') });
           }
@@ -118,10 +125,12 @@ jobs:
         env:
           RELEASE_LEDGER_BINDING: ${{ inputs.release_ledger_binding }}
         run: |
+          RELEASE_PHASE="${RELEASE_PHASE:-pre_apply}"
+          [[ "$RELEASE_PHASE" = pre_apply || "$RELEASE_PHASE" = post_apply ]]
           binding_args=()
           if test -n "$RELEASE_LEDGER_BINDING"; then
             node --input-type=module -e 'import fs from "node:fs"; fs.writeFileSync(`${process.env.RUNNER_TEMP}/release-ledger-binding.json`, JSON.stringify(JSON.parse(process.env.RELEASE_LEDGER_BINDING)));'
-            binding_args=(--release-ledger-binding "$RUNNER_TEMP/release-ledger-binding.json")
+            binding_args=(--release-ledger-binding "$RUNNER_TEMP/release-ledger-binding.json" --release-phase "$RELEASE_PHASE")
           fi
           set +e
           node scripts/agents/schema-drift-watch.mjs --command compare --expected-snapshot "$RUNNER_TEMP/expected.json" --test-snapshot "$RUNNER_TEMP/test.json" --production-snapshot "$RUNNER_TEMP/production.json" --current-main-sha "$EXPECTED_MAIN_SHA" --exceptions docs/schema-truth/schema-drift-exceptions.json --json-out "$RUNNER_TEMP/report.json" "${binding_args[@]}"
@@ -132,6 +141,9 @@ jobs:
             test "$observer_exit" = 2
             node --input-type=module -e 'import fs from "node:fs"; if (JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/report.json`)).status !== "DRIFT_BLOCKED") throw new Error("OBSERVER_EVIDENCE_UNAVAILABLE");'
           fi
+          # post_apply: the pre-apply BEFORE-contract consistency assembly cannot hold after apply; the scoped
+          # postcheck judges readiness against the release's own pre-apply consistency evidence.
+          if test "$RELEASE_PHASE" = post_apply; then exit 0; fi
           node --input-type=module -e 'import fs from "node:fs"; fs.writeFileSync(`${process.env.RUNNER_TEMP}/release-plan.json`, JSON.stringify(JSON.parse(process.env.RELEASE_LEDGER_BINDING).plan));'
           node scripts/agents/assemble-production-db-release-evidence.mjs consistency "$RUNNER_TEMP/release-plan.json" "$RUNNER_TEMP/report.json" \
             supabase/production-db-impact-manifest.json "$RUNNER_TEMP/scoped-consistency.json" "$RUNNER_TEMP" "$RUNNER_TEMP/release-ledger-binding.json"

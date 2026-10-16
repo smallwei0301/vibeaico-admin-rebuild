@@ -14,6 +14,9 @@ import { PRODUCTION_DB_CATALOG_FINGERPRINT_SQL } from '../db/production-db-catal
 // Version 2 is intentionally separate from schema-truth-evidence's v1 packet:
 // it adds LOCAL_EXPECTED and object-level fingerprints for the live observer.
 export const DRIFT_WATCH_SCHEMA_VERSION = 2;
+// Version of the ACL fingerprint algorithm (3 = directional per-environment owner/grantee normalization). Reports without
+// the field predate it and are treated as version 1 by consumers.
+export const ACL_FINGERPRINT_VERSION = 3;
 export const DRIFT_STATUSES = Object.freeze([
   'MATCH', 'EXPECTED_PENDING_TEST', 'EXPECTED_PENDING_PRODUCTION',
   'INTENTIONAL_DIFFERENCE', 'DRIFT_BLOCKED', 'EVIDENCE_UNAVAILABLE',
@@ -289,10 +292,34 @@ function sortAcl(value) {
   acl.functions.forEach((fn) => fn.privileges.sort(privilegeOrder));
   return acl;
 }
-function aclItems(acl) {
+// Object-owner/admin roles differ by environment (Production objects are owned
+// by production_migration_owner, TEST/local by postgres) and never describe
+// client-visible access. Every other grantee and owner value stays compared verbatim.
+export const OWNER_EQUIVALENT_ACL_ROLES = Object.freeze(['postgres', 'production_migration_owner']);
+// Owner normalization is environment-aware so owner drift stays visible: Production maps only
+// production_migration_owner, LOCAL_EXPECTED/TEST map only postgres; any other owner (including a
+// Production function owned by postgres) stays verbatim and therefore differs.
+const ENVIRONMENT_OWNER_ROLE = Object.freeze({ PRODUCTION: 'production_migration_owner', TEST: 'postgres', LOCAL_EXPECTED: 'postgres' });
+function normalizeAclItemForFingerprint(item, environment) {
+  const normalized = { ...item };
+  if (Array.isArray(item.privileges)) {
+    // Directional: this environment's own owner role is kept as OWNER_ROLE (so an owner drift changes the
+    // fingerprint); the other environment's owner role is an admin-only grant and is dropped.
+    const own = ENVIRONMENT_OWNER_ROLE[environment];
+    const seen = new Set();
+    normalized.privileges = item.privileges
+      .filter((privilege) => !OWNER_EQUIVALENT_ACL_ROLES.includes(privilege?.grantee) || privilege.grantee === own)
+      .map((privilege) => (privilege?.grantee === own ? { ...privilege, grantee: 'OWNER_ROLE' } : privilege))
+      .filter((privilege) => { const key = `${privilege.grantee}|${privilege.privilege}|${privilege.grantable}`; if (seen.has(key)) return false; seen.add(key); return true; })
+      .sort((left, right) => compareText(`${left.grantee}|${left.privilege}`, `${right.grantee}|${right.privilege}`));
+  }
+  if (typeof item.owner === 'string' && item.owner === ENVIRONMENT_OWNER_ROLE[environment]) normalized.owner = 'OWNER_ROLE';
+  return normalized;
+}
+function aclItems(acl, environment) {
   const items = [
-    ...acl.tables.map((item) => ({ key: `table:${item.schema}.${item.name}`, fingerprint: sha256(stableStringify(item)) })),
-    ...acl.functions.map((item) => ({ key: `function:${item.schema}.${item.name}(${item.identityArguments})`, fingerprint: sha256(stableStringify(item)) })),
+    ...acl.tables.map((item) => ({ key: `table:${item.schema}.${item.name}`, fingerprint: sha256(stableStringify(normalizeAclItemForFingerprint(item, environment))) })),
+    ...acl.functions.map((item) => ({ key: `function:${item.schema}.${item.name}(${item.identityArguments})`, fingerprint: sha256(stableStringify(normalizeAclItemForFingerprint(item, environment))) })),
   ];
   return items.sort((left, right) => compareText(left.key, right.key));
 }
@@ -301,7 +328,7 @@ function outputSnapshot({ normalized, environment, projectRef, metadataItems, ac
     const items = metadataItems[surface];
     return [surface, { count: items.length, digest: digest(items), items }];
   }));
-  const aclEntries = aclItems(acl);
+  const aclEntries = aclItems(acl, environment);
   const core = {
     schemaVersion: DRIFT_WATCH_SCHEMA_VERSION, status: 'CAPTURED', queryVersion: normalized.queryVersion,
     queryDigest: normalized.queryDigest, environment, projectRef, observedAt: normalized.observedAt,
@@ -565,16 +592,27 @@ function baseline0098TestLedgerView({ expected, test, binding, mainSha, readSour
 function plannedTestLedgerView({ expected, test, binding, mainSha, aliasMap, readCanonicalSql }) {
   if (binding === undefined || binding === null) return { expected, test, trace: null };
   const { plan, testEvidence, sourceRun, releaseId, releasePlanEvidence, postTestSchemaEvidence } = binding;
-  if (!plan || plan.mainSha !== mainSha || plan.releaseId !== releaseId) fail('LEDGER_PLAN_BINDING_MISMATCH', 'selected release/main differs');
+  // Later-main postcheck: the trusted orchestrator workflow on main verified (git ancestry + no diff in
+  // supabase/migrations, supabase/local-migrations, supabase/config.toml) that the plan/G3 main is an
+  // unchanged-migrations ancestor of the current main, and records that as migrationsUnchangedSincePlan.
+  // This observer cannot run git itself, so the flag is trusted only because it arrives inside the same
+  // workflow-built binding (same trust as the rest of the binding). Without the flag, strict equality
+  // with the current main applies.
+  const unchangedSincePlan = binding.migrationsUnchangedSincePlan === true;
+  const planMain = unchangedSincePlan ? binding.planMainSha : mainSha;
+  if (unchangedSincePlan && (!SHA.test(String(planMain ?? '')) || !plan || plan.mainSha !== planMain)) {
+    fail('LEDGER_PLAN_BINDING_MISMATCH', 'planMainSha must be the exact plan main when migrations are unchanged since plan');
+  }
+  if (!plan || plan.mainSha !== planMain || plan.releaseId !== releaseId) fail('LEDGER_PLAN_BINDING_MISMATCH', 'selected release/main differs');
   verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
   if (!sourceRun || sourceRun.repository !== plan.repository || sourceRun.workflowPath !== '.github/workflows/ci.yml'
-    || sourceRun.event !== 'workflow_dispatch' || sourceRun.branch !== 'main' || sourceRun.headSha !== mainSha
+    || sourceRun.event !== 'workflow_dispatch' || sourceRun.branch !== 'main' || sourceRun.headSha !== planMain
     || sourceRun.status !== 'completed' || sourceRun.conclusion !== 'success'
     || !/^[1-9][0-9]*$/.test(String(sourceRun.id)) || !Number.isSafeInteger(sourceRun.attempt) || sourceRun.attempt < 1) {
     fail('UNTRUSTED_G3_LEDGER_SOURCE', 'G3 run must be the completed exact-main CI dispatch');
   }
   if (!testEvidence || testEvidence.status !== 'TEST_VERIFIED' || testEvidence.policySkip !== false
-    || testEvidence.mainSha !== mainSha || testEvidence.planDigest !== plan.planDigest
+    || testEvidence.mainSha !== planMain || testEvidence.planDigest !== plan.planDigest
     || testEvidence.testProjectRef !== EXPECTED_PROJECT_REFS.TEST || testEvidence.databaseMutationAuthorized !== false
     || testEvidence.cleanup !== 'PASSED' || testEvidence.integrationStep !== 'PASSED' || testEvidence.e2eStep !== 'PASSED'
     || !Number.isSafeInteger(testEvidence.executedTests) || testEvidence.executedTests < 1
@@ -583,7 +621,7 @@ function plannedTestLedgerView({ expected, test, binding, mainSha, aliasMap, rea
   }
   for (const proof of [releasePlanEvidence, postTestSchemaEvidence]) {
     if (!proof || proof.repository !== plan.repository || proof.testProjectRef !== EXPECTED_PROJECT_REFS.TEST
-      || proof.mainSha !== mainSha || proof.planDigest !== plan.planDigest || proof.releaseId !== releaseId
+      || proof.mainSha !== planMain || proof.planDigest !== plan.planDigest || proof.releaseId !== releaseId
       || String(proof.sourceRunId) !== String(sourceRun.id) || proof.sourceRunAttempt !== sourceRun.attempt
       || proof.databaseMutationAuthorized !== false || proof.productionMutationPerformed !== false) {
       fail('G3_LEDGER_IDENTITY_PROOF_MISMATCH', 'execution and post-TEST capture must bind exact release/main/plan/run/attempt');
@@ -648,7 +686,7 @@ function plannedTestLedgerView({ expected, test, binding, mainSha, aliasMap, rea
   });
   return { expected: { ...expected, migrationLedger: { ...expected.migrationLedger, identities: expectedIdentities } },
     test: { ...test, migrationLedger: { ...test.migrationLedger, identities } },
-    trace: { planDigest: plan.planDigest, sourceRunId: String(sourceRun.id), sourceRunAttempt: sourceRun.attempt, environment: 'TEST', postTestCaptureDigest: postTestSchemaEvidence.captureDigest, postTestLedgerDigest: postTestSchemaEvidence.migrationLedgerDigest, canonicalReplayMappings, mappings } };
+    trace: { planDigest: plan.planDigest, ...(unchangedSincePlan ? { planMainSha: planMain, migrationsUnchangedSincePlan: true } : {}), sourceRunId: String(sourceRun.id), sourceRunAttempt: sourceRun.attempt, environment: 'TEST', postTestCaptureDigest: postTestSchemaEvidence.captureDigest, postTestLedgerDigest: postTestSchemaEvidence.migrationLedgerDigest, canonicalReplayMappings, mappings } };
 }
 function ledgerRelation(expected, actual) {
   const expectedKeys = new Set(ledgerItems(expected).map((item) => item.key));
@@ -714,7 +752,8 @@ function evidenceUnavailableReport({ mainSha, environments, normalizedExceptions
     safety: { fullEnvironmentParityProven: false, authorizesDatabaseWrite: false, rawDataIncluded: false } };
 }
 /** @param {any} input */
-export function compareObserverSnapshots({ expectedSnapshot, testSnapshot, productionSnapshot, currentMainSha, exceptions = [], now = Date.now(), maxEvidenceAgeMinutes = 60, releaseLedgerBinding, aliasMap, readCanonicalSql, readSourceAt, isAncestor }) {
+export function compareObserverSnapshots({ expectedSnapshot, testSnapshot, productionSnapshot, currentMainSha, exceptions = [], now = Date.now(), maxEvidenceAgeMinutes = 60, releaseLedgerBinding, releasePhase = 'pre_apply', aliasMap, readCanonicalSql, readSourceAt, isAncestor }) {
+  if (!['pre_apply', 'post_apply'].includes(releasePhase)) fail('INVALID_RELEASE_PHASE', 'releasePhase must be pre_apply or post_apply');
   const mainSha = validSha(currentMainSha, 'currentMainSha');
   const compareTime = typeof now === 'number' ? now : Date.parse(now);
   if (!Number.isFinite(compareTime)) fail('INVALID_COMPARE_TIME', 'comparison time must be finite');
@@ -738,7 +777,9 @@ export function compareObserverSnapshots({ expectedSnapshot, testSnapshot, produ
   const baseline = baseline0098TestLedgerView({ expected, test: planned.test, binding: releaseLedgerBinding, mainSha, readSourceAt, isAncestor });
   // A trusted pre-apply plan selects NOT_APPLIED migrations. Comparison-only
   // canonical aliases must not hide a selected migration already in Production.
-  if (planned.trace && releaseLedgerBinding.plan.migrations.some((migration) =>
+  // Post-apply the selected migrations are expected in the raw Production ledger; the scoped postcheck
+  // (not this pre-apply guard) decides readiness from the applied identities.
+  if (releasePhase === 'pre_apply' && planned.trace && releaseLedgerBinding.plan.migrations.some((migration) =>
     production.migrationLedger.identities.some((row) => row.name === migration.repoFile || row.name === migration.repoFile.slice(5)))) {
     fail('PLANNED_PRODUCTION_LEDGER_PRESENT', 'selected pending migration already exists in the raw Production ledger');
   }
@@ -758,7 +799,7 @@ export function compareObserverSnapshots({ expectedSnapshot, testSnapshot, produ
   const statuses = [testResult.status, productionResult.status].filter((status) => status !== 'MATCH');
   const status = blocked ? 'DRIFT_BLOCKED' : statuses.length === 0 ? 'MATCH' : new Set(statuses).size === 1 ? statuses[0] : 'INTENTIONAL_DIFFERENCE';
   return {
-    schemaVersion: DRIFT_WATCH_SCHEMA_VERSION, observedMainSha: mainSha, status, differenceCount: allDifferences.length,
+    schemaVersion: DRIFT_WATCH_SCHEMA_VERSION, aclFingerprintVersion: ACL_FINGERPRINT_VERSION, observedMainSha: mainSha, status, differenceCount: allDifferences.length,
     ...(planned.trace ? { plannedLedgerMapping: planned.trace } : {}),
     ...(baseline.trace ? { testBaseline0098Mapping: baseline.trace } : {}),
     differences: allDifferences, environments, environmentStatuses: { TEST: testResult.status, PRODUCTION: productionResult.status },
@@ -861,6 +902,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     } else if (input.command === 'compare') {
       const result = compareObserverSnapshots({ expectedSnapshot: readJson(input['expected-snapshot']), testSnapshot: readJson(input['test-snapshot']), productionSnapshot: readJson(input['production-snapshot']), currentMainSha: input['current-main-sha'], exceptions: input.exceptions ? readJson(input.exceptions).exceptions : [], maxEvidenceAgeMinutes: input['max-evidence-age-minutes'] ? Number(input['max-evidence-age-minutes']) : undefined,
         releaseLedgerBinding: input['release-ledger-binding'] ? readJson(input['release-ledger-binding']) : undefined,
+        ...(input['release-phase'] ? { releasePhase: input['release-phase'] } : {}),
         aliasMap: input['release-ledger-binding'] ? readJson('supabase/ledger-alias-map.json') : undefined,
         readCanonicalSql: (path) => readFileSync(resolve(path), 'utf8') });
       writeJson(input['json-out'], result);

@@ -70,14 +70,16 @@ function plannedProductionDifferences({ report, plan, impactManifest }) {
   return pending;
 }
 
-export function buildProductionConsistencyEvidence({ report, plan, impactManifest, mainSha, planDigest, releaseCatalog = null, ...options }) {
-  if (!report || report.observedMainSha !== mainSha) fail('CONSISTENCY_MAIN_MISMATCH', 'drift report is not for the selected main SHA');
+export function buildProductionConsistencyEvidence({ report, plan, impactManifest, mainSha, planDigest, releaseCatalog = null, observedMainSha = mainSha, ...options }) {
+  // observedMainSha (current main) differs from the plan main only when the trusted workflow binding
+  // carries migrationsUnchangedSincePlan; assemble derives it, callers cannot loosen the default.
+  if (!report || report.observedMainSha !== observedMainSha) fail('CONSISTENCY_MAIN_MISMATCH', 'drift report is not for the selected main SHA');
   if (!plan || plan.mainSha !== mainSha || plan.planDigest !== planDigest) fail('CONSISTENCY_PLAN_MISMATCH', 'release plan is not the selected main SHA / plan digest');
   if (report.plannedLedgerMapping && report.plannedLedgerMapping.planDigest !== planDigest) fail('CONSISTENCY_LEDGER_PLAN_MISMATCH', 'ledger mapping belongs to another release plan');
   if (report.safety?.authorizesDatabaseWrite !== false) fail('OBSERVER_SCOPE_ESCALATION', 'drift observer must stay read-only');
   if ([ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE].includes(plan.migrationScope)
     || (plan.migrations?.length === 8 && plan.migrations.some((item) => item.repoFile === '0136_issue_755_create_tour_order_invoker'))) {
-    return buildOriginalEightConsistency({ report, plan, impactManifest, mainSha, planDigest, releaseCatalog, ...options });
+    return buildOriginalEightConsistency({ report, plan, impactManifest, mainSha, observedMainSha, planDigest, releaseCatalog, ...options });
   }
   if (report.status === 'DRIFT_BLOCKED' || report.status === 'EVIDENCE_UNAVAILABLE') fail('DRIFT_BLOCKED', `drift report status is ${report.status}`);
   if ((report.exceptionSummary?.expired ?? 0) > 0 || (report.exceptionSummary?.unmatched ?? 0) > 0) fail('STALE_DRIFT_EXCEPTION', 'drift exceptions must be active and matched');
@@ -613,7 +615,7 @@ function safeLegacyTourCheck(constraint, items, write) {
   return true;
 }
 
-function buildOriginalEightConsistency({ report, plan, impactManifest, mainSha, planDigest, releaseCatalog,
+function buildOriginalEightConsistency({ report, plan, impactManifest, mainSha, observedMainSha = mainSha, planDigest, releaseCatalog,
   repoRoot = process.cwd(), readCanonicalSql = (path) => readFileSync(resolve(repoRoot, path), 'utf8'),
   now = new Date().toISOString(), readSourceAt, isAncestor }) {
   if (plan.migrationScope !== ISSUE_46_0110_0136_CLOSURE || plan.migrations.length !== 8) fail('RELEASE_SCOPE_MISMATCH', 'only the original canonical eight-file closure is admitted');
@@ -623,9 +625,9 @@ function buildOriginalEightConsistency({ report, plan, impactManifest, mainSha, 
   if (!compareJson(impactManifest, checkedManifest)) fail('RELEASE_MANIFEST_SOURCE_MISMATCH', 'impact manifest is not trusted canonical source');
   if (!releaseCatalog?.binding || !compareJson(releaseCatalog.binding.plan, plan)) fail('RELEASE_G3_BINDING_REQUIRED', 'existing verified G3 ledger binding is required');
   const captures = Object.fromEntries(['LOCAL_EXPECTED', 'TEST', 'PRODUCTION'].map((environment) => [environment,
-    captureFor(releaseCatalog[environment], environment, { mainSha, now, report })]));
+    captureFor(releaseCatalog[environment], environment, { mainSha: observedMainSha, now, report })]));
   const replay = compareObserverSnapshots({ expectedSnapshot: captures.LOCAL_EXPECTED.snapshot, testSnapshot: captures.TEST.snapshot,
-    productionSnapshot: captures.PRODUCTION.snapshot, currentMainSha: mainSha, now, maxEvidenceAgeMinutes: 15,
+    productionSnapshot: captures.PRODUCTION.snapshot, currentMainSha: observedMainSha, now, maxEvidenceAgeMinutes: 15,
     releaseLedgerBinding: releaseCatalog.binding, aliasMap, readCanonicalSql, readSourceAt, isAncestor });
   if (!compareJson(replay.differences, report.differences) || !compareJson(replay.plannedLedgerMapping, report.plannedLedgerMapping)
     || !compareJson(replay.testBaseline0098Mapping, report.testBaseline0098Mapping)) fail('RELEASE_REPORT_REPLAY_MISMATCH', 'raw observer differences or ledger mappings changed');

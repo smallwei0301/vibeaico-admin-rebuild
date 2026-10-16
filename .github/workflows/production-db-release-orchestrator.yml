@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Collect immutable read-only evidence, or execute after release-bound review
+        description: Collect immutable read-only evidence, execute after release-bound review, or re-run the read-only G7 postcheck for an already applied release
         required: true
         default: collect
         type: choice
-        options: [collect, execute]
+        options: [collect, execute, postcheck]
       evidence_run_id:
-        description: Successful collect run ID (required only for execute)
+        description: Successful collect run ID (execute) or the prior EXECUTE run ID (postcheck)
         required: false
         type: string
       expected_main_sha:
@@ -31,6 +31,10 @@ on:
         type: string
       test_baseline_run_id:
         description: Optional successful main CI dispatch with the separate TEST-only 0098 baseline receipt
+        required: false
+        type: string
+      collect_run_id:
+        description: Postcheck only - the collect run ID whose g2 drift report is the release's pre-apply baseline
         required: false
         type: string
       final_risk_pr:
@@ -72,6 +76,7 @@ jobs:
           FINAL_RISK_PR: ${{ inputs.final_risk_pr }}
           MODE: ${{ inputs.mode }}
           EVIDENCE_RUN_ID: ${{ inputs.evidence_run_id }}
+          COLLECT_RUN_ID: ${{ inputs.collect_run_id }}
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = 'refs/heads/main'
@@ -84,13 +89,19 @@ jobs:
             [[ "$TEST_BASELINE_RUN_ID" =~ ^[1-9][0-9]*$ ]]
             test "$MODE" = collect
           fi
-          [[ "$MODE" = collect || "$MODE" = execute ]]
+          [[ "$MODE" = collect || "$MODE" = execute || "$MODE" = postcheck ]]
           if [ "$MODE" = execute ]; then
             [[ "$FINAL_RISK_PR" =~ ^[0-9]+$ ]]
             [[ "$EVIDENCE_RUN_ID" =~ ^[0-9]+$ ]]
           fi
+          if [ "$MODE" = postcheck ]; then
+            [[ "$EVIDENCE_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+            [[ "$COLLECT_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+            test -z "$TEST_BASELINE_RUN_ID"
+          fi
 
       - name: Reject any prior durable attempt for this releaseId
+        if: ${{ inputs.mode != 'postcheck' }}
         uses: actions/github-script@v9
         env:
           RELEASE_ID: ${{ inputs.release_id }}
@@ -117,6 +128,7 @@ jobs:
             }
 
       - name: Verify AUTOMATION_READY run provenance
+        if: ${{ inputs.mode != 'postcheck' }}
         uses: actions/github-script@v9
         env:
           EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
@@ -138,6 +150,7 @@ jobs:
             if (run.status !== 'completed' || run.conclusion !== 'success') core.setFailed(`readiness run is ${run.status}/${run.conclusion}`);
 
       - name: Download trusted automation readiness artifact
+        if: ${{ inputs.mode != 'postcheck' }}
         uses: actions/download-artifact@v4
         with:
           name: production-db-automation-readiness-${{ inputs.expected_main_sha }}
@@ -146,6 +159,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Require machine POLICY_GATED_ACTIVE before any release evidence job
+        if: ${{ inputs.mode != 'postcheck' }}
         shell: bash
         env:
           EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
@@ -166,28 +180,39 @@ jobs:
 
 
       - name: Verify G3 provenance for read-only ledger comparison
-        if: ${{ inputs.mode == 'collect' }}
+        if: ${{ inputs.mode == 'collect' || inputs.mode == 'execute' || inputs.mode == 'postcheck' }}
         id: g3-source
         uses: actions/github-script@v9
         env:
           EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
           G3_RUN_ID: ${{ inputs.g3_run_id }}
+          MODE: ${{ inputs.mode }}
         with:
           script: |
+            const { execFileSync } = require('node:child_process');
             const run = (await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: Number(process.env.G3_RUN_ID) })).data;
+            const git = (...args) => { try { execFileSync('git', args, { stdio: 'ignore' }); return true; } catch { return false; } };
+            const exact = run.head_sha === process.env.EXPECTED_MAIN_SHA;
+            // Only postcheck may use an earlier G3 main, and only when it is an ancestor of the exact trusted main
+            // whose migration inputs are byte-identical. collect/execute keep the exact-main equality.
+            const unchanged = !exact && process.env.MODE === 'postcheck' && /^[0-9a-f]{40}$/.test(String(run.head_sha || ''))
+              && git('merge-base', '--is-ancestor', run.head_sha, process.env.EXPECTED_MAIN_SHA)
+              && git('diff', '--quiet', run.head_sha, process.env.EXPECTED_MAIN_SHA, '--', 'supabase/migrations', 'supabase/local-migrations', 'supabase/config.toml');
             if (String(run.id) !== process.env.G3_RUN_ID || run.repository?.full_name !== `${context.repo.owner}/${context.repo.repo}` || run.name !== 'ci'
               || run.path !== '.github/workflows/ci.yml' || run.event !== 'workflow_dispatch' || run.head_branch !== 'main'
-              || run.head_sha !== process.env.EXPECTED_MAIN_SHA || run.status !== 'completed' || run.conclusion !== 'success'
+              || !(exact || unchanged) || run.status !== 'completed' || run.conclusion !== 'success'
               || !Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) throw new Error('UNTRUSTED_G3_LEDGER_SOURCE');
+            core.setOutput('g3_head_sha', run.head_sha);
+            core.setOutput('migrations_unchanged', unchanged ? 'true' : 'false');
             core.setOutput('run', JSON.stringify({ repository: run.repository.full_name, workflowPath: run.path,
               event: run.event, branch: run.head_branch, headSha: run.head_sha, id: String(run.id), attempt: run.run_attempt,
               status: run.status, conclusion: run.conclusion }));
 
       - name: Download G3 ledger comparison provenance
-        if: ${{ inputs.mode == 'collect' }}
+        if: ${{ inputs.mode == 'collect' || inputs.mode == 'execute' || inputs.mode == 'postcheck' }}
         uses: actions/download-artifact@v4
         with:
-          name: production-db-g3-evidence-${{ inputs.expected_main_sha }}-${{ inputs.g3_run_id }}
+          name: production-db-g3-evidence-${{ steps.g3-source.outputs.g3_head_sha }}-${{ inputs.g3_run_id }}
           path: ${{ runner.temp }}/g3-ledger
           run-id: ${{ inputs.g3_run_id }}
           github-token: ${{ github.token }}
@@ -252,10 +277,11 @@ jobs:
         run: npm ci
 
       - name: Reassemble exact G3 evidence for read-only ledger mapping
-        if: ${{ inputs.mode == 'collect' }}
+        if: ${{ inputs.mode == 'collect' || inputs.mode == 'execute' || inputs.mode == 'postcheck' }}
         id: g3-binding
         env:
           G3_SOURCE_RUN: ${{ steps.g3-source.outputs.run }}
+          MIGRATIONS_UNCHANGED: ${{ steps.g3-source.outputs.migrations_unchanged }}
           EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
           RELEASE_ID: ${{ inputs.release_id }}
           TEST_BASELINE_SOURCE: ${{ steps.baseline-source.outputs.source }}
@@ -267,7 +293,8 @@ jobs:
           const read = (name) => JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/g3-ledger/${name}.json`, 'utf8'));
           const plan = read('production-db-release-plan');
           const sourceRun = JSON.parse(process.env.G3_SOURCE_RUN);
-          if (plan.mainSha !== process.env.EXPECTED_MAIN_SHA || plan.releaseId !== process.env.RELEASE_ID) throw new Error('G3_PLAN_BINDING_MISMATCH');
+          const unchanged = process.env.MIGRATIONS_UNCHANGED === 'true';
+          if (plan.mainSha !== sourceRun.headSha || (!unchanged && plan.mainSha !== process.env.EXPECTED_MAIN_SHA) || plan.releaseId !== process.env.RELEASE_ID) throw new Error('G3_PLAN_BINDING_MISMATCH');
           verifyProductionDbReleasePlan({ plan, aliasMap: JSON.parse(fs.readFileSync('supabase/ledger-alias-map.json', 'utf8')),
             readCanonicalSql: (path) => fs.readFileSync(path, 'utf8') });
           const releasePlanEvidence = read('production-db-test-release-evidence');
@@ -284,6 +311,7 @@ jobs:
               currentMainSha: process.env.EXPECTED_MAIN_SHA });
           }
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `binding=${JSON.stringify({ releaseId: plan.releaseId, plan, testEvidence, sourceRun, releasePlanEvidence, postTestSchemaEvidence,
+            ...(unchanged ? { planMainSha: plan.mainSha, migrationsUnchangedSincePlan: true } : {}),
             ...(testBaseline0098 ? { testBaseline0098 } : {}) })}\n`);
           NODE
 
@@ -522,7 +550,7 @@ jobs:
             ${{ runner.temp }}/production-db-base-release-packet.json
             ${{ runner.temp }}/g3/production-db-release-plan.json
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 14
 
   prepare:
     needs: admission
@@ -722,6 +750,7 @@ jobs:
           path: ${{ runner.temp }}/prepared
 
       - name: EXECUTE controlled Production DB attempt
+        id: execute-apply
         env:
           PRODUCTION_DB_WRITER_URL: ${{ secrets.PRODUCTION_DB_WRITER_URL }}
           NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/config/supabase-production-root-bundle.crt
@@ -744,20 +773,22 @@ jobs:
         run: |
           set -euo pipefail
           if [ ! -s "$RUNNER_TEMP/production-db-apply-result.json" ]; then
-            node --input-type=module > "$RUNNER_TEMP/production-db-apply-result.json" <<'NODE'
-            const result = {
-              schemaVersion: 1,
-              status: 'EXECUTE_REJECTED_PRE_MUTATION',
-              releaseId: process.env.RELEASE_ID,
-              mainSha: process.env.EXPECTED_MAIN_SHA,
-              databaseMutationAuthorized: false,
-            };
-            console.log(JSON.stringify(result, null, 2));
-            NODE
+            node --input-type=module -e '
+              const result = {
+                schemaVersion: 1,
+                // The EXECUTE step started (outcome not skipped): the transaction may have committed.
+                status: process.env.EXECUTE_OUTCOME === "skipped" ? "EXECUTE_REJECTED_PRE_MUTATION" : "APPLY_UNKNOWN",
+                releaseId: process.env.RELEASE_ID,
+                mainSha: process.env.EXPECTED_MAIN_SHA,
+                databaseMutationAuthorized: false,
+              };
+              console.log(JSON.stringify(result, null, 2));
+            ' > "$RUNNER_TEMP/production-db-apply-result.json"
           fi
         env:
           RELEASE_ID: ${{ inputs.release_id }}
           EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          EXECUTE_OUTCOME: ${{ steps.execute-apply.outcome }}
 
       - name: Upload durable apply result
         if: ${{ always() }}
@@ -769,12 +800,14 @@ jobs:
           retention-days: 90
 
   g7:
-    needs: execute
+    needs: [admission, execute]
     if: ${{ needs.execute.result == 'success' }}
     uses: ./.github/workflows/agent-schema-drift-watch.yml
     with:
       expected_main_sha: ${{ inputs.expected_main_sha }}
       artifact_suffix: g7
+      release_phase: post_apply
+      release_ledger_binding: ${{ needs.admission.outputs.g3_ledger_binding }}
     secrets:
       SCHEMA_OBSERVER_TOKEN: ${{ secrets.SCHEMA_OBSERVER_TOKEN }}
 
@@ -816,6 +849,14 @@ jobs:
           name: schema-drift-report-${{ github.run_id }}-g7
           path: ${{ runner.temp }}/g7
 
+      - name: Download release pre-apply G2 drift report from the collect run
+        uses: actions/download-artifact@v4
+        with:
+          name: schema-drift-report-${{ inputs.evidence_run_id }}-g2
+          path: ${{ runner.temp }}/g2
+          run-id: ${{ inputs.evidence_run_id }}
+          github-token: ${{ github.token }}
+
       - name: G7 finalize Production schema readiness
         shell: bash
         run: |
@@ -824,7 +865,187 @@ jobs:
             "$RUNNER_TEMP/prepared/g3/production-db-release-plan.json" \
             "$RUNNER_TEMP/apply/production-db-apply-result.json" \
             "$RUNNER_TEMP/g7/report.json" \
-            "$RUNNER_TEMP/production-db-terminal-result.json"
+            "$RUNNER_TEMP/prepared/production-db-consistency-evidence.json" \
+            "$RUNNER_TEMP/production-db-terminal-result.json" \
+            "$RUNNER_TEMP/g2/report.json"
+
+      - name: Upload production-db-terminal-result
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-db-terminal-result-${{ inputs.release_id }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/production-db-terminal-result.json
+          if-no-files-found: error
+          retention-days: 90
+
+  # Read-only recovery: re-run G7 for a release the EXECUTE run already applied.
+  # Never enters production-db-writer and never touches the writer secret.
+  g7-recheck:
+    needs: admission
+    if: ${{ inputs.mode == 'postcheck' }}
+    uses: ./.github/workflows/agent-schema-drift-watch.yml
+    with:
+      expected_main_sha: ${{ inputs.expected_main_sha }}
+      artifact_suffix: g7-recheck
+      release_phase: post_apply
+      release_ledger_binding: ${{ needs.admission.outputs.g3_ledger_binding }}
+    secrets:
+      SCHEMA_OBSERVER_TOKEN: ${{ secrets.SCHEMA_OBSERVER_TOKEN }}
+
+  postcheck-recheck:
+    needs: [admission, g7-recheck]
+    if: ${{ inputs.mode == 'postcheck' && needs.g7-recheck.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact trusted main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_main_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact main
+        shell: bash
+        env:
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin main
+          test "$(git rev-parse HEAD)" = "$EXPECTED_MAIN_SHA"
+          test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN_SHA"
+
+      - name: Verify prior EXECUTE run provenance
+        uses: actions/github-script@v9
+        env:
+          EVIDENCE_RUN_ID: ${{ inputs.evidence_run_id }}
+        with:
+          script: |
+            const run = (await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: Number(process.env.EVIDENCE_RUN_ID) })).data;
+            if (String(run.id) !== process.env.EVIDENCE_RUN_ID || run.path !== '.github/workflows/production-db-release-orchestrator.yml'
+              || run.event !== 'workflow_dispatch' || run.head_branch !== 'main' || run.status !== 'completed') throw new Error('UNTRUSTED_EXECUTE_RUN');
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Download prepared attempt of the prior EXECUTE run
+        uses: actions/download-artifact@v4
+        with:
+          name: prepared-production-db-attempt-${{ inputs.release_id }}-${{ inputs.evidence_run_id }}
+          path: ${{ runner.temp }}/prepared
+          run-id: ${{ inputs.evidence_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download apply result of the prior EXECUTE run
+        uses: actions/download-artifact@v4
+        with:
+          name: production-db-apply-result-${{ inputs.release_id }}-${{ inputs.evidence_run_id }}
+          path: ${{ runner.temp }}/apply
+          run-id: ${{ inputs.evidence_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download G7 post-apply drift report
+        uses: actions/download-artifact@v4
+        with:
+          name: schema-drift-report-${{ github.run_id }}-g7-recheck
+          path: ${{ runner.temp }}/g7
+
+      - name: Verify collect run provenance for the pre-apply baseline
+        id: collect-provenance
+        uses: actions/github-script@v9
+        env:
+          COLLECT_RUN_ID: ${{ inputs.collect_run_id }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const plan = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/prepared/g3/production-db-release-plan.json`, 'utf8'));
+            const run = (await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: Number(process.env.COLLECT_RUN_ID) })).data;
+            if (String(run.id) !== process.env.COLLECT_RUN_ID || run.path !== '.github/workflows/production-db-release-orchestrator.yml'
+              || run.event !== 'workflow_dispatch' || run.head_branch !== 'main' || run.status !== 'completed' || run.conclusion !== 'success'
+              || run.head_sha !== plan.mainSha || !Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) throw new Error('UNTRUSTED_COLLECT_RUN');
+            core.setOutput('attempt', String(run.run_attempt));
+
+      - name: Download the collect run review bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: production-db-review-bundle-${{ inputs.release_id }}-${{ inputs.collect_run_id }}-${{ steps.collect-provenance.outputs.attempt }}
+          path: ${{ runner.temp }}/collect-bundle
+          run-id: ${{ inputs.collect_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Bind the collect run to the exact evidence the EXECUTE run used
+        shell: bash
+        env:
+          RELEASE_ID: ${{ inputs.release_id }}
+          COLLECT_RUN_ID: ${{ inputs.collect_run_id }}
+          COLLECT_ATTEMPT: ${{ steps.collect-provenance.outputs.attempt }}
+        run: |
+          set -euo pipefail
+          node --input-type=module -e '
+            import fs from "node:fs";
+            import { releaseEvidenceDigestOf } from "./scripts/agents/production-db-release-preflight.mjs";
+            const read = (name) => JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/${name}`, "utf8"));
+            const plan = read("prepared/g3/production-db-release-plan.json");
+            const packet = read("prepared/production-db-final-release-packet.json");
+            const manifest = read("collect-bundle/production-db-review-manifest.json");
+            if (manifest.mode !== "collect" || manifest.repository !== process.env.GITHUB_REPOSITORY
+              || manifest.releaseId !== process.env.RELEASE_ID || manifest.releaseId !== plan.releaseId
+              || manifest.mainSha !== plan.mainSha || manifest.planDigest !== plan.planDigest
+              || String(manifest.runId) !== process.env.COLLECT_RUN_ID || String(manifest.runAttempt) !== process.env.COLLECT_ATTEMPT
+              || manifest.evidenceDigest !== releaseEvidenceDigestOf(packet)) throw new Error("COLLECT_RUN_EVIDENCE_MISMATCH");
+          '
+
+      - name: Download release pre-apply G2 drift report from the collect run
+        uses: actions/download-artifact@v4
+        with:
+          name: schema-drift-report-${{ inputs.collect_run_id }}-g2
+          path: ${{ runner.temp }}/g2
+          run-id: ${{ inputs.collect_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Require APPLIED_CONFIRMED apply result for the same release and plan
+        shell: bash
+        env:
+          RELEASE_ID: ${{ inputs.release_id }}
+          G3_LEDGER_BINDING: ${{ needs.admission.outputs.g3_ledger_binding }}
+        run: |
+          set -euo pipefail
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const read = (name) => JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/${name}`, "utf8"));
+            const plan = read("prepared/g3/production-db-release-plan.json");
+            if (JSON.parse(process.env.G3_LEDGER_BINDING).plan?.planDigest !== plan.planDigest) throw new Error("G3_BINDING_PLAN_MISMATCH");
+            const apply = read("apply/production-db-apply-result.json");
+            if (plan.releaseId !== process.env.RELEASE_ID || apply.releaseId !== plan.releaseId || apply.planDigest !== plan.planDigest) throw new Error("APPLY_RESULT_PLAN_MISMATCH");
+            if (apply.status !== "APPLY_NEEDS_SCHEMA_POSTCHECK" || apply.journal?.status !== "APPLIED_CONFIRMED") throw new Error("APPLIED_CONFIRMED_REQUIRED");
+          '
+
+      - name: G7 finalize Production schema readiness
+        shell: bash
+        env:
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+        run: |
+          set -euo pipefail
+          plan="$RUNNER_TEMP/prepared/g3/production-db-release-plan.json"
+          plan_main="$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).mainSha' "$plan")"
+          flag=()
+          # The applied plan binds migrations only; later main commits that leave them untouched are accepted.
+          if git merge-base --is-ancestor "$plan_main" "$EXPECTED_MAIN_SHA" \
+            && git diff --quiet "$plan_main" "$EXPECTED_MAIN_SHA" -- supabase/migrations supabase/local-migrations supabase/config.toml; then
+            flag=(--migrations-unchanged-since-plan)
+          fi
+          node scripts/agents/production-db-release-orchestrator.mjs postcheck \
+            "$plan" \
+            "$RUNNER_TEMP/apply/production-db-apply-result.json" \
+            "$RUNNER_TEMP/g7/report.json" \
+            "$RUNNER_TEMP/prepared/production-db-consistency-evidence.json" \
+            "$RUNNER_TEMP/production-db-terminal-result.json" \
+            "$RUNNER_TEMP/g2/report.json" \
+            "${flag[@]}"
 
       - name: Upload production-db-terminal-result
         if: ${{ always() }}
