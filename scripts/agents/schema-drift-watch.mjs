@@ -14,9 +14,9 @@ import { PRODUCTION_DB_CATALOG_FINGERPRINT_SQL } from '../db/production-db-catal
 // Version 2 is intentionally separate from schema-truth-evidence's v1 packet:
 // it adds LOCAL_EXPECTED and object-level fingerprints for the live observer.
 export const DRIFT_WATCH_SCHEMA_VERSION = 2;
-// Version of the ACL fingerprint algorithm (2 = environment-aware owner normalization). Reports without
+// Version of the ACL fingerprint algorithm (3 = directional per-environment owner/grantee normalization). Reports without
 // the field predate it and are treated as version 1 by consumers.
-export const ACL_FINGERPRINT_VERSION = 2;
+export const ACL_FINGERPRINT_VERSION = 3;
 export const DRIFT_STATUSES = Object.freeze([
   'MATCH', 'EXPECTED_PENDING_TEST', 'EXPECTED_PENDING_PRODUCTION',
   'INTENTIONAL_DIFFERENCE', 'DRIFT_BLOCKED', 'EVIDENCE_UNAVAILABLE',
@@ -303,7 +303,15 @@ const ENVIRONMENT_OWNER_ROLE = Object.freeze({ PRODUCTION: 'production_migration
 function normalizeAclItemForFingerprint(item, environment) {
   const normalized = { ...item };
   if (Array.isArray(item.privileges)) {
-    normalized.privileges = item.privileges.filter((privilege) => !OWNER_EQUIVALENT_ACL_ROLES.includes(privilege?.grantee));
+    // Directional: this environment's own owner role is kept as OWNER_ROLE (so an owner drift changes the
+    // fingerprint); the other environment's owner role is an admin-only grant and is dropped.
+    const own = ENVIRONMENT_OWNER_ROLE[environment];
+    const seen = new Set();
+    normalized.privileges = item.privileges
+      .filter((privilege) => !OWNER_EQUIVALENT_ACL_ROLES.includes(privilege?.grantee) || privilege.grantee === own)
+      .map((privilege) => (privilege?.grantee === own ? { ...privilege, grantee: 'OWNER_ROLE' } : privilege))
+      .filter((privilege) => { const key = `${privilege.grantee}|${privilege.privilege}|${privilege.grantable}`; if (seen.has(key)) return false; seen.add(key); return true; })
+      .sort((left, right) => compareText(`${left.grantee}|${left.privilege}`, `${right.grantee}|${right.privilege}`));
   }
   if (typeof item.owner === 'string' && item.owner === ENVIRONMENT_OWNER_ROLE[environment]) normalized.owner = 'OWNER_ROLE';
   return normalized;

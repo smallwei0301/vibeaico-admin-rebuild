@@ -28,13 +28,13 @@ describe('ACL fingerprint ignores owner-equivalent roles only', () => {
   });
   it('Production-like and TEST-like owner roles produce identical ACL fingerprints', () => {
     const production = aclRaw('production_migration_owner',
-      [grant('production_migration_owner', 'DELETE'), grant('postgres', 'SELECT')],
+      [grant('production_migration_owner', 'SELECT'), grant('postgres', 'DELETE')],
       [grant('postgres', 'EXECUTE'), grant('production_migration_owner', 'EXECUTE')]);
     expect(aclOf(production, 'PRODUCTION')).toEqual(aclOf(testLike(), 'TEST'));
   });
   it('is environment-aware: owner drift stays visible', () => {
     const prodOwner = () => aclRaw('production_migration_owner', [grant('postgres', 'SELECT')], [grant('postgres', 'EXECUTE')]);
-    expect(aclOf(prodOwner(), 'PRODUCTION').items).toEqual(aclOf(testLike(), 'TEST').items);
+    expect(aclOf(aclRaw('production_migration_owner', [grant('production_migration_owner', 'SELECT')], [grant('production_migration_owner', 'EXECUTE')]), 'PRODUCTION').items).toEqual(aclOf(testLike(), 'TEST').items);
     expect(aclOf(testLike(), 'PRODUCTION').items).not.toEqual(aclOf(testLike(), 'TEST').items); // PROD owner postgres
     expect(aclOf(prodOwner(), 'TEST').items).not.toEqual(aclOf(prodOwner(), 'PRODUCTION').items); // TEST owner production_migration_owner
     expect(aclOf(prodOwner(), 'TEST').items).not.toEqual(aclOf(testLike(), 'TEST').items);
@@ -56,5 +56,43 @@ describe('ACL fingerprint ignores owner-equivalent roles only', () => {
     const policies: any = testLike(); policies.acl.tables[0].policyCount = 2;
     expect(aclOf(rls).items).not.toEqual(aclOf(testLike()).items);
     expect(aclOf(policies).items).not.toEqual(aclOf(testLike()).items);
+  });
+});
+
+// Real current ACL shapes (aclexplode privilege_type names for the compact letters).
+const FULL = ['INSERT', 'SELECT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER', 'MAINTAIN'];
+const RO = ['SELECT', 'REFERENCES', 'TRIGGER', 'MAINTAIN'];
+const grants = (grantee: string, privileges: string[]) => privileges.map((privilege) => grant(grantee, privilege));
+const table = (name: string, privileges: any[]) => ({ schema: 'public', name, rowSecurity: true, forceRowSecurity: false, policyCount: 0, privileges });
+const fn = (name: string, owner: string, grantees: string[]) => ({ schema: 'public', name, identityArguments: 'p uuid', owner, securityDefiner: true,
+  privileges: grantees.map((g) => grant(g, 'EXECUTE')) });
+const real = (tables: any[], functions: any[]) => ({ metadata: aclRaw('postgres').metadata, acl: { tables, functions }, ledger: aclRaw('postgres').ledger });
+const client = (privs: string[]) => [...grants('anon', privs), ...grants('authenticated', privs), ...grants('service_role', FULL)];
+
+describe('directional owner/grantee normalization on real ACL shapes', () => {
+  const testSide = () => real(
+    [table('external_calendars', [...grants('postgres', FULL), ...client(FULL)]), table('tour_orders', [...grants('postgres', FULL), ...grants('anon', RO), ...grants('authenticated', RO), ...grants('service_role', FULL)])],
+    [fn('accept_tour_request', 'postgres', ['postgres', 'service_role']), fn('cancel_tour_order', 'postgres', ['postgres', 'service_role'])]);
+  const prodSide = () => real(
+    [table('external_calendars', [...grants('postgres', FULL), ...client(FULL), ...grants('production_migration_owner', FULL)]),
+      table('tour_orders', [...grants('production_migration_owner', FULL), ...grants('anon', RO), ...grants('authenticated', RO), ...grants('service_role', FULL)])],
+    [fn('accept_tour_request', 'production_migration_owner', ['postgres', 'service_role', 'production_migration_owner']),
+      fn('cancel_tour_order', 'production_migration_owner', ['production_migration_owner', 'service_role'])]);
+  it('keeps the real PROD and TEST shapes equal', () => {
+    expect(aclOf(prodSide(), 'PRODUCTION').items).toEqual(aclOf(testSide(), 'TEST').items);
+    expect(aclOf(prodSide(), 'PRODUCTION').digest).toEqual(aclOf(testSide(), 'TEST').digest);
+  });
+  it('differs when a Production table owner drifted to postgres', () => {
+    const drifted: any = prodSide();
+    drifted.acl.tables[1] = table('tour_orders', [...grants('postgres', FULL), ...grants('anon', RO), ...grants('authenticated', RO), ...grants('service_role', FULL)]);
+    expect(aclOf(drifted, 'PRODUCTION').items).not.toEqual(aclOf(testSide(), 'TEST').items);
+  });
+  it('differs when a Production function owner is postgres', () => {
+    const drifted: any = prodSide();
+    drifted.acl.functions[1] = fn('cancel_tour_order', 'postgres', ['production_migration_owner', 'service_role']);
+    expect(aclOf(drifted, 'PRODUCTION').items).not.toEqual(aclOf(testSide(), 'TEST').items);
+  });
+  it('declares ACL fingerprint version 3', async () => {
+    expect((await import('../../scripts/agents/schema-drift-watch.mjs')).ACL_FINGERPRINT_VERSION).toBe(3);
   });
 });
