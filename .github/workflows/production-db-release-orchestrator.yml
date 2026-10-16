@@ -1007,6 +1007,14 @@ jobs:
           run-id: ${{ inputs.collect_run_id }}
           github-token: ${{ github.token }}
 
+      - name: Download release pre-apply raw ACL catalogs from the collect run
+        uses: actions/download-artifact@v4
+        with:
+          name: schema-release-catalogs-${{ inputs.collect_run_id }}-g2
+          path: ${{ runner.temp }}/g2-catalogs
+          run-id: ${{ inputs.collect_run_id }}
+          github-token: ${{ github.token }}
+
       - name: Require APPLIED_CONFIRMED apply result for the same release and plan
         shell: bash
         env:
@@ -1045,6 +1053,7 @@ jobs:
             "$RUNNER_TEMP/prepared/production-db-consistency-evidence.json" \
             "$RUNNER_TEMP/production-db-terminal-result.json" \
             "$RUNNER_TEMP/g2/report.json" \
+            --preapply-catalogs "$RUNNER_TEMP/g2-catalogs" \
             "${flag[@]}"
 
       - name: Upload production-db-terminal-result
