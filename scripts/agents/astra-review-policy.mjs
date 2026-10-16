@@ -49,7 +49,7 @@ const fields = ['repository', 'policyVersion', 'testBaseline', 'schemaBaseline',
  * admission never calls this: its head remains exact current. Semantic reuse keeps
  * original role receipts unchanged only when every reviewed baseline still matches.
  */
-function semanticRoleHead(review, context) {
+export function semanticRoleHead(review, context) {
   return review && review.verdict === 'PASS' && ['COMMENTED', 'APPROVED'].includes(review.reviewState)
     && Number.isFinite(Date.parse(review.submittedAt))
     && SHA.test(review.headSha ?? '') && review.commitId === review.headSha
@@ -476,6 +476,43 @@ async function loadNativePolicyEvidence({ github, owner, repo, reviewer }, polic
   } catch { return undefined; }
 }
 
+/** Read back builder/reviewer role receipts from GitHub (authoritative bytes + actor permission).
+ * Shared by the PR Final Risk path and the Production DB release path. Failure => undefined
+ * (missing runtime capture stays pending; never manufacture historical actors).
+ */
+export async function loadRoleEvidenceFromGithub({ github, owner, repo, body, latestReview, roleHead, changeDigest, policy }) {
+  const latest = latestReview;
+  const readRole = async (sourceRef, role) => {
+    // Source references are locators, not candidate-provided proof; read authoritative bytes and actor permissions.
+    const match = typeof sourceRef === 'string' && sourceRef.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/(?:issues|pull)\/\d+#issuecomment-(\d+)$/);
+    if (!match || match[1] !== owner || match[2] !== repo) throw new Error('Foreign or missing role receipt');
+    const { data } = await github.rest.issues.getComment({ owner, repo, comment_id: Number(match[3]) });
+    if (data.html_url !== sourceRef || !data.user?.login) throw new Error('Role source differs from canonical comment');
+    let trusted = isTrustedFinalRiskAgentUser(data.user, policy);
+    if (!trusted) {
+      const permission = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: data.user.login });
+      trusted = ['write', 'maintain', 'admin'].includes(permission.data.permission);
+    }
+    if (!trusted) throw new Error('Untrusted role evidence actor');
+    const blocks = [...String(data.body ?? '').matchAll(/```agent-role-execution\s*\n([\s\S]*?)\n```/g)];
+    if (blocks.length !== 1) throw new Error('One concrete role execution receipt required');
+    const receipt = JSON.parse(blocks[0][1]);
+    if (receipt.role !== role || receipt.repository !== `${owner}/${repo}` || receipt.headSha !== roleHead
+      || receipt.changeDigest !== changeDigest || !Number.isFinite(Date.parse(data.updated_at))
+      || !Number.isFinite(Date.parse(latest?.submittedAt))
+      || Date.parse(data.updated_at) > Date.parse(latest?.submittedAt)
+      || Date.parse(receipt.completedAt) > Date.parse(data.updated_at)) throw new Error('Role receipt is stale or recorded after its review');
+    return { ...receipt, sourceRef,
+      sourceActor: { login: data.user.login, id: data.user.id }, sourceUpdatedAt: data.updated_at,
+      sourceBodySha256: createHash('sha256').update(String(data.body)).digest('hex') }; // authoritative fields override payload claims
+  };
+  try {
+    return { trusted: true,
+      builder: await readRole(readField(body, 'BUILDER_EXECUTION_RECEIPT'), 'BUILD'),
+      reviewer: await readRole(latest?.reviewerExecutionReceipt, 'REVIEW') };
+  } catch { return undefined; }
+}
+
 // REST calls are read-only. Never load policy/code from a PR or execute evidence content.
 export async function evaluateGithubAstra({ github, owner, repo, current }, policy = routing) {
   const files = await github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number: current.number, per_page: 100 });
@@ -522,35 +559,9 @@ export async function evaluateGithubAstra({ github, owner, repo, current }, poli
       repository: `${owner}/${repo}`, headSha: current.head.sha, changeDigest: digest,
       policyVersion: policy.version, testBaseline: readField(body, 'ASTRA_TEST_BASELINE'),
       schemaBaseline: readField(body, 'ASTRA_SCHEMA_BASELINE') });
-    const readRole = async (sourceRef, role) => {
-      // Source references are locators, not candidate-provided proof; read authoritative bytes and actor permissions.
-      const match = typeof sourceRef === 'string' && sourceRef.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/(?:issues|pull)\/\d+#issuecomment-(\d+)$/);
-      if (!match || match[1] !== owner || match[2] !== repo) throw new Error('Foreign or missing role receipt');
-      const { data } = await github.rest.issues.getComment({ owner, repo, comment_id: Number(match[3]) });
-      if (data.html_url !== sourceRef || !data.user?.login) throw new Error('Role source differs from canonical comment');
-      let trusted = isTrustedFinalRiskAgentUser(data.user, policy);
-      if (!trusted) {
-        const permission = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: data.user.login });
-        trusted = ['write', 'maintain', 'admin'].includes(permission.data.permission);
-      }
-      if (!trusted) throw new Error('Untrusted role evidence actor');
-      const blocks = [...String(data.body ?? '').matchAll(/```agent-role-execution\s*\n([\s\S]*?)\n```/g)];
-      if (blocks.length !== 1) throw new Error('One concrete role execution receipt required');
-      const receipt = JSON.parse(blocks[0][1]);
-      if (receipt.role !== role || receipt.repository !== `${owner}/${repo}` || receipt.headSha !== roleHead
-        || receipt.changeDigest !== digest || !Number.isFinite(Date.parse(data.updated_at))
-        || !Number.isFinite(Date.parse(latest?.submittedAt))
-        || Date.parse(data.updated_at) > Date.parse(latest?.submittedAt)
-        || Date.parse(receipt.completedAt) > Date.parse(data.updated_at)) throw new Error('Role receipt is stale or recorded after its review');
-      return { ...receipt, sourceRef,
-        sourceActor: { login: data.user.login, id: data.user.id }, sourceUpdatedAt: data.updated_at,
-        sourceBodySha256: createHash('sha256').update(String(data.body)).digest('hex') }; // authoritative fields override payload claims
-    };
+    roleEvidence = await loadRoleEvidenceFromGithub({ github, owner, repo, body, latestReview: latest, roleHead, changeDigest: digest, policy });
     try {
-      roleEvidence = { trusted: true,
-        builder: await readRole(readField(body, 'BUILDER_EXECUTION_RECEIPT'), 'BUILD'),
-        reviewer: await readRole(latest?.reviewerExecutionReceipt, 'REVIEW') };
-      if ([roleEvidence.builder, roleEvidence.reviewer].some(record => record.executionIdentityKind === 'NATIVE_TASK')) {
+      if (roleEvidence && [roleEvidence.builder, roleEvidence.reviewer].some(record => record.executionIdentityKind === 'NATIVE_TASK')) {
         if (!shouldEnforceFinalRisk({ pullRequestState: current.state, draft: current.draft, laneState: readField(body, 'LANE_STATE') }))
           throw new Error('Native source review is deferred for this lifecycle');
         nativePolicyEvidence = await loadNativePolicyEvidence({ github, owner, repo, reviewer: roleEvidence.reviewer }, policy);

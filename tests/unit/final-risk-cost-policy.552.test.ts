@@ -372,12 +372,16 @@ describe('DB release uses the same downgrade gate without granting DB write perm
     assert.throws(() => evaluateReleasePreflight(stale, { now: start }), currentRouting.openaiBuilderDecision?.independentReviewerRequired === true
       ? /FINAL_RISK_MODEL_UNVERIFIED/ : /FINAL_RISK_EVIDENCE_MISMATCH/);
   });
-  it('keeps current DB source admission closed without role/runtime context', async () => {
+  it('DB source admission reads back role receipts (Owner option A) and stays closed without them', async () => {
     const value = packet();
-    const f = githubFixture({ payload: { productionDbReviewScope: 'PRODUCTION_DB_RELEASE', productionDbReleaseId: value.releaseId,
-      productionDbPlanDigest: value.planDigest, productionDbEvidenceDigest: releaseEvidenceDigestOf(value) } });
-    await expect(buildProductionDbFinalRiskEvidenceFromGithub({ github: f.github, owner: 'smallwei0301',
-      repo: 'vibeaico-admin-rebuild', prNumber: 703, releasePacket: value })).rejects.toThrow('FINAL_RISK_NOT_APPROVED');
+    const payload = { productionDbReviewScope: 'PRODUCTION_DB_RELEASE', productionDbReleaseId: value.releaseId,
+      productionDbPlanDigest: value.planDigest, productionDbEvidenceDigest: releaseEvidenceDigestOf(value) };
+    const input = (github: any) => ({ github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', prNumber: 703, releasePacket: value });
+    const withRoles = githubFixture({ payload });
+    const approved: any = await buildProductionDbFinalRiskEvidenceFromGithub(input(withRoles.github));
+    expect(approved.roleEvidence).toMatchObject({ trusted: true, builder: { role: 'BUILD' }, reviewer: { role: 'REVIEW' } });
+    const missing = githubFixture({ payload, missingRole: true });
+    await expect(buildProductionDbFinalRiskEvidenceFromGithub(input(missing.github))).rejects.toThrow('FINAL_RISK_NOT_APPROVED');
   });
 });
 
