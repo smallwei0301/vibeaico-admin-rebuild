@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { assembleProductionDbConsistencyEvidence } from '../../scripts/agents/assemble-production-db-release-evidence.mjs';
 import { buildReleaseCatalogCapture } from '../../scripts/agents/schema-drift-watch.mjs';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createRequire } from 'node:module';
 import { buildProductionDbReleasePlan } from '../../scripts/agents/production-db-release-plan.mjs';
 import { assertLiveLedgerMatchesAliasMap } from '../../scripts/db/controlled-production-db-release.mjs';
 import { buildAtomicTestReleaseValidationSql } from '../../scripts/db/validate-production-db-release-on-test.mjs';
@@ -20,12 +24,12 @@ const manifest = { schemaVersion: 1, entries: [{ repoFile: MIGRATION, impacts: [
 
 // Exercise the real read-only producer, using synthetic snapshots only. No DB
 // capture or mutation is invoked, and this is not a release/G0 acceptance test.
-function snapshot(environment: 'LOCAL_EXPECTED' | 'TEST' | 'PRODUCTION', missing: string[] = [], names = [MIGRATION], ledger?: { version: string; name: string }[]) {
+function snapshot(environment: 'LOCAL_EXPECTED' | 'TEST' | 'PRODUCTION', missing: string[] = [], names = [MIGRATION], ledger?: { version: string; name: string }[], sha = MAIN) {
   return buildObserverSnapshotFromRaw({
     environment,
     projectRef: environment === 'LOCAL_EXPECTED' ? 'local-fresh'
       : environment === 'TEST' ? 'nmwhwngojosmagjuvxol' : 'egehnijjpgijmccagxac',
-    observedAt: NOW, observedMainSha: MAIN,
+    observedAt: NOW, observedMainSha: sha,
     evidenceRef: environment === 'LOCAL_EXPECTED' ? 'local:fresh-install' : `supabase:${environment.toLowerCase()}/schema-observer`,
     raw: {
       metadata: { counts: { columns: 0, constraints: 0, indexes: 0, views: 0, policies: 0, routines: 0, triggers: 0 }, items: [] },
@@ -291,6 +295,47 @@ describe('#755 trusted G3 writer to observer identity binding', () => {
     expect(buildProductionConsistencyEvidence({ ...fixture(), report, plan, planDigest: plan.planDigest }).status).toBe('CONSISTENCY_VERIFIED');
   });
 
+  describe('later main with unchanged migrations (postcheck recheck)', () => {
+    const LATER = 'e'.repeat(40);
+    function later(flag: Record<string, unknown> | null) {
+      const { args, plan, rows } = writerFixture();
+      const ledger = [BASELINE, ...rows];
+      const next = { ...args, currentMainSha: LATER,
+        expectedSnapshot: snapshot('LOCAL_EXPECTED', [], [MIGRATION], undefined, LATER),
+        testSnapshot: snapshot('TEST', [], [MIGRATION], ledger, LATER),
+        productionSnapshot: snapshot('PRODUCTION', [MIGRATION], [MIGRATION], undefined, LATER),
+        releaseLedgerBinding: { ...args.releaseLedgerBinding, ...(flag ?? {}) } };
+      return { args: next, plan };
+    }
+    it('stays strict on a later main without the workflow flag', () => {
+      expect(() => compareObserverSnapshots(later(null).args)).toThrow(/LEDGER_PLAN_BINDING_MISMATCH/);
+      expect(() => compareObserverSnapshots(later({ planMainSha: MAIN }).args)).toThrow(/LEDGER_PLAN_BINDING_MISMATCH/);
+      expect(() => compareObserverSnapshots(later({ migrationsUnchangedSincePlan: false, planMainSha: MAIN }).args)).toThrow(/LEDGER_PLAN_BINDING_MISMATCH/);
+    });
+    it('proceeds with the scoped compare when the flag and planMainSha are present', () => {
+      const { args } = later({ planMainSha: MAIN, migrationsUnchangedSincePlan: true });
+      const report = compareObserverSnapshots(args);
+      expect(report).toMatchObject({ observedMainSha: LATER, status: 'EXPECTED_PENDING_PRODUCTION',
+        plannedLedgerMapping: { planMainSha: MAIN, migrationsUnchangedSincePlan: true } });
+    });
+    it('rejects the flag with a wrong planMainSha, a changed plan digest or foreign evidence', () => {
+      expect(() => compareObserverSnapshots(later({ planMainSha: LATER, migrationsUnchangedSincePlan: true }).args)).toThrow(/LEDGER_PLAN_BINDING_MISMATCH/);
+      expect(() => compareObserverSnapshots(later({ migrationsUnchangedSincePlan: true }).args)).toThrow(/LEDGER_PLAN_BINDING_MISMATCH/);
+      const flagged = later({ planMainSha: MAIN, migrationsUnchangedSincePlan: true }).args;
+      flagged.releaseLedgerBinding = { ...flagged.releaseLedgerBinding, plan: { ...flagged.releaseLedgerBinding.plan, planDigest: 'f'.repeat(64) } };
+      expect(() => compareObserverSnapshots(flagged)).toThrow();
+      const foreign = later({ planMainSha: MAIN, migrationsUnchangedSincePlan: true }).args;
+      foreign.releaseLedgerBinding = { ...foreign.releaseLedgerBinding, sourceRun: { ...foreign.releaseLedgerBinding.sourceRun, headSha: LATER } };
+      expect(() => compareObserverSnapshots(foreign)).toThrow(/UNTRUSTED_G3_LEDGER_SOURCE/);
+    });
+    it('consistency evidence binds to the plan main but needs an explicit observedMainSha for a later report', () => {
+      const base = fixture();
+      const report = { ...base.report, observedMainSha: LATER };
+      expect(() => buildProductionConsistencyEvidence({ ...base, report })).toThrow(/CONSISTENCY_MAIN_MISMATCH/);
+      expect(buildProductionConsistencyEvidence({ ...base, report, observedMainSha: LATER })).toMatchObject({ status: 'CONSISTENCY_VERIFIED', mainSha: MAIN });
+    });
+  });
+
   it('remains strict without the trusted plan binding', () => {
     const { args } = writerFixture();
     const { releaseLedgerBinding: _binding, ...unbound } = args;
@@ -377,21 +422,62 @@ const OBSERVER_WORKFLOW = readFileSync(new URL('../../.github/workflows/agent-sc
 const provenanceStep = ORCHESTRATOR.split('      - name: Verify G3 provenance for read-only ledger comparison\n')[1].split('      - name:')[0];
 const provenanceScript = provenanceStep.split('          script: |\n')[1].split('\n').map(line => line.slice(12)).join('\n');
 
-async function runProvenance(patch: Record<string, unknown> = {}) {
+async function runProvenance(patch: Record<string, unknown> = {}, mode = 'collect') {
   const outputs: Record<string, string> = {};
   const run = { id: 123, repository: { full_name: 'smallwei0301/vibeaico-admin-rebuild' }, name: 'ci', path: '.github/workflows/ci.yml',
     event: 'workflow_dispatch', head_branch: 'main', head_sha: MAIN, run_attempt: 2, status: 'completed', conclusion: 'success', ...patch };
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-  await new AsyncFunction('github', 'context', 'core', 'process', provenanceScript)(
+  await new AsyncFunction('github', 'context', 'core', 'process', 'require', provenanceScript)(
     { rest: { actions: { getWorkflowRun: async ({ run_id }: { run_id: number }) => { expect(run_id).toBe(123); return { data: run }; } } } },
     { repo: { owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild' } }, { setOutput: (key: string, value: string) => { outputs[key] = value; } },
-    { env: { G3_RUN_ID: '123', EXPECTED_MAIN_SHA: MAIN } });
+    { env: { G3_RUN_ID: '123', EXPECTED_MAIN_SHA: MAIN, MODE: mode } }, createRequire(import.meta.url));
   return JSON.parse(outputs.run);
 }
 
 describe('#755 exact trusted G3 workflow wiring', () => {
   it('executes the real provenance step using a completed exact-main run readback', async () => {
     expect(await runProvenance()).toMatchObject({ id: '123', attempt: 2, headSha: MAIN, workflowPath: '.github/workflows/ci.yml' });
+  });
+  describe('postcheck earlier-G3-main admission (real git, temp repo)', () => {
+    const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd }).toString().trim();
+    function repo() {
+      const dir = mkdtempSync(join(tmpdir(), 'g3-anc-'));
+      git(dir, 'init', '-q'); mkdirSync(join(dir, 'supabase/migrations'), { recursive: true });
+      writeFileSync(join(dir, 'supabase/migrations/0001.sql'), 'select 1;');
+      git(dir, 'add', '-A'); git(dir, 'commit', '-qm', 'g3');
+      const g3 = git(dir, 'rev-parse', 'HEAD');
+      writeFileSync(join(dir, 'README.md'), 'x'); git(dir, 'add', '-A'); git(dir, 'commit', '-qm', 'unrelated');
+      const unchanged = git(dir, 'rev-parse', 'HEAD');
+      writeFileSync(join(dir, 'supabase/migrations/0002.sql'), 'select 2;'); git(dir, 'add', '-A'); git(dir, 'commit', '-qm', 'migration');
+      const changed = git(dir, 'rev-parse', 'HEAD');
+      return { dir, g3, unchanged, changed };
+    }
+    async function run(dir: string, g3: string, expected: string, mode: string) {
+      const outputs: Record<string, string> = {};
+      const run = { id: 123, repository: { full_name: 'smallwei0301/vibeaico-admin-rebuild' }, name: 'ci', path: '.github/workflows/ci.yml',
+        event: 'workflow_dispatch', head_branch: 'main', head_sha: g3, run_attempt: 2, status: 'completed', conclusion: 'success' };
+      const fakeRequire = () => ({ execFileSync: (cmd: string, args: string[], opts: any) => execFileSync(cmd, args, { ...opts, cwd: dir }) });
+      const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+      await new AsyncFunction('github', 'context', 'core', 'process', 'require', provenanceScript)(
+        { rest: { actions: { getWorkflowRun: async () => ({ data: run }) } } },
+        { repo: { owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild' } }, { setOutput: (k: string, v: string) => { outputs[k] = v; } },
+        { env: { G3_RUN_ID: '123', EXPECTED_MAIN_SHA: expected, MODE: mode } }, fakeRequire);
+      return outputs;
+    }
+    it('postcheck accepts an ancestor G3 main with unchanged migration inputs and flags it', async () => {
+      const r = repo();
+      expect(await run(r.dir, r.g3, r.unchanged, 'postcheck')).toMatchObject({ g3_head_sha: r.g3, migrations_unchanged: 'true' });
+      expect(await run(r.dir, r.g3, r.g3, 'postcheck')).toMatchObject({ migrations_unchanged: 'false' });
+    });
+    it('postcheck rejects an ancestor G3 main when migrations changed or the G3 main is not an ancestor', async () => {
+      const r = repo();
+      await expect(run(r.dir, r.g3, r.changed, 'postcheck')).rejects.toThrow(/UNTRUSTED_G3_LEDGER_SOURCE/);
+      await expect(run(r.dir, r.changed, r.g3, 'postcheck')).rejects.toThrow(/UNTRUSTED_G3_LEDGER_SOURCE/);
+    });
+    it.each(['collect', 'execute'])('%s keeps exact-main equality', async (mode) => {
+      const r = repo();
+      await expect(run(r.dir, r.g3, r.unchanged, mode)).rejects.toThrow(/UNTRUSTED_G3_LEDGER_SOURCE/);
+    });
   });
   it.each([
     ['id', { id: 124 }], ['repository', { repository: { full_name: 'other/repo' } }], ['workflow', { path: '.github/workflows/other.yml' }],
@@ -404,7 +490,7 @@ describe('#755 exact trusted G3 workflow wiring', () => {
     const g7 = ORCHESTRATOR.split('\n  g7:\n')[1].split('\n  postcheck:')[0];
     expect(g2).toContain('needs: admission');
     expect(admission).not.toContain('needs: g2');
-    expect(admission).toContain('name: production-db-g3-evidence-${{ inputs.expected_main_sha }}-${{ inputs.g3_run_id }}');
+    expect(admission).toContain('name: production-db-g3-evidence-${{ steps.g3-source.outputs.g3_head_sha }}-${{ inputs.g3_run_id }}');
     expect(admission).toContain('run-id: ${{ inputs.g3_run_id }}');
     expect(admission).toContain('buildProductionDbTestEvidence({ plan, rawRunEvidence:');
     expect(admission).toContain('testEvidence.sourceRunAttempt !== sourceRun.attempt');

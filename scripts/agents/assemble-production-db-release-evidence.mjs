@@ -23,11 +23,16 @@ function fail(code, message) {
 /** @param {any} [input] */
 export function assembleProductionDbConsistencyEvidence({ plan, report, impactManifest, releaseCatalog, ...options } = /** @type {any} */ ({})) {
   if (!plan || typeof plan !== 'object' || Array.isArray(plan)) fail('PLAN_REQUIRED', 'release plan is required');
+  // Only the trusted workflow binding may separate the observed (current) main from the plan main.
+  const binding = releaseCatalog?.binding;
+  const laterMain = binding?.migrationsUnchangedSincePlan === true && binding.planMainSha === plan.mainSha
+    && /^[0-9a-f]{40}$/.test(String(report?.observedMainSha ?? ''));
   return buildProductionConsistencyEvidence({
     report,
     plan,
     impactManifest,
     mainSha: plan.mainSha,
+    ...(laterMain ? { observedMainSha: report.observedMainSha } : {}),
     planDigest: plan.planDigest,
     releaseCatalog,
     ...options,

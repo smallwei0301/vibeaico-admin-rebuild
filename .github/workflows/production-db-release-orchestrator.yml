@@ -180,13 +180,24 @@ jobs:
         env:
           EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
           G3_RUN_ID: ${{ inputs.g3_run_id }}
+          MODE: ${{ inputs.mode }}
         with:
           script: |
+            const { execFileSync } = require('node:child_process');
             const run = (await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: Number(process.env.G3_RUN_ID) })).data;
+            const git = (...args) => { try { execFileSync('git', args, { stdio: 'ignore' }); return true; } catch { return false; } };
+            const exact = run.head_sha === process.env.EXPECTED_MAIN_SHA;
+            // Only postcheck may use an earlier G3 main, and only when it is an ancestor of the exact trusted main
+            // whose migration inputs are byte-identical. collect/execute keep the exact-main equality.
+            const unchanged = !exact && process.env.MODE === 'postcheck' && /^[0-9a-f]{40}$/.test(String(run.head_sha || ''))
+              && git('merge-base', '--is-ancestor', run.head_sha, process.env.EXPECTED_MAIN_SHA)
+              && git('diff', '--quiet', run.head_sha, process.env.EXPECTED_MAIN_SHA, '--', 'supabase/migrations', 'supabase/local-migrations', 'supabase/config.toml');
             if (String(run.id) !== process.env.G3_RUN_ID || run.repository?.full_name !== `${context.repo.owner}/${context.repo.repo}` || run.name !== 'ci'
               || run.path !== '.github/workflows/ci.yml' || run.event !== 'workflow_dispatch' || run.head_branch !== 'main'
-              || run.head_sha !== process.env.EXPECTED_MAIN_SHA || run.status !== 'completed' || run.conclusion !== 'success'
+              || !(exact || unchanged) || run.status !== 'completed' || run.conclusion !== 'success'
               || !Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) throw new Error('UNTRUSTED_G3_LEDGER_SOURCE');
+            core.setOutput('g3_head_sha', run.head_sha);
+            core.setOutput('migrations_unchanged', unchanged ? 'true' : 'false');
             core.setOutput('run', JSON.stringify({ repository: run.repository.full_name, workflowPath: run.path,
               event: run.event, branch: run.head_branch, headSha: run.head_sha, id: String(run.id), attempt: run.run_attempt,
               status: run.status, conclusion: run.conclusion }));
@@ -195,7 +206,7 @@ jobs:
         if: ${{ inputs.mode == 'collect' || inputs.mode == 'execute' || inputs.mode == 'postcheck' }}
         uses: actions/download-artifact@v4
         with:
-          name: production-db-g3-evidence-${{ inputs.expected_main_sha }}-${{ inputs.g3_run_id }}
+          name: production-db-g3-evidence-${{ steps.g3-source.outputs.g3_head_sha }}-${{ inputs.g3_run_id }}
           path: ${{ runner.temp }}/g3-ledger
           run-id: ${{ inputs.g3_run_id }}
           github-token: ${{ github.token }}
@@ -264,6 +275,7 @@ jobs:
         id: g3-binding
         env:
           G3_SOURCE_RUN: ${{ steps.g3-source.outputs.run }}
+          MIGRATIONS_UNCHANGED: ${{ steps.g3-source.outputs.migrations_unchanged }}
           EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
           RELEASE_ID: ${{ inputs.release_id }}
           TEST_BASELINE_SOURCE: ${{ steps.baseline-source.outputs.source }}
@@ -275,7 +287,8 @@ jobs:
           const read = (name) => JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/g3-ledger/${name}.json`, 'utf8'));
           const plan = read('production-db-release-plan');
           const sourceRun = JSON.parse(process.env.G3_SOURCE_RUN);
-          if (plan.mainSha !== process.env.EXPECTED_MAIN_SHA || plan.releaseId !== process.env.RELEASE_ID) throw new Error('G3_PLAN_BINDING_MISMATCH');
+          const unchanged = process.env.MIGRATIONS_UNCHANGED === 'true';
+          if (plan.mainSha !== sourceRun.headSha || (!unchanged && plan.mainSha !== process.env.EXPECTED_MAIN_SHA) || plan.releaseId !== process.env.RELEASE_ID) throw new Error('G3_PLAN_BINDING_MISMATCH');
           verifyProductionDbReleasePlan({ plan, aliasMap: JSON.parse(fs.readFileSync('supabase/ledger-alias-map.json', 'utf8')),
             readCanonicalSql: (path) => fs.readFileSync(path, 'utf8') });
           const releasePlanEvidence = read('production-db-test-release-evidence');
@@ -292,6 +305,7 @@ jobs:
               currentMainSha: process.env.EXPECTED_MAIN_SHA });
           }
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `binding=${JSON.stringify({ releaseId: plan.releaseId, plan, testEvidence, sourceRun, releasePlanEvidence, postTestSchemaEvidence,
+            ...(unchanged ? { planMainSha: plan.mainSha, migrationsUnchangedSincePlan: true } : {}),
             ...(testBaseline0098 ? { testBaseline0098 } : {}) })}\n`);
           NODE
 

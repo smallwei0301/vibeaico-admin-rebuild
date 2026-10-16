@@ -577,16 +577,27 @@ function baseline0098TestLedgerView({ expected, test, binding, mainSha, readSour
 function plannedTestLedgerView({ expected, test, binding, mainSha, aliasMap, readCanonicalSql }) {
   if (binding === undefined || binding === null) return { expected, test, trace: null };
   const { plan, testEvidence, sourceRun, releaseId, releasePlanEvidence, postTestSchemaEvidence } = binding;
-  if (!plan || plan.mainSha !== mainSha || plan.releaseId !== releaseId) fail('LEDGER_PLAN_BINDING_MISMATCH', 'selected release/main differs');
+  // Later-main postcheck: the trusted orchestrator workflow on main verified (git ancestry + no diff in
+  // supabase/migrations, supabase/local-migrations, supabase/config.toml) that the plan/G3 main is an
+  // unchanged-migrations ancestor of the current main, and records that as migrationsUnchangedSincePlan.
+  // This observer cannot run git itself, so the flag is trusted only because it arrives inside the same
+  // workflow-built binding (same trust as the rest of the binding). Without the flag, strict equality
+  // with the current main applies.
+  const unchangedSincePlan = binding.migrationsUnchangedSincePlan === true;
+  const planMain = unchangedSincePlan ? binding.planMainSha : mainSha;
+  if (unchangedSincePlan && (!SHA.test(String(planMain ?? '')) || !plan || plan.mainSha !== planMain)) {
+    fail('LEDGER_PLAN_BINDING_MISMATCH', 'planMainSha must be the exact plan main when migrations are unchanged since plan');
+  }
+  if (!plan || plan.mainSha !== planMain || plan.releaseId !== releaseId) fail('LEDGER_PLAN_BINDING_MISMATCH', 'selected release/main differs');
   verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
   if (!sourceRun || sourceRun.repository !== plan.repository || sourceRun.workflowPath !== '.github/workflows/ci.yml'
-    || sourceRun.event !== 'workflow_dispatch' || sourceRun.branch !== 'main' || sourceRun.headSha !== mainSha
+    || sourceRun.event !== 'workflow_dispatch' || sourceRun.branch !== 'main' || sourceRun.headSha !== planMain
     || sourceRun.status !== 'completed' || sourceRun.conclusion !== 'success'
     || !/^[1-9][0-9]*$/.test(String(sourceRun.id)) || !Number.isSafeInteger(sourceRun.attempt) || sourceRun.attempt < 1) {
     fail('UNTRUSTED_G3_LEDGER_SOURCE', 'G3 run must be the completed exact-main CI dispatch');
   }
   if (!testEvidence || testEvidence.status !== 'TEST_VERIFIED' || testEvidence.policySkip !== false
-    || testEvidence.mainSha !== mainSha || testEvidence.planDigest !== plan.planDigest
+    || testEvidence.mainSha !== planMain || testEvidence.planDigest !== plan.planDigest
     || testEvidence.testProjectRef !== EXPECTED_PROJECT_REFS.TEST || testEvidence.databaseMutationAuthorized !== false
     || testEvidence.cleanup !== 'PASSED' || testEvidence.integrationStep !== 'PASSED' || testEvidence.e2eStep !== 'PASSED'
     || !Number.isSafeInteger(testEvidence.executedTests) || testEvidence.executedTests < 1
@@ -595,7 +606,7 @@ function plannedTestLedgerView({ expected, test, binding, mainSha, aliasMap, rea
   }
   for (const proof of [releasePlanEvidence, postTestSchemaEvidence]) {
     if (!proof || proof.repository !== plan.repository || proof.testProjectRef !== EXPECTED_PROJECT_REFS.TEST
-      || proof.mainSha !== mainSha || proof.planDigest !== plan.planDigest || proof.releaseId !== releaseId
+      || proof.mainSha !== planMain || proof.planDigest !== plan.planDigest || proof.releaseId !== releaseId
       || String(proof.sourceRunId) !== String(sourceRun.id) || proof.sourceRunAttempt !== sourceRun.attempt
       || proof.databaseMutationAuthorized !== false || proof.productionMutationPerformed !== false) {
       fail('G3_LEDGER_IDENTITY_PROOF_MISMATCH', 'execution and post-TEST capture must bind exact release/main/plan/run/attempt');
@@ -660,7 +671,7 @@ function plannedTestLedgerView({ expected, test, binding, mainSha, aliasMap, rea
   });
   return { expected: { ...expected, migrationLedger: { ...expected.migrationLedger, identities: expectedIdentities } },
     test: { ...test, migrationLedger: { ...test.migrationLedger, identities } },
-    trace: { planDigest: plan.planDigest, sourceRunId: String(sourceRun.id), sourceRunAttempt: sourceRun.attempt, environment: 'TEST', postTestCaptureDigest: postTestSchemaEvidence.captureDigest, postTestLedgerDigest: postTestSchemaEvidence.migrationLedgerDigest, canonicalReplayMappings, mappings } };
+    trace: { planDigest: plan.planDigest, ...(unchangedSincePlan ? { planMainSha: planMain, migrationsUnchangedSincePlan: true } : {}), sourceRunId: String(sourceRun.id), sourceRunAttempt: sourceRun.attempt, environment: 'TEST', postTestCaptureDigest: postTestSchemaEvidence.captureDigest, postTestLedgerDigest: postTestSchemaEvidence.migrationLedgerDigest, canonicalReplayMappings, mappings } };
 }
 function ledgerRelation(expected, actual) {
   const expectedKeys = new Set(ledgerItems(expected).map((item) => item.key));
