@@ -289,10 +289,22 @@ function sortAcl(value) {
   acl.functions.forEach((fn) => fn.privileges.sort(privilegeOrder));
   return acl;
 }
+// Object-owner/admin roles differ by environment (Production objects are owned
+// by production_migration_owner, TEST/local by postgres) and never describe
+// client-visible access. Every other grantee and owner value stays compared verbatim.
+export const OWNER_EQUIVALENT_ACL_ROLES = Object.freeze(['postgres', 'production_migration_owner', 'supabase_admin']);
+function normalizeAclItemForFingerprint(item) {
+  const normalized = { ...item };
+  if (Array.isArray(item.privileges)) {
+    normalized.privileges = item.privileges.filter((privilege) => !OWNER_EQUIVALENT_ACL_ROLES.includes(privilege?.grantee));
+  }
+  if (typeof item.owner === 'string' && OWNER_EQUIVALENT_ACL_ROLES.includes(item.owner)) normalized.owner = 'OWNER_ROLE';
+  return normalized;
+}
 function aclItems(acl) {
   const items = [
-    ...acl.tables.map((item) => ({ key: `table:${item.schema}.${item.name}`, fingerprint: sha256(stableStringify(item)) })),
-    ...acl.functions.map((item) => ({ key: `function:${item.schema}.${item.name}(${item.identityArguments})`, fingerprint: sha256(stableStringify(item)) })),
+    ...acl.tables.map((item) => ({ key: `table:${item.schema}.${item.name}`, fingerprint: sha256(stableStringify(normalizeAclItemForFingerprint(item))) })),
+    ...acl.functions.map((item) => ({ key: `function:${item.schema}.${item.name}(${item.identityArguments})`, fingerprint: sha256(stableStringify(normalizeAclItemForFingerprint(item))) })),
   ];
   return items.sort((left, right) => compareText(left.key, right.key));
 }

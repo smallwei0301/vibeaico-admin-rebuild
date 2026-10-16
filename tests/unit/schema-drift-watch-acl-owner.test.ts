@@ -1,0 +1,50 @@
+import { describe, expect, it } from 'vitest';
+import { OWNER_EQUIVALENT_ACL_ROLES, buildObserverSnapshotFromRaw } from '../../scripts/agents/schema-drift-watch.mjs';
+
+const MAIN = 'a'.repeat(40);
+const grant = (grantee: string, privilege: string) => ({ grantee, privilege, grantable: false });
+const aclRaw = (owner: string, extra: any[] = [], fnPrivs: any[] = [], securityDefiner = false) => ({
+  metadata: { counts: { columns: 1, constraints: 0, indexes: 0, views: 0, policies: 0, routines: 0, triggers: 0 }, items: [{ surface: 'columns', key: 'public.tours.id', value: 'uuid|false|' }] },
+  acl: {
+    tables: [{ schema: 'public', name: 'tours', rowSecurity: true, forceRowSecurity: false, policyCount: 0,
+      privileges: [grant('authenticated', 'SELECT'), grant('service_role', 'UPDATE'), ...extra] }],
+    functions: [{ schema: 'public', name: 'fn_x', identityArguments: 'p uuid', owner, securityDefiner,
+      privileges: [grant('authenticated', 'EXECUTE'), grant('service_role', 'EXECUTE'), ...fnPrivs] }],
+  },
+  ledger: [{ version: '0105', name: '0105_previous_migration' }],
+});
+const aclOf = (value: any) => buildObserverSnapshotFromRaw({
+  environment: 'PRODUCTION', projectRef: 'egehnijjpgijmccagxac', observedAt: '2026-09-14T01:18:00Z',
+  observedMainSha: MAIN, evidenceRef: 'supabase:production/schema-observer', raw: value,
+}).acl;
+const testLike = () => aclRaw('postgres', [grant('postgres', 'SELECT')], [grant('postgres', 'EXECUTE')]);
+
+describe('ACL fingerprint ignores owner-equivalent roles only', () => {
+  it('freezes the owner-equivalent role set', () => {
+    expect([...OWNER_EQUIVALENT_ACL_ROLES]).toEqual(['postgres', 'production_migration_owner', 'supabase_admin']);
+    expect(Object.isFrozen(OWNER_EQUIVALENT_ACL_ROLES)).toBe(true);
+  });
+  it('Production-like and TEST-like owner roles produce identical ACL fingerprints', () => {
+    const production = aclRaw('production_migration_owner',
+      [grant('production_migration_owner', 'DELETE'), grant('supabase_admin', 'SELECT')],
+      [grant('postgres', 'EXECUTE'), grant('production_migration_owner', 'EXECUTE')]);
+    expect(aclOf(production)).toEqual(aclOf(testLike()));
+    expect(aclOf(aclRaw('supabase_admin'))).toEqual(aclOf(testLike()));
+  });
+  it.each([
+    ['anon EXECUTE added', aclRaw('postgres', [], [grant('anon', 'EXECUTE')])],
+    ['authenticated INSERT added', aclRaw('postgres', [grant('authenticated', 'INSERT')])],
+    ['public EXECUTE added', aclRaw('postgres', [], [grant('public', 'EXECUTE')])],
+    ['securityDefiner changed', aclRaw('postgres', [], [], true)],
+    ['unexpected owner', aclRaw('evil_role')],
+  ])('still differs when %s', (_label, changed) => {
+    expect(aclOf(changed).items).not.toEqual(aclOf(testLike()).items);
+    expect(aclOf(changed).digest).not.toEqual(aclOf(testLike()).digest);
+  });
+  it('keeps rowSecurity and policyCount compared', () => {
+    const rls: any = testLike(); rls.acl.tables[0].rowSecurity = false;
+    const policies: any = testLike(); policies.acl.tables[0].policyCount = 2;
+    expect(aclOf(rls).items).not.toEqual(aclOf(testLike()).items);
+    expect(aclOf(policies).items).not.toEqual(aclOf(testLike()).items);
+  });
+});

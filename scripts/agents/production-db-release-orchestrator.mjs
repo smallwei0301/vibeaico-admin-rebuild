@@ -224,7 +224,7 @@ export async function executeProductionDbPreparedRelease({
   });
 }
 
-export function finalizeProductionDbRelease({ plan, applyResult, postcheckReport, now = new Date().toISOString() } = /** @type {any} */ ({})) {
+export function finalizeProductionDbRelease({ plan, applyResult, postcheckReport, consistencyEvidence, migrationsUnchangedSincePlan = false, now = new Date().toISOString() } = /** @type {any} */ ({})) {
   if (!applyResult || applyResult.status !== 'APPLY_NEEDS_SCHEMA_POSTCHECK') fail('APPLY_RESULT_REQUIRED', 'verified apply result is required before G7');
   if (applyResult.releaseId !== plan?.releaseId || applyResult.mainSha !== plan?.mainSha || applyResult.planDigest !== plan?.planDigest) {
     fail('APPLY_RESULT_PLAN_MISMATCH', 'apply result belongs to another release plan');
@@ -232,6 +232,8 @@ export function finalizeProductionDbRelease({ plan, applyResult, postcheckReport
   return finalizeProductionDbPostcheck({
     report: postcheckReport,
     plan,
+    consistency: consistencyEvidence,
+    migrationsUnchangedSincePlan,
     journal: applyResult.journal,
     now,
   });
@@ -298,11 +300,15 @@ async function main() {
       return;
     }
     if (command === 'postcheck') {
-      const [planPath, applyPath, reportPath, outputPath] = args;
-      if (!planPath || !applyPath || !reportPath || !outputPath) fail('USAGE', 'postcheck <plan> <apply-result> <drift-report> <output>');
+      const flag = args.filter((arg) => arg.startsWith('--'));
+      const [planPath, applyPath, reportPath, consistencyPath, outputPath] = args.filter((arg) => !arg.startsWith('--'));
+      if (!planPath || !applyPath || !reportPath || !consistencyPath || !outputPath || flag.some((arg) => arg !== '--migrations-unchanged-since-plan')) {
+        fail('USAGE', 'postcheck <plan> <apply-result> <drift-report> <consistency-evidence> <output> [--migrations-unchanged-since-plan]');
+      }
       try {
         writeJson(outputPath, finalizeProductionDbRelease({
           plan: readJson(planPath), applyResult: readJson(applyPath), postcheckReport: readJson(reportPath),
+          consistencyEvidence: readJson(consistencyPath), migrationsUnchangedSincePlan: flag.length === 1,
         }));
       } catch (error) {
         if (error?.code === 'POSTCHECK_FAILED') {
