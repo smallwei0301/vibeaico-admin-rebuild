@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { advanceReleaseJournal, createReleaseJournal } from '../../scripts/agents/production-db-release-journal.mjs';
 import { finalizeProductionDbPostcheck } from '../../scripts/agents/production-db-postcheck.mjs';
+import { sha256, stableStringify } from '../../scripts/agents/schema-truth-evidence.mjs';
 import { ACL_FINGERPRINT_VERSION, buildObserverSnapshotFromRaw, buildReleaseCatalogCapture, preApplyAclFingerprintsFromReleaseCatalog } from '../../scripts/agents/schema-drift-watch.mjs';
 
 const MAIN='a'.repeat(40), PLAN='b'.repeat(64), NEW_MAIN='c'.repeat(40);
@@ -148,6 +149,7 @@ describe('Production DB G7 scoped postcheck #447',()=>{
     const catalogs=(prodExtra=[grant('anon','SELECT')])=>({expected:catalogOf('LOCAL_EXPECTED',raw()),production:catalogOf('PRODUCTION',raw(prodExtra))});
     const g2For=(c:any)=>report([],'DRIFT_BLOCKED',{environments:{
       expected:{captureDigest:{value:c.expected.snapshotCaptureDigest}},PRODUCTION:{captureDigest:{value:c.production.snapshotCaptureDigest}}}});
+    const cons=(c:any)=>({...consistency(),captureDigests:{LOCAL_EXPECTED:c.expected.captureDigest,PRODUCTION:c.production.captureDigest}});
     const fp=(c:any)=>preApplyAclFingerprintsFromReleaseCatalog(c.production,'PRODUCTION').get('table:public.tours');
     const post=(observed:string|null)=>report([diff('acl','table:public.tours','9'.repeat(64),observed)],'DRIFT_BLOCKED',{aclFingerprintVersion:ACL_FINGERPRINT_VERSION});
 
@@ -160,15 +162,15 @@ describe('Production DB G7 scoped postcheck #447',()=>{
     });
     it('is READY when the out-of-scope ACL is unchanged pre to post',()=>{
       const c=catalogs();
-      expect(run({report:post(fp(c)),preApplyReport:g2For(c),preApplyCatalogs:c})).toMatchObject({status:'PRODUCTION_SCHEMA_READY'});
+      expect(run({report:post(fp(c)),preApplyReport:g2For(c),preApplyCatalogs:c,consistency:cons(c)})).toMatchObject({status:'PRODUCTION_SCHEMA_READY'});
     });
     it('fails when an out-of-scope Production ACL changed pre to post',()=>{
       const c=catalogs();
-      expect(failure({report:post('7'.repeat(64)),preApplyReport:g2For(c),preApplyCatalogs:c})).toMatch(/changed since the pre-apply report/);
+      expect(failure({report:post('7'.repeat(64)),preApplyReport:g2For(c),preApplyCatalogs:c,consistency:cons(c)})).toMatch(/changed since the pre-apply report/);
     });
     it('fails when an out-of-scope ACL difference appeared that was not there before apply',()=>{
       const c=catalogs([]);
-      expect(failure({report:post('7'.repeat(64)),preApplyReport:g2For(c),preApplyCatalogs:c})).toMatch(/was not present before apply/);
+      expect(failure({report:post('7'.repeat(64)),preApplyReport:g2For(c),preApplyCatalogs:c,consistency:cons(c)})).toMatch(/was not present before apply/);
     });
     it('without catalogs still fails closed with POSTCHECK_ACL_BASELINE_INCOMPATIBLE',()=>{
       const c=catalogs();
@@ -177,20 +179,33 @@ describe('Production DB G7 scoped postcheck #447',()=>{
     it('fails closed on a tampered catalog digest',()=>{
       const c=catalogs();
       c.production.raw.acl.tables[0].privileges.push(grant('anon','DELETE'));
-      expect(failure({report:post(fp(catalogs())),preApplyReport:g2For(catalogs()),preApplyCatalogs:c})).toMatch(/POSTCHECK_PREAPPLY_CATALOG_PREAPPLY_CATALOG_DIGEST_MISMATCH/);
+      expect(failure({report:post(fp(catalogs())),preApplyReport:g2For(catalogs()),preApplyCatalogs:c,consistency:cons(c)})).toMatch(/POSTCHECK_PREAPPLY_CATALOG_PREAPPLY_CATALOG_DIGEST_MISMATCH/);
     });
     it('fails closed when a catalog belongs to another main',()=>{
       const c={...catalogs(),production:catalogOf('PRODUCTION',raw([grant('anon','SELECT')]),NEW_MAIN)};
-      expect(failure({report:post('7'.repeat(64)),preApplyReport:g2For(c),preApplyCatalogs:c})).toMatch(/POSTCHECK_PREAPPLY_CATALOG_MAIN_MISMATCH/);
+      expect(failure({report:post('7'.repeat(64)),preApplyReport:g2For(c),preApplyCatalogs:c,consistency:cons(c)})).toMatch(/POSTCHECK_PREAPPLY_CATALOG_MAIN_MISMATCH/);
     });
     it('fails closed when the catalog capture is not the one bound by the G2 report',()=>{
       const c=catalogs();
       const other={...c,production:catalogOf('PRODUCTION',raw([grant('anon','INSERT')]))};
-      expect(failure({report:post(fp(c)),preApplyReport:g2For(c),preApplyCatalogs:other})).toMatch(/POSTCHECK_PREAPPLY_CATALOG_CAPTURE_MISMATCH/);
+      expect(failure({report:post(fp(c)),preApplyReport:g2For(c),preApplyCatalogs:other,consistency:cons(other)})).toMatch(/POSTCHECK_PREAPPLY_CATALOG_CAPTURE_MISMATCH/);
+    });
+    it('fails closed on a self-consistent re-digested tampered catalog (true snapshotCaptureDigest, unbound raw bytes)',()=>{
+      const c=catalogs();
+      const evidence=cons(c);
+      const forged:any={...c.production};delete forged.captureDigest;
+      forged.raw={...forged.raw,acl:{...forged.raw.acl,tables:[{...forged.raw.acl.tables[0],privileges:[...forged.raw.acl.tables[0].privileges,grant('anon','DELETE')]}]}};
+      forged.captureDigest=sha256(stableStringify(forged));
+      const tampered={...c,production:forged};
+      expect(failure({report:post(fp(c)),preApplyReport:g2For(c),preApplyCatalogs:tampered,consistency:evidence})).toMatch(/POSTCHECK_PREAPPLY_CATALOG_EVIDENCE_MISMATCH/);
+    });
+    it('fails closed when the consistency evidence carries no captureDigests',()=>{
+      const c=catalogs();
+      expect(failure({report:post(fp(c)),preApplyReport:g2For(c),preApplyCatalogs:c})).toMatch(/POSTCHECK_PREAPPLY_CATALOG_EVIDENCE_MISMATCH/);
     });
     it('does not use catalogs when the post report is not at the current ACL version',()=>{
       const c=catalogs();
-      expect(failure({report:report([diff('acl','table:public.tours','9'.repeat(64),fp(c))],'DRIFT_BLOCKED',{aclFingerprintVersion:3}),preApplyReport:g2For(c),preApplyCatalogs:c})).toMatch(/cannot be compared across ACL fingerprint versions/);
+      expect(failure({report:report([diff('acl','table:public.tours','9'.repeat(64),fp(c))],'DRIFT_BLOCKED',{aclFingerprintVersion:3}),preApplyReport:g2For(c),preApplyCatalogs:c,consistency:cons(c)})).toMatch(/cannot be compared across ACL fingerprint versions/);
     });
   });
 });

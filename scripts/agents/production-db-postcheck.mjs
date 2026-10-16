@@ -70,7 +70,7 @@ function verifyPostReport(report, plan, consistency, migrationsUnchangedSincePla
 // versions no key-only acceptance exists, so any out-of-scope acl difference fails closed - unless the
 // release's pre-apply raw catalogs (collect-run artifact) are supplied: they are digest/main/capture bound
 // and let the pre-apply Production ACL differences be recomputed at the report's fingerprint version.
-function preApplyAclDifferences({ g2, plan, preApplyCatalogs }) {
+function preApplyAclDifferences({ g2, plan, preApplyCatalogs, consistency }) {
   const bindings = [['expected', LOCAL_EXPECTED_ENVIRONMENT, preApplyCatalogs?.expected, g2.environments?.expected],
     ['production', 'PRODUCTION', preApplyCatalogs?.production, g2.environments?.PRODUCTION]];
   const maps = {};
@@ -80,6 +80,11 @@ function preApplyAclDifferences({ g2, plan, preApplyCatalogs }) {
     const bound = reported?.captureDigest?.value;
     if (typeof bound !== 'string' || catalog.snapshotCaptureDigest !== bound) {
       fail('POSTCHECK_PREAPPLY_CATALOG_CAPTURE_MISMATCH', `pre-apply ${label} catalog is not the capture bound by the G2 report`);
+    }
+    // Lock the raw catalog bytes to the consistency evidence the EXECUTE packet used.
+    const evidenceDigest = consistency?.captureDigests?.[environment];
+    if (typeof evidenceDigest !== 'string' || catalog.captureDigest !== evidenceDigest) {
+      fail('POSTCHECK_PREAPPLY_CATALOG_EVIDENCE_MISMATCH', `pre-apply ${label} catalog is not the capture bound by the consistency evidence`);
     }
     try { maps[label] = preApplyAclFingerprintsFromReleaseCatalog(catalog, environment); } catch (error) {
       fail(`POSTCHECK_PREAPPLY_CATALOG_${error?.code ?? 'INVALID'}`, error instanceof Error ? error.message : String(error));
@@ -105,7 +110,7 @@ function verifyNoNewUnplannedDrift({ differences, plan, preApplyReport, preApply
   let aclComparable = aclVersion(g2) === aclVersion(report);
   let baseline = g2.differences.filter((item) => item?.environment === 'PRODUCTION');
   if (!aclComparable && preApplyCatalogs && aclVersion(report) === ACL_FINGERPRINT_VERSION) {
-    baseline = [...baseline.filter((item) => item.surface !== 'acl'), ...preApplyAclDifferences({ g2, plan, preApplyCatalogs })];
+    baseline = [...baseline.filter((item) => item.surface !== 'acl'), ...preApplyAclDifferences({ g2, plan, preApplyCatalogs, consistency })];
     aclComparable = true;
   }
   const before = new Map(baseline.map((item) => [`${item.surface}\0${item.objectKey}`, item]));
