@@ -117,6 +117,7 @@
 | PB-078 | canonical TEST 執行中若推送 ledger-only commit，會讓 exact-head TEST 證據失效（本次已避免） | 推送 ledger-only commit 前先查同 PR 是否有 pending／running canonical TEST；有就留在本機，隨下一個實質修正一併推送。 | PR #795；f9f31534 → 273fa1c3；run 37429766960 |
 | PB-079 | ISSUE_CLOSE_READY 的 CI 證據必須是 current main exact SHA；main 在送出後前進，close guard 會重開 | 送 ISSUE_CLOSE_READY 前立刻 `gh api repos/<repo>/commits/main` 確認 SHA 與證據 run 的 head 相同；被重開時以新 main 的 CI 重送新一輪，不重用舊 approval。 | Issue 760、PR #795；close guard 重開 issuecomment-6013786314；分類：close admission |
 | PB-080 | reset／seed 必須在 client 前鎖定 canonical target | 排除 Production 不代表遠端目標就是 TEST；shared 使用 canonical allowlist，local 需明確 profile，client 邊界再次檢查。目標身分與 PB-002 的併發鎖是不同根因。 | PR #851／#852；scripts/test/_supabase-admin.mjs |
+| PB-081 | Owner 身分延期仍須綁定實際技術審查 | 身分 waiver 不能取代來源審查；固定同 PR 報告、comment 發布者與完整本文，並把 payload 報告綁到該來源。publisher 不證明 reviewer backend 身分。 | PR #858／#859；discussion 4254738373；#855 comment 6138187919 |
 
 ## 事件紀錄
 
@@ -2443,3 +2444,19 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 文件審查更正：#852 初稿把此事件掛於 PB-002，獨審 PASS 漏掉不同根因；[Codex P2](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/852#discussion_r4242163115) 指出後改為獨立索引與 PB-080。本事件仍只計一次，旧 review／finding 保留，新 source 須重新審查。
 - 文件格式更正：上述根因拆分後的獨審仍漏查必填欄位；[第二項 Codex P2](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/852#discussion_r4242194747) 指出後補齊獨立欄位與允許的狀態值，保留歷次 review／finding。
 - 狀態：已防止
+
+### PB-081 — Owner 身分延期漏掉獨立技術報告綁定
+
+- 首次／最近：2026-10-13／2026-10-13
+- 發生次數：1（一次實際 P1 遺漏；六個反例與修正後重驗不另計）
+- Issue／PR／CI：#855；#858 Source CI `38346323967`、獨審 `6138203934`；P1 discussion `4254738373`；修正 #859、報告 `6138187919`、獨審 `6138293323`、Source CI `38346986650`。
+- 分類：Agent
+- 事件：#858 的 Owner 身分延期分支只釘 Owner waiver，漏掉實際獨立技術報告證據；技術獨審 `6138203934` PASS，卻漏掉此 counterexample。新 Codex P1 `4254738373` 指出問題後，parent 未在 #858 於 `2026-10-13T04:29:31Z` 合併前檢視該 finding。#855 保持 Draft，沒有 DB 寫入。
+- 證據：[#858 discussion 4254738373](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/858#discussion_r4254738373)。#859 將實際報告 [comment `6138187919`](https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/855#issuecomment-6138187919)、其 publisher 與全文 SHA-256 `c9ba90f9b16c2c21daf41600bad803dd6f5d6632b1f9b0607bf8a005fc636148` 固定於 current-main policy；adapter 另 GET 同 PR 報告，canonical payload `report` 必須逐字相符。兩份 comment 由同一 operator 發布，publisher pin 僅驗來源完整性，不證明 reviewer backend 身分。六個反例在舊版本實際 FAIL，當時其餘 32 案 PASS。
+- 根因：Owner 授權延期實際身分證據時，guard 錯將 waiver 當足夠條件，沒有要求已存在的獨立技術審查報告；技術獨審也漏掉對應 counterexample，而 parent 未在 merge 前檢視新 P1。
+- 影響：可信 write actor 可提交任意 PASS/report payload，繞過該來源延期分支要求的獨立技術審查。沒有證據顯示漏洞用於 DB G5 或 Production 寫入；publisher 不代表 reviewer backend 身分。
+- 修正：#859 僅補既有 scope/readback/helper 的報告來源綁定；保留 actual/backend 身分 UNKNOWN、Owner waiver 僅限 source、DB G5/writer 原限制。#859 於 `2026-10-13T04:38:09Z` 正常合併為 `7135a6a19b7e4cf7d88023a3082796dc6fbaf84a`；之後 #855 才提交 canonical review `5498879594` 並正常 Ready／合併至 main `829e694a7e5a1a6c18d9e9a57651306155699ffb`。
+- 預防：來源身分延期須把 actual same-PR technical report locator、publisher 與完整 body hash 綁入現有 policy，且 payload report 必須精確匹配已回讀報告；publisher 只證明 comment 來源，不冒充 reviewer backend identity。merge 前先檢視最新 finding 讀取結果，再送 mutation，不能在尚未檢視結果的同一批呼叫直接合併。不得外推為一般模型身分或 DB approval 新門檻。
+- 驗證：修正後原 32 案加六個反例共 38 案全 PASS；scoped 194、stock 242、DB Final Risk 12；source CI `38346986650` SUCCESS，獨立修正審查 `6138293323` PASS。早期 #858 PASS 與其遺漏均保留；actual model 與 backend actor/session 身分 UNKNOWN。
+- 狀態：已防止
+- 限制：此條只記 source waiver 的治理證據完整性，不代表產品出貨、DB G5 或 Production acceptance。
