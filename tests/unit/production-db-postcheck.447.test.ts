@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { advanceReleaseJournal, createReleaseJournal } from '../../scripts/agents/production-db-release-journal.mjs';
 import { finalizeProductionDbPostcheck } from '../../scripts/agents/production-db-postcheck.mjs';
+import { ACL_FINGERPRINT_VERSION, buildObserverSnapshotFromRaw, buildReleaseCatalogCapture, preApplyAclFingerprintsFromReleaseCatalog } from '../../scripts/agents/schema-drift-watch.mjs';
 
 const MAIN='a'.repeat(40), PLAN='b'.repeat(64), NEW_MAIN='c'.repeat(40);
 const plan={releaseId:'release-447-postcheck',mainSha:MAIN,planDigest:PLAN,
@@ -127,5 +128,69 @@ describe('Production DB G7 scoped postcheck #447',()=>{
       expect(error.journal.status).toBe('POSTCHECK_FAILED');
       expect(()=>advanceReleaseJournal(error.journal,{status:'APPLYING',at:'2026-09-14T13:04:00Z',evidenceRef:'writer:blind-retry'})).toThrow(/INVALID_JOURNAL_TRANSITION/);
     }
+  });
+
+  describe('v1 G2 baseline recomputed from the release pre-apply catalogs',()=>{
+    const grant=(grantee:string,privilege:string)=>({grantee,privilege,grantable:false});
+    const raw=(extra:any[]=[])=>({
+      metadata:{counts:{columns:1,constraints:0,indexes:0,views:0,policies:0,routines:0,triggers:0},items:[{surface:'columns',key:'public.tours.id',value:'uuid|false|'}]},
+      acl:{tables:[{schema:'public',name:'tours',rowSecurity:true,forceRowSecurity:false,policyCount:0,privileges:[grant('authenticated','SELECT'),...extra]}],
+        functions:[{schema:'public',name:'cash_dist',identityArguments:'money, money',owner:'supabase_admin',securityDefiner:false,privileges:[grant('postgres','EXECUTE')]}]},
+      ledger:[{version:'0105',name:'0105_previous_migration'}],
+    });
+    const catalogOf=(environment:string,value:any,mainSha=MAIN)=>{
+      const projectRef=environment==='PRODUCTION'?'egehnijjpgijmccagxac':'local-fresh';
+      const evidenceRef=environment==='PRODUCTION'?'supabase:production/schema-observer':'local:fresh-install';
+      const snapshot=buildObserverSnapshotFromRaw({environment,projectRef,observedAt:'2026-10-16T13:00:00Z',observedMainSha:mainSha,evidenceRef,raw:value});
+      return buildReleaseCatalogCapture({snapshot,raw:value,catalog:{}});
+    };
+    // Production has an extra out-of-scope anon SELECT on public.tours; local expected does not.
+    const catalogs=(prodExtra=[grant('anon','SELECT')])=>({expected:catalogOf('LOCAL_EXPECTED',raw()),production:catalogOf('PRODUCTION',raw(prodExtra))});
+    const g2For=(c:any)=>report([],'DRIFT_BLOCKED',{environments:{
+      expected:{captureDigest:{value:c.expected.snapshotCaptureDigest}},PRODUCTION:{captureDigest:{value:c.production.snapshotCaptureDigest}}}});
+    const fp=(c:any)=>preApplyAclFingerprintsFromReleaseCatalog(c.production,'PRODUCTION').get('table:public.tours');
+    const post=(observed:string|null)=>report([diff('acl','table:public.tours','9'.repeat(64),observed)],'DRIFT_BLOCKED',{aclFingerprintVersion:ACL_FINGERPRINT_VERSION});
+
+    it('only the real out-of-scope table ACL difference is recomputed (supabase_admin function is equal)',()=>{
+      const c=catalogs();
+      const exp=preApplyAclFingerprintsFromReleaseCatalog(c.expected,'LOCAL_EXPECTED');
+      const prod=preApplyAclFingerprintsFromReleaseCatalog(c.production,'PRODUCTION');
+      expect(exp.get('function:public.cash_dist(money, money)')).toBe(prod.get('function:public.cash_dist(money, money)'));
+      expect(exp.get('table:public.tours')).not.toBe(prod.get('table:public.tours'));
+    });
+    it('is READY when the out-of-scope ACL is unchanged pre to post',()=>{
+      const c=catalogs();
+      expect(run({report:post(fp(c)),preApplyReport:g2For(c),preApplyCatalogs:c})).toMatchObject({status:'PRODUCTION_SCHEMA_READY'});
+    });
+    it('fails when an out-of-scope Production ACL changed pre to post',()=>{
+      const c=catalogs();
+      expect(failure({report:post('7'.repeat(64)),preApplyReport:g2For(c),preApplyCatalogs:c})).toMatch(/changed since the pre-apply report/);
+    });
+    it('fails when an out-of-scope ACL difference appeared that was not there before apply',()=>{
+      const c=catalogs([]);
+      expect(failure({report:post('7'.repeat(64)),preApplyReport:g2For(c),preApplyCatalogs:c})).toMatch(/was not present before apply/);
+    });
+    it('without catalogs still fails closed with POSTCHECK_ACL_BASELINE_INCOMPATIBLE',()=>{
+      const c=catalogs();
+      expect(failure({report:post(fp(c)),preApplyReport:g2For(c)})).toMatch(/cannot be compared across ACL fingerprint versions/);
+    });
+    it('fails closed on a tampered catalog digest',()=>{
+      const c=catalogs();
+      c.production.raw.acl.tables[0].privileges.push(grant('anon','DELETE'));
+      expect(failure({report:post(fp(catalogs())),preApplyReport:g2For(catalogs()),preApplyCatalogs:c})).toMatch(/POSTCHECK_PREAPPLY_CATALOG_PREAPPLY_CATALOG_DIGEST_MISMATCH/);
+    });
+    it('fails closed when a catalog belongs to another main',()=>{
+      const c={...catalogs(),production:catalogOf('PRODUCTION',raw([grant('anon','SELECT')]),NEW_MAIN)};
+      expect(failure({report:post('7'.repeat(64)),preApplyReport:g2For(c),preApplyCatalogs:c})).toMatch(/POSTCHECK_PREAPPLY_CATALOG_MAIN_MISMATCH/);
+    });
+    it('fails closed when the catalog capture is not the one bound by the G2 report',()=>{
+      const c=catalogs();
+      const other={...c,production:catalogOf('PRODUCTION',raw([grant('anon','INSERT')]))};
+      expect(failure({report:post(fp(c)),preApplyReport:g2For(c),preApplyCatalogs:other})).toMatch(/POSTCHECK_PREAPPLY_CATALOG_CAPTURE_MISMATCH/);
+    });
+    it('does not use catalogs when the post report is not at the current ACL version',()=>{
+      const c=catalogs();
+      expect(failure({report:report([diff('acl','table:public.tours','9'.repeat(64),fp(c))],'DRIFT_BLOCKED',{aclFingerprintVersion:3}),preApplyReport:g2For(c),preApplyCatalogs:c})).toMatch(/cannot be compared across ACL fingerprint versions/);
+    });
   });
 });

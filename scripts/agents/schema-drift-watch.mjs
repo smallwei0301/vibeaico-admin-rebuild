@@ -14,9 +14,10 @@ import { PRODUCTION_DB_CATALOG_FINGERPRINT_SQL } from '../db/production-db-catal
 // Version 2 is intentionally separate from schema-truth-evidence's v1 packet:
 // it adds LOCAL_EXPECTED and object-level fingerprints for the live observer.
 export const DRIFT_WATCH_SCHEMA_VERSION = 2;
-// Version of the ACL fingerprint algorithm (3 = directional per-environment owner/grantee normalization). Reports without
+// Version of the ACL fingerprint algorithm (3 = directional per-environment owner/grantee normalization;
+// 4 = that normalization applies only to owner-equivalent or owner-less items). Reports without
 // the field predate it and are treated as version 1 by consumers.
-export const ACL_FINGERPRINT_VERSION = 3;
+export const ACL_FINGERPRINT_VERSION = 4;
 export const DRIFT_STATUSES = Object.freeze([
   'MATCH', 'EXPECTED_PENDING_TEST', 'EXPECTED_PENDING_PRODUCTION',
   'INTENTIONAL_DIFFERENCE', 'DRIFT_BLOCKED', 'EVIDENCE_UNAVAILABLE',
@@ -302,7 +303,11 @@ export const OWNER_EQUIVALENT_ACL_ROLES = Object.freeze(['postgres', 'production
 const ENVIRONMENT_OWNER_ROLE = Object.freeze({ PRODUCTION: 'production_migration_owner', TEST: 'postgres', LOCAL_EXPECTED: 'postgres' });
 function normalizeAclItemForFingerprint(item, environment) {
   const normalized = { ...item };
-  if (Array.isArray(item.privileges)) {
+  // Objects explicitly owned by another role (e.g. supabase_admin-owned extension functions) keep every grant
+  // verbatim: their postgres/production_migration_owner grants are real, identical across environments
+  // and must not be rewritten or dropped one-sidedly. Raw table ACL items carry no owner field (undefined)
+  // and keep the directional normalization.
+  if (Array.isArray(item.privileges) && (item.owner === undefined || OWNER_EQUIVALENT_ACL_ROLES.includes(item.owner))) {
     // Directional: this environment's own owner role is kept as OWNER_ROLE (so an owner drift changes the
     // fingerprint); the other environment's owner role is an admin-only grant and is dropped.
     const own = ENVIRONMENT_OWNER_ROLE[environment];
@@ -368,6 +373,20 @@ export function buildReleaseCatalogCapture({ snapshot, raw, catalog }) {
     snapshotCaptureDigest: normalized.captureDigest.value, queryDigest: RELEASE_CATALOG_QUERY_DIGEST,
     raw, catalog, readOnly: true, databaseMutationAuthorized: false };
   return { ...core, captureDigest: sha256(stableStringify(core)) };
+}
+// Recomputes the ACL fingerprints (current ACL_FINGERPRINT_VERSION) of a pre-apply release catalog capture
+// (buildReleaseCatalogCapture output) so a report produced by an older fingerprint version can still serve
+// as the pre-apply baseline. Returns Map<aclKey, fingerprint>.
+export function preApplyAclFingerprintsFromReleaseCatalog(catalog, environment) {
+  if (!catalog || typeof catalog !== 'object' || Array.isArray(catalog)) fail('PREAPPLY_CATALOG_INVALID', 'pre-apply catalog is not an object');
+  const { captureDigest, ...core } = catalog;
+  if (typeof captureDigest !== 'string' || captureDigest !== sha256(stableStringify(core))) fail('PREAPPLY_CATALOG_DIGEST_MISMATCH', 'pre-apply catalog captureDigest does not match its content');
+  if (![LOCAL_EXPECTED_ENVIRONMENT, 'PRODUCTION'].includes(environment) || catalog.environment !== environment) fail('PREAPPLY_CATALOG_ENVIRONMENT_MISMATCH', 'pre-apply catalog environment is not the requested one');
+  if (catalog.readOnly !== true || catalog.databaseMutationAuthorized !== false) fail('PREAPPLY_CATALOG_NOT_READ_ONLY', 'pre-apply catalog must be read-only');
+  const snapshot = buildObserverSnapshotFromRaw({ environment, projectRef: catalog.projectRef, observedAt: catalog.observedAt,
+    observedMainSha: catalog.mainSha,
+    evidenceRef: environment === LOCAL_EXPECTED_ENVIRONMENT ? 'local:fresh-install' : `supabase:${environment.toLowerCase()}/schema-observer`, raw: catalog.raw });
+  return new Map(snapshot.acl.items.map((item) => [item.key, item.fingerprint]));
 }
 export function buildUnavailableSnapshot({ environment, observedAt = new Date().toISOString(), observedMainSha, reason }) {
   if (![LOCAL_EXPECTED_ENVIRONMENT, 'TEST', 'PRODUCTION'].includes(environment)) fail('INVALID_ENVIRONMENT', 'environment is invalid');

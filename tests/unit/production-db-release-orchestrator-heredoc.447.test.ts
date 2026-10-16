@@ -121,6 +121,16 @@ describe('production-db-release-orchestrator postcheck mode #447', () => {
     expect(workflow.on.workflow_dispatch.inputs.collect_run_id).toBeDefined();
   });
 
+  it('feeds the collect run pre-apply raw ACL catalogs to the postcheck-recheck finalize step only', () => {
+    const steps = workflow.jobs['postcheck-recheck'].steps;
+    const download = steps.find((step: any) => step.name === 'Download release pre-apply raw ACL catalogs from the collect run');
+    expect(download.with.name).toBe('schema-release-catalogs-${{ inputs.collect_run_id }}-g2');
+    expect(download.with['run-id']).toBe('${{ inputs.collect_run_id }}');
+    expect(download.with.path).toBe('${{ runner.temp }}/g2-catalogs');
+    expect(steps.find((step: any) => step.name === 'G7 finalize Production schema readiness').run).toContain('--preapply-catalogs "$RUNNER_TEMP/g2-catalogs"');
+    expect(JSON.stringify(workflow.jobs.postcheck.steps)).not.toContain('g2-catalogs');
+  });
+
   it('writes APPLY_UNKNOWN when the EXECUTE step started and a pre-mutation rejection only when it never ran', () => {
     const steps = workflow.jobs.execute.steps;
     const exec = steps.find((step: any) => step.name === 'EXECUTE controlled Production DB attempt');

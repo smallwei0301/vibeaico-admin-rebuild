@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { OWNER_EQUIVALENT_ACL_ROLES, buildObserverSnapshotFromRaw } from '../../scripts/agents/schema-drift-watch.mjs';
+import { ACL_FINGERPRINT_VERSION, OWNER_EQUIVALENT_ACL_ROLES, buildObserverSnapshotFromRaw } from '../../scripts/agents/schema-drift-watch.mjs';
 
 const MAIN = 'a'.repeat(40);
 const grant = (grantee: string, privilege: string) => ({ grantee, privilege, grantable: false });
@@ -13,7 +13,7 @@ const aclRaw = (owner: string, extra: any[] = [], fnPrivs: any[] = [], securityD
   },
   ledger: [{ version: '0105', name: '0105_previous_migration' }],
 });
-const REFS: Record<string, string> = { PRODUCTION: 'egehnijjpgijmccagxac', TEST: 'nmwhwngojosmagjuvxol' };
+const REFS: Record<string, string> = { PRODUCTION: 'egehnijjpgijmccagxac', TEST: 'nmwhwngojosmagjuvxol', LOCAL_EXPECTED: 'local-fresh' };
 const aclOf = (value: any, environment = 'TEST') => buildObserverSnapshotFromRaw({
   environment, projectRef: REFS[environment], observedAt: '2026-09-14T01:18:00Z',
   observedMainSha: MAIN, evidenceRef: `supabase:${environment.toLowerCase()}/schema-observer`, raw: value,
@@ -92,7 +92,17 @@ describe('directional owner/grantee normalization on real ACL shapes', () => {
     drifted.acl.functions[1] = fn('cancel_tour_order', 'postgres', ['production_migration_owner', 'service_role']);
     expect(aclOf(drifted, 'PRODUCTION').items).not.toEqual(aclOf(testSide(), 'TEST').items);
   });
-  it('declares ACL fingerprint version 3', async () => {
-    expect((await import('../../scripts/agents/schema-drift-watch.mjs')).ACL_FINGERPRINT_VERSION).toBe(3);
+  it('is ACL fingerprint version 4', () => { expect(ACL_FINGERPRINT_VERSION).toBe(4); });
+  it('supabase_admin-owned function with a real postgres grant is equal across PRODUCTION and LOCAL_EXPECTED', () => {
+    const ext = () => aclRaw('supabase_admin', [], [grant('postgres', 'EXECUTE')]);
+    expect(aclOf(ext(), 'PRODUCTION').items).toEqual(aclOf(ext(), 'LOCAL_EXPECTED').items);
+    // and a dropped postgres grant on such an object is still a visible difference
+    expect(aclOf(aclRaw('supabase_admin'), 'PRODUCTION').items).not.toEqual(aclOf(ext(), 'PRODUCTION').items);
+  });
+  it('tables without an owner field keep the directional normalization', () => {
+    const prod = aclRaw('production_migration_owner', [grant('production_migration_owner', 'SELECT'), grant('postgres', 'DELETE')]);
+    const local = aclRaw('postgres', [grant('postgres', 'SELECT')]);
+    const tableOf = (value: any, environment: string) => aclOf(value, environment).items.find((item: any) => item.key.startsWith('table:'));
+    expect(tableOf(prod, 'PRODUCTION')).toEqual(tableOf(local, 'LOCAL_EXPECTED'));
   });
 });
