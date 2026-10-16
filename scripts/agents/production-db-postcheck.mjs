@@ -47,8 +47,10 @@ function verifyPostReport(report, plan, consistency, migrationsUnchangedSincePla
     const missing = ledger.some((item) => keys.canonical.includes(item.objectKey) && item.observedFingerprint === null);
     const appliedPresent = ledger.some((item) => keys.applied.includes(item.objectKey) && item.observedFingerprint !== null);
     // Exactly one identity per planned migration: the applied row is reported as an extra Production row, so
-    // an applied row with the canonical row NOT reported missing means both identities exist in Production.
-    if (appliedPresent && !missing) fail('POSTCHECK_DUPLICATE_LEDGER_IDENTITY', `planned migration ${migration.repoFile} has both its canonical and applied ledger identities in Production`);
+    // an applied row together with a present canonical row (not reported missing, or reported as an extra short-spelling row) means both identities exist.
+    // The canonical identity may also be present in the Supabase CLI short spelling, reported as an extra row.
+    const canonicalPresent = !missing || ledger.some((item) => keys.canonical.includes(item.objectKey) && item.observedFingerprint !== null);
+    if (appliedPresent && canonicalPresent) fail('POSTCHECK_DUPLICATE_LEDGER_IDENTITY', `planned migration ${migration.repoFile} has both its canonical and applied ledger identities in Production`);
     if (missing && !appliedPresent) fail('POSTCHECK_PENDING_REMAINS', `planned migration ${migration.repoFile} is still pending in the Production ledger`);
   }
   verifyNoNewUnplannedDrift({ differences, plan, preApplyReport, consistency, report, ownLedgerKeys: plan.migrations.flatMap((migration) => {
