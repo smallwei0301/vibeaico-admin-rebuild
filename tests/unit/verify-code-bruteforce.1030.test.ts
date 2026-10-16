@@ -1,0 +1,266 @@
+/**
+ * #1030 — 驗證碼暴力猜測防護（不需 schema 的部分）：
+ * 1) 寄新碼成功後作廢同 email／purpose 的舊碼；寄送失敗不作廢。
+ * 2) 重設密碼驗證失敗節流（email+purpose、IP；單 process 記憶體、盡力而為）。
+ */
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+type Row = { id: string; email: string; purpose: string; code: string; consumed_at: string | null; created_at: string };
+const st = vi.hoisted(() => ({
+  rows: [] as any[], exists: false, delayMs: 0, codeQueries: 0, validCodes: new Set<string>(), uidFound: true, lookupError: false,
+}));
+const mail = vi.hoisted(() => ({ fn: vi.fn() }));
+const updateUserById = vi.hoisted(() => vi.fn());
+
+vi.mock('@/server/supabase', () => ({
+  createAdminSupabase: () => ({
+    rpc: async (name: string) => (name === 'email_exists'
+      ? { data: st.exists } : { data: st.uidFound ? 'user-1' : null, error: null }),
+    auth: { admin: { updateUserById } },
+    from: () => ({
+      select: () => {
+        // 驗證碼查詢：email+code 以 eq 收集；dispatch 的冷卻查詢（select created_at）回 null
+        const f: Record<string, string> = {};
+        const q: any = {};
+        q.eq = (k: string, v: string) => { f[k] = v; return q; };
+        q.is = () => q; q.gt = () => q; q.order = () => q; q.limit = () => q;
+        q.maybeSingle = async () => {
+          if ('code' in f) { st.codeQueries += 1; if (st.delayMs) await new Promise((r) => setTimeout(r, st.delayMs)); }
+          if ('code' in f && st.lookupError) return { data: null, error: { code: 'XX000', message: 'db down' } };
+          if ('code' in f) return { data: st.validCodes.has(`${f.email}|${f.code}`) ? { id: 'code-1' } : null };
+          return { data: null };
+        };
+        return q;
+      },
+      insert: async (r: any) => {
+        st.rows.push({ id: `r${st.rows.length}`, consumed_at: null, created_at: new Date().toISOString(), ...r });
+        return { error: null };
+      },
+      delete: () => {
+        const q: any = { eq: () => q, then: (res: any) => Promise.resolve({ error: null }).then(res) };
+        return q;
+      },
+      update: (payload: any) => {
+        const f: Record<string, string> = {}; const neq: Record<string, string> = {}; let onlyUnconsumed = false; let ltCreated: string | null = null;
+        const q: any = {
+          eq: (k: string, v: string) => { f[k] = v; return q; },
+          neq: (k: string, v: string) => { neq[k] = v; return q; },
+          is: () => { onlyUnconsumed = true; return q; },
+          lt: (k: string, v: string) => { if (k === 'created_at') ltCreated = v; return q; },
+          gt: () => q,
+          select: async () => ({ data: [{ id: 'code-1' }], error: null }),
+          then: (res: any) => {
+            for (const r of st.rows as Row[]) {
+              const match = Object.entries(f).every(([k, v]) => (r as any)[k] === v)
+                && Object.entries(neq).every(([k, v]) => (r as any)[k] !== v)
+                && (ltCreated === null || r.created_at < ltCreated)
+                && (!onlyUnconsumed || r.consumed_at === null);
+              if (match) Object.assign(r, payload);
+            }
+            return Promise.resolve({ error: null }).then(res);
+          },
+        };
+        return q;
+      },
+    }),
+  }),
+}));
+vi.mock('@/server/email/send', () => ({ sendVerificationCodeEmail: mail.fn }));
+vi.mock('next/headers', () => ({ cookies: () => Promise.resolve({ get: () => undefined }) }));
+
+import { POST } from '@/app/api/auth/reset-password/route';
+import { __rateLimitBucketCountForTest } from '@/server/rate-limit';
+import { dispatchVerificationCode, __resetMailConfigFailureFlag } from '@/server/send-code';
+
+// rate-limit 無重置 API：每個測試用不重複的 email／IP，避免互相污染。
+let seq = 0;
+let ip = '';
+let email = '';
+beforeEach(() => {
+  seq += 1;
+  ip = `10.0.${Math.floor(seq / 250)}.${seq % 250}`;
+  email = `user${seq}@example.com`;
+  st.rows = []; st.delayMs = 0; st.codeQueries = 0; st.exists = false; st.validCodes = new Set(); st.uidFound = true; st.lookupError = false;
+  mail.fn.mockReset(); __resetMailConfigFailureFlag();
+  updateUserById.mockReset(); updateUserById.mockResolvedValue({ data: {}, error: null });
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+});
+
+const reset = (code: string, opts: { email?: string; ip?: string } = {}) =>
+  POST(new Request('http://localhost/api/auth/reset-password', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-real-ip': opts.ip ?? ip },
+    body: JSON.stringify({ email: opts.email ?? email, code, newPassword: 'new-password-1' }),
+  }), {});
+
+describe('寄新碼作廢舊碼 (#1030)', () => {
+  const old = (code: string) => ({
+    id: `old-${code}`, email, purpose: 'RESET_PASSWORD', code, consumed_at: null,
+    created_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+  });
+
+  it('SENT 後：舊的未消耗碼被標記 consumed，新碼保持有效', async () => {
+    st.exists = true;
+    st.rows = [old('111111'), { ...old('222222'), email: 'other@example.com' }];
+    mail.fn.mockResolvedValue({ result: 'SENT', failureKind: null });
+    await dispatchVerificationCode(email, 'RESET_PASSWORD');
+    const mine = st.rows.filter((r: Row) => r.email === email);
+    const fresh = mine.find((r: Row) => r.code !== '111111')!;
+    expect(mine.find((r: Row) => r.code === '111111')!.consumed_at).not.toBeNull();
+    expect(fresh.consumed_at).toBeNull();
+    // 別的 email 不受影響
+    expect(st.rows.find((r: Row) => r.email === 'other@example.com')!.consumed_at).toBeNull();
+  });
+
+  it('寄送失敗：舊碼不作廢', async () => {
+    st.exists = true;
+    st.rows = [old('111111')];
+    mail.fn.mockResolvedValue({ result: 'FAILED', failureKind: 'recipient' });
+    await dispatchVerificationCode(email, 'RESET_PASSWORD');
+    expect(st.rows.find((r: Row) => r.code === '111111')!.consumed_at).toBeNull();
+  });
+
+  it('N2：並發寄碼時，較新的碼不會被較舊請求的作廢動作影響', async () => {
+    st.exists = true;
+    mail.fn.mockResolvedValue({ result: 'SENT', failureKind: null });
+    // 模擬「較新的碼已存在」：本筆（現在建立）之後才建立的碼，不得被本筆的作廢動作標記
+    const newer = { id: 'newer', email, purpose: 'RESET_PASSWORD', code: '999999', consumed_at: null,
+      created_at: new Date(Date.now() + 60_000).toISOString() };
+    st.rows = [old('111111'), newer];
+    await dispatchVerificationCode(email, 'RESET_PASSWORD');
+    expect(st.rows.find((r: Row) => r.id === 'newer')!.consumed_at).toBeNull();
+    expect(st.rows.find((r: Row) => r.code === '111111')!.consumed_at).not.toBeNull();
+  });
+
+  it('作廢步驟拋例外：只記 log，不影響回應', async () => {
+    st.exists = true;
+    mail.fn.mockResolvedValue({ result: 'SENT', failureKind: null });
+    st.rows = [old('111111')];
+    Object.defineProperty(st.rows[0], 'consumed_at', { get() { throw new Error('boom'); }, set() {}, configurable: true });
+    await expect(dispatchVerificationCode(email, 'RESET_PASSWORD')).resolves.toBeUndefined();
+  });
+});
+
+describe('reset-password 驗證失敗節流 (#1030)', () => {
+  const MSG = '驗證碼嘗試次數過多，請稍後再試或重新申請驗證碼';
+
+  it('連續 5 次錯碼後第 6 次回 429 REQ_004，即使碼正確也先被擋', async () => {
+    st.validCodes.add(`${email}|654321`);
+    for (let i = 0; i < 5; i += 1) {
+      const r = await reset('000000');
+      expect(r.status).toBe(400);
+      expect((await r.json()).code).toBe('AUTH_004');
+    }
+    const blocked = await reset('654321');
+    expect(blocked.status).toBe(429);
+    const body = await blocked.json();
+    expect(body.code).toBe('REQ_004');
+    expect(body.message).toBe(MSG);
+    expect(updateUserById).not.toHaveBeenCalled();
+  });
+
+  it('額度內正確碼仍成功', async () => {
+    st.validCodes.add(`${email}|654321`);
+    for (let i = 0; i < 4; i += 1) await reset('000000');
+    const ok = await reset('654321');
+    expect(ok.status).toBe(200);
+    expect(updateUserById).toHaveBeenCalledTimes(1);
+  });
+
+  it('不同 email 不互相影響（換 IP 避免 IP 額度干擾）', async () => {
+    for (let i = 0; i < 5; i += 1) await reset('000000');
+    expect((await reset('000000')).status).toBe(429);
+    const other = `other${seq}@example.com`;
+    st.validCodes.add(`${other}|654321`);
+    const r = await reset('654321', { email: other, ip: `${ip}-b` });
+    expect(r.status).toBe(200);
+  });
+
+  it('email 大小寫變體共用同一額度', async () => {
+    for (let i = 0; i < 5; i += 1) await reset('000000');
+    const r = await reset('000000', { email: email.toUpperCase(), ip: `${ip}-c` });
+    expect(r.status).toBe(429);
+  });
+
+  it('IP 額度：同一 IP 對 30 個不同 email 各失敗一次後，第 31 次被擋', async () => {
+    for (let i = 0; i < 30; i += 1) {
+      const r = await reset('000000', { email: `ipt${seq}-${i}@example.com` });
+      expect(r.status).toBe(400);
+    }
+    const r = await reset('000000', { email: `ipt${seq}-fresh@example.com` });
+    expect(r.status).toBe(429);
+    // 換 IP 則不受影響
+    const r2 = await reset('000000', { email: `ipt${seq}-fresh@example.com`, ip: `${ip}-d` });
+    expect(r2.status).toBe(400);
+  });
+
+  it('IP 額度耗盡後，大量不同 email 的被拒請求不在 store 留下 bucket（無記憶體成長）', async () => {
+    for (let i = 0; i < 30; i += 1) await reset('000000', { email: `mem${seq}-${i}@example.com` });
+    const before = __rateLimitBucketCountForTest();
+    for (let i = 0; i < 200; i += 1) {
+      const r = await reset('000000', { email: `memx${seq}-${i}@example.com` });
+      expect(r.status).toBe(429);
+    }
+    expect(__rateLimitBucketCountForTest()).toBe(before);
+  });
+
+  it('驗證碼查詢失敗（DB error）是系統錯誤：回 5xx、不計入額度，5 次後正確碼仍可成功', async () => {
+    st.validCodes.add(`${email}|654321`);
+    st.lookupError = true;
+    for (let i = 0; i < 6; i += 1) {
+      const r = await reset('654321');
+      expect(r.status).toBeGreaterThanOrEqual(500);
+      expect((await r.json()).code).not.toBe('AUTH_004');
+    }
+    st.lookupError = false;
+    const ok = await reset('654321');
+    expect(ok.status).toBe(200);
+  });
+
+  it('存在與不存在的 email：失敗回應與節流行為完全一致', async () => {
+    const real = `real${seq}@example.com`; const ghost = `ghost${seq}@example.com`;
+    st.validCodes.add(`${real}|654321`); // real 有碼，ghost 無；皆用錯碼
+    const run = async (em: string, ipAddr: string) => {
+      const out: Array<[number, string, string]> = [];
+      for (let i = 0; i < 6; i += 1) {
+        const r = await reset('000000', { email: em, ip: ipAddr });
+        const b = await r.json();
+        out.push([r.status, b.code, b.message]);
+      }
+      return out;
+    };
+    expect(await run(real, `${ip}-r`)).toEqual(await run(ghost, `${ip}-g`));
+  });
+
+  it('系統錯誤（非 CODE_INVALID）不計入失敗額度', async () => {
+    st.validCodes.add(`${email}|654321`);
+    updateUserById.mockResolvedValue({ data: null, error: { code: 'unexpected', status: 500 } });
+    for (let i = 0; i < 8; i += 1) expect((await reset('654321')).status).toBe(500);
+  });
+
+  it('並發：延遲 DB 下同時 20 筆錯碼，到達驗碼查詢 ≤ 5，其餘 429', async () => {
+    // 先暖機一次（動態 import 的 next/headers mock 在並發首次載入時不穩），用別的 email／IP 不占本測試額度
+    const warm = await reset('000000', { email: `warm${seq}@example.com`, ip: `${ip}-w` });
+    expect(warm.status).toBe(400);
+    st.codeQueries = 0;
+    st.delayMs = 20;
+    // 錯開 1ms 發出（仍遠小於 DB 延遲 20ms，全部在途重疊）：vitest 對 next/headers 的動態 import mock 在同一 tick 並發載入時會漏接
+    const pending: Array<Promise<Response>> = [];
+    for (let i = 0; i < 20; i += 1) {
+      pending.push(reset('000000'));
+      await new Promise((r) => setTimeout(r, 1));
+    }
+    const rs = await Promise.all(pending);
+    const codes = rs.map((r) => r.status); 
+    expect(st.codeQueries).toBeLessThanOrEqual(5);
+    expect(codes.filter((c) => c === 429).length).toBeGreaterThanOrEqual(15);
+    expect(codes.filter((c) => c === 400).length).toBeLessThanOrEqual(5);
+  });
+
+  it('正確碼成功後退還額度：成功 10 次不會把額度用完，之後仍有 5 次猜錯額度', async () => {
+    st.validCodes.add(`${email}|654321`);
+    for (let i = 0; i < 10; i += 1) expect((await reset('654321')).status).toBe(200);
+    for (let i = 0; i < 5; i += 1) expect((await reset('000000')).status).toBe(400);
+    expect((await reset('000000')).status).toBe(429);
+  });
+});

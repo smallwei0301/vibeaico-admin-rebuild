@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   rpc: vi.fn(), releaseResult: vi.fn(), updateUserById: vi.fn(), maybeSingle: vi.fn(), updateSelect: vi.fn(),
-  updatePayloads: [] as unknown[], isCalls: [] as unknown[][], eqCalls: [] as unknown[][], order: [] as string[],
+  updatePayloads: [] as unknown[], isCalls: [] as unknown[][], gtCalls: [] as unknown[][], eqCalls: [] as unknown[][], order: [] as string[],
 }));
 
 vi.mock('@/server/supabase', () => ({
@@ -21,6 +21,7 @@ vi.mock('@/server/supabase', () => ({
         const q: any = {};
         q.eq = (...a: unknown[]) => { mocks.eqCalls.push(a); return q; };
         q.is = (...a: unknown[]) => { mocks.isCalls.push(a); return q; };
+        q.gt = (...a: unknown[]) => { mocks.gtCalls.push(a); return q; };
         q.select = mocks.updateSelect;
         // release 路徑沒有 .select()，直接 await 條件更新
         q.then = (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) =>
@@ -47,7 +48,7 @@ function request() {
 describe('POST /api/auth/reset-password (#1028)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.updatePayloads.length = 0; mocks.isCalls.length = 0; mocks.eqCalls.length = 0;
+    mocks.updatePayloads.length = 0; mocks.isCalls.length = 0; mocks.gtCalls.length = 0; mocks.eqCalls.length = 0;
     vi.spyOn(console, 'error').mockImplementation(() => {});
     mocks.maybeSingle.mockResolvedValue({ data: { id: 'code-1' } });
     mocks.rpc.mockResolvedValue({ data: 'user-1', error: null });
@@ -58,6 +59,11 @@ describe('POST /api/auth/reset-password (#1028)', () => {
 
   const claimPayload = () => mocks.updatePayloads[0] as { consumed_at: string };
   const releaseCall = () => mocks.updatePayloads[1] as { consumed_at: null } | undefined;
+
+  it('claim 條件帶 expires_at > claimTs，與 consumed_at 為同一時間值', async () => {
+    await consumeCode('owner@example.com', '123456', 'RESET_PASSWORD');
+    expect(mocks.gtCalls).toEqual([['expires_at', claimPayload().consumed_at]]);
+  });
 
   it('成功：先占用再更新密碼，且之後不再消耗', async () => {
     const res = await POST(request(), {});
@@ -176,7 +182,7 @@ describe('POST /api/auth/reset-password (#1028)', () => {
 describe('consumeCode 行為不變', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.updatePayloads.length = 0; mocks.isCalls.length = 0; mocks.eqCalls.length = 0;
+    mocks.updatePayloads.length = 0; mocks.isCalls.length = 0; mocks.gtCalls.length = 0; mocks.eqCalls.length = 0;
     mocks.maybeSingle.mockResolvedValue({ data: { id: 'code-1' } });
     mocks.updateSelect.mockResolvedValue({ data: [{ id: 'code-1' }], error: null });
   });

@@ -395,6 +395,10 @@
     {
       "ref": "issue/1028",
       "title": "忘記密碼：重設時密碼實際更新失敗仍顯示「密碼重設成功」，驗證碼也被用掉"
+    },
+    {
+      "ref": "issue/1030",
+      "title": "安全：驗證碼無嘗試次數上限且舊碼不作廢，重設密碼可被暴力猜碼接管帳號"
     }
   ],
   "main": {
@@ -11134,13 +11138,115 @@
         "startedAt": "2026-10-15T00:34:25Z",
         "completedAt": "2026-10-15T00:35:14Z",
         "note": "REVIEW：fresh-context Opus subagent（requested claude-opus-5-5）對 exact head 907bc24b 對抗審查 PASS。記錄時間晚於事件，時間戳為 subagent transcript 實際起訖。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-terra-build-1028d",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 1028,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/1029#issuecomment-6196169433",
+        "startedAt": "2026-10-15T15:38:16Z",
+        "completedAt": "2026-10-15T15:42:37Z",
+        "note": "TERRA_BUILD：Sonnet subagent 依 Codex P1/P2 修 #1028 原子占用，commit 4d0ad3c4。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-sol-finalrisk-1028d",
+        "role": "audit",
+        "requestedModel": "sol",
+        "issue": 1028,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/1029#issuecomment-6196241835",
+        "startedAt": "2026-10-15T15:47:08Z",
+        "completedAt": "2026-10-15T15:48:30Z",
+        "note": "Final Risk 降級重審：fresh-context Opus subagent 審 4d0ad3c4 → PASS，已合併 5ba94f15。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-terra-build-1030",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 1030,
+        "evidenceRef": "commit 6c5ee13a (prebuild 003e864e)",
+        "startedAt": "2026-10-15T15:53:11Z",
+        "completedAt": "2026-10-15T15:53:39Z",
+        "note": "TERRA_BUILD：Sonnet subagent 將 #1030 預建移植至新 base。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-luna-scout-46-gap2",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 46,
+        "evidenceRef": "scout report (session transcript)",
+        "startedAt": "2026-10-15T15:56:30Z",
+        "completedAt": "2026-10-15T15:58:30Z",
+        "note": "Luna scout 盤點 #46 非 schema 切片 → GAP。時間為主 agent 派發與收件時間估計。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261015-terra-build-1030b",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 1030,
+        "evidenceRef": "commit 3e263a24 (prebuild 4580f9ee)",
+        "startedAt": "2026-10-15T23:02:28Z",
+        "completedAt": "2026-10-15T23:03:20Z",
+        "note": "TERRA_BUILD：Sonnet subagent 依 #1029 Opus R2 於 claimCode 加 expires_at 條件。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261016-luna-scout-1030-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1030,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-16T00:00:47Z",
+        "completedAt": "2026-10-16T00:00:47Z",
+        "note": "Luna metrics capture 綁定 issue/1030：補 sources、issuesStarted +1、lunaTasks/lunaAccepted +2、solTouches +1、solIssues +1，補記 #1028 4d0ad3c4 build 與 Final Risk 重審、#1030 兩次 build、#46 GAP 盤點；#1029 premium 諮詢與 dfe2b06d／152798ab build 未保存精確時間，未補記。actual 未經平台驗證。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 101,
+    "issuesStarted": 102,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -11167,14 +11273,14 @@
     "hardFailReasons": ["OBSERVED_2026_10_15_PR1002_PUSHED_4b239101_WHILE_PARKED"]
   },
   "flow": {
-    "lunaTasks": 207,
-    "lunaAccepted": 198,
+    "lunaTasks": 209,
+    "lunaAccepted": 200,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 276,
-    "solIssues": 44
+    "solTouches": 277,
+    "solIssues": 45
   },
   "auditability": {
     "evidenceFieldsCompletePercent": null,

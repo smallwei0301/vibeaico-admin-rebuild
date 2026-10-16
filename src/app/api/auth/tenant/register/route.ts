@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { readJsonBody, PUBLIC_JSON_BODY_LIMIT_BYTES, handle, ok, fail, ERR } from '@/server/http';
 import { createAdminSupabase } from '@/server/supabase';
 import { consumeCode } from '@/server/verify-code';
+import { assertCodeAttemptsAllowed } from '@/server/verify-code-throttle';
 import { DEFAULT_TENANT_SETTINGS } from '@/config/tenant-settings';
 import { BUSINESS_TYPES, MODE_PRESETS } from '@/config/modes';
 import { SHOP_CODE_PATTERN, SHOP_CODE_MESSAGE } from '@/lib/shop-code';
@@ -41,7 +42,15 @@ export const POST = handle(async (req) => {
   const { data: dup } = await admin.from('tenants').select('id').eq('shop_code', b.shopCode).maybeSingle();
   if (dup) return fail(409, '此店家代碼已被使用', ERR.SHOPCODE_TAKEN);
 
-  await consumeCode(b.email, b.code, 'REGISTER');
+  // #1030：驗證前先檢查失敗額度；碼無效才記一次失敗（見 verify-code.ts 的限制說明）。
+  const attempt = assertCodeAttemptsAllowed(req.headers, b.email, 'REGISTER'); // 同步預約額度
+  try {
+    await consumeCode(b.email, b.code, 'REGISTER');
+    attempt.settle(); // 碼有效：退還預約
+  } catch (e) {
+    attempt.settle(e); // CODE_INVALID 保留計數；其他錯誤退還
+    throw e;
+  }
 
   const { data: created, error: uerr } = await admin.auth.admin.createUser({
     email: b.email, password: b.password, email_confirm: true,   // 驗證碼已確認過信箱

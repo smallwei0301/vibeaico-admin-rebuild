@@ -21,16 +21,17 @@ function codeInvalid() {
 /** 找出一筆有效（未消耗、未過期）的驗證碼，回傳其 id；不消耗。無效丟 400 CODE_INVALID。 */
 export async function findValidCode(email: string, code: string, purpose: CodePurpose): Promise<string> {
   const admin = createAdminSupabase();
-  const { data } = await admin.from('auth_verification_codes').select('*')
+  const { data, error } = await admin.from('auth_verification_codes').select('*')
     .eq('email', email).eq('purpose', purpose).eq('code', code)
     .is('consumed_at', null).gt('expires_at', new Date().toISOString())
     .order('created_at', { ascending: false }).limit(1).maybeSingle();
+  if (error) throw error; // 查詢失敗是系統錯誤（與 claimCode 一致），不得偽裝成 CODE_INVALID，否則節流會把它當猜錯計次
   if (!data) throw codeInvalid();
   return data.id as string;
 }
 
 /**
- * 原子占用：只在 consumed_at 仍為 null 時以 claimTs 更新，且必須確實更新到一列
+ * 原子占用：只在 consumed_at 仍為 null 且尚未過期（expires_at > claimTs）時以 claimTs 更新，且必須確實更新到一列
  * （並發重用時敗方更新到 0 列 → 400 CODE_INVALID）。回傳 claimTs，供 releaseClaim 比對。
  */
 export async function claimCode(id: string): Promise<string> {
@@ -38,7 +39,7 @@ export async function claimCode(id: string): Promise<string> {
   const claimTs = new Date().toISOString();
   const { data, error } = await admin.from('auth_verification_codes')
     .update({ consumed_at: claimTs })
-    .eq('id', id).is('consumed_at', null)
+    .eq('id', id).is('consumed_at', null).gt('expires_at', claimTs)
     .select('id');
   if (error) throw error;
   if (!data || data.length !== 1) throw codeInvalid();

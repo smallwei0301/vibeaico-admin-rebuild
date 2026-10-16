@@ -39,6 +39,8 @@
 規則（照做，不要放寬）：
 
 - 碼為 6 位數字，`crypto.randomInt(100000, 999999)`。
+- **新碼作廢舊碼（#1030）**：寄信成功（`SENT`）後，同 email + purpose 先前尚未使用的舊碼即標記 `consumed_at`；寄送失敗不作廢。僅作廢 `created_at` 嚴格早於新碼者（避免並發寄送互相作廢）。
+- **驗證失敗節流（#1030）**：`reset-password` 與 `tenant/register` 在驗證碼查詢前同步預約額度（`src/server/verify-code-throttle.ts`）：同 email + purpose 每 10 分鐘最多 5 次、同 IP 每 10 分鐘最多 30 次失敗（碼錯誤計次；驗證成功或系統錯誤退還）。超額回 **429 `REQ_004`**，訊息「驗證碼嘗試次數過多，請稍後再試或重新申請驗證碼」（不論 email 是否存在皆相同，不洩漏帳號）。**限制**：沿用單 process 記憶體固定視窗，serverless 多 instance 各自計數、重新部署即歸零，屬盡力而為（best-effort），非完整防護；持久化計數追蹤於 Issue #1040。
 - 有效 10 分鐘；同一 email + purpose 60 秒內不可重寄（依原始、區分大小寫的 email 字串；大小寫變體見殘餘 (e)；查最近一筆 `created_at`）。
 - 註冊流程：驗證成功即寫 `consumed_at`，一碼一次。重設流程：驗證 → 原子占用（條件單列，必須剛好一列，並發敗方 400）→ 更新密碼；可重試失敗（`weak_password`／`user_not_found`／系統錯誤）釋放占用、可在有效期內重試，`same_password` 不釋放（維持已消耗，防探測現有密碼）；釋放失敗只記 log（fail-closed）。
 - 為防 email 枚舉：email 已存在時 `send-verification-code(REGISTER)` 與

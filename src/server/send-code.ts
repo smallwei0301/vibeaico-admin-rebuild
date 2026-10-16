@@ -84,11 +84,25 @@ export async function dispatchVerificationCode(email: string, purpose: 'REGISTER
   }
 
   const code = String(randomInt(100000, 999999));
+  const createdAt = new Date().toISOString(); // 明確指定本筆 created_at，供事後只作廢「更舊」的碼（N2）
   await admin.from('auth_verification_codes').insert({
-    email, code, purpose, expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+    email, code, purpose, created_at: createdAt, expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
   });
   const { result, failureKind } = await sendVerificationCodeEmail(email, code, purpose);
-  if (result === 'SENT') return; // 視窗內（並行在途請求除外）不會走到這裡，故 SENT 不清除視窗
+  if (result === 'SENT') {
+    // #1030：新碼確認寄出後，作廢同 email、同 purpose 其他未消耗的舊碼，避免攻擊者累積多組有效碼再暴力猜。
+    // 只在 SENT 之後做（寄失敗時舊碼仍是使用者手上唯一有效的碼）；失敗只記 log，不影響回應（也不改變枚舉防護行為）。
+    // 只作廢 created_at 嚴格早於本筆的碼：並發寄碼時較新的碼不會被較舊請求的作廢動作波及（N2）。
+    try {
+      const { error: revokeErr } = await admin.from('auth_verification_codes')
+        .update({ consumed_at: new Date().toISOString() })
+        .eq('email', email).eq('purpose', purpose).lt('created_at', createdAt).is('consumed_at', null);
+      if (revokeErr) console.error('[send-code] 無法作廢舊驗證碼', revokeErr);
+    } catch (e) {
+      console.error('[send-code] 作廢舊驗證碼時發生例外', e);
+    }
+    return; // 視窗內（並行在途請求除外）不會走到這裡，故 SENT 不清除視窗
+  }
 
   // 沒寄出：讓剛插入的碼失效（刪除；也不會留下 60 秒冷卻擋住使用者重試），再回明確錯誤。
   const { error: delErr } = await admin.from('auth_verification_codes')
