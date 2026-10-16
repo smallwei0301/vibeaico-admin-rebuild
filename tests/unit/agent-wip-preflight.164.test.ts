@@ -1,4 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { routing } from '../../scripts/agents/astra-review-policy.mjs';
 import {
@@ -6,6 +9,7 @@ import {
   parseGitNameStatus,
   validateDeliveryUnitBoundary,
   validateWipPreflight,
+  validateRoleCaptureCapability,
 } from '../../scripts/agents/agent-wip-preflight.mjs';
 import {
   buildWipErrorFingerprint,
@@ -214,6 +218,55 @@ describe('Issue #164 Agent WIP preflight', () => {
   });
 });
 
+describe('pre-execution role capture capability diagnostic (synthetic, not provenance)', () => {
+  const now = Date.parse('2026-10-14T00:01:00Z');
+  const role = () => ({ actorId: 'EXPOSED', sessionId: 'EXPOSED', executionRef: 'EXPOSED', captureBeforeWork: 'SUPPORTED' });
+  const observation = () => ({ schemaVersion: 1, sourceKind: 'OPERATOR_OBSERVED_RUNTIME_CONTRACT',
+    evidenceRef: 'synthetic-runtime-contract:fixture', observedAt: '2026-10-14T00:00:00Z',
+    roles: { BUILD: role(), REVIEW: role() }, independentFreshReviewer: 'SUPPORTED' });
+  it('records capabilities without demanding future completed receipts or verifying identity', () => {
+    const result = validateRoleCaptureCapability(observation(), now);
+    expect(result.valid).toBe(true);
+    expect(result.status).toBe('ROLE_CAPTURE_CAPABILITY_RECORDED_UNVERIFIED');
+    expect(result.roleIdentityVerified).toBe(false);
+    expect(result.canonicalReadbackVerified).toBe(false);
+  });
+  it.each(['BUILD', 'REVIEW'] as const)('rejects each unavailable %s capture field', roleName => {
+    for (const field of ['actorId', 'sessionId', 'executionRef', 'captureBeforeWork'] as const) {
+      for (const unavailable of ['UNKNOWN', 'UNEXPOSED', 'task_name', 'parent-thread-id', 'true', '']) {
+        const p = observation(); p.roles[roleName][field] = unavailable;
+        expect(validateRoleCaptureCapability(p, now).valid, `${roleName}.${field}=${unavailable}`).toBe(false);
+      }
+    }
+  });
+  it.each([
+    undefined, {}, { sourceKind: 'REPO_MODEL_CONFIG' }, { evidenceRef: 'unknown' },
+    { observedAt: 'not-a-date' }, { observedAt: '2026-10-14T00:02:00Z' },
+    { independentFreshReviewer: 'UNKNOWN' }, { independentFreshReviewer: true },
+  ])('rejects missing or unsupported runtime observations: %j', patch => {
+    const p = patch === undefined ? undefined : { ...observation(), ...patch };
+    // Empty packets are checked separately; a missing observation cannot default to supported.
+    expect(validateRoleCaptureCapability(patch && !Object.keys(patch).length ? {} : p, now).valid).toBe(false);
+  });
+  it('CLI reports unsupported capture before source work, with no body/diff/final packet', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'role-capability-'));
+    try {
+      const path = join(dir, 'observation.json');
+      const p = observation(); p.roles.BUILD.actorId = 'UNEXPOSED';
+      writeFileSync(path, JSON.stringify(p));
+      const run = (extra: string[] = []) => spawnSync(process.execPath,
+        ['scripts/agents/agent-wip-preflight.mjs', '--role-capability', path, ...extra], { encoding: 'utf8' });
+      const unavailable = run();
+      expect(unavailable.status).toBe(1);
+      expect(JSON.parse(unavailable.stdout).status).toBe('ROLE_CAPTURE_UNAVAILABLE');
+      writeFileSync(path, JSON.stringify(observation()));
+      const recorded = run(); expect(recorded.status).toBe(0);
+      expect(JSON.parse(recorded.stdout).canonicalReadbackVerified).toBe(false);
+      expect(run(['--prospective-final', 'true']).status).toBe(1);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
 describe('#659 local preflight changed-file discovery', () => {
   it('keeps both old and new paths for renames so schema triggers cannot disappear', () => {
     expect(parseGitNameStatus([
@@ -394,6 +447,28 @@ describe('ordinary final review local contract (synthetic, never canonical appro
   it('current snapshot head/body cannot disagree with a prospective packet', () => {
     expect(check(packet(), { currentPr: { ...live, body: finalBody, head: { sha: 'd'.repeat(40) } } }).valid).toBe(false);
     expect(check(packet(), { currentPr: live }).ordinaryReviewStatus).toBe('LOCAL_NOT_VERIFIABLE');
+  });
+  it.each([
+    { draft: true, lane: 'ACTIVE' },
+    { draft: false, lane: 'PARKED' },
+    { draft: true, lane: 'PARKED' },
+  ])('explicit prospective final checks deferred open snapshots: %j', ({ draft, lane }) => {
+    const scopedBody = finalBody.replace('LANE_STATE: ACTIVE', `LANE_STATE: ${lane}`);
+    const currentPr = { ...live, body: scopedBody, draft };
+    const missing = check(undefined, { body: scopedBody, currentPr });
+    expect(missing.ordinaryReviewRequired).toBe(true);
+    expect(missing.errors).toContain('Ordinary final review requires local scope and receipt snapshots');
+    const complete = check(packet(), { body: scopedBody, currentPr });
+    expect(complete.ordinaryReviewStatus).toBe('NEEDS_CANONICAL_READBACK');
+    expect(complete.canonicalReadbackVerified).toBe(false);
+    const unexposed = packet(); unexposed.builder.actorId = 'unknown';
+    expect(check(unexposed, { body: scopedBody, currentPr }).errors).toContain('Invalid local BUILD role receipt shape');
+  });
+  it('prospective final does not reopen closed history or bypass snapshot validation', () => {
+    expect(check(undefined, { currentPr: { ...live, body: finalBody, state: 'closed', draft: true } }).ordinaryReviewRequired).toBe(false);
+    expect(check(undefined, { currentPr: { ...live, body: finalBody, draft: 'true' } }).ordinaryReviewStatus).toBe('LOCAL_NOT_VERIFIABLE');
+    expect(check(undefined, { currentPr: { ...live, draft: true } }).ordinaryReviewStatus).toBe('LOCAL_NOT_VERIFIABLE');
+    expect(check(undefined, { prospectiveFinal: 'true', currentPr: { ...live, body: finalBody, draft: true } }).ordinaryReviewRequired).toBe(false);
   });
   it('Draft BUILD, governance and high-risk baseline do not acquire ordinary proof requirements', () => {
     expect(validateWipPreflight({ body, currentPr: { ...live, draft: true }, fileExists: () => true } as any).ordinaryReviewRequired).toBe(false);
