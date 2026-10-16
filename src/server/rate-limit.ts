@@ -81,12 +81,15 @@ export function peekRateLimit(
 }
 
 /**
- * 退還一次先前由 checkRateLimit 取得的額度（count 減 1，不低於 0）。
+ * 退還一次先前由 checkRateLimit 取得的額度（count 減 1，不低於 0；歸零時刪除該 key）。
  * 用於「先同步預約、結果確定不該計次時再退還」的流程（#1030）；bucket 不存在（已過期被清）則無動作。
  */
 export function releaseRateLimit(key: string): void {
   const existing = buckets.get(key);
-  if (existing && existing.count > 0) existing.count -= 1;
+  if (!existing) return;
+  if (existing.count > 0) existing.count -= 1;
+  // 歸零即刪 key：被拒絕的請求（攻擊者可控的 email key）不得在 Map 內殘留空 bucket（記憶體無上限成長）。
+  if (existing.count <= 0) buckets.delete(key);
 }
 
 /** 僅供測試：目前 bucket 數量。 */

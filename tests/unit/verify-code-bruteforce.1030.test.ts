@@ -68,6 +68,7 @@ vi.mock('@/server/email/send', () => ({ sendVerificationCodeEmail: mail.fn }));
 vi.mock('next/headers', () => ({ cookies: () => Promise.resolve({ get: () => undefined }) }));
 
 import { POST } from '@/app/api/auth/reset-password/route';
+import { __rateLimitBucketCountForTest } from '@/server/rate-limit';
 import { dispatchVerificationCode, __resetMailConfigFailureFlag } from '@/server/send-code';
 
 // rate-limit 無重置 API：每個測試用不重複的 email／IP，避免互相污染。
@@ -190,6 +191,16 @@ describe('reset-password 驗證失敗節流 (#1030)', () => {
     // 換 IP 則不受影響
     const r2 = await reset('000000', { email: `ipt${seq}-fresh@example.com`, ip: `${ip}-d` });
     expect(r2.status).toBe(400);
+  });
+
+  it('IP 額度耗盡後，大量不同 email 的被拒請求不在 store 留下 bucket（無記憶體成長）', async () => {
+    for (let i = 0; i < 30; i += 1) await reset('000000', { email: `mem${seq}-${i}@example.com` });
+    const before = __rateLimitBucketCountForTest();
+    for (let i = 0; i < 200; i += 1) {
+      const r = await reset('000000', { email: `memx${seq}-${i}@example.com` });
+      expect(r.status).toBe(429);
+    }
+    expect(__rateLimitBucketCountForTest()).toBe(before);
   });
 
   it('存在與不存在的 email：失敗回應與節流行為完全一致', async () => {
