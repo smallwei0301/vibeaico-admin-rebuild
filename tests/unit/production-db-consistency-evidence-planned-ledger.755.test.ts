@@ -10,6 +10,8 @@ import { createRequire } from 'node:module';
 import { buildProductionDbReleasePlan } from '../../scripts/agents/production-db-release-plan.mjs';
 import { assertLiveLedgerMatchesAliasMap } from '../../scripts/db/controlled-production-db-release.mjs';
 import { buildAtomicTestReleaseValidationSql } from '../../scripts/db/validate-production-db-release-on-test.mjs';
+import { advanceReleaseJournal, createReleaseJournal } from '../../scripts/agents/production-db-release-journal.mjs';
+import { finalizeProductionDbPostcheck } from '../../scripts/agents/production-db-postcheck.mjs';
 import { buildProductionConsistencyEvidence } from '../../scripts/agents/production-db-consistency-evidence.mjs';
 import { buildObserverSnapshotFromRaw, compareObserverSnapshots } from '../../scripts/agents/schema-drift-watch.mjs';
 
@@ -295,6 +297,38 @@ describe('#755 trusted G3 writer to observer identity binding', () => {
     expect(buildProductionConsistencyEvidence({ ...fixture(), report, plan, planDigest: plan.planDigest }).status).toBe('CONSISTENCY_VERIFIED');
   });
 
+  describe('post_apply release phase', () => {
+    function applied() {
+      const { args, plan } = writerFixture();
+      const ledger = [BASELINE, { version: plan.migrations[0].ledgerVersion, name: MIGRATION }];
+      args.productionSnapshot = snapshot('PRODUCTION', [], [MIGRATION], ledger);
+      return { args, plan };
+    }
+    it('pre_apply (default) still rejects a selected migration already in Production; post_apply compares and postcheck is READY', () => {
+      const { args, plan } = applied();
+      expect(() => compareObserverSnapshots(args)).toThrow(/PLANNED_PRODUCTION_LEDGER_PRESENT/);
+      expect(() => compareObserverSnapshots({ ...args, releasePhase: 'pre_apply' })).toThrow(/PLANNED_PRODUCTION_LEDGER_PRESENT/);
+      expect(() => compareObserverSnapshots({ ...args, releasePhase: 'bogus' })).toThrow(/INVALID_RELEASE_PHASE/);
+      const report = compareObserverSnapshots({ ...args, releasePhase: 'post_apply' });
+      expect(report.observedMainSha).toBe(MAIN);
+      let journal = createReleaseJournal({ releaseId: plan.releaseId, mainSha: MAIN, planDigest: plan.planDigest, createdAt: '2026-10-16T09:00:00Z' });
+      journal = advanceReleaseJournal(journal, { status: 'APPLYING', at: '2026-10-16T09:01:00Z', evidenceRef: 'writer:start' });
+      journal = advanceReleaseJournal(journal, { status: 'APPLIED_CONFIRMED', at: '2026-10-16T09:02:00Z', evidenceRef: 'readback:applied' });
+      const consistency = { status: 'CONSISTENCY_VERIFIED', mainSha: MAIN, planDigest: plan.planDigest, plannedProductionDifferences: [
+        { surface: 'routines', objectKey: 'public.create_tour_order(uuid)', expectedFingerprint: '1'.repeat(64) },
+        { surface: 'migrationLedger', objectKey: `0136/${MIGRATION}`, expectedFingerprint: '2'.repeat(64) }] };
+      expect(finalizeProductionDbPostcheck({ report, plan, journal, consistency, now: '2026-10-16T09:03:00Z' }))
+        .toMatchObject({ status: 'PRODUCTION_SCHEMA_READY', databaseMutationAuthorized: false });
+    });
+    it('collect g2 keeps the pre_apply default and the consistency assembly; only g7/g7-recheck pass post_apply', () => {
+      const g2 = ORCHESTRATOR.split('\n  g2:\n')[1].split('\n  g4-backup:')[0];
+      expect(g2).not.toContain('release_phase');
+      expect(OBSERVER_WORKFLOW).toContain("default: pre_apply");
+      expect(OBSERVER_WORKFLOW).toContain('assemble-production-db-release-evidence.mjs consistency');
+      expect(ORCHESTRATOR.match(/release_phase: post_apply/g)).toHaveLength(2);
+    });
+  });
+
   describe('later main with unchanged migrations (postcheck recheck)', () => {
     const LATER = 'e'.repeat(40);
     function later(flag: Record<string, unknown> | null) {
@@ -499,7 +533,7 @@ describe('#755 exact trusted G3 workflow wiring', () => {
     expect(OBSERVER_WORKFLOW).toContain('permissions:\n  contents: read\n');
     expect(OBSERVER_WORKFLOW).not.toContain('actions: read');
     expect(OBSERVER_WORKFLOW.split('  workflow_dispatch:')[1].split('  workflow_call:')[0]).not.toContain('release_ledger_binding');
-    expect(OBSERVER_WORKFLOW).toContain('binding_args=(--release-ledger-binding "$RUNNER_TEMP/release-ledger-binding.json")');
+    expect(OBSERVER_WORKFLOW).toContain('binding_args=(--release-ledger-binding "$RUNNER_TEMP/release-ledger-binding.json" --release-phase "$RELEASE_PHASE")');
     expect(OBSERVER_WORKFLOW).toContain('"${binding_args[@]}"');
   });
 });

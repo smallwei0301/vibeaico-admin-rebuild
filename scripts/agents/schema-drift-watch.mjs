@@ -737,7 +737,8 @@ function evidenceUnavailableReport({ mainSha, environments, normalizedExceptions
     safety: { fullEnvironmentParityProven: false, authorizesDatabaseWrite: false, rawDataIncluded: false } };
 }
 /** @param {any} input */
-export function compareObserverSnapshots({ expectedSnapshot, testSnapshot, productionSnapshot, currentMainSha, exceptions = [], now = Date.now(), maxEvidenceAgeMinutes = 60, releaseLedgerBinding, aliasMap, readCanonicalSql, readSourceAt, isAncestor }) {
+export function compareObserverSnapshots({ expectedSnapshot, testSnapshot, productionSnapshot, currentMainSha, exceptions = [], now = Date.now(), maxEvidenceAgeMinutes = 60, releaseLedgerBinding, releasePhase = 'pre_apply', aliasMap, readCanonicalSql, readSourceAt, isAncestor }) {
+  if (!['pre_apply', 'post_apply'].includes(releasePhase)) fail('INVALID_RELEASE_PHASE', 'releasePhase must be pre_apply or post_apply');
   const mainSha = validSha(currentMainSha, 'currentMainSha');
   const compareTime = typeof now === 'number' ? now : Date.parse(now);
   if (!Number.isFinite(compareTime)) fail('INVALID_COMPARE_TIME', 'comparison time must be finite');
@@ -761,7 +762,9 @@ export function compareObserverSnapshots({ expectedSnapshot, testSnapshot, produ
   const baseline = baseline0098TestLedgerView({ expected, test: planned.test, binding: releaseLedgerBinding, mainSha, readSourceAt, isAncestor });
   // A trusted pre-apply plan selects NOT_APPLIED migrations. Comparison-only
   // canonical aliases must not hide a selected migration already in Production.
-  if (planned.trace && releaseLedgerBinding.plan.migrations.some((migration) =>
+  // Post-apply the selected migrations are expected in the raw Production ledger; the scoped postcheck
+  // (not this pre-apply guard) decides readiness from the applied identities.
+  if (releasePhase === 'pre_apply' && planned.trace && releaseLedgerBinding.plan.migrations.some((migration) =>
     production.migrationLedger.identities.some((row) => row.name === migration.repoFile || row.name === migration.repoFile.slice(5)))) {
     fail('PLANNED_PRODUCTION_LEDGER_PRESENT', 'selected pending migration already exists in the raw Production ledger');
   }
@@ -884,6 +887,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     } else if (input.command === 'compare') {
       const result = compareObserverSnapshots({ expectedSnapshot: readJson(input['expected-snapshot']), testSnapshot: readJson(input['test-snapshot']), productionSnapshot: readJson(input['production-snapshot']), currentMainSha: input['current-main-sha'], exceptions: input.exceptions ? readJson(input.exceptions).exceptions : [], maxEvidenceAgeMinutes: input['max-evidence-age-minutes'] ? Number(input['max-evidence-age-minutes']) : undefined,
         releaseLedgerBinding: input['release-ledger-binding'] ? readJson(input['release-ledger-binding']) : undefined,
+        ...(input['release-phase'] ? { releasePhase: input['release-phase'] } : {}),
         aliasMap: input['release-ledger-binding'] ? readJson('supabase/ledger-alias-map.json') : undefined,
         readCanonicalSql: (path) => readFileSync(resolve(path), 'utf8') });
       writeJson(input['json-out'], result);

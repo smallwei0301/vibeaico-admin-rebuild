@@ -797,6 +797,7 @@ jobs:
     with:
       expected_main_sha: ${{ inputs.expected_main_sha }}
       artifact_suffix: g7
+      release_phase: post_apply
       release_ledger_binding: ${{ needs.admission.outputs.g3_ledger_binding }}
     secrets:
       SCHEMA_OBSERVER_TOKEN: ${{ secrets.SCHEMA_OBSERVER_TOKEN }}
@@ -868,6 +869,7 @@ jobs:
     with:
       expected_main_sha: ${{ inputs.expected_main_sha }}
       artifact_suffix: g7-recheck
+      release_phase: post_apply
       release_ledger_binding: ${{ needs.admission.outputs.g3_ledger_binding }}
     secrets:
       SCHEMA_OBSERVER_TOKEN: ${{ secrets.SCHEMA_OBSERVER_TOKEN }}

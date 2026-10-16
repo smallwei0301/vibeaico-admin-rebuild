@@ -64,6 +64,17 @@ describe('production-db-release-orchestrator postcheck mode #447', () => {
     expect(workflow.jobs['g7-recheck'].with.release_ledger_binding).toBe('${{ needs.admission.outputs.g3_ledger_binding }}');
     expect(workflow.jobs.g7.with.release_ledger_binding).toBe('${{ needs.admission.outputs.g3_ledger_binding }}');
     expect(workflow.jobs.g7.needs).toEqual(expect.arrayContaining(['admission', 'execute']));
+    expect(workflow.jobs.g7.with.release_phase).toBe('post_apply');
+    expect(workflow.jobs['g7-recheck'].with.release_phase).toBe('post_apply');
+    expect(workflow.jobs.g2.with.release_phase).toBeUndefined(); // collect keeps the pre_apply default
+    const observer = readFileSync(new URL('../../.github/workflows/agent-schema-drift-watch.yml', import.meta.url), 'utf8');
+    const call = observer.split('  workflow_call:')[1].split('permissions:')[0];
+    expect(call).toMatch(/release_phase:[\s\S]*default: pre_apply/);
+    expect(observer.split('  workflow_dispatch:')[1].split('  workflow_call:')[0]).not.toContain('release_phase');
+    expect(observer).toContain('if test "$RELEASE_PHASE" = post_apply; then exit 0; fi');
+    const afterSkip = observer.split('if test "$RELEASE_PHASE" = post_apply; then exit 0; fi')[1];
+    expect(afterSkip).toContain('assemble-production-db-release-evidence.mjs consistency');
+    expect(observer.split('if test "$RELEASE_PHASE" = post_apply; then exit 0; fi')[0]).toContain('test "$observer_exit" = 2');
     for (const name of ['Verify G3 provenance for read-only ledger comparison', 'Download G3 ledger comparison provenance',
       'Reassemble exact G3 evidence for read-only ledger mapping']) {
       const gate = workflow.jobs.admission.steps.find((step: any) => step.name === name).if as string;
