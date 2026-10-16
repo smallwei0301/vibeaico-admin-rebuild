@@ -48,7 +48,7 @@ function verifyPostReport(report, plan, consistency, migrationsUnchangedSincePla
     const appliedPresent = ledger.some((item) => keys.applied.includes(item.objectKey) && item.observedFingerprint !== null);
     if (missing && !appliedPresent) fail('POSTCHECK_PENDING_REMAINS', `planned migration ${migration.repoFile} is still pending in the Production ledger`);
   }
-  verifyNoNewUnplannedDrift({ differences, plan, preApplyReport, consistency, ownLedgerKeys: plan.migrations.flatMap((migration) => {
+  verifyNoNewUnplannedDrift({ differences, plan, preApplyReport, consistency, report, ownLedgerKeys: plan.migrations.flatMap((migration) => {
     const keys = plannedLedgerKeys(migration);
     return [...keys.canonical, ...keys.applied];
   }) });
@@ -59,9 +59,10 @@ function verifyPostReport(report, plan, consistency, migrationsUnchangedSincePla
 }
 
 // Unrelated Production drift is tolerated only if it already existed in the release's own pre-apply G2
-// report: otherwise the apply itself introduced it. ACL fingerprints changed algorithm between G2 and
-// G7 (owner normalization), so acl is compared by presence only; every other surface also by observedFingerprint.
-function verifyNoNewUnplannedDrift({ differences, plan, preApplyReport, consistency, ownLedgerKeys }) {
+// report with the same observedFingerprint: otherwise the apply itself introduced or changed it. ACL
+// fingerprints are comparable only between reports of the same aclFingerprintVersion (missing = 1); across
+// versions no key-only acceptance exists, so any out-of-scope acl difference fails closed.
+function verifyNoNewUnplannedDrift({ differences, plan, preApplyReport, consistency, ownLedgerKeys, report }) {
   const g2 = preApplyReport;
   if (!g2 || typeof g2 !== 'object' || !Array.isArray(g2.differences) || g2.status === 'EVIDENCE_UNAVAILABLE'
     || g2.observedMainSha !== plan.mainSha || g2.safety?.authorizesDatabaseWrite !== false) {
@@ -74,12 +75,17 @@ function verifyNoNewUnplannedDrift({ differences, plan, preApplyReport, consiste
   const before = new Map(g2.differences.filter((item) => item?.environment === 'PRODUCTION')
     .map((item) => [`${item.surface}\0${item.objectKey}`, item]));
   const planned = new Set((consistency?.plannedProductionDifferences ?? []).map((item) => `${item.surface}\0${item.objectKey}`));
+  const aclVersion = (value) => value?.aclFingerprintVersion ?? 1;
+  const aclComparable = aclVersion(g2) === aclVersion(report);
   for (const item of differences) {
     if (item.surface === 'migrationLedger' && ownLedgerKeys.includes(item.objectKey)) continue;
     if (planned.has(`${item.surface}\0${item.objectKey}`)) continue;
+    if (item.surface === 'acl' && !aclComparable) {
+      fail('POSTCHECK_ACL_BASELINE_INCOMPATIBLE', `out-of-scope ACL difference ${item.objectKey} cannot be compared across ACL fingerprint versions`);
+    }
     const prior = before.get(`${item.surface}\0${item.objectKey}`);
     if (!prior) fail('POSTCHECK_NEW_PRODUCTION_DRIFT', `Production difference ${item.surface}:${item.objectKey} was not present before apply`);
-    if (item.surface !== 'acl' && (prior.observedFingerprint ?? null) !== (item.observedFingerprint ?? null)) {
+    if ((prior.observedFingerprint ?? null) !== (item.observedFingerprint ?? null)) {
       fail('POSTCHECK_NEW_PRODUCTION_DRIFT', `Production difference ${item.surface}:${item.objectKey} changed since the pre-apply report`);
     }
   }

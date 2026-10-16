@@ -750,6 +750,7 @@ jobs:
           path: ${{ runner.temp }}/prepared
 
       - name: EXECUTE controlled Production DB attempt
+        id: execute-apply
         env:
           PRODUCTION_DB_WRITER_URL: ${{ secrets.PRODUCTION_DB_WRITER_URL }}
           NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/config/supabase-production-root-bundle.crt
@@ -775,7 +776,8 @@ jobs:
             node --input-type=module -e '
               const result = {
                 schemaVersion: 1,
-                status: "EXECUTE_REJECTED_PRE_MUTATION",
+                // The EXECUTE step started (outcome not skipped): the transaction may have committed.
+                status: process.env.EXECUTE_OUTCOME === "skipped" ? "EXECUTE_REJECTED_PRE_MUTATION" : "APPLY_UNKNOWN",
                 releaseId: process.env.RELEASE_ID,
                 mainSha: process.env.EXPECTED_MAIN_SHA,
                 databaseMutationAuthorized: false,
@@ -786,6 +788,7 @@ jobs:
         env:
           RELEASE_ID: ${{ inputs.release_id }}
           EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          EXECUTE_OUTCOME: ${{ steps.execute-apply.outcome }}
 
       - name: Upload durable apply result
         if: ${{ always() }}

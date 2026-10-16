@@ -120,4 +120,14 @@ describe('production-db-release-orchestrator postcheck mode #447', () => {
     }
     expect(workflow.on.workflow_dispatch.inputs.collect_run_id).toBeDefined();
   });
+
+  it('writes APPLY_UNKNOWN when the EXECUTE step started and a pre-mutation rejection only when it never ran', () => {
+    const steps = workflow.jobs.execute.steps;
+    const exec = steps.find((step: any) => step.name === 'EXECUTE controlled Production DB attempt');
+    expect(exec.id).toBe('execute-apply');
+    const persist = steps.find((step: any) => step.name === 'Persist apply result or APPLY_UNKNOWN stop marker');
+    expect(persist.env.EXECUTE_OUTCOME).toBe('${{ steps.execute-apply.outcome }}');
+    expect(persist.run).toContain('process.env.EXECUTE_OUTCOME === "skipped" ? "EXECUTE_REJECTED_PRE_MUTATION" : "APPLY_UNKNOWN"');
+    expect(persist.run).toContain('databaseMutationAuthorized: false');
+  });
 });

@@ -14,6 +14,9 @@ import { PRODUCTION_DB_CATALOG_FINGERPRINT_SQL } from '../db/production-db-catal
 // Version 2 is intentionally separate from schema-truth-evidence's v1 packet:
 // it adds LOCAL_EXPECTED and object-level fingerprints for the live observer.
 export const DRIFT_WATCH_SCHEMA_VERSION = 2;
+// Version of the ACL fingerprint algorithm (2 = environment-aware owner normalization). Reports without
+// the field predate it and are treated as version 1 by consumers.
+export const ACL_FINGERPRINT_VERSION = 2;
 export const DRIFT_STATUSES = Object.freeze([
   'MATCH', 'EXPECTED_PENDING_TEST', 'EXPECTED_PENDING_PRODUCTION',
   'INTENTIONAL_DIFFERENCE', 'DRIFT_BLOCKED', 'EVIDENCE_UNAVAILABLE',
@@ -788,7 +791,7 @@ export function compareObserverSnapshots({ expectedSnapshot, testSnapshot, produ
   const statuses = [testResult.status, productionResult.status].filter((status) => status !== 'MATCH');
   const status = blocked ? 'DRIFT_BLOCKED' : statuses.length === 0 ? 'MATCH' : new Set(statuses).size === 1 ? statuses[0] : 'INTENTIONAL_DIFFERENCE';
   return {
-    schemaVersion: DRIFT_WATCH_SCHEMA_VERSION, observedMainSha: mainSha, status, differenceCount: allDifferences.length,
+    schemaVersion: DRIFT_WATCH_SCHEMA_VERSION, aclFingerprintVersion: ACL_FINGERPRINT_VERSION, observedMainSha: mainSha, status, differenceCount: allDifferences.length,
     ...(planned.trace ? { plannedLedgerMapping: planned.trace } : {}),
     ...(baseline.trace ? { testBaseline0098Mapping: baseline.trace } : {}),
     differences: allDifferences, environments, environmentStatuses: { TEST: testResult.status, PRODUCTION: productionResult.status },

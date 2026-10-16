@@ -77,15 +77,26 @@ describe('Production DB G7 scoped postcheck #447',()=>{
   describe('pre-apply G2 baseline for unrelated Production drift',()=>{
     const pre=[diff('columns','public.other.col','9'.repeat(64),'4'.repeat(64)),diff('acl','table:public.other','9'.repeat(64),'5'.repeat(64))];
     const post=(fp='4'.repeat(64),aclFp='6'.repeat(64))=>[diff('columns','public.other.col','9'.repeat(64),fp),diff('acl','table:public.other','9'.repeat(64),aclFp)];
-    it('is READY when unrelated drift already existed before apply (ACL fingerprint algorithm may differ)',()=>{
-      expect(run({report:report(post(),'DRIFT_BLOCKED'),preApplyReport:report(pre,'DRIFT_BLOCKED')})).toMatchObject({status:'PRODUCTION_SCHEMA_READY'});
+    it('is READY when unrelated drift is identical to the same-version G2 baseline (acl included)',()=>{
+      expect(run({report:report(post('4'.repeat(64),'5'.repeat(64)),'DRIFT_BLOCKED',{aclFingerprintVersion:2}),preApplyReport:report(pre,'DRIFT_BLOCKED',{aclFingerprintVersion:2})})).toMatchObject({status:'PRODUCTION_SCHEMA_READY'});
+      expect(run({report:report(post('4'.repeat(64),'5'.repeat(64)),'DRIFT_BLOCKED'),preApplyReport:report(pre,'DRIFT_BLOCKED')})).toMatchObject({status:'PRODUCTION_SCHEMA_READY'}); // both missing = v1
+    });
+    it('fails when an out-of-scope acl fingerprint changed within the same version',()=>{
+      expect(failure({report:report(post('4'.repeat(64),'6'.repeat(64)),'DRIFT_BLOCKED',{aclFingerprintVersion:2}),preApplyReport:report(pre,'DRIFT_BLOCKED',{aclFingerprintVersion:2})})).toMatch(/changed since the pre-apply report/);
+    });
+    it('fails closed on an out-of-scope acl difference when the ACL versions differ (missing G2 field = v1)',()=>{
+      expect(failure({report:report(post('4'.repeat(64),'5'.repeat(64)),'DRIFT_BLOCKED',{aclFingerprintVersion:2}),preApplyReport:report(pre,'DRIFT_BLOCKED')})).toMatch(/cannot be compared across ACL fingerprint versions/);
+    });
+    it('is READY across differing ACL versions when G7 has no out-of-scope acl difference',()=>{
+      const noAcl=[diff('columns','public.other.col','9'.repeat(64),'4'.repeat(64))];
+      expect(run({report:report(noAcl,'DRIFT_BLOCKED',{aclFingerprintVersion:2}),preApplyReport:report(pre,'DRIFT_BLOCKED')})).toMatchObject({status:'PRODUCTION_SCHEMA_READY'});
     });
     it('fails on a new non-planned Production difference absent from G2',()=>{
-      const added=[...post(),diff('acl','table:public.new_after_apply','9'.repeat(64),'7'.repeat(64))];
-      expect(failure({report:report(added,'DRIFT_BLOCKED'),preApplyReport:report(pre,'DRIFT_BLOCKED')})).toMatch(/was not present before apply/);
+      const added=[...post('4'.repeat(64),'5'.repeat(64)),diff('acl','table:public.new_after_apply','9'.repeat(64),'7'.repeat(64))];
+      expect(failure({report:report(added,'DRIFT_BLOCKED',{aclFingerprintVersion:2}),preApplyReport:report(pre,'DRIFT_BLOCKED',{aclFingerprintVersion:2})})).toMatch(/was not present before apply/);
     });
     it('fails when a pre-existing non-acl drift changed its observed fingerprint',()=>{
-      expect(failure({report:report(post('8'.repeat(64)),'DRIFT_BLOCKED'),preApplyReport:report(pre,'DRIFT_BLOCKED')})).toMatch(/changed since the pre-apply report/);
+      expect(failure({report:report(post('8'.repeat(64)),'DRIFT_BLOCKED',{aclFingerprintVersion:2}),preApplyReport:report(pre,'DRIFT_BLOCKED',{aclFingerprintVersion:2})})).toMatch(/changed since the pre-apply report/);
     });
     it.each([
       ['missing',{preApplyReport:undefined}],
