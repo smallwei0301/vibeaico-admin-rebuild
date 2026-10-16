@@ -192,6 +192,34 @@ exact main schema/ACL/RPC dependencies
 → remaining fixture/auth/RPC/runtime failures
 ```
 
+
+### 4.3 交付改善不可只拿兩個舊數字相減
+
+每次先比對 `supabase/ledger-alias-map.json` 在 **當期 main** 的 blob SHA，及 TEST／Production
+實際 `supabase_migrations.schema_migrations.name` 唯讀回讀。把這個時點的 observation 存在
+`docs/metrics/delivery-observations/`。兩種欠帳分開：
+
+- `schema.pendingCount`：current main alias map 列為 PENDING_APPLY、且 Production live ledger 確實缺少的 migration 筆數。
+- `product.pendingCount`：完整 live closed Product Slice 清單中，尚無五階正式驗收證據的項目數。未取得完整清單／登入驗收回讀時必須為 `null`，不能沿用舊 Run 的 15。
+
+以既有工具執行（唯讀 capture，不連線修改 DB，不取代 mandatory scorers）：
+
+```bash
+node scripts/metrics/delivery-improvement-observation.mjs capture /tmp/live-delivery-facts.json supabase/ledger-alias-map.json > docs/metrics/delivery-observations/<UTC-time>.json
+node scripts/metrics/delivery-improvement-observation.mjs compare <previous.json> <current.json> [<older.json>]
+```
+
+`live-delivery-facts.json` 要包含當次 current-main SHA／alias map blob SHA、指定 TEST/Production project ref、
+實際唯讀 ledger name 全表與取得時間；Product 部分包含逐 Issue 五階證據和完整清單的 live GitHub
+核對連結，來源新增也要有各 PR merged 的即時核對證據。程式僅驗資料形狀和前後可比條件；
+外部證據是否真正完成，仍須本輪 live readback，不能靠 JSON 自稱。
+
+**判讀規則**：完整且可比才寫 `DOWN/FLAT/UP`、`有改善/無改善`；缺產品分母或 live 成功證據，
+只可寫 `DATA_INSUFFICIENT` 並列確切 checkpoint；schema backlog 已下降不等於 Product shipped。
+連續兩輪 pending 不降且 Product source 增加，必須三個可比較的觀測點才能觸發
+`DELIVERY_DRAIN_MODE`，不能拿相同的舊 Run Markdown 重播當兩輪。
+即使本層有資料，§10.1 正式 Product Scorecard / Governance Scoreboard / observation 的執行收據仍不可省略。
+
 ---
 
 ## 5. 第四步：Product Run / Live Scorecard 複盤

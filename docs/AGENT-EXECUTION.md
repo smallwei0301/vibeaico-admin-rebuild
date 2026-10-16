@@ -182,6 +182,16 @@ Lane A **不得開始無關的新 migration/schema source**。唯一例外：
 TEST → Production → activation → authenticated acceptance，不新增無關 schema source。直到 pending 明顯下降、
 queue 只剩真實 Owner／External blocker，或 Owner 明確解除。
 
+**比較資料的唯一口徑（2026-10-08 複盤證據改善）**：不能將 active Product Run 的舊
+「15 個 production_pending」當成最新 live 數，也不能和 alias map 的 pending migration 筆數相加。
+使用 `scripts/metrics/delivery-improvement-observation.mjs` 從 current-main alias map + 當次唯讀
+Production／TEST ledger readback 建立具名 schema debt 基準；Product pending 只能從完整且
+逐項附 Issue／部署／正式登入驗收證據的 closed Slice 清單計算，否則保留 `null` 並列缺失 checkpoint。
+兩個獨立觀測點才能比較 pending 升降，三個可比較觀測點且兩段來源新增均有 live PR 證據，
+才能機械判定兩輪不降的 `DELIVERY_DRAIN_MODE`。本觀測工具只量測，不取代 Product Scorecard、
+Governance Scoreboard、G0–G7 或既有受控 writer。即使已確認 schema 欠帳減少，也不能冒稱
+authenticated Production acceptance 改善。
+
 `DELIVERY_DRAIN_MODE` **不停止 Lane B**。獨立、無相同 schema／migration ledger／auth/RLS／payment/refund／provider
 hot boundary 的 user-visible Product 仍依正常 WIP 規則 continuous refill。此模式不新增任何 G0–G7 gate、
 人工 approval、第二套 writer 或新的資料庫一致性檢查器。
