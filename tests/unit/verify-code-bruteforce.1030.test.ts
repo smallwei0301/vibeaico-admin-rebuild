@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 type Row = { id: string; email: string; purpose: string; code: string; consumed_at: string | null; created_at: string };
 const st = vi.hoisted(() => ({
-  rows: [] as any[], exists: false, validCodes: new Set<string>(), uidFound: true,
+  rows: [] as any[], exists: false, delayMs: 0, codeQueries: 0, validCodes: new Set<string>(), uidFound: true,
 }));
 const mail = vi.hoisted(() => ({ fn: vi.fn() }));
 const updateUserById = vi.hoisted(() => vi.fn());
@@ -25,6 +25,7 @@ vi.mock('@/server/supabase', () => ({
         q.eq = (k: string, v: string) => { f[k] = v; return q; };
         q.is = () => q; q.gt = () => q; q.order = () => q; q.limit = () => q;
         q.maybeSingle = async () => {
+          if ('code' in f) { st.codeQueries += 1; if (st.delayMs) await new Promise((r) => setTimeout(r, st.delayMs)); }
           if ('code' in f) return { data: st.validCodes.has(`${f.email}|${f.code}`) ? { id: 'code-1' } : null };
           return { data: null };
         };
@@ -39,17 +40,19 @@ vi.mock('@/server/supabase', () => ({
         return q;
       },
       update: (payload: any) => {
-        const f: Record<string, string> = {}; const neq: Record<string, string> = {}; let onlyUnconsumed = false;
+        const f: Record<string, string> = {}; const neq: Record<string, string> = {}; let onlyUnconsumed = false; let ltCreated: string | null = null;
         const q: any = {
           eq: (k: string, v: string) => { f[k] = v; return q; },
           neq: (k: string, v: string) => { neq[k] = v; return q; },
           is: () => { onlyUnconsumed = true; return q; },
+          lt: (k: string, v: string) => { if (k === 'created_at') ltCreated = v; return q; },
           gt: () => q,
           select: async () => ({ data: [{ id: 'code-1' }], error: null }),
           then: (res: any) => {
             for (const r of st.rows as Row[]) {
               const match = Object.entries(f).every(([k, v]) => (r as any)[k] === v)
                 && Object.entries(neq).every(([k, v]) => (r as any)[k] !== v)
+                && (ltCreated === null || r.created_at < ltCreated)
                 && (!onlyUnconsumed || r.consumed_at === null);
               if (match) Object.assign(r, payload);
             }
@@ -75,7 +78,7 @@ beforeEach(() => {
   seq += 1;
   ip = `10.0.${Math.floor(seq / 250)}.${seq % 250}`;
   email = `user${seq}@example.com`;
-  st.rows = []; st.exists = false; st.validCodes = new Set(); st.uidFound = true;
+  st.rows = []; st.delayMs = 0; st.codeQueries = 0; st.exists = false; st.validCodes = new Set(); st.uidFound = true;
   mail.fn.mockReset(); __resetMailConfigFailureFlag();
   updateUserById.mockReset(); updateUserById.mockResolvedValue({ data: {}, error: null });
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -113,6 +116,18 @@ describe('寄新碼作廢舊碼 (#1030)', () => {
     mail.fn.mockResolvedValue({ result: 'FAILED', failureKind: 'recipient' });
     await dispatchVerificationCode(email, 'RESET_PASSWORD');
     expect(st.rows.find((r: Row) => r.code === '111111')!.consumed_at).toBeNull();
+  });
+
+  it('N2：並發寄碼時，較新的碼不會被較舊請求的作廢動作影響', async () => {
+    st.exists = true;
+    mail.fn.mockResolvedValue({ result: 'SENT', failureKind: null });
+    // 模擬「較新的碼已存在」：本筆（現在建立）之後才建立的碼，不得被本筆的作廢動作標記
+    const newer = { id: 'newer', email, purpose: 'RESET_PASSWORD', code: '999999', consumed_at: null,
+      created_at: new Date(Date.now() + 60_000).toISOString() };
+    st.rows = [old('111111'), newer];
+    await dispatchVerificationCode(email, 'RESET_PASSWORD');
+    expect(st.rows.find((r: Row) => r.id === 'newer')!.consumed_at).toBeNull();
+    expect(st.rows.find((r: Row) => r.code === '111111')!.consumed_at).not.toBeNull();
   });
 
   it('作廢步驟拋例外：只記 log，不影響回應', async () => {
@@ -196,5 +211,31 @@ describe('reset-password 驗證失敗節流 (#1030)', () => {
     st.validCodes.add(`${email}|654321`);
     updateUserById.mockResolvedValue({ data: null, error: { code: 'unexpected', status: 500 } });
     for (let i = 0; i < 8; i += 1) expect((await reset('654321')).status).toBe(500);
+  });
+
+  it('並發：延遲 DB 下同時 20 筆錯碼，到達驗碼查詢 ≤ 5，其餘 429', async () => {
+    // 先暖機一次（動態 import 的 next/headers mock 在並發首次載入時不穩），用別的 email／IP 不占本測試額度
+    const warm = await reset('000000', { email: `warm${seq}@example.com`, ip: `${ip}-w` });
+    expect(warm.status).toBe(400);
+    st.codeQueries = 0;
+    st.delayMs = 20;
+    // 錯開 1ms 發出（仍遠小於 DB 延遲 20ms，全部在途重疊）：vitest 對 next/headers 的動態 import mock 在同一 tick 並發載入時會漏接
+    const pending: Array<Promise<Response>> = [];
+    for (let i = 0; i < 20; i += 1) {
+      pending.push(reset('000000'));
+      await new Promise((r) => setTimeout(r, 1));
+    }
+    const rs = await Promise.all(pending);
+    const codes = rs.map((r) => r.status); 
+    expect(st.codeQueries).toBeLessThanOrEqual(5);
+    expect(codes.filter((c) => c === 429).length).toBeGreaterThanOrEqual(15);
+    expect(codes.filter((c) => c === 400).length).toBeLessThanOrEqual(5);
+  });
+
+  it('正確碼成功後退還額度：成功 10 次不會把額度用完，之後仍有 5 次猜錯額度', async () => {
+    st.validCodes.add(`${email}|654321`);
+    for (let i = 0; i < 10; i += 1) expect((await reset('654321')).status).toBe(200);
+    for (let i = 0; i < 5; i += 1) expect((await reset('000000')).status).toBe(400);
+    expect((await reset('000000')).status).toBe(429);
   });
 });
