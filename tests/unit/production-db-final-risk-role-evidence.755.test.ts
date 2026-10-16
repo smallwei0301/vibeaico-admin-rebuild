@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { changeDigestOf, routing } from '../../scripts/agents/astra-review-policy.mjs';
 import { buildProductionDbFinalRiskEvidenceFromGithub } from '../../scripts/agents/production-db-final-risk-evidence.mjs';
-import { releaseEvidenceDigestOf } from '../../scripts/agents/production-db-release-preflight.mjs';
+import { evaluateReleasePreflight, releaseEvidenceDigestOf } from '../../scripts/agents/production-db-release-preflight.mjs';
 import { finalRiskReviewerErrors } from '../../scripts/agents/final-risk-cost-policy.mjs';
 
 // Current policy, no mock: independentReviewerRequired must be true for this suite to mean anything.
@@ -23,7 +23,7 @@ const packet = () => ({
   source: { status: 'SOURCE_VERIFIED', mainSha: MAIN, planDigest: PLAN, databaseMutationAuthorized: false },
   consistency: { status: 'CONSISTENCY_VERIFIED', unexplainedDifferences: 0, observedAt: '2026-09-14T09:50:00Z', mainSha: MAIN, planDigest: PLAN },
   test: { status: 'TEST_VERIFIED', policySkip: false, executedTests: 12, cleanup: 'PASSED', mainSha: MAIN, planDigest: PLAN },
-  recovery: { status: 'RECOVERY_VERIFIED', backupObservedAt: '2026-09-14T09:30:00Z', restoreRehearsedAt: '2026-09-01T03:00:00Z', storageObjectsCovered: false },
+  recovery: { status: 'RECOVERY_VERIFIED', productionProjectRef: 'egehnijjpgijmccagxac', databaseMutationAuthorized: false, backupObservedAt: '2026-09-14T09:30:00Z', restoreRehearsedAt: '2026-09-01T03:00:00Z', storageObjectsCovered: false },
 });
 
 const receipt = (kind: 'BUILD' | 'REVIEW', patch: Record<string, unknown> = {}) => ({
@@ -99,5 +99,21 @@ describe('Production DB Final Risk role evidence read-back (Owner option A)', ()
 
   it('rejects when a receipt headSha does not match', async () => {
     await expect(run(setup({ reviewerPatch: { headSha: '9'.repeat(40) } }))).rejects.toThrow(/FINAL_RISK_NOT_APPROVED/);
+  });
+
+  it('preflight consumes finalRisk.roleEvidence: present passes, removed is rejected', async () => {
+    const evidence: any = await run(setup());
+    const now = '2026-09-14T10:00:00Z';
+    const withRoles = { ...packet(), finalRisk: evidence };
+    const ok = evaluateReleasePreflight(withRoles, { now });
+    expect(ok.status).toBe('READY_FOR_LOCK');
+    const { roleEvidence: _dropped, ...withoutRoles } = evidence;
+    expect(() => evaluateReleasePreflight({ ...packet(), finalRisk: withoutRoles }, { now }))
+      .toThrow(/FINAL_RISK_MODEL_UNVERIFIED/);
+    // Role evidence for another head is also rejected by the preflight-built context.
+    const wrongHead = { ...evidence, roleEvidence: { ...evidence.roleEvidence,
+      builder: { ...evidence.roleEvidence.builder, headSha: '9'.repeat(40) } } };
+    expect(() => evaluateReleasePreflight({ ...packet(), finalRisk: wrongHead }, { now }))
+      .toThrow(/FINAL_RISK_MODEL_UNVERIFIED/);
   });
 });
