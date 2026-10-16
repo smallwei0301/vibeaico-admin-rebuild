@@ -130,4 +130,22 @@ describe('production-db-release-orchestrator postcheck mode #447', () => {
     expect(persist.run).toContain('process.env.EXECUTE_OUTCOME === "skipped" ? "EXECUTE_REJECTED_PRE_MUTATION" : "APPLY_UNKNOWN"');
     expect(persist.run).toContain('databaseMutationAuthorized: false');
   });
+
+  it('binds the postcheck-recheck G2 baseline to a verified collect run and the exact evidence the EXECUTE run used', () => {
+    const steps = workflow.jobs['postcheck-recheck'].steps;
+    const names = steps.map((step: any) => step.name);
+    const prov = steps.find((step: any) => step.name === 'Verify collect run provenance for the pre-apply baseline');
+    for (const needle of ['.github/workflows/production-db-release-orchestrator.yml', "run.event !== 'workflow_dispatch'", "run.head_branch !== 'main'",
+      "run.status !== 'completed'", "run.conclusion !== 'success'", 'run.head_sha !== plan.mainSha', 'UNTRUSTED_COLLECT_RUN']) expect(prov.with.script).toContain(needle);
+    const bundle = steps.find((step: any) => step.name === 'Download the collect run review bundle');
+    expect(bundle.with.name).toBe('production-db-review-bundle-${{ inputs.release_id }}-${{ inputs.collect_run_id }}-${{ steps.collect-provenance.outputs.attempt }}');
+    expect(bundle.with['run-id']).toBe('${{ inputs.collect_run_id }}');
+    const bind = steps.find((step: any) => step.name === 'Bind the collect run to the exact evidence the EXECUTE run used').run as string;
+    for (const needle of ['releaseEvidenceDigestOf(packet)', 'manifest.planDigest !== plan.planDigest', 'manifest.mainSha !== plan.mainSha',
+      'manifest.releaseId !== plan.releaseId', 'String(manifest.runId) !== process.env.COLLECT_RUN_ID', 'COLLECT_RUN_EVIDENCE_MISMATCH']) expect(bind).toContain(needle);
+    const order = (name: string) => names.indexOf(name);
+    expect(order('Download prepared attempt of the prior EXECUTE run')).toBeLessThan(order('Verify collect run provenance for the pre-apply baseline'));
+    expect(order('Bind the collect run to the exact evidence the EXECUTE run used')).toBeLessThan(order('Download release pre-apply G2 drift report from the collect run'));
+    expect(order('Download release pre-apply G2 drift report from the collect run')).toBeLessThan(order('G7 finalize Production schema readiness'));
+  });
 });

@@ -954,6 +954,51 @@ jobs:
           name: schema-drift-report-${{ github.run_id }}-g7-recheck
           path: ${{ runner.temp }}/g7
 
+      - name: Verify collect run provenance for the pre-apply baseline
+        id: collect-provenance
+        uses: actions/github-script@v9
+        env:
+          COLLECT_RUN_ID: ${{ inputs.collect_run_id }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const plan = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/prepared/g3/production-db-release-plan.json`, 'utf8'));
+            const run = (await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: Number(process.env.COLLECT_RUN_ID) })).data;
+            if (String(run.id) !== process.env.COLLECT_RUN_ID || run.path !== '.github/workflows/production-db-release-orchestrator.yml'
+              || run.event !== 'workflow_dispatch' || run.head_branch !== 'main' || run.status !== 'completed' || run.conclusion !== 'success'
+              || run.head_sha !== plan.mainSha || !Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) throw new Error('UNTRUSTED_COLLECT_RUN');
+            core.setOutput('attempt', String(run.run_attempt));
+
+      - name: Download the collect run review bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: production-db-review-bundle-${{ inputs.release_id }}-${{ inputs.collect_run_id }}-${{ steps.collect-provenance.outputs.attempt }}
+          path: ${{ runner.temp }}/collect-bundle
+          run-id: ${{ inputs.collect_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Bind the collect run to the exact evidence the EXECUTE run used
+        shell: bash
+        env:
+          RELEASE_ID: ${{ inputs.release_id }}
+          COLLECT_RUN_ID: ${{ inputs.collect_run_id }}
+          COLLECT_ATTEMPT: ${{ steps.collect-provenance.outputs.attempt }}
+        run: |
+          set -euo pipefail
+          node --input-type=module -e '
+            import fs from "node:fs";
+            import { releaseEvidenceDigestOf } from "./scripts/agents/production-db-release-preflight.mjs";
+            const read = (name) => JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/${name}`, "utf8"));
+            const plan = read("prepared/g3/production-db-release-plan.json");
+            const packet = read("prepared/production-db-final-release-packet.json");
+            const manifest = read("collect-bundle/production-db-review-manifest.json");
+            if (manifest.mode !== "collect" || manifest.repository !== process.env.GITHUB_REPOSITORY
+              || manifest.releaseId !== process.env.RELEASE_ID || manifest.releaseId !== plan.releaseId
+              || manifest.mainSha !== plan.mainSha || manifest.planDigest !== plan.planDigest
+              || String(manifest.runId) !== process.env.COLLECT_RUN_ID || String(manifest.runAttempt) !== process.env.COLLECT_ATTEMPT
+              || manifest.evidenceDigest !== releaseEvidenceDigestOf(packet)) throw new Error("COLLECT_RUN_EVIDENCE_MISMATCH");
+          '
+
       - name: Download release pre-apply G2 drift report from the collect run
         uses: actions/download-artifact@v4
         with:
