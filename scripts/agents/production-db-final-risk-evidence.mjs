@@ -7,6 +7,7 @@ import {
   loadRoleEvidenceFromGithub,
   parseAstraReviews,
   routing,
+  semanticRoleHead,
 } from './astra-review-policy.mjs';
 import { releaseEvidenceDigestOf } from './production-db-release-preflight.mjs';
 
@@ -199,9 +200,13 @@ export async function buildProductionDbFinalRiskEvidenceFromGithub({
   const body = current.body ?? '';
   const reviews = await loadTrustedGithubReviews({ github, owner, repo, prNumber }, policy);
   const fallbackSourceEvidence = await loadFallbackSourceEvidence({ github, owner, repo, reviews, prNumber }, policy);
+  // 與 source Final Risk 路徑相同：純 rebase 且所有審查基線未變時，角色收據仍綁定原 reviewed head。
+  const latestReview = parseAstraReviews(reviews)[0];
+  const roleHead = semanticRoleHead(latestReview, {
+    repository, headSha: current.head.sha, changeDigest, policyVersion: policy.version,
+    testBaseline: readField(body, 'ASTRA_TEST_BASELINE'), schemaBaseline: readField(body, 'ASTRA_SCHEMA_BASELINE') });
   const roleEvidence = await loadRoleEvidenceFromGithub({
-    github, owner, repo, body, latestReview: parseAstraReviews(reviews)[0],
-    roleHead: current.head.sha, changeDigest, policy,
+    github, owner, repo, body, latestReview, roleHead, changeDigest, policy,
   });
   const context = {
     fallbackSourceEvidence,

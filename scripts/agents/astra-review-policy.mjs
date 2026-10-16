@@ -49,7 +49,7 @@ const fields = ['repository', 'policyVersion', 'testBaseline', 'schemaBaseline',
  * admission never calls this: its head remains exact current. Semantic reuse keeps
  * original role receipts unchanged only when every reviewed baseline still matches.
  */
-function semanticRoleHead(review, context) {
+export function semanticRoleHead(review, context) {
   return review && review.verdict === 'PASS' && ['COMMENTED', 'APPROVED'].includes(review.reviewState)
     && Number.isFinite(Date.parse(review.submittedAt))
     && SHA.test(review.headSha ?? '') && review.commitId === review.headSha

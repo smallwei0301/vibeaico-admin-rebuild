@@ -35,8 +35,8 @@ const receipt = (kind: 'BUILD' | 'REVIEW', patch: Record<string, unknown> = {}) 
   freshContext: kind === 'REVIEW', executionEvidence: 'OPERATOR_ATTESTED', ...patch,
 });
 
-function setup(opts: { builderPatch?: Record<string, unknown>; reviewerPatch?: Record<string, unknown>; withBuilderField?: boolean } = {}) {
-  const { builderPatch = {}, reviewerPatch = {}, withBuilderField = true } = opts;
+function setup(opts: { builderPatch?: Record<string, unknown>; reviewerPatch?: Record<string, unknown>; withBuilderField?: boolean; currentHead?: string } = {}) {
+  const { builderPatch = {}, reviewerPatch = {}, withBuilderField = true, currentHead = HEAD } = opts;
   const attestation = {
     repository: REPO, policyVersion: routing.version, baseSha: BASE, headSha: HEAD,
     testBaseline: TEST_BASELINE, schemaBaseline: SCHEMA_BASELINE, changeDigest: CHANGE,
@@ -59,7 +59,7 @@ function setup(opts: { builderPatch?: Record<string, unknown>; reviewerPatch?: R
   const github = {
     rest: {
       pulls: { get: vi.fn(async () => ({ data: { number: 999, body, changed_files: FILES.length, created_at: '2026-09-14T08:00:00Z',
-        base: { sha: BASE }, head: { sha: HEAD } } })), listFiles, listReviews },
+        base: { sha: BASE }, head: { sha: currentHead } } })), listFiles, listReviews },
       repos: { getCollaboratorPermissionLevel: vi.fn(async () => ({ data: { permission: 'read' } })) },
       issues: { getComment: vi.fn(async ({ comment_id }: { comment_id: number }) => ({ data: {
         html_url: (comments[comment_id] as any).sourceRef, user: BOT, updated_at: '2026-09-14T09:21:00Z',
@@ -99,6 +99,13 @@ describe('Production DB Final Risk role evidence read-back (Owner option A)', ()
 
   it('rejects when a receipt headSha does not match', async () => {
     await expect(run(setup({ reviewerPatch: { headSha: '9'.repeat(40) } }))).rejects.toThrow(/FINAL_RISK_NOT_APPROVED/);
+  });
+
+  it('pure rebase (new head, same digest/baselines) reuses receipts bound to the reviewed head, like the source path', async () => {
+    const evidence: any = await run(setup({ currentHead: '3'.repeat(40) }));
+    expect(evidence.roleEvidence).toMatchObject({ trusted: true, builder: { headSha: HEAD }, reviewer: { headSha: HEAD } });
+    expect(evidence.headSha).toBe(HEAD);
+    expect(evaluateReleasePreflight({ ...packet(), finalRisk: evidence }, { now: '2026-09-14T10:00:00Z' }).status).toBe('READY_FOR_LOCK');
   });
 
   it('preflight consumes finalRisk.roleEvidence: present passes, removed is rejected', async () => {
