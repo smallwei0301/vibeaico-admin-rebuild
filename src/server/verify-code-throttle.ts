@@ -4,7 +4,7 @@
  */
 
 import { ApiHttpError, ERR } from './http';
-import { checkRateLimit, peekRateLimit, clientIpFromHeaders } from './rate-limit';
+import { checkRateLimit, releaseRateLimit, clientIpFromHeaders } from './rate-limit';
 
 type CodePurpose = 'REGISTER' | 'RESET_PASSWORD';
 
@@ -30,18 +30,31 @@ function failureKeys(headers: Headers, email: string, purpose: CodePurpose) {
   };
 }
 
-/** 驗證碼驗證「之前」呼叫：email 或 IP 的失敗額度已滿 → 429（只 peek，不建立 bucket）。 */
-export function assertCodeAttemptsAllowed(headers: Headers, email: string, purpose: CodePurpose): void {
-  const { emailKey, ipKey } = failureKeys(headers, email, purpose);
-  const emailOk = peekRateLimit(emailKey, CODE_FAILURE_EMAIL_LIMIT);
-  const ipOk = peekRateLimit(ipKey, CODE_FAILURE_IP_LIMIT);
-  if (!emailOk || !ipOk) throw new ApiHttpError(429, CODE_RATE_LIMITED_MESSAGE, ERR.RATE_LIMITED);
-}
+export type CodeAttemptReservation = { settle: (err?: unknown) => void };
 
-/** 只在驗證碼無效（CODE_INVALID）時記一次失敗；其他錯誤（系統失敗等）不計。 */
-export function recordCodeFailureIfInvalid(headers: Headers, email: string, purpose: CodePurpose, err: unknown): void {
-  if (!(err instanceof ApiHttpError) || err.code !== ERR.CODE_INVALID) return;
+/**
+ * 驗證碼驗證「之前」同步預約額度（in-flight reservation）：email+purpose 與 IP 兩個 key 在同一個同步區段內
+ * 先各自遞增，任一已滿 → 退還已取得者並回 429。因為預約發生在任何 await 之前，並發請求無法同時越過上限。
+ * 回傳的 settle(err?)：err 為 CODE_INVALID 時保留計數（猜錯計次）；無 err（碼有效）或其他錯誤（系統失敗）則退還。
+ * settle 可重複呼叫，只生效一次。
+ */
+export function assertCodeAttemptsAllowed(headers: Headers, email: string, purpose: CodePurpose): CodeAttemptReservation {
   const { emailKey, ipKey } = failureKeys(headers, email, purpose);
-  checkRateLimit(emailKey, CODE_FAILURE_EMAIL_LIMIT);
-  checkRateLimit(ipKey, CODE_FAILURE_IP_LIMIT);
+  if (!checkRateLimit(emailKey, CODE_FAILURE_EMAIL_LIMIT)) {
+    throw new ApiHttpError(429, CODE_RATE_LIMITED_MESSAGE, ERR.RATE_LIMITED);
+  }
+  if (!checkRateLimit(ipKey, CODE_FAILURE_IP_LIMIT)) {
+    releaseRateLimit(emailKey);
+    throw new ApiHttpError(429, CODE_RATE_LIMITED_MESSAGE, ERR.RATE_LIMITED);
+  }
+  let settled = false;
+  return {
+    settle(err?: unknown) {
+      if (settled) return;
+      settled = true;
+      if (err instanceof ApiHttpError && err.code === ERR.CODE_INVALID) return; // 猜錯：保留計數
+      releaseRateLimit(emailKey);
+      releaseRateLimit(ipKey);
+    },
+  };
 }

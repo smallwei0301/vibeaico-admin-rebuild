@@ -80,6 +80,15 @@ export function peekRateLimit(
   return existing.count < max;
 }
 
+/**
+ * 退還一次先前由 checkRateLimit 取得的額度（count 減 1，不低於 0）。
+ * 用於「先同步預約、結果確定不該計次時再退還」的流程（#1030）；bucket 不存在（已過期被清）則無動作。
+ */
+export function releaseRateLimit(key: string): void {
+  const existing = buckets.get(key);
+  if (existing && existing.count > 0) existing.count -= 1;
+}
+
 /** 僅供測試：目前 bucket 數量。 */
 export function __rateLimitBucketCountForTest(): number {
   return buckets.size;

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { readJsonBody, PUBLIC_JSON_BODY_LIMIT_BYTES, handle, ok, fail, ERR } from '@/server/http';
 import { createAdminSupabase } from '@/server/supabase';
 import { findValidCode, claimCode, releaseClaim } from '@/server/verify-code';
-import { assertCodeAttemptsAllowed, recordCodeFailureIfInvalid } from '@/server/verify-code-throttle';
+import { assertCodeAttemptsAllowed } from '@/server/verify-code-throttle';
 
 const bodySchema = z.object({
   email: z.string().email(),
@@ -33,12 +33,13 @@ export const POST = handle(async (req) => {
   const b = bodySchema.parse(await readJsonBody(req, PUBLIC_JSON_BODY_LIMIT_BYTES));
   // 先驗證（無碼一律在此 400，維持列舉安全）。
   // #1030：驗證前先檢查失敗額度（即使碼正確，額度已滿也先擋）；碼無效才記一次失敗。
-  assertCodeAttemptsAllowed(req.headers, b.email, 'RESET_PASSWORD');
+  const attempt = assertCodeAttemptsAllowed(req.headers, b.email, 'RESET_PASSWORD'); // 同步預約額度
   let codeId: string;
   try {
     codeId = await findValidCode(b.email, b.code, 'RESET_PASSWORD');
+    attempt.settle(); // 碼有效：退還預約
   } catch (e) {
-    recordCodeFailureIfInvalid(req.headers, b.email, 'RESET_PASSWORD', e);
+    attempt.settle(e); // CODE_INVALID 保留計數；其他錯誤退還
     throw e;
   }
   const admin = createAdminSupabase();
