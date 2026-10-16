@@ -292,7 +292,7 @@ function sortAcl(value) {
 // Object-owner/admin roles differ by environment (Production objects are owned
 // by production_migration_owner, TEST/local by postgres) and never describe
 // client-visible access. Every other grantee and owner value stays compared verbatim.
-export const OWNER_EQUIVALENT_ACL_ROLES = Object.freeze(['postgres', 'production_migration_owner', 'supabase_admin']);
+export const OWNER_EQUIVALENT_ACL_ROLES = Object.freeze(['postgres', 'production_migration_owner']);
 function normalizeAclItemForFingerprint(item) {
   const normalized = { ...item };
   if (Array.isArray(item.privileges)) {

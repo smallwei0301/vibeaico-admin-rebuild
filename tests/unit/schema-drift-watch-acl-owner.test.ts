@@ -21,15 +21,15 @@ const testLike = () => aclRaw('postgres', [grant('postgres', 'SELECT')], [grant(
 
 describe('ACL fingerprint ignores owner-equivalent roles only', () => {
   it('freezes the owner-equivalent role set', () => {
-    expect([...OWNER_EQUIVALENT_ACL_ROLES]).toEqual(['postgres', 'production_migration_owner', 'supabase_admin']);
+    expect([...OWNER_EQUIVALENT_ACL_ROLES]).toEqual(['postgres', 'production_migration_owner']);
+    expect([...OWNER_EQUIVALENT_ACL_ROLES]).not.toContain('supabase_admin');
     expect(Object.isFrozen(OWNER_EQUIVALENT_ACL_ROLES)).toBe(true);
   });
   it('Production-like and TEST-like owner roles produce identical ACL fingerprints', () => {
     const production = aclRaw('production_migration_owner',
-      [grant('production_migration_owner', 'DELETE'), grant('supabase_admin', 'SELECT')],
+      [grant('production_migration_owner', 'DELETE'), grant('postgres', 'SELECT')],
       [grant('postgres', 'EXECUTE'), grant('production_migration_owner', 'EXECUTE')]);
     expect(aclOf(production)).toEqual(aclOf(testLike()));
-    expect(aclOf(aclRaw('supabase_admin'))).toEqual(aclOf(testLike()));
   });
   it.each([
     ['anon EXECUTE added', aclRaw('postgres', [], [grant('anon', 'EXECUTE')])],
@@ -37,6 +37,8 @@ describe('ACL fingerprint ignores owner-equivalent roles only', () => {
     ['public EXECUTE added', aclRaw('postgres', [], [grant('public', 'EXECUTE')])],
     ['securityDefiner changed', aclRaw('postgres', [], [], true)],
     ['unexpected owner', aclRaw('evil_role')],
+    ['owner supabase_admin vs postgres', aclRaw('supabase_admin', [grant('postgres', 'SELECT')], [grant('postgres', 'EXECUTE')])],
+    ['supabase_admin grant added', aclRaw('postgres', [grant('supabase_admin', 'SELECT')])],
   ])('still differs when %s', (_label, changed) => {
     expect(aclOf(changed).items).not.toEqual(aclOf(testLike()).items);
     expect(aclOf(changed).digest).not.toEqual(aclOf(testLike()).digest);

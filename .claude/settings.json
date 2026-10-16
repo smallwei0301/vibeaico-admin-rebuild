@@ -13,6 +13,15 @@
       "Bash(gh api -X POST repos/smallwei0301/vibeaico-admin-rebuild/pulls/*/reviews *)",
       "Bash(gh api -X PATCH repos/smallwei0301/vibeaico-admin-rebuild/pulls/* *)",
       "Bash(gh api -X PATCH repos/smallwei0301/vibeaico-admin-rebuild/issues/comments/* *)"
+    ],
+    "deny": [
+      "Bash(gh api *-X PUT*)",
+      "Bash(gh api *-X DELETE*)",
+      "Bash(gh api *--method PUT*)",
+      "Bash(gh api *--method DELETE*)",
+      "Bash(gh api */merge*)",
+      "Bash(gh api */git/refs*)",
+      "Bash(gh api */branches/*/protection*)"
     ]
   }
 }

@@ -43,7 +43,7 @@ describe('production-db-release-orchestrator postcheck mode #447', () => {
     for (const name of ['g2', 'g4-backup', 'g4-restore', 'collect']) expect(workflow.jobs[name].if).toBe("${{ inputs.mode == 'collect' }}");
     expect(workflow.jobs.prepare.if).toBe("${{ inputs.mode == 'execute' }}");
     expect(workflow.jobs.execute.if).toContain("inputs.mode == 'execute'");
-    expect(workflow.jobs.g7.needs).toBe('execute');
+    expect(workflow.jobs.g7.needs).toEqual(['admission', 'execute']);
     expect(workflow.jobs.postcheck.needs).toEqual(['execute', 'g7']);
   });
 
@@ -61,6 +61,14 @@ describe('production-db-release-orchestrator postcheck mode #447', () => {
   });
 
   it('runs read-only G7 and the postcheck CLI against the prior EXECUTE run without any writer access', () => {
+    expect(workflow.jobs['g7-recheck'].with.release_ledger_binding).toBe('${{ needs.admission.outputs.g3_ledger_binding }}');
+    expect(workflow.jobs.g7.with.release_ledger_binding).toBe('${{ needs.admission.outputs.g3_ledger_binding }}');
+    expect(workflow.jobs.g7.needs).toEqual(expect.arrayContaining(['admission', 'execute']));
+    for (const name of ['Verify G3 provenance for read-only ledger comparison', 'Download G3 ledger comparison provenance',
+      'Reassemble exact G3 evidence for read-only ledger mapping']) {
+      const gate = workflow.jobs.admission.steps.find((step: any) => step.name === name).if as string;
+      for (const mode of ['collect', 'execute', 'postcheck']) expect(gate).toContain(`inputs.mode == '${mode}'`);
+    }
     const jobs = [workflow.jobs['g7-recheck'], workflow.jobs['postcheck-recheck']];
     for (const job of jobs) {
       expect(job.if).toContain("inputs.mode == 'postcheck'");
@@ -76,7 +84,7 @@ describe('production-db-release-orchestrator postcheck mode #447', () => {
     ]);
     prior.forEach((step: any) => expect(step.with['github-token']).toBe('${{ github.token }}'));
     const finalize = steps.find((step: any) => step.name === 'G7 finalize Production schema readiness').run as string;
-    expect(finalize).toContain('git diff --quiet "$plan_main" "$EXPECTED_MAIN_SHA" -- supabase/migrations');
+    expect(finalize).toContain('git diff --quiet "$plan_main" "$EXPECTED_MAIN_SHA" -- supabase/migrations supabase/local-migrations supabase/config.toml');
     expect(finalize).toContain('--migrations-unchanged-since-plan');
     expect(finalize).toContain('$RUNNER_TEMP/prepared/production-db-consistency-evidence.json');
     expect(steps.find((step: any) => step.name === 'Require APPLIED_CONFIRMED apply result for the same release and plan').run).toContain('APPLIED_CONFIRMED');

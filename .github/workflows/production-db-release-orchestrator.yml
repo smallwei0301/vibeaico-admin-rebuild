@@ -174,7 +174,7 @@ jobs:
 
 
       - name: Verify G3 provenance for read-only ledger comparison
-        if: ${{ inputs.mode == 'collect' }}
+        if: ${{ inputs.mode == 'collect' || inputs.mode == 'execute' || inputs.mode == 'postcheck' }}
         id: g3-source
         uses: actions/github-script@v9
         env:
@@ -192,7 +192,7 @@ jobs:
               status: run.status, conclusion: run.conclusion }));
 
       - name: Download G3 ledger comparison provenance
-        if: ${{ inputs.mode == 'collect' }}
+        if: ${{ inputs.mode == 'collect' || inputs.mode == 'execute' || inputs.mode == 'postcheck' }}
         uses: actions/download-artifact@v4
         with:
           name: production-db-g3-evidence-${{ inputs.expected_main_sha }}-${{ inputs.g3_run_id }}
@@ -260,7 +260,7 @@ jobs:
         run: npm ci
 
       - name: Reassemble exact G3 evidence for read-only ledger mapping
-        if: ${{ inputs.mode == 'collect' }}
+        if: ${{ inputs.mode == 'collect' || inputs.mode == 'execute' || inputs.mode == 'postcheck' }}
         id: g3-binding
         env:
           G3_SOURCE_RUN: ${{ steps.g3-source.outputs.run }}
@@ -777,12 +777,13 @@ jobs:
           retention-days: 90
 
   g7:
-    needs: execute
+    needs: [admission, execute]
     if: ${{ needs.execute.result == 'success' }}
     uses: ./.github/workflows/agent-schema-drift-watch.yml
     with:
       expected_main_sha: ${{ inputs.expected_main_sha }}
       artifact_suffix: g7
+      release_ledger_binding: ${{ needs.admission.outputs.g3_ledger_binding }}
     secrets:
       SCHEMA_OBSERVER_TOKEN: ${{ secrets.SCHEMA_OBSERVER_TOKEN }}
 
@@ -853,6 +854,7 @@ jobs:
     with:
       expected_main_sha: ${{ inputs.expected_main_sha }}
       artifact_suffix: g7-recheck
+      release_ledger_binding: ${{ needs.admission.outputs.g3_ledger_binding }}
     secrets:
       SCHEMA_OBSERVER_TOKEN: ${{ secrets.SCHEMA_OBSERVER_TOKEN }}
 
@@ -922,12 +924,14 @@ jobs:
         shell: bash
         env:
           RELEASE_ID: ${{ inputs.release_id }}
+          G3_LEDGER_BINDING: ${{ needs.admission.outputs.g3_ledger_binding }}
         run: |
           set -euo pipefail
           node --input-type=module -e '
             import fs from "node:fs";
             const read = (name) => JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/${name}`, "utf8"));
             const plan = read("prepared/g3/production-db-release-plan.json");
+            if (JSON.parse(process.env.G3_LEDGER_BINDING).plan?.planDigest !== plan.planDigest) throw new Error("G3_BINDING_PLAN_MISMATCH");
             const apply = read("apply/production-db-apply-result.json");
             if (plan.releaseId !== process.env.RELEASE_ID || apply.releaseId !== plan.releaseId || apply.planDigest !== plan.planDigest) throw new Error("APPLY_RESULT_PLAN_MISMATCH");
             if (apply.status !== "APPLY_NEEDS_SCHEMA_POSTCHECK" || apply.journal?.status !== "APPLIED_CONFIRMED") throw new Error("APPLIED_CONFIRMED_REQUIRED");
@@ -944,7 +948,7 @@ jobs:
           flag=()
           # The applied plan binds migrations only; later main commits that leave them untouched are accepted.
           if git merge-base --is-ancestor "$plan_main" "$EXPECTED_MAIN_SHA" \
-            && git diff --quiet "$plan_main" "$EXPECTED_MAIN_SHA" -- supabase/migrations; then
+            && git diff --quiet "$plan_main" "$EXPECTED_MAIN_SHA" -- supabase/migrations supabase/local-migrations supabase/config.toml; then
             flag=(--migrations-unchanged-since-plan)
           fi
           node scripts/agents/production-db-release-orchestrator.mjs postcheck \

@@ -409,7 +409,7 @@ describe('#755 exact trusted G3 workflow wiring', () => {
     expect(admission).toContain('buildProductionDbTestEvidence({ plan, rawRunEvidence:');
     expect(admission).toContain('testEvidence.sourceRunAttempt !== sourceRun.attempt');
     expect(g2).toContain('release_ledger_binding: ${{ needs.admission.outputs.g3_ledger_binding }}');
-    expect(g7).not.toContain('release_ledger_binding');
+    expect(g7).toContain('release_ledger_binding: ${{ needs.admission.outputs.g3_ledger_binding }}');
     expect(OBSERVER_WORKFLOW).toContain('permissions:\n  contents: read\n');
     expect(OBSERVER_WORKFLOW).not.toContain('actions: read');
     expect(OBSERVER_WORKFLOW.split('  workflow_dispatch:')[1].split('  workflow_call:')[0]).not.toContain('release_ledger_binding');
