@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { RELEASE_CATALOG_SQL, RELEASE_SNAPSHOT_SQL } from '../../scripts/agents/schema-drift-watch.mjs';
+import { PRODUCTION_DB_CATALOG_FINGERPRINT_SQL, buildProductionDbCatalogFingerprintRecheckSql } from '../../scripts/db/production-db-catalog-fingerprint.mjs';
 
 // #755 collect 38783115757：schema_observer 沒有 auth schema USAGE，'auth.users'::regclass 的名稱解析
 // 需要該 schema USAGE → TEST capture 回 42501（G2 EVIDENCE_UNAVAILABLE）。release catalog 只能經
@@ -14,5 +15,15 @@ describe('#755 schema observer release catalog without auth schema USAGE', () =>
   it('still targets auth.users id via pg_catalog lookup', () => {
     expect(RELEASE_CATALOG_SQL).toMatch(/n\.nspname='auth' and c\.relname='users'/);
     expect(RELEASE_CATALOG_SQL).toMatch(/'authTarget'/);
+  });
+
+  // collect 38839149283：schema_observer 亦無 extensions schema USAGE，extensions.digest 同樣 42501。
+  // fingerprint 只能用 pg_catalog 內建 sha256（與 digest(...,'sha256') 位元組相同）。
+  it('catalog fingerprint does not call functions in the extensions schema', () => {
+    const recheck = buildProductionDbCatalogFingerprintRecheckSql('0'.repeat(64));
+    for (const sql of [PRODUCTION_DB_CATALOG_FINGERPRINT_SQL, RELEASE_SNAPSHOT_SQL, recheck]) {
+      expect(sql).not.toMatch(/extensions\./i);
+    }
+    expect(PRODUCTION_DB_CATALOG_FINGERPRINT_SQL).toMatch(/pg_catalog\.sha256\(/);
   });
 });

@@ -166,9 +166,8 @@ with state(item) as (
 
 export const PRODUCTION_DB_CATALOG_FINGERPRINT_SQL = `${STATE_CTE}
 select encode(
-  extensions.digest(
-    convert_to(coalesce(string_agg(item, E'\\n' order by item), ''), 'UTF8'),
-    'sha256'
+  pg_catalog.sha256(
+    convert_to(coalesce(string_agg(item, E'\\n' order by item), ''), 'UTF8')
   ),
   'hex'
 ) as catalog_fingerprint
@@ -194,9 +193,8 @@ declare
 begin
   ${STATE_CTE}
   select encode(
-    extensions.digest(
-      convert_to(coalesce(string_agg(item, E'\\n' order by item), ''), 'UTF8'),
-      'sha256'
+    pg_catalog.sha256(
+      convert_to(coalesce(string_agg(item, E'\\n' order by item), ''), 'UTF8')
     ),
     'hex'
   ) into actual
