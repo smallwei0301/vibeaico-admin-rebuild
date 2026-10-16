@@ -30,6 +30,19 @@ const SESSION_POOLER_HOSTS = Object.freeze({
 });
 const EXCEPTION_CLASSES = new Set(['INTENTIONAL_DIFFERENCE', 'EXPECTED_PENDING_TEST', 'EXPECTED_PENDING_PRODUCTION']);
 const stripSql = (sql) => sql.trim().replace(/;\s*$/, '');
+// schema_observer 在 TEST／Production 皆無 extensions schema USAGE（#755 collect 38839149283 → 42501），
+// observer 端改用 pg_catalog 內建 sha256（與 extensions.digest(..., 'sha256') 位元組相同，fingerprint 值不變）。
+// writer 端（scripts/db）仍用原 SQL；這裡只改寫 observer 讀取的副本，且必須剛好改寫一處，否則載入即失敗。
+const OBSERVER_DIGEST_PATTERN = /extensions\.digest\(\s*(convert_to\([\s\S]*?'UTF8'\)),\s*'sha256'\s*\)/g;
+function observerCatalogFingerprintSql(sql) {
+  let count = 0;
+  const rewritten = sql.replace(OBSERVER_DIGEST_PATTERN, (_, input) => { count += 1; return `pg_catalog.sha256(${input})`; });
+  if (count !== 1 || /extensions\./i.test(rewritten)) {
+    throw new Error('OBSERVER_CATALOG_FINGERPRINT_REWRITE_FAILED: expected exactly one extensions.digest sha256 call');
+  }
+  return rewritten;
+}
+const OBSERVER_CATALOG_FINGERPRINT_SQL = observerCatalogFingerprintSql(PRODUCTION_DB_CATALOG_FINGERPRINT_SQL);
 export const READ_ONLY_SNAPSHOT_SQL = `
 SELECT json_build_object(
   'metadata', (SELECT snapshot FROM (${stripSql(PUBLIC_SCHEMA_METADATA_SQL)}) AS metadata_row),
@@ -85,7 +98,7 @@ select json_build_object(
      where dep.classid='pg_attrdef'::regclass and dep.objid=d.oid and dep.refclassid='pg_class'::regclass and s.relkind='S'), '[]'::json)))
    from pg_attrdef d join pg_attribute a on a.attrelid=d.adrelid and a.attnum=d.adnum
    join pg_class c on c.oid=d.adrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='public'), '[]'::json),
- 'catalogFingerprint', (select catalog_fingerprint from (${stripSql(PRODUCTION_DB_CATALOG_FINGERPRINT_SQL)}) fingerprint)
+ 'catalogFingerprint', (select catalog_fingerprint from (${stripSql(OBSERVER_CATALOG_FINGERPRINT_SQL)}) fingerprint)
 ) as catalog;
 `;
 export const RELEASE_SNAPSHOT_SQL = `select json_build_object('raw', (select snapshot from (${stripSql(READ_ONLY_SNAPSHOT_SQL)}) observer),
