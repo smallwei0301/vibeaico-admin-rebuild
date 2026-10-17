@@ -313,7 +313,8 @@ describe('G3 atomic SQL admission #755', () => {
   it('adapts only pinned canonical 0135 boundaries within the eight-migration closure', () => {
     const repoRoot = process.cwd();
     const source = (path: string) => readFileSync(resolve(repoRoot, path), 'utf8');
-    const aliases = JSON.parse(source('supabase/ledger-alias-map.json'));
+    // #755 original-eight 範圍已釋出（execute run 38905178422）；此 fixture 保存釋出前的 ledger 狀態（8 筆 PENDING_APPLY）。
+    const aliases = JSON.parse(source('tests/fixtures/ledger-alias-map.pre-755-original8.json'));
     const releasePlan = buildProductionDbReleasePlan({
       releaseId: 'release-20261005-0135-wrapper', mainSha: MAIN,
       plannedAt: '2026-10-05T00:00:00Z', migrationScope: 'ISSUE_46_0110_0136_CLOSURE',
@@ -340,7 +341,7 @@ describe('G3 atomic SQL admission #755', () => {
   });
   it('constructs the finite nine G3 plan with six synthetic replays and exactly 0135/0136/0137 applies', () => {
     const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
-    const aliases = JSON.parse(source('supabase/ledger-alias-map.json'));
+    const aliases = JSON.parse(source('tests/fixtures/ledger-alias-map.pre-755-original8.json'));
     const releasePlan = buildProductionDbReleasePlan({
       releaseId: 'release-20261008-quoted-closure', mainSha: MAIN,
       plannedAt: '2026-10-08T00:00:00Z', migrationScope: 'ISSUE_755_0110_0137_CLOSURE',

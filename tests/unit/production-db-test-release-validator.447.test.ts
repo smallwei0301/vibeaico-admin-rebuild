@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import {
   assertTestReleaseTarget,
@@ -222,12 +222,21 @@ describe('Production DB exact-plan remote TEST validator #447', () => {
 describe('canonical 0135 transport in G3 #755 (pure construction only)', () => {
   const repoFile = '0135_issue_46_guide_interval_availability';
   const path = `supabase/migrations/${repoFile}.sql`;
-  const aliasMap = JSON.parse(readFileSync('supabase/ledger-alias-map.json', 'utf8'));
+  // #755 original-eight 範圍已釋出（execute run 38905178422）；此 fixture 保存釋出前的 ledger 狀態（8 筆 PENDING_APPLY）。
+  const aliasFixture = 'tests/fixtures/ledger-alias-map.pre-755-original8.json';
+  const aliasMap = JSON.parse(readFileSync(aliasFixture, 'utf8'));
   const readCanonicalSql = (file: string) => readFileSync(file, 'utf8');
-  const closure = () => buildTestReleasePlanFromCheckout({
-    releaseId: RELEASE, mainSha: MAIN, plannedAt: PLANNED_AT,
-    migrationScope: 'ISSUE_46_0110_0136_CLOSURE', runner: fakeGitRunner as any,
-  });
+  const closure = () => {
+    const root = mkdtempSync(join(tmpdir(), 'g3-pre755-'));
+    fixtureRoots.push(root);
+    mkdirSync(join(root, 'supabase'), { recursive: true });
+    symlinkSync(resolve('supabase/migrations'), join(root, 'supabase/migrations'));
+    writeFileSync(join(root, 'supabase/ledger-alias-map.json'), readFileSync(aliasFixture));
+    return buildTestReleasePlanFromCheckout({
+      releaseId: RELEASE, mainSha: MAIN, plannedAt: PLANNED_AT, repoRoot: root,
+      migrationScope: 'ISSUE_46_0110_0136_CLOSURE', runner: fakeGitRunner as any,
+    });
+  };
   it('constructs the actual closure in one outer transaction without changing canonical identity', () => {
     const plan = closure();
     const built = buildAtomicTestReleaseValidationSql({ plan, aliasMap, liveLedgerRows: [], readCanonicalSql });

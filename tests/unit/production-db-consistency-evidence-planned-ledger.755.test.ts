@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { assembleProductionDbConsistencyEvidence } from '../../scripts/agents/assemble-production-db-release-evidence.mjs';
 import { buildReleaseCatalogCapture } from '../../scripts/agents/schema-drift-watch.mjs';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { buildProductionDbReleasePlan } from '../../scripts/agents/production-db-release-plan.mjs';
 import { assertLiveLedgerMatchesAliasMap } from '../../scripts/db/controlled-production-db-release.mjs';
@@ -548,10 +548,19 @@ function hydrateCaptured(value: any): any {
   }
   return value;
 }
+// #755 original-eight 範圍已釋出（execute run 38905178422）；此 repoRoot 以釋出前 fixture 取代 ledger alias map，其餘檔案沿用 main。
+function preReleaseRepoRoot(): string {
+  const root = mkdtempSync(join(tmpdir(), 'pre755-root-'));
+  mkdirSync(join(root, 'supabase'), {recursive: true});
+  symlinkSync(resolve('supabase/migrations'), join(root, 'supabase/migrations'));
+  symlinkSync(resolve('supabase/production-db-impact-manifest.json'), join(root, 'supabase/production-db-impact-manifest.json'));
+  writeFileSync(join(root, 'supabase/ledger-alias-map.json'), readFileSync('tests/fixtures/ledger-alias-map.pre-755-original8.json'));
+  return root;
+}
 function scopedCapturedInput(): any {
   const fixture = hydrateCaptured(capturedFixture);
   const plan = fixture.plan;
-  const input: any = {plan, impactManifest: JSON.parse(readFileSync('supabase/production-db-impact-manifest.json', 'utf8')), now: '2026-10-12T15:56:00Z', releaseCatalog: {...fixture.packets, binding: fixture.binding}};
+  const input: any = {repoRoot: preReleaseRepoRoot(), plan, impactManifest: JSON.parse(readFileSync('supabase/production-db-impact-manifest.json', 'utf8')), now: '2026-10-12T15:56:00Z', releaseCatalog: {...fixture.packets, binding: fixture.binding}};
   for (const [environment, capture] of Object.entries(input.releaseCatalog) as any) {
     if (environment === 'binding') continue;
     Object.assign(capture, {projectRef: environment === 'LOCAL_EXPECTED' ? 'local-fresh' : environment === 'TEST' ? 'nmwhwngojosmagjuvxol' : 'egehnijjpgijmccagxac', observedAt: '2026-10-12T15:55:08Z'});
@@ -559,6 +568,7 @@ function scopedCapturedInput(): any {
   resealCaptured(input);
   return input;
 }
+// #755 original-eight 範圍已釋出（execute run 38905178422）；此 fixture 保存釋出前的 ledger 狀態（8 筆 PENDING_APPLY）。
 function resealCaptured(i: any) {
   const snapshots: any = {};
   for (const environment of ['LOCAL_EXPECTED', 'TEST', 'PRODUCTION']) {
@@ -568,7 +578,7 @@ function resealCaptured(i: any) {
     snapshots[environment] = snapshot;
     i.releaseCatalog[environment] = buildReleaseCatalogCapture({snapshot, raw: c.raw, catalog: c.catalog});
   }
-  i.report = compareObserverSnapshots({expectedSnapshot: snapshots.LOCAL_EXPECTED, testSnapshot: snapshots.TEST, productionSnapshot: snapshots.PRODUCTION, currentMainSha: i.plan.mainSha, now: i.now, releaseLedgerBinding: i.releaseCatalog.binding, aliasMap: JSON.parse(readFileSync('supabase/ledger-alias-map.json', 'utf8')), readCanonicalSql: (path: string) => readFileSync(path, 'utf8')});
+  i.report = compareObserverSnapshots({expectedSnapshot: snapshots.LOCAL_EXPECTED, testSnapshot: snapshots.TEST, productionSnapshot: snapshots.PRODUCTION, currentMainSha: i.plan.mainSha, now: i.now, releaseLedgerBinding: i.releaseCatalog.binding, aliasMap: JSON.parse(readFileSync('tests/fixtures/ledger-alias-map.pre-755-original8.json', 'utf8')), readCanonicalSql: (path: string) => readFileSync(path, 'utf8')});
 }
 function capturedMetadata(i: any, key: string, surface: string) { return i.releaseCatalog.TEST.raw.metadata.items.find((x: any) => x.key === key && x.surface === surface); }
 function capturedRoutine(i: any, name: string, mutate: (r: any) => void) {
