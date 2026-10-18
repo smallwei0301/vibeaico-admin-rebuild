@@ -408,7 +408,7 @@ jobs:
           path: ${{ runner.temp }}/g2
 
       - name: Download G2 source-bound metadata catalogs
-        if: ${{ fromJSON(needs.admission.outputs.g3_ledger_binding).plan.migrationScope == 'ISSUE_46_0110_0136_CLOSURE' }}
+        if: ${{ fromJSON(needs.admission.outputs.g3_ledger_binding).plan.migrationScope == 'ISSUE_46_0110_0136_CLOSURE' || fromJSON(needs.admission.outputs.g3_ledger_binding).plan.migrationScope == 'ISSUE_23_0113' }}
         uses: actions/download-artifact@v4
         with:
           name: schema-release-catalogs-${{ github.run_id }}-g2
@@ -463,7 +463,7 @@ jobs:
           set -euo pipefail
           node --input-type=module -e 'import fs from "node:fs"; fs.writeFileSync(`${process.env.RUNNER_TEMP}/g2/release-ledger-binding.json`, JSON.stringify(JSON.parse(process.env.RELEASE_LEDGER_BINDING)));'
           capture_args=()
-          if node --input-type=module -e 'import fs from "node:fs"; import { ISSUE_46_0110_0136_CLOSURE } from "./scripts/agents/production-db-release-plan.mjs"; process.exit(JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/g3/production-db-release-plan.json`)).migrationScope === ISSUE_46_0110_0136_CLOSURE ? 0 : 1)'; then
+          if node --input-type=module -e 'import fs from "node:fs"; import { SCOPED_RELEASE_CAPTURE_SCOPES } from "./scripts/agents/production-db-release-plan.mjs"; process.exit(SCOPED_RELEASE_CAPTURE_SCOPES[JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/g3/production-db-release-plan.json`)).migrationScope] !== undefined ? 0 : 1)'; then
             capture_args=("$RUNNER_TEMP/g2" "$RUNNER_TEMP/g2/release-ledger-binding.json")
           fi
           node scripts/agents/assemble-production-db-release-evidence.mjs consistency \

@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { normalizeProductionDbImpactManifest } from './production-db-impact-manifest.mjs';
-import { ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE, splitSqlStatements, stripSqlComments, stripSqlStringLiterals,
+import { ISSUE_23_0113, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE, SCOPED_RELEASE_CAPTURE_SCOPES, splitSqlStatements, stripSqlComments, stripSqlStringLiterals,
   verifyProductionDbReleasePlan } from './production-db-release-plan.mjs';
 import { buildObserverSnapshotFromRaw, normalizeObserverSnapshot, RELEASE_CATALOG_QUERY_DIGEST,
   compareObserverSnapshots } from './schema-drift-watch.mjs';
@@ -77,7 +77,7 @@ export function buildProductionConsistencyEvidence({ report, plan, impactManifes
   if (!plan || plan.mainSha !== mainSha || plan.planDigest !== planDigest) fail('CONSISTENCY_PLAN_MISMATCH', 'release plan is not the selected main SHA / plan digest');
   if (report.plannedLedgerMapping && report.plannedLedgerMapping.planDigest !== planDigest) fail('CONSISTENCY_LEDGER_PLAN_MISMATCH', 'ledger mapping belongs to another release plan');
   if (report.safety?.authorizesDatabaseWrite !== false) fail('OBSERVER_SCOPE_ESCALATION', 'drift observer must stay read-only');
-  if ([ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE].includes(plan.migrationScope)
+  if ([ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE, ISSUE_23_0113].includes(plan.migrationScope)
     || (plan.migrations?.length === 8 && plan.migrations.some((item) => item.repoFile === '0136_issue_755_create_tour_order_invoker'))) {
     return buildOriginalEightConsistency({ report, plan, impactManifest, mainSha, observedMainSha, planDigest, releaseCatalog, ...options });
   }
@@ -300,7 +300,7 @@ function sourceCatalog({ plan, repoRoot, readCanonicalSql }) {
   return { before, after, enums, sources, read };
 }
 
-function deriveClosure({ source, captures, impactManifest, plan }) {
+function deriveClosure({ source, captures, impactManifest, plan, createTourOrderFamily = true }) {
   const knownTables = new Set();
   for (const sql of source.sources.values()) for (const match of stripSqlComments(sql).matchAll(/\bcreate\s+table\s+(?:if\s+not\s+exists\s+)?((?:public\.)?[a-z_][a-z_0-9]*)/gi)) {
     knownTables.add(match[1].includes('.') ? match[1] : `public.${match[1]}`);
@@ -311,7 +311,7 @@ function deriveClosure({ source, captures, impactManifest, plan }) {
   }
   // 0136 changes an existing routine, whose original dependency body is also
   // checked. Source maps have exact signatures, not caller supplied closures.
-  for (const map of [source.before, source.after]) for (const [key, routine] of map) {
+  for (const map of createTourOrderFamily ? [source.before, source.after] : []) for (const [key, routine] of map) {
     if (['public.create_tour_order', 'public.cancel_tour_order', 'public.expire_tour_order'].includes(routine.name)) routines.add(key);
   }
   const selected = new Set(plan.migrations.map((item) => item.repoFile));
@@ -618,7 +618,8 @@ function safeLegacyTourCheck(constraint, items, write) {
 function buildOriginalEightConsistency({ report, plan, impactManifest, mainSha, observedMainSha = mainSha, planDigest, releaseCatalog,
   repoRoot = process.cwd(), readCanonicalSql = (path) => readFileSync(resolve(repoRoot, path), 'utf8'),
   now = new Date().toISOString(), readSourceAt, isAncestor }) {
-  if (plan.migrationScope !== ISSUE_46_0110_0136_CLOSURE || plan.migrations.length !== 8) fail('RELEASE_SCOPE_MISMATCH', 'only the original canonical eight-file closure is admitted');
+  const scopeSpec = SCOPED_RELEASE_CAPTURE_SCOPES[plan.migrationScope];
+  if (!scopeSpec || plan.migrations.length !== scopeSpec.migrationCount) fail('RELEASE_SCOPE_MISMATCH', 'only the admitted bounded release scopes are accepted');
   const aliasMap = JSON.parse(readFileSync(resolve(repoRoot, 'supabase/ledger-alias-map.json'), 'utf8'));
   verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
   const checkedManifest = JSON.parse(readFileSync(resolve(repoRoot, 'supabase/production-db-impact-manifest.json'), 'utf8'));
@@ -638,8 +639,8 @@ function buildOriginalEightConsistency({ report, plan, impactManifest, mainSha, 
     const owner = captures.PRODUCTION.catalog.tableOwners.find((entry) => entry.table === `public.${match[1]}`);
     if (owner && owner.owner !== OWNER) fail('RELEASE_PLANNED_DDL_OWNER_MISMATCH', `${match[1]} cannot be altered by the dedicated owner`);
   }
-  const closure = deriveClosure({ source, captures, impactManifest, plan });
-  if (!closure.tables.size || !closure.routines.size) fail('RELEASE_CLOSURE_EMPTY', 'canonical source does not resolve a dependency closure');
+  const closure = deriveClosure({ source, captures, impactManifest, plan, createTourOrderFamily: scopeSpec.createTourOrderFamily });
+  if (!closure.tables.size || (scopeSpec.routinesRequired && !closure.routines.size)) fail('RELEASE_CLOSURE_EMPTY', 'canonical source does not resolve a dependency closure');
   const impacts = normalizeProductionDbImpactManifest(impactManifest).entries.filter((entry) => plan.migrations.some((migration) => migration.repoFile === entry.repoFile));
   const allowed = new Map(impacts.flatMap((entry) => entry.impacts.map((impact) => [`${impact.surface}:${impact.objectKey}`, entry.repoFile])));
   const surfaceItems = (capture, surface) => surface === 'acl' ? capture.snapshot.acl.items : capture.snapshot.surfaces[surface].items;
@@ -696,7 +697,7 @@ function buildOriginalEightConsistency({ report, plan, impactManifest, mainSha, 
     && (allowed.has(`${item.surface}:${item.objectKey}`) || (item.surface === 'migrationLedger' && plan.migrations.some((migration) => item.objectKey === `${migration.repoFile.slice(0, 4)}/${migration.repoFile}`))));
   return { status: 'CONSISTENCY_VERIFIED', mainSha, planDigest, impactManifestDigest: impactManifestDigest(impactManifest),
     observedAt: new Date(Math.min(...Object.values(captures).map((capture) => Date.parse(capture.observedAt)))).toISOString(),
-    scope: ISSUE_46_0110_0136_CLOSURE, rawObserverStatus: report.status, rawObserverDifferenceCount: report.differenceCount,
+    scope: plan.migrationScope, rawObserverStatus: report.status, rawObserverDifferenceCount: report.differenceCount,
     dependencyClosure: { tables: [...closure.tables].sort(), routines: [...closure.routines].sort() },
     sourceBindings: bindings, captureDigests: Object.fromEntries(Object.entries(captures).map(([label, capture]) => [label, capture.captureDigest])),
     productionCatalogFingerprint: captures.PRODUCTION.catalog.catalogFingerprint,

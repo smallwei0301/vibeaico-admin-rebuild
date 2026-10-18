@@ -13,7 +13,7 @@ describe('Production DB G3 trusted-main CI wiring #447', () => {
     expect(source).toContain('production_db_release_id:');
     expect(source).toContain('production_db_planned_at:');
     expect(source).toContain('production_db_release_scope:');
-    expect(source).toContain('options: [FULL_PENDING_SET, ISSUES_17_680, ISSUE_37_0131_0134, ISSUE_46_0135, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE]');
+    expect(source).toContain('options: [FULL_PENDING_SET, ISSUES_17_680, ISSUE_37_0131_0134, ISSUE_46_0135, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE, ISSUE_23_0113]');
     const releaseStep = source.slice(position('- name: Validate exact Production DB release plan on canonical TEST'));
     const condition = releaseStep.slice(0, releaseStep.indexOf('shell: bash'));
     expect(condition).toContain("github.event_name == 'workflow_dispatch'");
