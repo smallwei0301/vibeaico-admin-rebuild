@@ -14,6 +14,16 @@ const ISSUE_37_0131_0134 = 'ISSUE_37_0131_0134';
 const ISSUE_46_0135 = 'ISSUE_46_0135';
 export const ISSUE_46_0110_0136_CLOSURE = 'ISSUE_46_0110_0136_CLOSURE';
 export const ISSUE_755_0110_0137_CLOSURE = 'ISSUE_755_0110_0137_CLOSURE';
+// #755 / #23：0113 page_view_events 單檔、獨立、無 pending 相依的 bounded scope。
+export const ISSUE_23_0113 = 'ISSUE_23_0113';
+
+// 這些 scope 不容忍整庫 pre-existing drift：G2 改走 scoped planned-object 一致性驗證
+// （buildOriginalEightConsistency 的通用部分）。每個 scope 只在此表宣告自己與 original-eight
+// 不同的地方；original-eight 的行為（8 個 migration、routine closure、create_tour_order 家族）維持原樣。
+export const SCOPED_RELEASE_CAPTURE_SCOPES = Object.freeze({
+  [ISSUE_46_0110_0136_CLOSURE]: Object.freeze({ migrationCount: 8, routinesRequired: true, createTourOrderFamily: true }),
+  [ISSUE_23_0113]: Object.freeze({ migrationCount: 1, routinesRequired: false, createTourOrderFamily: false }),
+});
 
 // Plan construction is not execution authority. Current #755 nine-file approval
 // is TEST-only; this selector does not enforce a Production prohibition.
@@ -38,6 +48,7 @@ const BOUNDED_RELEASE_SCOPE_ROOTS = Object.freeze({
     '0137_issue_749_create_tour_order_quoted',
   ]),
   [ISSUE_46_0135]: Object.freeze(['0135_issue_46_guide_interval_availability']),
+  [ISSUE_23_0113]: Object.freeze(['0113_issue_23_promotion_page_view_events']),
   [ISSUES_17_680]: Object.freeze([
     '0121_issue_17_booking_addons_hardening',
     '0133_issue_680_booking_addons_composite_fk_expand',
@@ -96,6 +107,11 @@ const BOUNDED_APPLIED_PREREQUISITES = Object.freeze({
   [ISSUE_37_0131_0134]: Object.freeze([
     '0066_issue_8_tour_domain_core',
     '0092_trip_departure_staff',
+  ]),
+  // 0113 只引用 public.tenants（0003）與 is_tenant_member／gen_random_uuid（0001）。
+  [ISSUE_23_0113]: Object.freeze([
+    '0001_extensions_and_functions',
+    '0003_tenants_and_accounts',
   ]),
 });
 
@@ -220,7 +236,7 @@ export function selectedProductionMigrations(aliasMap = {}, migrationScope = FUL
     const matches = aliasMap.entries.filter((entry) => entry?.repoFile === repoFile);
     if (matches.length !== 1 || matches[0].classification !== 'EXACT' ||
         !Array.isArray(matches[0].ledgerNames) || matches[0].ledgerNames.length === 0 ||
-        ([ISSUE_46_0135, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE].includes(scope) && (matches[0].ledgerNames.length !== 1 || matches[0].ledgerNames[0] !== repoFile))) {
+        ([ISSUE_46_0135, ISSUE_23_0113, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE].includes(scope) && (matches[0].ledgerNames.length !== 1 || matches[0].ledgerNames[0] !== repoFile))) {
       fail('MIGRATION_SCOPE_APPLIED_PREREQUISITE_MISSING', `${scope} requires an exact applied prerequisite: ${repoFile}`);
     }
   }

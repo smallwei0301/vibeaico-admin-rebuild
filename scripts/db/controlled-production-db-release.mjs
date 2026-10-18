@@ -10,7 +10,7 @@ import {
 } from '../agents/production-db-apply-receipt.mjs';
 import { PRODUCTION_DB_POLICY, evaluateReleasePreflight } from '../agents/production-db-release-preflight.mjs';
 import { advanceReleaseJournal, assertReleaseJournalMatchesPlan, assertWriterAttemptAllowed } from '../agents/production-db-release-journal.mjs';
-import { ISSUE_46_0110_0136_CLOSURE, selectedProductionMigrations, sha256, splitSqlStatements, stripSqlStringLiterals, verifyProductionDbReleasePlan } from '../agents/production-db-release-plan.mjs';
+import { SCOPED_RELEASE_CAPTURE_SCOPES, selectedProductionMigrations, sha256, splitSqlStatements, stripSqlStringLiterals, verifyProductionDbReleasePlan } from '../agents/production-db-release-plan.mjs';
 import {
   CANONICAL_PRODUCTION_DB_OWNER_ROLE,
   parseProjectBoundProductionDbWriterUrl,
@@ -312,7 +312,7 @@ export async function prepareControlledProductionReleaseAttempt({
   const before = await captureProductionLedger({ transport });
   const baselineCatalogFingerprint = await captureProductionCatalogFingerprint({ transport });
   const g2Fingerprint = releasePacket?.consistency?.productionCatalogFingerprint;
-  if ((plan.migrationScope === ISSUE_46_0110_0136_CLOSURE || g2Fingerprint !== undefined) && !/^[a-f0-9]{64}$/.test(g2Fingerprint ?? '')) fail('PRODUCTION_DB_G2_CATALOG_REQUIRED', 'scoped G2 catalog fingerprint must be a complete SHA-256');
+  if ((SCOPED_RELEASE_CAPTURE_SCOPES[plan.migrationScope] !== undefined || g2Fingerprint !== undefined) && !/^[a-f0-9]{64}$/.test(g2Fingerprint ?? '')) fail('PRODUCTION_DB_G2_CATALOG_REQUIRED', 'scoped G2 catalog fingerprint must be a complete SHA-256');
   if (g2Fingerprint !== undefined && g2Fingerprint !== baselineCatalogFingerprint) fail('PRODUCTION_DB_G2_CATALOG_CHANGED', 'Production catalog changed after G2; recapture and review the release evidence');
   buildAtomicProductionApplySql({ plan, aliasMap, liveLedgerRows: before, baselineCatalogFingerprint, readCanonicalSql });
   const preparedAt = new Date().toISOString();
@@ -347,7 +347,7 @@ export async function runControlledProductionRelease(input = /** @type {any} */ 
   const before = await captureProductionLedger({ transport });
   const baselineCatalogFingerprint = await captureProductionCatalogFingerprint({ transport });
   const g2Fingerprint = releasePacket?.consistency?.productionCatalogFingerprint;
-  if ((plan.migrationScope === ISSUE_46_0110_0136_CLOSURE || g2Fingerprint !== undefined) && !/^[a-f0-9]{64}$/.test(g2Fingerprint ?? '')) fail('PRODUCTION_DB_G2_CATALOG_REQUIRED', 'scoped G2 catalog fingerprint must be a complete SHA-256');
+  if ((SCOPED_RELEASE_CAPTURE_SCOPES[plan.migrationScope] !== undefined || g2Fingerprint !== undefined) && !/^[a-f0-9]{64}$/.test(g2Fingerprint ?? '')) fail('PRODUCTION_DB_G2_CATALOG_REQUIRED', 'scoped G2 catalog fingerprint must be a complete SHA-256');
   if (g2Fingerprint !== undefined && g2Fingerprint !== baselineCatalogFingerprint) fail('PRODUCTION_DB_G2_CATALOG_CHANGED', 'Production catalog changed after G2; recapture and review the release evidence');
   buildAtomicProductionApplySql({ plan, releasePacket, aliasMap, liveLedgerRows: before, baselineCatalogFingerprint, readCanonicalSql });
   assertReleasePacketMatchesPlan(releasePacket, plan, new Date().toISOString());

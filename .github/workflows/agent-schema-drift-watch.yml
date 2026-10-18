@@ -75,16 +75,17 @@ jobs:
           test "$TEST_PROFILE" = SOURCE_ONLY
           test -n "$SCHEMA_OBSERVER_TOKEN"
           test -z "${SUPABASE_ACCESS_TOKEN:-}"
-      - name: Select the existing original-eight release capture
+      - name: Select the existing scoped release capture
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
-          import { verifyProductionDbReleasePlan, ISSUE_46_0110_0136_CLOSURE } from './scripts/agents/production-db-release-plan.mjs';
+          import { verifyProductionDbReleasePlan, SCOPED_RELEASE_CAPTURE_SCOPES } from './scripts/agents/production-db-release-plan.mjs';
           const binding = process.env.RELEASE_LEDGER_BINDING ? JSON.parse(process.env.RELEASE_LEDGER_BINDING) : null;
-          const selected = binding?.plan?.migrationScope === ISSUE_46_0110_0136_CLOSURE;
+          const scopeSpec = SCOPED_RELEASE_CAPTURE_SCOPES[binding?.plan?.migrationScope];
+          const selected = scopeSpec !== undefined;
           if (selected) {
             const laterMain = binding.migrationsUnchangedSincePlan === true && binding.planMainSha === binding.plan.mainSha;
-            if ((binding.plan.mainSha !== process.env.EXPECTED_MAIN_SHA && !laterMain) || binding.plan.migrations.length !== 8) throw new Error('RELEASE_SCOPE_MISMATCH');
+            if ((binding.plan.mainSha !== process.env.EXPECTED_MAIN_SHA && !laterMain) || binding.plan.migrations.length !== scopeSpec.migrationCount) throw new Error('RELEASE_SCOPE_MISMATCH');
             verifyProductionDbReleasePlan({ plan: binding.plan, aliasMap: JSON.parse(fs.readFileSync('supabase/ledger-alias-map.json')),
               readCanonicalSql: path => fs.readFileSync(path, 'utf8') });
           }
