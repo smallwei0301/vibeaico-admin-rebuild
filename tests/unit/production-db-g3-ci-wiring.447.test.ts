@@ -21,7 +21,7 @@ describe('Production DB G3 trusted-main CI wiring #447', () => {
     expect(condition).toContain("inputs.dispatch_reason == 'main_manual'");
     expect(condition).toContain("inputs.production_db_release_id != ''");
     expect(condition).toContain("inputs.production_db_planned_at != ''");
-    expect(source).toContain('case "$RELEASE_SCOPE" in FULL_PENDING_SET|ISSUES_17_680|ISSUE_37_0131_0134|ISSUE_46_0135|ISSUE_46_0110_0136_CLOSURE|ISSUE_755_0110_0137_CLOSURE)');
+    expect(source).toContain('case "$RELEASE_SCOPE" in FULL_PENDING_SET|ISSUES_17_680|ISSUE_37_0131_0134|ISSUE_46_0135|ISSUE_46_0110_0136_CLOSURE|ISSUE_755_0110_0137_CLOSURE|ISSUE_23_0113)');
     expect(source).toContain("needs.classify-changes.outputs.run_test_validation == 'true'");
     expect(source).toContain("needs.classify-changes.outputs.docs_only == 'true' && needs.classify-changes.outputs.run_test_validation != 'true'");
   });
