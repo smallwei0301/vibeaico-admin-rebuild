@@ -1,0 +1,693 @@
+{
+  "schemaVersion": 1,
+  "issue": 396,
+  "description": "repo supabase/migrations/**（main 上的 canonical 檔案）與正式庫（Production, egehnijjpgijmccagxac）provider migration 帳本（supabase_migrations.schema_migrations）之間的逐筆對照表。每一筆記錄 repo 檔名、正式庫 ledger row 名稱（可能為 0 或多筆）、分類與證據。這份檔案本身就是 source of truth，checker 不得連線資料庫查證，只能比對這份檔案、repo 檔名與 supabase/production-ledger-snapshot.json 這份帳本快照。維護流程（新增 migration、套用到正式庫後的兩邊同步更新）見 docs/SCHEMA-TRUTH-GOVERNANCE.md。",
+  "ledgerSnapshotRef": "supabase/production-ledger-snapshot.json",
+  "classifications": {
+    "EXACT": "ledger row 名稱與 repo 檔名逐字相同。",
+    "ALIAS": "已套用到正式庫，但 ledger row 名稱與 repo 檔名不同（前綴不同、或改用描述性名稱）。",
+    "NOT_APPLIED": "repo 上存在，但正式庫沒有對應 ledger row。這一格同時涵蓋兩種相反的狀態，必須另外用 notAppliedReason 明講是哪一種，不可以只寫在 evidence 自由文字裡。",
+    "LEDGER_ONLY": "正式庫有 ledger row，但 main 上沒有任何檔案對應到它。"
+  },
+  "notAppliedReasons": {
+    "VERIFIED_NOT_APPLIED": "已查證「刻意未套用」到正式庫：正式庫的實際狀態與本檔案內容不同，且目前沒有要套用它的計畫。",
+    "PENDING_APPLY": "已合併進 main、但尚未部署到正式庫的 migration，屬於「尚未套用」。套用到正式庫的那一次變更，必須同時重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+  },
+  "knownPrefixCollisions": [
+    {
+      "prefix": "0082",
+      "names": [
+        "0082_reconcile_booking_addon_notify_fields",
+        "0082_staff_display_fields"
+      ],
+      "evidence": "正式庫 ledger 用同一個 0082 前綴記了兩筆不同的 row：(1) 0082_reconcile_booking_addon_notify_fields——repo 同名檔案的 EXACT row；(2) 0082_staff_display_fields——repo 檔案 0083_staff_display_fields 被回填成的 ALIAS row。純靠 4 碼前綴比對兩邊帳本，會把這兩筆誤判成同一筆，或把 0083 誤判成 0082。另外，正式庫 schema_migrations.version 欄位在這兩筆上也不一致：0082_reconcile_booking_addon_notify_fields 這一筆的 version 字串直接寫成 \"0082\"（沒有時間戳格式），而 0082_staff_display_fields 這一筆的 version 是 \"20260907024138\"。version 不屬於 name 欄位、本檔案不驗證；三者只能用完整名稱／完整欄位區分，不能只看前綴。"
+    }
+  ],
+  "entries": [
+    {
+      "repoFile": "0001_extensions_and_functions",
+      "ledgerNames": [
+        "0001_extensions_and_functions"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0002_enums",
+      "ledgerNames": [
+        "0002_enums"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0003_tenants_and_accounts",
+      "ledgerNames": [
+        "0003_tenants_and_accounts"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0004_core_business_tables",
+      "ledgerNames": [
+        "0004_core_business_tables"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0005_line_marketing_other",
+      "ledgerNames": [
+        "0005_line_marketing_other"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0006_rls_policies",
+      "ledgerNames": [
+        "0006_rls_policies"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0007_views",
+      "ledgerNames": [
+        "0007_views"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0008_storage_buckets",
+      "ledgerNames": [
+        "0008_storage_buckets"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0009_tenant_settings_insert_policy",
+      "ledgerNames": [
+        "0009_tenant_settings_insert_policy"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0010_auth_helpers",
+      "ledgerNames": [
+        "0010_auth_helpers"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0011_feature_store",
+      "ledgerNames": [
+        "0011_feature_store"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0012_points_transfer_and_bug_reports",
+      "ledgerNames": [
+        "0012_points_transfer_and_bug_reports"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0013_cron_dedup_columns",
+      "ledgerNames": [
+        "0013_cron_dedup_columns"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0014_recreate_customers_view",
+      "ledgerNames": [
+        "0014_recreate_customers_view"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0124_issue_18_owner_notify_legacy_shape",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#589 G3 prerequisite：canonical TEST 的歷史 integration baseline 可能先建立舊版 owner_notify_recipients；本筆在 0116 前以 IF EXISTS／IF NOT EXISTS 補齊兩個事件開關，缺表時由 0116 建立完整 canonical shape。此 canonical migration 已進 main、尚未套用到正式庫，與 0116 同一個 G3 release 依序執行。"
+    },
+    {
+      "repoFile": "0125_issue_17_booking_addons_legacy_enum",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#589 G3 prerequisite：canonical TEST 的歷史 integration baseline 可能先建立 addon_performance_mode enum；本筆在 0121 前將 PRIMARY 映射為 INHERIT 並轉為 text，缺表或缺欄位時由 0121 建立 canonical shape。此 canonical migration 尚未套用到正式庫，與 0121 同一個 G3 release 依序執行。"
+    },
+    {
+      "repoFile": "0126_issue_402_keyword_reply_images_authz",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#402 的 release-safe successor：0112 同時含 Storage AUTHZ 與 bucket metadata BACKFILL，故保留為 VERIFIED_NOT_APPLIED；本筆只移除 keyword-reply-images 的 authenticated 直接 INSERT policy，不修改 storage.buckets，讓正常上傳維持由 POST /api/upload 經 service_role 完成。尚未套用 canonical TEST 或 Production，須隨 #589 的受控 G3／Production gate 取得對應證據。"
+    },
+    {
+      "repoFile": "0065_issue_128_services_order_invariants",
+      "ledgerNames": [
+        "0065_issue_128_services_order_invariants"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0066_issue_8_tour_domain_core",
+      "ledgerNames": [
+        "0066_issue_8_tour_domain_core"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0067_issue_8_tour_integrity",
+      "ledgerNames": [
+        "0067_issue_8_tour_integrity"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0068_issue_8_tour_rest_dml_acl",
+      "ledgerNames": [
+        "0068_issue_8_tour_rest_dml_acl"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0069_welcome_card_images",
+      "ledgerNames": [
+        "0069_welcome_card_images"
+      ],
+      "classification": "EXACT",
+      "evidence": "2026-09-13 由 Owner 具名授權套用至正式庫，帳本列名與檔名逐字相同。套用後正式庫 p_storage_read 為 7 個 bucket，逐字等於本檔輸出；p_storage_write 隨後被同批的 0072／0073 覆寫，屬正常 migration 沿革。"
+    },
+    {
+      "repoFile": "0070_welcome_card_image_retirement",
+      "ledgerNames": [
+        "0070_welcome_card_image_retirement"
+      ],
+      "classification": "EXACT",
+      "evidence": "2026-09-13 由 Owner 具名授權套用至正式庫。回讀驗證：welcome_card_image_retirements 表存在且 RLS 啟用、retire_welcome_card_image 與 prevent_retired_welcome_card_image 兩支函式存在、trg_prevent_retired_welcome_card_image 觸發器掛在 tenant_settings 上；函式 prosrc、觸發器 pg_get_triggerdef、表欄位定義的 md5 皆與 canonical TEST 逐字相同。"
+    },
+    {
+      "repoFile": "0071_welcome_card_image_retirement_acl",
+      "ledgerNames": [
+        "0071_welcome_card_image_retirement_acl"
+      ],
+      "classification": "EXACT",
+      "evidence": "2026-09-13 由 Owner 具名授權套用至正式庫。回讀驗證：兩支函式的 proacl 為 postgres=X／service_role=X（無 PUBLIC 的裸 =X、無 anon、無 authenticated）、proconfig 為 search_path=\"\"、表 relacl 僅 postgres 與 service_role，皆與 canonical TEST 逐字相同。"
+    },
+    {
+      "repoFile": "0072_welcome_card_upload_acl",
+      "ledgerNames": [
+        "0072_welcome_card_upload_acl"
+      ],
+      "classification": "EXACT",
+      "evidence": "2026-09-13 由 Owner 具名授權套用至正式庫。回讀驗證：welcome-card-images bucket 的 file_size_limit=5242880、allowed_mime_types=image/jpeg,image/png,image/webp。⚠️ 本列的帳本名稱曾被錯誤寫成 0072_welcome_card_storage_side_door（套用者憑印象編名，未照檔名），已於同一次作業內以 UPDATE 更正為檔名並回讀確認零筆殘留；SQL 內容自始即為本檔內容，未受影響。"
+    },
+    {
+      "repoFile": "0073_restore_keyword_reply_storage_write",
+      "ledgerNames": [
+        "0073_restore_keyword_reply_storage_write"
+      ],
+      "classification": "EXACT",
+      "evidence": "2026-09-13 由 Owner 具名授權套用至正式庫。回讀驗證：p_storage_write 的 with-check 運算式與 canonical TEST 逐字相同（7 個 bucket，含 keyword-reply-images、不含 welcome-card-images）。"
+    },
+    {
+      "repoFile": "0074_block_times_recurrence_fields",
+      "ledgerNames": [
+        "0074_block_times_recurrence_fields"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0075_portfolios_line_sort_order",
+      "ledgerNames": [
+        "0075_portfolios_line_sort_order"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0076_customer_source",
+      "ledgerNames": [
+        "customer_source"
+      ],
+      "classification": "ALIAS",
+      "evidence": "已套用到正式庫，但 ledger row 名稱只留 customer_source，沒有保留 0076 這個 4 碼前綴。"
+    },
+    {
+      "repoFile": "0077_shop_design_branding",
+      "ledgerNames": [
+        "0077_shop_design_branding"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0078_staff_schedule_mode",
+      "ledgerNames": [
+        "0078_staff_schedule_mode"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0079_reconcile_category_bug_report_fields",
+      "ledgerNames": [
+        "0079_reconcile_category_bug_report_fields"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0080_page_local_display_fields",
+      "ledgerNames": [
+        "0015_page_local_display_fields"
+      ],
+      "classification": "ALIAS",
+      "evidence": "已套用，但 ledger row 沿用早期回填時使用的 0015 序號，與目前 repo 檔名的 0080 前綴不同；不是同一個變更被重複記錄，只是同一個變更的兩個不同編號。"
+    },
+    {
+      "repoFile": "0081_reconcile_product_order_coupon_fields",
+      "ledgerNames": [
+        "0081_reconcile_product_order_coupon_fields"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0082_reconcile_booking_addon_notify_fields",
+      "ledgerNames": [
+        "0082_reconcile_booking_addon_notify_fields"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同；但 0082 這個 4 碼前綴在正式庫另外還掛著 0082_staff_display_fields 這一筆不同的 ledger row（實為 repo 0083_staff_display_fields 的 ALIAS，見該筆），純靠前綴比對會把兩者混為一談。"
+    },
+    {
+      "repoFile": "0083_staff_display_fields",
+      "ledgerNames": [
+        "0082_staff_display_fields"
+      ],
+      "classification": "ALIAS",
+      "evidence": "已套用，但 ledger row 使用 0082 前綴，與 repo 檔名的 0083 前綴不同。這使得「0082」在正式庫同時代表三件不同的事：(1) repo 檔案 0082_reconcile_booking_addon_notify_fields 本身（EXACT，見該筆），(2) 這一筆 ledger row 名稱 0082_staff_display_fields（其實是 repo 的 0083_staff_display_fields），(3) 正式庫回填 schema_migrations.version 時寫入的純數字字串 \"0082\"。三者不可互換，只能用完整名稱區分；純靠 4 碼前綴比對會把三者誤判成同一筆。"
+    },
+    {
+      "repoFile": "0084_catalog_position_bridge",
+      "ledgerNames": [
+        "0084_catalog_position_bridge"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0086_keyword_reply_images_bucket",
+      "ledgerNames": [
+        "0086_keyword_reply_images_bucket"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0087_issue_8b_tour_orders",
+      "ledgerNames": [
+        "0087_issue_8b_tour_orders"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0088_issue_8b_tour_order_rpc_acl",
+      "ledgerNames": [
+        "0088_issue_8b_tour_order_rpc_acl"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0089_trip_display_fields",
+      "ledgerNames": [
+        "0089_trip_display_fields"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0090_atomic_booking_points_redemption",
+      "ledgerNames": [
+        "0090_atomic_booking_points_redemption"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0091_campaign_reward_grants",
+      "ledgerNames": [
+        "0091_campaign_reward_grants"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0092_trip_departure_staff",
+      "ledgerNames": [
+        "0092_trip_departure_staff"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0093_booking_points_status_guard",
+      "ledgerNames": [
+        "0093_booking_points_status_guard"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0094_tenant_payment_methods",
+      "ledgerNames": [
+        "0094_tenant_payment_methods"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0095_platform_admin_impersonation",
+      "ledgerNames": [
+        "0095_platform_admin_impersonation"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0096_catalog_position_invariants",
+      "ledgerNames": [
+        "0096_catalog_position_invariants"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0097_close_server_only_rpc_public_execute",
+      "ledgerNames": [
+        "close_public_execute_on_server_only_security_definer_rpcs"
+      ],
+      "classification": "ALIAS",
+      "evidence": "已套用，正式庫回填 ledger 時改用完整敘述性名稱，未保留 0097 前綴。"
+    },
+    {
+      "repoFile": "0098_reconcile_tour_orders_legacy_contact_columns",
+      "ledgerNames": [
+        "reconcile_tour_orders_legacy_contact_columns"
+      ],
+      "classification": "ALIAS",
+      "evidence": "已套用，ledger row 只保留描述性名稱，未保留 0098 前綴。"
+    },
+    {
+      "repoFile": "0099_drop_legacy_create_tour_order_overload",
+      "ledgerNames": [
+        "drop_legacy_create_tour_order_overload"
+      ],
+      "classification": "ALIAS",
+      "evidence": "已套用，ledger row 只保留描述性名稱，未保留 0099 前綴。"
+    },
+    {
+      "repoFile": "0100_issue_350_expire_tour_order",
+      "ledgerNames": [
+        "0100_issue_350_expire_tour_order"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0101_catalog_rpc_close_public_and_anon_execute",
+      "ledgerNames": [
+        "0101_catalog_rpc_close_public_and_anon_execute"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0102_assignment_tenant_parent_keys",
+      "ledgerNames": [
+        "0102_assignment_tenant_parent_keys"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0103_tenants_business_type_contract",
+      "ledgerNames": [
+        "0103_tenants_business_type_contract"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0104_tour_order_lineage_keys",
+      "ledgerNames": [
+        "0104_tour_order_lineage_keys"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": null,
+      "ledgerNames": [
+        "close_tour_seat_rpc_public_execute"
+      ],
+      "classification": "LEDGER_ONLY",
+      "evidence": "正式庫有此 ledger row，但目前 main 沒有任何檔案對應到它；座位 RPC（reserve/release seat 一類）的公開執行權異動已分別記在 0087_issue_8b_tour_orders／0088_issue_8b_tour_order_rpc_acl 各自的 ledger row 內，這一筆很可能是那兩支施工過程中的中繼歷史，不需要、也不應該補一個新的 repo 檔案去對應它。"
+    },
+    {
+      "repoFile": "0105_issue_44_traveler_risk_policies",
+      "ledgerNames": [
+        "0105_issue_44_traveler_risk_policies"
+      ],
+      "classification": "EXACT",
+      "evidence": "已套用至正式庫（egehnijjpgijmccagxac），provider ledger row 為 20260915033841 / 0105_issue_44_traveler_risk_policies，名稱與 repo 檔名逐字相同，故為 EXACT。本檔先前誤標記為 NOT_APPLIED／PENDING_APPLY，與正式庫實際狀態不符。2026-09-15 以唯讀查詢（select count(*) from supabase_migrations.schema_migrations；select version, name where name ilike '%0105%' or name ilike '%traveler_risk%'）重新核對正式庫，確認該 ledger row 確實存在後更正分類。本次僅確認 ledger row 存在，未執行資料表結構／RLS／ACL 的 postflight 讀回驗證，也未執行任何 apply_migration 或 DDL/DML；如需完整結構驗證需另案核對。"
+    },
+    {
+      "repoFile": "0106_deduplicate_redundant_indexes",
+      "ledgerNames": [
+        "0106_deduplicate_redundant_indexes"
+      ],
+      "classification": "EXACT",
+      "evidence": "2026-09-14 由 Owner 具名授權套用至 Production，provider ledger row 為 20260914032304 / 0106_deduplicate_redundant_indexes。postflight 確認 trip_addons 與 tour_orders 的三組重複索引已移除，保留索引 definition、valid/ready/live 狀態正常；受影響表的 RLS、ACL 與 live-row 統計未變。"
+    },
+    {
+      "repoFile": "0107_issue_41_formation_state_model",
+      "ledgerNames": [
+        "0107_issue_41_formation_state_model"
+      ],
+      "classification": "EXACT",
+      "evidence": "#41 成團生命週期的狀態模型。已於 2026-09-14 由 Owner 具名授權套用到正式庫（egehnijjpgijmccagxac），provider ledger row 為 20260914094736 / 0107_issue_41_formation_state_model，名稱與 repo 檔名逐字相同，故為 EXACT。套用前重新查證 trip_plans／trip_departures／tour_orders 三表皆 0 列，capacity < 1 前置 guard 無風險；套用後 trip_departures 由 11 欄增為 19 欄。套用的同一次作業已重新擷取 supabase/production-ledger-snapshot.json（rowCount 56 → 57）。套用前已依 AGENTS.md「schema 變更的授權來源」查證本檔以最終內容合併進 main（PR #438／#440 一併涉及）。"
+    },
+    {
+      "repoFile": "0108_issue_41_payment_state_model",
+      "ledgerNames": [
+        "0108_issue_41_payment_state_model"
+      ],
+      "classification": "EXACT",
+      "evidence": "#41 成團生命週期的付款狀態模型（18 分冊 §4）。已於 2026-09-14 由 Owner 具名授權套用到正式庫（egehnijjpgijmccagxac），provider ledger row 為 20260914082715 / 0108_issue_41_payment_state_model，名稱與 repo 檔名逐字相同，故為 EXACT。套用的同一次作業已重新擷取 supabase/production-ledger-snapshot.json（rowCount 55 → 56）。套用前已依 AGENTS.md「schema 變更的授權來源」查證本檔以最終內容合併進 main（PR #438）。"
+    },
+    {
+      "repoFile": "0109_issue_41_schema_precondition_assertions",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "VERIFIED_NOT_APPLIED",
+      "evidence": "0109 是既有結構修復（SCHEMA_REPAIR），與本輪 AUTHZ 批次不同；本輪刻意不排入自動套用名單。保留為未套用，日後需獨立的 SCHEMA_REPAIR release、G3 證據與重新驗收。"
+    },
+    {
+      "repoFile": "0110_issue_42_plan_duration_pricetype_yearround",
+      "ledgerNames": [
+        "0110_issue_42_plan_duration_pricetype_yearround"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 original-eight 受控釋出（releaseId issue755-91c7-original8-20261016093644，execute run 38905178422）已套用至正式庫，G7 PRODUCTION_SCHEMA_READY 經 postcheck run 38934679496；provider ledger version 20261016093644。正式庫 ledger 快照已於 2026-10-17T00:23:00Z 重新擷取（66 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
+    },
+    {
+      "repoFile": "0111_issue_46_guide_request_accept",
+      "ledgerNames": [
+        "0111_issue_46_guide_request_accept"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 original-eight 受控釋出（releaseId issue755-91c7-original8-20261016093644，execute run 38905178422）已套用至正式庫，G7 PRODUCTION_SCHEMA_READY 經 postcheck run 38934679496；provider ledger version 20261016093645。正式庫 ledger 快照已於 2026-10-17T00:23:00Z 重新擷取（66 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
+    },
+    {
+      "repoFile": "0112_keyword_reply_images_upload_acl",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "VERIFIED_NOT_APPLIED",
+      "evidence": "0112 同時含 Storage 權限變更（AUTHZ）與既有 bucket 資料更新（BACKFILL），不得混入單一風險批次。保留為未套用，日後需拆成專屬 release 並補對應證據。"
+    },
+    {
+      "repoFile": "0113_issue_23_promotion_page_view_events",
+      "ledgerNames": [
+        "0113_issue_23_promotion_page_view_events"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 0113 受控釋出已套用至正式庫（#23 page_view_events）；provider ledger version 20261018041721。正式庫 ledger 快照已於 2026-10-19T00:14:59Z 重新擷取（67 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
+    },
+    {
+      "repoFile": "0114_issue_22_banner_video_uploads",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "VERIFIED_NOT_APPLIED",
+      "evidence": "0114 同時含 Storage bucket 資料更新（BACKFILL）與 RLS 設定（AUTHZ），不得混入單一風險批次。保留為未套用，日後需拆成專屬 release 並補對應證據。"
+    },
+    {
+      "repoFile": "0115_issue_21_external_calendars",
+      "ledgerNames": [
+        "0115_issue_21_external_calendars"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 original-eight 受控釋出（releaseId issue755-91c7-original8-20261016093644，execute run 38905178422）已套用至正式庫，G7 PRODUCTION_SCHEMA_READY 經 postcheck run 38934679496；provider ledger version 20261016093646。正式庫 ledger 快照已於 2026-10-17T00:23:00Z 重新擷取（66 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
+    },
+    {
+      "repoFile": "0116_issue_18_owner_notify",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#18：LINE 老闆通知 owner-notify（本人在 LINE 上確認「是我」→ 加入通知名單的 canonical flow，不是舊的 bind-code 模式）。新增 owner_notify_bind_requests（待確認邀請，24 小時過期，同一好友同時只能有一筆 PENDING）與 owner_notify_recipients（正式名單，`is_primary` 部分唯一索引保證單一租戶最多一位主要，`notify_new_booking`／`notify_cancel` 兩個獨立事件開關）；兩表都 FK 到既有 `line_users(tenant_id, line_user_id) on delete cascade`，好友被刪（unfollow 清理）時一併移除通知資格。RLS 皆 `is_tenant_member(tenant_id)` 全操作 policy，與 0066 trips 系列、0115 external_calendars 同一慣例。上限 3 位／租戶、無付費解鎖，寫死在 `src/server/owner-notify.ts` 的 `OWNER_NOTIFY_MAX_RECIPIENTS`，不是 DB 可調欄位。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+    },
+    {
+      "repoFile": "0117_issue_25b_support_chat_threads",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "issue #25 B 段：客服對話串第一版（support_chat_threads／support_chat_messages 兩張表），規格見 docs/decisions/2026-09-11-support-chat-human-escalation.md。兩張表皆啟用 RLS，讀寫走 is_tenant_member(tenant_id)（threads）與 tenant_id 一致性 check（messages 的 insert policy 額外鎖 sender_role='TENANT' 且 tenant_id 與其 thread 相符），全部走 session client（t.supabase），不使用 service role。本筆原編號 0116，因與同期合併的 #18 owner-notify migration（同樣取號 0116）撞號，於 rebase 到 main（含 PR #519）時改號為 0117，內容未變。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+    },
+    {
+      "repoFile": "0118_issue_25c_platform_donations",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "issue #25 C 段：平台贊助金流第一版（platform_donations 一張表）。這不是租戶資料——沒有 tenant_id 外鍵，donor_user_id 記的是按下贊助的使用者本人，贊助是個人行為不屬於任何一家店。RLS 啟用且 force，但刻意不建立任何政策：一般 authenticated／anon 完全不可直讀直寫，全部經 /api/donations/**（service role）存取，由應用層決定可見範圍（自己的贊助總額 vs. 只含 status=PAID 的公開感謝名單）。金流閘道憑證（ECPAY_MERCHANT_ID／ECPAY_HASH_KEY／ECPAY_HASH_IV）是平台層 env（src/config/env.ts），不是本表欄位，且 2026-09-15 盤點 midao.env 三者均未設定（EXTERNAL_CONFIG_BLOCKED，見 issue #25 C 段「Live credential truth」），因此本檔不預期任何一個環境已經套用真實金流。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+    },
+    {
+      "repoFile": "0119_issue_18_owner_notify_confirm_atomic",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#18 缺口 A：owner-notify「本人確認加入」的 3 位上限併發洞修復。confirmOwnerNotifyBind() 原本是 app 層先 count 再 insert（不在同一交易），兩個好友幾乎同時在 LINE 上確認可能突破 Issue #18 明文裁決的 3 位上限、無付費解鎖。本筆新增 confirm_owner_notify_bind（SECURITY DEFINER，pg_advisory_xact_lock 依 tenant_id 串行化同租戶併發確認，bind request 列 for update 鎖，count 在鎖內讀取）與 owner_notify_max_recipients 常數函式；三段式 ACL 撤 PUBLIC／anon／authenticated、只授 service_role（同 0090 慣例）。不改動既有表結構／既有 RLS policy，只新增兩支函式。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+    },
+    {
+      "repoFile": "0121_issue_17_booking_addons_hardening",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#17：booking_addons hardening migration。新增 C+ 業績三態、冪等 idempotency_key、deleted_at 軟刪、notification_requested，並新增 service_role-only 的 create_booking_addon／delete_booking_addon SECURITY DEFINER RPC。此 source 由 PR #565 最終修正版 0dad3e25 重建到 current main；舊 exact head 已在 disposable local Supabase 實際套用 0121 並通過 booking-addons.17 19 tests、全量 integration 825 passed/6 skipped 與 E2E 25 passed/6 skipped，當時唯一後續失敗是 stale fresh-install manifest pin。本 successor 仍需 exact-head CI 重驗。尚未套用 canonical TEST 或 Production；合併進 main 後仍為 PENDING_APPLY，遠端套用另走既有授權流程。"
+    },
+    {
+      "repoFile": "0123_issue_589_richmenu_asset_retirement",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#589 Phase A：richmenu-assets 的 tenant-scoped retirement table、同一 tenant+URL advisory transaction lock、阻擋 stale line 寫回的 BEFORE trigger，以及 service_role-only retire_richmenu_asset RPC。此為 schema preparation；本分支不修改 runtime、Storage remove、canonical TEST 或 Production。0122 已由 open PR #567 使用，故本 migration 取 0123 以避免 prefix collision。合併 main 後仍屬 PENDING_APPLY；任何遠端套用必須先由 current main 的 exact canonical SQL 成為授權來源，再走既有 staged release 與 Production gate。"
+    },
+    {
+      "repoFile": "0127_issue_589_authz_constraint_reconciliation",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#589 Stage 2：只收斂 booking_addons 與 owner_notify_recipients 的已知 policy/ACL 與 booking_addons.notified canonical 六值 check。SQL 在 G3 runner 外層 transaction 下固定順序鎖表；未知 policy/grantee/column ACL、非 text/not-null/default-NONE shape 或 PENDING/其他非 canonical 資料一律 fail closed，不清資料。此 migration 已在 main 前只能作 source review；canonical TEST 必須等 merge 後以 exact-main G3 套用與驗證，Production 仍另走 G0–G7。"
+    },
+    {
+      "repoFile": "0128_issue_42_plan_seasonal_pricing",
+      "ledgerNames": [
+        "0128_issue_42_plan_seasonal_pricing"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 original-eight 受控釋出（releaseId issue755-91c7-original8-20261016093644，execute run 38905178422）已套用至正式庫，G7 PRODUCTION_SCHEMA_READY 經 postcheck run 38934679496；provider ledger version 20261016093647。正式庫 ledger 快照已於 2026-10-17T00:23:00Z 重新擷取（66 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
+    },
+    {
+      "repoFile": "0129_issue_15_chat_images_bucket",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "VERIFIED_NOT_APPLIED",
+      "evidence": "issue #15：LINE chat 真的能傳送圖片。0126 的 p_storage_write 政策白名單已列出 chat-images，但 storage.buckets 從未真的建立這個 bucket（同 0086 修過的陷阱：政策提到一個 bucket 不代表它存在）。本檔只 insert 一列 storage.buckets（chat-images, public），不動任何政策；scripts/agents/production-db-release-plan.mjs（#447）把它歸類為 BACKFILL，與本輪 #589 AUTHZ 批次（0116…0127）不同 risk tier，因此比照 0109 的既有慣例，本輪刻意不排入自動套用名單。原檔名 0128 與 main 既有的 0128_issue_42_plan_seasonal_pricing 撞號，解衝突時改為 0129，避免前綴碰撞。保留為未套用，日後需獨立的 BACKFILL release、G3 證據與重新驗收，方能套用到正式庫或 canonical TEST。"
+    },
+    {
+      "repoFile": "0130_issue_46_refund_policy_snapshot",
+      "ledgerNames": [
+        "0130_issue_46_refund_policy_snapshot"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 original-eight 受控釋出（releaseId issue755-91c7-original8-20261016093644，execute run 38905178422）已套用至正式庫，G7 PRODUCTION_SCHEMA_READY 經 postcheck run 38934679496；provider ledger version 20261016093648。正式庫 ledger 快照已於 2026-10-17T00:23:00Z 重新擷取（66 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
+    },
+    {
+      "repoFile": "0131_issue_37_atomic_departure_staff",
+      "ledgerNames": [
+        "0131_issue_37_atomic_departure_staff"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 0131＋0134 受控釋出（releaseId issue755-bf9a-s0131-0134-20261019073400，orchestrator run 39233793963）已套用至正式庫（#37 trip_departure_staff 原子化 replace_trip_departure_staff RPC）；provider ledger version 20261019073400。正式庫 ledger 快照已於 2026-10-19T11:08:30Z 重新擷取（70 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
+    },
+    {
+      "repoFile": "0132_issue_42_seasonal_price_resolution",
+      "ledgerNames": [
+        "0132_issue_42_seasonal_price_resolution"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 original-eight 受控釋出（releaseId issue755-91c7-original8-20261016093644，execute run 38905178422）已套用至正式庫，G7 PRODUCTION_SCHEMA_READY 經 postcheck run 38934679496；provider ledger version 20261016093649。正式庫 ledger 快照已於 2026-10-17T00:23:00Z 重新擷取（66 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
+    },
+    {
+      "repoFile": "0133_issue_680_booking_addons_composite_fk_expand",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#680 Owner 選擇 A：保留 0121 的單欄 performance_staff FK 供當前 runtime PostgREST hint 使用，同時新增／驗證 tenant-scoped 複合 FK，將 single-only、composite-only 或 BOTH 的已知起始形狀收斂成 transitional BOTH。migration 要求 booking_addons 既有 RLS 已啟用（disabled 一律 fail closed），保持 FORCE RLS 原值；並先驗同租戶資料、未知 FK、constraint identity、validated/nondeferred 與兩個已知複合 FK delete-action variants；不修資料、未操作 canonical TEST 或 Production。合併 main 後仍為 PENDING_APPLY，須依 shared TEST serialization 與 Production G0–G7 另行驗證／發布。"
+    },
+    {
+      "repoFile": "0134_issue_37_rpc_invoker_owner_compat",
+      "ledgerNames": [
+        "0134_issue_37_rpc_invoker_owner_compat"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 0131＋0134 受控釋出（releaseId issue755-bf9a-s0131-0134-20261019073400，orchestrator run 39233793963）已套用至正式庫（#37 replace_trip_departure_staff 改 SECURITY INVOKER（owner 相容））；provider ledger version 20261019073401。正式庫 ledger 快照已於 2026-10-19T11:08:30Z 重新擷取（70 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
+    },
+    {
+      "repoFile": "0135_issue_46_guide_interval_availability",
+      "ledgerNames": [
+        "0135_issue_46_guide_interval_availability"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 original-eight 受控釋出（releaseId issue755-91c7-original8-20261016093644，execute run 38905178422）已套用至正式庫，G7 PRODUCTION_SCHEMA_READY 經 postcheck run 38934679496；provider ledger version 20261016093650。正式庫 ledger 快照已於 2026-10-17T00:23:00Z 重新擷取（66 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
+    },
+    {
+      "repoFile": "0136_issue_755_create_tour_order_invoker",
+      "ledgerNames": [
+        "0136_issue_755_create_tour_order_invoker"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 original-eight 受控釋出（releaseId issue755-91c7-original8-20261016093644，execute run 38905178422）已套用至正式庫，G7 PRODUCTION_SCHEMA_READY 經 postcheck run 38934679496；provider ledger version 20261016093651。正式庫 ledger 快照已於 2026-10-17T00:23:00Z 重新擷取（66 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
+    },
+    {
+      "repoFile": "0137_issue_749_create_tour_order_quoted",
+      "ledgerNames": [
+        "0137_issue_749_create_tour_order_quoted"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 0137 受控釋出（releaseId issue755-0d56-s0137-20261019031547，execute run 39201977122）已套用至正式庫（#749 create_tour_order_quoted）；provider ledger version 20261019031547。正式庫 ledger 快照已於 2026-10-19T05:01:50Z 重新擷取（68 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
+    }
+  ]
+}
