@@ -17,6 +17,8 @@ const fx = vi.hoisted(() => ({
   recheckPrice: null as number | null,
   recheckError: false,
   priceType: 'PER_PERSON',
+  rereadPriceType: null as string | null,
+  rereadError: false,
   salesMode: 'FIXED_DEPARTURE',
 }));
 
@@ -41,6 +43,10 @@ vi.mock('@/server/supabase', () => ({
         if (table === 'trip_plans' && cols.startsWith('price_per_person')) {
           if (fx.recheckError) return { data: null, error: { message: 'boom' } };
           return { data: { price_per_person: fx.recheckPrice ?? fx.planPrice, price_type: fx.priceType }, error: null };
+        }
+        if (table === 'trip_plans' && cols === 'price_type') {
+          if (fx.rereadError) return { data: null, error: { message: 'boom' } };
+          return { data: { price_type: fx.rereadPriceType ?? fx.priceType }, error: null };
         }
         if (table === 'trip_plans') {
           const row = { id: PLAN, trip_id: 't1', name: 'p', description: '', price_per_person: fx.planPrice, price_type: fx.priceType, min_party: 1, max_party: 8, sales_mode: fx.salesMode, request_hold_hours: 12, active: true };
@@ -89,6 +95,8 @@ beforeEach(() => {
   fx.recheckPrice = null;
   fx.recheckError = false;
   fx.priceType = 'PER_PERSON';
+  fx.rereadPriceType = null;
+  fx.rereadError = false;
   fx.salesMode = 'FIXED_DEPARTURE';
   fx.rpcImpl = () => ({ data: 'order-1', error: null });
   vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -128,6 +136,22 @@ describe.each([
     expect(err.code).toBe('PRICE_CHANGED');
     expect(err.quote).toEqual({ unitPrice: 1200, total: 2400, priceType: 'PER_PERSON' });
     expect(fx.rpcCalls.map((c) => c.name)).toEqual(['create_tour_order_quoted']);
+  });
+
+  it('RPC 回 P0004 且交易後重讀計價方式為 PER_GROUP（fast path 為 PER_PERSON）：quote.priceType 為 PER_GROUP', async () => {
+    fx.rereadPriceType = 'PER_GROUP';
+    fx.rpcImpl = () => ({ data: null, error: { code: 'P0004', message: 'PRICE_CHANGED', details: '{"unitPrice":1200,"total":1200}' } });
+    const err = await submit({ expectedTotal: 2000 }).catch((e) => e);
+    expect(err.code).toBe('PRICE_CHANGED');
+    expect(err.quote).toEqual({ unitPrice: 1200, total: 1200, priceType: 'PER_GROUP' });
+  });
+
+  it('RPC 回 P0004 且重讀 price_type 失敗：沿用 fast path 的計價方式', async () => {
+    fx.rereadError = true;
+    fx.rpcImpl = () => ({ data: null, error: { code: 'P0004', message: 'PRICE_CHANGED', details: '{"unitPrice":1200,"total":2400}' } });
+    const err = await submit({ expectedTotal: 2000 }).catch((e) => e);
+    expect(err.code).toBe('PRICE_CHANGED');
+    expect(err.quote).toEqual({ unitPrice: 1200, total: 2400, priceType: 'PER_PERSON' });
   });
 
   it('RPC 回 P0004 但 detail 缺漏／壞掉：仍 PRICE_CHANGED，不帶 quote', async () => {

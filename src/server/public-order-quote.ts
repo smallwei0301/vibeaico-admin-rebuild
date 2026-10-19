@@ -63,9 +63,27 @@ export async function createTourOrderWithQuote(
   const result = await admin.rpc('create_tour_order_quoted', { ...args, p_expected_total: expectedTotal }) as unknown as QuotedRpcResult;
   const err = result.error;
   if (err && (err.code === PRICE_CHANGED_CODE || String(err.message ?? '').includes(PRICE_CHANGED_MESSAGE))) {
-    return { data: null, error: { ...err, message: PRICE_CHANGED_MESSAGE }, quote: parseQuoteDetail(err.details, priceType) };
+    // RPC detail 只帶 unitPrice／total；fast path 之後店家可能又改了計價方式，
+    // 這裡重讀 price_type，避免把交易內的現價標上過期的計價方式（讀取失敗則沿用先前值）。
+    const freshPriceType = await rereadPriceType(admin, ctx.plan);
+    return { data: null, error: { ...err, message: PRICE_CHANGED_MESSAGE }, quote: parseQuoteDetail(err.details, freshPriceType ?? priceType) };
   }
   return result;
+}
+
+/** 重讀方案計價方式；失敗或找不到回 null，由呼叫端 fallback。 */
+async function rereadPriceType(
+  admin: ReturnType<typeof createAdminSupabase>,
+  plan: QuotePlan,
+): Promise<PriceQuote['priceType'] | null> {
+  try {
+    const { data, error } = await admin.from('trip_plans').select('price_type')
+      .eq('id', plan.planId).eq('tenant_id', plan.tenantId).maybeSingle();
+    if (error || !data) return null;
+    return (data as { price_type?: unknown }).price_type === 'PER_GROUP' ? 'PER_GROUP' : 'PER_PERSON';
+  } catch {
+    return null;
+  }
 }
 
 /** 解析 RPC detail（`{"unitPrice":..,"total":..}`）；格式不符回 undefined（route 仍回 TOUR_003，只是不帶 quote）。 */
