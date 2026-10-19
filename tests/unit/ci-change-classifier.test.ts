@@ -210,7 +210,7 @@ describe('CI change classifier', () => {
         });
 
         expect(readFileSync(outputPath, 'utf8')).toBe(
-          'docs_only=false\nreason=classifier_failed\ndetail=workflow-dispatch-missing-revision\n' +
+          'docs_only=false\ntooling_only=false\ntooling_detail=classifier_failed\nreason=classifier_failed\ndetail=workflow-dispatch-missing-revision\n' +
           'changed_count=0\nruntime_path=\nbase_revision=\nhead_revision=\n',
         );
       } finally {

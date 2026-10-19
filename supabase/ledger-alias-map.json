@@ -636,10 +636,11 @@
     },
     {
       "repoFile": "0131_issue_37_atomic_departure_staff",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "PENDING_APPLY",
-      "evidence": "#37 真缺口 A：trip_departure_staff 的 assignment persistence 不是原子交易。src/server/departure-staff.ts 的 writeAssignment() 目前是兩次獨立 PostgREST 呼叫（DELETE 後 INSERT），DELETE 成功、INSERT 失敗會把一團的指派憑空清空。本檔只新增 service_role-only 的 replace_trip_departure_staff SECURITY DEFINER RPC，在單一交易內鎖住 departure、驗證租戶/staff 歸屬與重複，並完成先刪後插；不修改 src/server/departure-staff.ts 或任何呼叫端，接線屬後續切片。已於 CI 的 disposable 本機 Supabase replay（agent-schema-bootstrap／local-isolated-test）驗證可在全新安裝套用；合併 main 後仍屬 PENDING_APPLY，canonical TEST 與 Production 的遠端套用各自需要 staged release 授權與回讀驗證。"
+      "ledgerNames": [
+        "0131_issue_37_atomic_departure_staff"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 0131＋0134 受控釋出（releaseId issue755-bf9a-s0131-0134-20261019073400，orchestrator run 39233793963）已套用至正式庫（#37 trip_departure_staff 原子化 replace_trip_departure_staff RPC）；provider ledger version 20261019073400。正式庫 ledger 快照已於 2026-10-19T11:08:30Z 重新擷取（70 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
     },
     {
       "repoFile": "0132_issue_42_seasonal_price_resolution",
@@ -658,10 +659,11 @@
     },
     {
       "repoFile": "0134_issue_37_rpc_invoker_owner_compat",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "PENDING_APPLY",
-      "evidence": "#37 0131 的受控 Production writer 會以 production_migration_owner 建立 SECURITY DEFINER 函式，但該 role 對舊表 trip_departure_staff 只有 SELECT/REFERENCES，沒有 DELETE/INSERT。此不可覆寫的後續 migration 改為 SECURITY INVOKER，讓唯一被授權的 service_role 呼叫者以既有 DML/BYPASSRLS 權限執行原子 RPC；0131 函式本體與租戶驗證、PUBLIC/anon/authenticated 撤權不變。0131-only 不再是安全完整 release；0134 與 0131 必須同一 bounded release 驗證。"
+      "ledgerNames": [
+        "0134_issue_37_rpc_invoker_owner_compat"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 0131＋0134 受控釋出（releaseId issue755-bf9a-s0131-0134-20261019073400，orchestrator run 39233793963）已套用至正式庫（#37 replace_trip_departure_staff 改 SECURITY INVOKER（owner 相容））；provider ledger version 20261019073401。正式庫 ledger 快照已於 2026-10-19T11:08:30Z 重新擷取（70 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
     },
     {
       "repoFile": "0135_issue_46_guide_interval_availability",
