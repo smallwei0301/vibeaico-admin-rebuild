@@ -27,11 +27,16 @@ export const SCOPED_RELEASE_CAPTURE_SCOPES = Object.freeze({
   [ISSUE_46_0110_0136_CLOSURE]: Object.freeze({ migrationCount: 8, routinesRequired: true, createTourOrderFamily: true }),
   [ISSUE_23_0113]: Object.freeze({ migrationCount: 1, routinesRequired: false, createTourOrderFamily: false }),
   // 0137 包裝 create_tour_order：create／cancel／expire 家族必須納入 closure 並驗證三環境一致。
-  // 該家族的現行 source（0128／0132／0136）已套用而不在本 scope 內，故以 appliedSourceFiles 宣告：
-  // 它們的 canonical source 同時作為 before 與 after（不得有未計畫的轉換）。
+  // 該家族的現行 source 已套用而不在本 scope 內，故以 appliedSourceFiles 宣告其 canonical 來源檔
+  // （依序 last-wins）：create_tour_order = 0132 body + 0136 security invoker alter；
+  // cancel／expire_tour_order = 0111。0110／0130 亦定義 create_tour_order（被 0132 取代），
+  // 但須一併納入以維持完整定義鏈。它們的 canonical source 同時作為 before 與 after（不得有未計畫的轉換）。
   [ISSUE_749_0137]: Object.freeze({ migrationCount: 1, routinesRequired: true, createTourOrderFamily: true,
     appliedSourceFiles: Object.freeze([
+      '0110_issue_42_plan_duration_pricetype_yearround',
+      '0111_issue_46_guide_request_accept',
       '0128_issue_42_plan_seasonal_pricing',
+      '0130_issue_46_refund_policy_snapshot',
       '0132_issue_42_seasonal_price_resolution',
       '0136_issue_755_create_tour_order_invoker',
     ]) }),
@@ -121,10 +126,14 @@ const BOUNDED_APPLIED_PREREQUISITES = Object.freeze({
     '0066_issue_8_tour_domain_core',
     '0092_trip_departure_staff',
   ]),
-  // 0137 只新增 create_tour_order_quoted，包裝已套用的 create_tour_order（0132 計價、0136 invoker）。
+  // 0137 只新增 create_tour_order_quoted，包裝已套用的 create_tour_order（0132 計價、0136 invoker）；
+  // cancel／expire_tour_order 的現行 source 為 0111（0110／0130 亦重定義 create，須 EXACT 已套用）。
   [ISSUE_749_0137]: Object.freeze([
     ...ISSUE_46_CLOSURE_APPLIED_PREREQUISITES,
+    '0110_issue_42_plan_duration_pricetype_yearround',
+    '0111_issue_46_guide_request_accept',
     '0128_issue_42_plan_seasonal_pricing',
+    '0130_issue_46_refund_policy_snapshot',
     '0132_issue_42_seasonal_price_resolution',
     '0136_issue_755_create_tour_order_invoker',
   ]),

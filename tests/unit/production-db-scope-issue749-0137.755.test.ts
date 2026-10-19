@@ -6,7 +6,7 @@ import {
   ISSUE_23_0113, ISSUE_46_0110_0136_CLOSURE, ISSUE_749_0137, SCOPED_RELEASE_CAPTURE_SCOPES,
   buildProductionDbReleasePlan, selectedProductionMigrations, verifyProductionDbReleasePlan,
 } from '../../scripts/agents/production-db-release-plan.mjs';
-import { buildProductionConsistencyEvidence } from '../../scripts/agents/production-db-consistency-evidence.mjs';
+import { buildProductionConsistencyEvidence, sourceCatalog } from '../../scripts/agents/production-db-consistency-evidence.mjs';
 
 const MIGRATION = '0137_issue_749_create_tour_order_quoted';
 const aliasMap = () => JSON.parse(readFileSync('supabase/ledger-alias-map.json', 'utf8'));
@@ -29,6 +29,7 @@ describe('#755 ISSUE_749_0137 bounded release scope', () => {
   });
 
   it.each([
+    '0110_issue_42_plan_duration_pricetype_yearround', '0111_issue_46_guide_request_accept', '0130_issue_46_refund_policy_snapshot',
     '0128_issue_42_plan_seasonal_pricing', '0132_issue_42_seasonal_price_resolution', '0136_issue_755_create_tour_order_invoker',
     '0087_issue_8b_tour_orders', '0003_tenants_and_accounts',
   ])('requires exact applied prerequisite %s', (repoFile) => {
@@ -63,7 +64,9 @@ describe('#755 ISSUE_749_0137 bounded release scope', () => {
     expect(SCOPED_RELEASE_CAPTURE_SCOPES[ISSUE_46_0110_0136_CLOSURE]).toEqual({ migrationCount: 8, routinesRequired: true, createTourOrderFamily: true });
     expect(SCOPED_RELEASE_CAPTURE_SCOPES[ISSUE_23_0113]).toEqual({ migrationCount: 1, routinesRequired: false, createTourOrderFamily: false });
     expect(SCOPED_RELEASE_CAPTURE_SCOPES[ISSUE_749_0137]).toEqual({ migrationCount: 1, routinesRequired: true, createTourOrderFamily: true,
-      appliedSourceFiles: ['0128_issue_42_plan_seasonal_pricing', '0132_issue_42_seasonal_price_resolution', '0136_issue_755_create_tour_order_invoker'] });
+      appliedSourceFiles: [
+        '0110_issue_42_plan_duration_pricetype_yearround', '0111_issue_46_guide_request_accept', '0128_issue_42_plan_seasonal_pricing',
+        '0130_issue_46_refund_policy_snapshot', '0132_issue_42_seasonal_price_resolution', '0136_issue_755_create_tour_order_invoker'] });
     expect(Object.keys(SCOPED_RELEASE_CAPTURE_SCOPES)).toEqual([ISSUE_46_0110_0136_CLOSURE, ISSUE_23_0113, ISSUE_749_0137]);
   });
 
@@ -104,5 +107,52 @@ describe('#755 ISSUE_749_0137 workflow wiring', () => {
   it('ci dispatch admits the scope', () => {
     expect(ci.on.workflow_dispatch.inputs.production_db_release_scope.options).toContain('ISSUE_749_0137');
     expect(readFileSync('.github/workflows/ci.yml', 'utf8')).toContain('ISSUE_23_0113|ISSUE_749_0137) ;;');
+  });
+});
+
+describe('#755 ISSUE_749_0137 source model (canonical last-defining sources)', () => {
+  const sql = (name: string) => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
+  const find = (map: Map<string, any>, name: string) => { const hits = [...map.values()].filter((r: any) => r.name === name); expect(hits).toHaveLength(1); return hits[0]; };
+  const catalog = (scope: string, migrations: string[]) => sourceCatalog({
+    plan: { migrations: migrations.map((repoFile) => ({ repoFile, path: `supabase/migrations/${repoFile}.sql` })) },
+    repoRoot: process.cwd(), readCanonicalSql,
+    appliedSourceFiles: (SCOPED_RELEASE_CAPTURE_SCOPES as any)[scope]?.appliedSourceFiles });
+
+  it('create/cancel/expire before == after, from 0132(+0136 invoker)/0111/0111, never 0087/0100', () => {
+    const { before, after } = catalog(ISSUE_749_0137, [MIGRATION]);
+    for (const name of ['public.create_tour_order', 'public.cancel_tour_order', 'public.expire_tour_order']) {
+      expect(find(before, name)).toEqual(find(after, name));
+    }
+    const create = find(after, 'public.create_tour_order');
+    expect(sql('0132_issue_42_seasonal_price_resolution')).toContain(create.body);
+    expect(create.source.path).toContain('0132_issue_42_seasonal_price_resolution');
+    expect(create.securityDefiner).toBe(false);
+    expect(create.alterSource.path).toContain('0136_issue_755_create_tour_order_invoker');
+    for (const name of ['public.cancel_tour_order', 'public.expire_tour_order']) {
+      const routine = find(after, name);
+      expect(routine.source.path).toContain('0111_issue_46_guide_request_accept');
+      expect(sql('0111_issue_46_guide_request_accept')).toContain(routine.body);
+      expect(sql('0087_issue_8b_tour_orders')).not.toContain(routine.body);
+      expect(sql('0100_issue_350_expire_tour_order')).not.toContain(routine.body);
+    }
+    expect(sql('0087_issue_8b_tour_orders')).not.toContain(create.body);
+  });
+
+  it('original-eight scope keeps the 0087/0100 before override and a distinct after', () => {
+    const roots = ['0110_issue_42_plan_duration_pricetype_yearround', '0111_issue_46_guide_request_accept', '0115_issue_21_external_calendars',
+      '0128_issue_42_plan_seasonal_pricing', '0130_issue_46_refund_policy_snapshot', '0132_issue_42_seasonal_price_resolution',
+      '0135_issue_46_guide_interval_availability', '0136_issue_755_create_tour_order_invoker'];
+    const { before, after } = catalog(ISSUE_46_0110_0136_CLOSURE, roots);
+    expect(sql('0087_issue_8b_tour_orders')).toContain(find(before, 'public.create_tour_order').body);
+    expect(sql('0087_issue_8b_tour_orders')).toContain(find(before, 'public.cancel_tour_order').body);
+    expect(sql('0100_issue_350_expire_tour_order')).toContain(find(before, 'public.expire_tour_order').body);
+    expect(find(after, 'public.create_tour_order').body).not.toBe(find(before, 'public.create_tour_order').body);
+    expect(find(after, 'public.cancel_tour_order').source.path).toContain('0111_issue_46_guide_request_accept');
+  });
+
+  it('0113 scope applies no applied-source override and skips >=0110 unselected files', () => {
+    const { before, after } = catalog(ISSUE_23_0113, ['0113_issue_23_promotion_page_view_events']);
+    expect(sql('0087_issue_8b_tour_orders')).toContain(find(before, 'public.create_tour_order').body);
+    expect(find(after, 'public.create_tour_order').source.path).toContain('0087_issue_8b_tour_orders');
   });
 });

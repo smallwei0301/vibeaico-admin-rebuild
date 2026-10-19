@@ -245,7 +245,7 @@ function policyContract(items) {
   return contract;
 }
 
-function sourceCatalog({ plan, repoRoot, readCanonicalSql, appliedSourceFiles = [] }) {
+export function sourceCatalog({ plan, repoRoot, readCanonicalSql, appliedSourceFiles = [] }) {
   const sources = new Map();
   const applied = new Set(appliedSourceFiles);
   const selected = new Set(plan.migrations.map((entry) => entry.repoFile));
