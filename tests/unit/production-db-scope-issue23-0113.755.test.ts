@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
 import {
-  ISSUE_23_0113, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE, SCOPED_RELEASE_CAPTURE_SCOPES,
+  ISSUE_23_0113, ISSUE_749_0137, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE, SCOPED_RELEASE_CAPTURE_SCOPES,
   buildProductionDbReleasePlan, selectedProductionMigrations, verifyProductionDbReleasePlan,
 } from '../../scripts/agents/production-db-release-plan.mjs';
 import { buildProductionConsistencyEvidence } from '../../scripts/agents/production-db-consistency-evidence.mjs';
@@ -53,10 +53,10 @@ describe('#755 ISSUE_23_0113 bounded release scope', () => {
     expect(() => selectedProductionMigrations(map, ISSUE_23_0113)).toThrow(/MIGRATION_SCOPE_DEPENDENCY_NOT_PENDING|requires pending migrations/);
   });
 
-  it('does not alter the original-eight spec and admits only the two bounded capture scopes', () => {
+  it('does not alter the original-eight spec and admits only the three bounded capture scopes', () => {
     expect(SCOPED_RELEASE_CAPTURE_SCOPES[ISSUE_46_0110_0136_CLOSURE]).toEqual({ migrationCount: 8, routinesRequired: true, createTourOrderFamily: true });
     expect(SCOPED_RELEASE_CAPTURE_SCOPES[ISSUE_23_0113]).toEqual({ migrationCount: 1, routinesRequired: false, createTourOrderFamily: false });
-    expect(Object.keys(SCOPED_RELEASE_CAPTURE_SCOPES)).toEqual([ISSUE_46_0110_0136_CLOSURE, ISSUE_23_0113]);
+    expect(Object.keys(SCOPED_RELEASE_CAPTURE_SCOPES)).toEqual([ISSUE_46_0110_0136_CLOSURE, ISSUE_23_0113, ISSUE_749_0137]);
   });
 
   it('impact manifest declares every object 0113 creates', () => {

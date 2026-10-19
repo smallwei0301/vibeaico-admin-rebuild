@@ -16,6 +16,9 @@ export const ISSUE_46_0110_0136_CLOSURE = 'ISSUE_46_0110_0136_CLOSURE';
 export const ISSUE_755_0110_0137_CLOSURE = 'ISSUE_755_0110_0137_CLOSURE';
 // #755 / #23：0113 page_view_events 單檔、獨立、無 pending 相依的 bounded scope。
 export const ISSUE_23_0113 = 'ISSUE_23_0113';
+// #749 / #755：0137 create_tour_order_quoted 單檔 bounded scope。0132／0136 已套用 Production，
+// 以 EXACT 前置檢查取代 pending 相依，不再被拉進 release 範圍。
+export const ISSUE_749_0137 = 'ISSUE_749_0137';
 
 // 這些 scope 不容忍整庫 pre-existing drift：G2 改走 scoped planned-object 一致性驗證
 // （buildOriginalEightConsistency 的通用部分）。每個 scope 只在此表宣告自己與 original-eight
@@ -23,6 +26,20 @@ export const ISSUE_23_0113 = 'ISSUE_23_0113';
 export const SCOPED_RELEASE_CAPTURE_SCOPES = Object.freeze({
   [ISSUE_46_0110_0136_CLOSURE]: Object.freeze({ migrationCount: 8, routinesRequired: true, createTourOrderFamily: true }),
   [ISSUE_23_0113]: Object.freeze({ migrationCount: 1, routinesRequired: false, createTourOrderFamily: false }),
+  // 0137 包裝 create_tour_order：create／cancel／expire 家族必須納入 closure 並驗證三環境一致。
+  // 該家族的現行 source 已套用而不在本 scope 內，故以 appliedSourceFiles 宣告其 canonical 來源檔
+  // （依序 last-wins）：create_tour_order = 0132 body + 0136 security invoker alter；
+  // cancel／expire_tour_order = 0111。0110／0130 亦定義 create_tour_order（被 0132 取代），
+  // 但須一併納入以維持完整定義鏈。它們的 canonical source 同時作為 before 與 after（不得有未計畫的轉換）。
+  [ISSUE_749_0137]: Object.freeze({ migrationCount: 1, routinesRequired: true, createTourOrderFamily: true,
+    appliedSourceFiles: Object.freeze([
+      '0110_issue_42_plan_duration_pricetype_yearround',
+      '0111_issue_46_guide_request_accept',
+      '0128_issue_42_plan_seasonal_pricing',
+      '0130_issue_46_refund_policy_snapshot',
+      '0132_issue_42_seasonal_price_resolution',
+      '0136_issue_755_create_tour_order_invoker',
+    ]) }),
 });
 
 // Plan construction is not execution authority. Current #755 nine-file approval
@@ -49,6 +66,7 @@ const BOUNDED_RELEASE_SCOPE_ROOTS = Object.freeze({
   ]),
   [ISSUE_46_0135]: Object.freeze(['0135_issue_46_guide_interval_availability']),
   [ISSUE_23_0113]: Object.freeze(['0113_issue_23_promotion_page_view_events']),
+  [ISSUE_749_0137]: Object.freeze(['0137_issue_749_create_tour_order_quoted']),
   [ISSUES_17_680]: Object.freeze([
     '0121_issue_17_booking_addons_hardening',
     '0133_issue_680_booking_addons_composite_fk_expand',
@@ -107,6 +125,17 @@ const BOUNDED_APPLIED_PREREQUISITES = Object.freeze({
   [ISSUE_37_0131_0134]: Object.freeze([
     '0066_issue_8_tour_domain_core',
     '0092_trip_departure_staff',
+  ]),
+  // 0137 只新增 create_tour_order_quoted，包裝已套用的 create_tour_order（0132 計價、0136 invoker）；
+  // cancel／expire_tour_order 的現行 source 為 0111（0110／0130 亦重定義 create，須 EXACT 已套用）。
+  [ISSUE_749_0137]: Object.freeze([
+    ...ISSUE_46_CLOSURE_APPLIED_PREREQUISITES,
+    '0110_issue_42_plan_duration_pricetype_yearround',
+    '0111_issue_46_guide_request_accept',
+    '0128_issue_42_plan_seasonal_pricing',
+    '0130_issue_46_refund_policy_snapshot',
+    '0132_issue_42_seasonal_price_resolution',
+    '0136_issue_755_create_tour_order_invoker',
   ]),
   // 0113 只引用 public.tenants（0003）與 is_tenant_member／gen_random_uuid（0001）。
   [ISSUE_23_0113]: Object.freeze([
@@ -236,12 +265,12 @@ export function selectedProductionMigrations(aliasMap = {}, migrationScope = FUL
     const matches = aliasMap.entries.filter((entry) => entry?.repoFile === repoFile);
     if (matches.length !== 1 || matches[0].classification !== 'EXACT' ||
         !Array.isArray(matches[0].ledgerNames) || matches[0].ledgerNames.length === 0 ||
-        ([ISSUE_46_0135, ISSUE_23_0113, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE].includes(scope) && (matches[0].ledgerNames.length !== 1 || matches[0].ledgerNames[0] !== repoFile))) {
+        ([ISSUE_46_0135, ISSUE_23_0113, ISSUE_749_0137, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE].includes(scope) && (matches[0].ledgerNames.length !== 1 || matches[0].ledgerNames[0] !== repoFile))) {
       fail('MIGRATION_SCOPE_APPLIED_PREREQUISITE_MISSING', `${scope} requires an exact applied prerequisite: ${repoFile}`);
     }
   }
 
-  if ([ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE].includes(scope)) {
+  if ([ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE, ISSUE_749_0137].includes(scope)) {
     // This sole historical alias is reviewed, not a generic ALIAS escape.
     const legacy = aliasMap.entries.filter((entry) => entry?.repoFile === '0099_drop_legacy_create_tour_order_overload');
     if (legacy.length !== 1 || legacy[0].classification !== 'ALIAS'
@@ -254,8 +283,10 @@ export function selectedProductionMigrations(aliasMap = {}, migrationScope = FUL
   }
 
   const closure = new Set();
+  // 已通過上方 EXACT 檢查的前置 migration 不是 pending，不可被相依展開拉回 release 範圍。
+  const applied = new Set(BOUNDED_APPLIED_PREREQUISITES[scope] ?? []);
   const visit = (repoFile) => {
-    if (closure.has(repoFile)) return;
+    if (closure.has(repoFile) || (applied.has(repoFile) && !roots.includes(repoFile))) return;
     closure.add(repoFile);
     for (const dependency of BOUNDED_RELEASE_DEPENDENCIES[repoFile] ?? []) visit(dependency);
   };
