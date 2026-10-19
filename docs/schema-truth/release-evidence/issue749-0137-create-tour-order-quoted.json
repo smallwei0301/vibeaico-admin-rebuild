@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "issue": 749,
+  "migration": "supabase/migrations/0137_issue_749_create_tour_order_quoted.sql",
+  "preparedCommit": "0d56e74128ffb37c8665343830876903e3497051",
+  "productionDbReleaseId": "issue755-0d56-s0137-20261019031547",
+  "canonicalTest": {
+    "workflowName": "ci",
+    "workflowRunId": 39193853052,
+    "evidence": "G3 main_manual dispatch on 0d56e741 with production_db_release_scope=ISSUE_749_0137; integration and E2E success; TEST_VERIFIED in collect bundle 39201582854"
+  },
+  "productionSchema": {
+    "workflowName": "production-db-release-orchestrator",
+    "productionDbReleaseId": "issue755-0d56-s0137-20261019031547",
+    "workflowRunId": 39201977122,
+    "invokedVia": "production-db-release-orchestrator execute run 39201977122 on 0d56e741: job 'g7 / read-only-three-way' (success) followed by job 'postcheck' (success)",
+    "readback": "2026-10-19T05:01:50Z Production read-only query: public.create_tour_order_quoted exists, security invoker, search_path=public, EXECUTE granted to service_role only (plus owner roles); ledger 20261019031547:0137_issue_749_create_tour_order_quoted (68 rows)",
+    "note": "Standalone agent-schema-drift-watch run 39202498704 on 0d56e741 concluded DRIFT_BLOCKED because of 1033 pre-existing out-of-scope differences; it is not used as readiness evidence."
+  }
+}
