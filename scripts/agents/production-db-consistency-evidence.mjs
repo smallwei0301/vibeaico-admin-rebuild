@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { normalizeProductionDbImpactManifest } from './production-db-impact-manifest.mjs';
-import { ISSUE_23_0113, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE, SCOPED_RELEASE_CAPTURE_SCOPES, splitSqlStatements, stripSqlComments, stripSqlStringLiterals,
+import { ISSUE_23_0113, ISSUE_749_0137, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE, SCOPED_RELEASE_CAPTURE_SCOPES, splitSqlStatements, stripSqlComments, stripSqlStringLiterals,
   verifyProductionDbReleasePlan } from './production-db-release-plan.mjs';
 import { buildObserverSnapshotFromRaw, normalizeObserverSnapshot, RELEASE_CATALOG_QUERY_DIGEST,
   compareObserverSnapshots } from './schema-drift-watch.mjs';
@@ -77,7 +77,7 @@ export function buildProductionConsistencyEvidence({ report, plan, impactManifes
   if (!plan || plan.mainSha !== mainSha || plan.planDigest !== planDigest) fail('CONSISTENCY_PLAN_MISMATCH', 'release plan is not the selected main SHA / plan digest');
   if (report.plannedLedgerMapping && report.plannedLedgerMapping.planDigest !== planDigest) fail('CONSISTENCY_LEDGER_PLAN_MISMATCH', 'ledger mapping belongs to another release plan');
   if (report.safety?.authorizesDatabaseWrite !== false) fail('OBSERVER_SCOPE_ESCALATION', 'drift observer must stay read-only');
-  if ([ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE, ISSUE_23_0113].includes(plan.migrationScope)
+  if ([ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE, ISSUE_23_0113, ISSUE_749_0137].includes(plan.migrationScope)
     || (plan.migrations?.length === 8 && plan.migrations.some((item) => item.repoFile === '0136_issue_755_create_tour_order_invoker'))) {
     return buildOriginalEightConsistency({ report, plan, impactManifest, mainSha, observedMainSha, planDigest, releaseCatalog, ...options });
   }
@@ -245,8 +245,9 @@ function policyContract(items) {
   return contract;
 }
 
-function sourceCatalog({ plan, repoRoot, readCanonicalSql }) {
+function sourceCatalog({ plan, repoRoot, readCanonicalSql, appliedSourceFiles = [] }) {
   const sources = new Map();
+  const applied = new Set(appliedSourceFiles);
   const selected = new Set(plan.migrations.map((entry) => entry.repoFile));
   const files = readdirSync(resolve(repoRoot, 'supabase/migrations')).filter((name) => /^\d{4}_.*\.sql$/.test(name));
   const read = (path) => {
@@ -256,7 +257,7 @@ function sourceCatalog({ plan, repoRoot, readCanonicalSql }) {
   const before = new Map(), after = new Map(), enums = new Map();
   for (const file of files.sort()) {
     const identity = file.slice(0, -4);
-    if (file.slice(0, 4) >= '0110' && !selected.has(identity)) continue;
+    if (file.slice(0, 4) >= '0110' && !selected.has(identity) && !applied.has(identity)) continue;
     const path = `supabase/migrations/${file}`;
     const enumSql = stripSqlComments(read(path)).replace(/\bexecute\s+'((?:''|[^'])*)'\s*;/gi,
       (_statement, literal) => `${literal.replace(/''/g, "'")};`);
@@ -285,13 +286,16 @@ function sourceCatalog({ plan, repoRoot, readCanonicalSql }) {
       const matches = [...after].filter(([, routine]) => routine.name === name);
       if (matches.length !== 1) fail('AMBIGUOUS_ROUTINE_ALTER', `${path} needs exact routine signature binding`);
       const [key, routine] = matches[0];
-      after.set(key, { ...routine, securityDefiner: alter[2].toLowerCase() === 'definer',
-        alterSource: { path, sha256: sha256(read(path)) } });
+      const altered = { ...routine, securityDefiner: alter[2].toLowerCase() === 'definer',
+        alterSource: { path, sha256: sha256(read(path)) } };
+      after.set(key, altered);
+      // 已套用的 source 沒有計畫中的轉換：before 與 after 必須相同。
+      if (applied.has(identity)) before.set(key, altered);
     }
   }
   // The Production before contract is the canonical0087 create/cancel and0100
   // expire body, not whichever later main definition happens to be current.
-  for (const prefix of ['0087_', '0100_']) {
+  for (const prefix of applied.size ? [] : ['0087_', '0100_']) {
     const matches = files.filter((name) => name.startsWith(prefix));
     if (matches.length !== 1) fail('BEFORE_SOURCE_REQUIRED', `${prefix} canonical source is ambiguous`);
     const path = `supabase/migrations/${matches[0]}`;
@@ -634,7 +638,7 @@ function buildOriginalEightConsistency({ report, plan, impactManifest, mainSha, 
     || !compareJson(replay.testBaseline0098Mapping, report.testBaseline0098Mapping)) fail('RELEASE_REPORT_REPLAY_MISMATCH', 'raw observer differences or ledger mappings changed');
   if (replay.status === 'EVIDENCE_UNAVAILABLE' || (report.exceptionSummary?.expired ?? 0) || (report.exceptionSummary?.unmatched ?? 0)) fail('RELEASE_CAPTURE_UNAVAILABLE', 'raw captures/ledger/exception evidence is unavailable');
   checkDedicatedRoles(captures.PRODUCTION.catalog);
-  const source = sourceCatalog({ plan, repoRoot, readCanonicalSql });
+  const source = sourceCatalog({ plan, repoRoot, readCanonicalSql, appliedSourceFiles: scopeSpec.appliedSourceFiles });
   for (const migration of plan.migrations) for (const match of stripSqlComments(source.read(migration.path)).matchAll(/\balter\s+table\s+(?:only\s+)?(?:public\.)?([a-z_][a-z_0-9]*)/gi)) {
     const owner = captures.PRODUCTION.catalog.tableOwners.find((entry) => entry.table === `public.${match[1]}`);
     if (owner && owner.owner !== OWNER) fail('RELEASE_PLANNED_DDL_OWNER_MISMATCH', `${match[1]} cannot be altered by the dedicated owner`);
