@@ -68,7 +68,7 @@ select json_build_object(
    where ((n.nspname='public' and p.proname in ('create_tour_order','create_tour_order_quoted','cancel_tour_order','expire_tour_order',
      'accept_tour_request','reject_tour_request','guide_staff_interval_available','mark_external_calendar_sync_error',
      'sync_replace_external_calendar_events','reserve_seats','release_seats','is_tenant_member','tenant_role_at_least',
-     'is_admin','is_platform_admin','set_updated_at')) or (n.nspname='auth' and p.proname='uid')) and p.prokind='f'), '[]'::json),
+     'is_admin','is_platform_admin','set_updated_at','replace_trip_departure_staff')) or (n.nspname='auth' and p.proname='uid')) and p.prokind='f'), '[]'::json),
  'foreignKeys', coalesce((select json_agg(json_build_object(
    'table', ns.nspname || '.' || c.relname, 'target', nt.nspname || '.' || t.relname,
    'name', con.conname, 'definition', pg_get_constraintdef(con.oid,true),

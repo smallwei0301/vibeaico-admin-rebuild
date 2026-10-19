@@ -408,7 +408,7 @@ jobs:
           path: ${{ runner.temp }}/g2
 
       - name: Download G2 source-bound metadata catalogs
-        if: ${{ fromJSON(needs.admission.outputs.g3_ledger_binding).plan.migrationScope == 'ISSUE_46_0110_0136_CLOSURE' || fromJSON(needs.admission.outputs.g3_ledger_binding).plan.migrationScope == 'ISSUE_23_0113' || fromJSON(needs.admission.outputs.g3_ledger_binding).plan.migrationScope == 'ISSUE_749_0137' }}
+        if: ${{ fromJSON(needs.admission.outputs.g3_ledger_binding).plan.migrationScope == 'ISSUE_46_0110_0136_CLOSURE' || fromJSON(needs.admission.outputs.g3_ledger_binding).plan.migrationScope == 'ISSUE_23_0113' || fromJSON(needs.admission.outputs.g3_ledger_binding).plan.migrationScope == 'ISSUE_749_0137' || fromJSON(needs.admission.outputs.g3_ledger_binding).plan.migrationScope == 'ISSUE_37_0131_0134' }}
         uses: actions/download-artifact@v4
         with:
           name: schema-release-catalogs-${{ github.run_id }}-g2
