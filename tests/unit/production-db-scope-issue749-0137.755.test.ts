@@ -1,4 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
@@ -9,7 +11,17 @@ import {
 import { buildProductionConsistencyEvidence, sourceCatalog } from '../../scripts/agents/production-db-consistency-evidence.mjs';
 
 const MIGRATION = '0137_issue_749_create_tour_order_quoted';
-const aliasMap = () => JSON.parse(readFileSync('supabase/ledger-alias-map.json', 'utf8'));
+// 0137 已釋出 Production（ledger version 20261019031547）；此 bounded scope 的歷史測試改讀釋出前 fixture。
+const aliasMap = () => JSON.parse(readFileSync('tests/fixtures/ledger-alias-map.pre-755-s0137.json', 'utf8'));
+// consistency evidence 自行從 repoRoot 讀 alias map，所以另備一個以釋出前 fixture 取代 alias map 的 repoRoot。
+function preReleaseRepoRoot(): string {
+  const root = mkdtempSync(join(tmpdir(), 'pre755-s0137-root-'));
+  mkdirSync(join(root, 'supabase'), { recursive: true });
+  symlinkSync(resolve('supabase/migrations'), join(root, 'supabase/migrations'));
+  symlinkSync(resolve('supabase/production-db-impact-manifest.json'), join(root, 'supabase/production-db-impact-manifest.json'));
+  writeFileSync(join(root, 'supabase/ledger-alias-map.json'), readFileSync('tests/fixtures/ledger-alias-map.pre-755-s0137.json'));
+  return root;
+}
 const readCanonicalSql = (path: string) => readFileSync(path, 'utf8');
 const SHA = 'a'.repeat(40);
 
@@ -89,7 +101,7 @@ describe('#755 ISSUE_749_0137 consistency dispatch', () => {
     const real = buildProductionDbReleasePlan({ releaseId: 'issue755-0137-test-20261019', mainSha: SHA, plannedAt: '2026-10-19T00:00:00Z',
       aliasMap: aliasMap(), migrationScope: ISSUE_749_0137, readCanonicalSql });
     const manifest = JSON.parse(readFileSync('supabase/production-db-impact-manifest.json', 'utf8'));
-    const call = (impactManifest: any) => buildProductionConsistencyEvidence({ report, plan: real, impactManifest, mainSha: SHA, planDigest: real.planDigest });
+    const call = (impactManifest: any) => buildProductionConsistencyEvidence({ repoRoot: preReleaseRepoRoot(), report, plan: real, impactManifest, mainSha: SHA, planDigest: real.planDigest });
     expect(() => call({ schemaVersion: 1, entries: [] })).toThrow(/RELEASE_MANIFEST_SOURCE_MISMATCH/);
     expect(() => call(manifest)).toThrow(/RELEASE_G3_BINDING_REQUIRED/);
   });
