@@ -12,6 +12,8 @@ const FULL_PENDING_SET = 'FULL_PENDING_SET';
 const ISSUES_17_680 = 'ISSUES_17_680';
 // #37 / #755：0131 新增 replace_trip_departure_staff、0134 將其改為 SECURITY INVOKER；兩者必須同一 release。
 export const ISSUE_37_0131_0134 = 'ISSUE_37_0131_0134';
+// #25 / #755：0117（support chat 兩表）＋0118（platform_donations），皆為 additive 新表，無 routine，故一併釋出。
+export const ISSUE_25_0117_0118 = 'ISSUE_25_0117_0118';
 const ISSUE_46_0135 = 'ISSUE_46_0135';
 export const ISSUE_46_0110_0136_CLOSURE = 'ISSUE_46_0110_0136_CLOSURE';
 export const ISSUE_755_0110_0137_CLOSURE = 'ISSUE_755_0110_0137_CLOSURE';
@@ -44,6 +46,9 @@ export const SCOPED_RELEASE_CAPTURE_SCOPES = Object.freeze({
   // 0131+0134：replace_trip_departure_staff 由 0131 首次建立（Production 尚無此 routine），0134 ALTER 為 invoker，
   // 故無 appliedSourceFiles、亦不涉及 create／cancel／expire_tour_order 家族；before 為不存在，after 為 0131+0134 最終形狀。
   [ISSUE_37_0131_0134]: Object.freeze({ migrationCount: 2, routinesRequired: true, createTourOrderFamily: false }),
+  // 0117+0118：只新增 enum／資料表／index／policy／trigger（trigger 使用既有 set_updated_at），不建立任何 routine，
+  // 故 routinesRequired=false、無 appliedSourceFiles、無 create_tour_order 家族。
+  [ISSUE_25_0117_0118]: Object.freeze({ migrationCount: 2, routinesRequired: false, createTourOrderFamily: false }),
 });
 
 // Plan construction is not execution authority. Current #755 nine-file approval
@@ -77,6 +82,10 @@ const BOUNDED_RELEASE_SCOPE_ROOTS = Object.freeze({
   ]),
   [ISSUE_37_0131_0134]: Object.freeze([
     '0134_issue_37_rpc_invoker_owner_compat',
+  ]),
+  [ISSUE_25_0117_0118]: Object.freeze([
+    '0117_issue_25b_support_chat_threads',
+    '0118_issue_25c_platform_donations',
   ]),
 });
 const BOUNDED_RELEASE_DEPENDENCIES = Object.freeze({
@@ -140,6 +149,12 @@ const BOUNDED_APPLIED_PREREQUISITES = Object.freeze({
     '0130_issue_46_refund_policy_snapshot',
     '0132_issue_42_seasonal_price_resolution',
     '0136_issue_755_create_tour_order_invoker',
+  ]),
+  // 0117 引用 public.tenants（0003）、auth.users、is_tenant_member／gen_random_uuid（0001）；
+  // 0118 引用 auth.users 與 set_updated_at（0001）。兩者互不相依。
+  [ISSUE_25_0117_0118]: Object.freeze([
+    '0001_extensions_and_functions',
+    '0003_tenants_and_accounts',
   ]),
   // 0113 只引用 public.tenants（0003）與 is_tenant_member／gen_random_uuid（0001）。
   [ISSUE_23_0113]: Object.freeze([
@@ -269,7 +284,7 @@ export function selectedProductionMigrations(aliasMap = {}, migrationScope = FUL
     const matches = aliasMap.entries.filter((entry) => entry?.repoFile === repoFile);
     if (matches.length !== 1 || matches[0].classification !== 'EXACT' ||
         !Array.isArray(matches[0].ledgerNames) || matches[0].ledgerNames.length === 0 ||
-        ([ISSUE_46_0135, ISSUE_37_0131_0134, ISSUE_23_0113, ISSUE_749_0137, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE].includes(scope) && (matches[0].ledgerNames.length !== 1 || matches[0].ledgerNames[0] !== repoFile))) {
+        ([ISSUE_46_0135, ISSUE_37_0131_0134, ISSUE_25_0117_0118, ISSUE_23_0113, ISSUE_749_0137, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE].includes(scope) && (matches[0].ledgerNames.length !== 1 || matches[0].ledgerNames[0] !== repoFile))) {
       fail('MIGRATION_SCOPE_APPLIED_PREREQUISITE_MISSING', `${scope} requires an exact applied prerequisite: ${repoFile}`);
     }
   }

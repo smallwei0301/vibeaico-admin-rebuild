@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { normalizeProductionDbImpactManifest } from './production-db-impact-manifest.mjs';
-import { ISSUE_37_0131_0134, ISSUE_23_0113, ISSUE_749_0137, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE, SCOPED_RELEASE_CAPTURE_SCOPES, splitSqlStatements, stripSqlComments, stripSqlStringLiterals,
+import { ISSUE_25_0117_0118, ISSUE_37_0131_0134, ISSUE_23_0113, ISSUE_749_0137, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE, SCOPED_RELEASE_CAPTURE_SCOPES, splitSqlStatements, stripSqlComments, stripSqlStringLiterals,
   verifyProductionDbReleasePlan } from './production-db-release-plan.mjs';
 import { buildObserverSnapshotFromRaw, normalizeObserverSnapshot, RELEASE_CATALOG_QUERY_DIGEST,
   compareObserverSnapshots } from './schema-drift-watch.mjs';
@@ -77,7 +77,7 @@ export function buildProductionConsistencyEvidence({ report, plan, impactManifes
   if (!plan || plan.mainSha !== mainSha || plan.planDigest !== planDigest) fail('CONSISTENCY_PLAN_MISMATCH', 'release plan is not the selected main SHA / plan digest');
   if (report.plannedLedgerMapping && report.plannedLedgerMapping.planDigest !== planDigest) fail('CONSISTENCY_LEDGER_PLAN_MISMATCH', 'ledger mapping belongs to another release plan');
   if (report.safety?.authorizesDatabaseWrite !== false) fail('OBSERVER_SCOPE_ESCALATION', 'drift observer must stay read-only');
-  if ([ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE, ISSUE_23_0113, ISSUE_749_0137, ISSUE_37_0131_0134].includes(plan.migrationScope)
+  if ([ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE, ISSUE_23_0113, ISSUE_749_0137, ISSUE_37_0131_0134, ISSUE_25_0117_0118].includes(plan.migrationScope)
     || (plan.migrations?.length === 8 && plan.migrations.some((item) => item.repoFile === '0136_issue_755_create_tour_order_invoker'))) {
     return buildOriginalEightConsistency({ report, plan, impactManifest, mainSha, observedMainSha, planDigest, releaseCatalog, ...options });
   }
