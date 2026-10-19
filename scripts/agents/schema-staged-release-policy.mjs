@@ -149,7 +149,7 @@ function literalRpcNames(content) {
   return names;
 }
 
-function verifiedIntegrationAndE2e(jobs) {
+export function verifiedIntegrationAndE2e(jobs) {
   const integration = jobs.find((job) => job?.name === 'integration');
   const steps = new Map((integration?.steps ?? []).map((step) => [step.name, step.conclusion]));
   return integration?.conclusion === 'success'

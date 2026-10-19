@@ -415,6 +415,7 @@ export function decideTestValidation({
   ref,
   sha,
   docsOnly = false,
+  toolingOnly = false,
   currentPullRequest = null,
   openPullRequests = [],
   inputs = {},
@@ -513,6 +514,12 @@ export function decideTestValidation({
   }
 
   if (docsOnly) return result(false, "docs_only");
+  // Owner 2026-10-19: a main push whose every changed path is governance tooling that the
+  // integration/E2E graph never loads (classify-changes proved it statically, fail closed)
+  // need not take the serialized shared TEST lane. workflow_dispatch (G3) is never affected.
+  if (eventName === "push" && ref === "refs/heads/main" && toolingOnly === true) {
+    return result(false, "main_push_tooling_only");
+  }
   if (eventName === "push" && ref === "refs/heads/main") return result(true, "main_push");
 
   if (eventName === "pull_request") {

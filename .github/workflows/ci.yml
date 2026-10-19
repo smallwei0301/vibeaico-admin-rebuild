@@ -59,6 +59,7 @@ jobs:
       runtime_path: ${{ steps.classify.outputs.runtime_path }}
       base_revision: ${{ steps.classify.outputs.base_revision }}
       head_revision: ${{ steps.classify.outputs.head_revision }}
+      tooling_only: ${{ steps.classify.outputs.tooling_only }}
       run_test_validation: ${{ steps.test_policy.outputs.run_test_validation }}
       test_policy_reason: ${{ steps.test_policy.outputs.test_policy_reason }}
       test_lane_holders: ${{ steps.test_policy.outputs.test_lane_holders }}
@@ -74,6 +75,7 @@ jobs:
         uses: actions/github-script@v9
         env:
           DOCS_ONLY: ${{ steps.classify.outputs.docs_only }}
+          TOOLING_ONLY: ${{ steps.classify.outputs.tooling_only }}
         with:
           script: |
             const path = require('node:path');
@@ -84,6 +86,7 @@ jobs:
             )).href);
 
             const docsOnly = process.env.DOCS_ONLY === 'true';
+            const toolingOnly = process.env.TOOLING_ONLY === 'true';
             const inputs = context.payload.inputs ?? {};
             let openPullRequests = [];
             let currentPullRequest = context.payload.pull_request ?? null;
@@ -134,6 +137,7 @@ jobs:
               ref: context.ref,
               sha: context.sha,
               docsOnly,
+              toolingOnly,
               currentPullRequest,
               openPullRequests,
               inputs,
@@ -211,6 +215,11 @@ jobs:
     needs: [classify-changes, check]
     if: ${{ needs.check.result == 'success' }}
     runs-on: ubuntu-latest
+    # Same as workflow defaults plus actions: read for the same-SHA G3 reuse lookup.
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
     concurrency:
       group: ${{ needs.classify-changes.outputs.run_test_validation == 'true' && 'shared-test-supabase-integration' || needs.classify-changes.outputs.docs_only == 'true' && format('docs-integration-{0}', github.run_id) || format('source-only-integration-{0}', github.run_id) }}
       cancel-in-progress: false
@@ -278,13 +287,48 @@ jobs:
             test "$DISPATCH_REASON" = 'main_manual'
             test "$GITHUB_SHA" = "$EXPECTED_HEAD"
           fi
+      - name: Reuse same-SHA successful G3 TEST run for main push
+        id: g3_dedupe
+        if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const path = require('node:path');
+            const reuse = await import(pathToFileURL(path.join(process.env.GITHUB_WORKSPACE, 'scripts/agents/same-sha-g3-reuse.mjs')).href);
+            const decision = await reuse.findSameShaG3Reuse({
+              github, owner: context.repo.owner, repo: context.repo.repo,
+              eventName: context.eventName, ref: context.ref, sha: context.sha, currentRunId: context.runId,
+            });
+            core.setOutput('skip', String(decision.skip));
+            core.setOutput('g3_run_id', decision.runId ? String(decision.runId) : '');
+            await core.summary
+              .addHeading('Same-SHA G3 TEST reuse')
+              .addTable([
+                [{ data: 'Field', header: true }, { data: 'Result', header: true }],
+                ['Skip integration + E2E', String(decision.skip)],
+                ['Reason', decision.reason],
+                ['Reused G3 run', decision.runId ? `${decision.runId} ${decision.runUrl ?? ''}` : 'none'],
+                ['API error', decision.error || 'none'],
+              ])
+              .write();
       - name: Documentation policy skip evidence
         if: ${{ needs.classify-changes.outputs.docs_only == 'true' && needs.classify-changes.outputs.run_test_validation != 'true' }}
         run: |
           echo 'POLICY_SKIP: shared TEST integration and Playwright E2E are skipped for docs-only work.'
           echo '- docs-only shared TEST policy skip' >> "$GITHUB_STEP_SUMMARY"
+      - name: Tooling-only main push policy skip evidence
+        if: ${{ needs.classify-changes.outputs.test_policy_reason == 'main_push_tooling_only' && needs.classify-changes.outputs.run_test_validation != 'true' }}
+        run: |
+          echo 'POLICY_SKIP: main push changes only governance tooling/tests that integration and E2E never load (no shared TEST evidence is produced).'
+          echo '- tooling-only main push; shared TEST integration and E2E skipped (Owner 2026-10-19)' >> "$GITHUB_STEP_SUMMARY"
+      - name: Same-SHA G3 reuse skip evidence
+        if: ${{ steps.g3_dedupe.outputs.skip == 'true' }}
+        run: |
+          echo "POLICY_SKIP: integration and E2E already executed successfully by main_manual G3 run ${{ steps.g3_dedupe.outputs.g3_run_id }} on the same SHA ${GITHUB_SHA}."
+          echo "- reused same-SHA G3 run ${{ steps.g3_dedupe.outputs.g3_run_id }}; this push run produced no TEST evidence of its own" >> "$GITHUB_STEP_SUMMARY"
       - name: Source-only policy skip evidence
-        if: ${{ needs.classify-changes.outputs.docs_only != 'true' && needs.classify-changes.outputs.run_test_validation != 'true' }}
+        if: ${{ needs.classify-changes.outputs.docs_only != 'true' && needs.classify-changes.outputs.run_test_validation != 'true' && needs.classify-changes.outputs.test_policy_reason != 'main_push_tooling_only' }}
         env:
           TEST_POLICY_REASON: ${{ needs.classify-changes.outputs.test_policy_reason }}
           TEST_LANE_HOLDERS: ${{ needs.classify-changes.outputs.test_lane_holders }}
@@ -292,7 +336,7 @@ jobs:
           echo "POLICY_SKIP: this PR is not the sole active TEST_VALIDATION holder (${TEST_POLICY_REASON})."
           echo "- source-only; TEST holders: ${TEST_LANE_HOLDERS:-none}" >> "$GITHUB_STEP_SUMMARY"
       - name: Install dependencies
-        if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' }}
+        if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' && steps.g3_dedupe.outputs.skip != 'true' }}
         run: npm ci
       - name: Validate exact Production DB release plan on canonical TEST
         if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.dispatch_reason == 'main_manual' && inputs.production_db_release_id != '' && inputs.production_db_planned_at != '' }}
@@ -338,7 +382,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Run integration tests
-        if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' }}
+        if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' && steps.g3_dedupe.outputs.skip != 'true' }}
         shell: bash
         env:
           RELEASE_ID: ${{ inputs.production_db_release_id }}
@@ -366,7 +410,7 @@ jobs:
             npm run test:integration -- --testTimeout=60000
           fi
       - name: Run E2E tests
-        if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' }}
+        if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' && steps.g3_dedupe.outputs.skip != 'true' }}
         run: npx playwright install --with-deps chromium && npm run test:e2e
         env:
           TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
