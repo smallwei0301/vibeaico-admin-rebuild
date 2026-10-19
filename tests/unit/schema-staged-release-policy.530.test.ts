@@ -187,6 +187,86 @@ describe('#530 schema staged-release policy', () => {
     assert.match((await validateGithubSchemaStagedRelease(input)).join('\n'), /productionSchema workflow run is not a successful/);
   });
 
+  describe('production-db-release-orchestrator productionSchema receipt', () => {
+    const orch = (over: any = {}) => JSON.stringify({ schemaVersion: 1, preparedCommit: sha,
+      canonicalTest: { workflowRunId: 123, workflowName: 'ci' },
+      productionSchema: { workflowRunId: 456, workflowName: 'production-db-release-orchestrator', productionDbReleaseId: 'rel-1', ...over },
+    });
+    const listJobs = async () => ({ data: [] });
+    const listArtifacts = async () => ({ data: { artifacts: [] } });
+    const makeInput = (receiptText: string, opts: { runName?: string; head?: string; jobs?: any[]; artifacts?: any } = {}) => {
+      const bytes = Buffer.from(receiptText);
+      const blob = createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+      const ciJobs = [{ name: 'integration', conclusion: 'success', steps: [
+        { name: 'Run integration tests', conclusion: 'success' }, { name: 'Run E2E tests', conclusion: 'success' },
+      ] }];
+      const okJobs = [
+        { name: 'g7 / read-only-three-way', conclusion: 'success' },
+        { name: 'postcheck', conclusion: 'success' },
+      ];
+      return {
+        github: {
+          paginate: async (fn: unknown, req: { run_id: number }) => {
+            if (fn === listArtifacts) return opts.artifacts ?? [{ name: 'production-db-terminal-result-rel-1-456', expired: false }];
+            return req.run_id === 123 ? ciJobs : (opts.jobs ?? okJobs);
+          },
+          rest: {
+            git: { getBlob: async () => ({ data: {} }) },
+            repos: {
+              getContent: async () => ({ data: { encoding: 'base64', content: bytes.toString('base64'), sha: blob, size: bytes.length } }),
+              compareCommits: async () => ({ data: { status: 'ahead' } }),
+            },
+            actions: { listJobsForWorkflowRun: listJobs, listWorkflowRunArtifacts: listArtifacts, getWorkflowRun: async ({ run_id }: { run_id: number }) => ({ data: {
+              name: run_id === 123 ? 'ci' : (opts.runName ?? 'production-db-release-orchestrator'),
+              conclusion: 'success', head_sha: run_id === 456 && opts.head ? opts.head : sha } }) },
+          },
+        }, owner: 'owner', repo: 'repo',
+        current: { body: activationBody, changed_files: 1, head: { sha: 'd'.repeat(40) }, base: { sha: 'e'.repeat(40) } },
+        changedFiles: [{ filename: runtime, status: 'modified', sha: 'd'.repeat(40) }],
+      };
+    };
+    const run = async (input: any) => (await validateGithubSchemaStagedRelease(input)).join('\n');
+
+    it('accepts an orchestrator run with successful g7 and postcheck jobs', async () => {
+      assert.equal(await run(makeInput(orch())), '');
+    });
+    it('static check requires productionDbReleaseId for orchestrator receipts', () => {
+      for (const bad of [undefined, '', '  ', 7]) {
+        assert.match(errors({ body: activationBody, changedFiles: [runtime], readFile: () => orch({ productionDbReleaseId: bad }) }), /productionDbReleaseId/);
+      }
+      assert.equal(errors({ body: activationBody, changedFiles: [runtime], readFile: () => orch() }), '');
+      assert.match(errors({ body: activationBody, changedFiles: [runtime], readFile: () => orch({ workflowName: 'other' }) }), /Production schema read-only postcheck/);
+    });
+    it('rejects a missing g7 job, failed g7, or failed postcheck', async () => {
+      const g7 = { name: 'g7 / read-only-three-way', conclusion: 'success' };
+      const post = { name: 'postcheck', conclusion: 'success' };
+      for (const jobs of [[post], [{ ...g7, conclusion: 'failure' }, post], [g7], [g7, { ...post, conclusion: 'failure' }]]) {
+        assert.match(await run(makeInput(orch(), { jobs })), /orchestrator run did not succeed/);
+      }
+    });
+    it('rejects skipped g7 or skipped postcheck jobs', async () => {
+      const g7 = { name: 'g7 / read-only-three-way', conclusion: 'success' };
+      const post = { name: 'postcheck', conclusion: 'success' };
+      assert.match(await run(makeInput(orch(), { jobs: [{ ...g7, conclusion: 'skipped' }, post] })), /orchestrator run did not succeed/);
+      assert.match(await run(makeInput(orch(), { jobs: [g7, { ...post, conclusion: 'skipped' }] })), /orchestrator run did not succeed/);
+    });
+    it('binds productionDbReleaseId to the run terminal-result artifact name', async () => {
+      assert.equal(await run(makeInput(orch(), { artifacts: [{ name: 'other' }, { name: 'production-db-terminal-result-rel-1-456', expired: true }] })), '');
+      assert.equal(await run(makeInput(orch(), { artifacts: { artifacts: [{ name: 'production-db-terminal-result-rel-1-456' }] } })), '');
+      const msg = /no production-db-terminal-result artifact for productionDbReleaseId/;
+      assert.match(await run(makeInput(orch(), { artifacts: [] })), msg);
+      assert.match(await run(makeInput(orch(), { artifacts: [{ name: 'production-db-terminal-result-rel-2-456' }] })), msg);
+      assert.match(await run(makeInput(orch(), { artifacts: [{ name: 'production-db-terminal-result-rel-1-999' }] })), msg);
+    });
+    it('rejects a run name that mismatches the receipt workflowName (no mixing)', async () => {
+      assert.match(await run(makeInput(orch(), { runName: 'agent-schema-drift-watch' })), /productionSchema workflow run is not a successful production-db-release-orchestrator/);
+      assert.match(await run(makeInput(receipt, { runName: 'production-db-release-orchestrator' })), /productionSchema workflow run is not a successful agent-schema-drift-watch/);
+    });
+    it('rejects a head_sha that differs from preparedCommit', async () => {
+      assert.match(await run(makeInput(orch(), { head: 'b'.repeat(40) })), /productionSchema workflow run is not a successful/);
+    });
+  });
+
   it('recognises config/root runtime changes and a migration rename from its previous path', async () => {
     assert.match(errors({ body: 'MIGRATION_TOUCH: true', changedFiles: [migration, 'src/config/env.ts'] }), /SCHEMA_RELEASE_STAGE=PREPARE/);
     assert.match(errors({ body: 'MIGRATION_TOUCH: true', changedFiles: [migration, 'middleware.ts'] }), /SCHEMA_RELEASE_STAGE=PREPARE/);
