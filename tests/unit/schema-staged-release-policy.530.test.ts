@@ -192,7 +192,9 @@ describe('#530 schema staged-release policy', () => {
       canonicalTest: { workflowRunId: 123, workflowName: 'ci' },
       productionSchema: { workflowRunId: 456, workflowName: 'production-db-release-orchestrator', productionDbReleaseId: 'rel-1', ...over },
     });
-    const makeInput = (receiptText: string, opts: { runName?: string; head?: string; jobs?: any[] } = {}) => {
+    const listJobs = async () => ({ data: [] });
+    const listArtifacts = async () => ({ data: { artifacts: [] } });
+    const makeInput = (receiptText: string, opts: { runName?: string; head?: string; jobs?: any[]; artifacts?: any } = {}) => {
       const bytes = Buffer.from(receiptText);
       const blob = createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
       const ciJobs = [{ name: 'integration', conclusion: 'success', steps: [
@@ -204,14 +206,17 @@ describe('#530 schema staged-release policy', () => {
       ];
       return {
         github: {
-          paginate: async (_fn: unknown, req: { run_id: number }) => req.run_id === 123 ? ciJobs : (opts.jobs ?? okJobs),
+          paginate: async (fn: unknown, req: { run_id: number }) => {
+            if (fn === listArtifacts) return opts.artifacts ?? [{ name: 'production-db-terminal-result-rel-1-456', expired: false }];
+            return req.run_id === 123 ? ciJobs : (opts.jobs ?? okJobs);
+          },
           rest: {
             git: { getBlob: async () => ({ data: {} }) },
             repos: {
               getContent: async () => ({ data: { encoding: 'base64', content: bytes.toString('base64'), sha: blob, size: bytes.length } }),
               compareCommits: async () => ({ data: { status: 'ahead' } }),
             },
-            actions: { getWorkflowRun: async ({ run_id }: { run_id: number }) => ({ data: {
+            actions: { listJobsForWorkflowRun: listJobs, listWorkflowRunArtifacts: listArtifacts, getWorkflowRun: async ({ run_id }: { run_id: number }) => ({ data: {
               name: run_id === 123 ? 'ci' : (opts.runName ?? 'production-db-release-orchestrator'),
               conclusion: 'success', head_sha: run_id === 456 && opts.head ? opts.head : sha } }) },
           },
@@ -238,6 +243,20 @@ describe('#530 schema staged-release policy', () => {
       for (const jobs of [[post], [{ ...g7, conclusion: 'failure' }, post], [g7], [g7, { ...post, conclusion: 'failure' }]]) {
         assert.match(await run(makeInput(orch(), { jobs })), /orchestrator run did not succeed/);
       }
+    });
+    it('rejects skipped g7 or skipped postcheck jobs', async () => {
+      const g7 = { name: 'g7 / read-only-three-way', conclusion: 'success' };
+      const post = { name: 'postcheck', conclusion: 'success' };
+      assert.match(await run(makeInput(orch(), { jobs: [{ ...g7, conclusion: 'skipped' }, post] })), /orchestrator run did not succeed/);
+      assert.match(await run(makeInput(orch(), { jobs: [g7, { ...post, conclusion: 'skipped' }] })), /orchestrator run did not succeed/);
+    });
+    it('binds productionDbReleaseId to the run terminal-result artifact name', async () => {
+      assert.equal(await run(makeInput(orch(), { artifacts: [{ name: 'other' }, { name: 'production-db-terminal-result-rel-1-456', expired: true }] })), '');
+      assert.equal(await run(makeInput(orch(), { artifacts: { artifacts: [{ name: 'production-db-terminal-result-rel-1-456' }] } })), '');
+      const msg = /no production-db-terminal-result artifact for productionDbReleaseId/;
+      assert.match(await run(makeInput(orch(), { artifacts: [] })), msg);
+      assert.match(await run(makeInput(orch(), { artifacts: [{ name: 'production-db-terminal-result-rel-2-456' }] })), msg);
+      assert.match(await run(makeInput(orch(), { artifacts: [{ name: 'production-db-terminal-result-rel-1-999' }] })), msg);
     });
     it('rejects a run name that mismatches the receipt workflowName (no mixing)', async () => {
       assert.match(await run(makeInput(orch(), { runName: 'agent-schema-drift-watch' })), /productionSchema workflow run is not a successful production-db-release-orchestrator/);

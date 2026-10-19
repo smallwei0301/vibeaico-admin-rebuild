@@ -393,6 +393,15 @@ export async function validateGithubSchemaStagedRelease({ github, owner, repo, c
           if (!jobOk('g7 / read-only-three-way') || !jobOk('postcheck')) {
             errors.push(failure('productionSchema orchestrator run did not succeed in both g7 / read-only-three-way and postcheck jobs'));
           }
+          const releaseId = parsed.productionSchema.productionDbReleaseId;
+          const artifactResult = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+            owner, repo, run_id: runId, per_page: 100,
+          });
+          const artifacts = Array.isArray(artifactResult) ? artifactResult : (artifactResult?.artifacts ?? []);
+          const terminalName = `production-db-terminal-result-${releaseId}-${runId}`;
+          if (typeof releaseId !== 'string' || !artifacts.some((artifact) => artifact?.name === terminalName)) {
+            errors.push(failure('productionSchema orchestrator run has no production-db-terminal-result artifact for productionDbReleaseId'));
+          }
         }
       } catch { errors.push(failure(`${kind} workflow run could not be live-verified`)); }
     }
