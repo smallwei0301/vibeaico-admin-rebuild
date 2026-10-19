@@ -110,6 +110,10 @@ function guardedRuntimeEntries(content, symbol) {
   return { valid: true };
 }
 
+const DRIFT_WATCH_WORKFLOW_NAME = 'agent-schema-drift-watch';
+const ORCHESTRATOR_WORKFLOW_NAME = 'production-db-release-orchestrator';
+const PRODUCTION_SCHEMA_WORKFLOW_NAMES = [DRIFT_WATCH_WORKFLOW_NAME, ORCHESTRATOR_WORKFLOW_NAME];
+
 function readinessReceipt(content) {
   if (typeof content !== 'string') return 'schema readiness receipt bytes are unavailable';
   let receipt;
@@ -121,8 +125,12 @@ function readinessReceipt(content) {
     return 'schema readiness receipt requires canonical TEST ci workflow run identity';
   }
   if (!Number.isSafeInteger(receipt?.productionSchema?.workflowRunId) || receipt.productionSchema.workflowRunId <= 0
-    || receipt?.productionSchema?.workflowName !== 'agent-schema-drift-watch') {
+    || !PRODUCTION_SCHEMA_WORKFLOW_NAMES.includes(receipt?.productionSchema?.workflowName)) {
     return 'schema readiness receipt requires Production schema read-only postcheck workflow run identity';
+  }
+  if (receipt.productionSchema.workflowName === ORCHESTRATOR_WORKFLOW_NAME
+    && (typeof receipt.productionSchema.productionDbReleaseId !== 'string' || !receipt.productionSchema.productionDbReleaseId.trim())) {
+    return 'schema readiness receipt requires productionDbReleaseId for a production-db-release-orchestrator Production schema run';
   }
   return null;
 }
@@ -362,7 +370,9 @@ export async function validateGithubSchemaStagedRelease({ github, owner, repo, c
     } catch { errors.push(failure('readiness receipt preparedCommit ancestry could not be verified')); }
     let parsed;
     try { parsed = JSON.parse(receipt); } catch { parsed = null; }
-    for (const [kind, expectedName] of [['canonicalTest', 'ci'], ['productionSchema', 'agent-schema-drift-watch']]) {
+    const productionSchemaName = parsed?.productionSchema?.workflowName === ORCHESTRATOR_WORKFLOW_NAME
+      ? ORCHESTRATOR_WORKFLOW_NAME : DRIFT_WATCH_WORKFLOW_NAME;
+    for (const [kind, expectedName] of [['canonicalTest', 'ci'], ['productionSchema', productionSchemaName]]) {
       const runId = parsed?.[kind]?.workflowRunId;
       try {
         const { data } = await github.rest.actions.getWorkflowRun({ owner, repo, run_id: runId });
@@ -374,6 +384,14 @@ export async function validateGithubSchemaStagedRelease({ github, owner, repo, c
           });
           if (!verifiedIntegrationAndE2e(jobs)) {
             errors.push(failure('canonicalTest workflow did not execute successful integration and E2E steps'));
+          }
+        } else if (kind === 'productionSchema' && expectedName === ORCHESTRATOR_WORKFLOW_NAME) {
+          const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+            owner, repo, run_id: runId, filter: 'latest', per_page: 100,
+          });
+          const jobOk = (name) => (Array.isArray(jobs) ? jobs : []).some((job) => job?.name === name && job?.conclusion === 'success');
+          if (!jobOk('g7 / read-only-three-way') || !jobOk('postcheck')) {
+            errors.push(failure('productionSchema orchestrator run did not succeed in both g7 / read-only-three-way and postcheck jobs'));
           }
         }
       } catch { errors.push(failure(`${kind} workflow run could not be live-verified`)); }
