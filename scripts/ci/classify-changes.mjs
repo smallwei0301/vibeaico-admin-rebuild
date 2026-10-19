@@ -39,9 +39,12 @@ export function isDocsOnlyPath(path) {
  * statically computed integration/E2E reachable set. Anything else fails closed.
  */
 const TOOLING_PREFIXES = ['scripts/agents/', 'scripts/metrics/', 'tests/unit/', 'docs/metrics/'];
+// 跳過判定本身的模組不得因「只改它」而跳過共用 TEST（fail closed）。
+const NEVER_TOOLING_PATHS = new Set(['scripts/agents/integration-reachability.mjs', 'scripts/agents/same-sha-g3-reuse.mjs']);
 
 export function isToolingCandidatePath(path) {
   if (typeof path !== 'string' || /[\r\n]/.test(path) || path.includes('..')) return false;
+  if (NEVER_TOOLING_PATHS.has(path)) return false;
   return isDocsOnlyPath(path) || TOOLING_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
 
@@ -294,7 +297,7 @@ async function main() {
 
   let computeReachable = null;
   try {
-    const { computeIntegrationReachableSet } = await import('./integration-reachability.mjs');
+    const { computeIntegrationReachableSet } = await import('../agents/integration-reachability.mjs');
     computeReachable = () => computeIntegrationReachableSet(process.cwd());
   } catch { /* fail closed: tooling_only stays false */ }
   const result = classifyEvent(process.env.GITHUB_EVENT_NAME, event, defaultRunGit, computeReachable);

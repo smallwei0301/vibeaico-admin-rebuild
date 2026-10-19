@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { classifyChangeRecords, classifyEvent, classifyToolingOnly, parseNameStatus } from '../../scripts/ci/classify-changes.mjs';
-import { computeIntegrationReachableSet } from '../../scripts/ci/integration-reachability.mjs';
+import { computeIntegrationReachableSet } from '../../scripts/agents/integration-reachability.mjs';
 import { decideTestValidation } from '../../scripts/agents/agent-wip-policy.mjs';
 import { decideSameShaG3Reuse, findSameShaG3Reuse } from '../../scripts/agents/same-sha-g3-reuse.mjs';
 
@@ -38,7 +38,7 @@ describe('classifier tooling_only (real repo graph)', () => {
     expect(ok.toolingOnly).toBe(true);
   });
   it('is false for any .github, src, supabase, package, lockfile, root-config or other script path', () => {
-    for (const path of ['.github/workflows/ci.yml', 'src/lib/x.ts', 'supabase/migrations/1.sql', 'package.json', 'package-lock.json', 'vitest.config.mts', 'scripts/db/x.mjs', 'scripts/ci/classify-changes.mjs', 'tests/integration/a.test.ts', 'tests/e2e/a.spec.ts']) {
+    for (const path of ['.github/workflows/ci.yml', 'src/lib/x.ts', 'supabase/migrations/1.sql', 'package.json', 'package-lock.json', 'vitest.config.mts', 'scripts/db/x.mjs', 'scripts/ci/classify-changes.mjs', 'scripts/agents/integration-reachability.mjs', 'scripts/agents/same-sha-g3-reuse.mjs', 'tests/integration/a.test.ts', 'tests/e2e/a.spec.ts']) {
       const r = classifyChangeRecords(records('M', 'scripts/agents/unreferenced-x.mjs', 'M', path), { computeReachable: realReach });
       expect(r.toolingOnly, path).toBe(false);
     }
