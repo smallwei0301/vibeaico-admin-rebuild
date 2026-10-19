@@ -10,7 +10,8 @@ const LEDGER_VERSION = /^\d{14}$/;
 const RISK_ORDER = Object.freeze({ ADDITIVE: 1, SCHEMA_REPAIR: 2, AUTHZ: 3, BACKFILL: 4 });
 const FULL_PENDING_SET = 'FULL_PENDING_SET';
 const ISSUES_17_680 = 'ISSUES_17_680';
-const ISSUE_37_0131_0134 = 'ISSUE_37_0131_0134';
+// #37 / #755：0131 新增 replace_trip_departure_staff、0134 將其改為 SECURITY INVOKER；兩者必須同一 release。
+export const ISSUE_37_0131_0134 = 'ISSUE_37_0131_0134';
 const ISSUE_46_0135 = 'ISSUE_46_0135';
 export const ISSUE_46_0110_0136_CLOSURE = 'ISSUE_46_0110_0136_CLOSURE';
 export const ISSUE_755_0110_0137_CLOSURE = 'ISSUE_755_0110_0137_CLOSURE';
@@ -40,6 +41,9 @@ export const SCOPED_RELEASE_CAPTURE_SCOPES = Object.freeze({
       '0132_issue_42_seasonal_price_resolution',
       '0136_issue_755_create_tour_order_invoker',
     ]) }),
+  // 0131+0134：replace_trip_departure_staff 由 0131 首次建立（Production 尚無此 routine），0134 ALTER 為 invoker，
+  // 故無 appliedSourceFiles、亦不涉及 create／cancel／expire_tour_order 家族；before 為不存在，after 為 0131+0134 最終形狀。
+  [ISSUE_37_0131_0134]: Object.freeze({ migrationCount: 2, routinesRequired: true, createTourOrderFamily: false }),
 });
 
 // Plan construction is not execution authority. Current #755 nine-file approval
@@ -265,7 +269,7 @@ export function selectedProductionMigrations(aliasMap = {}, migrationScope = FUL
     const matches = aliasMap.entries.filter((entry) => entry?.repoFile === repoFile);
     if (matches.length !== 1 || matches[0].classification !== 'EXACT' ||
         !Array.isArray(matches[0].ledgerNames) || matches[0].ledgerNames.length === 0 ||
-        ([ISSUE_46_0135, ISSUE_23_0113, ISSUE_749_0137, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE].includes(scope) && (matches[0].ledgerNames.length !== 1 || matches[0].ledgerNames[0] !== repoFile))) {
+        ([ISSUE_46_0135, ISSUE_37_0131_0134, ISSUE_23_0113, ISSUE_749_0137, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE].includes(scope) && (matches[0].ledgerNames.length !== 1 || matches[0].ledgerNames[0] !== repoFile))) {
       fail('MIGRATION_SCOPE_APPLIED_PREREQUISITE_MISSING', `${scope} requires an exact applied prerequisite: ${repoFile}`);
     }
   }
