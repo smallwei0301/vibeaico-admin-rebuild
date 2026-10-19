@@ -681,10 +681,11 @@
     },
     {
       "repoFile": "0137_issue_749_create_tour_order_quoted",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "PENDING_APPLY",
-      "evidence": "#749：新增 service_role-only、SECURITY INVOKER 的 create_tour_order_quoted(…, p_expected_total)，在同一交易內呼叫既有 create_tour_order 後比對旅客確認的總額，不符則 raise PRICE_CHANGED（P0004）使整筆 RPC（含鎖位）回滾。不修改 create_tour_order。必須在 0132／0136 之後。尚未套用 canonical TEST 或 Production；Production 套用屬 #755 受控 release，須依 shared TEST serialization 與 G0-G7 另行驗證／發布。"
+      "ledgerNames": [
+        "0137_issue_749_create_tour_order_quoted"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 0137 受控釋出（releaseId issue755-0d56-s0137-20261019031547，execute run 39201977122）已套用至正式庫（#749 create_tour_order_quoted）；provider ledger version 20261019031547。正式庫 ledger 快照已於 2026-10-19T05:01:50Z 重新擷取（68 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
     }
   ]
 }
