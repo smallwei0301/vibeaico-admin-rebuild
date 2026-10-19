@@ -31,6 +31,46 @@ export function isDocsOnlyPath(path) {
     || path.startsWith('.claude/');
 }
 
+/*
+ * Main-push tooling-only lane (Owner 2026-10-19). Governance/metrics tooling and unit
+ * tests that the shared-TEST integration + E2E job never loads need not re-run that
+ * ~40 min serialized job on main. Strictly additive to docs-only: every changed path
+ * must be docs-only OR under one of these prefixes, AND no changed path may be in the
+ * statically computed integration/E2E reachable set. Anything else fails closed.
+ */
+const TOOLING_PREFIXES = ['scripts/agents/', 'scripts/metrics/', 'tests/unit/', 'docs/metrics/'];
+
+export function isToolingCandidatePath(path) {
+  if (typeof path !== 'string' || /[\r\n]/.test(path) || path.includes('..')) return false;
+  return isDocsOnlyPath(path) || TOOLING_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
+/**
+ * @param {Array} records parsed name-status records
+ * @param {() => Set<string>} computeReachable throws when reachability is uncertain
+ */
+export function classifyToolingOnly(records, computeReachable) {
+  const no = (detail) => ({ toolingOnly: false, toolingDetail: detail });
+  if (!Array.isArray(records) || records.length === 0) return no('empty-diff');
+  const paths = [];
+  for (const record of records) {
+    if (!['A', 'M', 'D', 'R'].includes(record?.kind) || !Array.isArray(record.paths) || record.paths.length === 0) {
+      return no('malformed-record');
+    }
+    paths.push(...record.paths);
+  }
+  if (paths.some((path) => typeof path !== 'string' || !isToolingCandidatePath(path))) return no('non-tooling-path');
+  if (paths.every((path) => isDocsOnlyPath(path))) return no('docs-only');
+  if (typeof computeReachable !== 'function') return no('reachability-unavailable');
+  const scripted = paths.filter((path) => path.startsWith('scripts/agents/') || path.startsWith('scripts/metrics/') || path.startsWith('tests/unit/'));
+  let reachable;
+  try { reachable = computeReachable(); } catch { return no('reachability-uncertain'); }
+  if (!(reachable instanceof Set)) return no('reachability-uncertain');
+  const hit = scripted.find((path) => reachable.has(path));
+  if (hit) return no(`integration-reachable:${hit}`);
+  return { toolingOnly: true, toolingDetail: 'tooling-allowlist-unreachable' };
+}
+
 /**
  * Parse `git diff --name-status -z` without shell quoting, so filenames containing spaces
  * (or other printable characters) retain their exact paths. Renames carry old and new paths.
@@ -67,7 +107,8 @@ export function parseNameStatus(output) {
   return records;
 }
 
-export function classifyChangeRecords(records) {
+/** @param {any} records @param {{ computeReachable?: (() => Set<string>) | null }} [options] */
+export function classifyChangeRecords(records, /** @type {{ computeReachable?: (() => Set<string>) | null }} */ { computeReachable = null } = {}) {
   const changedPaths = Array.isArray(records)
     ? records.flatMap((record) => (
       Array.isArray(record?.paths)
@@ -94,11 +135,14 @@ export function classifyChangeRecords(records) {
         ? runtimeRecord.paths.find((path) => !isDocsOnlyPath(path)) ?? ''
         : '',
       changedPaths,
+      classifyToolingOnly(records, computeReachable),
     );
   }
 
   return {
     docsOnly: true,
+    toolingOnly: false,
+    toolingDetail: 'docs-only',
     reason: 'docs-only',
     detail: 'allowlist-only',
     changedCount: records.length,
@@ -107,12 +151,14 @@ export function classifyChangeRecords(records) {
   };
 }
 
-function runtimeResult(changedCount, runtimePath, changedPaths = []) {
-  return { docsOnly: false, reason: 'non-docs-change', detail: 'runtime-path', changedCount, runtimePath, changedPaths };
+function runtimeResult(changedCount, runtimePath, changedPaths = [], tooling = { toolingOnly: false, toolingDetail: 'non-tooling-path' }) {
+  return {
+    docsOnly: false, ...tooling, reason: 'non-docs-change', detail: 'runtime-path', changedCount, runtimePath, changedPaths,
+  };
 }
 
 function classifierFailure(detail, changedCount = 0, runtimePath = '', changedPaths = []) {
-  return { docsOnly: false, reason: 'classifier_failed', detail, changedCount, runtimePath, changedPaths };
+  return { docsOnly: false, toolingOnly: false, toolingDetail: 'classifier_failed', reason: 'classifier_failed', detail, changedCount, runtimePath, changedPaths };
 }
 
 /**
@@ -130,7 +176,8 @@ export function isUsableRevision(revision) {
  * Classify only the revisions that triggered CI. Any unexpected event, malformed payload,
  * unavailable git revision, parse error, or empty diff is deliberately a full runtime run.
  */
-export function classifyEvent(eventName, event, runGit = defaultRunGit) {
+/** @param {(() => Set<string>) | null} [computeReachable] */
+export function classifyEvent(eventName, event, runGit = defaultRunGit, computeReachable = null) {
   if (eventName === 'workflow_dispatch') {
     const base = event?.inputs?.base_revision;
     const head = event?.inputs?.expected_head;
@@ -170,9 +217,11 @@ export function classifyEvent(eventName, event, runGit = defaultRunGit) {
   }
 
   try {
+    // Only a main push may take the tooling-only lane; PRs and dispatches keep full routing.
+    const reachability = eventName === 'push' ? computeReachable : null;
     return withRevisions(classifyChangeRecords(parseNameStatus(
       runGit('diff', '--name-status', '-z', '--find-renames', base, head),
-    )), base, head);
+    ), { computeReachable: reachability }), base, head);
   } catch {
     return withRevisions(classifierFailure('git-or-parse-failure'), base, head);
   }
@@ -198,7 +247,8 @@ function writeGithubOutput(result) {
   const runtimePath = result.runtimePath.replaceAll('\r', '%0D').replaceAll('\n', '%0A');
   appendFileSync(
     process.env.GITHUB_OUTPUT,
-    `docs_only=${result.docsOnly}\nreason=${result.reason}\ndetail=${result.detail}\n` +
+    `docs_only=${result.docsOnly}\ntooling_only=${result.toolingOnly === true}\n` +
+      `tooling_detail=${String(result.toolingDetail ?? '').replaceAll(/[\r\n]/g, ' ')}\nreason=${result.reason}\ndetail=${result.detail}\n` +
       `changed_count=${result.changedCount}\nruntime_path=${runtimePath}\n` +
       `base_revision=${isUsableRevision(result.baseRevision) ? result.baseRevision : ''}\n` +
       `head_revision=${isUsableRevision(result.headRevision) ? result.headRevision : ''}\n`,
@@ -216,7 +266,8 @@ function writeGithubSummary(result) {
   appendFileSync(
     process.env.GITHUB_STEP_SUMMARY,
     '## CI change classification\n\n' +
-      `- Route: ${result.docsOnly ? 'docs-only lightweight' : 'full runtime'}\n` +
+      `- Route: ${result.docsOnly ? 'docs-only lightweight' : result.toolingOnly ? 'tooling-only (main push skips shared TEST)' : 'full runtime'}\n` +
+      `- Tooling-only: ${result.toolingOnly === true} (${result.toolingDetail ?? 'n/a'})\n` +
       `- Reason: ${result.reason}\n` +
       `- Detail: ${result.detail}\n` +
       `- Changed records: ${result.changedCount}\n` +
@@ -226,7 +277,9 @@ function writeGithubSummary(result) {
   );
 }
 
-function main() {
+// Loaded lazily: verify-before-push.sh evaluates this file alone from a data: URL, so it
+// must keep zero static relative imports.
+async function main() {
   let event = {};
   try {
     if (!process.env.GITHUB_EVENT_PATH) throw new Error('GITHUB_EVENT_PATH is not set');
@@ -239,10 +292,15 @@ function main() {
     return;
   }
 
-  const result = classifyEvent(process.env.GITHUB_EVENT_NAME, event);
+  let computeReachable = null;
+  try {
+    const { computeIntegrationReachableSet } = await import('./integration-reachability.mjs');
+    computeReachable = () => computeIntegrationReachableSet(process.cwd());
+  } catch { /* fail closed: tooling_only stays false */ }
+  const result = classifyEvent(process.env.GITHUB_EVENT_NAME, event, defaultRunGit, computeReachable);
   writeGithubOutput(result);
   writeGithubSummary(result);
   console.log(JSON.stringify(result));
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+if (import.meta.url === `file://${process.argv[1]}`) await main();
