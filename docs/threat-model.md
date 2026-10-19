@@ -57,7 +57,7 @@
 | TM-06 | 未登入者大量灌入假旅客訂單、猜價格或搶名額 | **高** | 公開預約路由含請求大小限制、IP＋店家節流、方案可用與功能開關檢查 | 伺服器重新計價；最後一席並發僅能成交一次；限速不能只依可偽造的來源標頭；不可從公開介面取回其他旅客個資 |
 | TM-07 | 秘密金鑰暴露到網頁、錯誤訊息、日誌、GitHub 或公開設定 API | **高** | `src/server/crypto.ts` 使用 AES-256-GCM；`createAdminSupabase()` 位於伺服器端 | `.env`／service key 不進版本庫；瀏覽器只能收到遮罩；換 key／權限異動有復原方案；日誌不寫金鑰與敏感個資 |
 | TM-08 | 上傳假圖片、巨大檔案，或刪除其他店家圖檔 | **中／高** | `/api/upload` 限制 bucket、檔案類型與 5MB 大小，產生 `tenantId/UUID` 路徑並確認角色 | 實際檔案內容而非只信 MIME 宣稱；跨店刪除與 URL 偽造失敗；公開／私人 bucket 權限與生命週期驗證 |
-| TM-09 | 日曆匯入的外部 URL 被利用去讀取伺服器內網資訊（SSRF，伺服器代人連結惡意網址） | **高** | `src/server/ssrf-guard.ts` 有私網位址、DNS 結果與重新導向檢查 | 內網／localhost／IPv6／重新導向／DNS 變更案例；所有外部下載都走同一保護入口 |
+| TM-09 | 日曆匯入的外部 URL 被利用去讀取伺服器內網資訊（SSRF，伺服器代人連結惡意網址） | **高** | `src/server/ssrf-guard.ts` 有私網位址、DNS 結果與重新導向檢查；DNS 檢查與實際連線之間仍有 DNS rebinding 競態窗口（見 §5） | 內網／localhost／IPv6／重新導向／DNS 變更案例；所有外部下載都走同一保護入口 |
 | TM-10 | 偽造排程要求，或重跑排程造成重複通知、更新狀態 | **中／高** | Cron 使用 `CRON_SECRET` Bearer 驗證；預約提醒使用條件式搶佔避免重發 | 不正確或缺失密鑰拒絕；跨店篩選；並發執行不重送；故障可追查且不把失敗偽裝成功 |
 | TM-11 | 公開跨網域 API 意外被任意網站讀取 | **中** | `src/server/public-cors.ts` 精確列出允許網域、缺設定拒絕、不用萬用字元 | CORS 只控制瀏覽器跨站讀取，不能當身分驗證；公開資料欄位最小化，敏感端點仍有授權 |
 | TM-12 | 不同環境的 DB 結構／權限政策與 `main` 不一致，導致部署繞過安全規則 | **高** | `AGENTS.md` 要求 schema 來源必須是 current `main` canonical migration；Production 使用既有分段 Release Gate | TEST／Production 的表、RLS、函式與 migration 紀錄比對；保留阻塞證據；不以 CI 綠、TEST 有表或 PR 存在取代 Production 授權 |
@@ -79,6 +79,7 @@
 
 ## 5. 已知邊界／待驗證事項
 
+- **TM-09／DNS rebinding 殘留風險：** `src/server/ssrf-guard.ts` 先解析並檢查 IP，再由 Node 原生 `fetch` 以 hostname 連線；檢查與連線之間仍可能重新解析至不同 IP，尚未把已驗證 IP 固定到連線層。本項依既有程式註解與實作補記限制，不代表本次已重現漏洞、完成修復或通過 Production 驗收。
 - 此次為**有限範圍的 source 與 canonical 文件盤點**；不能據此宣稱所有 `/api/**` 路由或最新 84+ 個 migration 都逐一審查完成。
 - `requireTenantManager()` 與代登入邏輯會改用 service-role client。這是高度敏感的設計，不等於已存在漏洞；需把跨租戶負例測試當作每次相關變更的放行依據。
 - `docs/integration/21-PLATFORM-ADMIN-IMPERSONATION.md` 的跨系統授權模型有歷史待裁示範圍；不得以舊分冊推定雙專案已安全串接。
