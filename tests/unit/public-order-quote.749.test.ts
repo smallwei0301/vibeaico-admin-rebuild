@@ -1,7 +1,8 @@
 /**
  * #749：公開下單金額鎖定（送出當下的伺服器端重新報價比對，純 runtime、不依賴新 schema）。
  * - 沒有 expectedTotal → 直接 create_tour_order。
- * - 相符 → create_tour_order（不帶 p_expected_total）；不符 → PRICE_CHANGED＋quote、不呼叫任何 rpc。
+ * - 有 expectedTotal → create_tour_order_quoted（帶 p_expected_total，0137 同交易比對，RPC 為真相來源）；
+ *   RPC 回 P0004 → PRICE_CHANGED＋detail 現價；其他錯誤原樣處理。fast path 重讀不符 → PRICE_CHANGED＋quote、不呼叫任何 rpc。
  * - 季節價命中時以季節單價比較（PER_PERSON／PER_GROUP）；季節資料不完整 → PRICE_UNVERIFIABLE、不呼叫 rpc。
  * - route：PRICE_CHANGED → 409 TOUR_003 + data.quote；PRICE_UNVERIFIABLE → 409 TOUR_004。
  */
@@ -16,6 +17,8 @@ const fx = vi.hoisted(() => ({
   recheckPrice: null as number | null,
   recheckError: false,
   priceType: 'PER_PERSON',
+  rereadPriceType: null as string | null,
+  rereadError: false,
   salesMode: 'FIXED_DEPARTURE',
 }));
 
@@ -40,6 +43,10 @@ vi.mock('@/server/supabase', () => ({
         if (table === 'trip_plans' && cols.startsWith('price_per_person')) {
           if (fx.recheckError) return { data: null, error: { message: 'boom' } };
           return { data: { price_per_person: fx.recheckPrice ?? fx.planPrice, price_type: fx.priceType }, error: null };
+        }
+        if (table === 'trip_plans' && cols === 'price_type') {
+          if (fx.rereadError) return { data: null, error: { message: 'boom' } };
+          return { data: { price_type: fx.rereadPriceType ?? fx.priceType }, error: null };
         }
         if (table === 'trip_plans') {
           const row = { id: PLAN, trip_id: 't1', name: 'p', description: '', price_per_person: fx.planPrice, price_type: fx.priceType, min_party: 1, max_party: 8, sales_mode: fx.salesMode, request_hold_hours: 12, active: true };
@@ -88,6 +95,8 @@ beforeEach(() => {
   fx.recheckPrice = null;
   fx.recheckError = false;
   fx.priceType = 'PER_PERSON';
+  fx.rereadPriceType = null;
+  fx.rereadError = false;
   fx.salesMode = 'FIXED_DEPARTURE';
   fx.rpcImpl = () => ({ data: 'order-1', error: null });
   vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -114,11 +123,50 @@ describe.each([
     expect(fx.rpcCalls[0].args).not.toHaveProperty('p_expected_total');
   });
 
-  it('expectedTotal 相符：呼叫 create_tour_order 且不帶 p_expected_total', async () => {
+  it('expectedTotal 相符：呼叫 create_tour_order_quoted 並帶 p_expected_total', async () => {
     await expect(submit({ expectedTotal: 2000 })).resolves.toEqual({ orderId: 'order-1', orderNo: 'ORD-749' });
-    expect(fx.rpcCalls.map((c) => c.name)).toEqual(['create_tour_order']);
-    expect(fx.rpcCalls[0].args).toMatchObject({ p_departure: DEPARTURE, p_party_size: 2 });
-    expect(fx.rpcCalls[0].args).not.toHaveProperty('p_expected_total');
+    expect(fx.rpcCalls.map((c) => c.name)).toEqual(['create_tour_order_quoted']);
+    expect(fx.rpcCalls[0].args).toMatchObject({ p_departure: DEPARTURE, p_party_size: 2, p_expected_total: 2000 });
+  });
+
+  it('RPC 回 P0004 PRICE_CHANGED（fast path 通過後店家才改價）：PRICE_CHANGED 帶 detail 現價', async () => {
+    fx.rpcImpl = () => ({ data: null, error: { code: 'P0004', message: 'PRICE_CHANGED', details: '{"unitPrice":1200,"total":2400}' } });
+    const err = await submit({ expectedTotal: 2000 }).catch((e) => e);
+    expect(err).toBeInstanceOf(ErrorClass);
+    expect(err.code).toBe('PRICE_CHANGED');
+    expect(err.quote).toEqual({ unitPrice: 1200, total: 2400, priceType: 'PER_PERSON' });
+    expect(fx.rpcCalls.map((c) => c.name)).toEqual(['create_tour_order_quoted']);
+  });
+
+  it('RPC 回 P0004 且交易後重讀計價方式為 PER_GROUP（fast path 為 PER_PERSON）：quote.priceType 為 PER_GROUP', async () => {
+    fx.rereadPriceType = 'PER_GROUP';
+    fx.rpcImpl = () => ({ data: null, error: { code: 'P0004', message: 'PRICE_CHANGED', details: '{"unitPrice":1200,"total":1200}' } });
+    const err = await submit({ expectedTotal: 2000 }).catch((e) => e);
+    expect(err.code).toBe('PRICE_CHANGED');
+    expect(err.quote).toEqual({ unitPrice: 1200, total: 1200, priceType: 'PER_GROUP' });
+  });
+
+  it('RPC 回 P0004 且重讀 price_type 失敗：沿用 fast path 的計價方式', async () => {
+    fx.rereadError = true;
+    fx.rpcImpl = () => ({ data: null, error: { code: 'P0004', message: 'PRICE_CHANGED', details: '{"unitPrice":1200,"total":2400}' } });
+    const err = await submit({ expectedTotal: 2000 }).catch((e) => e);
+    expect(err.code).toBe('PRICE_CHANGED');
+    expect(err.quote).toEqual({ unitPrice: 1200, total: 2400, priceType: 'PER_PERSON' });
+  });
+
+  it('RPC 回 P0004 但 detail 缺漏／壞掉：仍 PRICE_CHANGED，不帶 quote', async () => {
+    fx.rpcImpl = () => ({ data: null, error: { code: 'P0004', message: 'PRICE_CHANGED', details: 'not-json' } });
+    const err = await submit({ expectedTotal: 2000 }).catch((e) => e);
+    expect(err.code).toBe('PRICE_CHANGED');
+    expect(err.quote).toBeUndefined();
+  });
+
+  it('RPC 其他錯誤（SEATS_UNAVAILABLE／未知／函式不存在）維持原行為', async () => {
+    fx.rpcImpl = () => ({ data: null, error: { message: 'SEATS_UNAVAILABLE' } });
+    expect((await submit({ expectedTotal: 2000 }).catch((e) => e)).code).toBe('SEATS_UNAVAILABLE');
+    const missing = { code: 'PGRST202', message: 'Could not find the function public.create_tour_order_quoted' };
+    fx.rpcImpl = () => ({ data: null, error: missing });
+    await expect(submit({ expectedTotal: 2000 })).rejects.toBe(missing);
   });
 
   it('現價與 expectedTotal 不符：PRICE_CHANGED 帶現價，且不呼叫任何 rpc', async () => {
@@ -163,7 +211,7 @@ describe.each([
     expect(err.quote).toEqual({ unitPrice: 1500, total: 3000, priceType: 'PER_PERSON' });
     expect(fx.rpcCalls).toEqual([]);
     await expect(submit({ expectedTotal: 3000 })).resolves.toMatchObject({ orderId: 'order-1' });
-    expect(fx.rpcCalls.map((c) => c.name)).toEqual(['create_tour_order']);
+    expect(fx.rpcCalls.map((c) => c.name)).toEqual(['create_tour_order_quoted']);
   });
 
   it('季節價命中（PER_GROUP）：總額為單價、不乘人數', async () => {
