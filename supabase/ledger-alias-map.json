@@ -545,7 +545,7 @@
         "0113_issue_23_promotion_page_view_events"
       ],
       "classification": "EXACT",
-      "evidence": "#755 0113 受控釋出已套用至正式庫（#23 page_view_events）；provider ledger version 20261018041721。正式庫 ledger 快照已於 2026-10-18T23:58:00Z 重新擷取（67 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
+      "evidence": "#755 0113 受控釋出已套用至正式庫（#23 page_view_events）；provider ledger version 20261018041721。正式庫 ledger 快照已於 2026-10-19T00:14:59Z 重新擷取（67 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
     },
     {
       "repoFile": "0114_issue_22_banner_video_uploads",
