@@ -541,10 +541,11 @@
     },
     {
       "repoFile": "0113_issue_23_promotion_page_view_events",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "PENDING_APPLY",
-      "evidence": "#23：新增 page_view_events（推廣成效匿名近似 UV 埋點），依 Owner Decision `docs/decisions/2026-09-14-promotion-anonymous-approximate-uv.md`——不存原始 IP，只存每日輪替 salt 算出的 visitor_hash；RLS 只給 authenticated 一條 `is_tenant_member(tenant_id)` 的 select policy，不開放 anon/authenticated 的 insert（寫入僅走 service role，見 `src/server/promotion-events.ts`）。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+      "ledgerNames": [
+        "0113_issue_23_promotion_page_view_events"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 0113 受控釋出已套用至正式庫（#23 page_view_events）；provider ledger version 20261018041721。正式庫 ledger 快照已於 2026-10-19T00:14:59Z 重新擷取（67 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
     },
     {
       "repoFile": "0114_issue_22_banner_video_uploads",
