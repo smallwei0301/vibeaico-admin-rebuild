@@ -138,10 +138,11 @@
     },
     {
       "repoFile": "0124_issue_18_owner_notify_legacy_shape",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "PENDING_APPLY",
-      "evidence": "#589 G3 prerequisite：canonical TEST 的歷史 integration baseline 可能先建立舊版 owner_notify_recipients；本筆在 0116 前以 IF EXISTS／IF NOT EXISTS 補齊兩個事件開關，缺表時由 0116 建立完整 canonical shape。此 canonical migration 已進 main、尚未套用到正式庫，與 0116 同一個 G3 release 依序執行。"
+      "ledgerNames": [
+        "0124_issue_18_owner_notify_legacy_shape"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 0124＋0116＋0119＋0127 受控釋出（releaseId issue755-8fa4-s0124-0116-0119-0127-20261020055000，orchestrator run 39392316520：execute、G7、postcheck 皆 success）已套用至正式庫（#18 owner_notify_recipients 舊版 shape 相容（兩個事件開關補齊））；provider ledger version 20261020055000。正式庫 ledger 快照已於 2026-10-20T10:40:00Z 重新擷取（74 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
     },
     {
       "repoFile": "0125_issue_17_booking_addons_legacy_enum",
@@ -564,10 +565,11 @@
     },
     {
       "repoFile": "0116_issue_18_owner_notify",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "PENDING_APPLY",
-      "evidence": "#18：LINE 老闆通知 owner-notify（本人在 LINE 上確認「是我」→ 加入通知名單的 canonical flow，不是舊的 bind-code 模式）。新增 owner_notify_bind_requests（待確認邀請，24 小時過期，同一好友同時只能有一筆 PENDING）與 owner_notify_recipients（正式名單，`is_primary` 部分唯一索引保證單一租戶最多一位主要，`notify_new_booking`／`notify_cancel` 兩個獨立事件開關）；兩表都 FK 到既有 `line_users(tenant_id, line_user_id) on delete cascade`，好友被刪（unfollow 清理）時一併移除通知資格。RLS 皆 `is_tenant_member(tenant_id)` 全操作 policy，與 0066 trips 系列、0115 external_calendars 同一慣例。上限 3 位／租戶、無付費解鎖，寫死在 `src/server/owner-notify.ts` 的 `OWNER_NOTIFY_MAX_RECIPIENTS`，不是 DB 可調欄位。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+      "ledgerNames": [
+        "0116_issue_18_owner_notify"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 0124＋0116＋0119＋0127 受控釋出（releaseId issue755-8fa4-s0124-0116-0119-0127-20261020055000，orchestrator run 39392316520：execute、G7、postcheck 皆 success）已套用至正式庫（#18 owner_notify_bind_requests／owner_notify_recipients）；provider ledger version 20261020055001。正式庫 ledger 快照已於 2026-10-20T10:40:00Z 重新擷取（74 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
     },
     {
       "repoFile": "0117_issue_25b_support_chat_threads",
@@ -585,10 +587,11 @@
     },
     {
       "repoFile": "0119_issue_18_owner_notify_confirm_atomic",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "PENDING_APPLY",
-      "evidence": "#18 缺口 A：owner-notify「本人確認加入」的 3 位上限併發洞修復。confirmOwnerNotifyBind() 原本是 app 層先 count 再 insert（不在同一交易），兩個好友幾乎同時在 LINE 上確認可能突破 Issue #18 明文裁決的 3 位上限、無付費解鎖。本筆新增 confirm_owner_notify_bind（SECURITY DEFINER，pg_advisory_xact_lock 依 tenant_id 串行化同租戶併發確認，bind request 列 for update 鎖，count 在鎖內讀取）與 owner_notify_max_recipients 常數函式；三段式 ACL 撤 PUBLIC／anon／authenticated、只授 service_role（同 0090 慣例）。不改動既有表結構／既有 RLS policy，只新增兩支函式。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+      "ledgerNames": [
+        "0119_issue_18_owner_notify_confirm_atomic"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 0124＋0116＋0119＋0127 受控釋出（releaseId issue755-8fa4-s0124-0116-0119-0127-20261020055000，orchestrator run 39392316520：execute、G7、postcheck 皆 success）已套用至正式庫（#18 confirm_owner_notify_bind 原子化確認（3 位上限併發修復））；provider ledger version 20261020055002。正式庫 ledger 快照已於 2026-10-20T10:40:00Z 重新擷取（74 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
     },
     {
       "repoFile": "0121_issue_17_booking_addons_hardening",
@@ -606,10 +609,11 @@
     },
     {
       "repoFile": "0127_issue_589_authz_constraint_reconciliation",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "PENDING_APPLY",
-      "evidence": "#589 Stage 2：只收斂 booking_addons 與 owner_notify_recipients 的已知 policy/ACL 與 booking_addons.notified canonical 六值 check。SQL 在 G3 runner 外層 transaction 下固定順序鎖表；未知 policy/grantee/column ACL、非 text/not-null/default-NONE shape 或 PENDING/其他非 canonical 資料一律 fail closed，不清資料。此 migration 已在 main 前只能作 source review；canonical TEST 必須等 merge 後以 exact-main G3 套用與驗證，Production 仍另走 G0–G7。"
+      "ledgerNames": [
+        "0127_issue_589_authz_constraint_reconciliation"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 0124＋0116＋0119＋0127 受控釋出（releaseId issue755-8fa4-s0124-0116-0119-0127-20261020055000，orchestrator run 39392316520：execute、G7、postcheck 皆 success）已套用至正式庫（#589 booking_addons／owner_notify_recipients policy／ACL 與 notified check 收斂）；provider ledger version 20261020055003。正式庫 ledger 快照已於 2026-10-20T10:40:00Z 重新擷取（74 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
     },
     {
       "repoFile": "0128_issue_42_plan_seasonal_pricing",
