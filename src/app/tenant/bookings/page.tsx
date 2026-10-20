@@ -36,7 +36,8 @@ import { bookingsPage as t } from '@/i18n/zh-TW/pages/bookings';
 import { tenantDateString } from '@/lib/bookings-query-range';
 import { BOOKING_PAYMENT_FILTER_VALUES, isLatestRequest, parsePaymentStatusParam } from '@/lib/booking-payment-filter';
 import { buildStaffOptions, summarizeBatch } from '@/lib/booking-batch';
-import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
+import { formatCurrency, formatDate, formatTime, zonedLocalToIso, zonedYmd } from '@/lib/utils';
+import { useTenantTimeZone } from '@/lib/use-tenant-time-zone';
 import type {
   Booking, BookingAddon, BookingAddonPerformanceMode, BookingStatus, Customer, PaymentStatus,
   Service, Staff,
@@ -89,6 +90,7 @@ const paymentLabel = (b: Booking) => (
 /* -------------------------------------------------------------------------- */
 
 export default function BookingsPage() {
+  const tz = useTenantTimeZone();
   const toast = useToast();
 
   const [rows, setRows] = React.useState<Booking[]>([]);
@@ -337,9 +339,9 @@ export default function BookingsPage() {
       key: 'datetime', header: t.columns.datetime, width: '160px',
       render: (b) => (
         <div className="min-w-0">
-          <div>{formatDate(b.startAt)}</div>
+          <div>{formatDate(b.startAt, tz)}</div>
           <div className="text-xs text-secondary">
-            {formatTime(b.startAt)} - {formatTime(b.endAt)}
+            {formatTime(b.startAt, tz)} - {formatTime(b.endAt, tz)}
           </div>
         </div>
       ),
@@ -910,6 +912,7 @@ function BookingFormModal({
   onSaved: (result?: { notifyTriggered: boolean }) => void;
 }) {
   const toast = useToast();
+  const tz = useTenantTimeZone();
   const isEdit = !!booking;
   const c = t.createModal;
   const e = t.editModal;
@@ -941,8 +944,8 @@ function BookingFormModal({
       setCustomerId(booking.customerId);
       setServiceId(booking.serviceId);
       setStaffId(booking.staffId ?? '');
-      setDate(booking.startAt.slice(0, 10));
-      setTime(formatTime(booking.startAt));
+      setDate(zonedYmd(booking.startAt, tz));
+      setTime(formatTime(booking.startAt, tz));
       setDuration(booking.durationMinutes);
       setNote(booking.note);
     } else {
@@ -951,7 +954,7 @@ function BookingFormModal({
       setServiceId(''); setStaffId(''); setDate(''); setCheckoutDate('');
       setTime(''); setDuration(60); setNote('');
     }
-  }, [open, booking]);
+  }, [open, booking, tz]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -990,7 +993,7 @@ function BookingFormModal({
     if (!date) return c.dateInvalid;
     if (USE_MOCK && !isEdit && checkoutDate && checkoutDate <= date) return c.checkoutInvalid;
     if (!time) return c.timeInvalid;
-    if (!isEdit && date < tenantDateString()) return t.messages.pastDate;
+    if (!isEdit && date < tenantDateString(new Date(), tz)) return t.messages.pastDate;
     return '';
   };
 
@@ -1017,7 +1020,7 @@ function BookingFormModal({
     if (err) return;
     setSaving(true);
     try {
-      const startAt = new Date(`${date}T${time}:00`).toISOString();
+      const startAt = zonedLocalToIso(date, time, tz);
       if (isEdit && booking) {
         const result = await updateBooking(booking.id, { startAt, staffId: staffId || null, note });
         onSaved(result);
@@ -1632,6 +1635,7 @@ function BookingDetailModal({
   onRevert: () => void;
   onRemoveAddon: (item: BookingAddon) => void;
 }) {
+  const tz = useTenantTimeZone();
   const d = t.detailModal;
   const amount = booking?.finalPrice ?? 0;
 
@@ -1691,7 +1695,7 @@ function BookingDetailModal({
               <div className="text-xs text-secondary">{booking.customerPhone}</div>
             </div>
             <div>
-              {formatDate(booking.startAt)} {formatTime(booking.startAt)} - {formatTime(booking.endAt)}
+              {formatDate(booking.startAt, tz)} {formatTime(booking.startAt, tz)} - {formatTime(booking.endAt, tz)}
               <div className="text-xs text-secondary">
                 {t.createModal.durationValue(booking.durationMinutes)}
               </div>

@@ -1,5 +1,6 @@
 import { ApiError, adapt, request, toNetworkError } from '@/lib/api';
 import { APP_URL } from '@/config/env';
+import { PUBLIC_DEFAULT_TIME_ZONE, resolvePublicTimeZone } from '@/lib/public-time-zone';
 import type { BusinessType } from '@/config/modes';
 import {
   DEFAULT_TENANT_SETTINGS, buildWebhookUrl, maskSecret,
@@ -204,6 +205,23 @@ export const getTenantSettings = () =>
     () => request<TenantSettings>('/api/settings'),
   );
 
+/**
+ * 店家時區（tenant_settings.basic.timezone，缺值或無法辨識回退 Asia/Taipei）。
+ * 後台日期時間顯示共用（#936）；同一頁面生命週期只取一次，失敗也回退台北而不阻擋頁面。
+ */
+let tenantTimeZoneCache: Promise<string> | null = null;
+export const getTenantTimeZone = (): Promise<string> => {
+  if (!tenantTimeZoneCache) {
+    tenantTimeZoneCache = getTenantSettings()
+      .then((s) => resolvePublicTimeZone(s?.basic?.timezone))
+      .catch(() => {
+        tenantTimeZoneCache = null;
+        return PUBLIC_DEFAULT_TIME_ZONE;
+      });
+  }
+  return tenantTimeZoneCache;
+};
+
 export const saveTenantSettings = (patch: Partial<TenantSettings>) =>
   adapt<TenantSettingsSaveResult | undefined>(
     () => {
@@ -217,7 +235,7 @@ export const saveTenantSettings = (patch: Partial<TenantSettings>) =>
       method: 'PUT',
       body: JSON.stringify(patch),
     }),
-  );
+  ).then((r) => { tenantTimeZoneCache = null; return r; });
 
 /**
  * shop-page 端點群（issue #22；04 分冊 §A-1.1）—— `/tenant/shop-design` 頁
