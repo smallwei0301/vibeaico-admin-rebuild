@@ -310,6 +310,12 @@ export function sourceCatalog({ plan, repoRoot, readCanonicalSql, appliedSourceF
   return { before, after, enums, sources, read };
 }
 
+function historicalTableInEveryCapture(captures, table) {
+  const all = Object.values(captures);
+  return table.startsWith('public.') && all.length > 0
+    && all.every((capture) => Array.isArray(capture?.catalog?.tableOwners) && capture.catalog.tableOwners.some((entry) => entry.table === table));
+}
+
 export function deriveClosure({ source, captures, impactManifest, plan, createTourOrderFamily = true }) {
   const knownTables = new Set();
   for (const sql of source.sources.values()) for (const match of stripSqlComments(sql).matchAll(/\bcreate\s+table\s+(?:if\s+not\s+exists\s+)?((?:public\.)?[a-z_][a-z_0-9]*)/gi)) {
@@ -351,7 +357,17 @@ export function deriveClosure({ source, captures, impactManifest, plan, createTo
       const code = sqlWords(text);
       for (const match of code.matchAll(/\b(?:from|join|update|into|delete\s+from)\s+((?:public\.)?[a-z_][a-z_0-9]*)(?![a-z_0-9])/gi)) {
         const table = match[1].includes('.') ? match[1] : `public.${match[1]}`;
-        if (match[1].startsWith('public.') && !knownTables.has(table)) fail('RELEASE_UNSOURCED_DEPENDENCY', `${table} has no canonical table source`);
+        // `from public.fn(...)` is a set-returning function call, not a table. Only skip when the
+        // name is an exact canonical source routine; routine closure below already tracks it.
+        if (/^\s*\(/.test(code.slice(match.index + match[0].length)) && [...source.after.values()].some((routine) => routine.name === table)) continue;
+        if (match[1].startsWith('public.') && !knownTables.has(table)) {
+          // Historical baseline tables (e.g. booking_addons) are created only by the
+          // LOCAL_ONLY_TRANSITIONAL overlay. They count as existing tables only when
+          // EVERY capture's catalog.tableOwners (all public relkind r/p) proves them.
+          if (!historicalTableInEveryCapture(captures, table)) fail('RELEASE_UNSOURCED_DEPENDENCY', `${table} has no canonical table source`);
+          if (!roots.has(table)) { roots.add(table); changed = true; }
+          continue;
+        }
         if (knownTables.has(table) && !roots.has(table)) { roots.add(table); changed = true; }
       }
       for (const [key, routine] of source.after) {
