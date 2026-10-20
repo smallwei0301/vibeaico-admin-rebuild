@@ -142,7 +142,7 @@
         "0124_issue_18_owner_notify_legacy_shape"
       ],
       "classification": "EXACT",
-      "evidence": "#755 0124＋0116＋0119＋0127 受控釋出（releaseId issue755-8fa4-s0124-0116-0119-0127-20261020055000，orchestrator run 39392316520：execute、G7、postcheck 皆 success）已套用至正式庫（#18 owner_notify_recipients 舊版 shape 相容（兩個事件開關補齊））；provider ledger version 20261020055000。正式庫 ledger 快照已於 2026-10-20T10:40:00Z 重新擷取（74 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
+      "evidence": "#755 0124＋0116＋0119＋0127 受控釋出（releaseId issue755-8fa4-s0124-0116-0119-0127-20261020055000，orchestrator run 39392316520：execute、G7、postcheck 皆 success）已套用至正式庫（#18 owner_notify_recipients 舊版 shape 相容（兩個事件開關補齊））；provider ledger version 20261020055000。正式庫 ledger 快照已於 2026-10-20T10:53:06Z 重新擷取（74 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
     },
     {
       "repoFile": "0125_issue_17_booking_addons_legacy_enum",
@@ -569,7 +569,7 @@
         "0116_issue_18_owner_notify"
       ],
       "classification": "EXACT",
-      "evidence": "#755 0124＋0116＋0119＋0127 受控釋出（releaseId issue755-8fa4-s0124-0116-0119-0127-20261020055000，orchestrator run 39392316520：execute、G7、postcheck 皆 success）已套用至正式庫（#18 owner_notify_bind_requests／owner_notify_recipients）；provider ledger version 20261020055001。正式庫 ledger 快照已於 2026-10-20T10:40:00Z 重新擷取（74 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
+      "evidence": "#755 0124＋0116＋0119＋0127 受控釋出（releaseId issue755-8fa4-s0124-0116-0119-0127-20261020055000，orchestrator run 39392316520：execute、G7、postcheck 皆 success）已套用至正式庫（#18 owner_notify_bind_requests／owner_notify_recipients）；provider ledger version 20261020055001。正式庫 ledger 快照已於 2026-10-20T10:53:06Z 重新擷取（74 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
     },
     {
       "repoFile": "0117_issue_25b_support_chat_threads",
@@ -591,7 +591,7 @@
         "0119_issue_18_owner_notify_confirm_atomic"
       ],
       "classification": "EXACT",
-      "evidence": "#755 0124＋0116＋0119＋0127 受控釋出（releaseId issue755-8fa4-s0124-0116-0119-0127-20261020055000，orchestrator run 39392316520：execute、G7、postcheck 皆 success）已套用至正式庫（#18 confirm_owner_notify_bind 原子化確認（3 位上限併發修復））；provider ledger version 20261020055002。正式庫 ledger 快照已於 2026-10-20T10:40:00Z 重新擷取（74 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
+      "evidence": "#755 0124＋0116＋0119＋0127 受控釋出（releaseId issue755-8fa4-s0124-0116-0119-0127-20261020055000，orchestrator run 39392316520：execute、G7、postcheck 皆 success）已套用至正式庫（#18 confirm_owner_notify_bind 原子化確認（3 位上限併發修復））；provider ledger version 20261020055002。正式庫 ledger 快照已於 2026-10-20T10:53:06Z 重新擷取（74 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
     },
     {
       "repoFile": "0121_issue_17_booking_addons_hardening",
@@ -613,7 +613,7 @@
         "0127_issue_589_authz_constraint_reconciliation"
       ],
       "classification": "EXACT",
-      "evidence": "#755 0124＋0116＋0119＋0127 受控釋出（releaseId issue755-8fa4-s0124-0116-0119-0127-20261020055000，orchestrator run 39392316520：execute、G7、postcheck 皆 success）已套用至正式庫（#589 booking_addons／owner_notify_recipients policy／ACL 與 notified check 收斂）；provider ledger version 20261020055003。正式庫 ledger 快照已於 2026-10-20T10:40:00Z 重新擷取（74 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
+      "evidence": "#755 0124＋0116＋0119＋0127 受控釋出（releaseId issue755-8fa4-s0124-0116-0119-0127-20261020055000，orchestrator run 39392316520：execute、G7、postcheck 皆 success）已套用至正式庫（#589 booking_addons／owner_notify_recipients policy／ACL 與 notified check 收斂）；provider ledger version 20261020055003。正式庫 ledger 快照已於 2026-10-20T10:53:06Z 重新擷取（74 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
     },
     {
       "repoFile": "0128_issue_42_plan_seasonal_pricing",
