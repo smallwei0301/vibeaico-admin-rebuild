@@ -1,5 +1,6 @@
 import { ApiError, adapt, request, toNetworkError } from '@/lib/api';
 import { APP_URL } from '@/config/env';
+import { resolvePublicTimeZone } from '@/lib/public-time-zone';
 import type { BusinessType } from '@/config/modes';
 import {
   DEFAULT_TENANT_SETTINGS, buildWebhookUrl, maskSecret,
@@ -204,6 +205,36 @@ export const getTenantSettings = () =>
     () => request<TenantSettings>('/api/settings'),
   );
 
+/**
+ * 店家時區（tenant_settings.basic.timezone；已載入但缺值或無法辨識時回退 Asia/Taipei）。
+ * 後台日期時間顯示共用（#936）；同一頁面生命週期只取一次成功結果。
+ * 載入「失敗」不再回退台北：Promise 會 reject 且不進快取（下次呼叫即重試），
+ * 否則非台北店家的瞬斷會讓寫入路徑誤以為已取得時區，以錯誤 offset 儲存預約。
+ * 僅顯示用的呼叫端由 useTenantTimeZoneState 自行回退台北渲染，寫入則須等 ready。
+ */
+const tenantTimeZoneCache = new Map<string, Promise<string>>();
+const tenantTimeZoneInvalidationListeners = new Set<() => void>();
+/** 快取被 saveTenantSettings 清除時通知（共用時區 store 據此重新載入，避免跨頁沿用舊時區）。 */
+export const onTenantTimeZoneCacheCleared = (fn: () => void): (() => void) => {
+  tenantTimeZoneInvalidationListeners.add(fn);
+  return () => { tenantTimeZoneInvalidationListeners.delete(fn); };
+};
+/** 以店家 id 為鍵，避免 SPA 登出再登入另一間店時沿用前一間的時區；未提供 id 時共用 '' 鍵。 */
+export const getTenantTimeZone = (tenantId = ''): Promise<string> => {
+  let cached = tenantTimeZoneCache.get(tenantId);
+  if (!cached) {
+    const pending: Promise<string> = getTenantSettings()
+      .then((s) => resolvePublicTimeZone(s?.basic?.timezone))
+      .catch((err) => {
+        if (tenantTimeZoneCache.get(tenantId) === pending) tenantTimeZoneCache.delete(tenantId);
+        throw err;
+      });
+    cached = pending;
+    tenantTimeZoneCache.set(tenantId, cached);
+  }
+  return cached;
+};
+
 export const saveTenantSettings = (patch: Partial<TenantSettings>) =>
   adapt<TenantSettingsSaveResult | undefined>(
     () => {
@@ -217,7 +248,11 @@ export const saveTenantSettings = (patch: Partial<TenantSettings>) =>
       method: 'PUT',
       body: JSON.stringify(patch),
     }),
-  );
+  ).then((r) => {
+    tenantTimeZoneCache.clear();
+    tenantTimeZoneInvalidationListeners.forEach((fn) => fn());
+    return r;
+  });
 
 /**
  * shop-page 端點群（issue #22；04 分冊 §A-1.1）—— `/tenant/shop-design` 頁
