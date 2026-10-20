@@ -37,7 +37,7 @@ import { tenantDateString } from '@/lib/bookings-query-range';
 import { BOOKING_PAYMENT_FILTER_VALUES, isLatestRequest, parsePaymentStatusParam } from '@/lib/booking-payment-filter';
 import { buildStaffOptions, summarizeBatch } from '@/lib/booking-batch';
 import { formatCurrency, formatDate, formatTime, zonedLocalToIso, zonedYmd } from '@/lib/utils';
-import { useTenantTimeZone } from '@/lib/use-tenant-time-zone';
+import { useTenantTimeZone, useTenantTimeZoneState } from '@/lib/use-tenant-time-zone';
 import type {
   Booking, BookingAddon, BookingAddonPerformanceMode, BookingStatus, Customer, PaymentStatus,
   Service, Staff,
@@ -912,7 +912,11 @@ function BookingFormModal({
   onSaved: (result?: { notifyTriggered: boolean }) => void;
 }) {
   const toast = useToast();
-  const tz = useTenantTimeZone();
+  const { timeZone: tz, ready: tzReady } = useTenantTimeZoneState();
+  const tzRef = React.useRef(tz);
+  tzRef.current = tz;
+  // 編輯預填的日期／時間；送出時若未被修改就沿用原 startAt（避免 DST 重複小時往返位移）
+  const prefillRef = React.useRef({ date: '', time: '' });
   const isEdit = !!booking;
   const c = t.createModal;
   const e = t.editModal;
@@ -936,25 +940,42 @@ function BookingFormModal({
   const [error, setError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
 
+  // 只在開啟／換預約時重設表單；時區晚到不會洗掉使用者已輸入的欄位
   React.useEffect(() => {
     if (!open) return;
     setError('');
     setShowAllSlots(false);
     if (booking) {
+      const d0 = zonedYmd(booking.startAt, tzRef.current);
+      const t0 = formatTime(booking.startAt, tzRef.current);
+      prefillRef.current = { date: d0, time: t0 };
       setCustomerId(booking.customerId);
       setServiceId(booking.serviceId);
       setStaffId(booking.staffId ?? '');
-      setDate(zonedYmd(booking.startAt, tz));
-      setTime(formatTime(booking.startAt, tz));
+      setDate(d0);
+      setTime(t0);
       setDuration(booking.durationMinutes);
       setNote(booking.note);
     } else {
+      prefillRef.current = { date: '', time: '' };
       setNewCustomer(false);
       setCustomerId(''); setNewName(''); setNewPhone('');
       setServiceId(''); setStaffId(''); setDate(''); setCheckoutDate('');
       setTime(''); setDuration(60); setNote('');
     }
-  }, [open, booking, tz]);
+  }, [open, booking]);
+
+  // 時區變動：僅重算「尚未被使用者修改」的編輯預填日期／時間
+  React.useEffect(() => {
+    if (!open || !booking) return;
+    const prev = prefillRef.current;
+    const d1 = zonedYmd(booking.startAt, tz);
+    const t1 = formatTime(booking.startAt, tz);
+    if (prev.date === d1 && prev.time === t1) return;
+    prefillRef.current = { date: d1, time: t1 };
+    setDate((cur) => (cur === prev.date ? d1 : cur));
+    setTime((cur) => (cur === prev.time ? t1 : cur));
+  }, [tz]); // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => {
     if (!open) return;
@@ -1017,10 +1038,12 @@ function BookingFormModal({
   const submit = async () => {
     const err = validate();
     setError(err);
-    if (err) return;
+    if (err || !tzReady) return;
     setSaving(true);
     try {
-      const startAt = zonedLocalToIso(date, time, tz);
+      const untouched = isEdit && booking
+        && date === prefillRef.current.date && time === prefillRef.current.time;
+      const startAt = untouched && booking ? booking.startAt : zonedLocalToIso(date, time, tz);
       if (isEdit && booking) {
         const result = await updateBooking(booking.id, { startAt, staffId: staffId || null, note });
         onSaved(result);
@@ -1055,6 +1078,7 @@ function BookingFormModal({
           <Button variant="secondary" onClick={onClose}>{common.cancel}</Button>
           <Button
             loading={saving}
+            disabled={!tzReady}
             loadingText={isEdit ? e.submitting : c.submitting}
             onClick={() => void submit()}
           >

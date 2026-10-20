@@ -24,11 +24,24 @@ export function formatPercent(n: number, digits = 0): string {
  * 取出某個瞬間在指定 IANA 時區的年月日時分（#936）。
  * 只供下方 formatDate／formatTime 等共用；呼叫端傳入的時區需先經 resolvePublicTimeZone 正規化。
  */
+const dtfCache = new Map<string, Intl.DateTimeFormat>();
+function zonedFormatter(timeZone: string): Intl.DateTimeFormat {
+  let f = dtfCache.get(timeZone);
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-US', {
+      timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    });
+    dtfCache.set(timeZone, f);
+  }
+  return f;
+}
+
 function zonedParts(iso: string, timeZone: string) {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).formatToParts(new Date(iso));
+  const date = new Date(iso);
+  // 無效日期：與不帶時區路徑一致輸出 NaN 字樣，不丟 RangeError 讓整張表格崩潰。
+  if (isNaN(date.getTime())) return { y: 'NaN', mo: 'NaN', d: 'NaN', h: 'NaN', mi: 'NaN' };
+  const parts = zonedFormatter(timeZone).formatToParts(date);
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
   return { y: get('year'), mo: get('month'), d: get('day'), h: get('hour'), mi: get('minute') };
 }
@@ -85,9 +98,15 @@ export function zonedLocalToIso(date: string, time: string, timeZone: string): s
     const p = zonedParts(new Date(ms).toISOString(), zone);
     return Date.UTC(Number(p.y), Number(p.mo) - 1, Number(p.d), Number(p.h), Number(p.mi)) - Math.floor(ms / 60000) * 60000;
   };
-  let guess = wall - offsetAt(wall);
-  guess = wall - offsetAt(guess);
-  return new Date(guess).toISOString();
+  const g1 = wall - offsetAt(wall);
+  const g2 = wall - offsetAt(g1);
+  if (g1 === g2) return new Date(g2).toISOString();
+  // 兩次修正不收斂：當地時間落在 DST 跳時缺口（不存在），取缺口結束後的瞬間（兩個候選中較晚者）。
+  // 若 g2 當地顯示與請求一致則為重複小時的有效解，沿用 g2（保持既有行為）。
+  const back = zonedParts(new Date(g2).toISOString(), zone);
+  const backWall = Date.UTC(Number(back.y), Number(back.mo) - 1, Number(back.d), Number(back.h), Number(back.mi));
+  if (backWall === wall) return new Date(g2).toISOString();
+  return new Date(Math.max(g1, g2)).toISOString();
 }
 
 export const WEEKDAYS_ZH = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'] as const;

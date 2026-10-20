@@ -209,17 +209,20 @@ export const getTenantSettings = () =>
  * 店家時區（tenant_settings.basic.timezone，缺值或無法辨識回退 Asia/Taipei）。
  * 後台日期時間顯示共用（#936）；同一頁面生命週期只取一次，失敗也回退台北而不阻擋頁面。
  */
-let tenantTimeZoneCache: Promise<string> | null = null;
-export const getTenantTimeZone = (): Promise<string> => {
-  if (!tenantTimeZoneCache) {
-    tenantTimeZoneCache = getTenantSettings()
+const tenantTimeZoneCache = new Map<string, Promise<string>>();
+/** 以店家 id 為鍵，避免 SPA 登出再登入另一間店時沿用前一間的時區；未提供 id 時共用 '' 鍵。 */
+export const getTenantTimeZone = (tenantId = ''): Promise<string> => {
+  let cached = tenantTimeZoneCache.get(tenantId);
+  if (!cached) {
+    cached = getTenantSettings()
       .then((s) => resolvePublicTimeZone(s?.basic?.timezone))
       .catch(() => {
-        tenantTimeZoneCache = null;
+        tenantTimeZoneCache.delete(tenantId);
         return PUBLIC_DEFAULT_TIME_ZONE;
       });
+    tenantTimeZoneCache.set(tenantId, cached);
   }
-  return tenantTimeZoneCache;
+  return cached;
 };
 
 export const saveTenantSettings = (patch: Partial<TenantSettings>) =>
@@ -235,7 +238,7 @@ export const saveTenantSettings = (patch: Partial<TenantSettings>) =>
       method: 'PUT',
       body: JSON.stringify(patch),
     }),
-  ).then((r) => { tenantTimeZoneCache = null; return r; });
+  ).then((r) => { tenantTimeZoneCache.clear(); return r; });
 
 /**
  * shop-page 端點群（issue #22；04 分冊 §A-1.1）—— `/tenant/shop-design` 頁
