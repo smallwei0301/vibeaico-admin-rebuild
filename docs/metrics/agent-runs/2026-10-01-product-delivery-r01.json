@@ -399,6 +399,10 @@
     {
       "ref": "issue/1030",
       "title": "安全：驗證碼無嘗試次數上限且舊碼不作廢，重設密碼可被暴力猜碼接管帳號"
+    },
+    {
+      "ref": "issue/936",
+      "title": "後台日期時間顯示用瀏覽器時區，與店家時區篩選不一致：管理員不在店家時區時，篩選結果與畫面日期對不上"
     }
   ],
   "main": {
@@ -11240,13 +11244,47 @@
         "startedAt": "2026-10-16T00:00:47Z",
         "completedAt": "2026-10-16T00:00:47Z",
         "note": "Luna metrics capture 綁定 issue/1030：補 sources、issuesStarted +1、lunaTasks/lunaAccepted +2、solTouches +1、solIssues +1，補記 #1028 4d0ad3c4 build 與 Final Risk 重審、#1030 兩次 build、#46 GAP 盤點；#1029 premium 諮詢與 dfe2b06d／152798ab build 未保存精確時間，未補記。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261020-terra-build-936",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 936,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/1063#issuecomment-6284338572",
+        "startedAt": "2026-10-20T05:35:37Z",
+        "completedAt": "2026-10-20T05:45:35Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）施工 #936 後台日期時間改用店家時區（PR #1063，head b3cb0f2b）。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261020-luna-scout-936-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 936,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-20T05:49:13Z",
+        "completedAt": "2026-10-20T05:49:13Z",
+        "note": "Luna metrics capture 綁定 issue/936 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +1（本綁定事件）；補記 #936 Sonnet TERRA_BUILD（PR #1063 comment 6284338572）。requested claude-haiku-4-5（路由表 scout 層）；actual 未經平台驗證。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 102,
+    "issuesStarted": 103,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -11273,8 +11311,8 @@
     "hardFailReasons": ["OBSERVED_2026_10_15_PR1002_PUSHED_4b239101_WHILE_PARKED"]
   },
   "flow": {
-    "lunaTasks": 209,
-    "lunaAccepted": 200,
+    "lunaTasks": 210,
+    "lunaAccepted": 201,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
