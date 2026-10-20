@@ -403,6 +403,14 @@
     {
       "ref": "issue/1066",
       "title": "LINE「票券」回覆：百分比券折數寫反、兌換券顯示折抵 NT$0、過期券仍列為可領"
+    },
+    {
+      "ref": "issue/1064",
+      "title": "#46 導遊版 LINE「我的訂單」只列總額，看不到付款狀態與已付金額"
+    },
+    {
+      "ref": "issue/936",
+      "title": "後台日期時間顯示用瀏覽器時區，與店家時區篩選不一致：管理員不在店家時區時，篩選結果與畫面日期對不上"
     }
   ],
   "main": {
@@ -11107,8 +11115,7 @@
         "startedAt": "2026-10-15T14:44:59Z",
         "completedAt": "2026-10-15T14:53:53Z",
         "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）以 RESERVE 於 #1027 驗證期間預建 #1028（commit 64a42206），#1027 合併後 cherry-pick 為 742a4283。actual 未經平台驗證。"
-      }
-,
+      },
       {
         "id": "20261015-terra-build-985",
         "role": "build",
@@ -11295,13 +11302,98 @@
         "startedAt": "2026-10-20T07:12:33Z",
         "completedAt": "2026-10-20T07:13:30Z",
         "note": "Luna metrics capture 綁定 issue/1066 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2（盤點＋綁定）、補記 #1066 TERRA_BUILD 事件。solTouches 未變（無 Sol 事件）。本綁定未沿用 #936／#1064 條目。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261020-terra-build-1064",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 1064,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/1065#issuecomment-6285310234",
+        "startedAt": "2026-10-20T06:53:41Z",
+        "completedAt": "2026-10-20T06:59:25Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5，build tier）施工 #1064，commit 6e7569fe（導遊版 LINE「我的訂單」付款狀態與部分付款尾款）。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261020-luna-scout-1064-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1064,
+        "evidenceRef": "issue/1064",
+        "startedAt": "2026-10-20T06:50:54Z",
+        "completedAt": "2026-10-20T06:53:00Z",
+        "note": "Luna 窄盤點：Haiku scout（requested claude-haiku-4-5）找到導遊版 LINE「我的訂單」只列總額、看不到付款狀態之缺口，主 agent 確認後開 #1064。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261020-luna-scout-1064-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1064,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-20T07:00:40Z",
+        "completedAt": "2026-10-20T07:01:24Z",
+        "note": "Luna metrics capture 綁定 issue/1064 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2（盤點＋綁定）、補記 #1064 TERRA_BUILD 事件。solTouches 未變（無 Sol 事件）。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261020-terra-build-936",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 936,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/1063#issuecomment-6284338572",
+        "startedAt": "2026-10-20T05:35:37Z",
+        "completedAt": "2026-10-20T05:45:35Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）施工 #936 後台日期時間改用店家時區（PR #1063，head b3cb0f2b）。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261020-luna-scout-936-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 936,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-20T05:49:13Z",
+        "completedAt": "2026-10-20T05:49:13Z",
+        "note": "Luna metrics capture 綁定 issue/936 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +1（本綁定事件）；補記 #936 Sonnet TERRA_BUILD（PR #1063 comment 6284338572）。requested claude-haiku-4-5（路由表 scout 層）；actual 未經平台驗證。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 103,
+    "issuesStarted": 105,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -11325,11 +11417,13 @@
     "reopenedIssues": 1,
     "postMergeRegressions": 0,
     "safetyViolations": 1,
-    "hardFailReasons": ["OBSERVED_2026_10_15_PR1002_PUSHED_4b239101_WHILE_PARKED"]
+    "hardFailReasons": [
+      "OBSERVED_2026_10_15_PR1002_PUSHED_4b239101_WHILE_PARKED"
+    ]
   },
   "flow": {
-    "lunaTasks": 211,
-    "lunaAccepted": 202,
+    "lunaTasks": 214,
+    "lunaAccepted": 205,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,

@@ -40,6 +40,7 @@ import { publicTourRequestPage } from '@/i18n/zh-TW/pages/public-tour-request';
 import { refundPolicyText } from '@/lib/tour-order-detail-labels';
 import { isPendingTourRequest, tourPaymentActions } from '@/lib/tour-order-payment-actions';
 import { formatCurrency, formatDateTime, formatNumber } from '@/lib/utils';
+import { useTenantTimeZone } from '@/lib/use-tenant-time-zone';
 import type {
   TourOrder, TourOrderSource, TourOrderSummary, TourOrderStatus, TourPaymentStatus,
   Trip, TripDeparture, TripPlan,
@@ -61,6 +62,7 @@ const SOURCE_TONE: Record<TourOrderSource, 'primary' | 'info' | 'success' | 'neu
 };
 
 export default function TourOrdersPage() {
+  const tz = useTenantTimeZone();
   const toast = useToast();
   const copyLine = (lineId: string) => {
     try {
@@ -451,7 +453,7 @@ export default function TourOrdersPage() {
           >
             {o.orderNo}
           </button>
-          <div className="text-2xs text-muted">{formatDateTime(o.createdAt)}</div>
+          <div className="text-2xs text-muted">{formatDateTime(o.createdAt, tz)}</div>
         </div>
       ),
     },
@@ -507,7 +509,7 @@ export default function TourOrdersPage() {
           <div className="mt-0.5 truncate text-2xs text-secondary">{o.paymentMethodLabel || t.detail.noMethod}</div>
           {o.holdExpiresAt ? (
             <div className="text-2xs text-warning">
-              {t.hold.expiring(formatDateTime(o.holdExpiresAt))}
+              {t.hold.expiring(formatDateTime(o.holdExpiresAt, tz))}
             </div>
           ) : null}
         </div>
@@ -788,7 +790,7 @@ export default function TourOrdersPage() {
                     ?? <span className="text-muted">{t.detail.noPolicy}</span>}
                 </dd>
                 <dt className="text-secondary">{t.detail.fields.createdAt}</dt>
-                <dd>{formatDateTime(detail.createdAt)}</dd>
+                <dd>{formatDateTime(detail.createdAt, tz)}</dd>
               </dl>
             </section>
 
