@@ -35,7 +35,7 @@ import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
 import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { APP_URL, USE_MOCK } from '@/config/env';
-import { buildPublicBookingUrl } from '@/config/tenant-settings';
+import { buildPublicBookingUrl, buildPublicTripUrl } from '@/config/tenant-settings';
 import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
 import { ApiError } from '@/lib/api';
 import { batchDatePlan } from '@/lib/trip-batch-zero-reason';
@@ -202,6 +202,12 @@ export default function TripDetailPage() {
   const inboxDepartureParam = searchParams?.get('departureId') ?? null;
   const scrolledDepartureRef = React.useRef<string | null>(null);
   const [trip, setTrip] = React.useState<Trip | null>(null);
+  // issue #1072：只用已儲存的 trip（非表單草稿）判斷；已發佈且有 slug 才開行程公開頁
+  const savedSlug = trip?.slug?.trim() ?? '';
+  const tripPreviewable = trip?.status === 'PUBLISHED' && savedSlug !== '';
+  const previewUrl = tripPreviewable
+    ? buildPublicTripUrl(APP_URL, currentTenant.shopCode, savedSlug)
+    : publicShopUrl;
   const coverListedBlocked = tripCoverBlockedByListing(trip?.midaoListing);
   const [plans, setPlans] = React.useState<TripPlan[]>([]);
   const [departures, setDepartures] = React.useState<TripDeparture[]>([]);
@@ -1582,14 +1588,18 @@ export default function TripDetailPage() {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="text-sm font-semibold text-dark">{t.plans.quick.previewTitle}</span>
                     <Link
-                      href={publicShopUrl}
+                      href={previewUrl}
                       target="_blank"
                       rel="noreferrer"
                       className="inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline"
                     >
-                      <ExternalLink size={14} />{t.plans.quick.previewLink}
+                      <ExternalLink size={14} />
+                      {tripPreviewable ? t.plans.quick.previewTripLink : t.plans.quick.previewLink}
                     </Link>
                   </div>
+                  {!tripPreviewable ? (
+                    <p className="mt-1 text-xs text-secondary">{t.plans.quick.previewUnpublishedHint}</p>
+                  ) : null}
                   <div className="mt-2 rounded-md border border-neutral-200 bg-white p-3">
                     <div className="font-semibold text-dark">
                       {planDraft.name.trim() || t.plans.quick.previewEmpty}
