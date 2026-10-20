@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { safePublicMapLinkUrl } from '@/lib/public-url';
+import { safePublicHttpsUrl } from '@/lib/public-url';
 import { loadPublicTourRequestStatus } from '@/server/public-tour-request';
 
 const ROOT = process.cwd();
@@ -11,8 +11,8 @@ const TENANT = '11111111-1111-1111-1111-111111111111';
 const TRIP_ID = '44444444-4444-4444-4444-444444444444';
 const ORDER_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 
-const state: { trip: Record<string, unknown> | null; tripFilters: Array<[string, unknown]> } = {
-  trip: null, tripFilters: [],
+const state: { trip: Record<string, unknown> | null; tripError: boolean; tripFilters: Array<[string, unknown]> } = {
+  trip: null, tripError: false, tripFilters: [],
 };
 
 function fakeAdmin() {
@@ -45,7 +45,9 @@ function fakeAdmin() {
         const chain = {
           eq: (col: string, val: unknown) => { state.tripFilters.push([col, val]); return chain; },
           in: async () => ({ data: [], error: null }),
-          maybeSingle: async () => ({ data: state.trip, error: null }),
+          maybeSingle: async () => (state.tripError
+            ? { data: null, error: { code: 'XX000', message: 'boom' } }
+            : { data: state.trip, error: null }),
         };
         return { select: () => chain };
       }
@@ -56,7 +58,7 @@ function fakeAdmin() {
 
 vi.mock('@/server/supabase', () => ({ createAdminSupabase: () => fakeAdmin() }));
 
-beforeEach(() => { state.trip = null; state.tripFilters = []; });
+beforeEach(() => { state.trip = null; state.tripError = false; state.tripFilters = []; });
 
 describe('issue #1070 — 狀態頁 loader 帶出集合地點', () => {
   it('有地點＋地圖連結：兩者都回傳', async () => {
@@ -86,11 +88,32 @@ describe('issue #1070 — 狀態頁 loader 帶出集合地點', () => {
     }
   });
 
-  it('非 http(s) 地圖連結被擋，地點文字仍保留', async () => {
+  it('非 https 地圖連結被擋（含 http、protocol-relative），地點文字仍保留', async () => {
     state.trip = { meeting_point: '集合點', meeting_point_map_url: 'javascript:alert(1)' };
     const order = await loadPublicTourRequestStatus('shop-a', ORDER_ID, '0912345678');
     expect(order?.meetingPoint).toBe('集合點');
     expect(order?.meetingPointMapUrl).toBeUndefined();
+  });
+
+  it('http 與 protocol-relative 地圖連結不顯示，地點文字保留', async () => {
+    for (const bad of ['http://maps.example.com/a', '//maps.example.com/a', 'data:text/html,x']) {
+      state.trip = { meeting_point: '集合點', meeting_point_map_url: bad };
+      const order = await loadPublicTourRequestStatus('shop-a', ORDER_ID, '0912345678');
+      expect(order?.meetingPoint).toBe('集合點');
+      expect(order?.meetingPointMapUrl).toBeUndefined();
+    }
+  });
+
+  it('trips 查詢失敗：降級仍回傳訂單，無集合地點欄位，log 不含聯絡方式', async () => {
+    state.tripError = true;
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const order = await loadPublicTourRequestStatus('shop-a', ORDER_ID, '0912345678');
+    expect(order?.id).toBe(ORDER_ID);
+    expect(order?.meetingPoint).toBeUndefined();
+    expect(order?.meetingPointMapUrl).toBeUndefined();
+    expect(spy).toHaveBeenCalled();
+    expect(JSON.stringify(spy.mock.calls)).not.toContain('0912345678');
+    spy.mockRestore();
   });
 
   it('trips 查詢帶 tenant_id 與該訂單的 trip id 篩選', async () => {
@@ -101,12 +124,12 @@ describe('issue #1070 — 狀態頁 loader 帶出集合地點', () => {
   });
 });
 
-describe('issue #1070 — safePublicMapLinkUrl', () => {
-  it('接受 http／https，拒絕其他協定、帶帳密與無效值', () => {
-    expect(safePublicMapLinkUrl('https://maps.google.com/?q=1')).toContain('https://maps.google.com/');
-    expect(safePublicMapLinkUrl('http://maps.example.com/a')).toBe('http://maps.example.com/a');
-    for (const bad of ['javascript:alert(1)', 'data:text/html,x', 'ftp://x.com', 'https://u:p@x.com', 'not a url', '', null, 42]) {
-      expect(safePublicMapLinkUrl(bad)).toBe('');
+describe('issue #1070 — safePublicHttpsUrl', () => {
+  it('只接受 https，拒絕 http、其他協定、帶帳密與無效值', () => {
+    expect(safePublicHttpsUrl('https://maps.google.com/?q=1')).toContain('https://maps.google.com/');
+    expect(safePublicHttpsUrl('http://maps.example.com/a')).toBe('');
+    for (const bad of ['//maps.example.com/a', 'javascript:alert(1)', 'data:text/html,x', 'ftp://x.com', 'https://u:p@x.com', 'not a url', '', null, 42]) {
+      expect(safePublicHttpsUrl(bad)).toBe('');
     }
   });
 });
