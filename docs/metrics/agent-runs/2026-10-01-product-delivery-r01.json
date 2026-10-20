@@ -401,6 +401,10 @@
       "title": "安全：驗證碼無嘗試次數上限且舊碼不作廢，重設密碼可被暴力猜碼接管帳號"
     },
     {
+      "ref": "issue/1066",
+      "title": "LINE「票券」回覆：百分比券折數寫反、兌換券顯示折抵 NT$0、過期券仍列為可領"
+    },
+    {
       "ref": "issue/1064",
       "title": "#46 導遊版 LINE「我的訂單」只列總額，看不到付款狀態與已付金額"
     },
@@ -11111,8 +11115,7 @@
         "startedAt": "2026-10-15T14:44:59Z",
         "completedAt": "2026-10-15T14:53:53Z",
         "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）以 RESERVE 於 #1027 驗證期間預建 #1028（commit 64a42206），#1027 合併後 cherry-pick 為 742a4283。actual 未經平台驗證。"
-      }
-,
+      },
       {
         "id": "20261015-terra-build-985",
         "role": "build",
@@ -11257,6 +11260,57 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
+        "id": "20261020-terra-build-1066",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 1066,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/1067#issuecomment-6285487972",
+        "startedAt": "2026-10-20T07:05:11Z",
+        "completedAt": "2026-10-20T07:11:22Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5，build tier）施工 #1066，commit 6fae3315（LINE「票券」回覆修正折數、兌換券、有效期與查詢失敗）。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261020-luna-scout-1066-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1066,
+        "evidenceRef": "issue/1066",
+        "startedAt": "2026-10-20T07:02:49Z",
+        "completedAt": "2026-10-20T07:04:30Z",
+        "note": "Luna 窄盤點：Haiku scout（requested claude-haiku-4-5）找到 replyCoupons() 折數反寫、兌換券顯示 NT$0、過期券仍可領之缺口，主 agent 確認後開 #1066。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261020-luna-scout-1066-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1066,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-20T07:12:33Z",
+        "completedAt": "2026-10-20T07:13:30Z",
+        "note": "Luna metrics capture 綁定 issue/1066 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2（盤點＋綁定）、補記 #1066 TERRA_BUILD 事件。solTouches 未變（無 Sol 事件）。本綁定未沿用 #936／#1064 條目。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
         "id": "20261020-terra-build-1064",
         "role": "build",
         "requestedModel": "terra",
@@ -11339,7 +11393,7 @@
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 104,
+    "issuesStarted": 105,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -11363,11 +11417,13 @@
     "reopenedIssues": 1,
     "postMergeRegressions": 0,
     "safetyViolations": 1,
-    "hardFailReasons": ["OBSERVED_2026_10_15_PR1002_PUSHED_4b239101_WHILE_PARKED"]
+    "hardFailReasons": [
+      "OBSERVED_2026_10_15_PR1002_PUSHED_4b239101_WHILE_PARKED"
+    ]
   },
   "flow": {
-    "lunaTasks": 212,
-    "lunaAccepted": 203,
+    "lunaTasks": 214,
+    "lunaAccepted": 205,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
