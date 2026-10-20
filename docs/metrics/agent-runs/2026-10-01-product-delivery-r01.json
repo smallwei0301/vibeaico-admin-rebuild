@@ -411,6 +411,10 @@
     {
       "ref": "issue/936",
       "title": "後台日期時間顯示用瀏覽器時區，與店家時區篩選不一致：管理員不在店家時區時，篩選結果與畫面日期對不上"
+    },
+    {
+      "ref": "issue/1070",
+      "title": "#46 旅客訂單狀態頁看不到集合地點與地圖連結"
     }
   ],
   "main": {
@@ -11387,13 +11391,64 @@
         "startedAt": "2026-10-20T05:49:13Z",
         "completedAt": "2026-10-20T05:49:13Z",
         "note": "Luna metrics capture 綁定 issue/936 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +1（本綁定事件）；補記 #936 Sonnet TERRA_BUILD（PR #1063 comment 6284338572）。requested claude-haiku-4-5（路由表 scout 層）；actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261020-luna-scout-1070-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1070,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/1070",
+        "startedAt": "2026-10-20T13:48:30Z",
+        "completedAt": "2026-10-20T13:51:10Z",
+        "note": "Luna 窄盤點：Haiku scout（requested claude-haiku-4-5）盤點 #46 缺口，找出旅客狀態頁缺集合地點，主 agent 以 Production 唯讀查詢確認欄位存在後開 #1070。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261020-terra-build-1070",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 1070,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/6865fb8ee45415b2315e84677e1bc37e2062c175",
+        "startedAt": "2026-10-20T13:54:17Z",
+        "completedAt": "2026-10-20T13:59:45Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）施工 #1070 狀態頁集合地點，commit 6865fb8e。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261020-luna-scout-1070-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1070,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/tree/issue-1070-request-meeting-point",
+        "startedAt": "2026-10-20T14:00:53Z",
+        "completedAt": "2026-10-20T14:00:53Z",
+        "note": "Haiku scout 將 #1070 綁入 Run ledger：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2（盤點＋綁定）。requested claude-haiku-4-5（路由表 scout 層）；actual 未經平台驗證。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 105,
+    "issuesStarted": 106,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -11422,8 +11477,8 @@
     ]
   },
   "flow": {
-    "lunaTasks": 214,
-    "lunaAccepted": 205,
+    "lunaTasks": 216,
+    "lunaAccepted": 207,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
