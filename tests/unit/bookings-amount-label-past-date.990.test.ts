@@ -22,6 +22,6 @@ describe('#990 過去日期用台北今日', () => {
   });
   it('頁面不再用 toISOString 的 UTC 日期比較', () => {
     expect(page).not.toContain('new Date().toISOString().slice(0, 10)');
-    expect(page).toContain('date < tenantDateString()');
+    expect(page).toContain('date < tenantDateString(new Date(), tz)');
   });
 });

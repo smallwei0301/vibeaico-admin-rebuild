@@ -36,7 +36,8 @@ import { bookingsPage as t } from '@/i18n/zh-TW/pages/bookings';
 import { tenantDateString } from '@/lib/bookings-query-range';
 import { BOOKING_PAYMENT_FILTER_VALUES, isLatestRequest, parsePaymentStatusParam } from '@/lib/booking-payment-filter';
 import { buildStaffOptions, summarizeBatch } from '@/lib/booking-batch';
-import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
+import { formatCurrency, formatDate, formatTime, zonedLocalToIso, zonedYmd } from '@/lib/utils';
+import { useTenantTimeZone, useTenantTimeZoneState } from '@/lib/use-tenant-time-zone';
 import type {
   Booking, BookingAddon, BookingAddonPerformanceMode, BookingStatus, Customer, PaymentStatus,
   Service, Staff,
@@ -89,6 +90,7 @@ const paymentLabel = (b: Booking) => (
 /* -------------------------------------------------------------------------- */
 
 export default function BookingsPage() {
+  const tz = useTenantTimeZone();
   const toast = useToast();
 
   const [rows, setRows] = React.useState<Booking[]>([]);
@@ -337,9 +339,9 @@ export default function BookingsPage() {
       key: 'datetime', header: t.columns.datetime, width: '160px',
       render: (b) => (
         <div className="min-w-0">
-          <div>{formatDate(b.startAt)}</div>
+          <div>{formatDate(b.startAt, tz)}</div>
           <div className="text-xs text-secondary">
-            {formatTime(b.startAt)} - {formatTime(b.endAt)}
+            {formatTime(b.startAt, tz)} - {formatTime(b.endAt, tz)}
           </div>
         </div>
       ),
@@ -910,6 +912,11 @@ function BookingFormModal({
   onSaved: (result?: { notifyTriggered: boolean }) => void;
 }) {
   const toast = useToast();
+  const { timeZone: tz, ready: tzReady, error: tzError, retry: tzRetry } = useTenantTimeZoneState();
+  const tzRef = React.useRef(tz);
+  tzRef.current = tz;
+  // 編輯預填的日期／時間；送出時若未被修改就沿用原 startAt（避免 DST 重複小時往返位移）
+  const prefillRef = React.useRef({ date: '', time: '' });
   const isEdit = !!booking;
   const c = t.createModal;
   const e = t.editModal;
@@ -933,25 +940,42 @@ function BookingFormModal({
   const [error, setError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
 
+  // 只在開啟／換預約時重設表單；時區晚到不會洗掉使用者已輸入的欄位
   React.useEffect(() => {
     if (!open) return;
     setError('');
     setShowAllSlots(false);
     if (booking) {
+      const d0 = zonedYmd(booking.startAt, tzRef.current);
+      const t0 = formatTime(booking.startAt, tzRef.current);
+      prefillRef.current = { date: d0, time: t0 };
       setCustomerId(booking.customerId);
       setServiceId(booking.serviceId);
       setStaffId(booking.staffId ?? '');
-      setDate(booking.startAt.slice(0, 10));
-      setTime(formatTime(booking.startAt));
+      setDate(d0);
+      setTime(t0);
       setDuration(booking.durationMinutes);
       setNote(booking.note);
     } else {
+      prefillRef.current = { date: '', time: '' };
       setNewCustomer(false);
       setCustomerId(''); setNewName(''); setNewPhone('');
       setServiceId(''); setStaffId(''); setDate(''); setCheckoutDate('');
       setTime(''); setDuration(60); setNote('');
     }
   }, [open, booking]);
+
+  // 時區變動：僅重算「尚未被使用者修改」的編輯預填日期／時間
+  React.useEffect(() => {
+    if (!open || !booking) return;
+    const prev = prefillRef.current;
+    const d1 = zonedYmd(booking.startAt, tz);
+    const t1 = formatTime(booking.startAt, tz);
+    if (prev.date === d1 && prev.time === t1) return;
+    prefillRef.current = { date: d1, time: t1 };
+    setDate((cur) => (cur === prev.date ? d1 : cur));
+    setTime((cur) => (cur === prev.time ? t1 : cur));
+  }, [tz]); // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => {
     if (!open) return;
@@ -990,7 +1014,7 @@ function BookingFormModal({
     if (!date) return c.dateInvalid;
     if (USE_MOCK && !isEdit && checkoutDate && checkoutDate <= date) return c.checkoutInvalid;
     if (!time) return c.timeInvalid;
-    if (!isEdit && date < tenantDateString()) return t.messages.pastDate;
+    if (!isEdit && date < tenantDateString(new Date(), tz)) return t.messages.pastDate;
     return '';
   };
 
@@ -1014,10 +1038,12 @@ function BookingFormModal({
   const submit = async () => {
     const err = validate();
     setError(err);
-    if (err) return;
+    if (err || !tzReady) return;
     setSaving(true);
     try {
-      const startAt = new Date(`${date}T${time}:00`).toISOString();
+      const untouched = isEdit && booking
+        && date === prefillRef.current.date && time === prefillRef.current.time;
+      const startAt = untouched && booking ? booking.startAt : zonedLocalToIso(date, time, tz);
       if (isEdit && booking) {
         const result = await updateBooking(booking.id, { startAt, staffId: staffId || null, note });
         onSaved(result);
@@ -1052,6 +1078,7 @@ function BookingFormModal({
           <Button variant="secondary" onClick={onClose}>{common.cancel}</Button>
           <Button
             loading={saving}
+            disabled={!tzReady}
             loadingText={isEdit ? e.submitting : c.submitting}
             onClick={() => void submit()}
           >
@@ -1061,6 +1088,12 @@ function BookingFormModal({
       }
     >
       <p className="mb-4 text-base text-neutral-700">{isEdit ? e.intro : c.intro}</p>
+      {tzError ? (
+        <div className="mb-4 flex items-center gap-3">
+          <FormError>{t.messages.timeZoneLoadFailed}</FormError>
+          <Button variant="outline" size="sm" onClick={tzRetry}>{common.retry}</Button>
+        </div>
+      ) : null}
 
       {isEdit ? (
         <FormGroup>
@@ -1632,6 +1665,7 @@ function BookingDetailModal({
   onRevert: () => void;
   onRemoveAddon: (item: BookingAddon) => void;
 }) {
+  const tz = useTenantTimeZone();
   const d = t.detailModal;
   const amount = booking?.finalPrice ?? 0;
 
@@ -1691,7 +1725,7 @@ function BookingDetailModal({
               <div className="text-xs text-secondary">{booking.customerPhone}</div>
             </div>
             <div>
-              {formatDate(booking.startAt)} {formatTime(booking.startAt)} - {formatTime(booking.endAt)}
+              {formatDate(booking.startAt, tz)} {formatTime(booking.startAt, tz)} - {formatTime(booking.endAt, tz)}
               <div className="text-xs text-secondary">
                 {t.createModal.durationValue(booking.durationMinutes)}
               </div>
