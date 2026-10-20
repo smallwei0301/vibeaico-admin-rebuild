@@ -159,7 +159,8 @@ export function sourceRoutines(sql, path) {
       parallel: /\bparallel\s+(unsafe|restricted|safe)\b/i.exec(outside)?.[1].toLowerCase() ?? 'unsafe',
       unsupportedHeader: /\b(?:cost|rows|support|window|transform)\b/i.test(sqlWords(outside)),
       volatility: /\bimmutable\b/i.test(outside) ? 'i' : /\bstable\b/i.test(outside) ? 's' : 'v',
-      config: search ? [`search_path=${search[1].replace(/["']/g, '').replace(/\s*,\s*/g, ', ').trim()}`] : null,
+      // pg_proc.proconfig 以 `search_path=""` 表示空字串；其餘值維持原本去引號格式。
+      config: search ? [`search_path=${search[1].replace(/["']/g, '').replace(/\s*,\s*/g, ', ').trim() || '""'}`] : null,
       source: { path, sha256: sha256(sql) } });
   }
   return result;
