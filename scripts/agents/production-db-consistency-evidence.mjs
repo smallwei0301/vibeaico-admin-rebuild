@@ -359,7 +359,7 @@ export function deriveClosure({ source, captures, impactManifest, plan, createTo
         const table = match[1].includes('.') ? match[1] : `public.${match[1]}`;
         // `from public.fn(...)` is a set-returning function call, not a table. Only skip when the
         // name is an exact canonical source routine; routine closure below already tracks it.
-        if (/^\s*\(/.test(code.slice(match.index + match[0].length)) && [...source.after.values()].some((routine) => routine.name === table)) continue;
+        if (/^(?:from|join)\b/i.test(match[0]) && /^\s*\(/.test(code.slice(match.index + match[0].length)) && [...source.after.values()].some((routine) => routine.name === table)) continue;
         if (match[1].startsWith('public.') && !knownTables.has(table)) {
           // Historical baseline tables (e.g. booking_addons) are created only by the
           // LOCAL_ONLY_TRANSITIONAL overlay. They count as existing tables only when
@@ -486,13 +486,15 @@ export function derivePlannedTransitions({ impacts, plan, source, expectedSnapsh
   return result;
 }
 
-export function checkCatalogClosure(capture, expected, closure, allowed, source, transitions = /** @type {any} */ (null)) {
+export function checkCatalogClosure(capture, expected, closure, allowed, source, transitions = /** @type {any} */ (null), plan = null) {
   const items = capture.raw.metadata.items;
   const baseline = expected.raw.metadata.items;
   const target = (item) => item.key.split('.').slice(0, 2).join('.');
   const byIdentity = new Map(items.map((item) => [`${item.surface}:${item.key}`, item]));
   const expectedIdentity = new Map(baseline.map((item) => [`${item.surface}:${item.key}`, item]));
   const plannedMissing = (item) => capture.environment === 'PRODUCTION' && allowed.has(`${item.surface}:${item.key}`);
+  const legacyFk = (key) => legacyTestFkVariant({ environment: capture.environment, plan, key,
+    local: expectedIdentity.get(`constraints:${key}`), test: byIdentity.get(`constraints:${key}`) });
   const requireColumn = (table, column) => {
     const key = `columns:${table}.${column}`;
     const want = expectedIdentity.get(key), actual = byIdentity.get(key);
@@ -508,7 +510,7 @@ export function checkCatalogClosure(capture, expected, closure, allowed, source,
       fail('RELEASE_FK_CAPTURE_MISMATCH', `${fk.table}.${fk.name} FK shape/validation differs`);
     }
     const same = baseline.some((item) => item.surface === 'constraints' && target(item) === fk.table && item.value === actual.value);
-    if (!same) fail('RELEASE_FK_SOURCE_MISMATCH', `${fk.table}.${fk.name} is outside canonical dependency contracts`);
+    if (!same && !legacyFk(`${fk.table}.${fk.name}`)) fail('RELEASE_FK_SOURCE_MISMATCH', `${fk.table}.${fk.name} is outside canonical dependency contracts`);
     for (const column of fk.columns) requireColumn(fk.table, column);
     if (fk.target === 'auth.users') {
       if (!compareJson(capture.catalog.authTarget, { type: 'uuid', notNull: true, primaryKey: true })
@@ -555,6 +557,7 @@ export function checkCatalogClosure(capture, expected, closure, allowed, source,
     for (const want of baseline.filter((item) => ['constraints', 'triggers'].includes(item.surface) && target(item) === table)) {
       const actual = byIdentity.get(`${want.surface}:${want.key}`);
       if (actual?.value === want.value || (!actual && plannedMissing(want))) continue;
+      if (want.surface === 'constraints' && legacyFk(want.key)) continue;
       const localFkColumns = want.value.startsWith('f|') ? /FOREIGN KEY \(([^)]+)\)/.exec(want.value)?.[1] : null;
       const code = sqlWords(localFkColumns ?? want.value);
       const referenced = actualColumns.some((column) => {
@@ -678,6 +681,22 @@ function safeOmittedTourColumn(column) {
     && constantJsonConstructor(column.value.slice('jsonb|true|'.length));
 }
 
+// 凍結常數：0133 明確接受 TEST 歷史殘留的 SET NULL 複合 FK 分支（Production 套用後為 NO ACTION）。
+// 只對 TEST、只對此 key、只在 plan 含 0133、且兩側值必須逐字等於下列常數時容忍；其餘一律照原規則。
+const LEGACY_TEST_FK_0133 = Object.freeze({
+  migration: '0133_issue_680_booking_addons_composite_fk_expand',
+  key: 'public.booking_addons.booking_addons_tenant_id_performance_staff_id_fkey',
+  localValue: 'f|FOREIGN KEY (tenant_id, performance_staff_id) REFERENCES staff(tenant_id, id)',
+  testValue: 'f|FOREIGN KEY (tenant_id, performance_staff_id) REFERENCES staff(tenant_id, id) ON DELETE SET NULL (performance_staff_id)',
+});
+
+function legacyTestFkVariant({ environment, plan, local, test, key }) {
+  const spec = LEGACY_TEST_FK_0133;
+  return environment === 'TEST' && key === spec.key
+    && Array.isArray(plan?.migrations) && plan.migrations.some((item) => item.repoFile === spec.migration)
+    && local?.value === spec.localValue && test?.value === spec.testValue;
+}
+
 function safeLegacyTourCheck(constraint, items, write) {
   if (!constraint.key.startsWith('public.tour_orders.')) return false;
   const safe = new Set([
@@ -714,7 +733,10 @@ export function checkReleaseImpacts({ impacts, captures, plan, source, phase = '
     }
     if (['routines', 'acl'].includes(impact.surface)) continue; // body/security and effective grants are checked below
     const test = surfaceItems(captures.TEST, impact.surface).find((item) => item.key === impact.objectKey);
-    if (test?.fingerprint !== expected.fingerprint) fail('RELEASE_TEST_IMPACT_MISMATCH', `${impact.objectKey} is not the selected after state`);
+    const rawItem = (capture) => capture.raw.metadata.items.find((item) => item.surface === impact.surface && item.key === impact.objectKey);
+    const legacyTest = impact.surface === 'constraints' && legacyTestFkVariant({ environment: 'TEST', plan, key: impact.objectKey,
+      local: rawItem(captures.LOCAL_EXPECTED), test: rawItem(captures.TEST) });
+    if (test?.fingerprint !== expected.fingerprint && !legacyTest) fail('RELEASE_TEST_IMPACT_MISMATCH', `${impact.objectKey} is not the selected after state`);
     const production = surfaceItems(captures.PRODUCTION, impact.surface).find((item) => item.key === impact.objectKey);
     // pre_apply：被計畫替換的 policy 在 Production 可有舊形狀（僅限點名 key）；post_apply 必須完全相同。
     if (production && production.fingerprint !== expected.fingerprint
@@ -792,7 +814,7 @@ function buildOriginalEightConsistency({ report, plan, impactManifest, mainSha, 
         || routineHeader(actual) !== routineHeader(expected)) fail('RELEASE_AUTH_UID_MISMATCH', 'platform auth.uid dependency differs');
     }
   }
-  for (const capture of [captures.TEST, captures.PRODUCTION]) checkCatalogClosure(capture, captures.LOCAL_EXPECTED, closure, allowed, source, transitions);
+  for (const capture of [captures.TEST, captures.PRODUCTION]) checkCatalogClosure(capture, captures.LOCAL_EXPECTED, closure, allowed, source, transitions, plan);
   const plannedDifferences = report.differences.filter((item) => item.environment === 'PRODUCTION'
     && (allowed.has(`${item.surface}:${item.objectKey}`) || (item.surface === 'migrationLedger' && plan.migrations.some((migration) => item.objectKey === `${migration.repoFile.slice(0, 4)}/${migration.repoFile}`))));
   return { status: 'CONSISTENCY_VERIFIED', mainSha, planDigest, impactManifestDigest: impactManifestDigest(impactManifest),
