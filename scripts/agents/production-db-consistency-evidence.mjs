@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { normalizeProductionDbImpactManifest } from './production-db-impact-manifest.mjs';
-import { ISSUE_18_0124_0116_0119, ISSUE_25_0117_0118, ISSUE_37_0131_0134, ISSUE_23_0113, ISSUE_749_0137, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE, SCOPED_RELEASE_CAPTURE_SCOPES, splitSqlStatements, stripSqlComments, stripSqlStringLiterals,
+import { ISSUE_18_0124_0116_0119_0127, ISSUE_25_0117_0118, ISSUE_37_0131_0134, ISSUE_23_0113, ISSUE_749_0137, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE, SCOPED_RELEASE_CAPTURE_SCOPES, splitSqlStatements, stripSqlComments, stripSqlStringLiterals,
   verifyProductionDbReleasePlan } from './production-db-release-plan.mjs';
 import { buildObserverSnapshotFromRaw, normalizeObserverSnapshot, RELEASE_CATALOG_QUERY_DIGEST,
   compareObserverSnapshots } from './schema-drift-watch.mjs';
@@ -77,7 +77,7 @@ export function buildProductionConsistencyEvidence({ report, plan, impactManifes
   if (!plan || plan.mainSha !== mainSha || plan.planDigest !== planDigest) fail('CONSISTENCY_PLAN_MISMATCH', 'release plan is not the selected main SHA / plan digest');
   if (report.plannedLedgerMapping && report.plannedLedgerMapping.planDigest !== planDigest) fail('CONSISTENCY_LEDGER_PLAN_MISMATCH', 'ledger mapping belongs to another release plan');
   if (report.safety?.authorizesDatabaseWrite !== false) fail('OBSERVER_SCOPE_ESCALATION', 'drift observer must stay read-only');
-  if ([ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE, ISSUE_23_0113, ISSUE_749_0137, ISSUE_37_0131_0134, ISSUE_25_0117_0118, ISSUE_18_0124_0116_0119].includes(plan.migrationScope)
+  if ([ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE, ISSUE_23_0113, ISSUE_749_0137, ISSUE_37_0131_0134, ISSUE_25_0117_0118, ISSUE_18_0124_0116_0119_0127].includes(plan.migrationScope)
     || (plan.migrations?.length === 8 && plan.migrations.some((item) => item.repoFile === '0136_issue_755_create_tour_order_invoker'))) {
     return buildOriginalEightConsistency({ report, plan, impactManifest, mainSha, observedMainSha, planDigest, releaseCatalog, ...options });
   }
@@ -310,7 +310,7 @@ export function sourceCatalog({ plan, repoRoot, readCanonicalSql, appliedSourceF
   return { before, after, enums, sources, read };
 }
 
-function deriveClosure({ source, captures, impactManifest, plan, createTourOrderFamily = true }) {
+export function deriveClosure({ source, captures, impactManifest, plan, createTourOrderFamily = true }) {
   const knownTables = new Set();
   for (const sql of source.sources.values()) for (const match of stripSqlComments(sql).matchAll(/\bcreate\s+table\s+(?:if\s+not\s+exists\s+)?((?:public\.)?[a-z_][a-z_0-9]*)/gi)) {
     knownTables.add(match[1].includes('.') ? match[1] : `public.${match[1]}`);
@@ -418,7 +418,59 @@ function routineHeader(routine) {
   return routine.definition.slice(0, tag.index).replace(/\s+SECURITY DEFINER\b/g, '').trim();
 }
 
-function checkCatalogClosure(capture, expected, closure, allowed, source) {
+const RELEASE_PHASES = ['pre_apply', 'post_apply'];
+const policyTableOf = (objectKey) => objectKey.split('.').slice(0, 2).join('.');
+// #755 G2：計畫內的 policy／ACL 轉換（pre-apply Production 仍是舊狀態，LOCAL_EXPECTED 是 after 狀態）。
+// 只信任「目前 plan 內 migration 的 impact manifest」所點名、且該 migration 的 canonical SQL 內有
+// 明確 drop／create policy 或 grant／revoke 語句佐證的 key／role；其餘一律維持逐項精確比對（fail-closed）。
+//  - droppedPolicies：manifest 點名、LOCAL_EXPECTED 沒有、且 SQL 有 `drop policy` 的 key（兩個 phase 都成立，
+//    因為這是 after 狀態；post_apply 時 Production 不得再持有，見 impact 檢查）。
+//  - namedPolicies／aclRolesByTable：只在 phase=pre_apply 才放行；post_apply 回空集合，Production 必須與 expected 完全相同。
+export function derivePlannedTransitions({ impacts, plan, source, expectedSnapshot, phase = 'pre_apply' }) {
+  if (!RELEASE_PHASES.includes(phase)) fail('INVALID_RELEASE_PHASE', 'phase must be pre_apply or post_apply');
+  const result = { phase, droppedPolicies: new Set(), namedPolicies: new Set(), policyKeysByTable: new Map(), aclRolesByTable: new Map() };
+  const expectedPolicies = new Set((expectedSnapshot?.surfaces?.policies?.items ?? []).map((item) => item.key));
+  for (const entry of impacts) {
+    const migration = plan.migrations.find((item) => item.repoFile === entry.repoFile);
+    if (!migration) continue;
+    const sql = stripSqlComments(source.read(migration.path));
+    const dropped = new Set([...sql.matchAll(/\bdrop\s+policy\s+(?:if\s+exists\s+)?"?([a-z_][a-z_0-9]*)"?\s+on\s+(?:public\.)?"?([a-z_][a-z_0-9]*)"?/gi)]
+      .map((match) => `public.${match[2].toLowerCase()}.${match[1].toLowerCase()}`));
+    const created = new Set([...sql.matchAll(/\bcreate\s+policy\s+"?([a-z_][a-z_0-9]*)"?\s+on\s+(?:public\.)?"?([a-z_][a-z_0-9]*)"?/gi)]
+      .map((match) => `public.${match[2].toLowerCase()}.${match[1].toLowerCase()}`));
+    for (const impact of entry.impacts) {
+      if (impact.surface === 'policies') {
+        if (!expectedPolicies.has(impact.objectKey) && dropped.has(impact.objectKey) && !created.has(impact.objectKey)) {
+          result.droppedPolicies.add(impact.objectKey);
+        }
+        if (phase === 'pre_apply' && (dropped.has(impact.objectKey) || created.has(impact.objectKey))) {
+          result.namedPolicies.add(impact.objectKey);
+          const table = policyTableOf(impact.objectKey);
+          if (!result.policyKeysByTable.has(table)) result.policyKeysByTable.set(table, new Set());
+          result.policyKeysByTable.get(table).add(impact.objectKey);
+        }
+      } else if (impact.surface === 'acl' && phase === 'pre_apply') {
+        const table = /^table:(public\.[a-z_0-9]+)$/i.exec(impact.objectKey)?.[1];
+        if (!table) continue;
+        const roles = result.aclRolesByTable.get(table) ?? new Set();
+        const name = table.split('.')[1];
+        // 只有計畫以 `revoke all [privileges] on [table] <該表> from ... <role>` 完全重置的 (表, role) 才放行；
+        // 只有 grant 沒有 revoke all 的 role 仍須精確比對（G7 在 commit 之後才跑）。
+        for (const match of sql.matchAll(/\brevoke\s+all(?:\s+privileges)?\s+on\s+(?:table\s+)?(?:public\.)?"?([a-z_][a-z_0-9]*)"?\s+from\s+([^;]+?)\s*;/gi)) {
+          if (match[1].toLowerCase() !== name) continue;
+          for (const grantee of match[2].split(',').map((item) => item.trim().replace(/"/g, '').toLowerCase())) {
+            // `FROM PUBLIC` 只移除 PUBLIC 偽角色的權限，不會移除直接授與 app role 的權限，故不展開。
+            if (APP_ROLES.includes(grantee)) roles.add(grantee);
+          }
+        }
+        if (roles.size) result.aclRolesByTable.set(table, roles);
+      }
+    }
+  }
+  return result;
+}
+
+export function checkCatalogClosure(capture, expected, closure, allowed, source, transitions = /** @type {any} */ (null)) {
   const items = capture.raw.metadata.items;
   const baseline = expected.raw.metadata.items;
   const target = (item) => item.key.split('.').slice(0, 2).join('.');
@@ -519,13 +571,18 @@ function checkCatalogClosure(capture, expected, closure, allowed, source) {
     const expectedPolicies = policies(baseline), actualPolicies = policies(items);
     const plannedTable = capture.environment === 'PRODUCTION' && actualColumns.length === 0 && expectedColumns.every(plannedMissing);
     if (plannedTable) continue;
-    if (!compareJson(actualPolicies, expectedPolicies)
-      && !compareJson(policyContract(actualPolicies), policyContract(expectedPolicies))) fail('RELEASE_RLS_PREDICATE_MISMATCH', `${table} effective RLS differs`);
+    // 只有 pre_apply 的 Production 可忽略「計畫點名」的 policy key；未點名的 policy 仍須與 expected 完全一致。
+    const transition = capture.environment === 'PRODUCTION' ? transitions : null;
+    const namedKeys = transition?.policyKeysByTable.get(table);
+    const unnamed = (list) => (namedKeys ? list.filter((item) => !namedKeys.has(item.key)) : list);
+    if (!compareJson(unnamed(actualPolicies), unnamed(expectedPolicies))
+      && !compareJson(policyContract(unnamed(actualPolicies)), policyContract(unnamed(expectedPolicies)))) fail('RELEASE_RLS_PREDICATE_MISMATCH', `${table} effective RLS differs`);
     const actualAcl = capture.raw.acl.tables.find((item) => `public.${item.name}` === table);
     const expectedAcl = expected.raw.acl.tables.find((item) => `public.${item.name}` === table);
     if (!actualAcl || !expectedAcl || actualAcl.rowSecurity !== expectedAcl.rowSecurity
       || actualAcl.forceRowSecurity !== expectedAcl.forceRowSecurity) fail('RELEASE_TABLE_RLS_MISMATCH', `${table} RLS flags differ`);
-    for (const role of APP_ROLES) if (!compareJson(effectivePrivileges(actualAcl, capture.catalog, role), effectivePrivileges(expectedAcl, expected.catalog, role))) {
+    const plannedAclRoles = transition?.aclRolesByTable.get(table);
+    for (const role of APP_ROLES) if (!plannedAclRoles?.has(role) && !compareJson(effectivePrivileges(actualAcl, capture.catalog, role), effectivePrivileges(expectedAcl, expected.catalog, role))) {
       fail('RELEASE_APP_GRANT_MISMATCH', `${table} effective ${role} grants differ`);
     }
     const owner = capture.catalog.tableOwners.filter((entry) => entry.table === table);
@@ -625,9 +682,35 @@ function safeLegacyTourCheck(constraint, items, write) {
   return true;
 }
 
+export function checkReleaseImpacts({ impacts, captures, plan, source, phase = 'pre_apply' }) {
+  const surfaceItems = (capture, surface) => surface === 'acl' ? capture.snapshot.acl.items : capture.snapshot.surfaces[surface].items;
+  const transitions = derivePlannedTransitions({ impacts, plan, source, expectedSnapshot: captures.LOCAL_EXPECTED.snapshot, phase });
+  for (const entry of impacts) for (const impact of entry.impacts) {
+    const expected = surfaceItems(captures.LOCAL_EXPECTED, impact.surface).find((item) => item.key === impact.objectKey);
+    if (!expected) {
+      // manifest 點名且 SQL 明確 drop 的 policy：after 狀態（LOCAL／TEST）必須不存在；只有 create 仍須存在。
+      if (impact.surface === 'policies' && transitions.droppedPolicies.has(impact.objectKey)) {
+        if (surfaceItems(captures.TEST, 'policies').some((item) => item.key === impact.objectKey)) fail('RELEASE_TEST_IMPACT_MISMATCH', `${impact.objectKey} must be absent after the selected migration`);
+        if (phase === 'post_apply' && surfaceItems(captures.PRODUCTION, 'policies').some((item) => item.key === impact.objectKey)) fail('RELEASE_POST_APPLY_LEGACY_POLICY', `${impact.objectKey} still exists in Production after apply`);
+        continue;
+      }
+      fail('RELEASE_EXPECTED_IMPACT_MISSING', `${impact.surface}:${impact.objectKey} is absent from canonical replay`);
+    }
+    if (['routines', 'acl'].includes(impact.surface)) continue; // body/security and effective grants are checked below
+    const test = surfaceItems(captures.TEST, impact.surface).find((item) => item.key === impact.objectKey);
+    if (test?.fingerprint !== expected.fingerprint) fail('RELEASE_TEST_IMPACT_MISMATCH', `${impact.objectKey} is not the selected after state`);
+    const production = surfaceItems(captures.PRODUCTION, impact.surface).find((item) => item.key === impact.objectKey);
+    // pre_apply：被計畫替換的 policy 在 Production 可有舊形狀（僅限點名 key）；post_apply 必須完全相同。
+    if (production && production.fingerprint !== expected.fingerprint
+      && !(impact.surface === 'policies' && transitions.namedPolicies.has(impact.objectKey))) fail('RELEASE_BEFORE_IMPACT_UNEXPLAINED', `${impact.objectKey} has a noncanonical before shape`);
+  }
+  return transitions;
+}
+
 function buildOriginalEightConsistency({ report, plan, impactManifest, mainSha, observedMainSha = mainSha, planDigest, releaseCatalog,
   repoRoot = process.cwd(), readCanonicalSql = (path) => readFileSync(resolve(repoRoot, path), 'utf8'),
-  now = new Date().toISOString(), readSourceAt, isAncestor }) {
+  now = new Date().toISOString(), readSourceAt, isAncestor, phase = 'pre_apply' }) {
+  if (!RELEASE_PHASES.includes(phase)) fail('INVALID_RELEASE_PHASE', 'phase must be pre_apply or post_apply');
   const scopeSpec = SCOPED_RELEASE_CAPTURE_SCOPES[plan.migrationScope];
   if (!scopeSpec || plan.migrations.length !== scopeSpec.migrationCount) fail('RELEASE_SCOPE_MISMATCH', 'only the admitted bounded release scopes are accepted');
   const aliasMap = JSON.parse(readFileSync(resolve(repoRoot, 'supabase/ledger-alias-map.json'), 'utf8'));
@@ -653,16 +736,7 @@ function buildOriginalEightConsistency({ report, plan, impactManifest, mainSha, 
   if (!closure.tables.size || (scopeSpec.routinesRequired && !closure.routines.size)) fail('RELEASE_CLOSURE_EMPTY', 'canonical source does not resolve a dependency closure');
   const impacts = normalizeProductionDbImpactManifest(impactManifest).entries.filter((entry) => plan.migrations.some((migration) => migration.repoFile === entry.repoFile));
   const allowed = new Map(impacts.flatMap((entry) => entry.impacts.map((impact) => [`${impact.surface}:${impact.objectKey}`, entry.repoFile])));
-  const surfaceItems = (capture, surface) => surface === 'acl' ? capture.snapshot.acl.items : capture.snapshot.surfaces[surface].items;
-  for (const entry of impacts) for (const impact of entry.impacts) {
-    const expected = surfaceItems(captures.LOCAL_EXPECTED, impact.surface).find((item) => item.key === impact.objectKey);
-    if (!expected) fail('RELEASE_EXPECTED_IMPACT_MISSING', `${impact.surface}:${impact.objectKey} is absent from canonical replay`);
-    if (['routines', 'acl'].includes(impact.surface)) continue; // body/security and effective grants are checked below
-    const test = surfaceItems(captures.TEST, impact.surface).find((item) => item.key === impact.objectKey);
-    if (test?.fingerprint !== expected.fingerprint) fail('RELEASE_TEST_IMPACT_MISMATCH', `${impact.objectKey} is not the selected after state`);
-    const production = surfaceItems(captures.PRODUCTION, impact.surface).find((item) => item.key === impact.objectKey);
-    if (production && production.fingerprint !== expected.fingerprint) fail('RELEASE_BEFORE_IMPACT_UNEXPLAINED', `${impact.objectKey} has a noncanonical before shape`);
-  }
+  const transitions = checkReleaseImpacts({ impacts, captures, plan, source, phase });
   const bindings = [];
   for (const key of closure.routines) {
     const after = source.after.get(key), before = source.before.get(key);
@@ -702,7 +776,7 @@ function buildOriginalEightConsistency({ report, plan, impactManifest, mainSha, 
         || routineHeader(actual) !== routineHeader(expected)) fail('RELEASE_AUTH_UID_MISMATCH', 'platform auth.uid dependency differs');
     }
   }
-  for (const capture of [captures.TEST, captures.PRODUCTION]) checkCatalogClosure(capture, captures.LOCAL_EXPECTED, closure, allowed, source);
+  for (const capture of [captures.TEST, captures.PRODUCTION]) checkCatalogClosure(capture, captures.LOCAL_EXPECTED, closure, allowed, source, transitions);
   const plannedDifferences = report.differences.filter((item) => item.environment === 'PRODUCTION'
     && (allowed.has(`${item.surface}:${item.objectKey}`) || (item.surface === 'migrationLedger' && plan.migrations.some((migration) => item.objectKey === `${migration.repoFile.slice(0, 4)}/${migration.repoFile}`))));
   return { status: 'CONSISTENCY_VERIFIED', mainSha, planDigest, impactManifestDigest: impactManifestDigest(impactManifest),

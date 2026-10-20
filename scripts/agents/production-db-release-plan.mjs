@@ -14,8 +14,10 @@ const ISSUES_17_680 = 'ISSUES_17_680';
 export const ISSUE_37_0131_0134 = 'ISSUE_37_0131_0134';
 // #25 / #755：0117（support chat 兩表）＋0118（platform_donations），皆為 additive 新表，無 routine，故一併釋出。
 export const ISSUE_25_0117_0118 = 'ISSUE_25_0117_0118';
-// #18 / #755：0124（legacy shape 前置）→0116（owner_notify 兩表）→0119（原子確認 RPC）；0119 建立兩支 routine，須同一 release。
-export const ISSUE_18_0124_0116_0119 = 'ISSUE_18_0124_0116_0119';
+// #18 / #755：0124（legacy shape 前置）→0116（owner_notify 兩表）→0119（原子確認 RPC）→0127（#589 authz 對帳）；0119 建立兩支 routine，須同一 release。
+// 0127 把 Production 既有 legacy owner_notify_recipients 的 per-command policy 收斂為 p_owner_notify_recipients_all（並對帳 booking_addons），
+// 否則 G2 會以 RELEASE_RLS_PREDICATE_MISMATCH 擋下；故 0127 必須同批且排最後。
+export const ISSUE_18_0124_0116_0119_0127 = 'ISSUE_18_0124_0116_0119_0127';
 const ISSUE_46_0135 = 'ISSUE_46_0135';
 export const ISSUE_46_0110_0136_CLOSURE = 'ISSUE_46_0110_0136_CLOSURE';
 export const ISSUE_755_0110_0137_CLOSURE = 'ISSUE_755_0110_0137_CLOSURE';
@@ -53,7 +55,7 @@ export const SCOPED_RELEASE_CAPTURE_SCOPES = Object.freeze({
   [ISSUE_25_0117_0118]: Object.freeze({ migrationCount: 2, routinesRequired: false, createTourOrderFamily: false }),
   // 0124+0116+0119：0119 建立 confirm_owner_notify_bind／owner_notify_max_recipients 兩支 routine（Production 尚無），
   // 故 routinesRequired=true、無 appliedSourceFiles、無 create_tour_order 家族；0124 在 Production 缺表時為 no-op，由 0116 建表。
-  [ISSUE_18_0124_0116_0119]: Object.freeze({ migrationCount: 3, routinesRequired: true, createTourOrderFamily: false }),
+  [ISSUE_18_0124_0116_0119_0127]: Object.freeze({ migrationCount: 4, routinesRequired: true, createTourOrderFamily: false }),
 });
 
 // Plan construction is not execution authority. Current #755 nine-file approval
@@ -92,8 +94,9 @@ const BOUNDED_RELEASE_SCOPE_ROOTS = Object.freeze({
     '0117_issue_25b_support_chat_threads',
     '0118_issue_25c_platform_donations',
   ]),
-  [ISSUE_18_0124_0116_0119]: Object.freeze([
+  [ISSUE_18_0124_0116_0119_0127]: Object.freeze([
     '0119_issue_18_owner_notify_confirm_atomic',
+    '0127_issue_589_authz_constraint_reconciliation',
   ]),
 });
 const BOUNDED_RELEASE_DEPENDENCIES = Object.freeze({
@@ -116,6 +119,9 @@ const BOUNDED_RELEASE_DEPENDENCIES = Object.freeze({
   // 0119 的函式讀寫 0116 的兩張表；0116 須在 0124 前置之後執行（順序由 PENDING_MIGRATION_PRECEDENCE 保證）。
   '0119_issue_18_owner_notify_confirm_atomic': Object.freeze(['0116_issue_18_owner_notify']),
   '0116_issue_18_owner_notify': Object.freeze(['0124_issue_18_owner_notify_legacy_shape']),
+  // 0127 對帳 owner_notify_recipients 的 policy／grant，須在 0116（表）與 0119 之後；booking_addons 為已套用的 0082。
+  // 0127 不引用 0121／0125／0133 才會建立的物件，因此不可把它們拉進 release。
+  '0127_issue_589_authz_constraint_reconciliation': Object.freeze(['0116_issue_18_owner_notify', '0119_issue_18_owner_notify_confirm_atomic']),
 });
 const ISSUE_46_CLOSURE_APPLIED_PREREQUISITES = Object.freeze([
   '0001_extensions_and_functions',
@@ -169,10 +175,12 @@ const BOUNDED_APPLIED_PREREQUISITES = Object.freeze({
   ]),
   // 0116 引用 public.tenants（0003）、public.line_users（0005，複合 FK tenant_id+line_user_id）、is_tenant_member／gen_random_uuid（0001）；
   // 0119 只引用 0116 的表；0124 僅 ALTER 0116 的表（缺表為 no-op）。三檔皆不引用 auth schema。
-  [ISSUE_18_0124_0116_0119]: Object.freeze([
+  [ISSUE_18_0124_0116_0119_0127]: Object.freeze([
     '0001_extensions_and_functions',
     '0003_tenants_and_accounts',
     '0005_line_marketing_other',
+    // 0127 對帳 public.booking_addons（notified CHECK／policy／grant）；該表與 notified text not null default 'NONE' 由已套用的 0082 保證。
+    '0082_reconcile_booking_addon_notify_fields',
   ]),
   // 0113 只引用 public.tenants（0003）與 is_tenant_member／gen_random_uuid（0001）。
   [ISSUE_23_0113]: Object.freeze([
@@ -302,7 +310,7 @@ export function selectedProductionMigrations(aliasMap = {}, migrationScope = FUL
     const matches = aliasMap.entries.filter((entry) => entry?.repoFile === repoFile);
     if (matches.length !== 1 || matches[0].classification !== 'EXACT' ||
         !Array.isArray(matches[0].ledgerNames) || matches[0].ledgerNames.length === 0 ||
-        ([ISSUE_46_0135, ISSUE_37_0131_0134, ISSUE_25_0117_0118, ISSUE_18_0124_0116_0119, ISSUE_23_0113, ISSUE_749_0137, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE].includes(scope) && (matches[0].ledgerNames.length !== 1 || matches[0].ledgerNames[0] !== repoFile))) {
+        ([ISSUE_46_0135, ISSUE_37_0131_0134, ISSUE_25_0117_0118, ISSUE_18_0124_0116_0119_0127, ISSUE_23_0113, ISSUE_749_0137, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE].includes(scope) && (matches[0].ledgerNames.length !== 1 || matches[0].ledgerNames[0] !== repoFile))) {
       fail('MIGRATION_SCOPE_APPLIED_PREREQUISITE_MISSING', `${scope} requires an exact applied prerequisite: ${repoFile}`);
     }
   }

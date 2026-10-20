@@ -79,7 +79,7 @@ describe('#755 ISSUE_749_0137 bounded release scope', () => {
       appliedSourceFiles: [
         '0110_issue_42_plan_duration_pricetype_yearround', '0111_issue_46_guide_request_accept', '0128_issue_42_plan_seasonal_pricing',
         '0130_issue_46_refund_policy_snapshot', '0132_issue_42_seasonal_price_resolution', '0136_issue_755_create_tour_order_invoker'] });
-    expect(Object.keys(SCOPED_RELEASE_CAPTURE_SCOPES)).toEqual([ISSUE_46_0110_0136_CLOSURE, ISSUE_23_0113, ISSUE_749_0137, 'ISSUE_37_0131_0134', 'ISSUE_25_0117_0118', 'ISSUE_18_0124_0116_0119']);
+    expect(Object.keys(SCOPED_RELEASE_CAPTURE_SCOPES)).toEqual([ISSUE_46_0110_0136_CLOSURE, ISSUE_23_0113, ISSUE_749_0137, 'ISSUE_37_0131_0134', 'ISSUE_25_0117_0118', 'ISSUE_18_0124_0116_0119_0127']);
   });
 
   it('impact manifest declares the routine and ACL 0137 creates', () => {
@@ -118,7 +118,7 @@ describe('#755 ISSUE_749_0137 workflow wiring', () => {
   });
   it('ci dispatch admits the scope', () => {
     expect(ci.on.workflow_dispatch.inputs.production_db_release_scope.options).toContain('ISSUE_749_0137');
-    expect(readFileSync('.github/workflows/ci.yml', 'utf8')).toContain('ISSUE_23_0113|ISSUE_749_0137|ISSUE_25_0117_0118|ISSUE_18_0124_0116_0119) ;;');
+    expect(readFileSync('.github/workflows/ci.yml', 'utf8')).toContain('ISSUE_23_0113|ISSUE_749_0137|ISSUE_25_0117_0118|ISSUE_18_0124_0116_0119_0127) ;;');
   });
 });
 
