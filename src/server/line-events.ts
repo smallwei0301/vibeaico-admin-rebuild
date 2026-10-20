@@ -177,6 +177,11 @@ const MSG = {
   couponTitle: '目前開放領取的優惠：',
   couponEmpty: '目前沒有開放領取的優惠票券。',
   couponHowTo: '想索取請直接留言告訴我們，我們會幫您登記 🎫',
+  /** 後台 PERCENT 的 discount_value 是「減免百分比」（10 = 減 10% = 九折），換成折數：(100 - 值) / 10。 */
+  couponPercent: (fold: string) => `${fold} 折`,
+  couponFree: '免費',
+  couponGift: (item: string) => `兌換：${item}`,
+  couponGiftUnnamed: '兌換贈品',
   productTitle: '目前販售的商品：',
   productEmpty: '目前還沒有上架商品。',
   portfolioTitle: '我們的作品：',
@@ -910,20 +915,41 @@ async function replyCampaigns(ctx: BuiltinCtx): Promise<boolean> {
 }
 
 /* -------------------------------------------------------- 內建指令：票券 */
-async function replyCoupons(ctx: BuiltinCtx): Promise<boolean> {
-  const { data } = await ctx.admin
+/** PERCENT 券的顧客端文案。value 為減免百分比：10 → 9 折、15 → 8.5 折。 */
+export function formatCouponPercent(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '';
+  if (value >= 100) return MSG.couponFree;
+  return MSG.couponPercent(String(Number(((100 - value) / 10).toFixed(2))));
+}
+
+export async function replyCoupons(ctx: BuiltinCtx): Promise<boolean> {
+  // 有效期與核銷端（redeemCoupon）同一條半開區間 [start_at, end_at)；null = 不限。
+  // 在 SQL 篩，limit 才不會被已過期的券佔掉名額。
+  const nowIso = new Date().toISOString();
+  const { data, error } = await ctx.admin
     .from('coupons')
-    .select('name, description, discount_type, discount_value')
+    .select('name, description, discount_type, discount_value, gift_item')
     .eq('tenant_id', ctx.tenant.id)
     .eq('status', 'PUBLISHED')
+    .or(`start_at.is.null,start_at.lte.${nowIso}`)
+    .or(`end_at.is.null,end_at.gt.${nowIso}`)
     .order('created_at', { ascending: false })
     .limit(SERVICE_LIST_LIMIT);
+  // 查詢失敗不可以說成「沒有票券」——與 replyOrders 同慣例：回 false 並留 log。
+  if (error) {
+    console.error('[line] replyCoupons 查詢 coupons 失敗', error);
+    return false;
+  }
   if (!data?.length) return replyText(ctx, MSG.couponEmpty);
   const lines = data.map((c: any) => {
     const value = Number(c.discount_value);
-    const amount =
-      c.discount_type === 'PERCENT' ? `${value} 折` : `折抵 NT$${value.toLocaleString('zh-TW')}`;
-    return `・${c.name}｜${amount}`;
+    let amount: string;
+    if (c.discount_type === 'PERCENT') amount = formatCouponPercent(value);
+    else if (c.discount_type === 'GIFT') {
+      const item = String(c.gift_item ?? '').trim();
+      amount = item ? MSG.couponGift(item) : MSG.couponGiftUnnamed;
+    } else amount = `折抵 NT$${value.toLocaleString('zh-TW')}`;
+    return amount ? `・${c.name}｜${amount}` : `・${c.name}`;
   });
   return replyText(ctx, `${MSG.couponTitle}\n${lines.join('\n')}\n\n${MSG.couponHowTo}`);
 }
