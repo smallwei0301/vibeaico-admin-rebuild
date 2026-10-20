@@ -225,6 +225,24 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
             <dd>{formatPlainDateWithWeekday(order.departsOn, common.weekdays) ?? order.departsOn}{order.startTime ? ` ${order.startTime}` : ''}</dd>
             <dt className="text-secondary">{t.status.fields.party}</dt>
             <dd>{t.status.partyUnit(order.partySize)}</dd>
+            {order.meetingPoint ? (
+              <>
+                <dt className="text-secondary">{t.status.fields.meetingPoint}</dt>
+                <dd className="flex flex-col gap-1">
+                  <span className="whitespace-pre-line">{order.meetingPoint}</span>
+                  {order.meetingPointMapUrl ? (
+                    <a
+                      className="w-fit text-primary underline"
+                      href={order.meetingPointMapUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {t.status.openMap}
+                    </a>
+                  ) : null}
+                </dd>
+              </>
+            ) : null}
             <dt className="text-secondary">{t.status.fields.submittedAt}</dt>
             <dd>{showInstant(order.createdAt, timeZone)}</dd>
           </dl>

@@ -45,6 +45,8 @@ import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
 import { hydrateTourOrders } from '@/server/tour-orders';
 import { isFeatureActive } from '@/server/features';
 import { nextTourOrderNo } from '@/server/tour-order-no';
+import { safePublicMapLinkUrl } from '@/lib/public-url';
+import { MAX_PUBLIC_LIST_ITEM_CHARS, truncateChars } from '@/lib/public-trip-limits';
 import type { TourOrder } from '@/lib/types';
 
 /** 「我的訂單」查詢一次最多回傳幾筆（issue #46）——避免無上限回應。 */
@@ -332,9 +334,16 @@ export async function submitPublicTourRequest(
  * 停用旅遊模組，顧客訂單資料不該還能被外部查詢（先前寫入路徑有查、讀取路徑
  * 沒查，兩邊不一致本身就是一個漏洞徵兆）。
  */
+/** #1070：狀態頁額外帶出的集合地點（來自該訂單關聯 trip；皆為選填，既有欄位不變）。 */
+export type PublicTourRequestStatus = TourOrder & {
+  meetingPoint?: string;
+  /** 已過濾為 http／https 的地圖連結；不合格時不輸出。 */
+  meetingPointMapUrl?: string;
+};
+
 export async function loadPublicTourRequestStatus(
   shopCode: string, orderId: string, contact: string,
-): Promise<TourOrder | null> {
+): Promise<PublicTourRequestStatus | null> {
   if (!SHOP_CODE_PATTERN.test(shopCode)) return null;
   if (!UUID_RE.test(orderId)) return null;
   const normalizedContact = contact.trim().toLowerCase();
@@ -363,7 +372,24 @@ export async function loadPublicTourRequestStatus(
   if (!candidates.includes(normalizedContact)) return null;
 
   const [order] = await hydrateTourOrders(admin, tenantId, [row]);
-  return order ?? null;
+  if (!order) return null;
+
+  // #1070：集合地點。只查該訂單的 trip，且必須同 tenant（與 hydrateTourOrders 同樣的租戶篩選）。
+  if (typeof row.trip_id !== 'string' || !row.trip_id) return order;
+  const { data: trip, error: tripError } = await admin
+    .from('trips').select('meeting_point, meeting_point_map_url')
+    .eq('tenant_id', tenantId).eq('id', row.trip_id).maybeSingle();
+  if (tripError) throw queryFailed('trips', tripError);
+  const meetingPoint = truncateChars(
+    typeof trip?.meeting_point === 'string' ? trip.meeting_point.trim() : '',
+    MAX_PUBLIC_LIST_ITEM_CHARS,
+  );
+  const meetingPointMapUrl = safePublicMapLinkUrl(trip?.meeting_point_map_url);
+  return {
+    ...order,
+    ...(meetingPoint ? { meetingPoint } : {}),
+    ...(meetingPoint && meetingPointMapUrl ? { meetingPointMapUrl } : {}),
+  };
 }
 
 /**

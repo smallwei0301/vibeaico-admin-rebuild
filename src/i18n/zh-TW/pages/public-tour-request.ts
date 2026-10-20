@@ -178,7 +178,9 @@ export const publicTourRequestPage = {
       paidAmount: '已付金額',
       balanceDue: '待付尾款',
       refunded: '已退金額',
+      meetingPoint: '集合地點',
     },
+    openMap: '開啟地圖',
     /** #917：有實際金額時不再要求旅客向店家確認金額（金額已格式化為字串）。 */
     paymentRefundedWithAmount: (refunded: string) => `此訂單已退款，退款金額 ${refunded}。`,
     paymentRefundPendingWithAmount: (refunded: string) => `退款仍在處理中，已退 ${refunded}；其餘退款進度請向店家確認。`,

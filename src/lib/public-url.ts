@@ -24,3 +24,20 @@ export function publicStringList(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === 'string')
     .map((item) => item.trim()).filter(Boolean);
 }
+
+/**
+ * #1070：集合地點地圖連結。與 safePublicHttpsUrl 不同，這裡接受 http／https
+ * （店家可能貼的是舊版 http 地圖短網址），其他協定（javascript:、data: 等）一律丟棄。
+ */
+export function safePublicMapLinkUrl(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  if (value.trim().length > MAX_PUBLIC_URL_CHARS) return '';
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return '';
+    if (url.username || url.password) return '';
+    return url.toString();
+  } catch {
+    return '';
+  }
+}
