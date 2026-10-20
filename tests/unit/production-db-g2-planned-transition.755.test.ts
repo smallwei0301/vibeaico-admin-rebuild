@@ -76,7 +76,7 @@ describe('#755 G2 manifest findings for 0127', () => {
       `${T1}.p_booking_addons_d`, `${T1}.p_booking_addons_i`, `${T1}.p_booking_addons_u`,
       `${T2}.p_owner_notify_recipients_d`, `${T2}.p_owner_notify_recipients_i`, `${T2}.p_owner_notify_recipients_s`, `${T2}.p_owner_notify_recipients_u`,
     ].sort());
-    expect([...t.aclRolesByTable.get(T1)].sort()).toEqual(['anon', 'authenticated', 'service_role']); // revoke all ... from public 依規則展開為全部 app role
+    expect([...t.aclRolesByTable.get(T1)].sort()).toEqual(['anon', 'authenticated']); // FROM PUBLIC 不展開；service_role 無 revoke → 仍精確比對
   });
 });
 
@@ -233,6 +233,13 @@ describe('#755 G2 planned ACL transition: counterexamples', () => {
     expect([...tr.aclRolesByTable.get('public.x_tbl')]).toEqual(['anon']);
     const extra = cap('PRODUCTION', ['authenticated:SELECT', 'authenticated:INSERT'], [newPolicy]);
     expect(() => check(extra, tr)).toThrow(/RELEASE_APP_GRANT_MISMATCH.*authenticated/);
+  });
+  it('revoke all ... from public does not exempt any app role (service_role extra privilege still fails)', () => {
+    const src: any = { read: () => 'revoke all on table public.x_tbl from public; grant all on table public.x_tbl to service_role;' };
+    const tr = derivePlannedTransitions({ impacts: impacts(true), plan: syntheticPlan, source: src, expectedSnapshot, phase: 'pre_apply' });
+    expect(tr.aclRolesByTable.has('public.x_tbl')).toBe(false);
+    const extra = cap('PRODUCTION', ['authenticated:SELECT', 'service_role:SELECT', 'service_role:DELETE'], [newPolicy]);
+    expect(() => check(extra, tr)).toThrow(/RELEASE_APP_GRANT_MISMATCH.*service_role/);
   });
   it('revoke all on table A does not exempt the same role on table B', () => {
     const src: any = { read: () => 'revoke all on table public.y_tbl from authenticated; grant select on table public.x_tbl to authenticated;' };

@@ -454,13 +454,13 @@ export function derivePlannedTransitions({ impacts, plan, source, expectedSnapsh
         if (!table) continue;
         const roles = result.aclRolesByTable.get(table) ?? new Set();
         const name = table.split('.')[1];
-        // 只有計畫以 `revoke all [privileges] on [table] <該表> from ... <role|public>` 完全重置的 (表, role) 才放行；
+        // 只有計畫以 `revoke all [privileges] on [table] <該表> from ... <role>` 完全重置的 (表, role) 才放行；
         // 只有 grant 沒有 revoke all 的 role 仍須精確比對（G7 在 commit 之後才跑）。
         for (const match of sql.matchAll(/\brevoke\s+all(?:\s+privileges)?\s+on\s+(?:table\s+)?(?:public\.)?"?([a-z_][a-z_0-9]*)"?\s+from\s+([^;]+?)\s*;/gi)) {
           if (match[1].toLowerCase() !== name) continue;
           for (const grantee of match[2].split(',').map((item) => item.trim().replace(/"/g, '').toLowerCase())) {
-            if (grantee === 'public') APP_ROLES.forEach((role) => roles.add(role));
-            else if (APP_ROLES.includes(grantee)) roles.add(grantee);
+            // `FROM PUBLIC` 只移除 PUBLIC 偽角色的權限，不會移除直接授與 app role 的權限，故不展開。
+            if (APP_ROLES.includes(grantee)) roles.add(grantee);
           }
         }
         if (roles.size) result.aclRolesByTable.set(table, roles);
