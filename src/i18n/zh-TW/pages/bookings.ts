@@ -356,6 +356,7 @@ export const bookingsPage = {
     couponCompleteFailed: '票券／點數已套用，但「完成預約」失敗：',
     removeAddonFailed: '移除加購失敗:',
     loadFailed: '載入預約失敗:',
+    timeZoneLoadFailed: '無法載入店家時區，暫時不能送出預約，請重試',
     loadDetailFailed: '載入預約資料失敗：',
     loadCustomersFailed: '載入顧客失敗:',
     loadServicesFailed: '載入服務失敗:',

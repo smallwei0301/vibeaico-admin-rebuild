@@ -35,3 +35,52 @@ describe('#936 預約表單：時區未就緒不可送出、時區晚到不洗�
     expect(page).toContain('booking.startAt : zonedLocalToIso(');
   });
 });
+
+describe('#936 載入失敗不可視為 ready（Codex P1）', () => {
+  beforeEach(() => { vi.resetModules(); vi.doUnmock('@/lib/api'); });
+
+  const loadWithRequest = async (req: ReturnType<typeof vi.fn>) => {
+    vi.doMock('@/lib/api', async (orig) => {
+      const actual = await orig<typeof import('@/lib/api')>();
+      return { ...actual, adapt: (_m: unknown, real: () => Promise<unknown>) => real(), request: req };
+    });
+    return import('@/services/settings');
+  };
+
+  it('失敗時 reject、不快取；重試成功取得店家時區；成功後共用快取', async () => {
+    const req = vi.fn()
+      .mockRejectedValueOnce(new Error('network'))
+      .mockResolvedValue({ basic: { timezone: 'Asia/Tokyo' } });
+    const mod = await loadWithRequest(req);
+    await expect(mod.getTenantTimeZone('t1')).rejects.toThrow('network');
+    await expect(mod.getTenantTimeZone('t1')).resolves.toBe('Asia/Tokyo');
+    await expect(mod.getTenantTimeZone('t1')).resolves.toBe('Asia/Tokyo');
+    expect(req).toHaveBeenCalledTimes(2);
+  });
+
+  it('成功但缺值回退 Asia/Taipei（仍視為成功載入）', async () => {
+    const mod = await loadWithRequest(vi.fn().mockResolvedValue({ basic: {} }));
+    await expect(mod.getTenantTimeZone('t2')).resolves.toBe('Asia/Taipei');
+  });
+
+  it('hook 暴露 error／retry，失敗時 ready 不為 true；顯示仍回退台北', () => {
+    const hook = src('src/lib/use-tenant-time-zone.ts');
+    expect(hook).toContain('error:');
+    expect(hook).toContain('retry');
+    expect(hook).toContain('const ready = current?.zone != null;');
+    expect(hook).toContain('current?.zone ?? PUBLIC_DEFAULT_TIME_ZONE');
+  });
+
+  it('預約表單：error 時顯示 i18n 訊息與重試鈕，且送出仍被 !tzReady 擋住', () => {
+    const page = src('src/app/tenant/bookings/page.tsx');
+    expect(page).toContain('tzError ?');
+    expect(page).toContain('t.messages.timeZoneLoadFailed');
+    expect(page).toContain('onClick={tzRetry}');
+    expect(page).toContain('disabled={!tzReady}');
+    expect(page).toContain('if (err || !tzReady) return;');
+  });
+
+  it('顯示專用呼叫端（tour-orders）仍只用 useTenantTimeZone', () => {
+    expect(src('src/app/tenant/tour-orders/page.tsx')).toContain('useTenantTimeZone()');
+  });
+});

@@ -1,6 +1,6 @@
 import { ApiError, adapt, request, toNetworkError } from '@/lib/api';
 import { APP_URL } from '@/config/env';
-import { PUBLIC_DEFAULT_TIME_ZONE, resolvePublicTimeZone } from '@/lib/public-time-zone';
+import { resolvePublicTimeZone } from '@/lib/public-time-zone';
 import type { BusinessType } from '@/config/modes';
 import {
   DEFAULT_TENANT_SETTINGS, buildWebhookUrl, maskSecret,
@@ -206,20 +206,24 @@ export const getTenantSettings = () =>
   );
 
 /**
- * 店家時區（tenant_settings.basic.timezone，缺值或無法辨識回退 Asia/Taipei）。
- * 後台日期時間顯示共用（#936）；同一頁面生命週期只取一次，失敗也回退台北而不阻擋頁面。
+ * 店家時區（tenant_settings.basic.timezone；已載入但缺值或無法辨識時回退 Asia/Taipei）。
+ * 後台日期時間顯示共用（#936）；同一頁面生命週期只取一次成功結果。
+ * 載入「失敗」不再回退台北：Promise 會 reject 且不進快取（下次呼叫即重試），
+ * 否則非台北店家的瞬斷會讓寫入路徑誤以為已取得時區，以錯誤 offset 儲存預約。
+ * 僅顯示用的呼叫端由 useTenantTimeZoneState 自行回退台北渲染，寫入則須等 ready。
  */
 const tenantTimeZoneCache = new Map<string, Promise<string>>();
 /** 以店家 id 為鍵，避免 SPA 登出再登入另一間店時沿用前一間的時區；未提供 id 時共用 '' 鍵。 */
 export const getTenantTimeZone = (tenantId = ''): Promise<string> => {
   let cached = tenantTimeZoneCache.get(tenantId);
   if (!cached) {
-    cached = getTenantSettings()
+    const pending: Promise<string> = getTenantSettings()
       .then((s) => resolvePublicTimeZone(s?.basic?.timezone))
-      .catch(() => {
-        tenantTimeZoneCache.delete(tenantId);
-        return PUBLIC_DEFAULT_TIME_ZONE;
+      .catch((err) => {
+        if (tenantTimeZoneCache.get(tenantId) === pending) tenantTimeZoneCache.delete(tenantId);
+        throw err;
       });
+    cached = pending;
     tenantTimeZoneCache.set(tenantId, cached);
   }
   return cached;

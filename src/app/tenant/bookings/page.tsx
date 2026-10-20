@@ -912,7 +912,7 @@ function BookingFormModal({
   onSaved: (result?: { notifyTriggered: boolean }) => void;
 }) {
   const toast = useToast();
-  const { timeZone: tz, ready: tzReady } = useTenantTimeZoneState();
+  const { timeZone: tz, ready: tzReady, error: tzError, retry: tzRetry } = useTenantTimeZoneState();
   const tzRef = React.useRef(tz);
   tzRef.current = tz;
   // 編輯預填的日期／時間；送出時若未被修改就沿用原 startAt（避免 DST 重複小時往返位移）
@@ -1088,6 +1088,12 @@ function BookingFormModal({
       }
     >
       <p className="mb-4 text-base text-neutral-700">{isEdit ? e.intro : c.intro}</p>
+      {tzError ? (
+        <div className="mb-4 flex items-center gap-3">
+          <FormError>{t.messages.timeZoneLoadFailed}</FormError>
+          <Button variant="outline" size="sm" onClick={tzRetry}>{common.retry}</Button>
+        </div>
+      ) : null}
 
       {isEdit ? (
         <FormGroup>
