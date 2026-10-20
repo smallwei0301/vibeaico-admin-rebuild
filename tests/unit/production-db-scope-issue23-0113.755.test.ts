@@ -56,7 +56,7 @@ describe('#755 ISSUE_23_0113 bounded release scope', () => {
   it('does not alter the original-eight spec and admits only the three bounded capture scopes', () => {
     expect(SCOPED_RELEASE_CAPTURE_SCOPES[ISSUE_46_0110_0136_CLOSURE]).toEqual({ migrationCount: 8, routinesRequired: true, createTourOrderFamily: true });
     expect(SCOPED_RELEASE_CAPTURE_SCOPES[ISSUE_23_0113]).toEqual({ migrationCount: 1, routinesRequired: false, createTourOrderFamily: false });
-    expect(Object.keys(SCOPED_RELEASE_CAPTURE_SCOPES)).toEqual([ISSUE_46_0110_0136_CLOSURE, ISSUE_23_0113, ISSUE_749_0137, 'ISSUE_37_0131_0134', 'ISSUE_25_0117_0118', 'ISSUE_18_0124_0116_0119_0127']);
+    expect(Object.keys(SCOPED_RELEASE_CAPTURE_SCOPES)).toEqual([ISSUE_46_0110_0136_CLOSURE, ISSUE_23_0113, ISSUE_749_0137, 'ISSUE_37_0131_0134', 'ISSUE_25_0117_0118', 'ISSUE_18_0124_0116_0119_0127', 'ISSUE_17_0121_0125_0133_0123']);
   });
 
   it('impact manifest declares every object 0113 creates', () => {
