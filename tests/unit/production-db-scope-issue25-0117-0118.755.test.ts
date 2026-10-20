@@ -57,7 +57,7 @@ describe('#755 ISSUE_25_0117_0118 bounded release scope', () => {
   it('pins the capture table: no routines required, no applied-source override; other scopes unchanged', () => {
     expect(SCOPED_RELEASE_CAPTURE_SCOPES[ISSUE_25_0117_0118]).toEqual({ migrationCount: 2, routinesRequired: false, createTourOrderFamily: false });
     expect(SCOPED_RELEASE_CAPTURE_SCOPES[ISSUE_37_0131_0134]).toEqual({ migrationCount: 2, routinesRequired: true, createTourOrderFamily: false });
-    expect(Object.keys(SCOPED_RELEASE_CAPTURE_SCOPES)).toEqual([ISSUE_46_0110_0136_CLOSURE, ISSUE_23_0113, ISSUE_749_0137, ISSUE_37_0131_0134, ISSUE_25_0117_0118]);
+    expect(Object.keys(SCOPED_RELEASE_CAPTURE_SCOPES)).toEqual([ISSUE_46_0110_0136_CLOSURE, ISSUE_23_0113, ISSUE_749_0137, ISSUE_37_0131_0134, ISSUE_25_0117_0118, 'ISSUE_18_0124_0116_0119']);
   });
 
   it('migrations create no routine (routinesRequired=false is honest)', () => {

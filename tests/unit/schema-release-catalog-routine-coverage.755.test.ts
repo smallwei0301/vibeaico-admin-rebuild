@@ -9,7 +9,7 @@ import { RELEASE_CATALOG_SQL } from '../../scripts/agents/schema-drift-watch.mjs
 // （例如 0137 的 create_tour_order_quoted），三環境都抓不到，G2 會以
 // RELEASE_ROUTINE_CAPTURE_REQUIRED 卡死。此測試對每個 scope 的 closure 逐一斷言。
 const readCanonicalSql = (path: string) => readFileSync(path, 'utf8');
-const ALIAS_MAPS = ['supabase/ledger-alias-map.json', 'tests/fixtures/ledger-alias-map.pre-755-s0117-0118.json', 'tests/fixtures/ledger-alias-map.pre-755-s0131-0134.json', 'tests/fixtures/ledger-alias-map.pre-755-s0137.json', 'tests/fixtures/ledger-alias-map.pre-755-s0113.json',
+const ALIAS_MAPS = ['supabase/ledger-alias-map.json', 'tests/fixtures/ledger-alias-map.pre-755-s0117-0118.json', 'tests/fixtures/ledger-alias-map.pre-755-s0124-0116-0119.json', 'tests/fixtures/ledger-alias-map.pre-755-s0131-0134.json', 'tests/fixtures/ledger-alias-map.pre-755-s0137.json', 'tests/fixtures/ledger-alias-map.pre-755-s0113.json',
   'tests/fixtures/ledger-alias-map.pre-755-original8.json'];
 const FAMILY = ['public.create_tour_order', 'public.cancel_tour_order', 'public.expire_tour_order'];
 

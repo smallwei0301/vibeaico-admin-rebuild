@@ -14,6 +14,8 @@ const ISSUES_17_680 = 'ISSUES_17_680';
 export const ISSUE_37_0131_0134 = 'ISSUE_37_0131_0134';
 // #25 / #755：0117（support chat 兩表）＋0118（platform_donations），皆為 additive 新表，無 routine，故一併釋出。
 export const ISSUE_25_0117_0118 = 'ISSUE_25_0117_0118';
+// #18 / #755：0124（legacy shape 前置）→0116（owner_notify 兩表）→0119（原子確認 RPC）；0119 建立兩支 routine，須同一 release。
+export const ISSUE_18_0124_0116_0119 = 'ISSUE_18_0124_0116_0119';
 const ISSUE_46_0135 = 'ISSUE_46_0135';
 export const ISSUE_46_0110_0136_CLOSURE = 'ISSUE_46_0110_0136_CLOSURE';
 export const ISSUE_755_0110_0137_CLOSURE = 'ISSUE_755_0110_0137_CLOSURE';
@@ -49,6 +51,9 @@ export const SCOPED_RELEASE_CAPTURE_SCOPES = Object.freeze({
   // 0117+0118：只新增 enum／資料表／index／policy／trigger（trigger 使用既有 set_updated_at），不建立任何 routine，
   // 故 routinesRequired=false、無 appliedSourceFiles、無 create_tour_order 家族。
   [ISSUE_25_0117_0118]: Object.freeze({ migrationCount: 2, routinesRequired: false, createTourOrderFamily: false }),
+  // 0124+0116+0119：0119 建立 confirm_owner_notify_bind／owner_notify_max_recipients 兩支 routine（Production 尚無），
+  // 故 routinesRequired=true、無 appliedSourceFiles、無 create_tour_order 家族；0124 在 Production 缺表時為 no-op，由 0116 建表。
+  [ISSUE_18_0124_0116_0119]: Object.freeze({ migrationCount: 3, routinesRequired: true, createTourOrderFamily: false }),
 });
 
 // Plan construction is not execution authority. Current #755 nine-file approval
@@ -87,6 +92,9 @@ const BOUNDED_RELEASE_SCOPE_ROOTS = Object.freeze({
     '0117_issue_25b_support_chat_threads',
     '0118_issue_25c_platform_donations',
   ]),
+  [ISSUE_18_0124_0116_0119]: Object.freeze([
+    '0119_issue_18_owner_notify_confirm_atomic',
+  ]),
 });
 const BOUNDED_RELEASE_DEPENDENCIES = Object.freeze({
   '0137_issue_749_create_tour_order_quoted': Object.freeze([
@@ -105,6 +113,9 @@ const BOUNDED_RELEASE_DEPENDENCIES = Object.freeze({
   // no pending migration prerequisite is silently pulled into this release.
   '0131_issue_37_atomic_departure_staff': Object.freeze([]),
   '0134_issue_37_rpc_invoker_owner_compat': Object.freeze(['0131_issue_37_atomic_departure_staff']),
+  // 0119 的函式讀寫 0116 的兩張表；0116 須在 0124 前置之後執行（順序由 PENDING_MIGRATION_PRECEDENCE 保證）。
+  '0119_issue_18_owner_notify_confirm_atomic': Object.freeze(['0116_issue_18_owner_notify']),
+  '0116_issue_18_owner_notify': Object.freeze(['0124_issue_18_owner_notify_legacy_shape']),
 });
 const ISSUE_46_CLOSURE_APPLIED_PREREQUISITES = Object.freeze([
   '0001_extensions_and_functions',
@@ -155,6 +166,13 @@ const BOUNDED_APPLIED_PREREQUISITES = Object.freeze({
   [ISSUE_25_0117_0118]: Object.freeze([
     '0001_extensions_and_functions',
     '0003_tenants_and_accounts',
+  ]),
+  // 0116 引用 public.tenants（0003）、public.line_users（0005，複合 FK tenant_id+line_user_id）、is_tenant_member／gen_random_uuid（0001）；
+  // 0119 只引用 0116 的表；0124 僅 ALTER 0116 的表（缺表為 no-op）。三檔皆不引用 auth schema。
+  [ISSUE_18_0124_0116_0119]: Object.freeze([
+    '0001_extensions_and_functions',
+    '0003_tenants_and_accounts',
+    '0005_line_marketing_other',
   ]),
   // 0113 只引用 public.tenants（0003）與 is_tenant_member／gen_random_uuid（0001）。
   [ISSUE_23_0113]: Object.freeze([
@@ -284,7 +302,7 @@ export function selectedProductionMigrations(aliasMap = {}, migrationScope = FUL
     const matches = aliasMap.entries.filter((entry) => entry?.repoFile === repoFile);
     if (matches.length !== 1 || matches[0].classification !== 'EXACT' ||
         !Array.isArray(matches[0].ledgerNames) || matches[0].ledgerNames.length === 0 ||
-        ([ISSUE_46_0135, ISSUE_37_0131_0134, ISSUE_25_0117_0118, ISSUE_23_0113, ISSUE_749_0137, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE].includes(scope) && (matches[0].ledgerNames.length !== 1 || matches[0].ledgerNames[0] !== repoFile))) {
+        ([ISSUE_46_0135, ISSUE_37_0131_0134, ISSUE_25_0117_0118, ISSUE_18_0124_0116_0119, ISSUE_23_0113, ISSUE_749_0137, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE].includes(scope) && (matches[0].ledgerNames.length !== 1 || matches[0].ledgerNames[0] !== repoFile))) {
       fail('MIGRATION_SCOPE_APPLIED_PREREQUISITE_MISSING', `${scope} requires an exact applied prerequisite: ${repoFile}`);
     }
   }
