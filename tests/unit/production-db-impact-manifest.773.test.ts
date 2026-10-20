@@ -9,12 +9,14 @@ import { selectedProductionMigrations } from '../../scripts/agents/production-db
 // Each object rewritten by a later migration is registered only under its final writer (#589 rule).
 const root = process.cwd();
 const aliasMap = JSON.parse(readFileSync(resolve(root, 'supabase/ledger-alias-map.json'), 'utf8'));
+// 0124/0116/0119/0127 已套用 Production（EXACT），不再屬 FULL_PENDING_SET；最終擁有者斷言改讀釋出前 alias map fixture。
+const preAliasMap = JSON.parse(readFileSync(resolve(root, 'tests/fixtures/ledger-alias-map.pre-755-s0124-0116-0119-0127.json'), 'utf8'));
 const manifest = JSON.parse(readFileSync(resolve(root, 'supabase/production-db-impact-manifest.json'), 'utf8'));
 const MAIN = 'a'.repeat(40);
 const PLAN_DIGEST = 'b'.repeat(64);
 
-function planFor(scope: string) {
-  const selection = selectedProductionMigrations(aliasMap, scope);
+function planFor(scope: string, map: any = aliasMap) {
+  const selection = selectedProductionMigrations(map, scope);
   return {
     selection,
     plan: {
@@ -55,7 +57,7 @@ describe('#773 G2 source check has no duplicate impact owners', () => {
   }
 
   it('each duplicate key is owned by exactly its final writer in FULL_PENDING_SET', () => {
-    const files: string[] = planFor('FULL_PENDING_SET').selection.migrations;
+    const files: string[] = planFor('FULL_PENDING_SET', preAliasMap).selection.migrations;
     for (const [key, , finalOwner] of finalOwners) {
       expect(ownersOf(manifest, key, files), key).toEqual([finalOwner]);
     }
@@ -69,7 +71,7 @@ describe('#773 G2 source check has no duplicate impact owners', () => {
   });
 
   it('re-adding a key to its non-final entry still fails closed as AMBIGUOUS_IMPACT_OWNERSHIP', () => {
-    const { plan } = planFor('FULL_PENDING_SET');
+    const { plan } = planFor('FULL_PENDING_SET', preAliasMap);
     for (const [key, nonFinal] of finalOwners) {
       const [surface, ...rest] = key.split(':');
       const m: any = structuredClone(manifest);
