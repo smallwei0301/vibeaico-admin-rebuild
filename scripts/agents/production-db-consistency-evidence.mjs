@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { createHash as gitHash } from 'node:crypto';
+import { HISTORICAL_MANIFEST, readVerifiedJson } from './fresh-install-baseline.mjs';
 
 import { normalizeProductionDbImpactManifest } from './production-db-impact-manifest.mjs';
 import { ISSUE_17_0121_0125_0133_0123, ISSUE_18_0124_0116_0119_0127, ISSUE_25_0117_0118, ISSUE_37_0131_0134, ISSUE_23_0113, ISSUE_749_0137, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE, SCOPED_RELEASE_CAPTURE_SCOPES, splitSqlStatements, stripSqlComments, stripSqlStringLiterals,
@@ -308,12 +310,32 @@ export function sourceCatalog({ plan, repoRoot, readCanonicalSql, appliedSourceF
     const path = `supabase/migrations/${matches[0]}`;
     for (const routine of sourceRoutines(read(path), path)) if (['public.create_tour_order', 'public.cancel_tour_order', 'public.expire_tour_order'].includes(routine.name)) before.set(routineKey(routine), routine);
   }
-  return { before, after, enums, sources, read };
+  return { before, after, enums, sources, read, historicalTables: historicalBaselineTables(repoRoot) };
 }
 
-function historicalTableInEveryCapture(captures, table) {
+// Tables created by hash-verified, non-retired files of the historical integration baseline.
+// Anything unreadable, unverified or retired contributes nothing (fail closed).
+export function historicalBaselineTables(repoRoot) {
+  const tables = new Set();
+  let manifest;
+  try { manifest = readVerifiedJson(repoRoot, HISTORICAL_MANIFEST); } catch { return tables; }
+  if (!Array.isArray(manifest?.files)) return tables;
+  const dir = HISTORICAL_MANIFEST.replace(/\/manifest\.json$/, '');
+  for (const entry of manifest.files) {
+    if (!entry || entry.retiredBy || !/^\d{4}_[a-z0-9_]+\.sql$/.test(entry.name) || !/^[0-9a-f]{40}$/.test(entry.blobSha)) continue;
+    let bytes;
+    try { bytes = readFileSync(resolve(repoRoot, dir, entry.name)); } catch { continue; }
+    if (gitHash('sha1').update(Buffer.from(`blob ${bytes.length}\0`)).update(bytes).digest('hex') !== entry.blobSha) continue;
+    for (const match of stripSqlComments(bytes.toString('utf8')).matchAll(/\bcreate\s+table\s+(?:if\s+not\s+exists\s+)?((?:public\.)?[a-z_][a-z_0-9]*)/gi)) {
+      tables.add(match[1].includes('.') ? match[1] : `public.${match[1]}`);
+    }
+  }
+  return tables;
+}
+
+function historicalTableInEveryCapture(source, captures, table) {
   const all = Object.values(captures);
-  return table.startsWith('public.') && all.length > 0
+  return table.startsWith('public.') && source.historicalTables instanceof Set && source.historicalTables.has(table) && all.length > 0
     && all.every((capture) => Array.isArray(capture?.catalog?.tableOwners) && capture.catalog.tableOwners.some((entry) => entry.table === table));
 }
 
@@ -363,9 +385,9 @@ export function deriveClosure({ source, captures, impactManifest, plan, createTo
         if (/^(?:from|join)\b/i.test(match[0]) && /^\s*\(/.test(code.slice(match.index + match[0].length)) && [...source.after.values()].some((routine) => routine.name === table)) continue;
         if (match[1].startsWith('public.') && !knownTables.has(table)) {
           // Historical baseline tables (e.g. booking_addons) are created only by the
-          // LOCAL_ONLY_TRANSITIONAL overlay. They count as existing tables only when
-          // EVERY capture's catalog.tableOwners (all public relkind r/p) proves them.
-          if (!historicalTableInEveryCapture(captures, table)) fail('RELEASE_UNSOURCED_DEPENDENCY', `${table} has no canonical table source`);
+          // LOCAL_ONLY_TRANSITIONAL overlay. They count only when a hash-verified, non-retired
+          // baseline file creates them AND every capture's catalog.tableOwners proves them.
+          if (!historicalTableInEveryCapture(source, captures, table)) fail('RELEASE_UNSOURCED_DEPENDENCY', `${table} has no canonical table source`);
           if (!roots.has(table)) { roots.add(table); changed = true; }
           continue;
         }
