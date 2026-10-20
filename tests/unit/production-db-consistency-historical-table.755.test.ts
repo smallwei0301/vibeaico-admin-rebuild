@@ -71,3 +71,16 @@ begin perform 1 from public.fixture_ref(p) as c; end; $b$;`;
     expect(closure.tables.has('public.fixture_ref')).toBe(false);
   });
 });
+
+describe('#755 G2 SRF 豁免只限 from/join 後的函式呼叫', () => {
+  const sql = `create or replace function public.fixture_t(p jsonb) returns setof text language sql as $a$ select 'x' $a$;
+create or replace function public.fixture_use(p_id uuid) returns void language plpgsql as $b$
+begin insert into public.fixture_t (id) values (p_id); end; $b$;`;
+  it('routine 與表同名時，insert into public.t (cols) 不得被當成 SRF 跳過', () => {
+    expect(() => deriveClosure({
+      source: { sources: new Map(), before: new Map(), after: afterMap(sql), read: () => sql } as any,
+      plan: { migrations: [MIGRATION] }, impactManifest: { schemaVersion: 1, entries: [] },
+      captures: captures({}) as any, createTourOrderFamily: false,
+    })).toThrow(/RELEASE_UNSOURCED_DEPENDENCY: public\.fixture_t/);
+  });
+});
