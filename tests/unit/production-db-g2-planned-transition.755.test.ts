@@ -76,7 +76,7 @@ describe('#755 G2 manifest findings for 0127', () => {
       `${T1}.p_booking_addons_d`, `${T1}.p_booking_addons_i`, `${T1}.p_booking_addons_u`,
       `${T2}.p_owner_notify_recipients_d`, `${T2}.p_owner_notify_recipients_i`, `${T2}.p_owner_notify_recipients_s`, `${T2}.p_owner_notify_recipients_u`,
     ].sort());
-    expect([...t.aclRolesByTable.get(T1)].sort()).toEqual(['anon', 'authenticated', 'service_role']);
+    expect([...t.aclRolesByTable.get(T1)].sort()).toEqual(['anon', 'authenticated', 'service_role']); // revoke all ... from public 依規則展開為全部 app role
   });
 });
 
@@ -225,6 +225,21 @@ describe('#755 G2 planned ACL transition: counterexamples', () => {
   it('derives roles only from the grant/revoke statements of the plan migration', () => {
     expect([...t(true).aclRolesByTable.get('public.x_tbl')]).toEqual(['authenticated']);
     expect(t(false).aclRolesByTable.size).toBe(0);
+  });
+  it('a role that only receives grant (no revoke all on that table) is still compared exactly', () => {
+    const grantOnly: any = { migrations: [{ repoFile: '9999_x', path: 'p' }] };
+    const src: any = { read: () => 'grant select on table public.x_tbl to authenticated; revoke all on table public.x_tbl from anon;' };
+    const tr = derivePlannedTransitions({ impacts: impacts(true), plan: grantOnly, source: src, expectedSnapshot, phase: 'pre_apply' });
+    expect([...tr.aclRolesByTable.get('public.x_tbl')]).toEqual(['anon']);
+    const extra = cap('PRODUCTION', ['authenticated:SELECT', 'authenticated:INSERT'], [newPolicy]);
+    expect(() => check(extra, tr)).toThrow(/RELEASE_APP_GRANT_MISMATCH.*authenticated/);
+  });
+  it('revoke all on table A does not exempt the same role on table B', () => {
+    const src: any = { read: () => 'revoke all on table public.y_tbl from authenticated; grant select on table public.x_tbl to authenticated;' };
+    const tr = derivePlannedTransitions({ impacts: impacts(true), plan: syntheticPlan, source: src, expectedSnapshot, phase: 'pre_apply' });
+    expect(tr.aclRolesByTable.has('public.x_tbl')).toBe(false);
+    const extra = cap('PRODUCTION', ['authenticated:SELECT', 'authenticated:INSERT'], [newPolicy]);
+    expect(() => check(extra, tr)).toThrow(/RELEASE_APP_GRANT_MISMATCH/);
   });
   it('named role (authenticated) may differ in the pre-state; a role not named (anon) may not', () => {
     const named = cap('PRODUCTION', ['authenticated:SELECT', 'authenticated:INSERT'], [newPolicy, oldPolicy]);
