@@ -117,10 +117,16 @@ const APP_ROLES = ['anon', 'authenticated', 'service_role'];
 const compareJson = (a, b) => stableStringify(a) === stableStringify(b);
 const sqlWords = (value) => stripSqlStringLiterals(stripSqlComments(value), true).toLowerCase();
 const compactSql = (value) => stripSqlComments(value).replace(/\s+/g, ' ').trim().toLowerCase();
+// pg_get_functiondef 以 canonical 型別名輸出（int→integer、timestamptz→timestamp with time zone）；
+// 來源 SQL 的別名必須先正規化，參數與回傳型別共用同一套規則。
+const normalizeTypeAliases = (text) => text.replace(/\bpublic\./gi, '')
+  .replace(/\btimestamptz\b/gi, 'timestamp with time zone').replace(/\bint\b/gi, 'integer');
+const normalizeReturnType = (text) => normalizeTypeAliases(compactSql(text))
+  .replace(/\s*\(\s*/g, '(').replace(/\s*\)/g, ')').replace(/\s*,\s*/g, ', ');
 const routineKey = (routine) => `${routine.name}(${routine.args})`;
 const digestJson = (value) => sha256(stableStringify(value));
 
-function sourceRoutines(sql, path) {
+export function sourceRoutines(sql, path) {
   const result = [];
   for (const statement of splitSqlStatements(sql)) {
     const clean = stripSqlComments(statement);
@@ -147,7 +153,7 @@ function sourceRoutines(sql, path) {
       argumentDeclaration: head[2].replace(/\bpublic\./gi, '').replace(/\btimestamptz\b/gi, 'timestamp with time zone')
         .replace(/\bint\b/gi, 'integer').replace(/\s+/g, ' ').replace(/\s*,\s*/g, ', ').trim(),
       body: statement.slice(bodyStart, bodyEnd), securityDefiner: /\bsecurity\s+definer\b/i.test(outside),
-      returnType: compactSql(returns[1]).replace(/\bpublic\./g, ''), language,
+      returnType: normalizeReturnType(returns[1]), language,
       strict: /\bstrict\b|\breturns\s+null\s+on\s+null\s+input\b/i.test(outside),
       leakproof: /\bleakproof\b/i.test(outside.replace(/\bnot\s+leakproof\b/gi, '')),
       parallel: /\bparallel\s+(unsafe|restricted|safe)\b/i.exec(outside)?.[1].toLowerCase() ?? 'unsafe',
