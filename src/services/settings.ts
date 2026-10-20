@@ -213,6 +213,12 @@ export const getTenantSettings = () =>
  * 僅顯示用的呼叫端由 useTenantTimeZoneState 自行回退台北渲染，寫入則須等 ready。
  */
 const tenantTimeZoneCache = new Map<string, Promise<string>>();
+const tenantTimeZoneInvalidationListeners = new Set<() => void>();
+/** 快取被 saveTenantSettings 清除時通知（共用時區 store 據此重新載入，避免跨頁沿用舊時區）。 */
+export const onTenantTimeZoneCacheCleared = (fn: () => void): (() => void) => {
+  tenantTimeZoneInvalidationListeners.add(fn);
+  return () => { tenantTimeZoneInvalidationListeners.delete(fn); };
+};
 /** 以店家 id 為鍵，避免 SPA 登出再登入另一間店時沿用前一間的時區；未提供 id 時共用 '' 鍵。 */
 export const getTenantTimeZone = (tenantId = ''): Promise<string> => {
   let cached = tenantTimeZoneCache.get(tenantId);
@@ -242,7 +248,11 @@ export const saveTenantSettings = (patch: Partial<TenantSettings>) =>
       method: 'PUT',
       body: JSON.stringify(patch),
     }),
-  ).then((r) => { tenantTimeZoneCache.clear(); return r; });
+  ).then((r) => {
+    tenantTimeZoneCache.clear();
+    tenantTimeZoneInvalidationListeners.forEach((fn) => fn());
+    return r;
+  });
 
 /**
  * shop-page 端點群（issue #22；04 分冊 §A-1.1）—— `/tenant/shop-design` 頁

@@ -18,7 +18,7 @@ describe('#936 getTenantTimeZone 以店家 id 為快取鍵', () => {
 
   it('hook 以 useCurrentTenant().id 呼叫、並暴露 ready', () => {
     const hook = src('src/lib/use-tenant-time-zone.ts');
-    expect(hook).toContain('getTenantTimeZone(tenantId)');
+    expect(hook).toContain('subscribeTenantTimeZone(tenantId');
     expect(hook).toContain('ready');
   });
 });
@@ -67,8 +67,8 @@ describe('#936 載入失敗不可視為 ready（Codex P1）', () => {
     const hook = src('src/lib/use-tenant-time-zone.ts');
     expect(hook).toContain('error:');
     expect(hook).toContain('retry');
-    expect(hook).toContain('const ready = current?.zone != null;');
-    expect(hook).toContain('current?.zone ?? PUBLIC_DEFAULT_TIME_ZONE');
+    expect(hook).toContain('const ready = snap.zone !== null;');
+    expect(hook).toContain('snap.zone ?? PUBLIC_DEFAULT_TIME_ZONE');
   });
 
   it('預約表單：error 時顯示 i18n 訊息與重試鈕，且送出仍被 !tzReady 擋住', () => {

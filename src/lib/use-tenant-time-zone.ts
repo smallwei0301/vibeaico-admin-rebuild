@@ -2,7 +2,12 @@
 import * as React from 'react';
 import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { PUBLIC_DEFAULT_TIME_ZONE } from '@/lib/public-time-zone';
-import { getTenantTimeZone } from '@/services/settings';
+import {
+  getTenantTimeZoneSnapshot,
+  IDLE_SNAPSHOT,
+  retryTenantTimeZone,
+  subscribeTenantTimeZone,
+} from '@/lib/tenant-time-zone-store';
 
 export interface TenantTimeZoneState {
   timeZone: string;
@@ -14,33 +19,29 @@ export interface TenantTimeZoneState {
 }
 
 /**
- * 目前店家的 IANA 時區（#936）。快取以店家 id 為鍵（見 getTenantTimeZone），切換店家不會沿用舊時區。
+ * 目前店家的 IANA 時區（#936）。狀態由 tenant-time-zone-store 以店家 id 為鍵共用：
+ * 同店家只載入一次，所有 hook 實例（任何頁面）同步更新；失敗時自動有界重試，切換店家不會沿用舊時區。
  * `ready` 為 false 時 timeZone 暫為 Asia/Taipei（與既有預設一致，台北店家不閃動，僅供顯示）。
  * 設定載入失敗時 `ready` 維持 false、`error` 為 true，並可 `retry()`；
  * 會把時間字串轉成瞬間的表單送出前必須等 ready，避免非台北店家以錯誤時區儲存。
  */
 export function useTenantTimeZoneState(): TenantTimeZoneState {
   const tenantId = useCurrentTenant()?.id ?? '';
-  const [state, setState] = React.useState<{ id: string; zone: string | null } | null>(null);
-  const [attempt, setAttempt] = React.useState(0);
-  React.useEffect(() => {
-    let alive = true;
-    getTenantTimeZone(tenantId).then(
-      (zone) => { if (alive) setState({ id: tenantId, zone }); },
-      () => { if (alive) setState({ id: tenantId, zone: null }); },
-    );
-    return () => { alive = false; };
-  }, [tenantId, attempt]);
-  const retry = React.useCallback(() => {
-    setState(null);
-    setAttempt((n) => n + 1);
-  }, []);
-  const current = state !== null && state.id === tenantId ? state : null;
-  const ready = current?.zone != null;
+  const subscribe = React.useCallback(
+    (listener: () => void) => subscribeTenantTimeZone(tenantId, listener),
+    [tenantId],
+  );
+  const snap = React.useSyncExternalStore(
+    subscribe,
+    () => getTenantTimeZoneSnapshot(tenantId),
+    () => IDLE_SNAPSHOT,
+  );
+  const retry = React.useCallback(() => retryTenantTimeZone(tenantId), [tenantId]);
+  const ready = snap.zone !== null;
   return {
-    timeZone: current?.zone ?? PUBLIC_DEFAULT_TIME_ZONE,
+    timeZone: snap.zone ?? PUBLIC_DEFAULT_TIME_ZONE,
     ready,
-    error: current !== null && current.zone === null,
+    error: snap.error,
     retry,
   };
 }
