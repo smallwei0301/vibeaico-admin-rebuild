@@ -401,6 +401,10 @@
       "title": "安全：驗證碼無嘗試次數上限且舊碼不作廢，重設密碼可被暴力猜碼接管帳號"
     },
     {
+      "ref": "issue/1064",
+      "title": "#46 導遊版 LINE「我的訂單」只列總額，看不到付款狀態與已付金額"
+    },
+    {
       "ref": "issue/936",
       "title": "後台日期時間顯示用瀏覽器時區，與店家時區篩選不一致：管理員不在店家時區時，篩選結果與畫面日期對不上"
     }
@@ -11253,6 +11257,57 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
+        "id": "20261020-terra-build-1064",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 1064,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/1065#issuecomment-6285310234",
+        "startedAt": "2026-10-20T06:53:41Z",
+        "completedAt": "2026-10-20T06:59:25Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5，build tier）施工 #1064，commit 6e7569fe（導遊版 LINE「我的訂單」付款狀態與部分付款尾款）。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261020-luna-scout-1064-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1064,
+        "evidenceRef": "issue/1064",
+        "startedAt": "2026-10-20T06:50:54Z",
+        "completedAt": "2026-10-20T06:53:00Z",
+        "note": "Luna 窄盤點：Haiku scout（requested claude-haiku-4-5）找到導遊版 LINE「我的訂單」只列總額、看不到付款狀態之缺口，主 agent 確認後開 #1064。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261020-luna-scout-1064-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1064,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-20T07:00:40Z",
+        "completedAt": "2026-10-20T07:01:24Z",
+        "note": "Luna metrics capture 綁定 issue/1064 至本 Run：補 sources、delivery.issuesStarted +1、flow.lunaTasks/lunaAccepted +2（盤點＋綁定）、補記 #1064 TERRA_BUILD 事件。solTouches 未變（無 Sol 事件）。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
         "id": "20261020-terra-build-936",
         "role": "build",
         "requestedModel": "terra",
@@ -11284,7 +11339,7 @@
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 103,
+    "issuesStarted": 104,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -11311,8 +11366,8 @@
     "hardFailReasons": ["OBSERVED_2026_10_15_PR1002_PUSHED_4b239101_WHILE_PARKED"]
   },
   "flow": {
-    "lunaTasks": 210,
-    "lunaAccepted": 201,
+    "lunaTasks": 212,
+    "lunaAccepted": 203,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,

@@ -37,6 +37,7 @@ import { APP_URL } from '@/config/env';
 import { MODE_PRESETS, type BusinessType } from '@/config/modes';
 import { keywordRepliesPage } from '@/i18n/zh-TW/pages/keyword-replies';
 import { isDepartureBookableOnPage } from '@/lib/public-booking-price';
+import { partialPaymentBreakdown } from '@/lib/public-partial-payment';
 import { loadPublicBookingPlan } from './public-tour-booking';
 
 /** webhook 端已查好的店家列（route.ts select id, shop_code, name） */
@@ -205,6 +206,17 @@ const MSG = {
     REFUNDED: '已退款',
   } as Record<string, string>,
   /* --- 旅遊訂單查詢（issue #373：GUIDE 的 ORDER 組，查 tour_orders）--- */
+  /** #1064：`tour_orders.payment_status`（UNPAID/PARTIAL/PAID/REFUND_PENDING/REFUNDED）的顧客用詞。 */
+  tourPaymentStatus: {
+    UNPAID: '未付款',
+    PARTIAL: '部分付款',
+    PAID: '已付款',
+    REFUND_PENDING: '退款處理中',
+    REFUNDED: '已退款',
+  } as Record<string, string>,
+  /** #1064：部分付款時附註已付金額；待付尾款僅在訂單未取消時顯示（口徑同 #988 狀態頁）。 */
+  tourPaidOnly: (paid: string) => `（已付 NT$${paid}）`,
+  tourPaidAndBalance: (paid: string, balance: string) => `（已付 NT$${paid}／待付 NT$${balance}）`,
   tourOrderTitle: '您最近的旅遊訂單：',
   tourOrderEmpty: '您目前沒有旅遊訂單紀錄，歡迎輸入「行程」看看目前開放報名的行程！',
   /**
@@ -1005,6 +1017,29 @@ async function replyOrders(ctx: BuiltinCtx): Promise<boolean> {
   return replyText(ctx, `${MSG.orderTitle}\n${lines.join('\n')}`);
 }
 
+/**
+ * #1064：旅遊訂單一行的付款文字。待付尾款沿用旅客狀態頁（#988）的
+ * `partialPaymentBreakdown`（total − paid、不為負、已取消不列待付）；已取消的
+ * 部分付款訂單只列已付（退款脈絡），不要求旅客再付款。
+ */
+function tourPaymentText(o: any): string {
+  const label = MSG.tourPaymentStatus[o.payment_status] ?? o.payment_status;
+  if (o.payment_status !== 'PARTIAL') return label;
+  const fmt = (n: number) => n.toLocaleString('zh-TW');
+  const paidRaw = o.paid_amount == null ? NaN : Number(o.paid_amount);
+  const b = partialPaymentBreakdown({
+    status: o.status,
+    paymentStatus: o.payment_status,
+    totalAmount: Number(o.total_amount),
+    paidAmount: Number.isFinite(paidRaw) ? paidRaw : undefined,
+  });
+  if (b) return `${label}${MSG.tourPaidAndBalance(fmt(b.paidAmount), fmt(b.balanceDue))}`;
+  if (o.status === 'CANCELLED' && Number.isFinite(paidRaw) && paidRaw > 0) {
+    return `${label}${MSG.tourPaidOnly(fmt(paidRaw))}`;
+  }
+  return label;
+}
+
 /* -------------------------------------------------- 內建指令：旅遊訂單查詢 */
 /**
  * 嚮導的「訂單查詢」＝行程訂單（10 分冊 §6.1）。由 `replyOrders()` 在
@@ -1045,7 +1080,7 @@ export async function replyTourOrders(ctx: BuiltinCtx): Promise<boolean> {
 
   const { data, error } = await ctx.admin
     .from('tour_orders')
-    .select('order_no, party_size, total_amount, status, trips(title), trip_departures(departs_on)')
+    .select('order_no, party_size, total_amount, status, payment_status, paid_amount, trips(title), trip_departures(departs_on)')
     .eq('tenant_id', ctx.tenant.id)
     .eq('customer_id', customerId)
     .order('created_at', { ascending: false })
@@ -1065,7 +1100,7 @@ export async function replyTourOrders(ctx: BuiltinCtx): Promise<boolean> {
     // 同一個 bot 在不同關鍵字下把金額寫成不同樣子，顧客會以為是兩套系統。
     return `・${o.order_no}｜${o.trips?.title ?? ''}${day}｜${o.party_size} 位`
       + `｜NT$${Number(o.total_amount).toLocaleString('zh-TW')}`
-      + `｜${MSG.orderStatus[o.status] ?? o.status}`;
+      + `｜${MSG.orderStatus[o.status] ?? o.status}／${tourPaymentText(o)}`;
   });
   return replyText(ctx, `${MSG.tourOrderTitle}\n${lines.join('\n')}`);
 }
