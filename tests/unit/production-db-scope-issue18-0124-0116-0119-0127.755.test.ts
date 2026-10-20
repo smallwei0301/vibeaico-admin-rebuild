@@ -63,7 +63,7 @@ describe('#755 ISSUE_18_0124_0116_0119_0127 bounded release scope', () => {
     expect(SCOPED_RELEASE_CAPTURE_SCOPES[ISSUE_18_0124_0116_0119_0127]).toEqual({ migrationCount: 4, routinesRequired: true, createTourOrderFamily: false });
     expect(SCOPED_RELEASE_CAPTURE_SCOPES[ISSUE_25_0117_0118]).toEqual({ migrationCount: 2, routinesRequired: false, createTourOrderFamily: false });
     expect(SCOPED_RELEASE_CAPTURE_SCOPES[ISSUE_37_0131_0134]).toEqual({ migrationCount: 2, routinesRequired: true, createTourOrderFamily: false });
-    expect(Object.keys(SCOPED_RELEASE_CAPTURE_SCOPES)).toEqual([ISSUE_46_0110_0136_CLOSURE, ISSUE_23_0113, ISSUE_749_0137, ISSUE_37_0131_0134, ISSUE_25_0117_0118, ISSUE_18_0124_0116_0119_0127]);
+    expect(Object.keys(SCOPED_RELEASE_CAPTURE_SCOPES)).toEqual([ISSUE_46_0110_0136_CLOSURE, ISSUE_23_0113, ISSUE_749_0137, ISSUE_37_0131_0134, ISSUE_25_0117_0118, ISSUE_18_0124_0116_0119_0127, 'ISSUE_17_0121_0125_0133_0123']);
   });
 
   it('source facts: no auth schema, no top-level DML/backfill, only 0119 creates routines (0127 is a DO-block reconciliation)', () => {
@@ -125,7 +125,7 @@ describe('#755 ISSUE_18_0124_0116_0119_0127 workflow wiring', () => {
   });
   it('ci dispatch admits the scope', () => {
     expect(ci.on.workflow_dispatch.inputs.production_db_release_scope.options).toContain('ISSUE_18_0124_0116_0119_0127');
-    expect(readFileSync('.github/workflows/ci.yml', 'utf8')).toContain('ISSUE_25_0117_0118|ISSUE_18_0124_0116_0119_0127) ;;');
+    expect(readFileSync('.github/workflows/ci.yml', 'utf8')).toContain('ISSUE_25_0117_0118|ISSUE_18_0124_0116_0119_0127|ISSUE_17_0121_0125_0133_0123) ;;');
   });
 });
 

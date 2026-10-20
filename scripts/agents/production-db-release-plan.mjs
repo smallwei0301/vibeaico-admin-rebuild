@@ -18,6 +18,10 @@ export const ISSUE_25_0117_0118 = 'ISSUE_25_0117_0118';
 // 0127 把 Production 既有 legacy owner_notify_recipients 的 per-command policy 收斂為 p_owner_notify_recipients_all（並對帳 booking_addons），
 // 否則 G2 會以 RELEASE_RLS_PREDICATE_MISMATCH 擋下；故 0127 必須同批且排最後。
 export const ISSUE_18_0124_0116_0119_0127 = 'ISSUE_18_0124_0116_0119_0127';
+// #17 / #680 / #589 / #755（第五批）：0125（legacy enum 前置）→0121（booking_addons 硬化＋原子 create/delete RPC）→0123（richmenu 資產退役）→0133（composite FK expand）。
+// 0121／0125／0133 皆只對已存在的 booking_addons／staff 做 ALTER；0123 為獨立的新表＋三支 routine＋tenant_settings trigger。
+// 不含 0126（storage.objects，平台擁有）與 0117／0118（auth，已另案）。
+export const ISSUE_17_0121_0125_0133_0123 = 'ISSUE_17_0121_0125_0133_0123';
 const ISSUE_46_0135 = 'ISSUE_46_0135';
 export const ISSUE_46_0110_0136_CLOSURE = 'ISSUE_46_0110_0136_CLOSURE';
 export const ISSUE_755_0110_0137_CLOSURE = 'ISSUE_755_0110_0137_CLOSURE';
@@ -56,6 +60,9 @@ export const SCOPED_RELEASE_CAPTURE_SCOPES = Object.freeze({
   // 0124+0116+0119：0119 建立 confirm_owner_notify_bind／owner_notify_max_recipients 兩支 routine（Production 尚無），
   // 故 routinesRequired=true、無 appliedSourceFiles、無 create_tour_order 家族；0124 在 Production 缺表時為 no-op，由 0116 建表。
   [ISSUE_18_0124_0116_0119_0127]: Object.freeze({ migrationCount: 4, routinesRequired: true, createTourOrderFamily: false }),
+  // 0121 建立 create_booking_addon／delete_booking_addon；0123 建立 richmenu_asset_references／prevent_retired_richmenu_asset／retire_richmenu_asset
+  // （Production 皆尚無），故 routinesRequired=true、無 appliedSourceFiles、無 create_tour_order 家族。
+  [ISSUE_17_0121_0125_0133_0123]: Object.freeze({ migrationCount: 4, routinesRequired: true, createTourOrderFamily: false }),
 });
 
 // Plan construction is not execution authority. Current #755 nine-file approval
@@ -98,6 +105,11 @@ const BOUNDED_RELEASE_SCOPE_ROOTS = Object.freeze({
     '0119_issue_18_owner_notify_confirm_atomic',
     '0127_issue_589_authz_constraint_reconciliation',
   ]),
+  // roots 為鏈頭：0133→0121→0125 由相依展開帶入；0123 無 pending 相依。
+  [ISSUE_17_0121_0125_0133_0123]: Object.freeze([
+    '0133_issue_680_booking_addons_composite_fk_expand',
+    '0123_issue_589_richmenu_asset_retirement',
+  ]),
 });
 const BOUNDED_RELEASE_DEPENDENCIES = Object.freeze({
   '0137_issue_749_create_tour_order_quoted': Object.freeze([
@@ -122,6 +134,8 @@ const BOUNDED_RELEASE_DEPENDENCIES = Object.freeze({
   // 0127 對帳 owner_notify_recipients 的 policy／grant，須在 0116（表）與 0119 之後；booking_addons 為已套用的 0082。
   // 0127 不引用 0121／0125／0133 才會建立的物件，因此不可把它們拉進 release。
   '0127_issue_589_authz_constraint_reconciliation': Object.freeze(['0116_issue_18_owner_notify', '0119_issue_18_owner_notify_confirm_atomic']),
+  // 0123 只引用已套用的 tenants／tenant_settings（0003），不依賴任何 pending migration。
+  '0123_issue_589_richmenu_asset_retirement': Object.freeze([]),
 });
 const ISSUE_46_CLOSURE_APPLIED_PREREQUISITES = Object.freeze([
   '0001_extensions_and_functions',
@@ -181,6 +195,15 @@ const BOUNDED_APPLIED_PREREQUISITES = Object.freeze({
     '0005_line_marketing_other',
     // 0127 對帳 public.booking_addons（notified CHECK／policy／grant）；該表與 notified text not null default 'NONE' 由已套用的 0082 保證。
     '0082_reconcile_booking_addon_notify_fields',
+  ]),
+  // 0121／0125／0133 ALTER 已套用的 booking_addons（0082 保證表存在；0127 已收斂其 RLS／policy／grant，0133 要求 RLS 已啟用），
+  // 並引用 public.staff（0004）；0121 的 RPC 本體只對 bookings／services（0004）做 DML／存在性檢查，不對 bookings 做任何 DDL。
+  // 0123 引用 public.tenants 與 public.tenant_settings（0003，trigger 掛於其上）。五檔皆不引用 auth schema。
+  [ISSUE_17_0121_0125_0133_0123]: Object.freeze([
+    '0003_tenants_and_accounts',
+    '0004_core_business_tables',
+    '0082_reconcile_booking_addon_notify_fields',
+    '0127_issue_589_authz_constraint_reconciliation',
   ]),
   // 0113 只引用 public.tenants（0003）與 is_tenant_member／gen_random_uuid（0001）。
   [ISSUE_23_0113]: Object.freeze([
@@ -310,7 +333,7 @@ export function selectedProductionMigrations(aliasMap = {}, migrationScope = FUL
     const matches = aliasMap.entries.filter((entry) => entry?.repoFile === repoFile);
     if (matches.length !== 1 || matches[0].classification !== 'EXACT' ||
         !Array.isArray(matches[0].ledgerNames) || matches[0].ledgerNames.length === 0 ||
-        ([ISSUE_46_0135, ISSUE_37_0131_0134, ISSUE_25_0117_0118, ISSUE_18_0124_0116_0119_0127, ISSUE_23_0113, ISSUE_749_0137, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE].includes(scope) && (matches[0].ledgerNames.length !== 1 || matches[0].ledgerNames[0] !== repoFile))) {
+        ([ISSUE_46_0135, ISSUE_37_0131_0134, ISSUE_25_0117_0118, ISSUE_18_0124_0116_0119_0127, ISSUE_17_0121_0125_0133_0123, ISSUE_23_0113, ISSUE_749_0137, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE].includes(scope) && (matches[0].ledgerNames.length !== 1 || matches[0].ledgerNames[0] !== repoFile))) {
       fail('MIGRATION_SCOPE_APPLIED_PREREQUISITE_MISSING', `${scope} requires an exact applied prerequisite: ${repoFile}`);
     }
   }
