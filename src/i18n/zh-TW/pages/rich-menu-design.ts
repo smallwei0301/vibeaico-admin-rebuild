@@ -128,7 +128,6 @@ export const richMenuDesignPage = {
     cardTitle: '主題風格',
     advancedBadge: '進階',
     options: {
-      BOUTIQUE: '精品風',
       LINE_GREEN: 'LINE 綠',
       LINE_GREEN_SHORT: 'LINE綠',
       OCEAN_BLUE: '海洋藍',
