@@ -445,6 +445,11 @@ export function buildPublicBookingUrl(appUrl: string, shopCode: string): string 
   return `${appUrl.replace(/\/$/, '')}/s/${shopCode}`;
 }
 
+/** 行程公開頁網址：/s/{shopCode}/trips/{slug}（issue #1072）。base 處理與 buildPublicBookingUrl 一致。 */
+export function buildPublicTripUrl(appUrl: string, shopCode: string, slug: string): string {
+  return `${appUrl.replace(/\/$/, '')}/s/${encodeURIComponent(shopCode)}/trips/${encodeURIComponent(slug)}`;
+}
+
 export const DEFAULT_TENANT_SETTINGS = (shopCode: string, tenantName: string): TenantSettings =>
   tenantSettingsSchema.parse({
     basic: { tenantName, shopCode },

@@ -260,6 +260,8 @@ export const tripsPage = {
       previewPricePlaceholder: '—',
       previewEmpty: '儲存方案名稱與內容後，這裡會顯示公開頁預覽摘要。',
       previewLink: '開啟商店頁預覽',
+      previewTripLink: '開啟此行程公開頁',
+      previewUnpublishedHint: '發佈後才能預覽此行程的公開頁',
       listedAdvancedHint: '可開啟進階設定檢視販售方式、人數、成團規則、訂金、時長與季節定價，目前僅供檢視。',
       advancedHint: '需要調整販售方式、人數、成團規則、訂金、時長或季節定價時，開啟進階設定。',
       save: '儲存快速編輯',

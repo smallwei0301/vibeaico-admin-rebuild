@@ -45,6 +45,8 @@ import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
 import { hydrateTourOrders } from '@/server/tour-orders';
 import { isFeatureActive } from '@/server/features';
 import { nextTourOrderNo } from '@/server/tour-order-no';
+import { safePublicHttpsUrl } from '@/lib/public-url';
+import { MAX_PUBLIC_LIST_ITEM_CHARS, truncateChars } from '@/lib/public-trip-limits';
 import type { TourOrder } from '@/lib/types';
 
 /** 「我的訂單」查詢一次最多回傳幾筆（issue #46）——避免無上限回應。 */
@@ -317,6 +319,13 @@ export async function submitPublicTourRequest(
   return { orderId, orderNo };
 }
 
+/** #1070：狀態頁額外帶出的集合地點（來自該訂單關聯 trip；皆為選填，既有欄位不變）。 */
+export type PublicTourRequestStatus = TourOrder & {
+  meetingPoint?: string;
+  /** 已過濾為 https 的地圖連結（與公開行程詳情頁一致）；不合格時不輸出。 */
+  meetingPointMapUrl?: string;
+};
+
 /**
  * 供旅客申請成功後的狀態頁使用。**沒有旅客登入機制**（#11／#12 尚未落地，見
  * PR 說明的 DEPENDENCY），所以用「訂單 id + 申請時填的聯絡方式其中一項」做
@@ -334,7 +343,7 @@ export async function submitPublicTourRequest(
  */
 export async function loadPublicTourRequestStatus(
   shopCode: string, orderId: string, contact: string,
-): Promise<TourOrder | null> {
+): Promise<PublicTourRequestStatus | null> {
   if (!SHOP_CODE_PATTERN.test(shopCode)) return null;
   if (!UUID_RE.test(orderId)) return null;
   const normalizedContact = contact.trim().toLowerCase();
@@ -363,7 +372,28 @@ export async function loadPublicTourRequestStatus(
   if (!candidates.includes(normalizedContact)) return null;
 
   const [order] = await hydrateTourOrders(admin, tenantId, [row]);
-  return order ?? null;
+  if (!order) return null;
+
+  // #1070：集合地點。只查該訂單的 trip，且必須同 tenant（與 hydrateTourOrders 同樣的租戶篩選）。
+  if (typeof row.trip_id !== 'string' || !row.trip_id) return order;
+  const { data: trip, error: tripError } = await admin
+    .from('trips').select('meeting_point, meeting_point_map_url')
+    .eq('tenant_id', tenantId).eq('id', row.trip_id).maybeSingle();
+  if (tripError) {
+    // #1070：集合地點屬附加資訊，查詢失敗時降級（不帶欄位），不讓整個狀態頁錯誤。不記 contact／PII。
+    console.error('[public-tour-request] trips meeting_point query failed', tripError.code ?? 'unknown');
+    return order;
+  }
+  const meetingPoint = truncateChars(
+    typeof trip?.meeting_point === 'string' ? trip.meeting_point.trim() : '',
+    MAX_PUBLIC_LIST_ITEM_CHARS,
+  );
+  const meetingPointMapUrl = safePublicHttpsUrl(trip?.meeting_point_map_url);
+  return {
+    ...order,
+    ...(meetingPoint ? { meetingPoint } : {}),
+    ...(meetingPoint && meetingPointMapUrl ? { meetingPointMapUrl } : {}),
+  };
 }
 
 /**
