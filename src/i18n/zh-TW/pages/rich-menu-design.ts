@@ -62,9 +62,9 @@ export const richMenuDesignPage = {
     leadStrong: '品牌大字自動帶入店名',
     leadTail: '；發布時同步套用同風格的聊天主選單（Flex）與預約步驟卡＝整組視覺一致。',
     bullets: [
-      { strong: '預覽、自訂免費', text: '：每卡可先看帶自己店名的實際效果，可換六格功能與文字（版面與背景設計不變）' },
-      { strong: '發布', text: '需訂閱「進階自訂選單」，會取代目前的底部選單，並覆蓋原本的 Flex 主選單自訂與「每格設定」草稿' },
-      { strong: '放心試', text: '：發布前系統自動備份你目前的設計，發布後隨時可在本區「還原發布前的設計」一鍵反悔' },
+      { mockOnly: false, strong: '預覽、自訂免費', text: '：每卡可先看帶自己店名的實際效果，可換六格功能與文字（版面與背景設計不變）' },
+      { mockOnly: true, strong: '發布', text: '需訂閱「進階自訂選單」，會取代目前的底部選單，並覆蓋原本的 Flex 主選單自訂與「每格設定」草稿' },
+      { mockOnly: true, strong: '放心試', text: '：發布前系統自動備份你目前的設計，發布後隨時可在本區「還原發布前的設計」一鍵反悔' },
     ],
     backupBar: '發布範本前的原設計已自動備份，隨時可一鍵還原。',
     restore: '還原發布前的設計',
@@ -377,6 +377,13 @@ export const richMenuDesignPage = {
     },
   },
 
+  /* ================================================ 真實模式尚未開放（#1078） */
+  notAvailable: {
+    message:
+      '進階選單設計（情境選單發布、刪除、還原、草稿、範本、步驟說明卡）尚未開放，目前請到 LINE 設定頁使用基本圖文選單。',
+    goLineSettings: '前往 LINE 設定',
+  },
+
   /* =================================================== 預約流程步驟自訂 */
   bookingSteps: {
     cardTitle: '預約流程步驟自訂',
@@ -384,6 +391,8 @@ export const richMenuDesignPage = {
     guideLabel: '顯示「步驟說明卡」',
     guideHelp:
       '預約 carousel 最前面那張「👈 往左滑動 + 步驟清單」指引卡。關閉後顧客直接看到服務卡，「取消預約」鈕會自動補在每張服務卡上。此設定即時生效、與發布 Rich Menu 無關。',
+    guideHelpReal:
+      '預約 carousel 最前面那張「👈 往左滑動 + 步驟清單」指引卡。此功能尚未開放，目前無法在此變更。',
     guideOn: '已開啟步驟說明卡',
     guideOff: '已關閉步驟說明卡（顧客將直接看到服務卡）',
     stepImageUploaded: '步驟圖片上傳成功',
