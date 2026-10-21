@@ -439,6 +439,10 @@
     {
       "ref": "issue/1085",
       "title": "導遊首頁「今日預約」表仍列一般預約、查看全部連到導遊看不到的預約頁，與團體訂單統計卡不一致"
+    },
+    {
+      "ref": "issue/1088",
+      "title": "團體訂單頁排除已取消篩選時停用「已取消」狀態，避免必然失敗的查詢"
     }
   ],
   "main": {
@@ -11772,13 +11776,47 @@
         "completedAt": "2026-10-21T11:31:03Z",
         "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/tree/fix-1085-guide-today-orders",
         "note": "Haiku scout 將 #1085 綁入 Run ledger。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261021-terra-build-1088",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 1088,
+        "startedAt": "2026-10-21T13:48:20Z",
+        "completedAt": "2026-10-21T13:54:03Z",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/928633fc",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）施工 #1088，commit 928633fc。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261021-luna-scout-1088-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1088,
+        "startedAt": "2026-10-21T13:54:24Z",
+        "completedAt": "2026-10-21T13:54:55Z",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/tree/fix-1088-cancelled-filter",
+        "note": "Haiku scout 將 #1088 綁入 Run ledger。actual 未經平台驗證。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 112,
+    "issuesStarted": 113,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -11807,8 +11845,8 @@
     ]
   },
   "flow": {
-    "lunaTasks": 228,
-    "lunaAccepted": 219,
+    "lunaTasks": 229,
+    "lunaAccepted": 220,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
