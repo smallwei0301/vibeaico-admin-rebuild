@@ -65,20 +65,20 @@ const NOW = new Date('2026-10-13T04:00:00.000Z'); // 台北 2026-10-13 12:00
 const A = 'tenant-a';
 const B = 'tenant-b';
 
-const order = (o: Row): Row => ({ tenant_id: A, status: 'PENDING', payment_status: 'UNPAID', total_amount: 100, departure_id: null, created_at: '2026-10-05T00:00:00.000Z', ...o });
+const order = (o: Row): Row => ({ tenant_id: A, status: 'PENDING', payment_status: 'UNPAID', total_amount: 100, paid_amount: 0, refunded_amount: 0, departure_id: null, created_at: '2026-10-05T00:00:00.000Z', ...o });
 
 const TABLES: Record<string, Row[]> = {
   tour_orders: [
     order({ id: 'p1', status: 'PENDING' }),
     order({ id: 'p2', status: 'PENDING', payment_status: 'PARTIAL' }),
     order({ id: 'p-other', tenant_id: B, status: 'PENDING' }),
-    order({ id: 'c1', status: 'CONFIRMED', payment_status: 'PAID', total_amount: 500, departure_id: 'd-soon' }),
-    order({ id: 'c2', status: 'CONFIRMED', payment_status: 'PAID', total_amount: 300, departure_id: 'd-late' }),
+    order({ id: 'c1', status: 'CONFIRMED', payment_status: 'PAID', total_amount: 500, paid_amount: 500, departure_id: 'd-soon' }),
+    order({ id: 'c2', status: 'CONFIRMED', payment_status: 'PAID', total_amount: 300, paid_amount: 300, departure_id: 'd-late' }),
     order({ id: 'c3', status: 'CONFIRMED', payment_status: 'UNPAID', departure_id: 'd-soon' }),
     order({ id: 'x1', status: 'CANCELLED', payment_status: 'UNPAID' }),
-    order({ id: 'old', status: 'COMPLETED', payment_status: 'PAID', total_amount: 9999, created_at: '2026-09-30T15:59:59.000Z' }), // 台北 9/30 23:59
-    order({ id: 'edge', status: 'COMPLETED', payment_status: 'PAID', total_amount: 7, created_at: '2026-09-30T16:00:00.000Z' }), // 台北 10/1 00:00
-    order({ id: 'other-rev', tenant_id: B, status: 'COMPLETED', payment_status: 'PAID', total_amount: 123456 }),
+    order({ id: 'old', status: 'COMPLETED', payment_status: 'PAID', total_amount: 9999, paid_amount: 9999, created_at: '2026-09-30T15:59:59.000Z' }), // 台北 9/30 23:59
+    order({ id: 'edge', status: 'COMPLETED', payment_status: 'PAID', total_amount: 7, paid_amount: 7, created_at: '2026-09-30T16:00:00.000Z' }), // 台北 10/1 00:00
+    order({ id: 'other-rev', tenant_id: B, status: 'COMPLETED', payment_status: 'PAID', total_amount: 123456, paid_amount: 123456 }),
   ],
   trip_departures: [
     { id: 'd-soon', tenant_id: A, departs_on: '2026-10-18' },
@@ -110,7 +110,7 @@ describe('GET /api/tour-orders/summary（#890）', () => {
       pending: 2, // p1, p2（別的租戶的 p-other 不算）
       awaitingPayment: 3, // p1, p2(PARTIAL), c3；已取消 x1 不算
       upcoming7d: 2, // c1、c3 為 CONFIRMED 且掛在 d-soon（10/18）；c2 的 d-late（10/21）超過 7 天
-      monthRevenue: 500 + 300 + 7, // 台北本月：c1、c2、edge；old(9/30 台北)與他租戶不算
+      monthRevenue: 500 + 300 + 7, // 台北本月實收：c1、c2、edge；old(9/30 台北)與他租戶不算
     });
   });
 
@@ -134,9 +134,9 @@ describe('GET /api/tour-orders/summary（#890）', () => {
     expect(queries.some((x) => x.table === 'trip_departures')).toBe(false);
   });
 
-  const bigRows = (n: number) => Array.from({ length: n }, (_, i) => order({ id: `r${String(i).padStart(5, '0')}`, status: 'COMPLETED', payment_status: 'PAID', total_amount: 1 }));
+  const bigRows = (n: number) => Array.from({ length: n }, (_, i) => order({ id: `r${String(i).padStart(5, '0')}`, status: 'COMPLETED', payment_status: 'PAID', total_amount: 1, paid_amount: 1 }));
 
-  it('本月已付款訂單剛好 50,000 筆：200 並回完整加總', async () => {
+  it('本月訂單剛好 50,000 筆：200 並回完整加總', async () => {
     requireTenantMock.mockResolvedValue({ supabase: fakeSupabase({ tour_orders: bigRows(50_000), trip_departures: [] }), tenantId: A, user: { id: 'u' }, role: 'OWNER' });
     const { status, body } = await call();
     expect(status).toBe(200);
@@ -173,10 +173,10 @@ describe('GET /api/tour-orders/summary（#890）', () => {
     const tables: Record<string, Row[]> = {
       tenant_settings: [{ tenant_id: A, basic: { timezone: 'America/Los_Angeles' } }],
       tour_orders: [
-        order({ id: 'oct', status: 'COMPLETED', payment_status: 'PAID', total_amount: 40, created_at: '2026-10-31T20:00:00.000Z' }), // LA 10/31 13:00
-        order({ id: 'oct-start', status: 'COMPLETED', payment_status: 'PAID', total_amount: 2, created_at: '2026-10-01T07:00:00.000Z' }), // LA 10/1 00:00
-        order({ id: 'sep', status: 'COMPLETED', payment_status: 'PAID', total_amount: 900, created_at: '2026-10-01T06:59:59.000Z' }), // LA 9/30 23:59
-        order({ id: 'nov', status: 'COMPLETED', payment_status: 'PAID', total_amount: 800, created_at: '2026-11-01T07:00:00.000Z' }), // LA 11/1 00:00，屬十一月不計入
+        order({ id: 'oct', status: 'COMPLETED', payment_status: 'PAID', total_amount: 40, paid_amount: 40, created_at: '2026-10-31T20:00:00.000Z' }), // LA 10/31 13:00
+        order({ id: 'oct-start', status: 'COMPLETED', payment_status: 'PAID', total_amount: 2, paid_amount: 2, created_at: '2026-10-01T07:00:00.000Z' }), // LA 10/1 00:00
+        order({ id: 'sep', status: 'COMPLETED', payment_status: 'PAID', total_amount: 900, paid_amount: 900, created_at: '2026-10-01T06:59:59.000Z' }), // LA 9/30 23:59
+        order({ id: 'nov', status: 'COMPLETED', payment_status: 'PAID', total_amount: 800, paid_amount: 800, created_at: '2026-11-01T07:00:00.000Z' }), // LA 11/1 00:00，屬十一月不計入
         order({ id: 'u1', status: 'CONFIRMED', departure_id: 'd1' }),
         order({ id: 'u2', status: 'CONFIRMED', departure_id: 'd2' }),
         order({ id: 'u3', status: 'CONFIRMED', departure_id: 'd3' }),
@@ -196,11 +196,29 @@ describe('GET /api/tour-orders/summary（#890）', () => {
   });
 
   it('遠端 max_rows(500) 小於 PAGE：以實際回傳筆數推進，800 筆全數加總不提早停', async () => {
-    const rows = Array.from({ length: 800 }, (_, i) => order({ id: `m${String(i).padStart(4, '0')}`, status: 'COMPLETED', payment_status: 'PAID', total_amount: 2 }));
+    const rows = Array.from({ length: 800 }, (_, i) => order({ id: `m${String(i).padStart(4, '0')}`, status: 'COMPLETED', payment_status: 'PAID', total_amount: 2, paid_amount: 2 }));
     requireTenantMock.mockResolvedValue({ supabase: fakeSupabase({ tour_orders: rows, trip_departures: [] }, 500), tenantId: A, user: { id: 'u' }, role: 'OWNER' });
     const { status, body } = await call();
     expect(status).toBe(200);
     expect(body.data.monthRevenue).toBe(1600);
+  });
+
+  it('本月營收＝實收扣退款（#1083）：PARTIAL 計已收部分、退款扣除、負值夾 0、不篩 payment_status／status，與 sumNetReceived 一致', async () => {
+    const { sumNetReceived } = await import('@/server/dashboard-tour');
+    const rows = [
+      order({ id: 'n1', status: 'CONFIRMED', payment_status: 'PARTIAL', total_amount: 1000, paid_amount: 400 }),
+      order({ id: 'n2', status: 'COMPLETED', payment_status: 'PAID', total_amount: 800, paid_amount: 800, refunded_amount: 300 }),
+      order({ id: 'n3', status: 'CANCELLED', payment_status: 'REFUNDED', total_amount: 500, paid_amount: 500, refunded_amount: 500 }),
+      order({ id: 'n4', status: 'CANCELLED', payment_status: 'PAID', total_amount: 200, paid_amount: 100, refunded_amount: 250 }), // 負值夾 0
+      order({ id: 'n5', status: 'PENDING', payment_status: 'UNPAID', total_amount: 600 }), // 未收款 0
+      order({ id: 'n6', status: 'CONFIRMED', payment_status: 'PAID', total_amount: 50, paid_amount: 50, created_at: '2026-09-30T15:59:59.000Z' }), // 上月不計
+    ];
+    requireTenantMock.mockResolvedValue({ supabase: fakeSupabase({ tour_orders: rows, trip_departures: [] }), tenantId: A, user: { id: 'u' }, role: 'OWNER' });
+    const { body } = await call();
+    expect(body.data.monthRevenue).toBe(400 + 500);
+    expect(body.data.monthRevenue).toBe(sumNetReceived(rows.slice(0, 5) as { paid_amount: unknown; refunded_amount: unknown }[]));
+    const q = queries.filter((x) => x.table === 'tour_orders' && x.calls.some(([m, a]) => m === 'select' && a[0] === 'paid_amount, refunded_amount'))[0];
+    expect(q.calls.some(([m, a]) => m === 'eq' && a[0] === 'payment_status')).toBe(false);
   });
 
   it('別的租戶的資料完全不計入', async () => {

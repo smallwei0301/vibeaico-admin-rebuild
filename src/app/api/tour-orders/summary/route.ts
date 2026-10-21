@@ -2,9 +2,10 @@ import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { resolvePublicTimeZone } from '@/lib/public-time-zone';
 import { addDays, zonedMidnightMs, zonedToday } from '@/server/guide-report';
+import { sumNetReceived } from '@/server/dashboard-tour';
 
 const PAGE = 1000;
-/** 防禦性上限：單月已付款訂單超過此數時拋 422（REPORT_RANGE_TOO_LARGE），絕不靜默少算營收；頁面端摘要失敗只顯示佔位，列表不受影響。 */
+/** 防禦性上限：單月訂單超過此數時拋 422（REPORT_RANGE_TOO_LARGE），絕不靜默少算營收；頁面端摘要失敗只顯示佔位，列表不受影響。 */
 const MAX_REVENUE_ROWS = 50_000;
 
 /**
@@ -19,7 +20,8 @@ const MAX_REVENUE_ROWS = 50_000;
  * - awaitingPayment：status != CANCELLED 且 payment_status ∈ (UNPAID, PARTIAL)（同 `isAwaitingPayment`）
  * - upcoming7d：CONFIRMED 且團次出發日 `trip_departures.departs_on` 落在 [店家時區今天, 今天+7 天]
  *   （與列表 `departsOn` 同一個來源：`tour_orders.departure_id` → `trip_departures.departs_on`）
- * - monthRevenue：payment_status = PAID 且 created_at 落在店家時區本月的 total_amount 加總
+ * - monthRevenue：created_at 落在店家時區本月的訂單，Σ max(0, paid_amount − refunded_amount)（本月實收扣退款，
+ *   不篩 payment_status／status）。與導遊首頁「本月營收」同一個 `sumNetReceived`，兩處數字一致（#1083）
  */
 export const GET = handle(async () => {
   const t = await requireTenant();
@@ -59,22 +61,22 @@ export const GET = handle(async () => {
   // 以「實際回傳筆數」推進 offset、遇空頁才停：遠端 PostgREST max_rows 可能小於 PAGE（靜默截短每頁），
   // 以 `length < PAGE` 判斷結束會提早停而少算營收。
   for (;;) {
-    const { data, error } = await t.supabase.from('tour_orders').select('total_amount')
-      .eq('tenant_id', t.tenantId).eq('payment_status', 'PAID')
+    const { data, error } = await t.supabase.from('tour_orders').select('paid_amount, refunded_amount')
+      .eq('tenant_id', t.tenantId)
       .gte('created_at', month.fromIso).lt('created_at', month.toIso)
       .order('id', { ascending: true })
       .range(scanned, scanned + PAGE - 1);
     if (error) throw error;
-    const page = (data ?? []) as { total_amount: number | string | null }[];
+    const page = (data ?? []) as { paid_amount: unknown; refunded_amount: unknown }[];
     if (page.length === 0) break;
-    for (const r of page) monthRevenue += Number(r.total_amount ?? 0);
+    monthRevenue += sumNetReceived(page);
     scanned += page.length;
     // 分頁可能跨越上限（max_rows 不整除 50,000）：已掃描筆數超過上限即確定過多，直接拒絕。
     if (scanned > MAX_REVENUE_ROWS) throw new ApiHttpError(422, '區間內訂單過多，請縮短日期區間', ERR.REPORT_RANGE_TOO_LARGE);
     if (scanned === MAX_REVENUE_ROWS) {
       // 剛好等於上限仍可正常回傳；只有「超過」才拒絕：再探一筆（同租戶／狀態／月份／排序）。
       const { data: probe, error: probeErr } = await t.supabase.from('tour_orders').select('id')
-        .eq('tenant_id', t.tenantId).eq('payment_status', 'PAID')
+        .eq('tenant_id', t.tenantId)
         .gte('created_at', month.fromIso).lt('created_at', month.toIso)
         .order('id', { ascending: true })
         .range(scanned, scanned);

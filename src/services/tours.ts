@@ -753,9 +753,9 @@ export function getTourOrderSummary(): Promise<TourOrderSummary> {
           && (o.paymentStatus === 'UNPAID' || o.paymentStatus === 'PARTIAL')).length,
         upcoming7d: all.filter((o) => o.status === 'CONFIRMED' && o.departsOn >= today && o.departsOn <= in7).length,
         monthRevenue: all
-          .filter((o) => o.paymentStatus === 'PAID'
-            && Date.parse(o.createdAt) >= Date.parse(month.fromIso) && Date.parse(o.createdAt) < Date.parse(month.toIso))
-          .reduce((sum, o) => sum + o.totalAmount, 0),
+          .filter((o) => Date.parse(o.createdAt) >= Date.parse(month.fromIso) && Date.parse(o.createdAt) < Date.parse(month.toIso))
+          // 與伺服端 sumNetReceived 同口徑（#1083）：Σ max(0, 已收 − 已退)
+          .reduce((sum, o) => sum + Math.max(0, (o.paidAmount ?? 0) - (o.refundedAmount ?? 0)), 0),
       };
     },
     () => request<TourOrderSummary>('/api/tour-orders/summary'),
