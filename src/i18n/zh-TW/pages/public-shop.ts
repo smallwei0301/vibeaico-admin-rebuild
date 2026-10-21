@@ -69,7 +69,7 @@ export const publicShopPage = {
      */
     cancellationPolicyLabel: '取消／退款政策',
     cancellationPolicy: {
-      STANDARD: '標準：出發前 7 天可全額退款',
+      STANDARD: '標準：出發前 7 天可全額退款，3 天內不退款',
       FLEXIBLE: '彈性：出發前 24 小時內皆可全額退款',
       STRICT: '嚴格：訂購後恕不接受退款',
     },
