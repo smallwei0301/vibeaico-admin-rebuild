@@ -159,7 +159,7 @@ const GUIDE: ModeDataset = {
     ],
   },
   dashboardStats: {
-    todayBookings: 3, pendingBookings: 1, monthRevenue: 268900, totalCustomers: 412,
+    todayBookings: 2, pendingBookings: 1, monthRevenue: 268900, totalCustomers: 412,
     pushQuotaUsed: 168, pushQuotaTotal: 200, linePlatformStatus: 'CONNECTED',
   },
   dashboardAlerts: {

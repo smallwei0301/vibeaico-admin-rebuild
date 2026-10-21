@@ -13,7 +13,7 @@ import { addDays, repeatCustomerIdSet, zonedMidnightMs, zonedToday } from '@/ser
 import {
   DECISION_FROM_STATUS, FormationDecisionError, buildContinuePatch, buildExtendPatch, buildFormPatch, effectiveParticipants,
 } from '@/lib/departure-formation-decision';
-import { mockOrderToReportRow, mockTourOrdersRelativeToNow } from '@/mock/guide-report';
+import { mockOrderToReportRow, mockTourOrderDepartsOn, mockTourOrdersRelativeToNow } from '@/mock/guide-report';
 import { canRegisterDepositPayment, canRegisterFullPayment, canTransitionTourOrder, shouldReleaseSeats } from '@/server/tour-domain';
 import {
   MOCK_TOUR_ORDERS, MOCK_TRIPS, MOCK_TRIP_ADDONS,
@@ -729,6 +729,11 @@ export type TourOrderQuery = {
   /** 方案銷售模式篩選（trip_plans.sales_mode） */
   salesMode?: TripSalesMode;
   /**
+   * #1085 出發日（YYYY-MM-DD，店家時區日曆日）：只列該日出發團次的訂單，已取消訂單與已取消團次不列，
+   * 依出發時間排序；與統計卡 countTodayTourDepartureOrders 同口徑。
+   */
+  departsOn?: string;
+  /**
    * GUIDE 收件匣 REFUND_PENDING 卡片的 deep link（#43 類別 5）以 orderId 精準撈一筆，
    * 比照 `BookingQuery.bookingId`（`src/services/bookings.ts`）——不是分頁篩選條件，
    * 只在目標列可能不在目前已載入頁面時使用。
@@ -760,6 +765,14 @@ export function getTourOrderSummary(): Promise<TourOrderSummary> {
     },
     () => request<TourOrderSummary>('/api/tour-orders/summary'),
   );
+}
+
+/**
+ * #1085 GUIDE 首頁「今日預約」表：今日（店家時區）出發團次的非取消團體訂單，依出發時間排序。
+ * 與統計卡 countTodayTourDepartureOrders 同一口徑（排除已取消訂單與已取消團次）；`totalElements` 即統計卡數字。
+ */
+export function listTodayTourDepartureOrders(today: string): Promise<Paged<TourOrder>> {
+  return listTourOrders({ departsOn: today, activeOnly: '1', page: 0, size: 100 });
 }
 
 export function listTourOrders(q: TourOrderQuery = {}): Promise<Paged<TourOrder>> {
@@ -797,7 +810,15 @@ export function listTourOrders(q: TourOrderQuery = {}): Promise<Paged<TourOrder>
         const mode = q.salesMode;
         rows = rows.filter((o) => MOCK_TRIP_PLANS.some((p) => p.tripId === o.tripId && p.name === o.planName && p.salesMode === mode));
       }
-      if (q.activeOnly === '1' || q.repeatCustomers === '1') rows = rows.filter((o) => o.status !== 'CANCELLED');
+      if (q.activeOnly === '1' || q.repeatCustomers === '1' || q.departsOn) rows = rows.filter((o) => o.status !== 'CANCELLED');
+      if (q.departsOn) {
+        // 與真實 API 同語意：出發日相符、團次未取消，依出發時間排序（回傳的 departsOn 為平移後的日期）
+        const want = q.departsOn;
+        rows = rows
+          .filter((o) => mockTourOrderDepartsOn(o) === want)
+          .map((o) => ({ ...o, departsOn: want }))
+          .sort((a, b) => a.startTime.localeCompare(b.startTime) || a.createdAt.localeCompare(b.createdAt));
+      }
       // mock 以 Asia/Taipei 為店家時區，界線與真實 API 同為半開 [from 00:00, to+1 00:00)
       if (q.createdFrom) {
         const lo = zonedMidnightMs(q.createdFrom, MOCK_TIME_ZONE);
@@ -861,6 +882,8 @@ export type TourOrdersDeepLink = {
   planId: string; activeOnly: boolean; repeatCustomers: boolean;
   /** 方案銷售模式（未帶或不合法 → ''） */
   salesMode: TripSalesMode | '';
+  /** #1085 出發日（YYYY-MM-DD；未帶或不合法 → ''） */
+  departsOn: string;
   /** ISO-8601 瞬間（報表 asOf）；格式不合法 → '' */
   createdBefore: string;
   /** 顯示「資料截至」用的店家時區（報表帶入）；未帶 → ''，帶了但不合法 → 預設時區 */
@@ -889,6 +912,8 @@ export function parseTourOrdersDeepLink(search: string): TourOrdersDeepLink {
   const source = sr && (TOUR_ORDER_SOURCE_VALUES as string[]).includes(sr) ? (sr as TourOrderSource) : '';
   const sm = params.get('salesMode');
   const salesMode = sm && (TRIP_SALES_MODE_VALUES as string[]).includes(sm) ? (sm as TripSalesMode) : '';
+  const dp = params.get('departsOn') ?? '';
+  const departsOn = YMD_RE.test(dp) ? dp : '';
   const cb = params.get('createdBefore') ?? '';
   const createdBefore = ISO_INSTANT_RE.test(cb) && Number.isFinite(Date.parse(cb)) ? cb : '';
   const tzRaw = params.get('tz');
@@ -898,7 +923,7 @@ export function parseTourOrdersDeepLink(search: string): TourOrdersDeepLink {
   const excl = status !== 'CANCELLED';
   const activeOnly = excl && params.get('activeOnly') === '1';
   const repeatCustomers = excl && params.get('repeatCustomers') === '1' && !!createdFrom && !!createdTo;
-  return { paymentStatus, orderId, status, tripId, createdFrom, createdTo, source, planId, activeOnly, repeatCustomers, salesMode, createdBefore, tz, tenantId: params.get('tenantId') ?? '' };
+  return { paymentStatus, orderId, status, tripId, createdFrom, createdTo, source, planId, activeOnly, repeatCustomers, salesMode, departsOn, createdBefore, tz, tenantId: params.get('tenantId') ?? '' };
 }
 
 /**
@@ -907,10 +932,10 @@ export function parseTourOrdersDeepLink(search: string): TourOrdersDeepLink {
  */
 export function buildTourOrdersLink(f: {
   status?: string; paymentStatus?: string; tripId?: string; createdFrom?: string; createdTo?: string; source?: string;
-  planId?: string; activeOnly?: boolean; repeatCustomers?: boolean; salesMode?: string; createdBefore?: string | null; tz?: string | null;
+  planId?: string; activeOnly?: boolean; repeatCustomers?: boolean; salesMode?: string; departsOn?: string; createdBefore?: string | null; tz?: string | null;
 }): string {
   const p = new URLSearchParams();
-  for (const k of ['status', 'paymentStatus', 'tripId', 'createdFrom', 'createdTo', 'createdBefore', 'tz', 'source', 'planId', 'salesMode'] as const) {
+  for (const k of ['status', 'paymentStatus', 'tripId', 'createdFrom', 'createdTo', 'createdBefore', 'tz', 'source', 'planId', 'salesMode', 'departsOn'] as const) {
     if (f[k]) p.set(k, f[k] as string);
   }
   if (f.activeOnly) p.set('activeOnly', '1');

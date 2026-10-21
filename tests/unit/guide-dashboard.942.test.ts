@@ -134,14 +134,13 @@ describe('#942 首頁連結依 MODE_PRESETS', () => {
 
   it('頁面不再寫死 bookings／services 連結，也沒有業態 if 判斷', () => {
     // 所有 /tenant/bookings 字面出現處（任何引號、含 template literal）必須恰為下列固定連結：
-    // 收件匣 BOOKING_* 兩顆標頭按鈕（跟項目種類）＋今日預約卡「查看全部」（資料源為 bookings）。
+    // 收件匣 BOOKING_* 兩顆標頭按鈕（跟項目種類）。#1085：今日預約卡「查看全部」改走 ordersHref＋preset，不再寫死。
     const found = (page.match(/\/tenant\/bookings[^"'`\s>}]*/g) ?? []).sort();
     expect(found).toEqual([
-      '/tenant/bookings',
       '/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID',
       '/tenant/bookings?status=PENDING',
     ].sort());
-    expect(page).toContain('<Link href="/tenant/bookings" className="btn btn-primary btn-sm">');
+    expect(page).toContain('<Link href={todayHref} className="btn btn-primary btn-sm">');
     expect(page).not.toMatch(/href: '\/tenant\/services'/);
     expect(page).not.toMatch(/businessType\s*===\s*'/);
     expect(page).toContain('ordersHref');

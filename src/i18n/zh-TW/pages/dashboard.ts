@@ -273,6 +273,19 @@ export const dashboardPage = {
     count: (n: number) => `${n} 筆`,
   },
 
+  /* ------------------------------------- 今日預約表（GUIDE：今日出團的團體訂單，#1085） */
+  todayTourOrders: {
+    columns: {
+      time: '出發時間',
+      traveler: '旅客',
+      trip: '行程／方案',
+      partySize: '人數',
+      status: '訂單狀態',
+    },
+    partySize: (n: number) => `${n} 人`,
+    status: { PENDING: '待確認', CONFIRMED: '已確認', COMPLETED: '已完成', CANCELLED: '已取消' },
+  },
+
   /* ------------------------------------------------------------ 最近活動 */
   recentActivity: {
     title: '最近活動',

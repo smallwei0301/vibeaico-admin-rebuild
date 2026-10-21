@@ -63,6 +63,7 @@ export const tourOrdersPage = {
     payment: (label: string) => `付款：${label}`,
     source: (label: string) => `來源：${label}`,
     salesMode: (label: string) => `販售方式：${label}`,
+    departsOn: (date: string) => `出發日 ${date}（不含已取消團次）`,
     activeOnly: '不含已取消訂單',
     repeatCustomers: '重複旅客的訂單（不含已取消）',
     sep: '、',

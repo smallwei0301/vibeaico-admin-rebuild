@@ -38,6 +38,17 @@ export function mockTourOrdersRelativeToNow(nowMs: number = Date.now()): TourOrd
   });
 }
 
+/**
+ * 訂單的「出發日」平移（#1085）：種子團次的參考出發日（DEPARTURE_ANCHOR_DATE，最早一筆）落在今天，
+ * 其餘維持原日期——讓 mock 模式 GUIDE 首頁「今日預約」表有今日出團的示範訂單；函式內計算，不在模組層級凍結。
+ * 訂單所屬團次（同行程、同日、同時間）已取消者回傳 null（不算當日出團）。
+ */
+export function mockTourOrderDepartsOn(o: TourOrder, nowMs: number = Date.now()): string | null {
+  const dep = MOCK_TRIP_DEPARTURES.find((d) => d.tripId === o.tripId && d.departsOn === o.departsOn && d.startTime === o.startTime);
+  if (dep?.status === 'CANCELLED') return null;
+  return o.departsOn === DEPARTURE_ANCHOR_DATE ? zonedToday(ZONE, nowMs) : o.departsOn;
+}
+
 /** mock 沒有 paid_amount／customer_id 欄位：以訂單狀態誠實推導；旅客以電話識別 */
 export function mockOrderToReportRow(o: TourOrder): GuideReportOrderRow {
   const plan = MOCK_TRIP_PLANS.find((p) => p.tripId === o.tripId && p.name === o.planName);
