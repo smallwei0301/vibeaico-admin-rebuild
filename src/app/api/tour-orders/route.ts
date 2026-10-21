@@ -116,7 +116,7 @@ export const GET = handle(async (req) => {
     // （同 dashboard-tour 的 countPendingTourRequests／countTodayTourDepartureOrders）；未帶時維持原 select，不多 join。
     const embeds = [
       q.salesMode ? 'trip_plans!inner(sales_mode)' : '',
-      q.departsOn ? 'trip_departures!inner(departs_on, status)' : '',
+      q.departsOn ? 'trip_departures!inner(departs_on, status, start_time)' : '',
     ].filter(Boolean);
     const sel = embeds.length ? `${columns}, ${embeds.join(', ')}` : columns;
     let query = t.supabase.from('tour_orders').select(sel, opts).eq('tenant_id', t.tenantId);
@@ -178,24 +178,41 @@ export const GET = handle(async (req) => {
     }
   } else if (q.departsOn) {
     // 當日出團：依出發時間排序必須在全部列上做（單日團次數有限），不能先分頁再排，否則跨頁順序會亂。
+    // 第一階段只撈排序所需的輕量欄位（id、created_at、內嵌團次的 start_time），排序後切出本頁 id；
+    // 第二階段只撈本頁完整列再 hydrate，避免關聯查詢 .in(...) 帶入大量 id。
     // 穩定排序（id）＋以實際回傳筆數推進 offset，遇空頁才停；超過上限就拒絕，絕不靜默少列。
-    const all: Record<string, unknown>[] = [];
+    type SortRow = { id: string; created_at: string; trip_departures?: unknown };
+    const startOf = (r: SortRow): string => {
+      const d = Array.isArray(r.trip_departures) ? r.trip_departures[0] : r.trip_departures;
+      const st = (d as { start_time?: unknown } | null | undefined)?.start_time;
+      return st == null ? '' : String(st).slice(0, 5);
+    };
+    const all: SortRow[] = [];
     for (;;) {
-      const res = await filtered('*').order('id', { ascending: true }).range(all.length, all.length + 999);
+      const res = await filtered('id, created_at').order('id', { ascending: true }).range(all.length, all.length + 999);
       if (res.error) throw res.error;
-      const pg = (res.data ?? []) as unknown as Record<string, unknown>[];
+      const pg = (res.data ?? []) as unknown as SortRow[];
       if (pg.length === 0) break;
       all.push(...pg);
       if (all.length > MAX_ROWS) throw new ApiHttpError(422, '當日訂單過多，無法列出', ERR.REPORT_RANGE_TOO_LARGE);
     }
-    const hydrated = await hydrateTourOrders(t.supabase, t.tenantId, all);
-    hydrated.sort((a, b) => (a.startTime < b.startTime ? -1 : a.startTime > b.startTime ? 1
+    const keyed = all.map((r) => ({ id: r.id, createdAt: r.created_at, startTime: startOf(r) }));
+    keyed.sort((a, b) => (a.startTime < b.startTime ? -1 : a.startTime > b.startTime ? 1
       : a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : (a.id < b.id ? -1 : 1)));
-    const slice = hydrated.slice(page * size, page * size + size);
+    const pageIds = keyed.slice(page * size, page * size + size).map((r) => r.id);
+    let content: Awaited<ReturnType<typeof hydrateTourOrders>> = [];
+    if (pageIds.length > 0) {
+      const { data: rows, error: re } = await t.supabase.from('tour_orders').select('*')
+        .eq('tenant_id', t.tenantId).in('id', pageIds);
+      if (re) throw re;
+      const hydrated = await hydrateTourOrders(t.supabase, t.tenantId, (rows ?? []) as Record<string, unknown>[]);
+      const byId = new Map(hydrated.map((o) => [o.id, o]));
+      content = pageIds.map((id) => byId.get(id)).filter((o): o is NonNullable<typeof o> => !!o);
+    }
     return ok({
-      content: slice,
-      totalElements: hydrated.length,
-      totalPages: Math.max(1, Math.ceil(hydrated.length / size)),
+      content,
+      totalElements: keyed.length,
+      totalPages: Math.max(1, Math.ceil(keyed.length / size)),
       number: page,
       size,
     });

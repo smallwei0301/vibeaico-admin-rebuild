@@ -21,17 +21,20 @@ let tenantIdForRequest = 't1';
 function chain(table: string) {
   const data = table === 'tour_orders' ? tourOrderRows : table === 'trip_departures' ? departureRows : [];
   let range: [number, number] | null = null;
+  let idIn: Set<string> | null = null;
   const q: any = new Proxy(function () {}, {
     get(_t, prop) {
       if (prop === 'then') {
+        const base = idIn ? data.filter((r) => idIn!.has(r.id as string)) : data;
         return (res: (v: unknown) => void) => res({
-          data: range ? data.slice(range[0], range[1] + 1) : data, count: data.length, error: null,
+          data: range ? base.slice(range[0], range[1] + 1) : base, count: base.length, error: null,
         });
       }
       if (prop === 'maybeSingle') return async () => ({ data: null, error: null });
       return (...args: unknown[]) => {
         filters.push({ table, op: String(prop), args });
         if (prop === 'range') range = [args[0] as number, args[1] as number];
+        if (prop === 'in' && table === 'tour_orders' && args[0] === 'id') idIn = new Set(args[1] as string[]);
         return q;
       };
     },
@@ -47,7 +50,8 @@ vi.mock('@/server/tenant', () => ({
   requireTenant: async () => ({ supabase: fakeSupabase, tenantId: tenantIdForRequest, user: { id: 'u' }, role: 'OWNER', businessType: 'GUIDE' }),
 }));
 
-const orderRow = (id: string, depId: string, createdAt: string) => ({
+const orderRow = (id: string, depId: string, createdAt: string, startTime = '09:00:00') => ({
+  trip_departures: { departs_on: '2026-10-21', status: 'OPEN', start_time: startTime },
   id, order_no: id, trip_id: 'tp', plan_id: null, departure_id: depId, payment_method_id: null,
   contact: { name: `旅客${id}`, phone: '0900' }, party_size: 2, status: 'CONFIRMED', source: 'MIDAO', created_at: createdAt,
 });
@@ -55,7 +59,7 @@ const orderRow = (id: string, depId: string, createdAt: string) => ({
 beforeEach(() => {
   filters.length = 0; selects.length = 0; tenantIdForRequest = 't1';
   tourOrderRows = [
-    orderRow('o_late', 'd_late', '2026-10-20T01:00:00Z'),
+    orderRow('o_late', 'd_late', '2026-10-20T01:00:00Z', '16:30:00'),
     orderRow('o_early', 'd_early', '2026-10-20T02:00:00Z'),
   ];
   departureRows = [
@@ -77,11 +81,44 @@ describe('#1085 GET /api/tour-orders?departsOn=', () => {
     expect(keys).toContain('eq:trip_departures.departs_on=2026-10-21');
     expect(keys).toContain('neq:trip_departures.status=CANCELLED');
     expect(keys).toContain('neq:status=CANCELLED');
-    expect(selects.find((s) => s.table === 'tour_orders')!.cols).toContain('trip_departures!inner(departs_on, status)');
+    expect(selects.find((s) => s.table === 'tour_orders')!.cols).toContain('trip_departures!inner(departs_on, status, start_time)');
     // 後續關聯查詢（團次名稱等）同樣限定租戶
     for (const f of filters.filter((x) => x.table !== 'tour_orders' && x.op === 'eq')) {
       expect(f.args.join('=')).toBe('tenant_id=t1');
     }
+  });
+
+  it('超過一頁：第一階段只撈輕量欄位，hydrate 只收到本頁 id，排序與分頁與原行為一致，第二階段帶 tenant', async () => {
+    const N = 45;
+    const rows = Array.from({ length: N }, (_, i) => orderRow(
+      `o_${String(i).padStart(2, '0')}`, `d_${i}`,
+      `2026-10-20T${String(i % 5).padStart(2, '0')}:00:00Z`, `${String(8 + (i * 7) % 12).padStart(2, '0')}:00:00`,
+    ));
+    tourOrderRows = rows;
+    departureRows = rows.map((r) => ({ id: r.departure_id, departs_on: '2026-10-21', start_time: (r.trip_departures as { start_time: string }).start_time }));
+    const expected = [...rows].sort((a, b) => {
+      const sa = (a.trip_departures as { start_time: string }).start_time.slice(0, 5), sb = (b.trip_departures as { start_time: string }).start_time.slice(0, 5);
+      return sa < sb ? -1 : sa > sb ? 1 : a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : (a.id < b.id ? -1 : 1);
+    }).map((r) => r.id);
+    const { GET } = await import('@/app/api/tour-orders/route');
+    const get = async (page: number) => (await (await GET(new Request(`http://x/api/tour-orders?departsOn=2026-10-21&size=20&page=${page}`), {} as never)).json()).data;
+    filters.length = 0; selects.length = 0;
+    const p1 = await get(1);
+    expect(p1.totalElements).toBe(N);
+    expect(p1.totalPages).toBe(3);
+    expect(p1.content.map((o: { id: string }) => o.id)).toEqual(expected.slice(20, 40));
+    expect((await get(2)).content.map((o: { id: string }) => o.id)).toEqual(expected.slice(40));
+    // 第一階段只撈輕量欄位
+    expect(selects.find((s) => s.table === 'tour_orders')!.cols.startsWith('id, created_at')).toBe(true);
+    // 所有 .in(...) 的 id 數 ≤ size
+    const ins = filters.filter((f) => f.op === 'in');
+    expect(ins.length).toBeGreaterThan(0);
+    for (const f of ins) expect((f.args[1] as unknown[]).length).toBeLessThanOrEqual(20);
+    // 第二階段（按 id 撈完整列）同時帶 tenant 篩選
+    const stage2 = filters.findIndex((f) => f.table === 'tour_orders' && f.op === 'in');
+    expect(stage2).toBeGreaterThan(-1);
+    const after = filters.slice(stage2 - 3, stage2 + 1).filter((f) => f.table === 'tour_orders').map((f) => `${f.op}:${f.args[0]}=${f.args[1]}`);
+    expect(after).toContain('eq:tenant_id=t1');
   });
 
   it('跨租戶隔離：換一個租戶就換 tenant_id 過濾值', async () => {
@@ -146,6 +183,14 @@ describe('#1085 MODE_PRESETS 與連結', () => {
       GUIDE: MODE_PRESETS.GUIDE.dashboardLinks.todayTable,
       CLINIC: MODE_PRESETS.CLINIC.dashboardLinks.todayTable,
     }).toEqual({ LOCAL_SHOP: 'BOOKINGS', GUIDE: 'TOUR_DEPARTURES', CLINIC: 'BOOKINGS' });
+  });
+
+  it('卡片標題筆數使用回應的 totalElements（總數 150、本頁 100 時顯示 150）', () => {
+    const page = read('src/app/tenant/dashboard/page.tsx');
+    expect(page).toContain('setTodayTourTotal(res.totalElements)');
+    expect(page).toContain('todayTourTotal : todayRows.length');
+    expect(page).not.toContain('todayTourRows.length');
+    expect(dashboardPage.todayBookings.count(150)).toContain('150');
   });
 
   it('頁面依 preset 切換表格、欄位文案走 i18n、不寫業態 if', () => {

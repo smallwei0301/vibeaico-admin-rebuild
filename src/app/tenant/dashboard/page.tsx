@@ -345,6 +345,7 @@ export default function DashboardPage() {
   const [performance, setPerformance] = React.useState<StaffPerformance[]>([]);
   const [todayRows, setTodayRows] = React.useState<Booking[]>([]);
   const [todayTourRows, setTodayTourRows] = React.useState<TourOrder[]>([]);
+  const [todayTourTotal, setTodayTourTotal] = React.useState(0);
   const [inboxState, setInboxState] = React.useState<GuideInboxLoadState<GuideActionInboxItem>>({
     tenantId: currentTenant.id, status: 'loading',
   });
@@ -391,7 +392,9 @@ export default function DashboardPage() {
         const today = tenantDateString();
         if (todayTable === 'TOUR_DEPARTURES') {
           // #1085：今日出發團次的非取消團體訂單，口徑與統計卡相同（server 端排序、排除取消）
-          setTodayTourRows((await listTodayTourDepartureOrders(today)).content);
+          const res = await listTodayTourDepartureOrders(today);
+          setTodayTourRows(res.content);
+          setTodayTourTotal(res.totalElements);
         } else {
           const res = await listBookings({ page: 0, size: 100, ...tenantDayRange() });
           setTodayRows(res.content.filter((b) => tenantDateString(new Date(b.startAt)) === today));
@@ -1007,7 +1010,7 @@ export default function DashboardPage() {
               <CalendarDays size={16} className="text-primary" />
               {t.todayBookings.title}
               <span className="form-text">
-                {t.todayBookings.count(todayTable === 'TOUR_DEPARTURES' ? todayTourRows.length : todayRows.length)}
+                {t.todayBookings.count(todayTable === 'TOUR_DEPARTURES' ? todayTourTotal : todayRows.length)}
               </span>
             </CardTitle>
             <Link href={todayHref} className="btn btn-primary btn-sm">
