@@ -146,6 +146,8 @@ export const flexCardSchema = z.object({
 export type FlexCard = z.infer<typeof flexCardSchema>;
 
 /* ---------------------------------------------------------------- LINE 設定 */
+const LINE_RICH_MENU_THEME_SCHEMA = z.enum(['LINE_GREEN', 'OCEAN_BLUE', 'ROYAL_PURPLE', 'SUNSET_ORANGE', 'DARK']);
+
 export const lineSettingsSchema = z.object({
   /** 純數字，例如：2005459361 */
   channelId: z.string().regex(/^\d*$/, '請輸入純數字的 Channel ID').default(''),
@@ -193,8 +195,7 @@ export const lineSettingsSchema = z.object({
    */
   systemKeywordGroupsDisabled: z.array(z.string()).default([]),
   /** Rich Menu */
-  richMenuTheme: z.enum(['LINE_GREEN', 'OCEAN_BLUE', 'ROYAL_PURPLE', 'SUNSET_ORANGE', 'DARK'])
-    .default('LINE_GREEN'),
+  richMenuTheme: LINE_RICH_MENU_THEME_SCHEMA.default('LINE_GREEN'),
   richMenuBgImageUrl: z.string().default(''),
   richMenuNoOverlay: z.boolean().default(false),
   richMenuTextColor: z.string().default('#FFFFFF'),
@@ -204,6 +205,11 @@ export const lineSettingsSchema = z.object({
 export const lineSettingsReadSchema = lineSettingsSchema.extend({
   /** Saved ID only; its source and current LINE state are not verified by settings readback. */
   richMenuId: z.string().trim().default('').catch(''),
+  /**
+   * #1081：讀取端容忍未知主題（例如歷史資料的 'BOUTIQUE'）→ 回退 LINE_GREEN，
+   * 避免整頁 400。寫入端（lineSettingsSchema）維持嚴格 enum。
+   */
+  richMenuTheme: LINE_RICH_MENU_THEME_SCHEMA.catch('LINE_GREEN'),
 });
 
 /* ------------------------------------------------------------- 基本 / 營業 */

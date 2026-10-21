@@ -2,7 +2,7 @@ import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { createAdminSupabase } from '@/server/supabase';
 import { buildRichMenuBody } from '@/server/rich-menu';
-import { lineSettingsSchema } from '@/config/tenant-settings';
+import { lineSettingsReadSchema } from '@/config/tenant-settings';
 import {
   getLineCredentials, lineCreateRichMenu, lineUploadRichMenuImage,
   lineSetDefaultRichMenu, lineDeleteRichMenu,
@@ -60,7 +60,7 @@ export const POST = handle(async () => {
 
   // 憑證 + 現行 line 設定（未設定 LINE → getLineCredentials 丟 400 LINE_001）
   const { token, lineConfig } = await getLineCredentials(t.tenantId);
-  const line = lineSettingsSchema.partial().parse(lineConfig);
+  const line = lineSettingsReadSchema.partial().parse(lineConfig);
   const theme = line.richMenuTheme ?? 'LINE_GREEN';
 
   // ③ 的圖先取——圖拿不到就不要在 LINE 端留下半成品選單

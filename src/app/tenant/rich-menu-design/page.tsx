@@ -54,7 +54,6 @@ const FEATURE_CODE = 'CUSTOM_RICH_MENU';
 
 /** 主題風格 → LINE 選單底圖配色（資料值，非後台佈景色） */
 const THEMES = [
-  { key: 'BOUTIQUE', label: t.theme.options.BOUTIQUE, bg: '#8b6f47', fg: '#ffffff', advanced: true },
   { key: 'LINE_GREEN', label: t.theme.options.LINE_GREEN, bg: '#06c755', fg: '#ffffff', advanced: false },
   { key: 'OCEAN_BLUE', label: t.theme.options.OCEAN_BLUE, bg: '#2196f3', fg: '#ffffff', advanced: true },
   { key: 'ROYAL_PURPLE', label: t.theme.options.ROYAL_PURPLE, bg: '#7b1fa2', fg: '#ffffff', advanced: true },
