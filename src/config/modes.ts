@@ -60,6 +60,13 @@ export type ModePreset = {
     ordersNavKey: 'bookings' | 'tour_orders';
     /** 快速操作「目錄」按鈕的標籤 nav key */
     catalogNavKey: 'services' | 'trips';
+    /**
+     * 「今日預約」統計卡與表格「查看全部」附加在 ordersHref 後的 query（#1085）；`{date}` 代換為店家時區今日
+     * （YYYY-MM-DD）。空字串＝維持原本直接進訂單列表。
+     */
+    todayQuery: string;
+    /** 首頁「今日預約」表格的資料來源：BOOKINGS＝一般預約；TOUR_DEPARTURES＝今日出發團次的非取消團體訂單（與統計卡同口徑） */
+    todayTable: 'BOOKINGS' | 'TOUR_DEPARTURES';
   };
   /**
    * Rich Menu 六格：`label` 是顧客看到的按鈕字，`text` 是按下去實際送出的訊息。
@@ -94,6 +101,13 @@ const COMMON_SETUP_ROUTES = {
   LINE_BOT: '/tenant/line-settings',
 } as const;
 
+/** 「今日預約」統計卡與表格「查看全部」的目的地：ordersHref ＋ preset 的 todayQuery（`{date}` 代換為店家時區今日）。 */
+export function buildTodayOrdersHref(
+  preset: Pick<ModePreset, 'ordersHref' | 'dashboardLinks'>, today: string,
+): string {
+  return `${preset.ordersHref}${preset.dashboardLinks.todayQuery.replace('{date}', today)}`;
+}
+
 export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
   LOCAL_SHOP: {
     icon: Store,
@@ -112,6 +126,8 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
       unprocessedCopyKey: 'EXPIRED',
       ordersNavKey: 'bookings',
       catalogNavKey: 'services',
+      todayQuery: '',
+      todayTable: 'BOOKINGS',
     },
     setupStepRoutes: { ...COMMON_SETUP_ROUTES, SERVICE: '/tenant/services' },
     setupInventory: { kind: 'table', table: 'services', filter: { column: 'active', value: true } },
@@ -145,6 +161,8 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
       unprocessedCopyKey: 'AWAITING_ACCEPT',
       ordersNavKey: 'tour_orders',
       catalogNavKey: 'trips',
+      todayQuery: '?departsOn={date}&activeOnly=1',
+      todayTable: 'TOUR_DEPARTURES',
     },
     setupStepRoutes: { ...COMMON_SETUP_ROUTES, SERVICE: '/tenant/trips' },
     setupInventory: { kind: 'publicBookablePlans' },
@@ -174,6 +192,8 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
       unprocessedCopyKey: 'EXPIRED',
       ordersNavKey: 'bookings',
       catalogNavKey: 'services',
+      todayQuery: '',
+      todayTable: 'BOOKINGS',
     },
     setupStepRoutes: { ...COMMON_SETUP_ROUTES, SERVICE: '/tenant/services' },
     setupInventory: { kind: 'table', table: 'services', filter: { column: 'active', value: true } },

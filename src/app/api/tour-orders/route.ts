@@ -30,6 +30,12 @@ const drilldownSchema = z.object({
   repeatCustomers: z.literal('1').optional(),
   /** 方案銷售模式（trip_plans.sales_mode；GUIDE 首頁「待確認」只列 REQUEST 申請） */
   salesMode: z.enum(['FIXED_DEPARTURE', 'INSTANT', 'REQUEST']).optional(),
+  /**
+   * 出發日（trip_departures.departs_on，YYYY-MM-DD；店家時區的日曆日）。#1085 GUIDE 首頁「今日預約」表：
+   * 同時排除已取消訂單與已取消團次（與統計卡 countTodayTourDepartureOrders 同口徑），結果依出發時間排序。
+   * 與 status=CANCELLED 互相矛盾 → 400。
+   */
+  departsOn: z.string().regex(DATE_RE, 'departsOn 需為 YYYY-MM-DD').optional(),
   source: z.enum(['MIDAO', 'VIBEAI_SHOP', 'LINE', 'MANUAL']).optional(),
   createdFrom: z.string().regex(DATE_RE, 'createdFrom 需為 YYYY-MM-DD').optional(),
   createdTo: z.string().regex(DATE_RE, 'createdTo 需為 YYYY-MM-DD').optional(),
@@ -66,13 +72,14 @@ export const GET = handle(async (req) => {
     repeatCustomers: url.searchParams.get('repeatCustomers') || undefined,
     source: url.searchParams.get('source') || undefined,
     salesMode: url.searchParams.get('salesMode') || undefined,
+    departsOn: url.searchParams.get('departsOn') || undefined,
     createdFrom: url.searchParams.get('createdFrom') || undefined,
     createdTo: url.searchParams.get('createdTo') || undefined,
     createdBefore: url.searchParams.get('createdBefore') || undefined,
   });
   const status = q.status;
   const orderId = orderIdSchema.parse(url.searchParams.get('orderId') ?? undefined);
-  const excludeCancelled = q.activeOnly === '1' || q.repeatCustomers === '1';
+  const excludeCancelled = q.activeOnly === '1' || q.repeatCustomers === '1' || !!q.departsOn;
   if (excludeCancelled && status === 'CANCELLED') {
     throw new ApiHttpError(400, 'status=CANCELLED 與 activeOnly／repeatCustomers（排除取消訂單）互相矛盾', ERR.VALIDATION);
   }
@@ -105,11 +112,20 @@ export const GET = handle(async (req) => {
 
   // 所有篩選集中在這一處，一般清單與「重複旅客」候選查詢共用；tenant_id 一律先套用。
   const filtered = (columns: string, opts?: { count: 'exact' }) => {
-    // salesMode 以 trip_plans!inner 內嵌篩選（同 dashboard-tour countPendingTourRequests）；
-    // 未帶時維持原 select，不多 join。
-    const sel = q.salesMode ? `${columns}, trip_plans!inner(sales_mode)` : columns;
+    // salesMode 以 trip_plans!inner、departsOn 以 trip_departures!inner 內嵌篩選
+    // （同 dashboard-tour 的 countPendingTourRequests／countTodayTourDepartureOrders）；未帶時維持原 select，不多 join。
+    const embeds = [
+      q.salesMode ? 'trip_plans!inner(sales_mode)' : '',
+      q.departsOn ? 'trip_departures!inner(departs_on, status)' : '',
+    ].filter(Boolean);
+    const sel = embeds.length ? `${columns}, ${embeds.join(', ')}` : columns;
     let query = t.supabase.from('tour_orders').select(sel, opts).eq('tenant_id', t.tenantId);
     if (q.salesMode) query = query.eq('trip_plans.sales_mode', q.salesMode);
+    if (q.departsOn) {
+      query = query.eq('trip_departures.departs_on', q.departsOn)
+        // 已取消的團次不算當日出團（同統計卡）。
+        .neq('trip_departures.status', 'CANCELLED');
+    }
     if (orderId) query = query.eq('id', orderId);
     if (status) query = query.eq('status', status);
     if (excludeCancelled) query = query.neq('status', 'CANCELLED');
@@ -160,6 +176,29 @@ export const GET = handle(async (req) => {
       const byId = new Map(((rows ?? []) as Record<string, unknown>[]).map((r) => [r.id as string, r]));
       data = pageIds.map((id) => byId.get(id)).filter((r): r is Record<string, unknown> => !!r);
     }
+  } else if (q.departsOn) {
+    // 當日出團：依出發時間排序必須在全部列上做（單日團次數有限），不能先分頁再排，否則跨頁順序會亂。
+    // 穩定排序（id）＋以實際回傳筆數推進 offset，遇空頁才停；超過上限就拒絕，絕不靜默少列。
+    const all: Record<string, unknown>[] = [];
+    for (;;) {
+      const res = await filtered('*').order('id', { ascending: true }).range(all.length, all.length + 999);
+      if (res.error) throw res.error;
+      const pg = (res.data ?? []) as unknown as Record<string, unknown>[];
+      if (pg.length === 0) break;
+      all.push(...pg);
+      if (all.length > MAX_ROWS) throw new ApiHttpError(422, '當日訂單過多，無法列出', ERR.REPORT_RANGE_TOO_LARGE);
+    }
+    const hydrated = await hydrateTourOrders(t.supabase, t.tenantId, all);
+    hydrated.sort((a, b) => (a.startTime < b.startTime ? -1 : a.startTime > b.startTime ? 1
+      : a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : (a.id < b.id ? -1 : 1)));
+    const slice = hydrated.slice(page * size, page * size + size);
+    return ok({
+      content: slice,
+      totalElements: hydrated.length,
+      totalPages: Math.max(1, Math.ceil(hydrated.length / size)),
+      number: page,
+      size,
+    });
   } else {
     const res = await filtered('*', { count: 'exact' })
       .order('created_at', { ascending: false })

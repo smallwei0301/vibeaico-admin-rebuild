@@ -92,6 +92,7 @@ export default function TourOrdersPage() {
   const [planFilter, setPlanFilter] = React.useState('');
   const [activeOnly, setActiveOnly] = React.useState(false);
   const [salesModeFilter, setSalesModeFilter] = React.useState<TripSalesMode | ''>('');
+  const [departsOnFilter, setDepartsOnFilter] = React.useState('');
   const [repeatOnly, setRepeatOnly] = React.useState(false);
   const [createdBefore, setCreatedBefore] = React.useState('');
   const [asOfZone, setAsOfZone] = React.useState('');
@@ -179,12 +180,13 @@ export default function TourOrdersPage() {
     if (dl.planId) setPlanFilter(dl.planId);
     if (dl.activeOnly) setActiveOnly(true);
     if (dl.salesMode) setSalesModeFilter(dl.salesMode);
+    if (dl.departsOn) setDepartsOnFilter(dl.departsOn);
     if (dl.repeatCustomers) setRepeatOnly(true);
     if (paymentStatus) setPaymentFilter(paymentStatus);
     if (orderId) setRequestedOrderId(orderId);
     if (dl.createdBefore) setCreatedBefore(dl.createdBefore);
     if (dl.tz) setAsOfZone(dl.tz);
-    if (dl.status || dl.source || dl.tripId || dl.planId || dl.createdFrom || dl.createdTo || dl.createdBefore || dl.salesMode
+    if (dl.status || dl.source || dl.tripId || dl.planId || dl.createdFrom || dl.createdTo || dl.createdBefore || dl.salesMode || dl.departsOn
       || dl.activeOnly || dl.repeatCustomers || paymentStatus) setFromLink(true);
     setReady(true);
     const guard = latest.current;
@@ -195,10 +197,11 @@ export default function TourOrdersPage() {
   const drillExtras = React.useMemo(() => ({
     ...(planFilter ? { planId: planFilter } : {}),
     ...(salesModeFilter ? { salesMode: salesModeFilter } : {}),
+    ...(departsOnFilter ? { departsOn: departsOnFilter } : {}),
     ...(activeOnly ? { activeOnly: '1' as const } : {}),
     ...(repeatOnly ? { repeatCustomers: '1' as const } : {}),
     ...(createdBefore ? { createdBefore } : {}),
-  }), [planFilter, salesModeFilter, activeOnly, repeatOnly, createdBefore]);
+  }), [planFilter, salesModeFilter, departsOnFilter, activeOnly, repeatOnly, createdBefore]);
 
   const load = React.useCallback(async () => {
     // 只套用最新一次請求的回應：篩選連續變更時，較慢的舊回應不得覆蓋新結果
@@ -603,7 +606,7 @@ export default function TourOrdersPage() {
         <StatCard label={t.stats.monthRevenue} value={summary ? formatCurrency(summary.monthRevenue) : t.stats.placeholder} icon={BadgeDollarSign} tone="success" />
       </div>
 
-      {fromLink || tripFilter || planFilter || salesModeFilter || activeOnly || repeatOnly || createdFrom || createdTo || createdBefore ? (
+      {fromLink || tripFilter || planFilter || salesModeFilter || departsOnFilter || activeOnly || repeatOnly || createdFrom || createdTo || createdBefore ? (
         <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
           <span>
             {t.drilldown.current(
@@ -612,6 +615,7 @@ export default function TourOrdersPage() {
                 tripFilter ? t.drilldown.trip : '',
                 planFilter ? t.drilldown.plan : '',
                 salesModeFilter ? t.drilldown.salesMode(t.salesMode[salesModeFilter]) : '',
+                departsOnFilter ? t.drilldown.departsOn(departsOnFilter) : '',
                 activeOnly ? t.drilldown.activeOnly : '',
                 repeatOnly ? t.drilldown.repeatCustomers : '',
                 createdBefore ? t.drilldown.asOf(formatAsOf(createdBefore, asOfZone || PUBLIC_DEFAULT_TIME_ZONE)) : '',
@@ -626,7 +630,7 @@ export default function TourOrdersPage() {
             onClick={() => {
               // 清除所有由連結帶入的篩選（含狀態／付款／來源／行程／方案／旗標／日期／資料截至），並同步網址
               setStatusFilter(''); setPaymentFilter(''); setSourceFilter('');
-              setTripFilter(''); setPlanFilter(''); setSalesModeFilter(''); setActiveOnly(false); setRepeatOnly(false);
+              setTripFilter(''); setPlanFilter(''); setSalesModeFilter(''); setDepartsOnFilter(''); setActiveOnly(false); setRepeatOnly(false);
               setCreatedFrom(''); setCreatedTo(''); setCreatedBefore(''); setAsOfZone('');
               setRequestedOrderId(''); setFromLink(false); setPage(0);
               window.history.replaceState(null, '', window.location.pathname);

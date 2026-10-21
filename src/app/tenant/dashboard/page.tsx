@@ -23,6 +23,7 @@ import {
 } from '@/services/reports';
 import { getSetupStatus } from '@/services/settings';
 import { listBookings } from '@/services/bookings';
+import { listTodayTourDepartureOrders } from '@/services/tours';
 import { tenantDateString, tenantDayRange } from '@/lib/bookings-query-range';
 import { getGuideActionInbox } from '@/services/guide-action-inbox';
 import { createGuideInboxLoader, guideInboxForTenant, type GuideInboxLoadState } from '@/lib/guide-inbox-load';
@@ -30,7 +31,7 @@ import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessT
 import { APP_URL, USE_MOCK } from '@/config/env';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { FEATURE_EXPIRY_WARNING_DAYS } from '@/config/features';
-import { MODE_PRESETS } from '@/config/modes';
+import { MODE_PRESETS, buildTodayOrdersHref } from '@/config/modes';
 import { navLabel } from '@/i18n/zh-TW/nav';
 import { getSetupStepHref } from '@/lib/setup-step-routes';
 import { common } from '@/i18n/zh-TW/common';
@@ -39,7 +40,7 @@ import {
   formatCurrency, formatDate, formatNumber, formatPercent, formatTime,
 } from '@/lib/utils';
 import type {
-  Booking, BookingStatus, DashboardAlerts, DashboardStats, SetupStatus, StaffPerformance,
+  Booking, BookingStatus, DashboardAlerts, DashboardStats, SetupStatus, StaffPerformance, TourOrder, TourOrderStatus,
 } from '@/lib/types';
 import type { GuideActionInboxItem, GuideActionInboxPriority } from '@/lib/guide-action-inbox';
 
@@ -54,6 +55,13 @@ const STATUS_TONE: Record<BookingStatus, 'primary' | 'success' | 'warning' | 'da
   COMPLETED: 'success',
   CANCELLED: 'neutral',
   NO_SHOW: 'danger',
+};
+
+const TOUR_STATUS_TONE: Record<TourOrderStatus, 'primary' | 'success' | 'warning' | 'neutral'> = {
+  PENDING: 'warning',
+  CONFIRMED: 'primary',
+  COMPLETED: 'success',
+  CANCELLED: 'neutral',
 };
 
 const ACTION_INBOX_TONE: Record<GuideActionInboxPriority, 'danger' | 'warning' | 'info'> = {
@@ -326,6 +334,9 @@ export default function DashboardPage() {
   const PUBLIC_BOOKING_URL = buildPublicBookingUrl(APP_URL, currentTenant.shopCode);
   const toast = useToast();
   const { ordersHref, catalogHref, dashboardLinks } = modePreset;
+  const { todayTable } = dashboardLinks;
+  // 「今日預約」統計卡與表格「查看全部」：ordersHref ＋ preset 的 todayQuery（GUIDE 帶今日出發日篩選）
+  const todayHref = buildTodayOrdersHref(modePreset, tenantDateString());
 
   const [stats, setStats] = React.useState<DashboardStats | null>(null);
   const [alerts, setAlerts] = React.useState<DashboardAlerts | null>(null);
@@ -333,6 +344,7 @@ export default function DashboardPage() {
   const [setup, setSetup] = React.useState<SetupStatus | null>(null);
   const [performance, setPerformance] = React.useState<StaffPerformance[]>([]);
   const [todayRows, setTodayRows] = React.useState<Booking[]>([]);
+  const [todayTourRows, setTodayTourRows] = React.useState<TourOrder[]>([]);
   const [inboxState, setInboxState] = React.useState<GuideInboxLoadState<GuideActionInboxItem>>({
     tenantId: currentTenant.id, status: 'loading',
   });
@@ -377,8 +389,13 @@ export default function DashboardPage() {
     void (async () => {
       try {
         const today = tenantDateString();
-        const res = await listBookings({ page: 0, size: 100, ...tenantDayRange() });
-        setTodayRows(res.content.filter((b) => tenantDateString(new Date(b.startAt)) === today));
+        if (todayTable === 'TOUR_DEPARTURES') {
+          // #1085：今日出發團次的非取消團體訂單，口徑與統計卡相同（server 端排序、排除取消）
+          setTodayTourRows((await listTodayTourDepartureOrders(today)).content);
+        } else {
+          const res = await listBookings({ page: 0, size: 100, ...tenantDayRange() });
+          setTodayRows(res.content.filter((b) => tenantDateString(new Date(b.startAt)) === today));
+        }
       } catch (e) { fail(t.errors.todayBookings, e); } finally { setLoadingToday(false); }
     })();
     void (async () => {
@@ -392,7 +409,7 @@ export default function DashboardPage() {
     void (async () => {
       try { setMonthSources(await getMonthSources()); } catch (e) { fail(t.errors.sources, e); } finally { setLoadingSources(false); }
     })();
-  }, [fail]);
+  }, [fail, todayTable]);
 
   const reloadActionInbox = React.useCallback(() => {
     if (modePreset.showActionInbox) void inboxLoader.current.load(currentTenant.id, getGuideActionInbox);
@@ -448,6 +465,25 @@ export default function DashboardPage() {
     {
       key: 'status', header: t.todayBookings.columns.status, width: '92px',
       render: (b) => <Badge tone={STATUS_TONE[b.status]}>{common.bookingStatus[b.status]}</Badge>,
+    },
+  ];
+
+  const todayTourColumns: Column<TourOrder>[] = [
+    { key: 'time', header: t.todayTourOrders.columns.time, width: '96px', render: (o) => o.startTime },
+    { key: 'traveler', header: t.todayTourOrders.columns.traveler, render: (o) => <span className="font-semibold text-dark">{o.customerName}</span> },
+    {
+      key: 'trip', header: t.todayTourOrders.columns.trip,
+      render: (o) => (
+        <div className="min-w-0">
+          <div>{o.tripTitle}</div>
+          <div className="text-xs text-secondary">{o.planName}</div>
+        </div>
+      ),
+    },
+    { key: 'party', header: t.todayTourOrders.columns.partySize, numeric: true, render: (o) => t.todayTourOrders.partySize(o.partySize) },
+    {
+      key: 'status', header: t.todayTourOrders.columns.status, width: '92px',
+      render: (o) => <Badge tone={TOUR_STATUS_TONE[o.status]}>{t.todayTourOrders.status[o.status]}</Badge>,
     },
   ];
 
@@ -780,7 +816,7 @@ export default function DashboardPage() {
 
       {/* -------------------------------------------------------------- 統計卡 */}
       <div className="mb-4 grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-5">
-        <Link href={ordersHref} className="no-underline">
+        <Link href={todayHref} className="no-underline">
           <StatCard
             label={t.stats.todayBookings}
             value={stats ? formatNumber(stats.todayBookings) : PLACEHOLDER}
@@ -970,19 +1006,31 @@ export default function DashboardPage() {
             <CardTitle>
               <CalendarDays size={16} className="text-primary" />
               {t.todayBookings.title}
-              <span className="form-text">{t.todayBookings.count(todayRows.length)}</span>
+              <span className="form-text">
+                {t.todayBookings.count(todayTable === 'TOUR_DEPARTURES' ? todayTourRows.length : todayRows.length)}
+              </span>
             </CardTitle>
-            <Link href="/tenant/bookings" className="btn btn-primary btn-sm">
+            <Link href={todayHref} className="btn btn-primary btn-sm">
               {t.todayBookings.viewAll}
             </Link>
           </CardHeader>
-          <DataTable
-            columns={todayColumns}
-            rows={todayRows}
-            loading={loadingToday}
-            rowKey={(b) => b.id}
-            empty={<EmptyState icon={CalendarDays} title={common.noData} />}
-          />
+          {todayTable === 'TOUR_DEPARTURES' ? (
+            <DataTable
+              columns={todayTourColumns}
+              rows={todayTourRows}
+              loading={loadingToday}
+              rowKey={(o) => o.id}
+              empty={<EmptyState icon={CalendarDays} title={common.noData} />}
+            />
+          ) : (
+            <DataTable
+              columns={todayColumns}
+              rows={todayRows}
+              loading={loadingToday}
+              rowKey={(b) => b.id}
+              empty={<EmptyState icon={CalendarDays} title={common.noData} />}
+            />
+          )}
         </Card>
 
         <Card>
