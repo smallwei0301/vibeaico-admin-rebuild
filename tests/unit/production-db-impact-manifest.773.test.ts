@@ -11,6 +11,8 @@ const root = process.cwd();
 const aliasMap = JSON.parse(readFileSync(resolve(root, 'supabase/ledger-alias-map.json'), 'utf8'));
 // 0124/0116/0119/0127 已套用 Production（EXACT），不再屬 FULL_PENDING_SET；最終擁有者斷言改讀釋出前 alias map fixture。
 const preAliasMap = JSON.parse(readFileSync(resolve(root, 'tests/fixtures/ledger-alias-map.pre-755-s0124-0116-0119-0127.json'), 'utf8'));
+// 0125/0121/0123/0133 亦已套用 Production（EXACT），ISSUES_17_680 不再有 pending migration；該 scope 的斷言改讀其釋出前 alias map fixture。
+const pre17AliasMap = JSON.parse(readFileSync(resolve(root, 'tests/fixtures/ledger-alias-map.pre-755-s0121-0125-0133-0123.json'), 'utf8'));
 const manifest = JSON.parse(readFileSync(resolve(root, 'supabase/production-db-impact-manifest.json'), 'utf8'));
 const MAIN = 'a'.repeat(40);
 const PLAN_DIGEST = 'b'.repeat(64);
@@ -48,7 +50,7 @@ describe('#773 G2 source check has no duplicate impact owners', () => {
   // ISSUE_46_0110_0136_CLOSURE is covered by production-db-impact-manifest.755.test.ts.
   for (const scope of ['FULL_PENDING_SET', 'ISSUES_17_680']) {
     it(`${scope} does not throw AMBIGUOUS_IMPACT_OWNERSHIP with the real alias map and manifest`, () => {
-      const { plan } = planFor(scope);
+      const { plan } = planFor(scope, scope === 'ISSUES_17_680' ? pre17AliasMap : aliasMap);
       try { run(plan); } catch (error) {
         expect(String((error as Error).message)).not.toMatch(/AMBIGUOUS_IMPACT_OWNERSHIP/);
         throw error;
@@ -64,7 +66,7 @@ describe('#773 G2 source check has no duplicate impact owners', () => {
   });
 
   it('ISSUES_17_680 (0121, 0125, 0133) registers the fkey only under 0133 and does not own the booking_addons table ACL', () => {
-    const files: string[] = planFor('ISSUES_17_680').selection.migrations;
+    const files: string[] = planFor('ISSUES_17_680', pre17AliasMap).selection.migrations;
     expect(ownersOf(manifest, 'constraints:public.booking_addons.booking_addons_performance_staff_id_fkey', files)).toEqual(['0133']);
     // 0133 has no grant/revoke statements; create/delete_booking_addon function ACLs live in 0121 (0121:264-339) and the table ACL is 0127's (0127:59-61), not in this scope.
     expect(ownersOf(manifest, 'acl:table:public.booking_addons', files)).toEqual([]);
