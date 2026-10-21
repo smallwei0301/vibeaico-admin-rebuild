@@ -894,6 +894,11 @@ export type TourOrdersDeepLink = {
 const TRIP_SALES_MODE_VALUES: TripSalesMode[] = ['FIXED_DEPARTURE', 'INSTANT', 'REQUEST'];
 const TOUR_ORDER_SOURCE_VALUES: TourOrderSource[] = ['MIDAO', 'VIBEAI_SHOP', 'LINE', 'MANUAL'];
 
+/** #1088：帶 activeOnly 或 departsOn 篩選時，「已取消」狀態與之互斥（API 回 400），頁面據此停用該選項。 */
+export function isCancelledStatusBlocked(f: { activeOnly?: boolean; departsOn?: string }): boolean {
+  return !!f.activeOnly || !!f.departsOn;
+}
+
 export function parseTourOrdersDeepLink(search: string): TourOrdersDeepLink {
   const params = new URLSearchParams(search);
   const ps = params.get('paymentStatus');
@@ -902,7 +907,7 @@ export function parseTourOrdersDeepLink(search: string): TourOrdersDeepLink {
     : '';
   const orderId = params.get('orderId') ?? '';
   const st = params.get('status');
-  const status = st && (TOUR_ORDER_STATUS_VALUES as string[]).includes(st) ? (st as TourOrderStatus) : '';
+  const statusRaw = st && (TOUR_ORDER_STATUS_VALUES as string[]).includes(st) ? (st as TourOrderStatus) : '';
   const tripId = params.get('tripId') ?? '';
   const cf = params.get('createdFrom') ?? '';
   const ct = params.get('createdTo') ?? '';
@@ -919,9 +924,13 @@ export function parseTourOrdersDeepLink(search: string): TourOrdersDeepLink {
   const tzRaw = params.get('tz');
   const tz = tzRaw ? resolvePublicTimeZone(tzRaw) : '';
   const planId = params.get('planId') ?? '';
-  // status=CANCELLED 與「排除取消」矛盾：以明確的 status 為準，忽略這兩個旗標（API 對同時帶會回 400）
+  // #1088：activeOnly／departsOn 與 status=CANCELLED 互斥（API 對同時帶回 400，頁面也停用「已取消」選項）。
+  // 一致規則：帶這兩個篩選時忽略 status=CANCELLED，不發出必然失敗的請求。
+  const activeOnlyFlag = params.get('activeOnly') === '1';
+  const status = isCancelledStatusBlocked({ activeOnly: activeOnlyFlag, departsOn }) && statusRaw === 'CANCELLED' ? '' : statusRaw;
+  // repeatCustomers 仍維持既有規則：明確的 status=CANCELLED 優先，忽略該旗標
   const excl = status !== 'CANCELLED';
-  const activeOnly = excl && params.get('activeOnly') === '1';
+  const activeOnly = activeOnlyFlag;
   const repeatCustomers = excl && params.get('repeatCustomers') === '1' && !!createdFrom && !!createdTo;
   return { paymentStatus, orderId, status, tripId, createdFrom, createdTo, source, planId, activeOnly, repeatCustomers, salesMode, departsOn, createdBefore, tz, tenantId: params.get('tenantId') ?? '' };
 }

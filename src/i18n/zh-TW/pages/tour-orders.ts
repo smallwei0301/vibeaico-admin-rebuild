@@ -48,6 +48,7 @@ export const tourOrdersPage = {
   filters: {
     keywordPlaceholder: '搜尋訂單編號 / 旅客姓名 / 電話',
     statusAll: '全部狀態',
+    cancelledDisabledHint: '已排除已取消訂單，請先清除篩選',
     sourceAll: '全部來源',
     paymentAll: '全部收款狀態',
   },
