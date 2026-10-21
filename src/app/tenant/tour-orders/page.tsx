@@ -21,7 +21,7 @@ import { useToast } from '@/components/ui/Toast';
 import {
   acceptTourOrder, cancelTourOrder, completeTourOrder, confirmTourOrderPayment,
   createManualTourOrder, getTourOrderSummary, listTourOrders, listTripDepartures, listTripPlans, listTrips,
-  cleanedUrlForProceed, decideTourOrdersTenantAction, parseTourOrdersDeepLink, rejectTourOrder, stripTenantIdParam,
+  cleanedUrlForProceed, decideTourOrdersTenantAction, isCancelledStatusBlocked, parseTourOrdersDeepLink, rejectTourOrder, stripTenantIdParam,
 } from '@/services/tours';
 import { REJECT_REASON_MAX_LENGTH } from '@/lib/tour-reject-reason';
 import { listPaymentMethods, type PaymentMethodRow } from '@/services/payment-methods';
@@ -193,6 +193,9 @@ export default function TourOrdersPage() {
     const summaryGuard = summaryLatest.current;
     return () => { guard.invalidate(); summaryGuard.invalidate(); };
   }, []);
+
+  // #1088：activeOnly／departsOn 與 status=CANCELLED 互斥，帶這兩個篩選時停用「已取消」選項
+  const cancelledBlocked = isCancelledStatusBlocked({ activeOnly, departsOn: departsOnFilter });
 
   const drillExtras = React.useMemo(() => ({
     ...(planFilter ? { planId: planFilter } : {}),
@@ -655,14 +658,15 @@ export default function TourOrdersPage() {
               <Select value={statusFilter} onChange={(e) => {
                 setStatusFilter(e.target.value);
                 // 明確選「已取消」與「排除取消」矛盾：以使用者剛選的狀態為準，移除這兩個報表下鑽旗標
-                if (e.target.value === 'CANCELLED') { setActiveOnly(false); setRepeatOnly(false); }
+                if (e.target.value === 'CANCELLED') setRepeatOnly(false);
                 setPage(0);
               }}>
                 <option value="">{t.filters.statusAll}</option>
                 {(Object.keys(t.status) as TourOrderStatus[]).map((k) => (
-                  <option key={k} value={k}>{t.status[k]}</option>
+                  <option key={k} value={k} disabled={k === 'CANCELLED' && cancelledBlocked}>{t.status[k]}</option>
                 ))}
               </Select>
+              {cancelledBlocked ? <span className="text-xs text-secondary">{t.filters.cancelledDisabledHint}</span> : null}
               <Select value={paymentFilter} onChange={(e) => { setPaymentFilter(e.target.value); setPage(0); }}>
                 <option value="">{t.filters.paymentAll}</option>
                 {(Object.keys(t.paymentStatus) as TourPaymentStatus[]).map((k) => (

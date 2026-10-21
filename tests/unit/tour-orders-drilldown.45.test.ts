@@ -108,7 +108,7 @@ describe('來源下鑽參數', () => {
 
 const PLAN = '44444444-4444-4444-8444-444444444444';
 describe('planId／activeOnly 下鑽', () => {
-  it('parse 與 build 互逆；status=CANCELLED 時忽略 activeOnly／repeatCustomers', () => {
+  it('parse 與 build 互逆；status=CANCELLED 時忽略 repeatCustomers（activeOnly／departsOn 則反過來忽略 status，見 #1088）', () => {
     const href = buildTourOrdersLink({ planId: PLAN, activeOnly: true, createdFrom: '2026-10-01', createdTo: '2026-10-10' });
     expect(href).toBe(`/tenant/tour-orders?createdFrom=2026-10-01&createdTo=2026-10-10&planId=${PLAN}&activeOnly=1`);
     expect(parseTourOrdersDeepLink(href.split('?')[1])).toMatchObject({ planId: PLAN, activeOnly: true, repeatCustomers: false });
@@ -116,7 +116,8 @@ describe('planId／activeOnly 下鑽', () => {
     expect(rp).toBe('/tenant/tour-orders?createdFrom=2026-10-01&createdTo=2026-10-10&repeatCustomers=1');
     expect(parseTourOrdersDeepLink(rp.split('?')[1]).repeatCustomers).toBe(true);
     expect(parseTourOrdersDeepLink('?repeatCustomers=1').repeatCustomers).toBe(false); // 缺日期不啟用
-    expect(parseTourOrdersDeepLink('?status=CANCELLED&activeOnly=1')).toMatchObject({ status: 'CANCELLED', activeOnly: false });
+    expect(parseTourOrdersDeepLink('?status=CANCELLED&activeOnly=1')).toMatchObject({ status: '', activeOnly: true });
+    expect(parseTourOrdersDeepLink('?status=CANCELLED&repeatCustomers=1&createdFrom=2026-10-01&createdTo=2026-10-10')).toMatchObject({ status: 'CANCELLED', repeatCustomers: false });
   });
   it('GET：planId 帶 .eq(plan_id)（在 tenant_id 之後）、activeOnly 帶 .neq(status, CANCELLED)', async () => {
     const res = await get(`?planId=${PLAN}&activeOnly=1`);
