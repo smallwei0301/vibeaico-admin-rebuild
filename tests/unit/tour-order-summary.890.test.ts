@@ -136,7 +136,7 @@ describe('GET /api/tour-orders/summary（#890）', () => {
 
   const bigRows = (n: number) => Array.from({ length: n }, (_, i) => order({ id: `r${String(i).padStart(5, '0')}`, status: 'COMPLETED', payment_status: 'PAID', total_amount: 1, paid_amount: 1 }));
 
-  it('本月已付款訂單剛好 50,000 筆：200 並回完整加總', async () => {
+  it('本月訂單剛好 50,000 筆：200 並回完整加總', async () => {
     requireTenantMock.mockResolvedValue({ supabase: fakeSupabase({ tour_orders: bigRows(50_000), trip_departures: [] }), tenantId: A, user: { id: 'u' }, role: 'OWNER' });
     const { status, body } = await call();
     expect(status).toBe(200);
