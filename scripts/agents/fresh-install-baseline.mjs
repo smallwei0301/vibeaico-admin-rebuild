@@ -76,7 +76,7 @@ function validateCanonical(canonical) {
   return { names, prefixes, sourceDigest };
 }
 
-function validateManifest(manifest, historical, canonicalNames, canonicalPrefixes) {
+export function validateManifest(manifest, historical, canonicalNames, canonicalPrefixes) {
   exactKeys(manifest, ['version', 'profile', 'mode', 'source', 'entries', 'contracts'], 'baseline manifest');
   exactKeys(manifest.source,
     ['repository', 'mainHead', 'canonicalSourceDigest', 'historicalManifest', 'historicalHead'],

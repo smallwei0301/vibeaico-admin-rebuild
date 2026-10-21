@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { createHash as gitHash } from 'node:crypto';
+import { BASELINE_MANIFEST, HISTORICAL_MANIFEST, readVerifiedJson, validateManifest } from './fresh-install-baseline.mjs';
 
 import { normalizeProductionDbImpactManifest } from './production-db-impact-manifest.mjs';
 import { ISSUE_17_0121_0125_0133_0123, ISSUE_18_0124_0116_0119_0127, ISSUE_25_0117_0118, ISSUE_37_0131_0134, ISSUE_23_0113, ISSUE_749_0137, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE, SCOPED_RELEASE_CAPTURE_SCOPES, splitSqlStatements, stripSqlComments, stripSqlStringLiterals,
@@ -159,7 +161,8 @@ export function sourceRoutines(sql, path) {
       parallel: /\bparallel\s+(unsafe|restricted|safe)\b/i.exec(outside)?.[1].toLowerCase() ?? 'unsafe',
       unsupportedHeader: /\b(?:cost|rows|support|window|transform)\b/i.test(sqlWords(outside)),
       volatility: /\bimmutable\b/i.test(outside) ? 'i' : /\bstable\b/i.test(outside) ? 's' : 'v',
-      config: search ? [`search_path=${search[1].replace(/["']/g, '').replace(/\s*,\s*/g, ', ').trim()}`] : null,
+      // pg_proc.proconfig 以 `search_path=""` 表示空字串；其餘值維持原本去引號格式。
+      config: search ? [`search_path=${search[1].replace(/["']/g, '').replace(/\s*,\s*/g, ', ').trim() || '""'}`] : null,
       source: { path, sha256: sha256(sql) } });
   }
   return result;
@@ -307,7 +310,48 @@ export function sourceCatalog({ plan, repoRoot, readCanonicalSql, appliedSourceF
     const path = `supabase/migrations/${matches[0]}`;
     for (const routine of sourceRoutines(read(path), path)) if (['public.create_tour_order', 'public.cancel_tour_order', 'public.expire_tour_order'].includes(routine.name)) before.set(routineKey(routine), routine);
   }
-  return { before, after, enums, sources, read };
+  return { before, after, enums, sources, read, historicalTables: historicalBaselineTables(repoRoot) };
+}
+
+// 凍結名單：只有這些 public 表可由 LOCAL_ONLY_TRANSITIONAL baseline overlay 提供建表來源（canonical 無 create table）。
+// 新增項目必須是 fresh-install compatibility baseline 實際 replay 的條目，且 blobSha 與兩份 manifest 一致。
+export const HISTORICAL_REPLAY_TABLE_SOURCES = Object.freeze({
+  'public.booking_addons': Object.freeze({
+    path: 'supabase/local-migrations/historical-integration-baseline/0020_booking_addons.sql',
+    blobSha: 'e3af9d5f0498102bf32e3155b1673127e8f3a67b',
+  }),
+});
+
+// 回傳「已精確驗證 replay」的凍結表集合；任何一項驗證失敗即不承認（fail closed）。
+// 驗證：(a) 檔案實際 git blob sha 等於凍結 blobSha 且確實 create table；(b) historical manifest 非 retired、blobSha 相同；
+// (c) fresh-install baseline manifest 通過 validateManifest（mode/source/head 身分）且含同名同 blobSha 的 replay 條目。
+export function historicalBaselineTables(repoRoot) {
+  const tables = new Set();
+  let historical, baseline;
+  try {
+    historical = readVerifiedJson(repoRoot, HISTORICAL_MANIFEST);
+    baseline = readVerifiedJson(repoRoot, BASELINE_MANIFEST);
+    validateManifest(baseline, historical, new Set(), new Set());
+  } catch { return tables; }
+  for (const [table, source] of Object.entries(HISTORICAL_REPLAY_TABLE_SOURCES)) {
+    const name = source.path.split('/').pop();
+    const inHistorical = historical.files.find((entry) => entry?.name === name);
+    const inBaseline = baseline.entries.find((entry) => entry?.name === name);
+    if (!inHistorical || inHistorical.retiredBy || inHistorical.blobSha !== source.blobSha) continue;
+    if (!inBaseline || inBaseline.blobSha !== source.blobSha) continue;
+    let bytes;
+    try { bytes = readFileSync(resolve(repoRoot, source.path)); } catch { continue; }
+    if (gitHash('sha1').update(Buffer.from(`blob ${bytes.length}\0`)).update(bytes).digest('hex') !== source.blobSha) continue;
+    const bare = table.replace(/^public\./, '');
+    if (new RegExp(`\\bcreate\\s+table\\s+(?:if\\s+not\\s+exists\\s+)?(?:public\\.)?${bare}\\b`, 'i').test(stripSqlComments(bytes.toString('utf8')))) tables.add(table);
+  }
+  return tables;
+}
+
+function historicalTableInEveryCapture(source, captures, table) {
+  const all = Object.values(captures);
+  return table.startsWith('public.') && source.historicalTables instanceof Set && source.historicalTables.has(table) && all.length > 0
+    && all.every((capture) => Array.isArray(capture?.catalog?.tableOwners) && capture.catalog.tableOwners.some((entry) => entry.table === table));
 }
 
 export function deriveClosure({ source, captures, impactManifest, plan, createTourOrderFamily = true }) {
@@ -351,7 +395,17 @@ export function deriveClosure({ source, captures, impactManifest, plan, createTo
       const code = sqlWords(text);
       for (const match of code.matchAll(/\b(?:from|join|update|into|delete\s+from)\s+((?:public\.)?[a-z_][a-z_0-9]*)(?![a-z_0-9])/gi)) {
         const table = match[1].includes('.') ? match[1] : `public.${match[1]}`;
-        if (match[1].startsWith('public.') && !knownTables.has(table)) fail('RELEASE_UNSOURCED_DEPENDENCY', `${table} has no canonical table source`);
+        // `from public.fn(...)` is a set-returning function call, not a table. Only skip when the
+        // name is an exact canonical source routine; routine closure below already tracks it.
+        if (/^(?:from|join)\b/i.test(match[0]) && /^\s*\(/.test(code.slice(match.index + match[0].length)) && [...source.after.values()].some((routine) => routine.name === table)) continue;
+        if (match[1].startsWith('public.') && !knownTables.has(table)) {
+          // Historical baseline tables (e.g. booking_addons) are created only by the
+          // LOCAL_ONLY_TRANSITIONAL overlay. They count only when a hash-verified, non-retired
+          // baseline file creates them AND every capture's catalog.tableOwners proves them.
+          if (!historicalTableInEveryCapture(source, captures, table)) fail('RELEASE_UNSOURCED_DEPENDENCY', `${table} has no canonical table source`);
+          if (!roots.has(table)) { roots.add(table); changed = true; }
+          continue;
+        }
         if (knownTables.has(table) && !roots.has(table)) { roots.add(table); changed = true; }
       }
       for (const [key, routine] of source.after) {
