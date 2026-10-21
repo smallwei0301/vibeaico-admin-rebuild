@@ -146,10 +146,11 @@
     },
     {
       "repoFile": "0125_issue_17_booking_addons_legacy_enum",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "PENDING_APPLY",
-      "evidence": "#589 G3 prerequisite：canonical TEST 的歷史 integration baseline 可能先建立 addon_performance_mode enum；本筆在 0121 前將 PRIMARY 映射為 INHERIT 並轉為 text，缺表或缺欄位時由 0121 建立 canonical shape。此 canonical migration 尚未套用到正式庫，與 0121 同一個 G3 release 依序執行。"
+      "ledgerNames": [
+        "0125_issue_17_booking_addons_legacy_enum"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 0125＋0121＋0123＋0133 受控釋出（releaseId issue755-3a1b-s0121-0125-0133-0123-20261021002300，orchestrator run 39542665619：execute、G7、postcheck 皆 success）已套用至正式庫（#17 booking_addons 舊版 enum 相容）；provider ledger version 20261021002300。正式庫 ledger 快照已於 2026-10-21T04:17:36Z 重新擷取（78 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
     },
     {
       "repoFile": "0126_issue_402_keyword_reply_images_authz",
@@ -595,17 +596,19 @@
     },
     {
       "repoFile": "0121_issue_17_booking_addons_hardening",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "PENDING_APPLY",
-      "evidence": "#17：booking_addons hardening migration。新增 C+ 業績三態、冪等 idempotency_key、deleted_at 軟刪、notification_requested，並新增 service_role-only 的 create_booking_addon／delete_booking_addon SECURITY DEFINER RPC。此 source 由 PR #565 最終修正版 0dad3e25 重建到 current main；舊 exact head 已在 disposable local Supabase 實際套用 0121 並通過 booking-addons.17 19 tests、全量 integration 825 passed/6 skipped 與 E2E 25 passed/6 skipped，當時唯一後續失敗是 stale fresh-install manifest pin。本 successor 仍需 exact-head CI 重驗。尚未套用 canonical TEST 或 Production；合併進 main 後仍為 PENDING_APPLY，遠端套用另走既有授權流程。"
+      "ledgerNames": [
+        "0121_issue_17_booking_addons_hardening"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 0125＋0121＋0123＋0133 受控釋出（releaseId issue755-3a1b-s0121-0125-0133-0123-20261021002300，orchestrator run 39542665619：execute、G7、postcheck 皆 success）已套用至正式庫（#17 booking_addons 強化與 create/delete_booking_addon RPC）；provider ledger version 20261021002301。正式庫 ledger 快照已於 2026-10-21T04:17:36Z 重新擷取（78 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
     },
     {
       "repoFile": "0123_issue_589_richmenu_asset_retirement",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "PENDING_APPLY",
-      "evidence": "#589 Phase A：richmenu-assets 的 tenant-scoped retirement table、同一 tenant+URL advisory transaction lock、阻擋 stale line 寫回的 BEFORE trigger，以及 service_role-only retire_richmenu_asset RPC。此為 schema preparation；本分支不修改 runtime、Storage remove、canonical TEST 或 Production。0122 已由 open PR #567 使用，故本 migration 取 0123 以避免 prefix collision。合併 main 後仍屬 PENDING_APPLY；任何遠端套用必須先由 current main 的 exact canonical SQL 成為授權來源，再走既有 staged release 與 Production gate。"
+      "ledgerNames": [
+        "0123_issue_589_richmenu_asset_retirement"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 0125＋0121＋0123＋0133 受控釋出（releaseId issue755-3a1b-s0121-0125-0133-0123-20261021002300，orchestrator run 39542665619：execute、G7、postcheck 皆 success）已套用至正式庫（#589 圖文選單素材下架保護）；provider ledger version 20261021002302。正式庫 ledger 快照已於 2026-10-21T04:17:36Z 重新擷取（78 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
     },
     {
       "repoFile": "0127_issue_589_authz_constraint_reconciliation",
@@ -656,10 +659,11 @@
     },
     {
       "repoFile": "0133_issue_680_booking_addons_composite_fk_expand",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "PENDING_APPLY",
-      "evidence": "#680 Owner 選擇 A：保留 0121 的單欄 performance_staff FK 供當前 runtime PostgREST hint 使用，同時新增／驗證 tenant-scoped 複合 FK，將 single-only、composite-only 或 BOTH 的已知起始形狀收斂成 transitional BOTH。migration 要求 booking_addons 既有 RLS 已啟用（disabled 一律 fail closed），保持 FORCE RLS 原值；並先驗同租戶資料、未知 FK、constraint identity、validated/nondeferred 與兩個已知複合 FK delete-action variants；不修資料、未操作 canonical TEST 或 Production。合併 main 後仍為 PENDING_APPLY，須依 shared TEST serialization 與 Production G0–G7 另行驗證／發布。"
+      "ledgerNames": [
+        "0133_issue_680_booking_addons_composite_fk_expand"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 0125＋0121＋0123＋0133 受控釋出（releaseId issue755-3a1b-s0121-0125-0133-0123-20261021002300，orchestrator run 39542665619：execute、G7、postcheck 皆 success）已套用至正式庫（#680 booking_addons 複合外鍵擴充）；provider ledger version 20261021002303。正式庫 ledger 快照已於 2026-10-21T04:17:36Z 重新擷取（78 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
     },
     {
       "repoFile": "0134_issue_37_rpc_invoker_owner_compat",

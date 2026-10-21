@@ -421,6 +421,10 @@
       "title": "Quick Edit：行程預覽連結指向店家首頁，看不到該行程公開頁"
     },
     {
+      "ref": "issue/1076",
+      "title": "#46 店家公開頁「標準」退款摘要漏掉「出發前 3 天內不退款」，與預約表單不一致"
+    },
+    {
       "ref": "issue/1078",
       "title": "選單設計頁發布／刪除／還原／步驟說明卡在真實模式是假成功，LINE 上沒有變化"
     }
@@ -11510,6 +11514,57 @@
         "outputTokens": null,
         "cachedTokens": null,
         "count": 1,
+        "id": "20261021-luna-scout-1076-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1076,
+        "startedAt": "2026-10-21T00:22:30Z",
+        "completedAt": "2026-10-21T00:24:40Z",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/1076",
+        "note": "Haiku scout 盤點 #46 下一個 source-only 缺口（LUNA-46-GAP-R8），主 agent 驗證公開頁摘要與表單文案不一致後開 #1076。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261021-terra-build-1076",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 1076,
+        "startedAt": "2026-10-21T00:26:55Z",
+        "completedAt": "2026-10-21T00:27:44Z",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/1b2e6013ce234fac0301460586699e44acbcd12a",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）施工 #1076，commit 1b2e6013。MAIN_STABILIZATION_WINDOW ACTIVE 期間只預建，解凍後合併。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261021-luna-scout-1076-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1076,
+        "startedAt": "2026-10-21T00:28:26Z",
+        "completedAt": "2026-10-21T00:28:26Z",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/tree/fix-1076-standard-refund-summary",
+        "note": "Haiku scout 將 #1076 綁入 Run ledger。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
         "id": "20261021-luna-scout-1078-inventory",
         "role": "scout",
         "requestedModel": "luna",
@@ -11558,7 +11613,7 @@
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 108,
+    "issuesStarted": 109,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -11587,8 +11642,8 @@
     ]
   },
   "flow": {
-    "lunaTasks": 220,
-    "lunaAccepted": 211,
+    "lunaTasks": 222,
+    "lunaAccepted": 213,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
