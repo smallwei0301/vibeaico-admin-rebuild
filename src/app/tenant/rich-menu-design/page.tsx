@@ -133,7 +133,7 @@ export default function RichMenuDesignPage() {
 
       {!USE_MOCK && <NotAvailableNotice />}
 
-      {!loading && !subscribed && <FeatureLockBar />}
+      {USE_MOCK && !loading && !subscribed && <FeatureLockBar />}
 
       <Tabs
         className="mb-4"
@@ -552,7 +552,7 @@ function RichMenuTab({
             <span className="form-text">{t.cells.hint}</span>
           </CardHeader>
           <CardBody className="p-0">
-            {!subscribed && (
+            {USE_MOCK && !subscribed && (
               <Alert tone="warning" className="m-4" icon={<Lock size={16} className="mt-0.5" />}>
                 {t.cells.lockedHint}
               </Alert>

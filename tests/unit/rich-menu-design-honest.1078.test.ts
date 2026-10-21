@@ -37,4 +37,9 @@ describe('#1078 選單設計頁真實模式不假成功', () => {
     expect(t.bookingSteps.guideHelpReal).not.toContain('即時生效');
     expect(page).toContain('USE_MOCK ? t.bookingSteps.guideHelp : t.bookingSteps.guideHelpReal');
   });
+
+  it('真實模式不推進階選單訂閱：FeatureLockBar 與 lockedHint 只在 USE_MOCK 下渲染', () => {
+    expect(page).toMatch(/\{USE_MOCK && !loading && !subscribed && <FeatureLockBar \/>\}/);
+    expect(page).toMatch(/\{USE_MOCK && !subscribed && \(\s*<Alert[\s\S]*?\{t\.cells\.lockedHint\}/);
+  });
 });
