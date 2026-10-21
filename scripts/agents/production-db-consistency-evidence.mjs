@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createHash as gitHash } from 'node:crypto';
-import { HISTORICAL_MANIFEST, readVerifiedJson } from './fresh-install-baseline.mjs';
+import { BASELINE_MANIFEST, HISTORICAL_MANIFEST, readVerifiedJson, validateManifest } from './fresh-install-baseline.mjs';
 
 import { normalizeProductionDbImpactManifest } from './production-db-impact-manifest.mjs';
 import { ISSUE_17_0121_0125_0133_0123, ISSUE_18_0124_0116_0119_0127, ISSUE_25_0117_0118, ISSUE_37_0131_0134, ISSUE_23_0113, ISSUE_749_0137, ISSUE_46_0110_0136_CLOSURE, ISSUE_755_0110_0137_CLOSURE, SCOPED_RELEASE_CAPTURE_SCOPES, splitSqlStatements, stripSqlComments, stripSqlStringLiterals,
@@ -313,22 +313,37 @@ export function sourceCatalog({ plan, repoRoot, readCanonicalSql, appliedSourceF
   return { before, after, enums, sources, read, historicalTables: historicalBaselineTables(repoRoot) };
 }
 
-// Tables created by hash-verified, non-retired files of the historical integration baseline.
-// Anything unreadable, unverified or retired contributes nothing (fail closed).
+// 凍結名單：只有這些 public 表可由 LOCAL_ONLY_TRANSITIONAL baseline overlay 提供建表來源（canonical 無 create table）。
+// 新增項目必須是 fresh-install compatibility baseline 實際 replay 的條目，且 blobSha 與兩份 manifest 一致。
+export const HISTORICAL_REPLAY_TABLE_SOURCES = Object.freeze({
+  'public.booking_addons': Object.freeze({
+    path: 'supabase/local-migrations/historical-integration-baseline/0020_booking_addons.sql',
+    blobSha: 'e3af9d5f0498102bf32e3155b1673127e8f3a67b',
+  }),
+});
+
+// 回傳「已精確驗證 replay」的凍結表集合；任何一項驗證失敗即不承認（fail closed）。
+// 驗證：(a) 檔案實際 git blob sha 等於凍結 blobSha 且確實 create table；(b) historical manifest 非 retired、blobSha 相同；
+// (c) fresh-install baseline manifest 通過 validateManifest（mode/source/head 身分）且含同名同 blobSha 的 replay 條目。
 export function historicalBaselineTables(repoRoot) {
   const tables = new Set();
-  let manifest;
-  try { manifest = readVerifiedJson(repoRoot, HISTORICAL_MANIFEST); } catch { return tables; }
-  if (!Array.isArray(manifest?.files)) return tables;
-  const dir = HISTORICAL_MANIFEST.replace(/\/manifest\.json$/, '');
-  for (const entry of manifest.files) {
-    if (!entry || entry.retiredBy || !/^\d{4}_[a-z0-9_]+\.sql$/.test(entry.name) || !/^[0-9a-f]{40}$/.test(entry.blobSha)) continue;
+  let historical, baseline;
+  try {
+    historical = readVerifiedJson(repoRoot, HISTORICAL_MANIFEST);
+    baseline = readVerifiedJson(repoRoot, BASELINE_MANIFEST);
+    validateManifest(baseline, historical, new Set(), new Set());
+  } catch { return tables; }
+  for (const [table, source] of Object.entries(HISTORICAL_REPLAY_TABLE_SOURCES)) {
+    const name = source.path.split('/').pop();
+    const inHistorical = historical.files.find((entry) => entry?.name === name);
+    const inBaseline = baseline.entries.find((entry) => entry?.name === name);
+    if (!inHistorical || inHistorical.retiredBy || inHistorical.blobSha !== source.blobSha) continue;
+    if (!inBaseline || inBaseline.blobSha !== source.blobSha) continue;
     let bytes;
-    try { bytes = readFileSync(resolve(repoRoot, dir, entry.name)); } catch { continue; }
-    if (gitHash('sha1').update(Buffer.from(`blob ${bytes.length}\0`)).update(bytes).digest('hex') !== entry.blobSha) continue;
-    for (const match of stripSqlComments(bytes.toString('utf8')).matchAll(/\bcreate\s+table\s+(?:if\s+not\s+exists\s+)?((?:public\.)?[a-z_][a-z_0-9]*)/gi)) {
-      tables.add(match[1].includes('.') ? match[1] : `public.${match[1]}`);
-    }
+    try { bytes = readFileSync(resolve(repoRoot, source.path)); } catch { continue; }
+    if (gitHash('sha1').update(Buffer.from(`blob ${bytes.length}\0`)).update(bytes).digest('hex') !== source.blobSha) continue;
+    const bare = table.replace(/^public\./, '');
+    if (new RegExp(`\\bcreate\\s+table\\s+(?:if\\s+not\\s+exists\\s+)?(?:public\\.)?${bare}\\b`, 'i').test(stripSqlComments(bytes.toString('utf8')))) tables.add(table);
   }
   return tables;
 }
