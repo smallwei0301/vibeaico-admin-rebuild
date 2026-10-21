@@ -377,6 +377,13 @@ export const richMenuDesignPage = {
     },
   },
 
+  /* ================================================ 真實模式尚未開放（#1078） */
+  notAvailable: {
+    message:
+      '進階選單設計（情境選單發布、刪除、還原、草稿、範本、步驟說明卡）尚未開放，目前請到 LINE 設定頁使用基本圖文選單。',
+    goLineSettings: '前往 LINE 設定',
+  },
+
   /* =================================================== 預約流程步驟自訂 */
   bookingSteps: {
     cardTitle: '預約流程步驟自訂',
@@ -384,6 +391,8 @@ export const richMenuDesignPage = {
     guideLabel: '顯示「步驟說明卡」',
     guideHelp:
       '預約 carousel 最前面那張「👈 往左滑動 + 步驟清單」指引卡。關閉後顧客直接看到服務卡，「取消預約」鈕會自動補在每張服務卡上。此設定即時生效、與發布 Rich Menu 無關。',
+    guideHelpReal:
+      '預約 carousel 最前面那張「👈 往左滑動 + 步驟清單」指引卡。此功能尚未開放，目前無法在此變更。',
     guideOn: '已開啟步驟說明卡',
     guideOff: '已關閉步驟說明卡（顧客將直接看到服務卡）',
     stepImageUploaded: '步驟圖片上傳成功',

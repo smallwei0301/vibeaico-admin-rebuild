@@ -29,6 +29,7 @@ import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { richMenuDesignPage as t } from '@/i18n/zh-TW/pages/rich-menu-design';
 import { cn } from '@/lib/utils';
+import { USE_MOCK } from '@/config/env';
 import { ApiError } from '@/lib/api';
 
 /* ============================================================================
@@ -130,6 +131,8 @@ export default function RichMenuDesignPage() {
     <>
       <PageHeader eyebrow={nav.navSystem} title={t.title} subtitle={t.subtitle} />
 
+      {!USE_MOCK && <NotAvailableNotice />}
+
       {!loading && !subscribed && <FeatureLockBar />}
 
       <Tabs
@@ -159,6 +162,23 @@ function LoadingCard() {
     <Card>
       <CardBody className="py-10 text-center text-muted">{common.loading}</CardBody>
     </Card>
+  );
+}
+
+/** 真實模式：情境選單發布／刪除／還原／草稿／範本／步驟說明卡尚無後端（#1078） */
+function NotAvailableNotice() {
+  return (
+    <Alert
+      tone="warning"
+      className="mb-4"
+      action={
+        <Link href="/tenant/line-settings" className="btn btn-outline btn-sm">
+          {t.notAvailable.goLineSettings}
+        </Link>
+      }
+    >
+      {t.notAvailable.message}
+    </Alert>
   );
 }
 
@@ -354,7 +374,7 @@ function RichMenuTab({
                 ))}
               </ul>
 
-              {hasBackup && (
+              {USE_MOCK && hasBackup && (
                 <Alert tone="info" className="mb-4" action={
                   <Button variant="outline" size="sm" onClick={() => setConfirm('restore')}>
                     <RotateCcw size={13} />{t.scene.restore}
@@ -388,7 +408,7 @@ function RichMenuTab({
                         <Button variant="outline" size="sm" onClick={() => toast.show(t.scene.previewCaption, 'info')}>
                           <Eye size={13} />{t.scene.previewBtn}
                         </Button>
-                        <Button size="sm" onClick={() => { setPendingName(s.name); setConfirm('publish'); }}>
+                        <Button size="sm" disabled={!USE_MOCK} onClick={() => { if (!USE_MOCK) return; setPendingName(s.name); setConfirm('publish'); }}>
                           <Send size={13} />{t.publish.publish}
                         </Button>
                       </div>
@@ -417,8 +437,9 @@ function RichMenuTab({
                   <button
                     key={q.id}
                     type="button"
-                    className="rounded-lg border border-neutral-200 p-3 text-left transition-colors hover:border-primary"
-                    onClick={() => { setPendingName(q.name); setConfirm('apply'); }}
+                    className="rounded-lg border border-neutral-200 p-3 text-left transition-colors hover:border-primary disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!USE_MOCK}
+                    onClick={() => { if (!USE_MOCK) return; setPendingName(q.name); setConfirm('apply'); }}
                   >
                     <div className="text-base font-semibold">{q.name}</div>
                     <div className="form-text">{q.style}</div>
@@ -576,7 +597,7 @@ function RichMenuTab({
                               <option value="FLEX_POPUP">{t.cells.actions.FLEX_POPUP}</option>
                             </Select>
                             {c.action === 'FLEX_POPUP' ? (
-                              <Button variant="ghost" size="sm" className="mt-1" onClick={() => setPopupCell(i)}>
+                              <Button variant="ghost" size="sm" className="mt-1" disabled={!USE_MOCK} onClick={() => { if (USE_MOCK) setPopupCell(i); }}>
                                 {t.cells.clickToConfigure}
                               </Button>
                             ) : (
@@ -620,9 +641,11 @@ function RichMenuTab({
             <p className="form-text mb-3">{t.bookingSteps.desc}</p>
             <SwitchField
               label={t.bookingSteps.guideLabel}
-              description={t.bookingSteps.guideHelp}
+              description={USE_MOCK ? t.bookingSteps.guideHelp : t.bookingSteps.guideHelpReal}
               checked={guideCard}
+              disabled={!USE_MOCK}
               onCheckedChange={(v) => {
+                if (!USE_MOCK) return;
                 setGuideCard(v);
                 toast.show(v ? t.bookingSteps.guideOn : t.bookingSteps.guideOff);
               }}
@@ -680,7 +703,9 @@ function RichMenuTab({
               block
               loading={publishing}
               loadingText={t.publish.publishing}
+              disabled={!USE_MOCK}
               onClick={() => {
+                if (!USE_MOCK) return;
                 const err = validate();
                 if (err) { toast.show(err, 'danger'); return; }
                 setPendingName(themeDef.label);
@@ -689,10 +714,10 @@ function RichMenuTab({
             >
               <Send size={15} />{t.publish.publish}
             </Button>
-            <Button block variant="outline" onClick={() => toast.show(t.publish.draftSaved)}>
+            <Button block variant="outline" disabled={!USE_MOCK} onClick={() => { if (USE_MOCK) toast.show(t.publish.draftSaved); }}>
               {t.publish.saveDraft}
             </Button>
-            <Button block variant="outlineDanger" onClick={() => setConfirm('delete')}>
+            <Button block variant="outlineDanger" disabled={!USE_MOCK} onClick={() => { if (USE_MOCK) setConfirm('delete'); }}>
               <Trash2 size={14} />{t.publish.deletePublished}
             </Button>
             <p className="form-text text-center">{t.publish.notPublished}</p>
@@ -709,6 +734,7 @@ function RichMenuTab({
         onClose={() => setConfirm(null)}
         onConfirm={async () => {
           setConfirm(null);
+          if (!USE_MOCK) return;
           setPublishing(true);
           await new Promise((r) => setTimeout(r, 500));
           setPublishing(false);
@@ -723,6 +749,7 @@ function RichMenuTab({
         onClose={() => setConfirm(null)}
         onConfirm={() => {
           setConfirm(null);
+          if (!USE_MOCK) return;
           setHasBackup(true);
           toast.show(
             subscribed
@@ -737,7 +764,7 @@ function RichMenuTab({
         title={t.scene.restore}
         message={t.scene.restoreConfirm}
         onClose={() => setConfirm(null)}
-        onConfirm={() => { setConfirm(null); setHasBackup(false); toast.show(t.scene.restoreDone); }}
+        onConfirm={() => { setConfirm(null); if (!USE_MOCK) return; setHasBackup(false); toast.show(t.scene.restoreDone); }}
       />
       <ConfirmModal
         open={confirm === 'delete'}
@@ -746,12 +773,12 @@ function RichMenuTab({
         message={t.publish.deleteConfirm}
         confirmText={common.delete}
         onClose={() => setConfirm(null)}
-        onConfirm={() => { setConfirm(null); toast.show(t.publish.deleted); }}
+        onConfirm={() => { setConfirm(null); if (!USE_MOCK) return; toast.show(t.publish.deleted); }}
       />
       <FlexPopupModal
         open={popupCell !== null}
         onClose={() => setPopupCell(null)}
-        onSave={() => { setPopupCell(null); toast.show(t.flex.popupSaved); }}
+        onSave={() => { setPopupCell(null); if (USE_MOCK) toast.show(t.flex.popupSaved); }}
       />
     </div>
   );
