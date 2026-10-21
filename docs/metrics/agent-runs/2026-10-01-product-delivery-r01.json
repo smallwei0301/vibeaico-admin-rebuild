@@ -419,6 +419,10 @@
     {
       "ref": "issue/1072",
       "title": "Quick Edit：行程預覽連結指向店家首頁，看不到該行程公開頁"
+    },
+    {
+      "ref": "issue/1078",
+      "title": "選單設計頁發布／刪除／還原／步驟說明卡在真實模式是假成功，LINE 上沒有變化"
     }
   ],
   "main": {
@@ -11497,13 +11501,64 @@
         "completedAt": "2026-10-20T23:15:33Z",
         "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/tree/issue-1072-trip-preview-link",
         "note": "Haiku scout 將 #1072 綁入 Run ledger。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261021-luna-scout-1078-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1078,
+        "startedAt": "2026-10-21T01:58:00Z",
+        "completedAt": "2026-10-21T02:00:06Z",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/1078",
+        "note": "Haiku scout 盤點 tenant admin source-only 缺口（LUNA-PRODUCT-GAP-R8b），主 agent 驗證選單設計頁假成功後開 #1078。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261021-terra-reserve-1078",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 1078,
+        "startedAt": "2026-10-21T02:00:37Z",
+        "completedAt": "2026-10-21T02:03:19Z",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/969ed6b2",
+        "note": "TERRA_RESERVE：Sonnet subagent（requested claude-sonnet-5-5）預建 #1078，commit 969ed6b2；#1077 佔用 Terra 名額，暫為 draft。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261021-luna-scout-1078-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1078,
+        "startedAt": "2026-10-21T02:04:38Z",
+        "completedAt": "2026-10-21T02:04:38Z",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/tree/fix-1078-rich-menu-design-honest",
+        "note": "Haiku scout 將 #1078 綁入 Run ledger。actual 未經平台驗證。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 107,
+    "issuesStarted": 108,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -11532,8 +11587,8 @@
     ]
   },
   "flow": {
-    "lunaTasks": 218,
-    "lunaAccepted": 209,
+    "lunaTasks": 220,
+    "lunaAccepted": 211,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
