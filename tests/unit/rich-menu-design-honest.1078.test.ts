@@ -42,4 +42,13 @@ describe('#1078 選單設計頁真實模式不假成功', () => {
     expect(page).toMatch(/\{USE_MOCK && !loading && !subscribed && <FeatureLockBar \/>\}/);
     expect(page).toMatch(/\{USE_MOCK && !subscribed && \(\s*<Alert[\s\S]*?\{t\.cells\.lockedHint\}/);
   });
+  it('真實模式不顯示「發布需訂閱」說明與進階標籤', () => {
+    const subBullets = t.scene.bullets.filter((b) => b.mockOnly);
+    expect(subBullets.length).toBe(1);
+    expect(subBullets[0].text).toContain('訂閱');
+    expect(t.scene.bullets.filter((b) => !b.mockOnly).every((b) => !b.text.includes('訂閱'))).toBe(true);
+    expect(page).toContain('t.scene.bullets.filter((b) => USE_MOCK || !b.mockOnly)');
+    expect(page).toContain('{USE_MOCK && th.advanced && !subscribed &&');
+    expect(page).toContain('{USE_MOCK && l.advanced && !subscribed &&');
+  });
 });

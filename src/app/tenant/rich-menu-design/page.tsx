@@ -367,7 +367,7 @@ function RichMenuTab({
                 {t.scene.leadTail}
               </p>
               <ul className="mb-4 space-y-1 text-xs text-neutral-600">
-                {t.scene.bullets.map((b) => (
+                {t.scene.bullets.filter((b) => USE_MOCK || !b.mockOnly).map((b) => (
                   <li key={b.strong}>
                     <strong className="text-dark">{b.strong}</strong>{b.text}
                   </li>
@@ -466,7 +466,7 @@ function RichMenuTab({
               >
                 <span className="h-4 w-4 rounded-sm" style={{ backgroundColor: th.bg }} />
                 {th.label}
-                {th.advanced && !subscribed && <Badge tone="warning">{t.theme.advancedBadge}</Badge>}
+                {USE_MOCK && th.advanced && !subscribed && <Badge tone="warning">{t.theme.advancedBadge}</Badge>}
               </button>
             ))}
           </CardBody>
@@ -489,7 +489,7 @@ function RichMenuTab({
                 >
                   {l.label}
                   <span className="text-xs text-secondary">{l.cells}</span>
-                  {l.advanced && !subscribed && <Badge tone="warning">{t.layout.advancedBadge}</Badge>}
+                  {USE_MOCK && l.advanced && !subscribed && <Badge tone="warning">{t.layout.advancedBadge}</Badge>}
                 </button>
               ))}
             </div>
