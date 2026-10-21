@@ -435,6 +435,10 @@
     {
       "ref": "issue/1083",
       "title": "導遊首頁與團體訂單頁「本月營收」口徑不一致：統計卡只算全額付款、不扣退款"
+    },
+    {
+      "ref": "issue/1085",
+      "title": "導遊首頁「今日預約」表仍列一般預約、查看全部連到導遊看不到的預約頁，與團體訂單統計卡不一致"
     }
   ],
   "main": {
@@ -11717,13 +11721,64 @@
         "completedAt": "2026-10-21T06:29:10Z",
         "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/tree/fix-guide-month-revenue",
         "note": "Haiku scout 將 #1083 綁入 Run ledger。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261021-luna-scout-1085-inventory",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1085,
+        "startedAt": "2026-10-21T11:04:00Z",
+        "completedAt": "2026-10-21T11:09:00Z",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/1085",
+        "note": "Haiku scout 正式站唯讀盤點（發現 #942 今日預約表缺口），主 agent 驗證後開 #1085。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261021-terra-build-1085",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 1085,
+        "startedAt": "2026-10-21T11:18:38Z",
+        "completedAt": "2026-10-21T11:27:58Z",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/78be43d1",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）施工 #1085，commit 78be43d1。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261021-luna-scout-1085-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1085,
+        "startedAt": "2026-10-21T11:31:03Z",
+        "completedAt": "2026-10-21T11:31:03Z",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/tree/fix-1085-guide-today-orders",
+        "note": "Haiku scout 將 #1085 綁入 Run ledger。actual 未經平台驗證。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 111,
+    "issuesStarted": 112,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -11752,8 +11807,8 @@
     ]
   },
   "flow": {
-    "lunaTasks": 226,
-    "lunaAccepted": 217,
+    "lunaTasks": 228,
+    "lunaAccepted": 219,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
