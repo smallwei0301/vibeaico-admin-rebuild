@@ -154,10 +154,11 @@
     },
     {
       "repoFile": "0126_issue_402_keyword_reply_images_authz",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "PENDING_APPLY",
-      "evidence": "#402 的 release-safe successor：0112 同時含 Storage AUTHZ 與 bucket metadata BACKFILL，故保留為 VERIFIED_NOT_APPLIED；本筆只移除 keyword-reply-images 的 authenticated 直接 INSERT policy，不修改 storage.buckets，讓正常上傳維持由 POST /api/upload 經 service_role 完成。尚未套用 canonical TEST 或 Production，須隨 #589 的受控 G3／Production gate 取得對應證據。"
+      "ledgerNames": [
+        "0126_issue_402_keyword_reply_images_authz"
+      ],
+      "classification": "EXACT",
+      "evidence": "#755 0126 由 Owner 於 2026-10-21 在 Supabase SQL Editor 以 postgres 身分手動套用至正式庫（release writer 的 production_migration_owner 無權修改 storage.objects policy；未經 G3／collect／G5 證據鏈，非受控釋出）；Owner 回讀 supabase_migrations.schema_migrations 新增 version 20261021120000 / name 0126_issue_402_keyword_reply_images_authz，p_storage_write 內容與 canonical 0126 一致（移除 keyword-reply-images authenticated 直接 INSERT policy），說明見 https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/755#issuecomment-6317379005 。正式庫 ledger 快照已於 2026-10-21T13:40:00Z 同步（79 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
     },
     {
       "repoFile": "0065_issue_128_services_order_invariants",
