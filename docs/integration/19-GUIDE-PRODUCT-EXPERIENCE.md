@@ -472,4 +472,4 @@ Telegram、交易、退款與安全通知永遠屬於基礎能力；LINE 額度�
 - [ ] 通知失敗可重試，且不重複寄送同一事件
 - [ ] 關鍵數字由獨立資料庫期望值測試驗證
 - [ ] typecheck、build、unit、integration、E2E 全綠
-- [ ] Production（正式環境）資料庫、正式通知、真實金流與 main 程式合併仍需 Owner 明確授權
+- [ ] Production（正式環境）資料庫、正式通知與真實金流仍需 Owner 明確授權；main 程式合併依 `docs/AGENT-EXECUTION.md` §3 的 Owner 2026-10-22 長期授權與既有關卡執行

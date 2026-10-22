@@ -504,7 +504,7 @@ v2：postback 流程：選方案 → 選團次 → 輸入人數 → 確認 → R
   rounding 快照留在後續 checkout／order slice。
 - 新 migration 先 source review、TEST、整合測試；**Production DDL 需 Owner 明確授權**。
 - mock 模式必須維持；型別擴充只新增 optional 相容欄位。
-- 正式環境部署與會改變 runtime 的 main merge 仍需 Owner 明確授權。
+- 手動正式環境部署仍需 Owner 明確授權；會改變 runtime 的 main merge 依 `docs/AGENT-EXECUTION.md` §3 的 Owner 2026-10-22 長期授權與既有關卡執行。
 
 ---
 

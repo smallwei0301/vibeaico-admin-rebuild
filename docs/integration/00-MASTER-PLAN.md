@@ -60,7 +60,7 @@
 - docs-only commit 不得混入 `src/**`、`supabase/**`、依賴、workflow、env 或部署設定。
 - 程式、migration、依賴與部署變更仍走 feature branch → PR → CI → 審核。
 - 程式分支需以最新 `main`，或已包含最新 main 文件 commit 的指定整合分支為 base。
-- Production DDL／DML、正式部署與會改變正式行為的 main merge，仍需 Owner 另行授權。
+- Production DDL／DML 與手動正式部署仍需 Owner 另行授權；會改變正式行為的 main merge 依 `docs/AGENT-EXECUTION.md` §3 的 Owner 2026-10-22 長期授權與既有關卡執行。
 
 完整規則見 `docs/DOCUMENTATION-GOVERNANCE.md`。
 
