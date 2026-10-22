@@ -4,6 +4,7 @@ import {
   closeRunLedgerV2,
   createHistoricalRunLedgerV3,
   createRunLedgerV2,
+  validateRunLedgerV2,
 } from '../../scripts/agents/run-ledger-v2.mjs';
 import {
   OBSERVED_SCORE_PROFILE,
@@ -77,6 +78,20 @@ function observedRun() {
   run.inventory.sharedTestPeak = 1;
   run.inventory.closureSweeps = 2;
   run.inventory.closureAdvancedOrClosed = 1;
+  // Grading now enforces readiness consistency, so the recorded peaks above must be
+  // derivable from these lifecycle events (BUILD 1, candidates 2, shared TEST 1).
+  const head = 'c'.repeat(40);
+  const event = (id: string, at: string, kind: string, pr: number, issue: number) => (
+    { id, at, kind, pr, issue, head, workstream: 'PRODUCT_MAINLINE', reason: 'fixture' }
+  );
+  run.wipLifecycle.events = [
+    event('build-460', '2026-09-15T00:10:00Z', 'BUILD_ENTER', 11, 460),
+    event('verify-461', '2026-09-15T00:20:00Z', 'VERIFY_ENTER', 12, 461),
+    event('verify-461-exit', '2026-09-15T00:25:00Z', 'VERIFY_EXIT', 12, 461),
+    event('build-460-exit', '2026-09-15T00:30:00Z', 'BUILD_EXIT', 11, 460),
+    event('test-460', '2026-09-15T00:40:00Z', 'TEST_ENTER', 11, 460),
+    event('test-460-exit', '2026-09-15T00:50:00Z', 'TEST_EXIT', 11, 460),
+  ];
   run.modelUsage.tasks = [{
     id: 'scout-1', requestedModel: 'luna', actualModel: 'luna', role: 'truth', count: 1,
     contextClass: 'compact', accepted: true, inputTokens: null, outputTokens: null, cachedTokens: null,
@@ -190,5 +205,64 @@ describe('Issue #460 observed-first scorecard', () => {
     expect(result.scoreStatus).toBe('HARD_FAIL');
     expect(result.grade).toBe('F-HARD');
     expect(result.hardFailures.some((item: string) => item.includes('contradicts live evidence'))).toBe(true);
+  });
+});
+
+// tour-platform PR #1908 Codex review: grading must not trust counters that the
+// readiness check already flags, and a v4 Run window must be a real ISO interval.
+describe('OBSERVED_V1 grading enforces readiness consistency and the Run window', () => {
+  it('does not grade closure conversion above 100% (closureAdvancedOrClosed > closureSweeps)', () => {
+    const run = observedRun();
+    run.inventory.closureSweeps = 1;
+    run.inventory.closureAdvancedOrClosed = 100;
+    const result = scoreRunCurrent(run);
+    expect(result.scoreStatus).toBe('NOT_GRADED');
+    expect(result.comparisonEligible).toBe(false);
+    expect(result.total).toBeNull();
+    expect(result.gradingGaps).toContain('readiness: inventory.closureAdvancedOrClosed=100 exceeds closureSweeps=1');
+  });
+
+  it('does not award WIP points from peaks that disagree with wipLifecycle events', () => {
+    const run = observedRun();
+    run.wipLifecycle.events = [];
+    const result = scoreRunCurrent(run);
+    expect(result.scoreStatus).toBe('NOT_GRADED');
+    expect(result.comparisonEligible).toBe(false);
+    expect(result.gradingGaps).toContain('readiness: inventory.activeCandidatePeak=2 disagrees with wipLifecycle-derived 0');
+  });
+
+  it('rejects a final v4 Run whose endedAt precedes startedAt', () => {
+    const run = observedRun();
+    run.endedAt = '2026-09-14T23:00:00Z';
+    run.closeout.closedAt = run.endedAt;
+    expect(validateRunLedgerV2(run)).toContain('final v4 Run requires endedAt at or after startedAt');
+    expect(() => scoreRunCurrent(run)).toThrow(/endedAt at or after startedAt/);
+  });
+
+  it('rejects a malformed v4 startedAt instead of silently selecting LEGACY_V2', () => {
+    const run = createRunLedgerV2('2026-09-15-bad-start', 'not-a-date', { closeoutOwner: 'PRODUCT_MAIN_SESSION' });
+    expect(validateRunLedgerV2(run)).toContain('deliveryTruthVersion=4 requires startedAt as an ISO UTC timestamp');
+  });
+
+  it('refuses closeout of an otherwise complete Run whose counters are inconsistent', () => {
+    let run: any = createRunLedgerV2('2026-09-15-closure-overflow', '2026-09-15T00:00:00Z', { closeoutOwner: 'PRODUCT_MAIN_SESSION' });
+    const reference = observedRun();
+    run = { ...structuredClone(reference), runId: run.runId, status: run.status, endedAt: null, closeout: run.closeout };
+    run.main.endSha = null;
+    run.inventory.openIssuesEnd = null;
+    run.inventory.openPrsEnd = null;
+    run.inventory.closureSweeps = 1;
+    run.inventory.closureAdvancedOrClosed = 100;
+    run.completionTruth.claims = run.completionTruth.claims.map((item: any) => (
+      item.type === 'RUN_COMPLETE' ? { ...item, subject: run.runId } : item
+    ));
+    expect(() => closeRunLedgerV2(run, {
+      status: 'COMPLETE',
+      endedAt: '2026-09-15T01:00:00Z',
+      mainEndSha: 'b'.repeat(40),
+      openIssuesEnd: 9,
+      openPrsEnd: 2,
+      evidenceRef: 'github:issue#460',
+    })).toThrow(/CLOSEOUT_WOULD_NOT_GRADE[\s\S]*closureAdvancedOrClosed=100 exceeds closureSweeps=1/);
   });
 });
