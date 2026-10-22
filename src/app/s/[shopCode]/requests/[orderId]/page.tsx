@@ -26,7 +26,7 @@ import { PaymentMethodsSection } from '@/components/public/PaymentMethodsSection
 import { SaveStatusLink } from '@/components/public/SaveStatusLink';
 import { publicTourRequestPage as t } from '@/i18n/zh-TW/pages/public-tour-request';
 import { formatCurrency } from '@/lib/utils';
-import { partialPaymentBreakdown } from '@/lib/public-partial-payment';
+import { cancelledPaidAmount, partialPaymentBreakdown } from '@/lib/public-partial-payment';
 import { common } from '@/i18n/zh-TW/common';
 import {
   cancelledCopyKind,
@@ -181,6 +181,8 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
 
   // #988：PARTIAL 且已收金額可靠時才算已付／尾款；否則 null，保留「請向店家確認」說明。
   const partial = partialPaymentBreakdown(order);
+  // #917：已取消但曾付款，仍顯示已付金額（不含待付尾款）。
+  const cancelledPaid = cancelledPaidAmount(order);
   // #1017：與店家後台「應收定金」同源（isDepositDue）。
   const depositDue = travelerDepositDue(order);
 
@@ -261,6 +263,11 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
                 <dd>{formatCurrency(partial.paidAmount)}</dd>
                 <dt className="text-secondary">{t.status.fields.balanceDue}</dt>
                 <dd>{formatCurrency(partial.balanceDue)}</dd>
+              </>
+            ) : cancelledPaid != null ? (
+              <>
+                <dt className="text-secondary">{t.status.fields.paidAmount}</dt>
+                <dd>{formatCurrency(cancelledPaid)}</dd>
               </>
             ) : null}
           </dl>
