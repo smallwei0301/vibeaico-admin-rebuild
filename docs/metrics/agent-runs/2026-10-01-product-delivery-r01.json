@@ -12141,13 +12141,30 @@
         "startedAt": "2026-10-22T13:12:14Z",
         "completedAt": "2026-10-22T13:12:35Z",
         "note": "Luna：綁定 #876 施工埋點（Haiku subagent，requested claude-haiku-4-5）。"
+      },
+      {
+        "id": "20261022-luna-scout-876-issues-started-fix",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 876,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-22T13:40:30Z",
+        "completedAt": "2026-10-22T13:40:30Z",
+        "note": "Luna：依 Codex P2 將 delivery.issuesStarted 114→115（#876 首次開始）（Haiku subagent，requested claude-haiku-4-5）。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 114,
+    "issuesStarted": 115,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -12176,8 +12193,8 @@
     ]
   },
   "flow": {
-    "lunaTasks": 238,
-    "lunaAccepted": 229,
+    "lunaTasks": 239,
+    "lunaAccepted": 230,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
