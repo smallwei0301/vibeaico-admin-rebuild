@@ -242,6 +242,19 @@ describe('OBSERVED_V1 grading enforces readiness consistency and the Run window'
   it('rejects a malformed v4 startedAt instead of silently selecting LEGACY_V2', () => {
     const run = createRunLedgerV2('2026-09-15-bad-start', 'not-a-date', { closeoutOwner: 'PRODUCT_MAIN_SESSION' });
     expect(validateRunLedgerV2(run)).toContain('deliveryTruthVersion=4 requires startedAt as an ISO UTC timestamp');
+    expect(() => scoreRunCurrent(run)).toThrow(/startedAt as an ISO UTC timestamp/);
+  });
+
+  it.each([
+    'https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/460',
+    'issue 460',
+    'issue:460',
+  ])('still grades a consistent Run whose ISSUE_CLOSED subject is written as %j', (subject) => {
+    const run = observedRun();
+    run.completionTruth.claims[0].subject = subject;
+    const result = scoreRunCurrent(run);
+    expect(result.gradingGaps).toEqual([]);
+    expect(result.scoreStatus).toBe('GRADED_OBSERVED_V1');
   });
 
   it('refuses closeout of an otherwise complete Run whose counters are inconsistent', () => {
