@@ -57,6 +57,13 @@ describe('LINE 連結帶 src=line', () => {
     expect(isLineSourceSearch('?src=manual')).toBe(false);
     expect(isLineSourceSearch('')).toBe(false);
   });
+  it('isLineSourceSearch 也認圖文選單的 utm_source=line，其他值不算', () => {
+    expect(isLineSourceSearch('?utm_source=line')).toBe(true);
+    expect(isLineSourceSearch('?utm_source=LINE')).toBe(true);
+    expect(isLineSourceSearch('?utm_source=other')).toBe(false);
+    expect(isLineSourceSearch('?utm_medium=line')).toBe(false);
+    expect(isLineSourceSearch('?foo=line')).toBe(false);
+  });
   it('line-events 產生的公開連結皆經 withLineSource', () => {
     const src = readFileSync('src/server/line-events.ts', 'utf8');
     expect(src).toContain('withLineSource(buildShopUrl(appUrl, shopCode))');
@@ -104,5 +111,47 @@ describe('withLineSource：query／hash 與連結結構', () => {
     const shop = new URL(withLineSource('https://x.test/s/shop'));
     expect(shop.pathname).toBe('/s/shop');
     expect(shop.search).toBe('?src=line');
+  });
+});
+
+describe('channel 非法值不擋預約（回退 VIBEAI_SHOP）', () => {
+  it('超長或非字串 channel 不回 400，source 回退 VIBEAI_SHOP', () => {
+    for (const schema of [submitPublicTourRequestSchema, submitPublicTourBookingSchema]) {
+      for (const channel of ['x'.repeat(100), 123, { a: 1 }, ['LINE'], null]) {
+        const r = schema.safeParse({ ...base, channel });
+        expect(r.success).toBe(true);
+        if (r.success) expect(resolvePublicOrderSource(r.data.channel)).toBe('VIBEAI_SHOP');
+      }
+      const ok = schema.parse({ ...base, channel: 'LINE' });
+      expect(resolvePublicOrderSource(ok.channel)).toBe('LINE');
+    }
+  });
+});
+
+describe('/trip/[slug] 轉址保留 LINE 來源', () => {
+  it('src=line 與 utm_source=line 都保留（正規化為 src=line），其他值不保留', async () => {
+    const { vi } = await import('vitest');
+    vi.resetModules();
+    const calls: string[] = [];
+    vi.doMock('next/navigation', () => ({
+      notFound: () => { throw new Error('notFound'); },
+      permanentRedirect: (u: string) => { calls.push(u); },
+    }));
+    const { default: Page } = await import('@/app/s/[shopCode]/trip/[slug]/page');
+    const run = (sp: Record<string, string | string[] | undefined>) =>
+      Page({ params: Promise.resolve({ shopCode: 'shop', slug: 'abc' }), searchParams: Promise.resolve(sp) });
+    await run({ src: 'line' });
+    await run({ utm_source: 'line' });
+    await run({ utm_source: ['line'] });
+    await run({ utm_source: 'other' });
+    await run({});
+    expect(calls).toEqual([
+      '/s/shop/trips/abc?src=line',
+      '/s/shop/trips/abc?src=line',
+      '/s/shop/trips/abc?src=line',
+      '/s/shop/trips/abc',
+      '/s/shop/trips/abc',
+    ]);
+    vi.doUnmock('next/navigation');
   });
 });

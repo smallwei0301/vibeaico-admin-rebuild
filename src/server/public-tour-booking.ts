@@ -205,8 +205,8 @@ export const submitPublicTourBookingSchema = z.object({
   // Final Risk F2 慣例同 `public-tour-request.ts`：自由文字欄位一律有上限。
   /** #749：旅客在頁面上看到並確認的總額；有帶時送出當下伺服器依現價重新比對（先 fast path 重讀比對，最終由 create_tour_order_quoted / migration 0137 於同交易內判定），不符回 PRICE_CHANGED。舊頁面快取不帶則沿用舊行為。 */
   expectedTotal: z.number().nonnegative().finite().optional(),
-  /** #1090：來源通路（選填）。只有 'LINE' 記 LINE，其餘（含缺省、亂碼）一律 VIBEAI_SHOP；旅客不能指定 MANUAL／MIDAO。 */
-  channel: z.string().max(16).optional(),
+  /** #1090：來源通路（選填）。只有 'LINE' 記 LINE，其餘（含缺省、亂碼、超長、非字串，皆 catch 成 undefined 不回 400）一律 VIBEAI_SHOP；旅客不能指定 MANUAL／MIDAO。 */
+  channel: z.string().max(16).optional().catch(undefined),
   contactName: z.string().trim().min(1, '請輸入姓名').max(100, '姓名長度超過上限'),
   contactPhone: z.string().trim().max(40, '電話長度超過上限').optional(),
   contactLine: z.string().trim().max(100, 'LINE ID 長度超過上限').optional(),

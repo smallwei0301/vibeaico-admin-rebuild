@@ -1,7 +1,7 @@
 import { notFound, permanentRedirect } from 'next/navigation';
 import { decodePublicRouteParam } from '@/lib/public-route-params';
 import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
-import { LINE_SOURCE_PARAM, isLineSourceSearch, withLineSource } from '@/lib/public-order-channel';
+import { LINE_SOURCE_PARAMS, isLineSourceSearch, withLineSource } from '@/lib/public-order-channel';
 
 type Params = {
   params: Promise<{ shopCode: string; slug: string }>;
@@ -20,9 +20,14 @@ export default async function LegacyTripRedirectPage({ params, searchParams }: P
   const shopCode = decodePublicRouteParam(raw.shopCode);
   const slug = decodePublicRouteParam(raw.slug);
   if (!shopCode || !slug || !SHOP_CODE_PATTERN.test(shopCode)) notFound();
-  // 轉址不可丟掉 LINE 來源：src=line 要帶到 /trips/{slug}，旅客申請時才記 LINE（issue #1090）。
+  // 轉址不可丟掉 LINE 來源：src=line 或 utm_source=line 都要帶到 /trips/{slug}，旅客申請時才記 LINE（issue #1090）。
+  // 只檢查這兩個鍵、值只認 line；一律正規化成 src=line，不轉送其他任意參數。
   const sp = (await searchParams) ?? {};
-  const src = Array.isArray(sp[LINE_SOURCE_PARAM]) ? sp[LINE_SOURCE_PARAM]![0] : sp[LINE_SOURCE_PARAM];
+  const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+  const fromLine = LINE_SOURCE_PARAMS.some((k) => {
+    const v = first(sp[k]);
+    return !!v && isLineSourceSearch(`?${k}=${encodeURIComponent(v)}`);
+  });
   const target = `/s/${encodeURIComponent(shopCode)}/trips/${encodeURIComponent(slug)}`;
-  permanentRedirect(src && isLineSourceSearch(`?${LINE_SOURCE_PARAM}=${encodeURIComponent(src)}`) ? withLineSource(target) : target);
+  permanentRedirect(fromLine ? withLineSource(target) : target);
 }

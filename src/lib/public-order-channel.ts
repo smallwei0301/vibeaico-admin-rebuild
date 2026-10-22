@@ -21,6 +21,11 @@ export function resolvePublicOrderSource(channel: unknown): PublicOrderSource {
 /** LINE 端產生公開連結時附帶的查詢參數。 */
 export const LINE_SOURCE_PARAM = 'src';
 export const LINE_SOURCE_VALUE = 'line';
+/**
+ * 後台「推廣」頁給店家貼進 LINE 圖文選單的網址是 `?utm_source=line`（已發布的選單不必重貼），
+ * 所以 `utm_source=line` 與 `src=line` 都視為 LINE 來源。只認這兩個鍵、值只認 line。
+ */
+export const LINE_SOURCE_PARAMS = [LINE_SOURCE_PARAM, 'utm_source'] as const;
 
 /**
  * 在「最終要送出的完整網址」上補 `src=line`。
@@ -38,12 +43,13 @@ export function withLineSource(url: string): string {
 
 const STORAGE_KEY = 'vibeai:order-channel';
 
-/** 網址參數是否標示來自 LINE（大小寫不拘）。 */
+/** 網址參數是否標示來自 LINE（`src=line` 或 `utm_source=line`，大小寫不拘）。 */
 export function isLineSourceSearch(search: string): boolean {
-  return new URLSearchParams(search).get(LINE_SOURCE_PARAM)?.toLowerCase() === LINE_SOURCE_VALUE;
+  const sp = new URLSearchParams(search);
+  return LINE_SOURCE_PARAMS.some((k) => sp.get(k)?.toLowerCase() === LINE_SOURCE_VALUE);
 }
 
-/** client：進入公開頁時呼叫；網址帶 src=line 就記在 sessionStorage，之後頁面跳轉仍保留。 */
+/** client：進入公開頁時呼叫；網址帶 src=line／utm_source=line 就記在 sessionStorage，之後頁面跳轉仍保留。 */
 export function captureLineSource(): void {
   try {
     if (isLineSourceSearch(window.location.search)) window.sessionStorage.setItem(STORAGE_KEY, 'LINE');

@@ -5,7 +5,6 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { readOrderChannel } from '@/lib/public-order-channel';
-import { LineSourceCapture } from '@/components/public/LineSourceCapture';
 import { ApiError, request } from '@/lib/api';
 import { publicTourRequestPage as t, NOTE_MAX_LENGTH } from '@/i18n/zh-TW/pages/public-tour-request';
 import { formatCurrency } from '@/lib/utils';
