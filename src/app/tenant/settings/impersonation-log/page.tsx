@@ -3,6 +3,8 @@ import * as React from 'react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { formatDateTime } from '@/lib/utils';
+import { useTenantTimeZone } from '@/lib/use-tenant-time-zone';
 import { impersonationPage as t } from '@/i18n/zh-TW/pages/impersonation';
 import {
   getImpersonationLog,
@@ -20,10 +22,10 @@ import {
  * 且真的是零筆時才顯示**。查詢失敗時顯示錯誤，不得讓故障冒充「沒有紀錄」（PB-023）：
  * 對這一頁來說，那個謊言的內容剛好是「沒有人進來過」。
  */
-const fmt = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleString('zh-TW', { hour12: false }) : '';
+const fmt = (iso: string | null, tz: string) => (iso ? formatDateTime(iso, tz) : '');
 
 export default function ImpersonationLogPage() {
+  const tz = useTenantTimeZone();
   const [sessions, setSessions] = React.useState<ImpersonationLogEntry[]>([]);
   const [actions, setActions] = React.useState<ImpersonationActionEntry[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -73,11 +75,11 @@ export default function ImpersonationLogPage() {
                       {t.log.reason}：{s.reason}
                     </div>
                     <div className="text-neutral-600">
-                      {t.log.startedAt} {fmt(s.startedAt)}
+                      {t.log.startedAt} {fmt(s.startedAt, tz)}
                       {' ・ '}
                       {t.log.endedAt}{' '}
                       {s.endedAt
-                        ? fmt(s.endedAt)
+                        ? fmt(s.endedAt, tz)
                         : new Date(s.expiresAt) <= new Date()
                           ? t.log.autoExpired
                           : t.log.stillActive}
@@ -94,7 +96,7 @@ export default function ImpersonationLogPage() {
               <ul className="space-y-1">
                 {actions.map((a) => (
                   <li key={a.id} className="flex flex-wrap gap-x-3 text-sm">
-                    <span className="text-neutral-500">{fmt(a.at)}</span>
+                    <span className="text-neutral-500">{fmt(a.at, tz)}</span>
                     <span className="font-bold">{a.method}</span>
                     <span className="break-all">{a.path}</span>
                     <span className="text-neutral-500">{a.status || ''}</span>

@@ -283,6 +283,7 @@ export const campaignsPage = {
     resumed: '活動已恢復',
     ended: '活動已結束',
     saveFailedPrefix: '儲存失敗: ',
+    timeZoneLoadFailed: '無法載入店家時區，暫時不能儲存，請重試',
     saveCampaignFailed: '儲存活動失敗:',
     publishFailedPrefix: '發布失敗: ',
     deleteFailed: '刪除失敗',

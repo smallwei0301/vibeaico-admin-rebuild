@@ -14,6 +14,7 @@ import { useToast } from '@/components/ui/Toast';
 import { common } from '@/i18n/zh-TW/common';
 import { donatePage as t } from '@/i18n/zh-TW/pages/donate';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
+import { useTenantTimeZone } from '@/lib/use-tenant-time-zone';
 import { ApiError } from '@/lib/api';
 import { USE_MOCK } from '@/config/env';
 import type { DonationDonor } from '@/lib/types';
@@ -34,6 +35,7 @@ type PaymentResult = 'success' | 'failed' | null;
 /* -------------------------------------------------------------------------- */
 
 export default function DonatePage() {
+  const tz = useTenantTimeZone();
   const toast = useToast();
 
   const [donors, setDonors] = React.useState<DonationDonor[]>([]);
@@ -157,7 +159,7 @@ export default function DonatePage() {
     },
     {
       key: 'donatedAt', header: t.donors.columns.donatedAt, width: '180px',
-      render: (d) => formatDateTime(d.donatedAt),
+      render: (d) => formatDateTime(d.donatedAt, tz),
     },
   ];
 

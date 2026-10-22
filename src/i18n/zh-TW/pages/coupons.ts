@@ -265,6 +265,7 @@ export const couponsPage = {
 
   /* ------------------------------------------------------------------ 訊息 */
   messages: {
+    timeZoneLoadFailed: '無法載入店家時區，暫時不能儲存，請重試',
     created: '票券建立成功',
     updated: '票券更新成功',
     deleted: '票券已刪除',

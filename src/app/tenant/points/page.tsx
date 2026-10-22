@@ -22,6 +22,7 @@ import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { pointsPage as t } from '@/i18n/zh-TW/pages/points';
 import { formatDateTime, formatNumber } from '@/lib/utils';
+import { useTenantTimeZone } from '@/lib/use-tenant-time-zone';
 import type { PointTransaction, TenantSummary } from '@/lib/types';
 import { getPointBalance, listPointTransactions, requestPointTopup, transferPoints } from '@/services/points';
 import { myTenants } from '@/services/auth';
@@ -67,6 +68,7 @@ type PaymentResult = 'success' | 'failed' | null;
 /* -------------------------------------------------------------------------- */
 
 export default function PointsPage() {
+  const tz = useTenantTimeZone();
   const toast = useToast();
 
   const [rows, setRows] = React.useState<PointTxn[]>([]);
@@ -122,7 +124,7 @@ export default function PointsPage() {
   const columns: Column<PointTxn>[] = [
     {
       key: 'time', header: t.columns.time, width: '160px',
-      render: (x) => formatDateTime(x.createdAt),
+      render: (x) => formatDateTime(x.createdAt, tz),
     },
     {
       key: 'type', header: t.columns.type, width: '110px',

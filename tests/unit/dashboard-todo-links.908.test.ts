@@ -34,8 +34,8 @@ describe('#908 首頁待辦連結與查詢範圍', () => {
 
   it('首頁今日預約帶 from/to、size 100，前端以同一時區比對日期', () => {
     const dash = read('src/app/tenant/dashboard/page.tsx');
-    expect(dash).toContain('size: 100, ...tenantDayRange()');
-    expect(dash).toContain('tenantDateString(new Date(b.startAt)) === today');
+    expect(dash).toContain('size: 100, ...tenantDayRange(new Date(), tz)');
+    expect(dash).toContain('tenantDateString(new Date(b.startAt), tz) === today');
   });
 
   it('UNPROCESSED 以 statuses=PENDING,CONFIRMED 單次 server-side 查詢（#934）；合併工具仍依 startAt 由新到舊', () => {

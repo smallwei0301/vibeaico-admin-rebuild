@@ -30,7 +30,8 @@ import { canManageMarketing, isLineSendableImageUrl, isWebpUrl, uploadMessageIma
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { marketingPage as t } from '@/i18n/zh-TW/pages/marketing';
-import { formatDateTime } from '@/lib/utils';
+import { formatDateTime, toZonedDatetimeLocal, zonedDatetimeLocalToIso } from '@/lib/utils';
+import { useTenantTimeZone, useTenantTimeZoneState } from '@/lib/use-tenant-time-zone';
 import type { MarketingPush, MembershipLevel } from '@/lib/types';
 
 type PushStatus = MarketingPush['status'];
@@ -53,6 +54,7 @@ type PendingAction = { kind: 'delete' | 'cancel' | 'send'; push: MarketingPush }
 
 export default function MarketingPage() {
   const toast = useToast();
+  const tz = useTenantTimeZone();
 
   const [rows, setRows] = React.useState<MarketingPush[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -146,10 +148,10 @@ export default function MarketingPage() {
           <div className="font-semibold text-dark">{p.title}</div>
           <div className="text-2xs text-secondary">
             {p.sentAt
-              ? t.labels.sentAt(formatDateTime(p.sentAt))
+              ? t.labels.sentAt(formatDateTime(p.sentAt, tz))
               : p.scheduledAt
-                ? t.labels.scheduledAt(formatDateTime(p.scheduledAt))
-                : formatDateTime(p.createdAt)}
+                ? t.labels.scheduledAt(formatDateTime(p.scheduledAt, tz))
+                : formatDateTime(p.createdAt, tz)}
           </div>
         </div>
       ),
@@ -403,6 +405,9 @@ function PushFormModal({
   onSaved: () => void;
 }) {
   const toast = useToast();
+  const { timeZone: tz, ready: tzReady, error: tzError, retry: tzRetry } = useTenantTimeZoneState();
+  const tzRef = React.useRef(tz);
+  tzRef.current = tz;
   const isEdit = !!push;
   const canUploadImage = canManageMarketing(useCurrentTenant().role);
 
@@ -436,9 +441,16 @@ function PushFormModal({
     setUploading(false);
     setImageError('');
     setImageUrl(push?.imageUrl ?? '');
-    setScheduledAt(push?.scheduledAt ? push.scheduledAt.slice(0, 16) : '');
+    setScheduledAt(push?.scheduledAt ? toZonedDatetimeLocal(push.scheduledAt, tzRef.current) : '');
     setNote(push?.note ?? '');
   }, [open, push]);
+
+  // 店家時區載入完成／切換時只重算排程時間，不重設使用者已輸入的其他欄位
+  React.useEffect(() => {
+    if (!open) return;
+    setScheduledAt(push?.scheduledAt ? toZonedDatetimeLocal(push.scheduledAt, tz) : '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tz]);
 
   const pickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.target;
@@ -503,7 +515,7 @@ function PushFormModal({
         targetType,
         targetValue: targetType === 'CUSTOM' ? customTargets.trim() : targetValue,
         targetLabel,
-        scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+        scheduledAt: scheduledAt ? zonedDatetimeLocalToIso(scheduledAt, tz) : null,
       };
       if (isEdit && push) await updateMarketingPush(push.id, payload);
       else await createMarketingPush(payload);
@@ -527,7 +539,7 @@ function PushFormModal({
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>{common.cancel}</Button>
-          <Button loading={saving} loadingText={common.saving} disabled={uploading} onClick={() => void submit()}>
+          <Button loading={saving} loadingText={common.saving} disabled={uploading || !tzReady} onClick={() => void submit()}>
             {common.save}
           </Button>
         </>
@@ -643,6 +655,12 @@ function PushFormModal({
         />
       </FormGroup>
 
+      {tzError ? (
+        <div className="mb-4 flex items-center gap-3">
+          <FormError>{t.messages.timeZoneLoadFailed}</FormError>
+          <Button variant="outline" size="sm" onClick={tzRetry}>{common.retry}</Button>
+        </div>
+      ) : null}
       {error ? <FormError>{error}</FormError> : null}
     </Modal>
   );

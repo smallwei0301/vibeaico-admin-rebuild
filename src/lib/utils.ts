@@ -118,3 +118,14 @@ export function weekdayZh(iso: string, timeZone?: string): string {
   }
   return WEEKDAYS_ZH[new Date(iso).getDay()];
 }
+
+/** 把 ISO 瞬間換成店家時區當地的 `YYYY-MM-DDTHH:mm`，給 datetime-local 輸入預填用（#936）。 */
+export function toZonedDatetimeLocal(iso: string, timeZone: string): string {
+  return `${zonedYmd(iso, timeZone)}T${formatTime(iso, timeZone)}`;
+}
+
+/** `toZonedDatetimeLocal` 的反向：datetime-local 值以店家時區解讀並轉回 UTC ISO（#936）。 */
+export function zonedDatetimeLocalToIso(value: string, timeZone: string): string {
+  const [date, time] = value.split('T');
+  return zonedLocalToIso(date, time ?? '00:00', timeZone);
+}

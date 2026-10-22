@@ -23,6 +23,7 @@ import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { inventoryPage as t } from '@/i18n/zh-TW/pages/inventory';
 import { formatDateTime, formatNumber } from '@/lib/utils';
+import { useTenantTimeZone } from '@/lib/use-tenant-time-zone';
 import type { Product } from '@/lib/types';
 
 const TYPE_TONE: Record<InventoryLogType, 'success' | 'danger' | 'info' | 'warning' | 'neutral' | 'purple'> = {
@@ -39,6 +40,7 @@ const TYPE_KEYS = Object.keys(t.types) as InventoryLogType[];
 const PAGE_SIZE = 20;
 
 export default function InventoryPage() {
+  const tz = useTenantTimeZone();
   const toast = useToast();
 
   const [rows, setRows] = React.useState<InventoryLog[]>([]);
@@ -125,7 +127,7 @@ export default function InventoryPage() {
   const columns: Column<InventoryLog>[] = [
     {
       key: 'time', header: t.columns.time, width: '150px',
-      render: (log) => formatDateTime(log.createdAt),
+      render: (log) => formatDateTime(log.createdAt, tz),
     },
     {
       key: 'product', header: t.columns.product,

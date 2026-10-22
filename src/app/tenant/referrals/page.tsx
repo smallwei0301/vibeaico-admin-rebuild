@@ -21,6 +21,7 @@ import { APP_URL, USE_MOCK } from '@/config/env';
 import { nav } from '@/i18n/zh-TW/nav';
 import { referralsPage as t } from '@/i18n/zh-TW/pages/referrals';
 import { formatDateTime, formatNumber } from '@/lib/utils';
+import { useTenantTimeZone } from '@/lib/use-tenant-time-zone';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
@@ -80,6 +81,7 @@ const PAGE_SIZE = 20;
 /* -------------------------------------------------------------------------- */
 
 export default function ReferralsPage() {
+  const tz = useTenantTimeZone();
   const toast = useToast();
 
   const [rows, setRows] = React.useState<ReferralRecord[]>([]);
@@ -145,12 +147,12 @@ export default function ReferralsPage() {
     },
     {
       key: 'referredAt', header: t.columns.referredAt, width: '160px',
-      render: (r) => formatDateTime(r.referredAt),
+      render: (r) => formatDateTime(r.referredAt, tz),
     },
     {
       key: 'completedAt', header: t.columns.completedAt, width: '160px',
       render: (r) => (r.completedAt
-        ? formatDateTime(r.completedAt)
+        ? formatDateTime(r.completedAt, tz)
         : <span className="text-muted">{t.labels.notCompleted}</span>),
     },
   ];

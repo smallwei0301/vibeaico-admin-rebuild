@@ -35,6 +35,7 @@ import { MODE_PRESETS, buildTodayOrdersHref } from '@/config/modes';
 import { navLabel } from '@/i18n/zh-TW/nav';
 import { getSetupStepHref } from '@/lib/setup-step-routes';
 import { common } from '@/i18n/zh-TW/common';
+import { useTenantTimeZone } from '@/lib/use-tenant-time-zone';
 import { dashboardPage as t } from '@/i18n/zh-TW/pages/dashboard';
 import {
   formatCurrency, formatDate, formatNumber, formatPercent, formatTime,
@@ -139,6 +140,7 @@ function actionInboxOpenLabel(item: GuideActionInboxItem): string {
 }
 
 function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
+  const tz = useTenantTimeZone();
   switch (item.kind) {
     case 'BOOKING_REQUEST':
       return (
@@ -146,7 +148,7 @@ function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
           <div className="break-words text-lg font-semibold text-dark">{item.customerName}</div>
           <div className="text-md text-secondary">{item.serviceName}</div>
           <div className="mt-1 text-md text-secondary">
-            {t.actionInbox.bookingAt}：{formatDate(item.dueAt)} {formatTime(item.dueAt)}
+            {t.actionInbox.bookingAt}：{formatDate(item.dueAt, tz)} {formatTime(item.dueAt, tz)}
           </div>
         </>
       );
@@ -157,7 +159,7 @@ function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
           <div className="text-md text-secondary">{item.serviceName}</div>
           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-md text-secondary">
             <span>{t.actionInbox.paymentAmount(formatCurrency(item.amount))}</span>
-            <span>{t.actionInbox.bookingAt}：{formatDate(item.dueAt)} {formatTime(item.dueAt)}</span>
+            <span>{t.actionInbox.bookingAt}：{formatDate(item.dueAt, tz)} {formatTime(item.dueAt, tz)}</span>
           </div>
         </>
       );
@@ -233,7 +235,7 @@ function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
             <span>{item.departureDate.replaceAll('-', '/')} {item.startTime || '--:--'}</span>
             {item.formationDeadlineAt ? (
               <span>
-                {t.actionInbox.formationDeadline}：{formatDate(item.formationDeadlineAt)} {formatTime(item.formationDeadlineAt)}
+                {t.actionInbox.formationDeadline}：{formatDate(item.formationDeadlineAt, tz)} {formatTime(item.formationDeadlineAt, tz)}
               </span>
             ) : null}
           </div>
@@ -331,12 +333,13 @@ export default function DashboardPage() {
   const businessType = useBusinessType();
   const modePreset = MODE_PRESETS[businessType];
   const currentTenant = useCurrentTenant();
+  const tz = useTenantTimeZone();
   const PUBLIC_BOOKING_URL = buildPublicBookingUrl(APP_URL, currentTenant.shopCode);
   const toast = useToast();
   const { ordersHref, catalogHref, dashboardLinks } = modePreset;
   const { todayTable } = dashboardLinks;
   // 「今日預約」統計卡與表格「查看全部」：ordersHref ＋ preset 的 todayQuery（GUIDE 帶今日出發日篩選）
-  const todayHref = buildTodayOrdersHref(modePreset, tenantDateString());
+  const todayHref = buildTodayOrdersHref(modePreset, tenantDateString(new Date(), tz));
 
   const [stats, setStats] = React.useState<DashboardStats | null>(null);
   const [alerts, setAlerts] = React.useState<DashboardAlerts | null>(null);
@@ -389,20 +392,6 @@ export default function DashboardPage() {
     })();
     void (async () => {
       try {
-        const today = tenantDateString();
-        if (todayTable === 'TOUR_DEPARTURES') {
-          // #1085：今日出發團次的非取消團體訂單，口徑與統計卡相同（server 端排序、排除取消）
-          const res = await listTodayTourDepartureOrders(today);
-          setTodayTourRows(res.content);
-          setTodayTourTotal(res.totalElements);
-        } else {
-          const res = await listBookings({ page: 0, size: 100, ...tenantDayRange() });
-          setTodayRows(res.content.filter((b) => tenantDateString(new Date(b.startAt)) === today));
-        }
-      } catch (e) { fail(t.errors.todayBookings, e); } finally { setLoadingToday(false); }
-    })();
-    void (async () => {
-      try {
         setActivity(await getRecentActivity());
       } catch (e) { fail(t.errors.recentActivity, e); } finally { setLoadingActivity(false); }
     })();
@@ -412,7 +401,32 @@ export default function DashboardPage() {
     void (async () => {
       try { setMonthSources(await getMonthSources()); } catch (e) { fail(t.errors.sources, e); } finally { setLoadingSources(false); }
     })();
-  }, [fail, todayTable]);
+  }, [fail]);
+
+  // #936：「今日」依店家時區界定；時區載入完成後重新查詢
+  React.useEffect(() => {
+    // tz／模式變動時舊請求作廢，避免慢回應覆蓋新時區的結果
+    let isLatest = true;
+    void (async () => {
+      try {
+        const today = tenantDateString(new Date(), tz);
+        if (todayTable === 'TOUR_DEPARTURES') {
+          // #1085：今日出發團次的非取消團體訂單，口徑與統計卡相同（server 端排序、排除取消）
+          const res = await listTodayTourDepartureOrders(today);
+          if (!isLatest) return;
+          setTodayTourRows(res.content);
+          setTodayTourTotal(res.totalElements);
+        } else {
+          const res = await listBookings({ page: 0, size: 100, ...tenantDayRange(new Date(), tz) });
+          if (!isLatest) return;
+          setTodayRows(res.content.filter((b) => tenantDateString(new Date(b.startAt), tz) === today));
+        }
+      } catch (e) {
+        if (isLatest) fail(t.errors.todayBookings, e);
+      } finally { if (isLatest) setLoadingToday(false); }
+    })();
+    return () => { isLatest = false; };
+  }, [fail, todayTable, tz]);
 
   const reloadActionInbox = React.useCallback(() => {
     if (modePreset.showActionInbox) void inboxLoader.current.load(currentTenant.id, getGuideActionInbox);
@@ -448,7 +462,7 @@ export default function DashboardPage() {
           : MOCK_LINE_PLAN === 'PRO' ? t.stats.linePlanPro : t.stats.linePlanLite;
 
   const todayColumns: Column<Booking>[] = [
-    { key: 'time', header: t.todayBookings.columns.time, width: '84px', render: (b) => formatTime(b.startAt) },
+    { key: 'time', header: t.todayBookings.columns.time, width: '84px', render: (b) => formatTime(b.startAt, tz) },
     {
       key: 'customer', header: t.todayBookings.columns.customer,
       render: (b) => (
@@ -719,7 +733,7 @@ export default function DashboardPage() {
         <Alert
           tone="danger"
           className="mb-4"
-          title={t.cutoffExpired.title(alerts.bookingCutoffDate ? formatDate(alerts.bookingCutoffDate) : common.none)}
+          title={t.cutoffExpired.title(alerts.bookingCutoffDate ? alerts.bookingCutoffDate.replaceAll('-', '/') : common.none)}
           action={<Link href="/tenant/settings" className="btn btn-danger btn-sm"><Settings size={13} />{t.cutoffExpired.action}</Link>}
         >
           {t.cutoffExpired.body}
@@ -1059,7 +1073,7 @@ export default function DashboardPage() {
                           ? t.recentActivity.types.CUSTOMER_CREATED(a.name)
                           : t.recentActivity.types[a.type](a.name, a.target)}
                       </div>
-                      <div className="text-xs text-secondary">{formatDate(a.at)} {formatTime(a.at)}</div>
+                      <div className="text-xs text-secondary">{formatDate(a.at, tz)} {formatTime(a.at, tz)}</div>
                     </div>
                   </li>
                 ))}

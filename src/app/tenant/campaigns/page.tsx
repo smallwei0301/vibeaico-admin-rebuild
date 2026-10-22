@@ -30,7 +30,8 @@ import { canManageMarketing, uploadMessageImage, validateMessageImageFile } from
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { campaignsPage as t } from '@/i18n/zh-TW/pages/campaigns';
-import { formatCurrency, formatDateTime, formatNumber } from '@/lib/utils';
+import { formatCurrency, formatDateTime, formatNumber, toZonedDatetimeLocal, zonedDatetimeLocalToIso } from '@/lib/utils';
+import { useTenantTimeZone, useTenantTimeZoneState } from '@/lib/use-tenant-time-zone';
 import type { Campaign, CampaignType, Coupon } from '@/lib/types';
 
 /** 前端顯示狀態（含衍生的 SCHEDULED，見 src/services/campaigns.ts campaignDisplayStatus()） */
@@ -101,6 +102,7 @@ type PendingAction = { kind: PendingKind; campaign: Campaign };
 
 export default function CampaignsPage() {
   const toast = useToast();
+  const tz = useTenantTimeZone();
 
   const [rows, setRows] = React.useState<Campaign[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -167,8 +169,8 @@ export default function CampaignsPage() {
   const visible = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   const periodText = (c: Campaign) => t.labels.period(
-    c.startAt ? formatDateTime(c.startAt) : t.labels.immediately,
-    c.endAt ? formatDateTime(c.endAt) : t.labels.forever,
+    c.startAt ? formatDateTime(c.startAt, tz) : t.labels.immediately,
+    c.endAt ? formatDateTime(c.endAt, tz) : t.labels.forever,
   );
 
   const runPending = async () => {
@@ -543,6 +545,9 @@ function CampaignFormModal({
   onSaved: (isEdit: boolean) => void;
 }) {
   const toast = useToast();
+  const { timeZone: tz, ready: tzReady, error: tzError, retry: tzRetry } = useTenantTimeZoneState();
+  const tzRef = React.useRef(tz);
+  tzRef.current = tz;
   const isEdit = !!campaign;
   /** 已發布的活動只能改名稱、描述、結束時間、備註與圖片 */
   const locked = !!campaign && campaign.status !== 'DRAFT';
@@ -581,8 +586,8 @@ function CampaignFormModal({
     setError('');
     setName(campaign?.name ?? '');
     setType((campaign?.type || 'NEW_CUSTOMER') as CampaignType);
-    setStartAt(campaign?.startAt ? campaign.startAt.slice(0, 16) : '');
-    setEndAt(campaign?.endAt ? campaign.endAt.slice(0, 16) : '');
+    setStartAt(campaign?.startAt ? toZonedDatetimeLocal(campaign.startAt, tzRef.current) : '');
+    setEndAt(campaign?.endAt ? toZonedDatetimeLocal(campaign.endAt, tzRef.current) : '');
     setDescription(campaign?.description ?? '');
     setImageUrl(campaign?.imageUrl ?? '');
     setUploading(false);
@@ -594,6 +599,14 @@ function CampaignFormModal({
     setRecallDays(campaign?.recallDays ? String(campaign.recallDays) : '');
     setIsAutoTrigger(campaign?.isAutoTrigger ?? false);
   }, [open, campaign]);
+
+  // 店家時區載入完成／切換時只重算起迄時間，不重設使用者已輸入的其他欄位
+  React.useEffect(() => {
+    if (!open) return;
+    setStartAt(campaign?.startAt ? toZonedDatetimeLocal(campaign.startAt, tz) : '');
+    setEndAt(campaign?.endAt ? toZonedDatetimeLocal(campaign.endAt, tz) : '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tz]);
 
   const pickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.target;
@@ -658,7 +671,7 @@ function CampaignFormModal({
   const validate = (): string => {
     if (!name.trim()) return t.form.nameRequired;
     if (!pushMessage.trim()) return t.form.pushMessageRequired;
-    if (startAt && endAt && new Date(endAt) <= new Date(startAt)) return t.form.endAtInvalid;
+    if (startAt && endAt && endAt <= startAt) return t.form.endAtInvalid;
     if (description.length > t.form.descriptionMax) {
       return common.validation.maxLength(t.form.descriptionMax);
     }
@@ -677,8 +690,8 @@ function CampaignFormModal({
         name,
         description,
         type,
-        startAt: startAt ? new Date(startAt).toISOString() : null,
-        endAt: endAt ? new Date(endAt).toISOString() : null,
+        startAt: startAt ? zonedDatetimeLocalToIso(startAt, tz) : null,
+        endAt: endAt ? zonedDatetimeLocalToIso(endAt, tz) : null,
         pushMessage,
         couponId: couponId || null,
         bonusPoints: Number(bonusPoints) || 0,
@@ -712,7 +725,7 @@ function CampaignFormModal({
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>{common.cancel}</Button>
-          <Button loading={saving} loadingText={common.saving} disabled={uploading} onClick={() => void submit()}>
+          <Button loading={saving} loadingText={common.saving} disabled={uploading || !tzReady} onClick={() => void submit()}>
             {common.save}
           </Button>
         </>
@@ -963,6 +976,12 @@ function CampaignFormModal({
         </Alert>
       ) : null}
 
+      {tzError ? (
+        <div className="mb-4 flex items-center gap-3">
+          <FormError>{t.messages.timeZoneLoadFailed}</FormError>
+          <Button variant="outline" size="sm" onClick={tzRetry}>{common.retry}</Button>
+        </div>
+      ) : null}
       {error ? <FormError>{error}</FormError> : null}
     </Modal>
   );

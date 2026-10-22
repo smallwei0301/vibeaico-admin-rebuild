@@ -26,6 +26,7 @@ import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { chatPage as t } from '@/i18n/zh-TW/pages/chat';
 import { cn, formatTime } from '@/lib/utils';
+import { useTenantTimeZone } from '@/lib/use-tenant-time-zone';
 
 /**
  * 顧客訊息 — 資料一律走 src/services/chat.ts（04 分冊 §B-5.1）。
@@ -62,6 +63,7 @@ function byLastMessageDesc(a: ConversationRow, b: ConversationRow): number {
 const LOCAL_ID_PREFIX = 'm_local_';
 
 export default function ChatPage() {
+  const tz = useTenantTimeZone();
   const toast = useToast();
 
   const [conversations, setConversations] = React.useState<ConversationRow[]>([]);
@@ -392,7 +394,7 @@ export default function ChatPage() {
                               <span className="whitespace-pre-line break-words">{m.text}</span>
                             )}
                           </div>
-                          <span className="text-2xs text-secondary">{formatTime(m.at)}</span>
+                          <span className="text-2xs text-secondary">{formatTime(m.at, tz)}</span>
                         </div>
                       ))}
                       <div ref={bottomRef} />
