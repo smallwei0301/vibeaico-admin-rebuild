@@ -37,7 +37,18 @@ function zonedFormatter(timeZone: string): Intl.DateTimeFormat {
   return f;
 }
 
+/** 純日期字串 YYYY-MM-DD（沒有時點）；`new Date('YYYY-MM-DD')` 會被當 UTC 午夜，在 UTC 負時差瀏覽器少一天（#936）。 */
+const PLAIN_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+export function isPlainDate(v: string): boolean {
+  return PLAIN_DATE_RE.test(v);
+}
+
 function zonedParts(iso: string, timeZone: string) {
+  if (isPlainDate(iso)) {
+    // 純日期沒有時點，不做任何時區換算，直接取年月日。
+    const [y, mo, d] = iso.split('-');
+    return { y, mo, d, h: '00', mi: '00' };
+  }
   const date = new Date(iso);
   // 無效日期：與不帶時區路徑一致輸出 NaN 字樣，不丟 RangeError 讓整張表格崩潰。
   if (isNaN(date.getTime())) return { y: 'NaN', mo: 'NaN', d: 'NaN', h: 'NaN', mi: 'NaN' };
@@ -55,6 +66,7 @@ export function formatDate(iso: string, timeZone?: string): string {
     const p = zonedParts(iso, resolvePublicTimeZone(timeZone));
     return `${p.y}/${p.mo}/${p.d}`;
   }
+  if (isPlainDate(iso)) return iso.replace(/-/g, '/');
   const d = new Date(iso);
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
 }
@@ -65,6 +77,7 @@ export function formatDateTime(iso: string, timeZone?: string): string {
     const p = zonedParts(iso, resolvePublicTimeZone(timeZone));
     return `${p.y}/${p.mo}/${p.d} ${p.h}:${p.mi}`;
   }
+  if (isPlainDate(iso)) return `${iso.replace(/-/g, '/')} 00:00`;
   const d = new Date(iso);
   return `${formatDate(iso)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
@@ -75,6 +88,7 @@ export function formatTime(iso: string, timeZone?: string): string {
     const p = zonedParts(iso, resolvePublicTimeZone(timeZone));
     return `${p.h}:${p.mi}`;
   }
+  if (isPlainDate(iso)) return '00:00';
   const d = new Date(iso);
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
@@ -114,6 +128,10 @@ export const WEEKDAYS_ZH = ['週日', '週一', '週二', '週三', '週四', '�
 export function weekdayZh(iso: string, timeZone?: string): string {
   if (timeZone) {
     const [y, m, d] = zonedYmd(iso, timeZone).split('-').map(Number);
+    return WEEKDAYS_ZH[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  }
+  if (isPlainDate(iso)) {
+    const [y, m, d] = iso.split('-').map(Number);
     return WEEKDAYS_ZH[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
   }
   return WEEKDAYS_ZH[new Date(iso).getDay()];

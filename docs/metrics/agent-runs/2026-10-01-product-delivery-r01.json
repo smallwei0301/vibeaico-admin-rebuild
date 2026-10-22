@@ -12069,6 +12069,40 @@
         "startedAt": "2026-10-22T07:39:38Z",
         "completedAt": "2026-10-22T07:39:38Z",
         "note": "Luna：記錄 #936 第三輪修正施工埋點（Haiku subagent，requested claude-haiku-4-5）。"
+      },
+      {
+        "id": "20261022-terra-build-936-plaindate",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 936,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/301d8327",
+        "startedAt": "2026-10-22T10:56:57Z",
+        "completedAt": "2026-10-22T11:01:13Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）依結案審查 FIX_REQUIRED 修 #936：純日期字串不再因瀏覽器時區少一天，commit 301d8327。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261022-luna-scout-936-plaindate-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 936,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-22T11:02:01Z",
+        "completedAt": "2026-10-22T11:02:14Z",
+        "note": "Luna：綁定 #936 純日期修正施工埋點（Haiku subagent，requested claude-haiku-4-5）。"
       }
     ],
     "fullContextReplays": 0,
@@ -12104,8 +12138,8 @@
     ]
   },
   "flow": {
-    "lunaTasks": 236,
-    "lunaAccepted": 227,
+    "lunaTasks": 237,
+    "lunaAccepted": 228,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,

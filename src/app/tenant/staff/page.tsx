@@ -865,7 +865,7 @@ function LeaveModal({ staff, onClose }: { staff: StaffRow | null; onClose: () =>
     const add = (days: number) => {
       const d = new Date(base);
       d.setDate(d.getDate() + days);
-      return d.toISOString().slice(0, 10);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     };
     const dow = base.getDay();
     if (kind === 'TOMORROW') patch({ recurrence: 'SINGLE', date: add(1) });
@@ -906,7 +906,7 @@ function LeaveModal({ staff, onClose }: { staff: StaffRow | null; onClose: () =>
         const base = new Date();
         base.setHours(0, 0, 0, 0);
         base.setDate(base.getDate() + ((Number(draft.dayOfWeek) - base.getDay() + 7) % 7));
-        return base.toISOString().slice(0, 10);
+        return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}-${String(base.getDate()).padStart(2, '0')}`;
       })();
       const { id } = await createStaffLeave(staff.id, {
         startAt: draft.fullDay ? `${repDate}T00:00:00` : `${repDate}T${draft.startTime}:00`,
@@ -917,7 +917,7 @@ function LeaveModal({ staff, onClose }: { staff: StaffRow | null; onClose: () =>
         id,
         staffId: staff.id,
         date: draft.date,
-        dayOfWeek: draft.recurrence === 'WEEKLY' ? Number(draft.dayOfWeek) : new Date(draft.date).getDay(),
+        dayOfWeek: draft.recurrence === 'WEEKLY' ? Number(draft.dayOfWeek) : new Date(`${draft.date}T00:00:00`).getDay(),
         recurrence: draft.recurrence,
         type: draft.type,
         reason: draft.reason,
