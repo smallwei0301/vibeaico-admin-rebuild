@@ -25,7 +25,19 @@ function fakeGitRunner(command: string, args: string[]) {
   return { status: 1, stdout: '', stderr: `unexpected git args: ${gitArgs.join(' ')}` };
 }
 
-function buildPlan(repoRoot = process.cwd()) {
+// 0117／0118 套用 Production 後（#1091，ledger 81 筆）目前 main 已無 PENDING_APPLY migration；
+// 「現行 pending set」的建構測試改讀釋出前（0117／0118 仍 pending）的 alias map fixture。
+const PRE_PENDING_ALIAS_FIXTURE = 'tests/fixtures/ledger-alias-map.pre-755-s0117-0118.json';
+function prePendingRoot() {
+  const root = mkdtempSync(join(tmpdir(), 'g3-pre-pending-'));
+  fixtureRoots.push(root);
+  mkdirSync(join(root, 'supabase'), { recursive: true });
+  symlinkSync(resolve('supabase/migrations'), join(root, 'supabase/migrations'));
+  writeFileSync(join(root, 'supabase/ledger-alias-map.json'), readFileSync(PRE_PENDING_ALIAS_FIXTURE));
+  return root;
+}
+
+function buildPlan(repoRoot = prePendingRoot()) {
   return buildTestReleasePlanFromCheckout({
     releaseId: RELEASE,
     mainSha: MAIN,
@@ -137,7 +149,7 @@ describe('Production DB exact-plan remote TEST validator #447', () => {
     const plan = buildPlan();
     const replay = replayMigration(plan);
     const target = plan.migrations.find((item:any) => item.repoFile !== replay.repoFile)!;
-    const aliasMap = JSON.parse(require('node:fs').readFileSync('supabase/ledger-alias-map.json', 'utf8'));
+    const aliasMap = JSON.parse(readFileSync(PRE_PENDING_ALIAS_FIXTURE, 'utf8'));
     const readCanonicalSql = (path:string) => require('node:fs').readFileSync(path, 'utf8');
     expect(() => buildAtomicTestReleaseValidationSql({
       plan,
