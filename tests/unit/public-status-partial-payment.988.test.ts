@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { partialPaymentBreakdown } from '@/lib/public-partial-payment';
+import { cancelledPaidAmount, partialPaymentBreakdown } from '@/lib/public-partial-payment';
 import { mapTourOrder } from '@/server/mappers';
 import { publicTourRequestPage as i18n } from '@/i18n/zh-TW/pages/public-tour-request';
 
@@ -65,5 +65,34 @@ describe('#988 mapper 與頁面', () => {
   });
   it('公開查詢 select * 帶出 paid_amount', () => {
     expect(src('src/server/public-tour-request.ts')).toMatch(/from\('tour_orders'\)\.select\('\*'\)/);
+  });
+});
+
+describe('#917 cancelledPaidAmount', () => {
+  const o = { status: 'CANCELLED' as const, paymentStatus: 'PARTIAL' as const, paidAmount: 600 };
+  it('CANCELLED + PARTIAL／PAID：回傳已付金額', () => {
+    expect(cancelledPaidAmount(o)).toBe(600);
+    expect(cancelledPaidAmount({ ...o, paymentStatus: 'PAID' })).toBe(600);
+  });
+  it('CANCELLED + REFUND_PENDING／REFUNDED：仍回傳已付金額', () => {
+    expect(cancelledPaidAmount({ ...o, paymentStatus: 'REFUND_PENDING' })).toBe(600);
+    expect(cancelledPaidAmount({ ...o, paymentStatus: 'REFUNDED' })).toBe(600);
+  });
+  it('CANCELLED + UNPAID：null', () => {
+    expect(cancelledPaidAmount({ ...o, paymentStatus: 'UNPAID' })).toBeNull();
+  });
+  it('非 CANCELLED：null', () => {
+    for (const status of ['PENDING', 'CONFIRMED', 'COMPLETED'] as const) {
+      expect(cancelledPaidAmount({ ...o, status })).toBeNull();
+    }
+  });
+  it('paidAmount 為 null／undefined／0／負數／NaN：null', () => {
+    for (const paidAmount of [null, undefined, 0, -5, Number.NaN] as const) {
+      expect(cancelledPaidAmount({ ...o, paidAmount: paidAmount as number | undefined })).toBeNull();
+    }
+  });
+  it('頁面使用 cancelledPaidAmount 並沿用 paidAmount 文案', () => {
+    const page = src('src/app/s/[shopCode]/requests/[orderId]/page.tsx');
+    expect(page).toContain('cancelledPaidAmount(order)');
   });
 });
