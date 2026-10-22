@@ -13,7 +13,10 @@ Agent 負責的 PR，只要通過所屬 Workstream 的全部既有關卡，就�
   - `PRODUCT_MAINLINE`：沿用 Sol／Final Risk 規則。
   - `MODEL_GOVERNANCE`：完成 exact-diff 反例審查。
 - 已觸發的 bot review（例如 Codex code／security review）要先跑完；blocking finding 修正並回讀後才 merge，不得在 review 進行中搶先 merge。
-- merge 後依 Completion Truth 讀回：PR merged、merge commit 可由 main 到達、關鍵檔案以 `ref=main` 重讀，以及 merge commit 上的 main CI 結果。
+
+## merge 後必須完成（不是 merge 前置條件）
+
+- 依 Completion Truth 讀回：PR merged、merge commit 可由 main 到達、關鍵檔案以 `ref=main` 重讀，以及 merge commit 上的 main CI 結果。
 
 ## 不在本授權範圍（維持原規則）
 
