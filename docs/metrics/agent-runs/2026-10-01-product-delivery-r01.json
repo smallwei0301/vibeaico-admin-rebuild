@@ -11967,6 +11967,40 @@
         "startedAt": "2026-10-22T05:49:03Z",
         "completedAt": "2026-10-22T05:49:08Z",
         "note": "Luna：綁定 #936 其餘頁面施工埋點（Haiku subagent，requested claude-haiku-4-5）。"
+      },
+      {
+        "id": "20261022-terra-build-936-fix1",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 936,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/87c18bf3",
+        "startedAt": "2026-10-22T05:52:30Z",
+        "completedAt": "2026-10-22T05:58:26Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）依 Opus FIX_REQUIRED 修 #936：行事曆封鎖等時區就緒、封鎖時段／票券／週期預約／功能商店改用店家時區，commit 87c18bf3。startedAt 為派工近似值（subagent 回報因容器重啟遺失），completedAt 為 commit 時間。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261022-luna-scout-936-fix1-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 936,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-22T06:06:05Z",
+        "completedAt": "2026-10-22T06:06:23Z",
+        "note": "Luna：記錄 #936 修正施工埋點（Haiku subagent，requested claude-haiku-4-5）。"
       }
     ],
     "fullContextReplays": 0,
@@ -12002,8 +12036,8 @@
     ]
   },
   "flow": {
-    "lunaTasks": 233,
-    "lunaAccepted": 224,
+    "lunaTasks": 234,
+    "lunaAccepted": 225,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
