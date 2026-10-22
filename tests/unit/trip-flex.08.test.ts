@@ -192,19 +192,19 @@ describe('buildTripCarousel — 按鈕指向商店頁的該行程', () => {
   it('uri = {shopUrl}/trip/{slug}，label 用呼叫端給的 CTA', () => {
     const [b] = bubblesOf(build([trip({ slug: 'guishan-island' })]));
     expect(b.footer.contents[0].action).toEqual({
-      type: 'uri', label: LABELS.bookCta, uri: `${SHOP_URL}/trip/guishan-island`,
+      type: 'uri', label: LABELS.bookCta, uri: `${SHOP_URL}/trip/guishan-island?src=line`,
     });
   });
 
   it('shopUrl 尾端多一個斜線也不會變成兩條斜線', () => {
     const [b] = bubblesOf(build([trip()], `${SHOP_URL}/`));
-    expect(b.footer.contents[0].action.uri).toBe(`${SHOP_URL}/trip/guishan-island`);
+    expect(b.footer.contents[0].action.uri).toBe(`${SHOP_URL}/trip/guishan-island?src=line`);
   });
 
   it('slug 有需要跳脫的字元時做 encode（否則 LINE 會退回 invalid uri）', () => {
     const [b] = bubblesOf(build([trip({ slug: '龜山島 一日遊' })]));
     const { uri } = b.footer.contents[0].action;
-    expect(uri).toBe(`${SHOP_URL}/trip/${encodeURIComponent('龜山島 一日遊')}`);
+    expect(uri).toBe(`${SHOP_URL}/trip/${encodeURIComponent('龜山島 一日遊')}?src=line`);
     expect(uri).not.toContain(' ');
   });
 

@@ -443,6 +443,10 @@
     {
       "ref": "issue/1088",
       "title": "團體訂單頁排除已取消篩選時停用「已取消」狀態，避免必然失敗的查詢"
+    },
+    {
+      "ref": "issue/1090",
+      "title": "#46 旅客從商店頁送出的團體訂單來源被記成 LINE，後台「商店頁」篩選找不到"
     }
   ],
   "main": {
@@ -11810,13 +11814,64 @@
         "completedAt": "2026-10-21T13:54:55Z",
         "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/tree/fix-1088-cancelled-filter",
         "note": "Haiku scout 將 #1088 綁入 Run ledger。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261021-terra-build-1090",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 1090,
+        "startedAt": "2026-10-21T23:59:32Z",
+        "completedAt": "2026-10-22T00:10:53Z",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/5e27760f",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）施工 #1090，commit 5e27760f。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261022-terra-build-1090-linkfix",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 1090,
+        "startedAt": "2026-10-22T00:11:33Z",
+        "completedAt": "2026-10-22T00:16:28Z",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/1955169d",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）修正 #1090 LINE 連結組合，commit 1955169d。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261022-luna-scout-1090-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 1090,
+        "startedAt": "2026-10-22T00:16:49Z",
+        "completedAt": "2026-10-22T00:17:35Z",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/tree/fix-1090-shop-order-source",
+        "note": "Haiku scout 將 #1090 綁入 Run ledger。actual 未經平台驗證。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 113,
+    "issuesStarted": 114,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -11845,8 +11900,8 @@
     ]
   },
   "flow": {
-    "lunaTasks": 229,
-    "lunaAccepted": 220,
+    "lunaTasks": 230,
+    "lunaAccepted": 221,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,

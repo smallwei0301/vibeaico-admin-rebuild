@@ -48,6 +48,7 @@ import { nextTourOrderNo } from '@/server/tour-order-no';
 import { safePublicHttpsUrl } from '@/lib/public-url';
 import { MAX_PUBLIC_LIST_ITEM_CHARS, truncateChars } from '@/lib/public-trip-limits';
 import type { TourOrder } from '@/lib/types';
+import { resolvePublicOrderSource } from '@/lib/public-order-channel';
 
 /** 「我的訂單」查詢一次最多回傳幾筆（issue #46）——避免無上限回應。 */
 const MY_ORDERS_LIMIT = 50;
@@ -196,6 +197,8 @@ export const submitPublicTourRequestSchema = z.object({
   // 匿名節流補上之前，這是最便宜的儲存耗盡手段。上限值取一般表單常見上限
   // （姓名／LINE ID 100 字、電話 40 字、Email 254 字＝RFC 5321 位址長度上限），
   // 不是業務規則，只是防止異常輸入。
+  /** #1090：來源通路（選填）。只有 'LINE' 記 LINE，其餘（含缺省、亂碼、超長、非字串，皆 catch 成 undefined 不回 400）一律 VIBEAI_SHOP；旅客不能指定 MANUAL／MIDAO。 */
+  channel: z.string().max(16).optional().catch(undefined),
   contactName: z.string().trim().min(1, '請輸入姓名').max(100, '姓名長度超過上限'),
   /** 至少一種聯絡方式（LINE／電話／Email）——三選一以上，不是三個都必填。 */
   contactPhone: z.string().trim().max(40, '電話長度超過上限').optional(),
@@ -276,9 +279,8 @@ export async function submitPublicTourRequest(
       p_party_size: input.partySize,
       p_customer: null,
       p_contact: contact,
-      // 'LINE' 是既有 tour_order_source 值域的既有值——旅客自助頁與 LINE
-      // rich menu／公開連結進來的旅程共用同一個來源標籤，不新增列舉值。
-      p_source: 'LINE',
+      // #1090：預設 VIBEAI_SHOP；網址帶 src=line 的旅客才記 LINE（伺服器端白名單）。
+      p_source: resolvePublicOrderSource(input.channel),
       p_payment_method: null,
       p_note: noteParts.join('\n'),
       // REQUEST 訂單本身不因為「未付款」而自動過期（10 分冊既有慣例：

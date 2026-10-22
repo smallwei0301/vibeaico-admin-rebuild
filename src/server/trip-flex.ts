@@ -21,6 +21,8 @@
  *     或整個省略。
  */
 
+import { withLineSource } from '@/lib/public-order-channel';
+
 /** LINE carousel 的硬上限 */
 export const TRIP_CAROUSEL_MAX = 12;
 
@@ -109,8 +111,8 @@ export function buildTripCarousel(
       margin: 'md',
     });
 
-    // 行程頁網址：商店頁 + /trip/{slug}（11 分冊的公開站路由）
-    const tripUrl = `${shopUrl.replace(/\/$/, '')}/trip/${encodeURIComponent(t.slug)}`;
+    // 行程頁網址：商店頁 base + /trip/{slug}，最後才補 src=line（shopUrl 必須是不帶 query 的乾淨 base）
+    const tripUrl = withLineSource(`${shopUrl.replace(/\/$/, '')}/trip/${encodeURIComponent(t.slug)}`);
 
     const bubble: Record<string, unknown> = {
       type: 'bubble',
