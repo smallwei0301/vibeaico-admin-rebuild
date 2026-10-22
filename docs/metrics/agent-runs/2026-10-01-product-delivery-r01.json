@@ -11899,6 +11899,40 @@
         "completedAt": "2026-10-22T02:24:27Z",
         "evidenceRef": "",
         "note": "Luna：綁定 #917 殘留修正的 build 埋點（Haiku subagent，requested claude-haiku-4-5）。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261022-terra-build-917-refundfix",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 917,
+        "startedAt": "2026-10-22T02:33:56Z",
+        "completedAt": "2026-10-22T02:34:23Z",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/175b25e1",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）依 Codex P2 讓退款中／已退款的已取消訂單保留已付金額，commit 175b25e1。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261022-luna-scout-917-flowfix",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 917,
+        "startedAt": "2026-10-22T02:35:04Z",
+        "completedAt": "2026-10-22T02:35:19Z",
+        "evidenceRef": "",
+        "note": "Luna：修正 flow.lunaTasks／lunaAccepted 與 modelUsage 推導值不一致，並記錄 #917 Codex 修正施工。"
       }
     ],
     "fullContextReplays": 0,
@@ -11934,8 +11968,8 @@
     ]
   },
   "flow": {
-    "lunaTasks": 230,
-    "lunaAccepted": 221,
+    "lunaTasks": 232,
+    "lunaAccepted": 223,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
