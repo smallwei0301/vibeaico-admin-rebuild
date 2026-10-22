@@ -3,10 +3,11 @@
  * 預設 VIBEAI_SHOP；只有 channel === 'LINE'（網址 ?src=line 帶出）才記 LINE；
  * 旅客不能指定 MANUAL／MIDAO，非法值回退 VIBEAI_SHOP（不回 400）。
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
   resolvePublicOrderSource, withLineSource, isLineSourceSearch,
+  captureLineSource, readOrderChannel,
 } from '@/lib/public-order-channel';
 import { buildTripCarousel } from '@/server/trip-flex';
 import { submitPublicTourRequestSchema } from '@/server/public-tour-request';
@@ -153,5 +154,36 @@ describe('/trip/[slug] 轉址保留 LINE 來源', () => {
       '/s/shop/trips/abc',
     ]);
     vi.doUnmock('next/navigation');
+  });
+});
+
+describe('LINE 來源歸因綁定商店（不跨店外漏）', () => {
+  function stubWindow(search: string, store: Map<string, string>) {
+    vi.stubGlobal('window', {
+      location: { search },
+      sessionStorage: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => { store.set(k, v); },
+      },
+    });
+  }
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('A 店標記後：A 店回 LINE、B 店（網址無標記）回 SHOP', () => {
+    const store = new Map<string, string>();
+    stubWindow('?src=line', store);
+    captureLineSource('shop-a');
+    stubWindow('', store);
+    expect(readOrderChannel('shop-a')).toBe('LINE');
+    expect(readOrderChannel('shop-b')).toBe('SHOP');
+  });
+  it('舊格式純 LINE 值視為不符，回 SHOP', () => {
+    const store = new Map<string, string>([['vibeai:order-channel', 'LINE']]);
+    stubWindow('', store);
+    expect(readOrderChannel('shop-a')).toBe('SHOP');
+  });
+  it('網址本身帶 LINE 標記時，不論 storage 都回 LINE', () => {
+    stubWindow('?utm_source=line', new Map());
+    expect(readOrderChannel('shop-b')).toBe('LINE');
   });
 });

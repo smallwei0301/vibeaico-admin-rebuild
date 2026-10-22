@@ -93,7 +93,7 @@ export function BookingForm({
         method: 'POST',
         body: JSON.stringify({
           shopCode, planId: plan.planId, departureId, partySize, expectedTotal,
-          channel: readOrderChannel(),
+          channel: readOrderChannel(shopCode),
           contactName: contactName.trim(),
           contactPhone: contactPhone.trim() || undefined,
           contactLine: contactLine.trim() || undefined,

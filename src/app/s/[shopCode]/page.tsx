@@ -109,7 +109,7 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6">
-      <LineSourceCapture />
+      <LineSourceCapture shopCode={shopCode} />
       <header className="flex flex-col gap-2">
         <h1 className="text-2xl font-semibold">{shop.name}</h1>
         {shop.description ? (

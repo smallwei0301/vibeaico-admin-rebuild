@@ -7,6 +7,10 @@
  * 旅客端只能宣告 `channel: 'LINE' | 'SHOP'`（選填），伺服器端白名單驗證：
  * 其他任何值（含 MANUAL／MIDAO／亂碼）一律回退成 `VIBEAI_SHOP`，不回 400
  * ——來源只是歸因標籤，不值得讓旅客的訂位因此失敗。
+ *
+ * 歸因綁定商店：sessionStorage 是整個 origin 共用，所以存的值是 `LINE:<shopCode>`，
+ * 讀取時必須與當前商店相符；同一分頁之後進入另一間商店的未標記頁面不會沿用 LINE，
+ * 舊格式的純 `LINE` 值也視為不符（避免跨店外漏）。
  */
 export const PUBLIC_ORDER_CHANNELS = ['LINE', 'SHOP'] as const;
 export type PublicOrderChannel = (typeof PUBLIC_ORDER_CHANNELS)[number];
@@ -49,18 +53,22 @@ export function isLineSourceSearch(search: string): boolean {
   return LINE_SOURCE_PARAMS.some((k) => sp.get(k)?.toLowerCase() === LINE_SOURCE_VALUE);
 }
 
-/** client：進入公開頁時呼叫；網址帶 src=line／utm_source=line 就記在 sessionStorage，之後頁面跳轉仍保留。 */
-export function captureLineSource(): void {
+function storageValue(shopCode: string): string {
+  return `LINE:${shopCode}`;
+}
+
+/** client：進入公開頁時呼叫；網址帶 src=line／utm_source=line 就把「該商店」的 LINE 來源記在 sessionStorage，之後同店頁面跳轉仍保留。 */
+export function captureLineSource(shopCode: string): void {
   try {
-    if (isLineSourceSearch(window.location.search)) window.sessionStorage.setItem(STORAGE_KEY, 'LINE');
+    if (isLineSourceSearch(window.location.search)) window.sessionStorage.setItem(STORAGE_KEY, storageValue(shopCode));
   } catch { /* storage 不可用時退回只看網址 */ }
 }
 
-/** client：送出表單時取得要帶給 API 的 channel。 */
-export function readOrderChannel(): PublicOrderChannel {
+/** client：送出表單時取得要帶給 API 的 channel；storage 的 LINE 標記必須屬於同一間商店。 */
+export function readOrderChannel(shopCode: string): PublicOrderChannel {
   try {
     if (isLineSourceSearch(window.location.search)) return 'LINE';
-    if (window.sessionStorage.getItem(STORAGE_KEY) === 'LINE') return 'LINE';
+    if (window.sessionStorage.getItem(STORAGE_KEY) === storageValue(shopCode)) return 'LINE';
   } catch { /* 同上 */ }
   return 'SHOP';
 }

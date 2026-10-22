@@ -19,7 +19,7 @@ export default async function PublicTripDetailsPage({ params }: Params) {
   const props = await loadPublicTripPage(params);
   return (
     <>
-      <LineSourceCapture />
+      <LineSourceCapture shopCode={props.shopCode} />
       <PublicTripDetailsClient shopCode={props.shopCode} slug={props.slug} initialData={props.initialData} />
     </>
   );
