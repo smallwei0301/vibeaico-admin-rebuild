@@ -451,6 +451,10 @@
     {
       "ref": "issue/876",
       "title": "刪除收款方式後，引用它的歷史訂單會失去收款方式名稱"
+    },
+    {
+      "ref": "issue/1103",
+      "title": "導遊刪除團次只剩已取消訂單時回 500，應提示改為取消團次"
     }
   ],
   "main": {
@@ -12158,13 +12162,47 @@
         "startedAt": "2026-10-22T13:40:30Z",
         "completedAt": "2026-10-22T13:40:30Z",
         "note": "Luna：依 Codex P2 將 delivery.issuesStarted 114→115（#876 首次開始）（Haiku subagent，requested claude-haiku-4-5）。"
+      },
+      {
+        "id": "20261022-terra-build-1103-departure-delete-fk",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 1103,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/049cb01f",
+        "startedAt": "2026-10-22T15:51:34Z",
+        "completedAt": "2026-10-22T15:52:52Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）施工 #1103：刪除有訂單紀錄（含已取消）的團次改回 409 並提示改為取消團次，commit 049cb01f。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261022-luna-scout-1103-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 1103,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-22T15:53:21Z",
+        "completedAt": "2026-10-22T15:53:21Z",
+        "note": "Luna：綁定 #1103 施工埋點（Haiku subagent，requested claude-haiku-4-5）。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 115,
+    "issuesStarted": 116,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -12193,8 +12231,8 @@
     ]
   },
   "flow": {
-    "lunaTasks": 239,
-    "lunaAccepted": 230,
+    "lunaTasks": 240,
+    "lunaAccepted": 231,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
