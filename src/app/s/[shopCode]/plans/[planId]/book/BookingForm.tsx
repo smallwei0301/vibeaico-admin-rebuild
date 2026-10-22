@@ -4,6 +4,8 @@ import { pickRedirectContact } from '@/lib/public-contact';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { readOrderChannel } from '@/lib/public-order-channel';
+import { LineSourceCapture } from '@/components/public/LineSourceCapture';
 import { ApiError, request } from '@/lib/api';
 import { publicTourBookingPage as t, NOTE_MAX_LENGTH } from '@/i18n/zh-TW/pages/public-tour-booking';
 import { formatCurrency } from '@/lib/utils';
@@ -92,6 +94,7 @@ export function BookingForm({
         method: 'POST',
         body: JSON.stringify({
           shopCode, planId: plan.planId, departureId, partySize, expectedTotal,
+          channel: readOrderChannel(),
           contactName: contactName.trim(),
           contactPhone: contactPhone.trim() || undefined,
           contactLine: contactLine.trim() || undefined,

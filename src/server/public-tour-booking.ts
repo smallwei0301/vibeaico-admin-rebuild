@@ -40,6 +40,7 @@ import { createTourOrderWithQuote, PRICE_UNVERIFIABLE_MESSAGE, type PriceQuote }
 import { createAdminSupabase } from '@/server/supabase';
 import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
 import { nextTourOrderNo } from '@/server/tour-order-no';
+import { resolvePublicOrderSource } from '@/lib/public-order-channel';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -204,6 +205,8 @@ export const submitPublicTourBookingSchema = z.object({
   // Final Risk F2 慣例同 `public-tour-request.ts`：自由文字欄位一律有上限。
   /** #749：旅客在頁面上看到並確認的總額；有帶時送出當下伺服器依現價重新比對（先 fast path 重讀比對，最終由 create_tour_order_quoted / migration 0137 於同交易內判定），不符回 PRICE_CHANGED。舊頁面快取不帶則沿用舊行為。 */
   expectedTotal: z.number().nonnegative().finite().optional(),
+  /** #1090：來源通路（選填）。只有 'LINE' 記 LINE，其餘（含缺省、亂碼）一律 VIBEAI_SHOP；旅客不能指定 MANUAL／MIDAO。 */
+  channel: z.string().max(16).optional(),
   contactName: z.string().trim().min(1, '請輸入姓名').max(100, '姓名長度超過上限'),
   contactPhone: z.string().trim().max(40, '電話長度超過上限').optional(),
   contactLine: z.string().trim().max(100, 'LINE ID 長度超過上限').optional(),
@@ -270,9 +273,8 @@ export async function submitPublicTourBooking(
       p_party_size: input.partySize,
       p_customer: null,
       p_contact: contact,
-      // 同 `public-tour-request.ts`：'LINE' 是既有 tour_order_source 值域的既有
-      // 值，旅客自助頁與 LINE rich menu／公開連結進來的旅程共用同一個來源標籤。
-      p_source: 'LINE',
+      // #1090：同 public-tour-request.ts——預設 VIBEAI_SHOP，src=line 才記 LINE。
+      p_source: resolvePublicOrderSource(input.channel),
       // #12 金流 provider 尚未落地：不生成假付款連結、不冒充已付款。訂單建立
       // 後名額已真的鎖住，付款方式與期限由店家後續透過既有聯絡方式與旅客確認。
       p_payment_method: null,

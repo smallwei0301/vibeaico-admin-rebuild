@@ -354,12 +354,12 @@ describe('LINE「近期團次」深連結（連結資格＝預約頁載入器 + 
     ];
     const text = await runLine([dep('dep/1', 'pf'), dep('dep-2', 'pi'), dep('dep-3', 'pr'), dep('dep-4', 'pq')], plans);
     const base = `${APP_URL.replace(/\/$/, '')}/s/demo`;
-    expect(text).toContain(`${base}/plans/pf/book?departure=dep%2F1`);
+    expect(text).toContain(`${base}/plans/pf/book?departure=dep%2F1&src=line`);
     expect(text.match(/\/book\?departure=/g)?.length).toBe(1);
-    expect(text.trimEnd().endsWith(base)).toBe(true);
+    expect(text.trimEnd().endsWith(`${base}?src=line`)).toBe(true);
     const lines = text.split('\n');
     const i = lines.findIndex((l) => l.includes('固定'));
-    expect(lines[i + 1]).toBe(`${base}/plans/pf/book?departure=dep%2F1`);
+    expect(lines[i + 1]).toBe(`${base}/plans/pf/book?departure=dep%2F1&src=line`);
     // #1022：已停用方案的團次不再列出（旅客點進公開頁找不到該方案）。
     expect(text).not.toContain('停用');
     expect(lines[i + 2]).toContain('申請');

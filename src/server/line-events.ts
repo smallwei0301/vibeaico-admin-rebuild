@@ -31,14 +31,19 @@ import {
   privacySettingsSchema,
   aiSettingsSchema,
   businessSettingsSchema,
-  buildPublicBookingUrl,
+  buildPublicBookingUrl as buildShopUrl,
 } from '@/config/tenant-settings';
+import { withLineSource } from '@/lib/public-order-channel';
 import { APP_URL } from '@/config/env';
 import { MODE_PRESETS, type BusinessType } from '@/config/modes';
 import { keywordRepliesPage } from '@/i18n/zh-TW/pages/keyword-replies';
 import { isDepartureBookableOnPage } from '@/lib/public-booking-price';
 import { partialPaymentBreakdown } from '@/lib/public-partial-payment';
 import { loadPublicBookingPlan } from './public-tour-booking';
+
+/** LINE 端產生的公開連結一律帶 `?src=line`（issue #1090），讓從 LINE 進來的訂單仍記 LINE。 */
+const buildPublicBookingUrl = (appUrl: string, shopCode: string): string =>
+  withLineSource(buildShopUrl(appUrl, shopCode));
 
 /** webhook 端已查好的店家列（route.ts select id, shop_code, name） */
 export type WebhookTenant = {
@@ -902,7 +907,7 @@ export async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
     // 直達預約：只給預約頁自己判定可預選且可送出的團次（isDepartureBookableOnPage）；其餘維持無連結。
     const bookingPlan = bookingPlanById.get(d.plan_id);
     if (!d.id || !fixedPlanIds.has(d.plan_id) || !bookingPlan || !isDepartureBookableOnPage(bookingPlan, String(d.id))) return line;
-    const deepLink = `${buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code)}/plans/${encodeURIComponent(d.plan_id)}/book?departure=${encodeURIComponent(d.id)}`;
+    const deepLink = withLineSource(`${buildShopUrl(APP_URL, ctx.tenant.shop_code)}/plans/${encodeURIComponent(d.plan_id)}/book?departure=${encodeURIComponent(d.id)}`);
     return `${line}\n${deepLink}`;
   });
   const shopUrl = buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code);

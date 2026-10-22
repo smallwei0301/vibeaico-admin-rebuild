@@ -1,0 +1,52 @@
+/**
+ * 公開頁建單的來源通路（issue #1090）
+ * -----------------------------------------------------------------------------
+ * 旅客從公開商店頁送出的團體訂單，`tour_orders.source` 預設是 `VIBEAI_SHOP`；
+ * 只有確實從 LINE 帶出的連結（網址帶 `?src=line`）才記 `LINE`。
+ *
+ * 旅客端只能宣告 `channel: 'LINE' | 'SHOP'`（選填），伺服器端白名單驗證：
+ * 其他任何值（含 MANUAL／MIDAO／亂碼）一律回退成 `VIBEAI_SHOP`，不回 400
+ * ——來源只是歸因標籤，不值得讓旅客的訂位因此失敗。
+ */
+export const PUBLIC_ORDER_CHANNELS = ['LINE', 'SHOP'] as const;
+export type PublicOrderChannel = (typeof PUBLIC_ORDER_CHANNELS)[number];
+
+export type PublicOrderSource = 'LINE' | 'VIBEAI_SHOP';
+
+/** 伺服器端白名單：只有字面上等於 'LINE' 才記 LINE，其餘一律 VIBEAI_SHOP。 */
+export function resolvePublicOrderSource(channel: unknown): PublicOrderSource {
+  return channel === 'LINE' ? 'LINE' : 'VIBEAI_SHOP';
+}
+
+/** LINE 端產生公開連結時附帶的查詢參數。 */
+export const LINE_SOURCE_PARAM = 'src';
+export const LINE_SOURCE_VALUE = 'line';
+
+/** 在公開連結上補 `src=line`（已有查詢字串用 `&`，已帶 src 則不重複）。 */
+export function withLineSource(url: string): string {
+  if (new RegExp(`[?&]${LINE_SOURCE_PARAM}=`).test(url)) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}${LINE_SOURCE_PARAM}=${LINE_SOURCE_VALUE}`;
+}
+
+const STORAGE_KEY = 'vibeai:order-channel';
+
+/** 網址參數是否標示來自 LINE（大小寫不拘）。 */
+export function isLineSourceSearch(search: string): boolean {
+  return new URLSearchParams(search).get(LINE_SOURCE_PARAM)?.toLowerCase() === LINE_SOURCE_VALUE;
+}
+
+/** client：進入公開頁時呼叫；網址帶 src=line 就記在 sessionStorage，之後頁面跳轉仍保留。 */
+export function captureLineSource(): void {
+  try {
+    if (isLineSourceSearch(window.location.search)) window.sessionStorage.setItem(STORAGE_KEY, 'LINE');
+  } catch { /* storage 不可用時退回只看網址 */ }
+}
+
+/** client：送出表單時取得要帶給 API 的 channel。 */
+export function readOrderChannel(): PublicOrderChannel {
+  try {
+    if (isLineSourceSearch(window.location.search)) return 'LINE';
+    if (window.sessionStorage.getItem(STORAGE_KEY) === 'LINE') return 'LINE';
+  } catch { /* 同上 */ }
+  return 'SHOP';
+}

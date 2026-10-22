@@ -34,6 +34,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { loadPublicShop } from '@/server/public-shop';
+import { LineSourceCapture } from '@/components/public/LineSourceCapture';
 import { PublicContactActions } from '@/components/public/PublicContactActions';
 import { recordPromotionPageView } from '@/server/promotion-events';
 import { publicShopPage as t } from '@/i18n/zh-TW/pages/public-shop';
@@ -108,6 +109,7 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6">
+      <LineSourceCapture />
       <header className="flex flex-col gap-2">
         <h1 className="text-2xl font-semibold">{shop.name}</h1>
         {shop.description ? (
