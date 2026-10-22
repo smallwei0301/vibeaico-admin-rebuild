@@ -245,6 +245,21 @@ describe('OBSERVED_V1 grading enforces readiness consistency and the Run window'
     expect(() => scoreRunCurrent(run)).toThrow(/startedAt as an ISO UTC timestamp/);
   });
 
+  it.each(['2026-02-30T00:00:00Z', '2026-09-15T24:00:00Z', '2026-09-15T23:59:60Z'])(
+    'rejects a calendar-invalid v4 startedAt %j that Date.parse would normalize',
+    (startedAt) => {
+      const run = createRunLedgerV2('2026-09-15-impossible-start', startedAt, { closeoutOwner: 'PRODUCT_MAIN_SESSION' });
+      expect(validateRunLedgerV2(run)).toContain('deliveryTruthVersion=4 requires startedAt as an ISO UTC timestamp');
+    },
+  );
+
+  it('rejects a calendar-invalid final endedAt', () => {
+    const run = observedRun();
+    run.endedAt = '2026-09-31T01:00:00Z';
+    run.closeout.closedAt = run.endedAt;
+    expect(validateRunLedgerV2(run)).toContain('final v4 Run requires endedAt as an ISO UTC timestamp');
+  });
+
   it.each([
     'https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/460',
     'issue 460',

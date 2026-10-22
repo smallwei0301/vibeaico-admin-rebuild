@@ -46,7 +46,11 @@ function hasExactKeys(value, keys) {
 
 function isValidUtcTimestamp(value) {
   const text = String(value ?? "").trim();
-  return ISO_UTC.test(text) && !Number.isNaN(Date.parse(text));
+  if (!ISO_UTC.test(text)) return false;
+  const parsed = Date.parse(text);
+  // Date.parse normalizes impossible dates (2026-02-30 -> 2026-03-02); round-trip
+  // the calendar fields so a non-existent instant fails closed instead.
+  return !Number.isNaN(parsed) && new Date(parsed).toISOString().slice(0, 19) === text.slice(0, 19);
 }
 
 function isUsableEvidenceRef(value) {
