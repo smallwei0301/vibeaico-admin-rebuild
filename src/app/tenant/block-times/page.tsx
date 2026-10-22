@@ -16,7 +16,8 @@ import { useToast } from '@/components/ui/Toast';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { blockTimesPage as t } from '@/i18n/zh-TW/pages/block-times';
-import { formatDate, formatTime } from '@/lib/utils';
+import { formatDate, formatTime, zonedLocalToIso, zonedYmd } from '@/lib/utils';
+import { useTenantTimeZoneState } from '@/lib/use-tenant-time-zone';
 import {
   createBlockTime, deleteBlockTime, listBlockTimes, updateBlockTime,
   type BlockTimeItem, type BlockTimeWritePayload,
@@ -51,40 +52,37 @@ const emptyDraft = (): Draft => ({
   date: '', dayOfWeek: 1, fullDay: false, startTime: '10:00', endTime: '11:00',
 });
 
-const toDateStr = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-
+/** 純日期運算（UTC 算術，與瀏覽器時區無關）：YYYY-MM-DD 加 n 天。 */
 const addDays = (dateStr: string, n: number) => {
-  const d = new Date(`${dateStr}T00:00:00`);
-  d.setDate(d.getDate() + n);
-  return toDateStr(d);
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 };
 
-/** WEEKLY 建立/編輯時，把「星期幾」換算成今天以後最近一個符合的日期，做為 startAt 的首次發生日 */
-const nextDateForWeekday = (dayOfWeek: number) => {
-  const now = new Date();
-  const diff = (dayOfWeek - now.getDay() + 7) % 7;
-  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff);
-  return toDateStr(d);
+/** WEEKLY 建立/編輯時，把「星期幾」換算成店家時區今天以後最近一個符合的日期，做為 startAt 的首次發生日 */
+const nextDateForWeekday = (dayOfWeek: number, tz: string) => {
+  const today = zonedYmd(new Date().toISOString(), tz);
+  const [y, m, d] = today.split('-').map(Number);
+  const todayDow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return addDays(today, (dayOfWeek - todayDow + 7) % 7);
 };
 
-function itemToDraft(b: BlockTimeItem): Draft {
+function itemToDraft(b: BlockTimeItem, tz: string): Draft {
   return {
     id: b.id,
     staffId: b.staffId ?? '',
     title: b.title,
     reason: b.reason,
     recurrence: b.recurrence,
-    date: b.recurrence === 'SINGLE' ? toDateStr(new Date(b.startAt)) : '',
+    date: b.recurrence === 'SINGLE' ? zonedYmd(b.startAt, tz) : '',
     dayOfWeek: b.dayOfWeek ?? 0,
     fullDay: b.fullDay,
-    startTime: b.fullDay ? '00:00' : formatTime(b.startAt),
-    endTime: b.fullDay ? '23:30' : formatTime(b.endAt),
+    startTime: b.fullDay ? '00:00' : formatTime(b.startAt, tz),
+    endTime: b.fullDay ? '23:30' : formatTime(b.endAt, tz),
   };
 }
 
-function draftToPayload(d: Draft): BlockTimeWritePayload {
-  const anchorDate = d.recurrence === 'WEEKLY' ? nextDateForWeekday(d.dayOfWeek) : d.date;
+function draftToPayload(d: Draft, tz: string): BlockTimeWritePayload {
+  const anchorDate = d.recurrence === 'WEEKLY' ? nextDateForWeekday(d.dayOfWeek, tz) : d.date;
   const startDate = anchorDate;
   const endDate = d.fullDay ? addDays(anchorDate, 1) : anchorDate;
   const startTime = d.fullDay ? '00:00' : d.startTime;
@@ -96,13 +94,15 @@ function draftToPayload(d: Draft): BlockTimeWritePayload {
     recurrence: d.recurrence,
     dayOfWeek: d.recurrence === 'WEEKLY' ? d.dayOfWeek : null,
     fullDay: d.fullDay,
-    startAt: new Date(`${startDate}T${startTime}:00`).toISOString(),
-    endAt: new Date(`${endDate}T${endTime}:00`).toISOString(),
+    // #936：以店家時區解讀當地時間（不是瀏覽器時區），輸出仍為 UTC ISO
+    startAt: zonedLocalToIso(startDate, startTime, tz),
+    endAt: zonedLocalToIso(endDate, endTime, tz),
   };
 }
 
 export default function BlockTimesPage() {
   const toast = useToast();
+  const { timeZone: tz } = useTenantTimeZoneState();
   const [rows, setRows] = React.useState<BlockTimeItem[]>([]);
   const [staff, setStaff] = React.useState<Staff[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -158,11 +158,11 @@ export default function BlockTimesPage() {
       key: 'date', header: t.columns.date, width: '140px',
       render: (b) => (b.recurrence === 'WEEKLY'
         ? common.weekdays[b.dayOfWeek ?? 0]
-        : formatDate(b.startAt)),
+        : formatDate(b.startAt, tz)),
     },
     {
       key: 'time', header: t.columns.time, width: '140px',
-      render: (b) => (b.fullDay ? t.tags.fullDay : `${formatTime(b.startAt)} - ${formatTime(b.endAt)}`),
+      render: (b) => (b.fullDay ? t.tags.fullDay : `${formatTime(b.startAt, tz)} - ${formatTime(b.endAt, tz)}`),
     },
     {
       key: 'reason', header: t.columns.reason,
@@ -179,7 +179,7 @@ export default function BlockTimesPage() {
           <Button
             variant="outline" size="sm" aria-label={common.edit} disabled={b.auto}
             title={b.auto ? t.auto.hint : common.edit}
-            onClick={() => setEditing(itemToDraft(b))}
+            onClick={() => setEditing(itemToDraft(b, tz))}
           >
             <Pencil size={13} />
           </Button>
@@ -237,6 +237,7 @@ export default function BlockTimesPage() {
       <BlockTimeModal
         draft={editing}
         staff={staff}
+        tz={tz}
         onClose={() => setEditing(null)}
         onSaved={(isNew) => {
           setEditing(null);
@@ -278,14 +279,16 @@ export default function BlockTimesPage() {
 /* --------------------------------------------------------- 新增/編輯封鎖時段 */
 
 function BlockTimeModal({
-  draft, staff, onClose, onSaved,
+  draft, staff, tz, onClose, onSaved,
 }: {
   draft: Draft | null;
   staff: Staff[];
+  tz: string;
   onClose: () => void;
   onSaved: (isNew: boolean) => void;
 }) {
   const toast = useToast();
+  const { ready: tzReady, error: tzError, retry: tzRetry } = useTenantTimeZoneState();
   const [form, setForm] = React.useState<Draft>(emptyDraft);
   const [error, setError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
@@ -308,12 +311,13 @@ function BlockTimeModal({
   };
 
   const submit = async () => {
+    if (!tzReady) return;
     const err = validate();
     setError(err);
     if (err) return;
     setSaving(true);
     try {
-      const payload = draftToPayload(form);
+      const payload = draftToPayload(form, tz);
       if (form.id) await updateBlockTime(form.id, payload);
       else await createBlockTime(payload);
       onSaved(!form.id);
@@ -333,7 +337,7 @@ function BlockTimeModal({
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>{common.cancel}</Button>
-          <Button loading={saving} loadingText={common.saving} onClick={() => void submit()}>
+          <Button loading={saving} loadingText={common.saving} disabled={!tzReady} onClick={() => void submit()}>
             {common.save}
           </Button>
         </>
@@ -440,6 +444,12 @@ function BlockTimeModal({
       ) : null}
 
       <FormText>{t.intro.text}</FormText>
+      {tzError ? (
+        <div className="mb-4 flex items-center gap-3">
+          <FormError>{t.messages.timeZoneLoadFailed}</FormError>
+          <Button variant="outline" size="sm" onClick={tzRetry}>{common.retry}</Button>
+        </div>
+      ) : null}
       {error ? <FormError>{error}</FormError> : null}
     </Modal>
   );

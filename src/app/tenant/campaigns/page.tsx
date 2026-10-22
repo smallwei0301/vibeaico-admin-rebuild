@@ -546,6 +546,8 @@ function CampaignFormModal({
 }) {
   const toast = useToast();
   const { timeZone: tz, ready: tzReady, error: tzError, retry: tzRetry } = useTenantTimeZoneState();
+  const tzRef = React.useRef(tz);
+  tzRef.current = tz;
   const isEdit = !!campaign;
   /** 已發布的活動只能改名稱、描述、結束時間、備註與圖片 */
   const locked = !!campaign && campaign.status !== 'DRAFT';
@@ -584,8 +586,8 @@ function CampaignFormModal({
     setError('');
     setName(campaign?.name ?? '');
     setType((campaign?.type || 'NEW_CUSTOMER') as CampaignType);
-    setStartAt(campaign?.startAt ? toZonedDatetimeLocal(campaign.startAt, tz) : '');
-    setEndAt(campaign?.endAt ? toZonedDatetimeLocal(campaign.endAt, tz) : '');
+    setStartAt(campaign?.startAt ? toZonedDatetimeLocal(campaign.startAt, tzRef.current) : '');
+    setEndAt(campaign?.endAt ? toZonedDatetimeLocal(campaign.endAt, tzRef.current) : '');
     setDescription(campaign?.description ?? '');
     setImageUrl(campaign?.imageUrl ?? '');
     setUploading(false);
@@ -596,7 +598,15 @@ function CampaignFormModal({
     setThresholdAmount(campaign?.thresholdAmount ? String(campaign.thresholdAmount) : '');
     setRecallDays(campaign?.recallDays ? String(campaign.recallDays) : '');
     setIsAutoTrigger(campaign?.isAutoTrigger ?? false);
-  }, [open, campaign, tz]);
+  }, [open, campaign]);
+
+  // 店家時區載入完成／切換時只重算起迄時間，不重設使用者已輸入的其他欄位
+  React.useEffect(() => {
+    if (!open) return;
+    setStartAt(campaign?.startAt ? toZonedDatetimeLocal(campaign.startAt, tz) : '');
+    setEndAt(campaign?.endAt ? toZonedDatetimeLocal(campaign.endAt, tz) : '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tz]);
 
   const pickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.target;

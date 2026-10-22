@@ -406,6 +406,8 @@ function PushFormModal({
 }) {
   const toast = useToast();
   const { timeZone: tz, ready: tzReady, error: tzError, retry: tzRetry } = useTenantTimeZoneState();
+  const tzRef = React.useRef(tz);
+  tzRef.current = tz;
   const isEdit = !!push;
   const canUploadImage = canManageMarketing(useCurrentTenant().role);
 
@@ -439,9 +441,16 @@ function PushFormModal({
     setUploading(false);
     setImageError('');
     setImageUrl(push?.imageUrl ?? '');
-    setScheduledAt(push?.scheduledAt ? toZonedDatetimeLocal(push.scheduledAt, tz) : '');
+    setScheduledAt(push?.scheduledAt ? toZonedDatetimeLocal(push.scheduledAt, tzRef.current) : '');
     setNote(push?.note ?? '');
-  }, [open, push, tz]);
+  }, [open, push]);
+
+  // 店家時區載入完成／切換時只重算排程時間，不重設使用者已輸入的其他欄位
+  React.useEffect(() => {
+    if (!open) return;
+    setScheduledAt(push?.scheduledAt ? toZonedDatetimeLocal(push.scheduledAt, tz) : '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tz]);
 
   const pickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.target;

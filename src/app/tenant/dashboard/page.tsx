@@ -405,20 +405,27 @@ export default function DashboardPage() {
 
   // #936：「今日」依店家時區界定；時區載入完成後重新查詢
   React.useEffect(() => {
+    // tz／模式變動時舊請求作廢，避免慢回應覆蓋新時區的結果
+    let isLatest = true;
     void (async () => {
       try {
         const today = tenantDateString(new Date(), tz);
         if (todayTable === 'TOUR_DEPARTURES') {
           // #1085：今日出發團次的非取消團體訂單，口徑與統計卡相同（server 端排序、排除取消）
           const res = await listTodayTourDepartureOrders(today);
+          if (!isLatest) return;
           setTodayTourRows(res.content);
           setTodayTourTotal(res.totalElements);
         } else {
           const res = await listBookings({ page: 0, size: 100, ...tenantDayRange(new Date(), tz) });
+          if (!isLatest) return;
           setTodayRows(res.content.filter((b) => tenantDateString(new Date(b.startAt), tz) === today));
         }
-      } catch (e) { fail(t.errors.todayBookings, e); } finally { setLoadingToday(false); }
+      } catch (e) {
+        if (isLatest) fail(t.errors.todayBookings, e);
+      } finally { if (isLatest) setLoadingToday(false); }
     })();
+    return () => { isLatest = false; };
   }, [fail, todayTable, tz]);
 
   const reloadActionInbox = React.useCallback(() => {

@@ -78,6 +78,7 @@ export const blockTimesPage = {
   },
 
   messages: {
+    timeZoneLoadFailed: '無法載入店家時區，暫時不能儲存，請重試',
     created: '封鎖時段已新增',
     updated: '封鎖時段已更新',
     deleted: '已刪除',

@@ -21,6 +21,7 @@ import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { featureStorePage as t } from '@/i18n/zh-TW/pages/feature-store';
 import { formatDate, formatNumber } from '@/lib/utils';
+import { useTenantTimeZone } from '@/lib/use-tenant-time-zone';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
@@ -59,6 +60,7 @@ type PendingKind = 'cancel' | 'restore';
 
 export default function FeatureStorePage() {
   const toast = useToast();
+  const tz = useTenantTimeZone();
 
   const [subs, setSubs] = React.useState<FeatureSubscription[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -270,7 +272,7 @@ export default function FeatureStorePage() {
             )}
             {active && sub?.expiresAt && left !== null ? (
               <span className="text-xs text-secondary tabular-nums">
-                {t.card.expiry(formatDate(sub.expiresAt), left)}
+                {t.card.expiry(formatDate(sub.expiresAt, tz), left)}
               </span>
             ) : null}
           </div>

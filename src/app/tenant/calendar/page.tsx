@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Card, CardBody } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmModal, Modal } from '@/components/ui/Modal';
-import { FormGroup, FormText, Label, Select, Textarea } from '@/components/ui/Form';
+import { FormError, FormGroup, FormText, Label, Select, Textarea } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
   cancelBooking, completeBooking, confirmBooking, createBlockTime, deleteBlockTime,
@@ -22,7 +22,7 @@ import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { calendarPage as t } from '@/i18n/zh-TW/pages/calendar';
 import { formatCurrency, formatDate, formatTime, zonedLocalToIso, zonedYmd } from '@/lib/utils';
-import { useTenantTimeZone } from '@/lib/use-tenant-time-zone';
+import { useTenantTimeZoneState } from '@/lib/use-tenant-time-zone';
 import type { Booking, BookingStatus, Staff } from '@/lib/types';
 
 /* -------------------------------------------------------------------------- */
@@ -122,7 +122,7 @@ const toExternalEvent = (e: CalendarExternalItem, tz: string): ExternalEvent => 
 
 export default function CalendarPage() {
   const toast = useToast();
-  const tz = useTenantTimeZone();
+  const { timeZone: tz, ready: tzReady, error: tzError, retry: tzRetry } = useTenantTimeZoneState();
 
   /** 只在瀏覽器端決定「今天」，避免 SSR/CSR 產生不同輸出 */
   const [anchor, setAnchor] = React.useState<Date | null>(null);
@@ -236,7 +236,8 @@ export default function CalendarPage() {
 
   /** 臨時封鎖：hour = null 封整天，否則封該小時起 1 小時。成功後以回傳 id 更新本地 state。 */
   const createBlock = async (date: string, hour: number | null) => {
-    // #936：封鎖時段以店家時區解讀（不是瀏覽器時區）
+    // #936：封鎖時段以店家時區解讀（不是瀏覽器時區）；時區未就緒不得送出
+    if (!tzReady) return;
     const start = zonedLocalToIso(date, hour !== null ? `${String(hour).padStart(2, '0')}:00` : '00:00', tz);
     const [y, m, d] = date.split('-').map(Number);
     const nextDate = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
@@ -728,6 +729,7 @@ export default function CalendarPage() {
               <div>
                 <Button
                   block
+                  disabled={!tzReady}
                   onClick={() => void createBlock(blockTarget.date, blockTarget.hour ?? 0)}
                 >
                   <Ban size={15} />{t.block.blockSlot}
@@ -739,6 +741,7 @@ export default function CalendarPage() {
               <Button
                 block
                 variant="outline"
+                disabled={!tzReady}
                 onClick={() => void createBlock(blockTarget.date, null)}
               >
                 <Ban size={15} />{t.block.blockDay}
@@ -746,6 +749,12 @@ export default function CalendarPage() {
               <FormText>{t.block.blockDayHint}</FormText>
             </div>
             <FormText>{t.block.namePlaceholder}</FormText>
+            {tzError ? (
+              <div className="flex items-center gap-3">
+                <FormError>{t.messages.timeZoneLoadFailed}</FormError>
+                <Button variant="outline" size="sm" onClick={tzRetry}>{common.retry}</Button>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </Modal>

@@ -23,6 +23,7 @@ import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { recurringBookingsPage as t } from '@/i18n/zh-TW/pages/recurring-bookings';
 import { formatDate } from '@/lib/utils';
+import { useTenantTimeZone } from '@/lib/use-tenant-time-zone';
 import type { Customer, Service, Staff } from '@/lib/types';
 
 /* -------------------------------------------------------------------------- */
@@ -162,6 +163,7 @@ const apiToRow = (r: RecurringBookingItem): RecurringBooking => {
 
 export default function RecurringBookingsPage() {
   const toast = useToast();
+  const tz = useTenantTimeZone();
   const [rows, setRows] = React.useState<RecurringBooking[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -226,7 +228,7 @@ export default function RecurringBookingsPage() {
     },
     {
       key: 'lastGenerated', header: t.columns.lastGenerated, width: '120px',
-      render: (r) => (r.lastGeneratedAt ? formatDate(r.lastGeneratedAt) : common.none),
+      render: (r) => (r.lastGeneratedAt ? formatDate(r.lastGeneratedAt, tz) : common.none),
     },
     {
       key: 'actions', header: t.columns.actions, width: '150px',

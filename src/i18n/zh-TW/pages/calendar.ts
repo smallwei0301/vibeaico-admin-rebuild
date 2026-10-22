@@ -106,6 +106,7 @@ export const calendarPage = {
   },
 
   messages: {
+    timeZoneLoadFailed: '無法載入店家時區，暫時不能建立封鎖，請重試',
     confirmed: '預約已確認',
     completed: '預約已完成',
     cancelled: '預約已取消',

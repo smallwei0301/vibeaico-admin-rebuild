@@ -28,7 +28,10 @@ import { listFeatures } from '@/services/settings';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { couponsPage as t } from '@/i18n/zh-TW/pages/coupons';
-import { formatCurrency, formatDate, formatNumber } from '@/lib/utils';
+import {
+  formatCurrency, formatDate, formatNumber, toZonedDatetimeLocal, zonedDatetimeLocalToIso,
+} from '@/lib/utils';
+import { useTenantTimeZoneState } from '@/lib/use-tenant-time-zone';
 import type { Coupon, Customer } from '@/lib/types';
 
 /* -------------------------------------------------------------------------- */
@@ -115,6 +118,7 @@ type StatusAction =
 
 export default function CouponsPage() {
   const toast = useToast();
+  const { timeZone: tz } = useTenantTimeZoneState();
 
   const [rows, setRows] = React.useState<CouponRow[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -245,7 +249,7 @@ export default function CouponsPage() {
     {
       key: 'validPeriod', header: t.columns.validPeriod, width: '190px',
       render: (c) => (c.endAt
-        ? `${formatDate(c.startAt)} - ${formatDate(c.endAt)}`
+        ? `${formatDate(c.startAt, tz)} - ${formatDate(c.endAt, tz)}`
         : <span className="text-muted">{t.labels.noExpiry}</span>),
     },
     {
@@ -563,6 +567,7 @@ function CouponFormModal({
   onSaved: (draft: CouponRow, isEdit: boolean, newId?: string) => void;
 }) {
   const toast = useToast();
+  const { timeZone: tz, ready: tzReady, error: tzError, retry: tzRetry } = useTenantTimeZoneState();
   const isEdit = !!coupon;
   const locked = coupon?.displayStatus === 'PUBLISHED';
 
@@ -584,13 +589,14 @@ function CouponFormModal({
     if (draft.type === 'DISCOUNT_AMOUNT' && !(draft.discountValue > 0)) {
       list.push(t.form.discountAmountInvalid);
     }
-    if (draft.startAt && draft.endAt && draft.endAt <= draft.startAt) {
+    if (draft.startAt && draft.endAt && Date.parse(draft.endAt) <= Date.parse(draft.startAt)) {
       list.push(t.form.endBeforeStart);
     }
     return list;
   };
 
   const submit = async () => {
+    if (!tzReady) return;
     const list = validate();
     setErrors(list);
     if (list.length) { toast.show(t.messages.checkFields, 'warning'); return; }
@@ -637,7 +643,7 @@ function CouponFormModal({
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>{common.cancel}</Button>
-          <Button loading={saving} loadingText={common.saving} onClick={() => void submit()}>
+          <Button loading={saving} loadingText={common.saving} disabled={!tzReady} onClick={() => void submit()}>
             {common.save}
           </Button>
         </>
@@ -646,6 +652,13 @@ function CouponFormModal({
       {locked ? <Alert tone="info" className="mb-4">{t.form.publishedNotice}</Alert> : null}
 
       <p className="form-text mb-4">{common.requiredHint}</p>
+
+      {tzError ? (
+        <div className="mb-4 flex items-center gap-3">
+          <FormError>{t.messages.timeZoneLoadFailed}</FormError>
+          <Button variant="outline" size="sm" onClick={tzRetry}>{common.retry}</Button>
+        </div>
+      ) : null}
 
       <div className="grid gap-x-4 md:grid-cols-2">
         <FormGroup>
@@ -742,8 +755,8 @@ function CouponFormModal({
         <FormGroup>
           <Label htmlFor="couponValidStartAt">{t.form.validStartAt}</Label>
           <Input
-            id="couponValidStartAt" type="datetime-local" value={draft.startAt.slice(0, 16)}
-            onChange={(e) => patch({ startAt: e.target.value })}
+            id="couponValidStartAt" type="datetime-local" value={draft.startAt ? toZonedDatetimeLocal(draft.startAt, tz) : ''}
+            onChange={(e) => patch({ startAt: e.target.value ? zonedDatetimeLocalToIso(e.target.value, tz) : '' })}
           />
           <FormText>{t.form.validStartAtHelp}</FormText>
         </FormGroup>
@@ -751,10 +764,10 @@ function CouponFormModal({
         <FormGroup>
           <Label htmlFor="couponValidEndAt">{t.form.validEndAt}</Label>
           <Input
-            id="couponValidEndAt" type="datetime-local" value={draft.endAt.slice(0, 16)}
-            onChange={(e) => patch({ endAt: e.target.value })}
+            id="couponValidEndAt" type="datetime-local" value={draft.endAt ? toZonedDatetimeLocal(draft.endAt, tz) : ''}
+            onChange={(e) => patch({ endAt: e.target.value ? zonedDatetimeLocalToIso(e.target.value, tz) : '' })}
           />
-          {draft.startAt && draft.endAt && draft.endAt <= draft.startAt ? (
+          {draft.startAt && draft.endAt && Date.parse(draft.endAt) <= Date.parse(draft.startAt) ? (
             <FormError>{t.form.validEndAtError}</FormError>
           ) : (
             <FormText>{t.form.validEndAtHelp}</FormText>
@@ -1255,6 +1268,7 @@ function CouponDetailModal({
   coupon: CouponRow | null;
   onClose: () => void;
 }) {
+  const tz = useTenantTimeZoneState().timeZone;
   const [loading, setLoading] = React.useState(false);
 
   React.useEffect(() => {
@@ -1322,7 +1336,7 @@ function CouponDetailModal({
           <div>
             <strong>{t.columns.validPeriod}</strong>
             {coupon.endAt
-              ? `${formatDate(coupon.startAt)} - ${formatDate(coupon.endAt)}`
+              ? `${formatDate(coupon.startAt, tz)} - ${formatDate(coupon.endAt, tz)}`
               : t.labels.noExpiry}
           </div>
 
