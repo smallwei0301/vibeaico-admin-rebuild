@@ -149,6 +149,7 @@ export const marketingPage = {
     cancelled: '推播已取消',
     sending: '推播已開始發送',
     saveFailedPrefix: '儲存失敗: ',
+    timeZoneLoadFailed: '無法載入店家時區，暫時不能儲存，請重試',
     saveFailedRetry: '儲存失敗，請稍後再試',
     savePushFailed: '儲存推播失敗:',
     deleteFailed: '刪除失敗',

@@ -34,6 +34,7 @@ import { nav } from '@/i18n/zh-TW/nav';
 import { customersPage as t } from '@/i18n/zh-TW/pages/customers';
 import { travelerRiskPage as trp } from '@/i18n/zh-TW/pages/traveler-risk';
 import { formatCurrency, formatDate, formatDateTime, formatNumber } from '@/lib/utils';
+import { useTenantTimeZone } from '@/lib/use-tenant-time-zone';
 import type {
   Customer, Gender, MembershipLevel,
   TravelerRiskDepositMode, TravelerRiskPolicy, TravelerRiskPolicyDetail, TravelerRiskPolicyKind,
@@ -65,6 +66,7 @@ const toNumber = (v: string): number | undefined => (v.trim() === '' ? undefined
 
 export default function CustomersPage() {
   const toast = useToast();
+  const tz = useTenantTimeZone();
   const businessType = useBusinessType();
   const { role } = useCurrentTenant();
 
@@ -189,7 +191,7 @@ export default function CustomersPage() {
             </div>
           ) : null}
           <div className="text-2xs text-secondary">
-            {c.lastVisitAt ? t.labels.lastVisit(formatDate(c.lastVisitAt)) : t.labels.neverVisited}
+            {c.lastVisitAt ? t.labels.lastVisit(formatDate(c.lastVisitAt, tz)) : t.labels.neverVisited}
           </div>
         </div>
       ),
@@ -820,6 +822,7 @@ function formatDeposit(deposit: TravelerRiskPolicy['deposit']): string {
 }
 
 function TravelerRiskPolicyCard({ policy }: { policy: TravelerRiskPolicy }) {
+  const tz = useTenantTimeZone();
   return (
     <div className="rounded-md border border-neutral-250 p-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -828,7 +831,7 @@ function TravelerRiskPolicyCard({ policy }: { policy: TravelerRiskPolicy }) {
       </div>
       <div className="mt-1.5 text-sm text-dark">{trp.reasonPrefix}{policy.reason}</div>
       <div className="mt-1 text-xs text-secondary">
-        {trp.appliedBy(policy.actorLabel, formatDateTime(policy.createdAt))}
+        {trp.appliedBy(policy.actorLabel, formatDateTime(policy.createdAt, tz))}
       </div>
     </div>
   );

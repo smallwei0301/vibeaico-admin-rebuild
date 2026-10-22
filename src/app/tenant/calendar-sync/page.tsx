@@ -17,6 +17,7 @@ import { calendarSyncPage as t } from '@/i18n/zh-TW/pages/calendar-sync';
 import { APP_URL, USE_MOCK } from '@/config/env';
 import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { formatDateTime } from '@/lib/utils';
+import { useTenantTimeZone } from '@/lib/use-tenant-time-zone';
 import {
   listExternalCalendars, createExternalCalendar, deleteExternalCalendar,
   type ExternalCalendarSubscription,
@@ -38,6 +39,7 @@ const LAST_SYNC_AT = '2026-08-20T09:15:00+08:00';
 /* -------------------------------------------------------------------------- */
 
 export default function CalendarSyncPage() {
+  const tz = useTenantTimeZone();
   const toast = useToast();
 
   const [icsToken, setIcsToken] = React.useState(INITIAL_ICS_TOKEN);
@@ -131,7 +133,7 @@ export default function CalendarSyncPage() {
               </Button>
               <span className="text-xs text-secondary">
                 {t.subscribe.lastSync}：
-                {lastSyncAt ? formatDateTime(lastSyncAt) : t.subscribe.neverSynced}
+                {lastSyncAt ? formatDateTime(lastSyncAt, tz) : t.subscribe.neverSynced}
               </span>
             </div>
             </>
@@ -214,7 +216,7 @@ export default function CalendarSyncPage() {
                       {c.lastSyncStatus === 'ERROR' ? (
                         <Badge tone="danger">{t.external.syncStatus.error(c.lastSyncError ?? '')}</Badge>
                       ) : c.lastSyncStatus === 'OK' && c.lastSyncedAt ? (
-                        <Badge tone="success">{t.external.syncStatus.ok(formatDateTime(c.lastSyncedAt))}</Badge>
+                        <Badge tone="success">{t.external.syncStatus.ok(formatDateTime(c.lastSyncedAt, tz))}</Badge>
                       ) : (
                         <Badge tone="neutral">{t.external.syncStatus.neverSynced}</Badge>
                       )}

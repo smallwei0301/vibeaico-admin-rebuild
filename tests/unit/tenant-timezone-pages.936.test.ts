@@ -1,0 +1,74 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import {
+  formatDate, formatDateTime, formatTime, toZonedDatetimeLocal, zonedDatetimeLocalToIso,
+} from '@/lib/utils';
+
+const read = (rel: string) => readFileSync(resolve(__dirname, '../../src/app/tenant', rel), 'utf8');
+
+// 2026-10-13T17:30:00Z：台北 10/14 01:30、洛杉磯 10/13 10:30
+const ISO = '2026-10-13T17:30:00Z';
+
+describe('#936 非台北瀏覽器時區下，共用格式化仍輸出店家時區', () => {
+  const prevTz = process.env.TZ;
+  beforeAll(() => { process.env.TZ = 'America/Los_Angeles'; });
+  afterAll(() => {
+    if (prevTz === undefined) delete process.env.TZ; else process.env.TZ = prevTz;
+  });
+
+  it('瀏覽器為洛杉磯時，不帶 tz 為洛杉磯、帶店家 tz 為台北', () => {
+    expect(formatDateTime(ISO)).toBe('2026/10/13 10:30');
+    expect(formatDateTime(ISO, 'Asia/Taipei')).toBe('2026/10/14 01:30');
+    expect(formatDate(ISO, 'Asia/Taipei')).toBe('2026/10/14');
+    expect(formatTime(ISO, 'Asia/Taipei')).toBe('01:30');
+  });
+
+  it('datetime-local 預填與送出以店家時區互逆，與瀏覽器時區無關', () => {
+    expect(toZonedDatetimeLocal(ISO, 'Asia/Taipei')).toBe('2026-10-14T01:30');
+    expect(toZonedDatetimeLocal(ISO, 'America/Los_Angeles')).toBe('2026-10-13T10:30');
+    expect(zonedDatetimeLocalToIso('2026-10-14T01:30', 'Asia/Taipei')).toBe('2026-10-13T17:30:00.000Z');
+    expect(zonedDatetimeLocalToIso(toZonedDatetimeLocal(ISO, 'Asia/Tokyo'), 'Asia/Tokyo')).toBe('2026-10-13T17:30:00.000Z');
+  });
+});
+
+describe('#936 各頁已改用店家時區機制（原始碼斷言）', () => {
+  const pages = [
+    'dashboard', 'calendar', 'customers', 'product-orders', 'campaigns', 'marketing',
+    'settings/impersonation-log', 'referrals', 'donate', 'points', 'inventory', 'calendar-sync', 'chat',
+  ];
+
+  it.each(pages)('%s 使用 useTenantTimeZone，且不再有未帶時區的格式化呼叫', (page) => {
+    const src = read(`${page}/page.tsx`);
+    expect(src).toMatch(/useTenantTimeZone(State)?\(\)/);
+    expect(src).not.toMatch(/\bformat(Date|Time|DateTime)\(\s*[^(),]+(\([^()]*\))?\s*\)/);
+    expect(src).not.toMatch(/\.toLocale(Date|Time)?String\(\s*'zh-TW'.*hour12/);
+  });
+
+  it('impersonation-log 不再直接呼叫 toLocaleString', () => {
+    expect(read('settings/impersonation-log/page.tsx')).not.toContain('toLocaleString');
+  });
+
+  it('campaigns／marketing 的 datetime-local 以店家時區換算，且未就緒不得送出', () => {
+    for (const page of ['campaigns', 'marketing']) {
+      const src = read(`${page}/page.tsx`);
+      expect(src).toContain('zonedDatetimeLocalToIso');
+      expect(src).toContain('toZonedDatetimeLocal');
+      expect(src).toContain('!tzReady');
+      expect(src).not.toMatch(/\.slice\(0, 16\)/);
+    }
+  });
+
+  it('calendar 以店家時區分組、換算時段與建立封鎖', () => {
+    const src = read('calendar/page.tsx');
+    expect(src).toContain('zonedYmd(b.startAt, tz)');
+    expect(src).toContain('zonedLocalToIso(');
+    expect(src).not.toMatch(/new Date\(b\.startAt\)\.getHours/);
+  });
+
+  it('dashboard 的「今日」依店家時區界定', () => {
+    const src = read('dashboard/page.tsx');
+    expect(src).toContain('tenantDayRange(new Date(), tz)');
+    expect(src).toContain('tenantDateString(new Date(), tz)');
+  });
+});

@@ -29,6 +29,7 @@ import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { productOrdersPage as t } from '@/i18n/zh-TW/pages/product-orders';
 import { formatCurrency, formatDateTime, formatNumber } from '@/lib/utils';
+import { useTenantTimeZone } from '@/lib/use-tenant-time-zone';
 import type { Booking, Customer, Product, ProductOrder, ProductOrderStatus, Staff } from '@/lib/types';
 
 /* -------------------------------------------------------------------------- */
@@ -136,6 +137,7 @@ type PendingAction =
   | { kind: 'CANCEL'; order: OrderRow };
 
 export default function ProductOrdersPage() {
+  const tz = useTenantTimeZone();
   const toast = useToast();
 
   const [rows, setRows] = React.useState<OrderRow[]>([]);
@@ -234,7 +236,7 @@ export default function ProductOrdersPage() {
             <div className="text-2xs text-secondary">{t.labels.fromBooking}</div>
           ) : null}
           {o.payDueAt ? (
-            <div className="text-2xs text-danger">{t.labels.payDue(formatDateTime(o.payDueAt))}</div>
+            <div className="text-2xs text-danger">{t.labels.payDue(formatDateTime(o.payDueAt, tz))}</div>
           ) : null}
         </div>
       ),
@@ -287,7 +289,7 @@ export default function ProductOrdersPage() {
     },
     {
       key: 'createdAt', header: t.columns.createdAt, width: '150px',
-      render: (o) => formatDateTime(o.createdAt),
+      render: (o) => formatDateTime(o.createdAt, tz),
     },
     {
       key: 'actions', header: t.columns.actions, width: '210px',
@@ -510,6 +512,7 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
 }
 
 function OrderDetailModal({ order, onClose }: { order: OrderRow | null; onClose: () => void }) {
+  const tz = useTenantTimeZone();
   const [loading, setLoading] = React.useState(false);
 
   React.useEffect(() => {
@@ -603,16 +606,16 @@ function OrderDetailModal({ order, onClose }: { order: OrderRow | null; onClose:
             <DetailRow label={f.note}>
               {order.note || <span className="text-muted">{t.labels.none}</span>}
             </DetailRow>
-            <DetailRow label={t.columns.createdAt}>{formatDateTime(order.createdAt)}</DetailRow>
+            <DetailRow label={t.columns.createdAt}>{formatDateTime(order.createdAt, tz)}</DetailRow>
             {order.completedAt ? (
-              <DetailRow label={f.completedPickup}>{formatDateTime(order.completedAt)}</DetailRow>
+              <DetailRow label={f.completedPickup}>{formatDateTime(order.completedAt, tz)}</DetailRow>
             ) : null}
             {order.cancelledAt ? (
               <>
                 <DetailRow label={f.cancelReason}>
                   {order.cancelReason || <span className="text-muted">{t.labels.none}</span>}
                 </DetailRow>
-                <DetailRow label={f.cancelledAt}>{formatDateTime(order.cancelledAt)}</DetailRow>
+                <DetailRow label={f.cancelledAt}>{formatDateTime(order.cancelledAt, tz)}</DetailRow>
               </>
             ) : null}
           </dl>

@@ -76,7 +76,7 @@ describe.each(Object.entries(pages))('%s 頁面圖片上傳接線', (_name, src)
   it('不再只記檔名（無假成功），上傳中禁止儲存，input 可重選同檔', () => {
     expect(src).not.toContain('setImageName');
     expect(src).not.toContain('imageName');
-    expect(src).toMatch(/disabled=\{uploading\} onClick=\{\(\) => void submit\(\)\}/);
+    expect(src).toMatch(/disabled=\{uploading \|\| !tzReady\} onClick=\{\(\) => void submit\(\)\}/);
     expect(src).toContain("input.value = '';");
   });
 });

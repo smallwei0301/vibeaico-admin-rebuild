@@ -21,7 +21,8 @@ import { listStaff } from '@/services/catalog';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { calendarPage as t } from '@/i18n/zh-TW/pages/calendar';
-import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
+import { formatCurrency, formatDate, formatTime, zonedLocalToIso, zonedYmd } from '@/lib/utils';
+import { useTenantTimeZone } from '@/lib/use-tenant-time-zone';
 import type { Booking, BookingStatus, Staff } from '@/lib/types';
 
 /* -------------------------------------------------------------------------- */
@@ -88,36 +89,32 @@ const startOfWeek = (d: Date) => addDays(d, -d.getDay());
 
 const startOfMonthGrid = (d: Date) => startOfWeek(new Date(d.getFullYear(), d.getMonth(), 1));
 
-const hm = (d: Date) =>
-  `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-
 /* --------------------------------------------- API 事件 → 本頁顯示形狀的映射 */
 
 /**
  * /api/calendar 的 BLOCK 事件沒有「每週重複」「自動休息」概念（那是本頁 mock
  * 專屬的展示欄位），一律映成 weekly/auto = false；跨 24 小時視為整天封鎖。
  */
-const toCalendarBlock = (b: BlockTimeItem): CalendarBlock => {
+const toCalendarBlock = (b: BlockTimeItem, tz: string): CalendarBlock => {
   const start = new Date(b.startAt);
   const end = new Date(b.endAt);
   const fullDay = end.getTime() - start.getTime() >= 24 * 60 * 60 * 1000;
   return {
     id: b.id,
     title: b.reason || t.block.quickTitle,
-    date: dateKey(start),
-    startTime: fullDay ? '' : hm(start),
-    endTime: fullDay ? '' : hm(end),
+    date: zonedYmd(b.startAt, tz),
+    startTime: fullDay ? '' : formatTime(b.startAt, tz),
+    endTime: fullDay ? '' : formatTime(b.endAt, tz),
     fullDay,
     weekly: false,
     auto: false,
   };
 };
 
-const toExternalEvent = (e: CalendarExternalItem): ExternalEvent => {
-  const start = new Date(e.start);
+const toExternalEvent = (e: CalendarExternalItem, tz: string): ExternalEvent => {
   return {
-    id: e.id, title: e.title, date: dateKey(start),
-    startTime: hm(start), endTime: hm(new Date(e.end)),
+    id: e.id, title: e.title, date: zonedYmd(e.start, tz),
+    startTime: formatTime(e.start, tz), endTime: formatTime(e.end, tz),
   };
 };
 
@@ -125,6 +122,7 @@ const toExternalEvent = (e: CalendarExternalItem): ExternalEvent => {
 
 export default function CalendarPage() {
   const toast = useToast();
+  const tz = useTenantTimeZone();
 
   /** 只在瀏覽器端決定「今天」，避免 SSR/CSR 產生不同輸出 */
   const [anchor, setAnchor] = React.useState<Date | null>(null);
@@ -149,10 +147,12 @@ export default function CalendarPage() {
   const [blockDeleting, setBlockDeleting] = React.useState<CalendarBlock | null>(null);
 
   React.useEffect(() => {
-    const now = new Date();
-    setAnchor(now);
-    setToday(dateKey(now));
-  }, []);
+    // #936：「今天」是店家時區的當地日期；anchor 用同一日曆日期的本地 Date 做格線運算
+    const ymd = zonedYmd(new Date().toISOString(), tz);
+    const [y, m, d] = ymd.split('-').map(Number);
+    setAnchor(new Date(y, m - 1, d));
+    setToday(ymd);
+  }, [tz]);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -166,14 +166,14 @@ export default function CalendarPage() {
       );
       setBookings(data.bookings);
       // null = mock 模式：封鎖／外部事件沿用本頁假資料 state（含每週重複、自動休息）
-      if (data.blocks) setBlocks(data.blocks.map(toCalendarBlock));
-      if (data.externals) setExternals(data.externals.map(toExternalEvent));
+      if (data.blocks) setBlocks(data.blocks.map((b) => toCalendarBlock(b, tz)));
+      if (data.externals) setExternals(data.externals.map((e) => toExternalEvent(e, tz)));
     } catch {
       toast.show(`${t.messages.loadFailed}${t.messages.unknownError}`, 'danger');
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, tz]);
 
   React.useEffect(() => { void load(); }, [load]);
 
@@ -192,12 +192,12 @@ export default function CalendarPage() {
   const bookingsByDate = React.useMemo(() => {
     const map = new Map<string, Booking[]>();
     visibleBookings.forEach((b) => {
-      const key = dateKey(new Date(b.startAt));
+      const key = zonedYmd(b.startAt, tz);
       map.set(key, [...(map.get(key) ?? []), b]);
     });
     map.forEach((list) => list.sort((a, b) => a.startAt.localeCompare(b.startAt)));
     return map;
-  }, [visibleBookings]);
+  }, [visibleBookings, tz]);
 
   const shift = (delta: number) => {
     if (!anchor) return;
@@ -216,7 +216,7 @@ export default function CalendarPage() {
     ? ''
     : view === 'month'
       ? t.view.monthLabel(anchor.getFullYear(), anchor.getMonth() + 1)
-      : t.view.weekLabel(formatDate(weekDays[0].toISOString()), formatDate(weekDays[6].toISOString()));
+      : t.view.weekLabel(dateKey(weekDays[0]).replaceAll('-', '/'), dateKey(weekDays[6]).replaceAll('-', '/'));
 
   const blocksOn = (key: string) => blocks.filter((b) => b.date === key);
   const externalsOn = (key: string) => externals.filter((e) => e.date === key);
@@ -236,13 +236,16 @@ export default function CalendarPage() {
 
   /** 臨時封鎖：hour = null 封整天，否則封該小時起 1 小時。成功後以回傳 id 更新本地 state。 */
   const createBlock = async (date: string, hour: number | null) => {
-    const start = hour !== null
-      ? new Date(`${date}T${String(hour).padStart(2, '0')}:00:00`)
-      : new Date(`${date}T00:00:00`);
-    const end = new Date(start.getTime() + (hour !== null ? 1 : 24) * 60 * 60_000);
+    // #936：封鎖時段以店家時區解讀（不是瀏覽器時區）
+    const start = zonedLocalToIso(date, hour !== null ? `${String(hour).padStart(2, '0')}:00` : '00:00', tz);
+    const [y, m, d] = date.split('-').map(Number);
+    const nextDate = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+    const end = hour !== null
+      ? new Date(new Date(start).getTime() + 60 * 60_000).toISOString()
+      : zonedLocalToIso(nextDate, '00:00', tz);
     try {
       const res = await createBlockTime({
-        startAt: start.toISOString(), endAt: end.toISOString(), reason: t.block.quickTitle,
+        startAt: start, endAt: end, reason: t.block.quickTitle,
       });
       setBlocks((s) => [...s, {
         id: res.id,
@@ -302,7 +305,7 @@ export default function CalendarPage() {
           className={`w-full truncate rounded-sm px-1 py-0.5 text-left text-2xs ${STATUS_CLASS[b.status]}`}
           onClick={(ev) => { ev.stopPropagation(); setDetail(b); }}
         >
-          {formatTime(b.startAt)} {b.customerName}
+          {formatTime(b.startAt, tz)} {b.customerName}
           {compact ? '' : ` · ${b.serviceName}`}
         </button>
       ))}
@@ -342,7 +345,7 @@ export default function CalendarPage() {
             <Button size="sm" variant="outline" aria-label={t.view.prev} onClick={() => shift(-1)}>
               <ChevronLeft size={14} />
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setAnchor(new Date())}>
+            <Button size="sm" variant="outline" onClick={() => { const [y, m, d] = zonedYmd(new Date().toISOString(), tz).split('-').map(Number); setAnchor(new Date(y, m - 1, d)); }}>
               {t.view.today}
             </Button>
             <Button size="sm" variant="outline" aria-label={t.view.next} onClick={() => shift(1)}>
@@ -411,7 +414,7 @@ export default function CalendarPage() {
                               className={`w-full truncate rounded-sm px-1 py-0.5 text-left text-2xs ${STATUS_CLASS[b.status]}`}
                               onClick={() => setDetail(b)}
                             >
-                              {formatTime(b.startAt)} {b.customerName}
+                              {formatTime(b.startAt, tz)} {b.customerName}
                             </button>
                           ))}
                         </div>
@@ -484,7 +487,7 @@ export default function CalendarPage() {
                     {weekDays.map((d) => {
                       const key = dateKey(d);
                       const items = (bookingsByDate.get(key) ?? [])
-                        .filter((b) => new Date(b.startAt).getHours() === h);
+                        .filter((b) => Number(formatTime(b.startAt, tz).slice(0, 2)) === h);
                       const blockItems = blocksOn(key)
                         .filter((b) => !b.fullDay && Number(b.startTime.slice(0, 2)) === h);
                       const extItems = externalsOn(key)
@@ -524,7 +527,7 @@ export default function CalendarPage() {
                               onClick={(ev) => { ev.stopPropagation(); setDetail(b); }}
                               onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.stopPropagation(); setDetail(b); } }}
                             >
-                              {formatTime(b.startAt)} {b.customerName}
+                              {formatTime(b.startAt, tz)} {b.customerName}
                             </span>
                           ))}
                         </div>
@@ -604,7 +607,7 @@ export default function CalendarPage() {
             </div>
             <div>
               <strong>{t.detail.time}</strong>
-              {formatDate(detail.startAt)} {formatTime(detail.startAt)} - {formatTime(detail.endAt)}
+              {formatDate(detail.startAt, tz)} {formatTime(detail.startAt, tz)} - {formatTime(detail.endAt, tz)}
             </div>
             <div><strong>{t.detail.service}</strong>{detail.serviceName}</div>
             <div>
@@ -720,7 +723,7 @@ export default function CalendarPage() {
       >
         {blockTarget ? (
           <div className="flex flex-col gap-3">
-            <div className="text-base font-semibold text-dark">{formatDate(blockTarget.date)}</div>
+            <div className="text-base font-semibold text-dark">{blockTarget.date.replaceAll('-', '/')}</div>
             {blockTarget.hour !== null ? (
               <div>
                 <Button
