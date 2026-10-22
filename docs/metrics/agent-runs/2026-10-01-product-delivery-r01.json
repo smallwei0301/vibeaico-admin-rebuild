@@ -11933,6 +11933,40 @@
         "completedAt": "2026-10-22T02:35:19Z",
         "evidenceRef": "",
         "note": "Luna：修正 flow.lunaTasks／lunaAccepted 與 modelUsage 推導值不一致，並記錄 #917 Codex 修正施工。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261022-terra-build-936-pages",
+        "role": "build",
+        "requestedModel": "terra",
+        "issue": 936,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/e167899e",
+        "startedAt": "2026-10-22T04:50:00Z",
+        "completedAt": "2026-10-22T04:59:49Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）#936 後台其餘頁面改用店家時區，commit e167899e。startedAt 為派工時間近似值（subagent 回報因容器重啟遺失），completedAt 為 commit 時間。actual 未經平台驗證。"
+      },
+      {
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "id": "20261022-luna-scout-936-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "issue": 936,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-22T05:49:03Z",
+        "completedAt": "2026-10-22T05:49:08Z",
+        "note": "Luna：綁定 #936 其餘頁面施工埋點（Haiku subagent，requested claude-haiku-4-5）。"
       }
     ],
     "fullContextReplays": 0,
@@ -11968,8 +12002,8 @@
     ]
   },
   "flow": {
-    "lunaTasks": 232,
-    "lunaAccepted": 223,
+    "lunaTasks": 233,
+    "lunaAccepted": 224,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
