@@ -99,6 +99,8 @@ export const PUT = handle(async (req, { params }: Context) => {
   return ok({ ...mapTripDeparture(data), ...assignments.get(id) });
 });
 
+const ORDER_REFERENCED_MESSAGE = '此團次有訂單紀錄（含已取消），無法刪除；請改為取消團次。';
+
 /**
  * 團次刪除。
  *
@@ -111,7 +113,14 @@ export const PUT = handle(async (req, { params }: Context) => {
  * 這裡沿用同一個判準——已經有人報名的團次不得刪除，回 409 而不是靜默把名額吃掉。
  * `tour_orders` 落地後（#8-B）可以在此之上再加「連帶處理已存在訂單」的規則，
  * 但那是擴充，不是推翻：seats_booked > 0 不能刪，兩個階段都成立。
+ *
+ * issue #1103：訂單全部取消後 seats_booked 會歸 0，但已取消的 `tour_orders` 仍以複合 FK
+ * （`tour_orders_tenant_trip_plan_departure_fkey`）引用這個團次，真刪會撞 23503 變成 500。
+ * 所以刪除前要另查「是否有任何訂單紀錄（含已取消）」，有就回 409 並引導改為取消團次；
+ * 查詢失敗一律 throw，不得當成 0 筆放行。並發建單在檢查之後才寫入時，delete 仍可能撞
+ * 23503，同樣映射成這則 409（比照 services/[id] 對 23503 的處理）。
  */
+
 export const DELETE = handle(async (_req, { params }: Context) => {
   const { id } = await params;
   const t = await requireTenantManager();
@@ -123,8 +132,14 @@ export const DELETE = handle(async (_req, { params }: Context) => {
   if (current.seats_booked > 0) {
     return fail(409, `已有 ${current.seats_booked} 人報名，無法刪除此團次`, ERR.CONFLICT);
   }
+  const { count, error: countError } = await t.supabase.from('tour_orders')
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', t.tenantId).eq('departure_id', id);
+  if (countError) throw countError;
+  if ((count ?? 0) > 0) return fail(409, ORDER_REFERENCED_MESSAGE, ERR.CONFLICT);
   const { data, error } = await t.supabase.from('trip_departures').delete()
     .eq('tenant_id', t.tenantId).eq('id', id).select('id').maybeSingle();
+  if (error?.code === '23503') return fail(409, ORDER_REFERENCED_MESSAGE, ERR.CONFLICT);
   if (error) throw error;
   if (!data) return fail(404, '找不到此團次', ERR.NOT_FOUND);
   return ok({ deleted: true });
