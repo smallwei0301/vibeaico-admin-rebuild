@@ -21,7 +21,7 @@ Agent 負責的 PR，只要通過所屬 Workstream 的全部既有關卡，就�
 - Production reset／seed／災難性刪除：禁止。
 - 手動 Production deployment／promote／流量切換／rollback：需另行授權。
 - 真實付款、退款、訂單或顧客通知：禁止。
-- 修改或繞過任何 required check、branch protection、Final Risk 成本規則。
+- 以 merge 繞過、停用或放寬 required check、branch protection、Final Risk 成本規則；修改這些 gate 本身的 PR 仍需 Owner 明確授權。
 
 ## 已知後果
 

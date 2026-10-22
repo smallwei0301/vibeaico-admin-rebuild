@@ -333,7 +333,7 @@ NEXT_SAFE_ACTION
 | 程式／workflow／skill 合併 main | 允許（Owner 2026-10-22） | exact head 的 required checks 全部 success、無 merge conflict、branch protection 照常生效；依所屬 Workstream 完成審查／Final Risk；已觸發的 bot review 跑完並處理 blocking finding；merge 後依 Completion Truth 讀回。見 [決策](decisions/2026-10-22-owner-agent-merge-authorization.md) |
 | Production DDL／DML／migration | **staged policy gate** | §3.2；`AUTOMATION_READY` 前沿用現行逐次 Owner gate，ACTIVE 後改由機器關卡放行，不需逐次人工批准 |
 | Production reset／seed／災難性刪除 | **禁止** | 不在 §3.2 允許範圍，不能藉人工同意跳過關卡 |
-| Production deployment／promote／流量切換 | **禁止** | 需新授權 |
+| Production deployment／promote／流量切換／rollback | **禁止** | 需新授權；`main` merge 觸發的 Vercel 自動部署不在此列，見 [決策](decisions/2026-10-22-owner-agent-merge-authorization.md) |
 | 真實付款、退款、訂單或顧客通知 | **禁止** | 測試只用 sandbox、mock 或明確安全接收者 |
 | 輸出或提交 token、密碼、key、完整 `.env` | **禁止** | 秘密只在執行環境短暫使用 |
 

@@ -83,7 +83,7 @@ Production DDL／DML／migration 的授權以 `docs/AGENT-EXECUTION.md` §3.2 �
 **修改文件、合併 main 或單一 CI 綠燈都不等於啟用自動化，也不授權本輪寫入正式庫。**
 缺少證據仍停止受影響操作；reset／seed、災難性刪除不在政策允許範圍。
 
-正式環境部署與會改變正式行為的 `main` merge 依 `docs/AGENT-EXECUTION.md` §3 的 Owner 2026-10-22 長期授權與既有關卡執行；手動 Production 部署／promote／流量切換仍需另行授權。
+會改變正式行為的 `main` merge（含其觸發的 Vercel 自動部署）依 `docs/AGENT-EXECUTION.md` §3 的 Owner 2026-10-22 長期授權與既有關卡執行；手動 Production 部署／promote／流量切換／rollback 仍需另行授權。
 Production DB 政策不授權網站發布、付款／退款、顧客通知或其他 Production 專案。
 
 ## 3. Agent 開工流程
