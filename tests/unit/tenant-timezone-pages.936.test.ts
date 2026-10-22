@@ -149,6 +149,12 @@ describe('#936 非台北店家輸入 10:00，送出 ISO 對應店家時區（與
 });
 
 describe('#936 第二輪：未就緒時不得以預設時區換算並寫入', () => {
+  it('coupons：儲存後回寫列帶實際送出的 ISO 有效期，而非舊 draft 日期', () => {
+    const src = read('coupons/page.tsx');
+    expect(src).toMatch(/onSaved\(\{ \.\.\.draft, discountType, startAt: payload\.startAt, endAt: payload\.endAt \}/);
+    expect(src).toMatch(/startAt: startIso,\s*endAt: endIso,/);
+  });
+
   it('coupons：draft 以當地字串暫存，送出時才換算 ISO，且未就緒停用輸入', () => {
     const src = read('coupons/page.tsx');
     expect(src).toContain('setStartLocal(e.target.value)');

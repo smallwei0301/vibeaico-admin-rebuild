@@ -635,7 +635,7 @@ function CouponFormModal({
       } else {
         newId = (await createCoupon(payload))?.id;
       }
-      onSaved({ ...draft, discountType }, isEdit, newId);
+      onSaved({ ...draft, discountType, startAt: payload.startAt, endAt: payload.endAt }, isEdit, newId);
     } catch (e) {
       toast.show(
         `${t.messages.saveFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
