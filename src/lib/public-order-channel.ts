@@ -22,10 +22,18 @@ export function resolvePublicOrderSource(channel: unknown): PublicOrderSource {
 export const LINE_SOURCE_PARAM = 'src';
 export const LINE_SOURCE_VALUE = 'line';
 
-/** 在公開連結上補 `src=line`（已有查詢字串用 `&`，已帶 src 則不重複）。 */
+/**
+ * 在「最終要送出的完整網址」上補 `src=line`。
+ * 只能對完整網址呼叫，不可套在之後還要再接路徑的 base 上。
+ * 已有查詢字串用 `&`、已帶 src 不重複、hash 保留在最後。
+ */
 export function withLineSource(url: string): string {
-  if (new RegExp(`[?&]${LINE_SOURCE_PARAM}=`).test(url)) return url;
-  return `${url}${url.includes('?') ? '&' : '?'}${LINE_SOURCE_PARAM}=${LINE_SOURCE_VALUE}`;
+  const hashAt = url.indexOf('#');
+  const hash = hashAt >= 0 ? url.slice(hashAt) : '';
+  const head = hashAt >= 0 ? url.slice(0, hashAt) : url;
+  if (new RegExp(`[?&]${LINE_SOURCE_PARAM}=`).test(head)) return url;
+  const sep = head.includes('?') ? (/[?&]$/.test(head) ? '' : '&') : '?';
+  return `${head}${sep}${LINE_SOURCE_PARAM}=${LINE_SOURCE_VALUE}${hash}`;
 }
 
 const STORAGE_KEY = 'vibeai:order-channel';

@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import {
   resolvePublicOrderSource, withLineSource, isLineSourceSearch,
 } from '@/lib/public-order-channel';
+import { buildTripCarousel } from '@/server/trip-flex';
 import { submitPublicTourRequestSchema } from '@/server/public-tour-request';
 import { submitPublicTourBookingSchema } from '@/server/public-tour-booking';
 
@@ -61,7 +62,10 @@ describe('LINE 連結帶 src=line', () => {
     expect(src).toContain('withLineSource(buildShopUrl(appUrl, shopCode))');
     expect(src).toContain('withLineSource(`${buildShopUrl(APP_URL, ctx.tenant.shop_code)}/plans/');
     // 不得再有未經包裝直接使用原始 helper 的呼叫
-    expect(src.match(/buildShopUrl\(/g)?.length).toBe(2);
+    // wrapper、行程輪播的乾淨 base、團次直達連結 = 3 處；其餘一律走 wrapper
+    expect(src.match(/buildShopUrl\(/g)?.length).toBe(3);
+    // 輪播 shopUrl 必須是乾淨 base（不可帶 query，否則 /trip/{slug} 會接在 ?src=line 後面）
+    expect(src).toContain('const shopUrl = buildShopUrl(APP_URL, ctx.tenant.shop_code);');
   });
   it('公開建單 server 不再寫死 p_source: LINE', () => {
     for (const f of ['src/server/public-tour-request.ts', 'src/server/public-tour-booking.ts']) {
@@ -69,5 +73,36 @@ describe('LINE 連結帶 src=line', () => {
       expect(s).not.toMatch(/p_source:\s*'LINE'/);
       expect(s).toContain('p_source: resolvePublicOrderSource(input.channel)');
     }
+  });
+});
+
+describe('withLineSource：query／hash 與連結結構', () => {
+  it('已有 query 用 &、hash 保留在最後、已有 src 不重複', () => {
+    expect(withLineSource('https://x.test/a?b=1#h')).toBe('https://x.test/a?b=1&src=line#h');
+    expect(withLineSource('https://x.test/a#h')).toBe('https://x.test/a?src=line#h');
+    expect(withLineSource('https://x.test/a?src=qr#h')).toBe('https://x.test/a?src=qr#h');
+    expect(withLineSource('https://x.test/a?')).toBe('https://x.test/a?src=line');
+  });
+  it('輪播行程連結：路徑在前、src=line 在後，可被 URL 解析', () => {
+    const labels = { altText: 'a', priceFrom: 'p', priceUnknown: 'u', bookCta: 'b' };
+    const card = { slug: '龜山島 一日遊', title: 't', tagline: '', summary: '', coverImageUrl: '', minPrice: 1 };
+    for (const shopUrl of ['https://x.test/s/shop', 'https://x.test/s/shop/']) {
+      const flex: any = buildTripCarousel([card], shopUrl, labels);
+      const uri = flex.contents.contents[0].footer.contents[0].action.uri as string;
+      expect(uri).toBe(`https://x.test/s/shop/trip/${encodeURIComponent('龜山島 一日遊')}?src=line`);
+      const u = new URL(uri);
+      expect(u.pathname).toBe(`/s/shop/trip/${encodeURIComponent('龜山島 一日遊')}`);
+      expect(u.searchParams.get('src')).toBe('line');
+    }
+  });
+  it('團次直達與店家頁連結結構正確', () => {
+    const deep = withLineSource('https://x.test/s/shop/plans/p1/book?departure=d1');
+    const u = new URL(deep);
+    expect(u.pathname).toBe('/s/shop/plans/p1/book');
+    expect(u.searchParams.get('departure')).toBe('d1');
+    expect(u.searchParams.get('src')).toBe('line');
+    const shop = new URL(withLineSource('https://x.test/s/shop'));
+    expect(shop.pathname).toBe('/s/shop');
+    expect(shop.search).toBe('?src=line');
   });
 });

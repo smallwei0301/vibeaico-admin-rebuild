@@ -41,7 +41,7 @@ import { isDepartureBookableOnPage } from '@/lib/public-booking-price';
 import { partialPaymentBreakdown } from '@/lib/public-partial-payment';
 import { loadPublicBookingPlan } from './public-tour-booking';
 
-/** LINE 端產生的公開連結一律帶 `?src=line`（issue #1090），讓從 LINE 進來的訂單仍記 LINE。 */
+/** 店家頁完整網址（給顧客點的最終連結）：帶 `?src=line`（issue #1090）。要再接路徑時請用 buildShopUrl 乾淨 base。 */
 const buildPublicBookingUrl = (appUrl: string, shopCode: string): string =>
   withLineSource(buildShopUrl(appUrl, shopCode));
 
@@ -821,7 +821,8 @@ async function replyTrips(ctx: BuiltinCtx): Promise<boolean> {
 
   const minPriceByTrip = minNonSeasonalPriceByTrip(planRows, seasonalPlanIds);
 
-  const shopUrl = buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code);
+  // 乾淨 base（不帶 query）：buildTripCarousel 會在其後接 /trips/{slug} 再補 src=line
+  const shopUrl = buildShopUrl(APP_URL, ctx.tenant.shop_code);
   const cards: TripCardSource[] = trips.map((t: any) => ({
     slug: t.slug,
     title: t.title,

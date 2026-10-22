@@ -31,6 +31,13 @@ describe('#11 LINE 行程連結 /trip/{slug} 相容轉址', () => {
     expect(target).not.toContain('%25');
   });
 
+  it('帶 src=line 進來時轉址保留來源；其他 src 不帶', async () => {
+    await LegacyTripRedirectPage({ params: Promise.resolve({ shopCode: 'demo', slug: 'x' }), searchParams: Promise.resolve({ src: 'line' }) });
+    expect(permanentRedirect).toHaveBeenLastCalledWith('/s/demo/trips/x?src=line');
+    await LegacyTripRedirectPage({ params: Promise.resolve({ shopCode: 'demo', slug: 'x' }), searchParams: Promise.resolve({ src: 'qr' }) });
+    expect(permanentRedirect).toHaveBeenLastCalledWith('/s/demo/trips/x');
+  });
+
   it.each(['%E0%A4%A', '%00', '%0A', ''])(
     '惡意或空 slug %j → notFound、不轉址',
     async (rawSlug) => {
