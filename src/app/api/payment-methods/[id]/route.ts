@@ -62,6 +62,27 @@ export const DELETE = handle(async (_req, { params }) => {
   const t = await requireTenant('MANAGER');
   const { id } = await params;
 
+  /*
+   * ⚠️ 已被訂單引用的收款方式不能實體刪除（#876）。
+   * `tour_orders.payment_method_id` 沒有 FK、訂單上也沒有收款方式名稱快照，
+   * 所以一旦刪掉這一列，歷史訂單的收款方式就變成空白——而且資料庫不會擋。
+   * 因此在這裡擋：有引用就回 409，請店家改為「停用」（停用後歷史訂單仍查得到它）。
+   * 查詢出錯必須 throw，不能當成「沒有引用」而繼續刪。
+   */
+  const { count, error: refError } = await t.supabase
+    .from('tour_orders')
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', t.tenantId)
+    .eq('payment_method_id', id);
+  if (refError) throw refError;
+  if ((count ?? 0) > 0) {
+    throw new ApiHttpError(
+      409,
+      '這個收款方式已被訂單使用，無法刪除；請改為停用，歷史訂單仍會顯示它。',
+      ERR.CONFLICT,
+    );
+  }
+
   const { data, error } = await t.supabase
     .from('tenant_payment_methods')
     .delete()

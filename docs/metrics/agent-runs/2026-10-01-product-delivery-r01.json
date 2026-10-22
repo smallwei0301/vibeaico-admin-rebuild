@@ -447,6 +447,10 @@
     {
       "ref": "issue/1090",
       "title": "#46 旅客從商店頁送出的團體訂單來源被記成 LINE，後台「商店頁」篩選找不到"
+    },
+    {
+      "ref": "issue/876",
+      "title": "刪除收款方式後，引用它的歷史訂單會失去收款方式名稱"
     }
   ],
   "main": {
@@ -12103,13 +12107,64 @@
         "startedAt": "2026-10-22T11:02:01Z",
         "completedAt": "2026-10-22T11:02:14Z",
         "note": "Luna：綁定 #936 純日期修正施工埋點（Haiku subagent，requested claude-haiku-4-5）。"
+      },
+      {
+        "id": "20261022-terra-build-876-pm-delete-guard",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 876,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/8e61071c",
+        "startedAt": "2026-10-22T13:08:58Z",
+        "completedAt": "2026-10-22T13:10:32Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）依 Owner 決定（選項 1）施工 #876：已被訂單使用的收款方式拒絕刪除（409，提示改為停用），commit 8e61071c。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261022-luna-scout-876-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 876,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-22T13:12:14Z",
+        "completedAt": "2026-10-22T13:12:35Z",
+        "note": "Luna：綁定 #876 施工埋點（Haiku subagent，requested claude-haiku-4-5）。"
+      },
+      {
+        "id": "20261022-luna-scout-876-issues-started-fix",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 876,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-22T13:40:30Z",
+        "completedAt": "2026-10-22T13:40:30Z",
+        "note": "Luna：依 Codex P2 將 delivery.issuesStarted 114→115（#876 首次開始）（Haiku subagent，requested claude-haiku-4-5）。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 114,
+    "issuesStarted": 115,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -12138,8 +12193,8 @@
     ]
   },
   "flow": {
-    "lunaTasks": 237,
-    "lunaAccepted": 228,
+    "lunaTasks": 239,
+    "lunaAccepted": 230,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
