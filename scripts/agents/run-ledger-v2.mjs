@@ -46,7 +46,11 @@ function hasExactKeys(value, keys) {
 
 function isValidUtcTimestamp(value) {
   const text = String(value ?? "").trim();
-  return ISO_UTC.test(text) && !Number.isNaN(Date.parse(text));
+  if (!ISO_UTC.test(text)) return false;
+  const parsed = Date.parse(text);
+  // Date.parse normalizes impossible dates (2026-02-30 -> 2026-03-02); round-trip
+  // the calendar fields so a non-existent instant fails closed instead.
+  return !Number.isNaN(parsed) && new Date(parsed).toISOString().slice(0, 19) === text.slice(0, 19);
 }
 
 function isUsableEvidenceRef(value) {
@@ -177,6 +181,11 @@ function validateCloseoutContract(run) {
     ];
   }
 
+  // A malformed start would silently select the LEGACY_V2 profile and hide the
+  // Run window, so v4 requires a real ISO UTC start even before closeout.
+  if (!isValidUtcTimestamp(run.startedAt)) {
+    errors.push("deliveryTruthVersion=4 requires startedAt as an ISO UTC timestamp");
+  }
   if (closeout.contractVersion !== 1) errors.push("closeout.contractVersion must be 1");
   if (!CLOSEOUT_OWNER_ROLE.has(closeout.ownerRole)) {
     errors.push("closeout.ownerRole must be PRODUCT_MAIN_SESSION, GOVERNANCE_MAIN_SESSION, or OWNER");
@@ -203,6 +212,10 @@ function validateCloseoutContract(run) {
   if (closeout.state !== "CLOSED") errors.push("final Run requires closeout.state=CLOSED");
   if (!isValidUtcTimestamp(run.endedAt)) {
     errors.push("final v4 Run requires endedAt as an ISO UTC timestamp");
+  }
+  if (isValidUtcTimestamp(run.startedAt) && isValidUtcTimestamp(run.endedAt)
+    && Date.parse(run.endedAt) < Date.parse(run.startedAt)) {
+    errors.push("final v4 Run requires endedAt at or after startedAt");
   }
   if (closeout.closedAt !== run.endedAt) errors.push("closeout.closedAt must equal endedAt");
   if (!SHA40.test(String(run.main?.endSha ?? "").trim().toLowerCase())) {

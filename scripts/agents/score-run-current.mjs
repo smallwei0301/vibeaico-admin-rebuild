@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { computeWeightedUsage } from "./score-run.mjs";
 import { MAX_ACTIVE_CANDIDATES } from "./agent-wip-policy.mjs";
 import { validateRunLedgerV2 } from "./run-ledger-v2.mjs";
+import { analyzeScorecardReadiness } from "./scorecard-readiness.mjs";
 import {
   canonicalIssueEvidenceRef,
   canonicalIssueSubject,
@@ -150,6 +151,12 @@ function observedReadiness(run, truth, tasks) {
     if (!Number.isInteger(run.inventory?.[field]) || run.inventory[field] < 0) gaps.push(`inventory.${field} is missing`);
   }
   if (tasks.total <= 0) gaps.push("modelUsage.tasks has no observed task records");
+  // AGENT-EXECUTION §10.2: a Run may only close (and grade) with no raw-capture gaps
+  // and no consistency warnings. Scoring enforces it instead of trusting an optional
+  // readiness run, so contradictory counters cannot earn points (e.g. closure
+  // conversion above 100%, or WIP peaks that disagree with wipLifecycle).
+  const readiness = analyzeScorecardReadiness(run);
+  for (const gap of [...readiness.rawCaptureGaps, ...readiness.consistencyWarnings]) gaps.push(`readiness: ${gap}`);
   return [...new Set([...gaps, ...truth.gradingGaps])];
 }
 
