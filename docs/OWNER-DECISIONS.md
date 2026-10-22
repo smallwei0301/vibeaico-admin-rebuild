@@ -2,8 +2,12 @@
 
 > 本檔是跨領域 Owner 決策索引，讓 Agent 在開工前快速知道哪些題目已經裁示，避免重複詢問。
 > 正式領域規格仍以各 `docs/integration/**` canonical 文件為準；Issue 負責施工範圍與驗收。
-> 最後更新：2026-10-10。
+> 最後更新：2026-10-22。
 > 模型版本決策最後更新：2026-10-01；本次只新增有界角色證據政策，未變更模型型號。
+
+## 2026-10-22 — Agent 可自行 merge，不需逐次授權
+
+Owner 指示「修改永久規則不用我授權 merge」。Agent 負責的 PR 只要通過所屬 Workstream 的全部既有關卡（exact head required checks、無 conflict、branch protection、審查／Final Risk、bot review 處理、merge 後 Completion Truth 讀回），即可自行 merge 進 `main`，不再逐次請 Owner 授權。Production DDL／DML、手動 Production 部署／promote、reset／seed、付款與顧客通知等既有禁止或另行授權事項不變。canonical：[本次裁示](decisions/2026-10-22-owner-agent-merge-authorization.md)、`AGENT-EXECUTION.md` §3。已知後果：`main` 會觸發 Vercel 自動部署，依本裁示 merge 的行為變更 PR 會隨既有流程部署至正式站。
 
 ## 2026-10-14 — 正式原生 source 角色准入（#977）
 

@@ -330,7 +330,7 @@ NEXT_SAFE_ACTION
 | TEST Supabase 操作 | 允許 | 僅限 §3.1 TEST project，且持有唯一 TEST lane |
 | Vercel Preview 驗證 | 允許 | 不提升 Production |
 | docs-only 輕量路徑 | 允許 | 只在文件治理白名單內；**不得繞過 live branch protection**，若 main 要求 PR／required checks 就正常走 PR |
-| 程式／workflow／skill 合併 main | 需明確任務授權 | CI、Audit、安全邊界成立；不得偷渡產品發布 |
+| 程式／workflow／skill 合併 main | 允許（Owner 2026-10-22） | exact head 的 required checks 全部 success、無 merge conflict、branch protection 照常生效；依所屬 Workstream 完成審查／Final Risk；已觸發的 bot review 跑完並處理 blocking finding；merge 後依 Completion Truth 讀回。見 [決策](decisions/2026-10-22-owner-agent-merge-authorization.md) |
 | Production DDL／DML／migration | **staged policy gate** | §3.2；`AUTOMATION_READY` 前沿用現行逐次 Owner gate，ACTIVE 後改由機器關卡放行，不需逐次人工批准 |
 | Production reset／seed／災難性刪除 | **禁止** | 不在 §3.2 允許範圍，不能藉人工同意跳過關卡 |
 | Production deployment／promote／流量切換 | **禁止** | 需新授權 |
