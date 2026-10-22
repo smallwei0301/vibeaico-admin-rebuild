@@ -74,6 +74,10 @@ describe('#917 cancelledPaidAmount', () => {
     expect(cancelledPaidAmount(o)).toBe(600);
     expect(cancelledPaidAmount({ ...o, paymentStatus: 'PAID' })).toBe(600);
   });
+  it('CANCELLED + REFUND_PENDING／REFUNDED：仍回傳已付金額', () => {
+    expect(cancelledPaidAmount({ ...o, paymentStatus: 'REFUND_PENDING' })).toBe(600);
+    expect(cancelledPaidAmount({ ...o, paymentStatus: 'REFUNDED' })).toBe(600);
+  });
   it('CANCELLED + UNPAID：null', () => {
     expect(cancelledPaidAmount({ ...o, paymentStatus: 'UNPAID' })).toBeNull();
   });

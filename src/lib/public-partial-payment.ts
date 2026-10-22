@@ -27,14 +27,16 @@ export function partialPaymentBreakdown(
 
 /**
  * #917：已取消且曾付款的訂單，狀態頁仍要讓旅客看到「已付金額」（供與店家洽談退款）。
- * 只在 CANCELLED + (PARTIAL | PAID) 且 paidAmount 為大於 0 的有限數值時回傳；其餘回 null。
+ * 只在 CANCELLED + (PARTIAL | PAID | REFUND_PENDING | REFUNDED) 且 paidAmount 為大於 0 的有限數值時回傳；其餘回 null。
  * 不含待付尾款，且不改動 partialPaymentBreakdown 對 CANCELLED 的行為（#994 依賴）。
  */
 export function cancelledPaidAmount(
   order: Pick<TourOrder, 'status' | 'paymentStatus' | 'paidAmount'>,
 ): number | null {
   if (order.status !== 'CANCELLED') return null;
-  if (order.paymentStatus !== 'PARTIAL' && order.paymentStatus !== 'PAID') return null;
+  // 與 cancelledCopyKind 的「已付款相關」集合對齊：REFUND_PENDING／REFUNDED 仍保留已付金額。
+  const s = order.paymentStatus;
+  if (s !== 'PARTIAL' && s !== 'PAID' && s !== 'REFUND_PENDING' && s !== 'REFUNDED') return null;
   const paid = order.paidAmount;
   if (paid == null || !Number.isFinite(paid) || paid <= 0) return null;
   return paid;
