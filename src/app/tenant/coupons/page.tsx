@@ -581,6 +581,18 @@ function CouponFormModal({
     setDraft(coupon ?? EMPTY_COUPON);
   }, [open, coupon]);
 
+  // #936：datetime-local 以「店家當地時間字串」暫存，送出時才換算成 ISO
+  const [startLocal, setStartLocal] = React.useState('');
+  const [endLocal, setEndLocal] = React.useState('');
+  React.useEffect(() => {
+    if (!open || !tzReady) return;
+    const src = coupon ?? EMPTY_COUPON;
+    setStartLocal(src.startAt ? toZonedDatetimeLocal(src.startAt, tz) : '');
+    setEndLocal(src.endAt ? toZonedDatetimeLocal(src.endAt, tz) : '');
+  }, [open, coupon, tz, tzReady]);
+  const startIso = startLocal ? zonedDatetimeLocalToIso(startLocal, tz) : '';
+  const endIso = endLocal ? zonedDatetimeLocalToIso(endLocal, tz) : '';
+
   const patch = (p: Partial<CouponRow>) => setDraft((d) => ({ ...d, ...p }));
 
   const validate = (): string[] => {
@@ -589,7 +601,7 @@ function CouponFormModal({
     if (draft.type === 'DISCOUNT_AMOUNT' && !(draft.discountValue > 0)) {
       list.push(t.form.discountAmountInvalid);
     }
-    if (draft.startAt && draft.endAt && Date.parse(draft.endAt) <= Date.parse(draft.startAt)) {
+    if (startIso && endIso && Date.parse(endIso) <= Date.parse(startIso)) {
       list.push(t.form.endBeforeStart);
     }
     return list;
@@ -609,8 +621,8 @@ function CouponFormModal({
         discountType,
         discountValue: draft.discountValue,
         totalQuantity: draft.totalQuantity || 0,
-        startAt: draft.startAt,
-        endAt: draft.endAt,
+        startAt: startIso,
+        endAt: endIso,
         minOrderAmount: draft.minOrderAmount,
         maxDiscountAmount: draft.maxDiscountAmount,
         giftItem: draft.giftItem,
@@ -755,8 +767,8 @@ function CouponFormModal({
         <FormGroup>
           <Label htmlFor="couponValidStartAt">{t.form.validStartAt}</Label>
           <Input
-            id="couponValidStartAt" type="datetime-local" value={draft.startAt ? toZonedDatetimeLocal(draft.startAt, tz) : ''}
-            onChange={(e) => patch({ startAt: e.target.value ? zonedDatetimeLocalToIso(e.target.value, tz) : '' })}
+            id="couponValidStartAt" type="datetime-local" value={startLocal} disabled={!tzReady}
+            onChange={(e) => setStartLocal(e.target.value)}
           />
           <FormText>{t.form.validStartAtHelp}</FormText>
         </FormGroup>
@@ -764,10 +776,10 @@ function CouponFormModal({
         <FormGroup>
           <Label htmlFor="couponValidEndAt">{t.form.validEndAt}</Label>
           <Input
-            id="couponValidEndAt" type="datetime-local" value={draft.endAt ? toZonedDatetimeLocal(draft.endAt, tz) : ''}
-            onChange={(e) => patch({ endAt: e.target.value ? zonedDatetimeLocalToIso(e.target.value, tz) : '' })}
+            id="couponValidEndAt" type="datetime-local" value={endLocal} disabled={!tzReady}
+            onChange={(e) => setEndLocal(e.target.value)}
           />
-          {draft.startAt && draft.endAt && Date.parse(draft.endAt) <= Date.parse(draft.startAt) ? (
+          {startIso && endIso && Date.parse(endIso) <= Date.parse(startIso) ? (
             <FormError>{t.form.validEndAtError}</FormError>
           ) : (
             <FormText>{t.form.validEndAtHelp}</FormText>

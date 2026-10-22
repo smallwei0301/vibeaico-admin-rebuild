@@ -102,7 +102,7 @@ function draftToPayload(d: Draft, tz: string): BlockTimeWritePayload {
 
 export default function BlockTimesPage() {
   const toast = useToast();
-  const { timeZone: tz } = useTenantTimeZoneState();
+  const { timeZone: tz, ready: tzReady, error: tzError, retry: tzRetry } = useTenantTimeZoneState();
   const [rows, setRows] = React.useState<BlockTimeItem[]>([]);
   const [staff, setStaff] = React.useState<Staff[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -122,6 +122,12 @@ export default function BlockTimesPage() {
   }, [toast]);
 
   React.useEffect(() => { void load(); }, [load]);
+
+  // #936：寫入所用時區必須與表單顯示時相同；modal 開啟期間時區改變就關閉，避免平移
+  const editingTzRef = React.useRef(tz);
+  React.useEffect(() => {
+    if (editingTzRef.current !== tz) { editingTzRef.current = tz; setEditing(null); }
+  }, [tz]);
 
   React.useEffect(() => {
     void (async () => {
@@ -177,7 +183,7 @@ export default function BlockTimesPage() {
       render: (b) => (
         <div className="btn-group">
           <Button
-            variant="outline" size="sm" aria-label={common.edit} disabled={b.auto}
+            variant="outline" size="sm" aria-label={common.edit} disabled={b.auto || !tzReady}
             title={b.auto ? t.auto.hint : common.edit}
             onClick={() => setEditing(itemToDraft(b, tz))}
           >
@@ -201,11 +207,18 @@ export default function BlockTimesPage() {
         eyebrow={nav.navOperation}
         title={t.title}
         actions={
-          <Button onClick={() => setEditing(emptyDraft())}>
+          <Button disabled={!tzReady} onClick={() => setEditing(emptyDraft())}>
             <Plus size={15} />{t.actions.create}
           </Button>
         }
       />
+
+      {tzError ? (
+        <div className="mb-4 flex items-center gap-3">
+          <FormError>{t.messages.timeZoneLoadFailed}</FormError>
+          <Button variant="outline" size="sm" onClick={tzRetry}>{common.retry}</Button>
+        </div>
+      ) : null}
 
       <Alert tone="neutral" className="mb-4" icon={<Ban size={18} className="mt-0.5 flex-shrink-0" />}
              action={<Link href="/tenant/settings" className="btn btn-outline btn-sm"><Clock size={13} />{t.intro.businessHours}</Link>}>
@@ -225,7 +238,7 @@ export default function BlockTimesPage() {
               title={t.empty.title}
               description={t.empty.description}
               action={
-                <Button onClick={() => setEditing(emptyDraft())}>
+                <Button disabled={!tzReady} onClick={() => setEditing(emptyDraft())}>
                   <Plus size={15} />{t.actions.create}
                 </Button>
               }

@@ -95,8 +95,8 @@ describe('#936 後續：寫入路徑等時區就緒、其餘頁面改店家時�
 
   it('coupons 有效期以店家時區預填與送出，且未就緒不得儲存', () => {
     const src = read('coupons/page.tsx');
-    expect(src).toContain('toZonedDatetimeLocal(draft.startAt, tz)');
-    expect(src).toContain('zonedDatetimeLocalToIso(e.target.value, tz)');
+    expect(src).toContain('toZonedDatetimeLocal(src.startAt, tz)');
+    expect(src).toContain('zonedDatetimeLocalToIso(startLocal, tz)');
     expect(src).toContain('if (!tzReady) return;');
     expect(src).toContain('disabled={!tzReady}');
     expect(src).not.toMatch(/\.slice\(0, 16\)/);
@@ -145,5 +145,25 @@ describe('#936 非台北店家輸入 10:00，送出 ISO 對應店家時區（與
     expect(iso).toBe('2026-10-14T17:00:00.000Z');
     expect(toZonedDatetimeLocal(iso, 'America/Los_Angeles')).toBe('2026-10-14T10:00');
     expect(toZonedDatetimeLocal(iso, 'Asia/Taipei')).toBe('2026-10-15T01:00');
+  });
+});
+
+describe('#936 第二輪：未就緒時不得以預設時區換算並寫入', () => {
+  it('coupons：draft 以當地字串暫存，送出時才換算 ISO，且未就緒停用輸入', () => {
+    const src = read('coupons/page.tsx');
+    expect(src).toContain('setStartLocal(e.target.value)');
+    expect(src).toContain('setEndLocal(e.target.value)');
+    expect(src).not.toMatch(/onChange=\{\(e\) => patch\(\{ (start|end)At/);
+    expect(src).toMatch(/startAt: startIso,\s*endAt: endIso/);
+    expect(src).toMatch(/id="couponValidStartAt"[^>]*disabled=\{!tzReady\}/);
+    expect(src).toMatch(/id="couponValidEndAt"[^>]*disabled=\{!tzReady\}/);
+  });
+
+  it('block-times：編輯／新增依 ready 停用，且時區改變時關閉 modal', () => {
+    const src = read('block-times/page.tsx');
+    expect(src).toMatch(/disabled=\{b\.auto \|\| !tzReady\}/);
+    expect(src).toMatch(/<Button disabled=\{!tzReady\} onClick=\{\(\) => setEditing\(emptyDraft\(\)\)\}/);
+    expect(src).toContain('setEditing(null)');
+    expect(src).toContain('editingTzRef');
   });
 });
