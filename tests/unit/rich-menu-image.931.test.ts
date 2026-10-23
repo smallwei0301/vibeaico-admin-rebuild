@@ -5,7 +5,7 @@ import sharp from 'sharp';
 import { MODE_PRESETS, type BusinessType } from '@/config/modes';
 import { RICH_MENU_GLYPHS } from '@/server/rich-menu-glyphs.generated';
 import { RICH_MENU_CELL_BOUNDS } from '@/server/rich-menu';
-import { composeRichMenuImage, normalizeTextColor } from '@/server/rich-menu-image';
+import { composeRichMenuImage, normalizeTextColor, LINE_MAX_BYTES } from '@/server/rich-menu-image';
 
 const MODES = Object.keys(MODE_PRESETS) as BusinessType[];
 
@@ -144,6 +144,21 @@ describe('composeRichMenuImage 底圖解碼容錯（#931 正式站回歸）', ()
         contentType: 'image/png',
         businessType: 'LOCAL_SHOP',
       }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+});
+
+describe('LINE 圖片上限邊界（#1107 Codex P2）', () => {
+  it('上限取十進位 1,000,000 bytes', () => {
+    expect(LINE_MAX_BYTES).toBe(1_000_000);
+  });
+
+  it('預設輸出低於上限；壓縮後仍 >= 上限即丟 400', async () => {
+    const png = await solidPng({ r: 200, g: 30, b: 30 });
+    const { bytes } = await composeRichMenuImage({ bytes: png, contentType: 'image/png', businessType: 'LOCAL_SHOP' });
+    expect(bytes.length).toBeLessThan(LINE_MAX_BYTES);
+    await expect(
+      composeRichMenuImage({ bytes: png, contentType: 'image/png', businessType: 'LOCAL_SHOP', maxBytes: 1 }),
     ).rejects.toMatchObject({ status: 400 });
   });
 });

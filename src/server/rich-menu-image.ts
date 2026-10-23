@@ -15,7 +15,8 @@ import { RICH_MENU_GLYPHS } from '@/server/rich-menu-glyphs.generated';
 export const RICH_MENU_WIDTH = 2500;
 export const RICH_MENU_HEIGHT = 1686;
 /** LINE 圖文選單圖檔上限 1MB */
-const LINE_MAX_BYTES = 1024 * 1024;
+/** 1 MB 取 1,000,000 而非 1,048,576（docs/integration/14-GAP-AUDIT.md：官方只寫 1 MB，取小的兩種解讀都合規） */
+export const LINE_MAX_BYTES = 1_000_000;
 const DEFAULT_TEXT_COLOR = '#FFFFFF';
 /** 字高佔格高比例、字寬佔格寬上限比例 */
 const TEXT_HEIGHT_RATIO = 0.2;
