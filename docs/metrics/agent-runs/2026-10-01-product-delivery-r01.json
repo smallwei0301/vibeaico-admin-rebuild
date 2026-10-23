@@ -463,6 +463,10 @@
     {
       "ref": "issue/931",
       "title": "LINE 圖文選單發布的圖片沒有格子文字：預覽的文字疊層與顏色設定未實際套用到 LINE 上的選單"
+    },
+    {
+      "ref": "issue/1109",
+      "title": "LINE 圖文選單文字在淺色或透明底圖上幾乎看不清（#931 後續）"
     }
   ],
   "main": {
@@ -12357,14 +12361,65 @@
         "startedAt": "2026-10-23T05:26:37Z",
         "completedAt": "2026-10-23T05:26:37Z",
         "note": "Luna：綁定 #931 正式站回歸修正埋點（Haiku subagent，requested claude-haiku-4-5）。"
+      },
+      {
+        "id": "20261023-terra-build-1109-contrast",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 1109,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/cd89c0c7",
+        "startedAt": "2026-10-23T06:53:46Z",
+        "completedAt": "2026-10-23T06:57:15Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）依字色自動加對比描邊（預覽與輸出共用 textStrokeFor），並修正 #1107 Codex P2 的 LINE 1MB 上限為十進位（3e858be7）。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261023-sol-close-973-980-931",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 3,
+        "issue": 931,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/931",
+        "startedAt": "2026-10-23T04:26:46Z",
+        "completedAt": "2026-10-23T06:52:30Z",
+        "note": "FINAL_SOL_AUDIT：Opus subagent（requested claude-opus-5-5）結案審查 #973、#980、#931 皆 CLOSE_APPROVED，三張已關閉。"
+      },
+      {
+        "id": "20261023-luna-scout-1109-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 1109,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-23T06:58:44Z",
+        "completedAt": "2026-10-23T06:58:44Z",
+        "note": "Luna：綁定 #1109 施工與 #973／#980／#931 結案埋點（Haiku subagent，requested claude-haiku-4-5）。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 118,
-    "issuesClosed": 15,
+    "issuesStarted": 119,
+    "issuesClosed": 18,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
     "exactHeadCiOnly": 0,
@@ -12392,14 +12447,14 @@
     ]
   },
   "flow": {
-    "lunaTasks": 244,
-    "lunaAccepted": 235,
+    "lunaTasks": 245,
+    "lunaAccepted": 236,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 278,
-    "solIssues": 46
+    "solTouches": 279,
+    "solIssues": 49
   },
   "auditability": {
     "evidenceFieldsCompletePercent": null,
@@ -13011,6 +13066,30 @@
         "observedState": "closed",
         "verification": "VERIFIED",
         "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/806#issuecomment-6028866298"
+      },
+      {
+        "type": "ISSUE_CLOSED",
+        "subject": "issue#973",
+        "claimedState": "closed",
+        "observedState": "closed",
+        "verification": "VERIFIED",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/973#issuecomment-6357386721"
+      },
+      {
+        "type": "ISSUE_CLOSED",
+        "subject": "issue#980",
+        "claimedState": "closed",
+        "observedState": "closed",
+        "verification": "VERIFIED",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/980#issuecomment-6357387347"
+      },
+      {
+        "type": "ISSUE_CLOSED",
+        "subject": "issue#931",
+        "claimedState": "closed",
+        "observedState": "closed",
+        "verification": "VERIFIED",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/931#issuecomment-6359288468"
       }
     ]
   },

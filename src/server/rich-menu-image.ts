@@ -2,6 +2,7 @@ import sharp from 'sharp';
 import { ApiHttpError, ERR } from '@/server/http';
 import { MODE_PRESETS } from '@/config/modes';
 import { RICH_MENU_CELL_BOUNDS, resolveRichMenuBusinessType } from '@/server/rich-menu';
+import { textStrokeFor } from '@/lib/rich-menu-contrast';
 import { RICH_MENU_GLYPHS } from '@/server/rich-menu-glyphs.generated';
 
 /**
@@ -14,7 +15,8 @@ import { RICH_MENU_GLYPHS } from '@/server/rich-menu-glyphs.generated';
 export const RICH_MENU_WIDTH = 2500;
 export const RICH_MENU_HEIGHT = 1686;
 /** LINE 圖文選單圖檔上限 1MB */
-const LINE_MAX_BYTES = 1024 * 1024;
+/** 1 MB 取 1,000,000 而非 1,048,576（docs/integration/14-GAP-AUDIT.md：官方只寫 1 MB，取小的兩種解讀都合規） */
+export const LINE_MAX_BYTES = 1_000_000;
 const DEFAULT_TEXT_COLOR = '#FFFFFF';
 /** 字高佔格高比例、字寬佔格寬上限比例 */
 const TEXT_HEIGHT_RATIO = 0.2;
@@ -28,6 +30,7 @@ export function normalizeTextColor(color: unknown): string {
 export function buildRichMenuTextSvg(businessType: unknown, textColor: unknown): string {
   const fill = normalizeTextColor(textColor);
   const cells = MODE_PRESETS[resolveRichMenuBusinessType(businessType)].richMenuCells;
+  const { stroke, widthRatio } = textStrokeFor(fill);
   const parts: string[] = [];
   RICH_MENU_CELL_BOUNDS.forEach((b, i) => {
     const label = cells[i]?.label ?? '';
@@ -39,14 +42,16 @@ export function buildRichMenuTextSvg(businessType: unknown, textColor: unknown):
     const scale = Math.min((b.h * TEXT_HEIGHT_RATIO) / g.h, (b.w * TEXT_MAX_WIDTH_RATIO) / g.w);
     const x = b.x + (b.w - g.w * scale) / 2;
     const y = b.y + (b.h - g.h * scale) / 2;
+    // 描邊寬度以渲染後字高為準，換算回 path 座標系（transform 會一併縮放 stroke）
+    const sw = widthRatio * g.h;
     parts.push(
-      `<path transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${scale.toFixed(4)})" d="${g.d}"/>`,
+      `<path transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${scale.toFixed(4)})" stroke-width="${sw.toFixed(2)}" d="${g.d}"/>`,
     );
   });
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${RICH_MENU_WIDTH}" height="${RICH_MENU_HEIGHT}" ` +
     `viewBox="0 0 ${RICH_MENU_WIDTH} ${RICH_MENU_HEIGHT}">` +
-    `<g fill="${fill}" stroke="rgba(0,0,0,0.25)" stroke-width="2" paint-order="stroke" stroke-linejoin="round">` +
+    `<g fill="${fill}" stroke="${stroke}" paint-order="stroke" stroke-linejoin="round">` +
     `${parts.join('')}</g></svg>`
   );
 }

@@ -25,6 +25,7 @@ import { buildWebhookUrl, lineSettingsSchema, maskSecret } from '@/config/tenant
 import type { LineSettings, TenantSettings } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
 import { createQrDataUrl, triggerDownload } from '@/lib/qr-code';
+import { textStrokeFor } from '@/lib/rich-menu-contrast';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { lineSettingsPage as t } from '@/i18n/zh-TW/pages/line-settings';
@@ -116,6 +117,7 @@ export default function LineSettingsPage() {
   const [richMenuBgImageUrl, setRichMenuBgImageUrl] = React.useState('');
   const [richMenuNoOverlay, setRichMenuNoOverlay] = React.useState(false);
   const [richMenuTextColor, setRichMenuTextColor] = React.useState(LINE_DEFAULTS.richMenuTextColor);
+  const previewStroke = textStrokeFor(richMenuTextColor);
 
   /* --- 忙碌狀態 --- */
   const [savingLine, setSavingLine] = React.useState(false);
@@ -1122,7 +1124,15 @@ export default function LineSettingsPage() {
                   <div
                     key={cell.label}
                     className="flex h-12 items-center justify-center text-2xs font-semibold"
-                    style={{ color: richMenuNoOverlay ? 'transparent' : richMenuTextColor }}
+                    style={
+                      richMenuNoOverlay
+                        ? { color: 'transparent' }
+                        : {
+                            color: richMenuTextColor,
+                            paintOrder: 'stroke',
+                            WebkitTextStroke: `${previewStroke.widthRatio}em ${previewStroke.stroke}`,
+                          }
+                    }
                   >
                     {richMenuNoOverlay ? '' : cell.label}
                   </div>
