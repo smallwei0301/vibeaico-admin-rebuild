@@ -12467,6 +12467,40 @@
         "startedAt": "2026-10-23T09:54:51Z",
         "completedAt": "2026-10-23T09:54:51Z",
         "note": "Luna：綁定 #862 施工與 #1109／#864 結案埋點（Haiku subagent，requested claude-haiku-4-5）。"
+      },
+      {
+        "id": "20261023-terra-build-1109-bg-limit",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 1109,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/6becd4c6",
+        "startedAt": "2026-10-23T09:51:45Z",
+        "completedAt": "2026-10-23T09:53:34Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）依 #1110 Codex P2，底圖上傳與 noOverlay 路徑也套用 LINE 十進位 1,000,000 bytes 上限（共用常數 src/lib/line-image-limits.ts）。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261023-luna-scout-1109-bg-limit-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 1109,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-23T10:55:49Z",
+        "completedAt": "2026-10-23T10:55:49Z",
+        "note": "Luna：綁定 #1109 底圖上限追補施工埋點（Haiku subagent，requested claude-haiku-4-5）。"
       }
     ],
     "fullContextReplays": 0,
@@ -12502,8 +12536,8 @@
     ]
   },
   "flow": {
-    "lunaTasks": 246,
-    "lunaAccepted": 237,
+    "lunaTasks": 247,
+    "lunaAccepted": 238,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
