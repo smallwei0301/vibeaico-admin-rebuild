@@ -552,10 +552,11 @@
     },
     {
       "repoFile": "0114_issue_22_banner_video_uploads",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "VERIFIED_NOT_APPLIED",
-      "evidence": "0114 同時含 Storage bucket 資料更新（BACKFILL）與 RLS 設定（AUTHZ），不得混入單一風險批次。保留為未套用，日後需拆成專屬 release 並補對應證據。"
+      "ledgerNames": [
+        "0114_issue_22_banner_video_uploads"
+      ],
+      "classification": "EXACT",
+      "evidence": "0114 同時含 Storage bucket 資料更新（BACKFILL）與 RLS 設定（AUTHZ），不得混入單一風險批次。保留為未套用，日後需拆成專屬 release 並補對應證據。 2026-10-23 更新：#1091 由 Owner 授權以 Supabase MCP（postgres）套用 main 上 canonical 原文至正式庫（先 TEST 再 Production；非受控釋出、未經 G3／collect／G5 證據鏈），說明見 https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/1091#issuecomment-6355597408 。正式庫 ledger 快照已於 2026-10-23T01:30:00Z 同步（83 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
     },
     {
       "repoFile": "0115_issue_21_external_calendars",
@@ -631,10 +632,11 @@
     },
     {
       "repoFile": "0129_issue_15_chat_images_bucket",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "VERIFIED_NOT_APPLIED",
-      "evidence": "issue #15：LINE chat 真的能傳送圖片。0126 的 p_storage_write 政策白名單已列出 chat-images，但 storage.buckets 從未真的建立這個 bucket（同 0086 修過的陷阱：政策提到一個 bucket 不代表它存在）。本檔只 insert 一列 storage.buckets（chat-images, public），不動任何政策；scripts/agents/production-db-release-plan.mjs（#447）把它歸類為 BACKFILL，與本輪 #589 AUTHZ 批次（0116…0127）不同 risk tier，因此比照 0109 的既有慣例，本輪刻意不排入自動套用名單。原檔名 0128 與 main 既有的 0128_issue_42_plan_seasonal_pricing 撞號，解衝突時改為 0129，避免前綴碰撞。保留為未套用，日後需獨立的 BACKFILL release、G3 證據與重新驗收，方能套用到正式庫或 canonical TEST。"
+      "ledgerNames": [
+        "0129_issue_15_chat_images_bucket"
+      ],
+      "classification": "EXACT",
+      "evidence": "issue #15：LINE chat 真的能傳送圖片。0126 的 p_storage_write 政策白名單已列出 chat-images，但 storage.buckets 從未真的建立這個 bucket（同 0086 修過的陷阱：政策提到一個 bucket 不代表它存在）。本檔只 insert 一列 storage.buckets（chat-images, public），不動任何政策；scripts/agents/production-db-release-plan.mjs（#447）把它歸類為 BACKFILL，與本輪 #589 AUTHZ 批次（0116…0127）不同 risk tier，因此比照 0109 的既有慣例，本輪刻意不排入自動套用名單。原檔名 0128 與 main 既有的 0128_issue_42_plan_seasonal_pricing 撞號，解衝突時改為 0129，避免前綴碰撞。保留為未套用，日後需獨立的 BACKFILL release、G3 證據與重新驗收，方能套用到正式庫或 canonical TEST。 2026-10-23 更新：#1091 由 Owner 授權以 Supabase MCP（postgres）套用 main 上 canonical 原文至正式庫（先 TEST 再 Production；chat-images bucket 正式庫原本即存在，套用為 no-op，只補 ledger；非受控釋出、未經 G3／collect／G5 證據鏈），說明見 https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/1091#issuecomment-6355597408 。正式庫 ledger 快照已於 2026-10-23T01:30:00Z 同步（83 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
     },
     {
       "repoFile": "0130_issue_46_refund_policy_snapshot",
