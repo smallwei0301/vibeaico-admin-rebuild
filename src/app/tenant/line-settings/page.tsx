@@ -25,6 +25,7 @@ import { buildWebhookUrl, lineSettingsSchema, maskSecret } from '@/config/tenant
 import type { LineSettings, TenantSettings } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
 import { createQrDataUrl, triggerDownload } from '@/lib/qr-code';
+import { textStrokeFor } from '@/lib/rich-menu-contrast';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { lineSettingsPage as t } from '@/i18n/zh-TW/pages/line-settings';
@@ -1122,7 +1123,15 @@ export default function LineSettingsPage() {
                   <div
                     key={cell.label}
                     className="flex h-12 items-center justify-center text-2xs font-semibold"
-                    style={{ color: richMenuNoOverlay ? 'transparent' : richMenuTextColor }}
+                    style={
+                      richMenuNoOverlay
+                        ? { color: 'transparent' }
+                        : {
+                            color: richMenuTextColor,
+                            paintOrder: 'stroke',
+                            WebkitTextStroke: `${textStrokeFor(richMenuTextColor).widthRatio}em ${textStrokeFor(richMenuTextColor).stroke}`,
+                          }
+                    }
                   >
                     {richMenuNoOverlay ? '' : cell.label}
                   </div>
