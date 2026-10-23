@@ -12323,6 +12323,40 @@
         "startedAt": "2026-10-23T05:09:51Z",
         "completedAt": "2026-10-23T05:09:51Z",
         "note": "Luna：綁定 #931 施工埋點並補記 #1106 Codex P2（audit 事件未計入 Sol flow）（Haiku subagent，requested claude-haiku-4-5）。"
+      },
+      {
+        "id": "20261023-terra-build-931-png-tolerant",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 931,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/4b7b6de4",
+        "startedAt": "2026-10-23T05:24:08Z",
+        "completedAt": "2026-10-23T05:25:44Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）修正 #1107 正式站回歸：店家 PNG 底圖 libspng 拒讀導致發布 500，改寬鬆解碼、讀不到回 400。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261023-luna-scout-931-png-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 931,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-23T05:26:37Z",
+        "completedAt": "2026-10-23T05:26:37Z",
+        "note": "Luna：綁定 #931 正式站回歸修正埋點（Haiku subagent，requested claude-haiku-4-5）。"
       }
     ],
     "fullContextReplays": 0,
@@ -12358,8 +12392,8 @@
     ]
   },
   "flow": {
-    "lunaTasks": 243,
-    "lunaAccepted": 234,
+    "lunaTasks": 244,
+    "lunaAccepted": 235,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
