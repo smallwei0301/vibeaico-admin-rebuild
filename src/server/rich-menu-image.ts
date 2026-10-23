@@ -3,6 +3,7 @@ import { ApiHttpError, ERR } from '@/server/http';
 import { MODE_PRESETS } from '@/config/modes';
 import { RICH_MENU_CELL_BOUNDS, resolveRichMenuBusinessType } from '@/server/rich-menu';
 import { textStrokeFor } from '@/lib/rich-menu-contrast';
+import { LINE_RICH_MENU_MAX_BYTES } from '@/lib/line-image-limits';
 import { RICH_MENU_GLYPHS } from '@/server/rich-menu-glyphs.generated';
 
 /**
@@ -14,9 +15,8 @@ import { RICH_MENU_GLYPHS } from '@/server/rich-menu-glyphs.generated';
 
 export const RICH_MENU_WIDTH = 2500;
 export const RICH_MENU_HEIGHT = 1686;
-/** LINE 圖文選單圖檔上限 1MB */
-/** 1 MB 取 1,000,000 而非 1,048,576（docs/integration/14-GAP-AUDIT.md：官方只寫 1 MB，取小的兩種解讀都合規） */
-export const LINE_MAX_BYTES = 1_000_000;
+/** LINE 圖文選單圖檔上限（十進位 1MB，見 docs/integration/14-GAP-AUDIT.md；常數集中於 line-image-limits） */
+export const LINE_MAX_BYTES = LINE_RICH_MENU_MAX_BYTES;
 const DEFAULT_TEXT_COLOR = '#FFFFFF';
 /** 字高佔格高比例、字寬佔格寬上限比例 */
 const TEXT_HEIGHT_RATIO = 0.2;
@@ -66,10 +66,16 @@ export async function composeRichMenuImage(opts: {
   maxBytes?: number;
 }): Promise<{ bytes: Buffer; contentType: string }> {
   const input = Buffer.isBuffer(opts.bytes) ? opts.bytes : Buffer.from(opts.bytes as ArrayBuffer);
-  if (opts.noOverlay) return { bytes: input, contentType: opts.contentType };
+  const maxBytes = opts.maxBytes ?? LINE_MAX_BYTES;
+  if (opts.noOverlay) {
+    // 直接使用背景圖時原圖原樣送 LINE，不會壓縮，故在此防守既有的過大底圖
+    if (input.length >= maxBytes) {
+      throw new ApiHttpError(400, '底圖超過 LINE 的 1MB 上限，請改用較小的底圖或取消「直接使用背景圖」', ERR.VALIDATION);
+    }
+    return { bytes: input, contentType: opts.contentType };
+  }
 
   const overlay = Buffer.from(buildRichMenuTextSvg(opts.businessType, opts.textColor));
-  const maxBytes = opts.maxBytes ?? LINE_MAX_BYTES;
   let base: Buffer;
   try {
     // failOn: 'none'：店家上傳的小尺寸 PNG 常有 libspng 嚴格檢查會拒讀的瑕疵（#931 正式站回歸）
