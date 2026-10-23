@@ -514,10 +514,11 @@
     },
     {
       "repoFile": "0109_issue_41_schema_precondition_assertions",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "VERIFIED_NOT_APPLIED",
-      "evidence": "0109 是既有結構修復（SCHEMA_REPAIR），與本輪 AUTHZ 批次不同；本輪刻意不排入自動套用名單。保留為未套用，日後需獨立的 SCHEMA_REPAIR release、G3 證據與重新驗收。"
+      "ledgerNames": [
+        "0109_issue_41_schema_precondition_assertions"
+      ],
+      "classification": "EXACT",
+      "evidence": "0109 是既有結構修復（SCHEMA_REPAIR），與本輪 AUTHZ 批次不同；本輪刻意不排入自動套用名單。保留為未套用，日後需獨立的 SCHEMA_REPAIR release、G3 證據與重新驗收。 2026-10-23 更新：#1091 由 Owner 授權以 Supabase MCP 套用 main 上 canonical 原文（四段完整、去除註解）至正式庫；先於 TEST 試跑（TEST 首次只送出第一段，已於 https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/1091#issuecomment-6357621349 揭露）；非受控釋出、未經 G3／collect／G5 證據鏈。正式庫 ledger 快照已於 2026-10-23T11:35:00Z 同步（84 筆）。"
     },
     {
       "repoFile": "0110_issue_42_plan_duration_pricetype_yearround",
