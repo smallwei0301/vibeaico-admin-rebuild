@@ -50,7 +50,7 @@ describe('#773 G2 source check has no duplicate impact owners', () => {
   // ISSUE_46_0110_0136_CLOSURE is covered by production-db-impact-manifest.755.test.ts.
   for (const scope of ['FULL_PENDING_SET', 'ISSUES_17_680']) {
     it(`${scope} does not throw AMBIGUOUS_IMPACT_OWNERSHIP with the real alias map and manifest`, () => {
-      const { plan } = planFor(scope, scope === 'ISSUES_17_680' ? pre17AliasMap : aliasMap);
+      const { plan } = planFor(scope, scope === 'ISSUES_17_680' ? pre17AliasMap : preAliasMap);
       try { run(plan); } catch (error) {
         expect(String((error as Error).message)).not.toMatch(/AMBIGUOUS_IMPACT_OWNERSHIP/);
         throw error;
