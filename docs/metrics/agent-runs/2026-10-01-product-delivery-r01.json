@@ -459,6 +459,10 @@
     {
       "ref": "issue/1091",
       "title": "#755 後續：擱置中的 Production migration（0117/0118、0112/0114/0129、0109）追蹤"
+    },
+    {
+      "ref": "issue/931",
+      "title": "LINE 圖文選單發布的圖片沒有格子文字：預覽的文字疊層與顏色設定未實際套用到 LINE 上的選單"
     }
   ],
   "main": {
@@ -12285,13 +12289,47 @@
         "startedAt": "2026-10-23T02:08:18Z",
         "completedAt": "2026-10-23T02:08:18Z",
         "note": "Luna：綁定 #1091 0114＋0129 ledger 同步施工埋點（Haiku subagent，requested claude-haiku-4-5）。"
+      },
+      {
+        "id": "20261023-terra-build-931-richmenu-text",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 931,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/5cf48c05",
+        "startedAt": "2026-10-23T04:51:16Z",
+        "completedAt": "2026-10-23T05:00:32Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）以 sharp＋Noto Sans TC 字形路徑把六格文字合成進 LINE 圖文選單圖片（Owner 2026-10-23 選定做法），commit 5cf48c05。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261023-luna-scout-931-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 931,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-23T05:09:51Z",
+        "completedAt": "2026-10-23T05:09:51Z",
+        "note": "Luna：綁定 #931 施工埋點並補記 #1106 Codex P2（audit 事件未計入 Sol flow）（Haiku subagent，requested claude-haiku-4-5）。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 117,
+    "issuesStarted": 118,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -12320,14 +12358,14 @@
     ]
   },
   "flow": {
-    "lunaTasks": 242,
-    "lunaAccepted": 233,
+    "lunaTasks": 243,
+    "lunaAccepted": 234,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 277,
-    "solIssues": 45
+    "solTouches": 278,
+    "solIssues": 46
   },
   "auditability": {
     "evidenceFieldsCompletePercent": null,

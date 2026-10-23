@@ -65,9 +65,9 @@ describe('#928 LINE 設定的選單預覽與發布同源', () => {
     for (const mode of MODES) expect(MODE_PRESETS[mode].richMenuCells).toHaveLength(6);
   });
 
-  it('有 previewNote 說明文字不會畫進圖片，且不再有寫死的預覽字樣', () => {
+  it('有 previewNote 說明文字會合成進圖片，且不再有寫死的預覽字樣', () => {
     expect(page).toContain('t.richMenu.previewNote');
-    expect(i18n).toMatch(/previewNote:[\s\S]*不會畫進圖片/);
+    expect(i18n).toMatch(/previewNote:[\s\S]*合成進選單圖片/);
     expect(i18n).not.toContain('previewItems');
     expect(i18n).not.toContain('瀏覽商品');
   });
