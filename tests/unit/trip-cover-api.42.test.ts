@@ -12,9 +12,9 @@ describe('#42 行程更新 API 接受封面', () => {
     expect(src).toContain('patch.cover_image_url = body.coverImageUrl');
     expect(src).toMatch(/\.update\(patch\)\s*\.eq\('tenant_id', t\.tenantId\)\.eq\('id', id\)/);
   });
-  it('只有含封面的 patch 才加 LISTED 條件；其他欄位更新不受影響', () => {
+  it('所有基本欄位更新（含封面）都加 LISTED 條件（#862）', () => {
     const src = readFileSync('src/app/api/trips/[id]/route.ts', 'utf8');
-    expect(src.match(/query\.neq\('midao_listing', 'LISTED'\)/g)).toHaveLength(1);
-    expect(src).toMatch(/if \(coverTouched\) query = query\.neq/);
+    const put = src.slice(src.indexOf('export const PUT'), src.indexOf('export const DELETE'));
+    expect(put.match(/\.neq\('midao_listing', 'LISTED'\)/g)).toHaveLength(1);
   });
 });
