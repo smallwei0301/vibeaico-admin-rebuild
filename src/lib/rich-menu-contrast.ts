@@ -20,8 +20,16 @@ export function relativeLuminance(color: string): number {
   return 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
 }
 
-/** 亮色字配深色描邊，暗色字配淺色描邊。 */
+/** WCAG 對比度：(L1 + 0.05) / (L2 + 0.05)，L1 為較亮者。 */
+export function contrastRatio(a: string, b: string): number {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+/** 依字色與黑／白的實際對比度，選對比較高者當描邊（門檻約 L≈0.179）。 */
 export function textStrokeFor(color: string): { stroke: string; widthRatio: number } {
-  const stroke = relativeLuminance(color) > 0.5 ? STROKE_ON_LIGHT_TEXT : STROKE_ON_DARK_TEXT;
+  const stroke =
+    contrastRatio(color, '#000000') >= contrastRatio(color, '#FFFFFF') ? STROKE_ON_LIGHT_TEXT : STROKE_ON_DARK_TEXT;
   return { stroke, widthRatio: STROKE_WIDTH_RATIO };
 }

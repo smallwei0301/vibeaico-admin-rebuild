@@ -117,6 +117,7 @@ export default function LineSettingsPage() {
   const [richMenuBgImageUrl, setRichMenuBgImageUrl] = React.useState('');
   const [richMenuNoOverlay, setRichMenuNoOverlay] = React.useState(false);
   const [richMenuTextColor, setRichMenuTextColor] = React.useState(LINE_DEFAULTS.richMenuTextColor);
+  const previewStroke = textStrokeFor(richMenuTextColor);
 
   /* --- 忙碌狀態 --- */
   const [savingLine, setSavingLine] = React.useState(false);
@@ -1129,7 +1130,7 @@ export default function LineSettingsPage() {
                         : {
                             color: richMenuTextColor,
                             paintOrder: 'stroke',
-                            WebkitTextStroke: `${textStrokeFor(richMenuTextColor).widthRatio}em ${textStrokeFor(richMenuTextColor).stroke}`,
+                            WebkitTextStroke: `${previewStroke.widthRatio}em ${previewStroke.stroke}`,
                           }
                     }
                   >

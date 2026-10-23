@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import sharp from 'sharp';
-import { textStrokeFor, relativeLuminance } from '@/lib/rich-menu-contrast';
+import { textStrokeFor, relativeLuminance, contrastRatio } from '@/lib/rich-menu-contrast';
 import { composeRichMenuImage, buildRichMenuTextSvg } from '@/server/rich-menu-image';
 
 describe('rich-menu-contrast #1109', () => {
@@ -8,9 +8,14 @@ describe('rich-menu-contrast #1109', () => {
     expect(textStrokeFor('#FFFFFF').stroke).toBe('rgba(0,0,0,0.55)');
     expect(textStrokeFor('#000000').stroke).toBe('rgba(255,255,255,0.6)');
   });
-  it('中間色有確定結果', () => {
+  it('中間色依實際對比度選黑或白描邊', () => {
     expect(relativeLuminance('#06C755')).toBeGreaterThan(0.3);
-    expect(textStrokeFor('#06C755').stroke).toBe('rgba(255,255,255,0.6)');
+    // #06C755 對黑 9.31:1 > 對白 2.26:1，應選深描邊
+    expect(contrastRatio('#06C755', '#000000')).toBeGreaterThan(contrastRatio('#06C755', '#FFFFFF'));
+    expect(textStrokeFor('#06C755').stroke).toBe('rgba(0,0,0,0.55)');
+    // 暗中間色 #555555 對白較高，應選淺描邊
+    expect(contrastRatio('#555555', '#FFFFFF')).toBeGreaterThan(contrastRatio('#555555', '#000000'));
+    expect(textStrokeFor('#555555').stroke).toBe('rgba(255,255,255,0.6)');
     expect(textStrokeFor('#06C755')).toEqual(textStrokeFor('#06C755'));
   });
   it('寬度比例約 6%', () => {
