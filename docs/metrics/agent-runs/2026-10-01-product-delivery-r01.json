@@ -455,6 +455,10 @@
     {
       "ref": "issue/1103",
       "title": "導遊刪除團次只剩已取消訂單時回 500，應提示改為取消團次"
+    },
+    {
+      "ref": "issue/1091",
+      "title": "#755 後續：擱置中的 Production migration（0117/0118、0112/0114/0129、0109）追蹤"
     }
   ],
   "main": {
@@ -12196,13 +12200,47 @@
         "startedAt": "2026-10-22T15:53:21Z",
         "completedAt": "2026-10-22T15:53:21Z",
         "note": "Luna：綁定 #1103 施工埋點（Haiku subagent，requested claude-haiku-4-5）。"
+      },
+      {
+        "id": "20261022-terra-build-1091-ledger-0117-0118",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 1091,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/fcfddf3f",
+        "startedAt": "2026-10-22T23:54:31Z",
+        "completedAt": "2026-10-22T23:59:22Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）同步正式庫 ledger 快照：0117＋0118 經 Owner 授權以 Supabase MCP 套用後 81 筆，alias map 改 EXACT，commit fcfddf3f。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261023-luna-scout-1091-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 1091,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-23T00:00:13Z",
+        "completedAt": "2026-10-23T00:00:13Z",
+        "note": "Luna：綁定 #1091 ledger 同步施工埋點（Haiku subagent，requested claude-haiku-4-5）。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 116,
+    "issuesStarted": 117,
     "issuesClosed": 15,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -12231,8 +12269,8 @@
     ]
   },
   "flow": {
-    "lunaTasks": 240,
-    "lunaAccepted": 231,
+    "lunaTasks": 241,
+    "lunaAccepted": 232,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
