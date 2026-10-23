@@ -69,20 +69,20 @@ export const PUT = handle(async (req, { params }: Context) => {
     return ok(mapTrip(data));
   }
 
-  // 封面異動需走 Midao 審核（docs/integration/21 §6）：帶條件更新，讀與寫之間被上架也不會寫入。
+  // #862：已上架 Midao 的行程，基本欄位（含封面）唯讀直到送審上線（docs/integration/21 §6）。
+  // 帶條件更新，讀與寫之間被上架也不會寫入；上架狀態本身不經此 PUT（patch 只含基本欄位）。
   const coverTouched = 'cover_image_url' in patch;
-  let query = t.supabase.from('trips').update(patch)
-    .eq('tenant_id', t.tenantId).eq('id', id);
-  if (coverTouched) query = query.neq('midao_listing', 'LISTED');
-  const { data, error } = await query.select('*').maybeSingle();
+  const { data, error } = await t.supabase.from('trips').update(patch)
+    .eq('tenant_id', t.tenantId).eq('id', id).neq('midao_listing', 'LISTED')
+    .select('*').maybeSingle();
   if (error?.code === '23505') return fail(409, '此行程代碼已被使用', ERR.CONFLICT);
   if (error) throw error;
   if (!data) {
-    if (coverTouched) {
-      const { data: still, error: rereadError } = await t.supabase.from('trips').select('id')
-        .eq('tenant_id', t.tenantId).eq('id', id).maybeSingle();
-      if (rereadError) throw rereadError;
-      if (still) return fail(409, tripsPage.actions.coverListedBlocked, ERR.CONFLICT);
+    const { data: still, error: rereadError } = await t.supabase.from('trips').select('id')
+      .eq('tenant_id', t.tenantId).eq('id', id).maybeSingle();
+    if (rereadError) throw rereadError;
+    if (still) {
+      return fail(409, coverTouched ? tripsPage.actions.coverListedBlocked : tripsPage.actions.basicListedBlocked, ERR.CONFLICT);
     }
     return fail(404, '找不到此行程', ERR.NOT_FOUND);
   }

@@ -22,7 +22,7 @@ describe('#42 基本資料儲存不帶封面', () => {
   it('頁面來源：儲存鈕與封面按鈕互斥、accept 收斂', () => {
     const src = readFileSync('src/app/tenant/trips/[id]/page.tsx', 'utf8');
     expect(src).toContain('omitTripCover(form)');
-    expect(src).toContain('onClick={saveBasic} loading={busy} disabled={coverBusy}');
+    expect(src).toContain('onClick={saveBasic} loading={busy} disabled={coverBusy || listedBasicBlocked}');
     expect(src).toContain('accept="image/jpeg,image/png,image/webp"');
   });
   it('頁面來源：封面「移除」先開確認，確認後才呼叫 removeTripCover', () => {

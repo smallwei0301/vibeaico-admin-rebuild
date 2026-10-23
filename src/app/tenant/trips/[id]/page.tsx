@@ -209,6 +209,7 @@ export default function TripDetailPage() {
     ? buildPublicTripUrl(APP_URL, currentTenant.shopCode, savedSlug)
     : publicShopUrl;
   const coverListedBlocked = tripCoverBlockedByListing(trip?.midaoListing);
+  const listedBasicBlocked = trip?.midaoListing === 'LISTED';
   const [plans, setPlans] = React.useState<TripPlan[]>([]);
   const [departures, setDepartures] = React.useState<TripDeparture[]>([]);
   const [addons, setAddons] = React.useState<TripAddon[]>([]);
@@ -381,6 +382,11 @@ export default function TripDetailPage() {
 
   const saveBasic = async () => {
     if (!form) return;
+    // #862：已上架 Midao 的基本資料唯讀直到送審上線；伺服器亦以 409 擋下。
+    if (listedBasicBlocked) {
+      toast.show(t.form.basicListedReadonly, 'danger');
+      return;
+    }
     // 相簿與五個文字欄位未變更就不送：舊資料超過寫入上限時，只改其他欄位仍可儲存。
     const payload = omitUnchangedTripTextFields(omitUnchangedGallery(omitTripCover(form), trip), trip);
     // #748：只檢查仍在 payload 內（有變更）的欄位；有錯就不打 API、保留表單，並標出欄位。
@@ -1090,7 +1096,7 @@ export default function TripDetailPage() {
             <Button variant="outline" onClick={() => router.push('/tenant/trips')}>
               {t.actions.back}
             </Button>
-            <Button onClick={saveBasic} loading={busy} disabled={coverBusy}>{t.actions.save}</Button>
+            <Button onClick={saveBasic} loading={busy} disabled={coverBusy || listedBasicBlocked}>{t.actions.save}</Button>
           </>
         }
       />
@@ -1134,7 +1140,8 @@ export default function TripDetailPage() {
 
       {/* ==================================================== 分頁：基本資料 */}
       <TabPanel active={tab === 'basic'}>
-        <div className="grid gap-3 lg:grid-cols-3">
+        {listedBasicBlocked ? <Alert tone="warning" className="mb-3">{t.form.basicListedReadonly}</Alert> : null}
+        <fieldset disabled={listedBasicBlocked} className="m-0 grid min-w-0 gap-3 border-0 p-0 lg:grid-cols-3">
           <div className="flex flex-col gap-3 lg:col-span-2">
             <Card>
               <CardHeader><CardTitle>{t.tabs.basic}</CardTitle></CardHeader>
@@ -1337,7 +1344,7 @@ export default function TripDetailPage() {
               </CardBody>
             </Card>
           </div>
-        </div>
+        </fieldset>
       </TabPanel>
 
       {/* ====================================================== 分頁：方案 */}
