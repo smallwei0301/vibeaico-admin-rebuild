@@ -99,11 +99,12 @@
       "ref": "issue/769"
     },
     {
-      "ref": "issue/815"
+      "ref": "issue/815",
+      "title": "旅遊方案價格限制為整數元（Owner 2026-10-07 決策，#813 Codex P2 follow-up）"
     },
     {
       "ref": "issue/16",
-      "title": "QR Code 真實產生與下載"
+      "title": "補齊-1：QR Code 真實產生與下載（promote／line-settings）current-main regression 修復"
     },
     {
       "ref": "issue/45"
@@ -12501,6 +12502,108 @@
         "startedAt": "2026-10-23T10:55:49Z",
         "completedAt": "2026-10-23T10:55:49Z",
         "note": "Luna：綁定 #1109 底圖上限追補施工埋點（Haiku subagent，requested claude-haiku-4-5）。"
+      },
+      {
+        "id": "20261023-terra-build-1091-ledger-0109-sync",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 1091,
+        "evidenceRef": "branch:issue-1091-ledger-0109 commit f50c6dda",
+        "startedAt": "2026-10-23T11:33:34Z",
+        "completedAt": "2026-10-23T11:36:03Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）同步 0109 正式庫套用後的 ledger 快照（84 筆）、alias map EXACT 與測試計數。commit f50c6dda 目前僅在本地分支，GitHub 上尚查無此 SHA（REST 422）。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261023-luna-scout-1091-ledger-0109-record",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 1091,
+        "evidenceRef": "branch:issue-1091-ledger-0109",
+        "startedAt": "2026-10-23T11:55:49Z",
+        "completedAt": "2026-10-23T11:57:39Z",
+        "note": "Luna：補記 0109 正式庫套用（ledger row 20261023113233，總數 84）、#862 ISSUE_CLOSED、#1112 PR_MERGED 與 #815 Opus 結案審查埋點（Haiku subagent，requested claude-haiku-4-5）。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261023-audit-815-close-approved",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 815,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/815#issuecomment-6363862569",
+        "startedAt": "2026-10-23T11:28:49Z",
+        "completedAt": "2026-10-23T11:29:32Z",
+        "note": "Opus 一般結案審查：CLOSE_APPROVED。結案留言 11:29:55Z 後，product-issue-close-guard 於 11:30:14Z 退回並重開（缺 RUN_CAPTURE_HANDOFF／ISSUE_CLOSE_READY）；#815 目前 OPEN，故未記 ISSUE_CLOSED。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261023-terra-build-16-qr-guard-test",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "issue": 16,
+        "evidenceRef": "branch:issue-1091-ledger-0109 commit 7863c24e（cherry-pick 為 6dd91b9a）",
+        "startedAt": "2026-10-23T11:56:55Z",
+        "completedAt": "2026-10-23T11:58:28Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）新增 #16 QR 接線退版守門測試，commit 7863c24e，cherry-pick 為 6dd91b9a。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261023-audit-16-closure-opus-fix-required",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "issue": 16,
+        "evidenceRef": "issue/16 結案審查（verdict FIX_REQUIRED；留言連結本輪未核對）",
+        "startedAt": "2026-10-23T11:55:47Z",
+        "completedAt": "2026-10-23T11:56:19Z",
+        "note": "Opus 結案審查（requested claude-opus-5-5）：verdict FIX_REQUIRED，缺退版守門測試，已由 20261023-terra-build-16-qr-guard-test 補上。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261023-luna-scout-16-ledger-metrics",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "issue": 16,
+        "evidenceRef": "branch:issue-1091-ledger-0109",
+        "startedAt": "2026-10-23T12:00:51Z",
+        "completedAt": "2026-10-23T12:01:50Z",
+        "note": "Luna scout（requested claude-haiku-4-5；本 session 自報 claude-haiku-5-5，平台未驗證）：補記 #16 守門測試 Terra 施工、Opus 結案審查 FIX_REQUIRED 與本筆埋點。actual 未經平台驗證。"
       }
     ],
     "fullContextReplays": 0,
@@ -12508,7 +12611,7 @@
   },
   "delivery": {
     "issuesStarted": 120,
-    "issuesClosed": 20,
+    "issuesClosed": 21,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
     "exactHeadCiOnly": 0,
@@ -12536,14 +12639,14 @@
     ]
   },
   "flow": {
-    "lunaTasks": 247,
-    "lunaAccepted": 238,
+    "lunaTasks": 249,
+    "lunaAccepted": 240,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 280,
-    "solIssues": 51
+    "solTouches": 281,
+    "solIssues": 52
   },
   "auditability": {
     "evidenceFieldsCompletePercent": null,
@@ -12829,7 +12932,8 @@
     "非計分補充（#974）：#974 由 Sonnet 預建，時間 2026-10-14T07:31:29Z–07:33:18Z，原 commit 85c9eef0，cherry-pick 為 be63ba8e；盤點由 Luna 執行（見 modelUsage.tasks，與 #973 同一盤點）。此段僅為來源說明，不計入 Scorecard 計數。",
     "非計分補充（#980）：#980 由 Sonnet 預建，時間 2026-10-15T00:01:57Z–00:03:05Z，原 commit a0c96276，cherry-pick 為 6e000537；盤點由 Luna 執行（見 modelUsage.tasks）。此段僅為來源說明，不計入 Scorecard 計數。",
     "非計分補充（#982）：#982 由 Sonnet 預建，時間 2026-10-15T00:07:27Z–00:07:57Z，原 commit d3efa6e6，cherry-pick 為 c5db71a7；盤點由 Luna 執行（見 modelUsage.tasks，與 #980 同一盤點）。此段僅為來源說明，不計入 Scorecard 計數。",
-    "非計分補充（#985）：#985 由 Sonnet 預建，時間 2026-10-15T00:21:29Z–00:22:22Z，原 commit 03a58ee8，cherry-pick 為 4c040715；盤點由 Luna 執行（見 modelUsage.tasks，與 #980 同一盤點）。此段僅為來源說明，不計入 Scorecard 計數。"
+    "非計分補充（#985）：#985 由 Sonnet 預建，時間 2026-10-15T00:21:29Z–00:22:22Z，原 commit 03a58ee8，cherry-pick 為 4c040715；盤點由 Luna 執行（見 modelUsage.tasks，與 #980 同一盤點）。此段僅為來源說明，不計入 Scorecard 計數。",
+    "2026-10-23 Luna 埋點補記（非計分）：#862 ISSUE_CLOSED 已於 10:56:20Z 讀回確認；#815 Opus CLOSE_APPROVED 後，close guard 於 11:30:14Z 退回重開，故不計 ISSUE_CLOSED，issuesClosed 只 +1。0109 正式庫套用 ledger row 20261023113233 目前僅有 Owner 會話回報與本地 snapshot（84 筆），#1091 GitHub 尚無對應留言，claim 標 UNVERIFIED。Terra commit f50c6dda 僅在本地分支，GitHub REST 查無該 SHA。#1112 無既有 luna 任務（無 this commit 項需改寫）。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -13195,6 +13299,30 @@
         "observedState": "closed",
         "verification": "VERIFIED",
         "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/864#issuecomment-6362146766"
+      },
+      {
+        "type": "ISSUE_CLOSED",
+        "subject": "issue#862",
+        "claimedState": "closed",
+        "observedState": "closed",
+        "verification": "VERIFIED",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/862#issuecomment-6363302469 (closed_at 2026-10-23T10:56:20Z，REST 讀回)"
+      },
+      {
+        "type": "PR_MERGED",
+        "subject": "pr#1112",
+        "claimedState": "merged",
+        "observedState": "merged",
+        "verification": "VERIFIED",
+        "evidenceRef": "PR #1112 merged_at 2026-10-23T11:02:22Z merge_commit 4c8d5b8092c8cb5fc75d38e132e31069c3ede4b6 (REST 讀回)；Production acceptance https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/1109#issuecomment-6363450813"
+      },
+      {
+        "type": "PRODUCTION_SCHEMA_READY",
+        "subject": "migration 0109 production (ledger row 20261023113233)",
+        "claimedState": "ready",
+        "observedState": "not_observed_on_github",
+        "verification": "UNVERIFIED",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/1091 (Owner 授權套用 2026-10-23T11:32:33Z；#1091 尚無該時點留言)；本地 supabase/production-ledger-snapshot.json rowCount 84 capturedAt 2026-10-23T11:35:00Z 含 0109_issue_41_schema_precondition_assertions"
       }
     ]
   },
