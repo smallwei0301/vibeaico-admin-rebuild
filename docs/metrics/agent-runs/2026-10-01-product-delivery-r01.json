@@ -467,6 +467,10 @@
     {
       "ref": "issue/1109",
       "title": "LINE 圖文選單文字在淺色或透明底圖上幾乎看不清（#931 後續）"
+    },
+    {
+      "ref": "issue/862",
+      "title": "已上架 Midao 的行程，基本欄位（標題／描述／相簿等）仍可直接修改，未走審核"
     }
   ],
   "main": {
@@ -12412,14 +12416,65 @@
         "startedAt": "2026-10-23T06:58:44Z",
         "completedAt": "2026-10-23T06:58:44Z",
         "note": "Luna：綁定 #1109 施工與 #973／#980／#931 結案埋點（Haiku subagent，requested claude-haiku-4-5）。"
+      },
+      {
+        "id": "20261023-terra-build-862-listed-readonly",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 862,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/8937f857",
+        "startedAt": "2026-10-23T09:49:10Z",
+        "completedAt": "2026-10-23T09:51:50Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）依 Owner 2026-10-23 決定，LISTED 行程基本欄位前端唯讀、PUT 條件更新回 409。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261023-sol-close-1109-864",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 2,
+        "issue": 1109,
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/864",
+        "startedAt": "2026-10-23T08:50:41Z",
+        "completedAt": "2026-10-23T09:47:17Z",
+        "note": "FINAL_SOL_AUDIT：Opus subagent（requested claude-opus-5-5）結案審查 #1109、#864 皆 CLOSE_APPROVED，兩張已關閉。"
+      },
+      {
+        "id": "20261023-luna-scout-862-bind",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "issue": 862,
+        "evidenceRef": "this commit",
+        "startedAt": "2026-10-23T09:54:51Z",
+        "completedAt": "2026-10-23T09:54:51Z",
+        "note": "Luna：綁定 #862 施工與 #1109／#864 結案埋點（Haiku subagent，requested claude-haiku-4-5）。"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 119,
-    "issuesClosed": 18,
+    "issuesStarted": 120,
+    "issuesClosed": 20,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
     "exactHeadCiOnly": 0,
@@ -12447,14 +12502,14 @@
     ]
   },
   "flow": {
-    "lunaTasks": 245,
-    "lunaAccepted": 236,
+    "lunaTasks": 246,
+    "lunaAccepted": 237,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 279,
-    "solIssues": 49
+    "solTouches": 280,
+    "solIssues": 51
   },
   "auditability": {
     "evidenceFieldsCompletePercent": null,
@@ -13090,6 +13145,22 @@
         "observedState": "closed",
         "verification": "VERIFIED",
         "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/931#issuecomment-6359288468"
+      },
+      {
+        "type": "ISSUE_CLOSED",
+        "subject": "issue#1109",
+        "claimedState": "closed",
+        "observedState": "closed",
+        "verification": "VERIFIED",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/1109#issuecomment-6361178608"
+      },
+      {
+        "type": "ISSUE_CLOSED",
+        "subject": "issue#864",
+        "claimedState": "closed",
+        "observedState": "closed",
+        "verification": "VERIFIED",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/864#issuecomment-6362146766"
       }
     ]
   },

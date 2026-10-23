@@ -23,9 +23,9 @@ describe('#42 已上架 Midao 行程封面不可直寫（Codex P1）', () => {
     const src = readFileSync('src/app/api/trips/[id]/route.ts', 'utf8');
     const put = src.slice(src.indexOf('export const PUT'), src.indexOf('export const DELETE'));
     expect(put).toContain("const coverTouched = 'cover_image_url' in patch;");
-    expect(put).toContain("if (coverTouched) query = query.neq('midao_listing', 'LISTED');");
+    expect(put).toContain("neq('midao_listing', 'LISTED')");
     expect(put).toContain('tripsPage.actions.coverListedBlocked');
-    expect(put).toMatch(/if \(still\) return fail\(409/);
+    expect(put).toMatch(/if \(still\) \{\s*return fail\(409/);
     expect(put).toMatch(/return fail\(404/);
     expect(put).toContain("error?.code === '23505'");
   });

@@ -29,6 +29,7 @@ const fakeDb = {
     const query = {
       select: () => query,
       eq: () => query,
+      neq: () => query,
       update: (patch: Record<string, unknown>) => { db.updates.push(patch); written = patch; return query; },
       insert: (row: Record<string, unknown>) => { db.inserts.push(row); written = row; return query; },
       maybeSingle: async () => { db.reads++; return { data: { ...db.legacyRow, ...written }, error: null }; },
