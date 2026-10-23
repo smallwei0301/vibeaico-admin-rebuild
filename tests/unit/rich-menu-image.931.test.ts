@@ -121,3 +121,29 @@ describe('composeRichMenuImage 透明底圖與超大檔 (#931)', () => {
     ).rejects.toMatchObject({ status: 400 });
   });
 });
+
+describe('composeRichMenuImage 底圖解碼容錯（#931 正式站回歸）', () => {
+  // 正式站店家上傳的 2×2、79 bytes PNG；sharp 預設 failOn 會 libspng read error
+  const PROD_2X2_PNG_B64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR4nGP8z8Dwn4GB4T8TAwMDAwAqHwMBnkE1zwAAAABJRU5ErkJggg==';
+
+  it('正式站 2×2 PNG 可合成為 2500×1686 JPEG', async () => {
+    const bytes = Buffer.from(PROD_2X2_PNG_B64, 'base64');
+    const out = await composeRichMenuImage({ bytes, contentType: 'image/png', businessType: 'LOCAL_SHOP' });
+    expect(out.contentType).toBe('image/jpeg');
+    const meta = await sharp(out.bytes).metadata();
+    expect(meta.format).toBe('jpeg');
+    expect(meta.width).toBe(2500);
+    expect(meta.height).toBe(1686);
+  });
+
+  it('非圖片 bytes 丟 400 ApiHttpError 而非 500', async () => {
+    await expect(
+      composeRichMenuImage({
+        bytes: Buffer.from('this is not an image'),
+        contentType: 'image/png',
+        businessType: 'LOCAL_SHOP',
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+});

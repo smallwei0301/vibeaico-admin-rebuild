@@ -65,11 +65,19 @@ export async function composeRichMenuImage(opts: {
 
   const overlay = Buffer.from(buildRichMenuTextSvg(opts.businessType, opts.textColor));
   const maxBytes = opts.maxBytes ?? LINE_MAX_BYTES;
-  const base = await sharp(input)
-    .flatten({ background: '#FFFFFF' })
-    .resize(RICH_MENU_WIDTH, RICH_MENU_HEIGHT, { fit: 'cover' })
-    .composite([{ input: overlay, top: 0, left: 0 }])
-    .toBuffer();
+  let base: Buffer;
+  try {
+    // failOn: 'none'：店家上傳的小尺寸 PNG 常有 libspng 嚴格檢查會拒讀的瑕疵（#931 正式站回歸）
+    base = await sharp(input, { failOn: 'none' })
+      .flatten({ background: '#FFFFFF' })
+      .resize(RICH_MENU_WIDTH, RICH_MENU_HEIGHT, { fit: 'cover' })
+      .composite([{ input: overlay, top: 0, left: 0 }])
+      .toBuffer();
+  } catch (e) {
+    if (e instanceof ApiHttpError) throw e;
+    console.warn('[rich-menu-image] 底圖無法解碼', e instanceof Error ? e.message : e);
+    throw new ApiHttpError(400, '底圖無法讀取，請重新上傳 JPG 或 PNG 底圖後再試', ERR.VALIDATION);
+  }
 
   let out: Buffer = Buffer.alloc(0);
   for (const quality of [90, 85, 80, 75, 70, 65, 60]) {
