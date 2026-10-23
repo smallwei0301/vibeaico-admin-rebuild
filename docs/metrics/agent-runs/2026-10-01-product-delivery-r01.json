@@ -99,11 +99,12 @@
       "ref": "issue/769"
     },
     {
-      "ref": "issue/815"
+      "ref": "issue/815",
+      "title": "旅遊方案價格限制為整數元（Owner 2026-10-07 決策，#813 Codex P2 follow-up）"
     },
     {
       "ref": "issue/16",
-      "title": "QR Code 真實產生與下載"
+      "title": "補齊-1：QR Code 真實產生與下載（promote／line-settings）current-main regression 修復"
     },
     {
       "ref": "issue/45"
@@ -12552,6 +12553,57 @@
         "startedAt": "2026-10-23T11:28:49Z",
         "completedAt": "2026-10-23T11:29:32Z",
         "note": "Opus 一般結案審查：CLOSE_APPROVED。結案留言 11:29:55Z 後，product-issue-close-guard 於 11:30:14Z 退回並重開（缺 RUN_CAPTURE_HANDOFF／ISSUE_CLOSE_READY）；#815 目前 OPEN，故未記 ISSUE_CLOSED。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261023-terra-build-16-qr-guard-test",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "issue": 16,
+        "evidenceRef": "branch:issue-1091-ledger-0109 commit 7863c24e（cherry-pick 為 6dd91b9a）",
+        "startedAt": "2026-10-23T11:56:55Z",
+        "completedAt": "2026-10-23T11:58:28Z",
+        "note": "TERRA_BUILD：Sonnet subagent（requested claude-sonnet-5-5）新增 #16 QR 接線退版守門測試，commit 7863c24e，cherry-pick 為 6dd91b9a。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261023-audit-16-closure-opus-fix-required",
+        "role": "audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "issue": 16,
+        "evidenceRef": "issue/16 結案審查（verdict FIX_REQUIRED；留言連結本輪未核對）",
+        "startedAt": "2026-10-23T11:55:47Z",
+        "completedAt": "2026-10-23T11:56:19Z",
+        "note": "Opus 結案審查（requested claude-opus-5-5）：verdict FIX_REQUIRED，缺退版守門測試，已由 20261023-terra-build-16-qr-guard-test 補上。actual 未經平台驗證。"
+      },
+      {
+        "id": "20261023-luna-scout-16-ledger-metrics",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "count": 1,
+        "accepted": true,
+        "issue": 16,
+        "evidenceRef": "branch:issue-1091-ledger-0109",
+        "startedAt": "2026-10-23T12:00:51Z",
+        "completedAt": "2026-10-23T12:01:50Z",
+        "note": "Luna scout（requested claude-haiku-4-5；本 session 自報 claude-haiku-5-5，平台未驗證）：補記 #16 守門測試 Terra 施工、Opus 結案審查 FIX_REQUIRED 與本筆埋點。actual 未經平台驗證。"
       }
     ],
     "fullContextReplays": 0,
@@ -12587,14 +12639,14 @@
     ]
   },
   "flow": {
-    "lunaTasks": 248,
-    "lunaAccepted": 239,
+    "lunaTasks": 249,
+    "lunaAccepted": 240,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 280,
-    "solIssues": 51
+    "solTouches": 281,
+    "solIssues": 52
   },
   "auditability": {
     "evidenceFieldsCompletePercent": null,
