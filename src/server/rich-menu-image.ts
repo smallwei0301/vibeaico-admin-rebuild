@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import { ApiHttpError, ERR } from '@/server/http';
 import { MODE_PRESETS } from '@/config/modes';
 import { RICH_MENU_CELL_BOUNDS, resolveRichMenuBusinessType } from '@/server/rich-menu';
 import { RICH_MENU_GLYPHS } from '@/server/rich-menu-glyphs.generated';
@@ -56,12 +57,16 @@ export async function composeRichMenuImage(opts: {
   businessType?: unknown;
   textColor?: unknown;
   noOverlay?: boolean;
+  /** 測試注入用；預設 LINE 的 1MB 上限 */
+  maxBytes?: number;
 }): Promise<{ bytes: Buffer; contentType: string }> {
   const input = Buffer.isBuffer(opts.bytes) ? opts.bytes : Buffer.from(opts.bytes as ArrayBuffer);
   if (opts.noOverlay) return { bytes: input, contentType: opts.contentType };
 
   const overlay = Buffer.from(buildRichMenuTextSvg(opts.businessType, opts.textColor));
+  const maxBytes = opts.maxBytes ?? LINE_MAX_BYTES;
   const base = await sharp(input)
+    .flatten({ background: '#FFFFFF' })
     .resize(RICH_MENU_WIDTH, RICH_MENU_HEIGHT, { fit: 'cover' })
     .composite([{ input: overlay, top: 0, left: 0 }])
     .toBuffer();
@@ -69,7 +74,10 @@ export async function composeRichMenuImage(opts: {
   let out: Buffer = Buffer.alloc(0);
   for (const quality of [90, 85, 80, 75, 70, 65, 60]) {
     out = await sharp(base).jpeg({ quality, mozjpeg: true }).toBuffer();
-    if (out.length < LINE_MAX_BYTES) break;
+    if (out.length < maxBytes) break;
+  }
+  if (out.length >= maxBytes) {
+    throw new ApiHttpError(400, '選單圖片壓縮後仍超過 LINE 的 1MB 上限，請改用較簡單或較小的底圖', ERR.VALIDATION);
   }
   return { bytes: out, contentType: 'image/jpeg' };
 }

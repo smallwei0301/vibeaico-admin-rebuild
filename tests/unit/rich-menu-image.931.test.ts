@@ -96,3 +96,28 @@ describe('#931 rich menu image composition', () => {
     expect(src).toContain('richMenuNoOverlay');
   });
 });
+
+describe('composeRichMenuImage 透明底圖與超大檔 (#931)', () => {
+  it('全透明 PNG 合成後無文字區域為白色而非黑色', async () => {
+    const png = await sharp({
+      create: { width: 2500, height: 1686, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+    })
+      .png()
+      .toBuffer();
+    const out = await composeRichMenuImage({ bytes: png, contentType: 'image/png', businessType: 'LOCAL_SHOP' });
+    const { data } = await sharp(out.bytes)
+      .extract({ left: 5, top: 5, width: 20, height: 20 })
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const avg = data.reduce((a, b) => a + b, 0) / data.length;
+    expect(avg).toBeGreaterThan(240);
+  });
+
+  it('壓縮後仍超過上限時丟出 400', async () => {
+    const png = await solidPng({ r: 10, g: 120, b: 200 });
+    await expect(
+      composeRichMenuImage({ bytes: png, contentType: 'image/png', businessType: 'LOCAL_SHOP', maxBytes: 100 }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+});
