@@ -24,6 +24,35 @@ import { validateDeliveryUnitBoundary, validateBookkeepingWorkstream } from './g
 export { validateDeliveryUnitBoundary } from './governance-workstream-boundary.mjs';
 const ORIGINS = new Set(['OWNER', 'AGENT', 'UNKNOWN']);
 
+/** Pre-execution diagnostic for the normal backend role path, NOT provenance.
+ * The operator must inspect the current runtime/tool contract. This validates
+ * that observation's shape; it cannot authenticate advertised capabilities.
+ */
+export function validateRoleCaptureCapability(packet, now = Date.now()) {
+  const result = { valid: false, status: 'ROLE_CAPTURE_UNAVAILABLE', canonicalReadbackVerified: false,
+    roleIdentityVerified: false, errors: [] };
+  const concrete = value => typeof value === 'string' && value.trim().length >= 8
+    && !/^(unknown|none|pending|tbd|unavailable|<.*>)$/i.test(value.trim());
+  const observed = typeof packet?.observedAt === 'string' && /^\d{4}-\d\d-\d\dT.*Z$/.test(packet.observedAt)
+    ? Date.parse(packet.observedAt) : NaN;
+  if (packet?.schemaVersion !== 1 || packet?.sourceKind !== 'OPERATOR_OBSERVED_RUNTIME_CONTRACT'
+    || !concrete(packet?.evidenceRef) || !Number.isFinite(observed) || observed > now)
+    result.errors.push('Record the current runtime contract source and its actual UTC observation time');
+  for (const role of ['BUILD', 'REVIEW']) {
+    for (const field of ['actorId', 'sessionId', 'executionRef']) {
+      if (packet?.roles?.[role]?.[field] !== 'EXPOSED')
+        result.errors.push(`${role}.${field} must be exposed by the runtime; task names and parent thread IDs are not backend role identities`);
+    }
+    if (packet?.roles?.[role]?.captureBeforeWork !== 'SUPPORTED')
+      result.errors.push(`${role} needs an available capture route before its substantive work starts`);
+  }
+  if (packet?.independentFreshReviewer !== 'SUPPORTED')
+    result.errors.push('The runtime must support a separate reviewer with fresh context');
+  result.valid = result.errors.length === 0;
+  if (result.valid) result.status = 'ROLE_CAPTURE_CAPABILITY_RECORDED_UNVERIFIED';
+  return result;
+}
+
 function upper(value) {
   return String(value ?? '').trim().toUpperCase();
 }
@@ -74,7 +103,12 @@ function ordinaryLocalContract(input, body, changedFiles) {
   if (current && (current.body !== body || typeof current.draft !== 'boolean' || !['open', 'closed'].includes(current.state))) {
     return { ...result, ordinaryReviewStatus: 'LOCAL_NOT_VERIFIABLE', errors: ['Current PR snapshot must include exact body, state and boolean draft'] };
   }
-  if (current && !shouldEnforceFinalRisk({ pullRequestState: current.state, draft: current.draft, laneState: readField(body, 'LANE_STATE') })) return result;
+  // An explicit prospective check evaluates the future final contract, even
+  // while the real open PR is Draft/PARKED. It never changes live admission.
+  // Closed history stays deferred; malformed snapshots were rejected above.
+  if (current?.state === 'closed') return result;
+  if (current && input.prospectiveFinal !== true
+    && !shouldEnforceFinalRisk({ pullRequestState: current.state, draft: current.draft, laneState: readField(body, 'LANE_STATE') })) return result;
   result.ordinaryReviewRequired = true;
   result.ordinaryReviewStatus = 'LOCAL_CONTRACT_PENDING';
   const packet = input.ordinaryEvidence;
@@ -342,8 +376,16 @@ export function validateWipPreflight(input = {}) {
 
 function runCli(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
+  if (args['role-capability']) {
+    if (Object.keys(args).some(key => key !== 'role-capability'))
+      throw new Error('--role-capability is a standalone pre-execution diagnostic, not WIP or final approval');
+    const result = validateRoleCaptureCapability(JSON.parse(readFileSync(args['role-capability'], 'utf8')));
+    console.log(JSON.stringify(result, null, 2));
+    if (!result.valid) process.exitCode = 1;
+    return;
+  }
   if (!args.body) {
-    throw new Error('Usage: agent-wip-preflight.mjs --body <pr-body.md> [--changed-files <files.txt> | --base <git-ref>] [--number <pr>]');
+    throw new Error('Usage: agent-wip-preflight.mjs --role-capability <runtime-observation.json> OR --body <pr-body.md> [--changed-files <files.txt> | --base <git-ref>] [--number <pr>]');
   }
   if (args['changed-files'] && args.base) {
     throw new Error('Use either --changed-files or --base, not both');

@@ -604,6 +604,28 @@ OPERATOR_ATTESTED、prior finding 核對與零 unresolved finding；publication/
 後續 Product 委派在施工前確認 role capture 能力，並於 spawn/work/completion 留存原始可得資料；
 parent session ID／taskname／GitHublogin 不代填子角色。未知維持 UNEXPOSED，不補造舊身分或時間。
 
+**先查 capture 能力，再投入 Product BUILD／REVIEW。** 正常 backend 角色路徑在派工前，以當次
+runtime metadata／實際工具契約觀測執行既有入口：
+`node scripts/agents/agent-wip-preflight.mjs --role-capability <runtime-observation.json>`。
+紀錄 `schemaVersion=1`、`sourceKind=OPERATOR_OBSERVED_RUNTIME_CONTRACT`、可回讀的 `evidenceRef`、
+真實 UTC `observedAt`；`roles.BUILD` 與 `roles.REVIEW` 各自記 `actorId/sessionId/executionRef`
+是否 `EXPOSED`、`captureBeforeWork` 是否 `SUPPORTED`，以及 `independentFreshReviewer` 是否 `SUPPORTED`。
+未暴露填 `UNEXPOSED`、未查明填 `UNKNOWN`，立即停止受影響的派工並查現有合法取證途徑；
+不能先完成施工／昂貴測試再第一次發現 final 收據根本無法形成，也不能用父 thread、任務名或 requested model 補值。
+這是本地觀測契約檢查，不認證 advertised capability、backend 身分或未來執行；成功僅
+`ROLE_CAPTURE_CAPABILITY_RECORDED_UNVERIFIED`，不是放行。工具實際回傳時仍須即時保存真實角色來源；
+若 advertised 欄位沒有回傳，停止該步並保留實際結果，不回填身份。不得提交私密原 prompt 或秘密。
+它不要求尚未發生的 completedAt、final head/digest 或 REVIEW 收據，也不取代 ownership／WIP／模型／成本關卡。
+純治理不適用；#848／#946 只沿各自 current-main 精確政策，不以此診斷擴張例外。工具契約未暴露欄位只證明當前路徑
+未確認可用，不能單憑 assistant 敘述認定整個平台不支援或原 adapter 一定漏存。
+本 repo 沒有攔截外部派工工具的 executable hook；此模式實際檢查 CLI 輸入並以退出碼停住串接命令，
+但無法阻止省略命令的外部派工，不宣稱已全平台強制執行。
+
+既有 `--prospective-final true` 是正式審查前的假設 final 契約檢查；即使同時提供真實 open Draft／PARKED
+`--current-pr-json`，也必須檢查缺失角色收據，不能被生命周期早退蓋掉。正常 Draft 不因本段新增 final
+收據要求，closed 歷史不重開。此命令只驗 local shape，`canonicalReadbackVerified=false`；remote canonical
+回讀、兩個獨立角色、exact head／時序與其他放行條件均維持不變。
+
 `openaiBuilderDecision.independentReviewerRequired=true` 時，live review approval 必須有 current builder 與 reviewer 的獨立執行來源；只設 flag、換模型 ID 或在 review 自填 `trusted=true` 不足以放行。
 PR body 增加 `BUILDER_EXECUTION_RECEIPT: https://github.com/<owner>/<repo>/pull/<n>#issuecomment-<id>`（同 repo 的 Issue comment 亦可）；canonical `astra-review` 增加 `reviewerExecutionReceipt` 指向另一筆同 repo comment。兩個 locator 不作證據本身：GitHub adapter 必須 GET 回讀、驗 canonical html_url、可信 write/maintain/admin 提交者或既有 trusted bot，不執行 comment 內容。
 每筆 comment 只有一個 `agent-role-execution` fenced JSON，schema：`role`=BUILD|REVIEW、`repository`、`headSha`、`changeDigest`、runtime `actorId`／`sessionId`／`executionRef`、UTC `startedAt`／`completedAt`、`executionEvidence`=OPERATOR_ATTESTED；REVIEW 另有 `freshContext: true`。這是可信操作者對角色執行的背書，不是 provider-signed telemetry；缺實際 actor/session capture 就 pending，不能由 PR author／lane／requested model 推定。
