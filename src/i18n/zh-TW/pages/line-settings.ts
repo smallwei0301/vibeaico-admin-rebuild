@@ -342,7 +342,7 @@ export const lineSettingsPage = {
     previewTitle: '即時預覽效果',
     previewChatArea: '顧客聊天區域',
     previewNote:
-      '發布時 LINE 選單只會顯示所選底圖；格子文字用來對照點擊範圍與各格送出的關鍵字，不會畫進圖片。',
+      '發布時會依此預覽把各格文字合成進選單圖片；勾選「直接使用背景圖」則只上傳底圖、不畫文字。',
 
     themeTitle: '選擇主題配色',
     themes: {

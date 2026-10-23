@@ -2,6 +2,7 @@ import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { createAdminSupabase } from '@/server/supabase';
 import { buildRichMenuBody } from '@/server/rich-menu';
+import { composeRichMenuImage } from '@/server/rich-menu-image';
 import { lineSettingsReadSchema } from '@/config/tenant-settings';
 import {
   getLineCredentials, lineCreateRichMenu, lineUploadRichMenuImage,
@@ -24,8 +25,9 @@ import {
  * 閘門（09 分冊 §5）：CUSTOM_RICH_MENU 只擋**進階**端點（create-advanced 等），
  * 基本主題（本端點）不擋。需 MANAGER。
  *
- * MVP 簡化：richMenuNoOverlay / richMenuTextColor 是文字疊圖合成用（§6 註明
- * 設計器合成屬後期），本端點直接用底圖原圖上傳。
+ * 圖片合成（#931）：底圖取得後依店家營業模式把六格 label 畫進圖片
+ * （richMenuTextColor 為字色；richMenuNoOverlay=true 則不畫字、底圖原樣上傳），
+ * 與設定頁預覽一致。合成輸出為 2500×1686 JPEG（<1MB），見 server/rich-menu-image。
  */
 
 /** 取得底圖 bytes + contentType；拿不到 → 丟 4xx 明確 message */
@@ -55,6 +57,11 @@ async function loadBackgroundImage(
   );
 }
 
+/** Buffer → 獨立的 ArrayBuffer（Buffer 可能是共用 pool 的 slice） */
+function toArrayBuffer(b: Buffer): ArrayBuffer {
+  return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
+}
+
 export const POST = handle(async () => {
   const t = await requireTenant('MANAGER');
 
@@ -64,12 +71,19 @@ export const POST = handle(async () => {
   const theme = line.richMenuTheme ?? 'LINE_GREEN';
 
   // ③ 的圖先取——圖拿不到就不要在 LINE 端留下半成品選單
-  const image = await loadBackgroundImage(theme, line.richMenuBgImageUrl ?? '');
+  const background = await loadBackgroundImage(theme, line.richMenuBgImageUrl ?? '');
+  const image = await composeRichMenuImage({
+    bytes: background.bytes,
+    contentType: background.contentType,
+    businessType: t.businessType,
+    textColor: line.richMenuTextColor,
+    noOverlay: line.richMenuNoOverlay === true,
+  });
 
   // ② 建立 → ③ 傳圖 → ④ 設為預設
   const richMenuId = await lineCreateRichMenu(token, buildRichMenuBody(theme, t.businessType));
   try {
-    await lineUploadRichMenuImage(token, richMenuId, image.bytes, image.contentType);
+    await lineUploadRichMenuImage(token, richMenuId, toArrayBuffer(image.bytes), image.contentType);
     await lineSetDefaultRichMenu(token, richMenuId);
   } catch (e) {
     // 傳圖/設預設失敗 → 清掉剛建立的半成品，避免 LINE 端累積孤兒選單
