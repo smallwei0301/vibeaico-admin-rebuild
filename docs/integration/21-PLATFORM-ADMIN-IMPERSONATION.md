@@ -228,7 +228,7 @@ LINE 的伺服器，沒有登入者也沒有 cookie，代登入在那條路徑�
   可以自由修改甚至刪除平台幫他建的東西（裁示明文）。
 - UI 顯示「Midao 協助建立」badge。
 - 已在 Midao LISTED 的行程，修改仍走既有 review 機制（#42）。
-- 目前行為（Owner 2026-10-23，#862）：已 LISTED 的行程，基本欄位（含封面、相簿、說明文字等經 `PUT /api/trips/[id]` 寫入者）、方案與季節價格一律唯讀直到送審上線；伺服器以帶 `midao_listing <> 'LISTED'` 條件的更新擋下並回 409。
+- 目前行為（Owner 2026-10-23，#862）：已 LISTED 的行程，基本欄位（含封面、相簿、說明文字等經 `PUT /api/trips/[id]` 寫入者）、方案與季節價格一律唯讀直到送審上線。行程基本欄位（`PUT /api/trips/[id]`）以帶 `midao_listing <> 'LISTED'` 條件的單一更新擋下並回 409（原子）；方案與季節價格則在寫入前先讀上架狀態（`requireUnlistedTripForPlanWrite()`），已 LISTED 回 409，但此檢查與寫入不在同一交易，與上架轉換並發時可能漏擋，屬已知缺口（徹底解決需把檢查綁進寫入條件或 DB 層）。
 
 ---
 

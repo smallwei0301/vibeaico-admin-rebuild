@@ -1,5 +1,6 @@
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { LINE_RICH_MENU_MAX_BYTES } from '@/lib/line-image-limits';
 
 /**
  * POST /api/settings/line/rich-menu/upload-bg-image —— Rich Menu 底圖上傳
@@ -12,7 +13,7 @@ import { requireTenant } from '@/server/tenant';
  *   用帶 session 的 client 上傳，RLS 把關。bucket 為 public → 回 publicUrl。
  * - 回傳 { url }；前端存進 line.richMenuBgImageUrl（PUT /api/settings/line）。
  */
-const MAX_BYTES = 1024 * 1024; // 1MB（LINE Rich Menu 圖片上限）
+const MAX_BYTES = LINE_RICH_MENU_MAX_BYTES; // 十進位 1MB（LINE 上限，見 docs/integration/14-GAP-AUDIT.md）
 const ALLOWED: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png' };
 
 export const POST = handle(async (req) => {
@@ -28,7 +29,7 @@ export const POST = handle(async (req) => {
   const ext = ALLOWED[file.type];
   if (!ext)
     throw new ApiHttpError(400, '僅支援 JPEG / PNG 圖片', ERR.VALIDATION);
-  if (file.size > MAX_BYTES)
+  if (file.size >= MAX_BYTES)
     throw new ApiHttpError(400, '圖片超過 1MB 上限（LINE Rich Menu 限制），請壓縮後再上傳', ERR.VALIDATION);
 
   const path = `${t.tenantId}/richmenu-bg-${Date.now()}.${ext}`;

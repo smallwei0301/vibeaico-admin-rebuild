@@ -1,6 +1,7 @@
 import { ApiError, adapt, request, toNetworkError } from '@/lib/api';
 import { APP_URL } from '@/config/env';
 import { resolvePublicTimeZone } from '@/lib/public-time-zone';
+import { LINE_RICH_MENU_MAX_BYTES } from '@/lib/line-image-limits';
 import type { BusinessType } from '@/config/modes';
 import {
   DEFAULT_TENANT_SETTINGS, buildWebhookUrl, maskSecret,
@@ -66,7 +67,7 @@ export interface UploadRichMenuBgImageResult {
  * 1MB —— 用通用端點上傳會讓超過 1MB 的圖片「上傳成功」，直到之後發布才失敗。
  * 這裡在上傳當下就用與後端相同的規則擋下，並把後端的真實錯誤訊息原樣往上拋。
  */
-const RICH_MENU_BG_MAX_BYTES = 1024 * 1024; // 1MB，對齊 upload-bg-image route 的 LINE 平台限制
+const RICH_MENU_BG_MAX_BYTES = LINE_RICH_MENU_MAX_BYTES; // 十進位 1MB（docs/integration/14-GAP-AUDIT.md），對齊 upload-bg-image route
 const RICH_MENU_BG_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png']);
 
 export const uploadRichMenuBgImage = (file: File) =>
@@ -75,7 +76,7 @@ export const uploadRichMenuBgImage = (file: File) =>
       if (!RICH_MENU_BG_ALLOWED_TYPES.has(file.type)) {
         throw new ApiError('僅支援 JPEG / PNG 圖片', 'VALIDATION');
       }
-      if (file.size > RICH_MENU_BG_MAX_BYTES) {
+      if (file.size >= RICH_MENU_BG_MAX_BYTES) {
         throw new ApiError('圖片超過 1MB 上限（LINE Rich Menu 限制），請壓縮後再上傳', 'VALIDATION');
       }
       return { url: file.name };
