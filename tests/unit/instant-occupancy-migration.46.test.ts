@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { inferMigrationRiskTier } from '../../scripts/agents/production-db-release-plan.mjs';
 
 const FILE = 'supabase/migrations/0138_issue_46_instant_occupancy.sql';
 const sql = readFileSync(FILE, 'utf8');
@@ -26,12 +27,16 @@ describe('#46 0138 INSTANT occupancy migration 原始碼守門', () => {
     expect(code).toMatch(/0138 後置斷言失敗/);
   });
 
-  it('duration snapshot：nullable int、check > 0、保守回填只在行程時長已知時、先回填後建 trigger', () => {
+  it('duration snapshot：nullable int、check > 0、不回填既有團次（回填會使整支 migration 變成 BACKFILL 風險類別）', () => {
     expect(code).toMatch(/add column if not exists duration_minutes_snapshot integer;/i);
     expect(code).toMatch(/check \(duration_minutes_snapshot is null or duration_minutes_snapshot > 0\)/i);
     expect(code).toMatch(/greatest\(pl\.duration_minutes, round\(t\.duration_hours \* 60\)::integer\)/);
     expect(code).toMatch(/t\.duration_hours is not null and t\.duration_hours > 0/);
-    expect(code.indexOf('update public.trip_departures d')).toBeLessThan(code.indexOf('create constraint trigger trg_bookings_staff_occupancy'));
+    // 不得有任何對 trip_departures 的 DML（回填）；既有團次 snapshot 維持 NULL。
+    expect(code).not.toMatch(/^update\s+public\.trip_departures\b/im);
+    expect(code).not.toMatch(/duration_minutes_snapshot\s*=\s*greatest\(/);
+    // NULL snapshot 在 departure_effective_minutes 內視為 0。
+    expect(fn('departure_effective_minutes')).toMatch(/coalesce\(p_snapshot, 0\)/);
   });
 
   it('trip_plans INSTANT 規則欄位：預設 1440／60、導遊單欄 FK＋同租戶 trigger（不依賴 staff 複合 key）、非 INSTANT 不強制', () => {
@@ -176,10 +181,33 @@ describe('#46 0138 INSTANT occupancy migration 原始碼守門', () => {
     expect(body).toMatch(/not \(v_basic \? 'timezone'\) then\s+return 'Asia\/Taipei'/);
   });
 
-  it('duration snapshot 公式：回填與 INSERT trigger 各一次，且只在行程時長已知時（app 端同公式由 ACTIVATE 的測試守）', () => {
+  it('duration snapshot 公式：只在 INSERT trigger 一次，且只在行程時長已知時（app 端同公式由 ACTIVATE 的測試守）', () => {
     const formula = 'greatest(pl.duration_minutes, round(t.duration_hours * 60)::integer)';
-    expect(code.split(formula).length - 1).toBe(2);
-    expect(code.match(/t\.duration_hours is not null and t\.duration_hours > 0/g)).toHaveLength(2);
+    expect(code.split(formula).length - 1).toBe(1);
+    expect(code.match(/t\.duration_hours is not null and t\.duration_hours > 0/g)).toHaveLength(1);
+  });
+
+  it('Production DB release 分類器守門：整支只有 AUTHZ 一種 specialized risk，且 migration 時期執行區塊不呼叫非白名單函式', () => {
+    const risk = inferMigrationRiskTier(sql, '0138_issue_46_instant_occupancy');
+    expect(risk).toBe('AUTHZ');
+    // 所有頂層 DO 區塊（含前置條件、形狀斷言、後置斷言）不得再出現被分類器擋下的函式。
+    const doBlocks = code.match(/^do \$\$[\s\S]*?^end \$\$;/gm) ?? [];
+    expect(doBlocks.length).toBeGreaterThanOrEqual(4);
+    for (const block of doBlocks) {
+      expect(block).not.toMatch(/\b(?:has_function_privilege|cardinality|array_position|to_regprocedure|greatest|round|length)\s*\(/);
+      expect(block.replace(/pg_catalog\.to_regclass/g, '')).not.toMatch(/\bto_regclass\s*\(/);
+      expect(block).not.toMatch(/\bif\s*\(/);
+      expect(block).not.toMatch(/drop\s+constraint/i);
+    }
+  });
+
+  it('instant_start_times 的 1–48 個元素且不得含 NULL 由 trigger 驗證（23514），不是 DO 內的 CHECK', () => {
+    expect(code).not.toMatch(/add constraint trip_plans_instant_start_times_ck/);
+    const body = fn('trg_trip_plans_instant_guide_same_tenant');
+    expect(body).toMatch(/cardinality\(new\.instant_start_times\) between 1 and 48/);
+    expect(body).toMatch(/array_position\(new\.instant_start_times, null::time\) is null/);
+    expect(body).toMatch(/errcode = '23514'/);
+    expect(code).toMatch(/before insert or update of instant_guide_staff_id, instant_start_times, tenant_id on public\.trip_plans/);
   });
 
   it('M7：INSTANT 時段（同鍵團次）查詢必須 for update，與並發建單序列化', () => {

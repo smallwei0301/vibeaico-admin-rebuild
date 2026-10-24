@@ -1291,10 +1291,6 @@
         },
         {
           "surface": "constraints",
-          "objectKey": "public.trip_plans.trip_plans_instant_start_times_ck"
-        },
-        {
-          "surface": "constraints",
           "objectKey": "public.trip_plans.trip_plans_instant_min_lead_ck"
         },
         {

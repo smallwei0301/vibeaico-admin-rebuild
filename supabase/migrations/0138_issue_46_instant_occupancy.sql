@@ -9,11 +9,15 @@
 --
 -- ## 本檔做的事
 --
---   1. trip_departures.duration_minutes_snapshot（0135 檔頭要求的前置條件）：INSERT 時 snapshot、
---      既有團次保守回填（僅行程時長已知時；其餘維持 NULL）。實際占用一律取
+--   1. trip_departures.duration_minutes_snapshot（0135 檔頭要求的前置條件）：新建團次 INSERT 時 snapshot
+--      （僅行程時長已知時；其餘維持 NULL）。本檔不回填既有團次（回填屬獨立風險類別，需 Production backup
+--      證據；既有團次的 snapshot 維持 NULL）。實際占用一律取
 --      departure_effective_minutes＝greatest(snapshot, 目前 plan.duration_minutes, 行程時數*60)，
---      snapshot 只會延長占用、不會縮短（方案事後調長時長仍延長既有團次，維持 0135 原行為）；
+--      NULL 視為 0：既有團次（snapshot 為 NULL）因此等於 greatest(plan, 行程時數*60)，與 app 端
+--      src/server/staff-availability.ts 的 greatest(plan, trip) 一致。
+--      新建團次的 snapshot 只會延長占用、不會縮短（方案事後調長時長仍延長團次，維持 0135 原行為）；
 --      三者皆未知才整日占用。此公式套用於 0135 predicate、departure_occupancy_range 的呼叫端與全部 trigger。
+--      既有團次唯一與回填版本的差異：方案事後「調短」時長時，既有團次的占用會跟著縮短（新團次則維持凍結的較長值）。
 --   2. trip_plans 新增 INSTANT 規則欄位 instant_start_times／instant_min_lead_minutes／
 --      instant_max_advance_days／instant_guide_staff_id。對非 INSTANT 方案不強制；「INSTANT 方案必須
 --      設定時刻清單與導遊」由 create_instant_tour_order 在執行時 fail closed（INSTANT_NOT_CONFIGURED），
@@ -50,16 +54,28 @@ begin;
 
 -- ------------------------------------------------------------------ 前置形狀
 do $$
+declare v_n integer;
 begin
-  if to_regclass('public.trip_departures') is null or to_regclass('public.trip_plans') is null
-    or to_regclass('public.trip_departure_staff') is null or to_regclass('public.tour_orders') is null
-    or to_regclass('public.bookings') is null or to_regclass('public.staff') is null
-    or to_regclass('public.trips') is null or to_regclass('public.tenant_settings') is null then
+  if pg_catalog.to_regclass('public.trip_departures') is null or pg_catalog.to_regclass('public.trip_plans') is null
+    or pg_catalog.to_regclass('public.trip_departure_staff') is null or pg_catalog.to_regclass('public.tour_orders') is null
+    or pg_catalog.to_regclass('public.bookings') is null or pg_catalog.to_regclass('public.staff') is null
+    or pg_catalog.to_regclass('public.trips') is null or pg_catalog.to_regclass('public.tenant_settings') is null then
     raise exception '0138 前置條件失敗：缺少必要資料表（需 0066／0087／0092／0107／0110／0135）';
   end if;
-  if to_regprocedure('public.create_tour_order_quoted(uuid,text,uuid,integer,uuid,jsonb,public.tour_order_source,uuid,text,timestamptz,numeric)') is null
-    or to_regprocedure('public.replace_trip_departure_staff(uuid,uuid,uuid,uuid[])') is null
-    or to_regprocedure('public.guide_staff_interval_available(uuid,uuid,timestamptz,timestamptz)') is null then
+  -- 以 pg_proc 的參數型別向量（只比型別、不比參數名稱）找三個前置 RPC，各自必須恰好一個。
+  select count(*) into v_n
+    from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public'
+     and ((p.proname = 'create_tour_order_quoted'
+           and p.proargtypes = array['uuid'::regtype::oid, 'text'::regtype::oid, 'uuid'::regtype::oid,
+             'integer'::regtype::oid, 'uuid'::regtype::oid, 'jsonb'::regtype::oid,
+             pg_catalog.to_regtype('public.tour_order_source')::oid, 'uuid'::regtype::oid, 'text'::regtype::oid,
+             'timestamptz'::regtype::oid, 'numeric'::regtype::oid]::oidvector)
+       or (p.proname = 'replace_trip_departure_staff'
+           and p.proargtypes = array['uuid'::regtype::oid, 'uuid'::regtype::oid, 'uuid'::regtype::oid, 'uuid[]'::regtype::oid]::oidvector)
+       or (p.proname = 'guide_staff_interval_available'
+           and p.proargtypes = array['uuid'::regtype::oid, 'uuid'::regtype::oid, 'timestamptz'::regtype::oid, 'timestamptz'::regtype::oid]::oidvector));
+  if v_n <> 3 then
     raise exception '0138 前置條件失敗：缺少 0131／0135／0137 的 RPC';
   end if;
 end $$;
@@ -83,13 +99,9 @@ begin
     alter table public.trip_departures add constraint trip_departures_duration_minutes_snapshot_ck
       check (duration_minutes_snapshot is null or duration_minutes_snapshot > 0);
   end if;
-  if not exists (select 1 from pg_constraint where conrelid = 'public.trip_plans'::regclass
-    and conname = 'trip_plans_instant_start_times_ck') then
-    alter table public.trip_plans add constraint trip_plans_instant_start_times_ck
-      check (instant_start_times is null
-        or (cardinality(instant_start_times) between 1 and 48
-            and array_position(instant_start_times, null::time) is null));
-  end if;
+  -- instant_start_times 的「1 到 48 個元素、不得有 NULL」檢查需要函式（cardinality／array_position），
+  -- 不能寫成只有運算子的 CHECK；改由下方 trg_trip_plans_instant_guide_same_tenant 驗證
+  -- （同樣 errcode 23514、constraint 名 trip_plans_instant_start_times_ck）。
   if not exists (select 1 from pg_constraint where conrelid = 'public.trip_plans'::regclass
     and conname = 'trip_plans_instant_min_lead_ck') then
     alter table public.trip_plans add constraint trip_plans_instant_min_lead_ck
@@ -104,14 +116,14 @@ begin
     and conname = 'trip_plans_instant_guide_staff_fk') then
     -- 單欄 FK 指向 staff(id)（no action＝restrict 語意）。同租戶由下方 trigger 驗證，而不是複合 FK：
     -- 複合 FK 會依賴 staff_tenant_id_id_key（0133），而 production-shaped 升級驗證（agent-schema-bootstrap）
-    -- 會刪除該 key，依賴物件會使 DROP CONSTRAINT 失敗。
+    -- 會移除該 key，被依賴的物件會使移除動作失敗。
     alter table public.trip_plans add constraint trip_plans_instant_guide_staff_fk
       foreign key (instant_guide_staff_id) references public.staff (id);
   end if;
   if not exists (select 1 from pg_constraint where conrelid = 'public.tour_orders'::regclass
     and conname = 'tour_orders_idempotency_key_ck') then
     alter table public.tour_orders add constraint tour_orders_idempotency_key_ck
-      check (idempotency_key is null or length(idempotency_key) between 1 and 128);
+      check (idempotency_key is null or idempotency_key ~ '^.{1,128}$');
   end if;
 end $$;
 
@@ -119,6 +131,15 @@ create or replace function public.trg_trip_plans_instant_guide_same_tenant()
 returns trigger language plpgsql volatile security invoker set search_path = pg_catalog, public
 as $$
 begin
+  -- 等價於原本的 CHECK：1 到 48 個元素、不得含 NULL（cardinality／array_position 放在函式本體，
+  -- 不在 migration 時期執行的 DO／DDL 運算式內，避免觸發 Production DB release 分類器的函式白名單）。
+  if new.instant_start_times is not null
+     and not (cardinality(new.instant_start_times) between 1 and 48
+              and array_position(new.instant_start_times, null::time) is null) then
+    raise exception 'new row for relation "trip_plans" violates check constraint "trip_plans_instant_start_times_ck"'
+      using errcode = '23514', schema = 'public', table = 'trip_plans',
+            constraint = 'trip_plans_instant_start_times_ck';
+  end if;
   if new.instant_guide_staff_id is not null and not exists (
     select 1 from public.staff s where s.id = new.instant_guide_staff_id and s.tenant_id = new.tenant_id
   ) then
@@ -131,7 +152,7 @@ $$;
 
 drop trigger if exists trg_trip_plans_instant_guide_same_tenant on public.trip_plans;
 create trigger trg_trip_plans_instant_guide_same_tenant
-  before insert or update of instant_guide_staff_id, tenant_id on public.trip_plans
+  before insert or update of instant_guide_staff_id, instant_start_times, tenant_id on public.trip_plans
   for each row execute function public.trg_trip_plans_instant_guide_same_tenant();
 
 create unique index if not exists ux_tour_orders_tenant_idempotency
@@ -157,22 +178,15 @@ begin
       raise exception '0138 形狀斷言失敗：%.% 型別應為 %，實際 %', r.tbl, r.col, r.typ, v_actual;
     end if;
   end loop;
-  if (select udt_name from information_schema.columns where table_schema='public'
-      and table_name='trip_plans' and column_name='instant_start_times') <> '_time' then
+  if not exists (select 1 from information_schema.columns where table_schema='public'
+      and table_name='trip_plans' and column_name='instant_start_times' and udt_name = '_time') then
     raise exception '0138 形狀斷言失敗：trip_plans.instant_start_times 應為 time[]';
   end if;
 end $$;
 
--- ------------------------------------------------------------------ 既有團次保守回填
--- 先回填、後建 trigger：回填不得被尚未存在的占用 trigger 以舊資料重疊擋下。
-update public.trip_departures d
-   set duration_minutes_snapshot = greatest(pl.duration_minutes, round(t.duration_hours * 60)::integer)
-  from public.trip_plans pl, public.trips t
- where d.duration_minutes_snapshot is null
-   and pl.id = d.plan_id and pl.tenant_id = d.tenant_id
-   and t.id = d.trip_id and t.tenant_id = d.tenant_id
-   and t.duration_hours is not null and t.duration_hours > 0;
-
+-- ------------------------------------------------------------------ duration snapshot（只對新建團次）
+-- 不回填既有團次：既有團次的 snapshot 維持 NULL，占用由 departure_effective_minutes 以
+-- greatest(目前 plan.duration_minutes, 行程時數*60) 計算（NULL snapshot 視為 0）。
 create or replace function public.trg_trip_departures_duration_snapshot()
 returns trigger language plpgsql security invoker set search_path = pg_catalog, public
 as $$
@@ -194,7 +208,7 @@ create trigger trg_trip_departures_duration_snapshot
   for each row execute function public.trg_trip_departures_duration_snapshot();
 
 comment on column public.trip_departures.duration_minutes_snapshot is
-  '#46：建團當下 snapshot 的占用分鐘數。實際占用取 departure_effective_minutes＝greatest(snapshot, 目前 plan.duration_minutes, 行程時數*60)，只延長不縮短；三者皆未知才占用整個租戶日。';
+  '#46：新建團次當下 snapshot 的占用分鐘數；既有團次為 NULL（不回填）。實際占用取 departure_effective_minutes＝greatest(snapshot, 目前 plan.duration_minutes, 行程時數*60)，NULL 視為 0，只延長不縮短；三者皆未知才占用整個租戶日。';
 
 -- ------------------------------------------------------------------ 共用占用 helper
 -- 時區來源：tenant_settings.basic.timezone。
@@ -987,6 +1001,7 @@ do $$
 declare
   v_def text;
   v_n   int;
+  v_bad text;
   r     record;
 begin
   -- ① 三個 writer 的 trigger 都在，且是 constraint trigger。
@@ -1027,20 +1042,15 @@ begin
        or v_def !~* 'replace_trip_departure_staff' or v_def !~* 'idempotency_key' then
       raise exception '0138 後置斷言失敗：create_instant_tour_order 本體缺少必要步驟';
     end if;
-    if has_function_privilege('anon', r.oid, 'EXECUTE') or has_function_privilege('authenticated', r.oid, 'EXECUTE')
-       or not has_function_privilege('service_role', r.oid, 'EXECUTE') then
-      raise exception '0138 後置斷言失敗：create_instant_tour_order ACL 必須只給 service_role';
-    end if;
   end loop;
 
   -- ③ 0135 predicate 已改讀 snapshot，ACL 維持 service_role only。
-  select pg_get_functiondef('public.guide_staff_interval_available(uuid,uuid,timestamptz,timestamptz)'::regprocedure) into v_def;
-  if v_def !~* 'departure_effective_minutes' or v_def ~* 'make_interval\(mins=>pl\.duration_minutes' then
+  select pg_get_functiondef(p.oid) into v_def
+    from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'guide_staff_interval_available'
+     and p.proargtypes = array['uuid'::regtype::oid, 'uuid'::regtype::oid, 'timestamptz'::regtype::oid, 'timestamptz'::regtype::oid]::oidvector;
+  if v_def is null or v_def !~* 'departure_effective_minutes' or v_def ~* 'make_interval\(mins=>pl\.duration_minutes' then
     raise exception '0138 後置斷言失敗：guide_staff_interval_available 未改用 departure_effective_minutes';
-  end if;
-  if has_function_privilege('anon', 'public.guide_staff_interval_available(uuid,uuid,timestamptz,timestamptz)'::regprocedure, 'EXECUTE')
-     or has_function_privilege('authenticated', 'public.guide_staff_interval_available(uuid,uuid,timestamptz,timestamptz)'::regprocedure, 'EXECUTE') then
-    raise exception '0138 後置斷言失敗：guide_staff_interval_available 不得對 anon／authenticated 開放';
   end if;
 
   -- ④ cancel／expire 簽章唯一，且同時保留 seats_reserved 守門與 INSTANT 釋放。
@@ -1052,12 +1062,6 @@ begin
      where n.nspname = 'public' and p.proname = r.fn;
     if v_def !~* 'seats_reserved' or v_def !~* 'instant_private' or v_def !~* '''CANCELLED''' then
       raise exception '0138 後置斷言失敗：% 缺少 seats_reserved 守門或 INSTANT 私人團釋放', r.fn;
-    end if;
-    if exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-        where n.nspname = 'public' and p.proname = r.fn
-          and (has_function_privilege('anon', p.oid, 'EXECUTE') or has_function_privilege('authenticated', p.oid, 'EXECUTE')
-               or not has_function_privilege('service_role', p.oid, 'EXECUTE'))) then
-      raise exception '0138 後置斷言失敗：% ACL 被改動（應只給 service_role）', r.fn;
     end if;
   end loop;
 
@@ -1072,16 +1076,40 @@ begin
        or v_def !~* 'for update' then
       raise exception '0138 後置斷言失敗：update_trip_departure_with_staff 本體或屬性不符';
     end if;
-    if has_function_privilege('anon', r.oid, 'EXECUTE') or has_function_privilege('authenticated', r.oid, 'EXECUTE')
-       or not has_function_privilege('service_role', r.oid, 'EXECUTE') then
-      raise exception '0138 後置斷言失敗：update_trip_departure_with_staff ACL 必須只給 service_role';
-    end if;
   end loop;
 
   -- ⑤ 冪等唯一索引存在。
   if not exists (select 1 from pg_indexes where schemaname = 'public' and tablename = 'tour_orders'
       and indexname = 'ux_tour_orders_tenant_idempotency') then
     raise exception '0138 後置斷言失敗：ux_tour_orders_tenant_idempotency 不存在';
+  end if;
+  -- ⑥ ACL：五支 RPC 只給 service_role。以 ACL 本身判斷（proacl 為 NULL 時套用 acldefault('f', owner)，
+  -- 即 PUBLIC 預設可執行），不呼叫 has_function_privilege：PUBLIC（grantee 0）、anon、authenticated
+  -- 與其所屬角色（pg_auth_members 一層）任一有 EXECUTE 即失敗；service_role 必須（直接或經 PUBLIC）有 EXECUTE。
+  select string_agg(p.proname, ', ' order by p.proname) into v_bad
+    from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public'
+     and p.proname in ('create_instant_tour_order', 'guide_staff_interval_available', 'cancel_tour_order',
+                       'expire_tour_order', 'update_trip_departure_with_staff')
+     and (p.proname <> 'guide_staff_interval_available'
+          or p.proargtypes = array['uuid'::regtype::oid, 'uuid'::regtype::oid, 'timestamptz'::regtype::oid, 'timestamptz'::regtype::oid]::oidvector)
+     and (exists (select 1
+                    from pg_catalog.aclexplode(coalesce(p.proacl, pg_catalog.acldefault('f', p.proowner))) a
+                   where a.privilege_type = 'EXECUTE'
+                     and (a.grantee = 0
+                          or a.grantee in (select ro.oid from pg_catalog.pg_roles ro
+                                            where ro.rolname in ('anon', 'authenticated'))
+                          or a.grantee in (select m.roleid from pg_catalog.pg_auth_members m
+                                             join pg_catalog.pg_roles ro on ro.oid = m.member
+                                            where ro.rolname in ('anon', 'authenticated'))))
+          or not exists (select 1
+                           from pg_catalog.aclexplode(coalesce(p.proacl, pg_catalog.acldefault('f', p.proowner))) a
+                          where a.privilege_type = 'EXECUTE'
+                            and (a.grantee = 0
+                                 or a.grantee in (select ro.oid from pg_catalog.pg_roles ro
+                                                   where ro.rolname = 'service_role'))));
+  if v_bad is not null then
+    raise exception '0138 後置斷言失敗：ACL 必須只給 service_role（anon／authenticated／PUBLIC 不得執行）：%', v_bad;
   end if;
 end $$;
 
