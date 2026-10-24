@@ -309,7 +309,8 @@ describe('雙向撞班', () => {
     });
     expect(holder.response.status, holder.payload.message ?? '').toBe(200);
     const target = await createDeparture({
-      planId: PLAN, departsOn: DAY_REASSIGN, startTime: '09:00', capacity: 8,
+      // 同方案同日同時刻會撞 unique(tenant, plan, departs_on, start_time)；10:00 仍與 09:00–12:00（行程 3h）重疊。
+      planId: PLAN, departsOn: DAY_REASSIGN, startTime: '10:00', capacity: 8,
       primaryStaffId: SHOP_A.staffA2,
     });
     expect(target.response.status, target.payload.message ?? '').toBe(200);
@@ -317,6 +318,12 @@ describe('雙向撞班', () => {
 
     const patched = await api.put(`/api/trip-departures/${id}`, { primaryStaffId: SHOP_A.staffA1 });
     expect(patched.status).toBe(409);
+    // 必須是導遊撞班，而不是 unique 衝突：撞班由 app 預檢先擋下（REQ_003，訊息說明「其他團次」）；
+    // 若預檢漏了，DB 占用 trigger／RPC 才會回 TOUR_006。兩者都算導遊撞班，但絕不能是「團次已存在」。
+    const patchedBody = await json(patched);
+    expect(['REQ_003', 'TOUR_006'], patchedBody.code ?? '').toContain(patchedBody.code);
+    expect(patchedBody.message ?? '').toMatch(/其他團次|導遊該時段已有安排/);
+    expect(patchedBody.message ?? '').not.toContain('已存在');
     // 原指派必須原封不動；「刪了舊的、插入新的被擋」會讓這一團變成沒有導遊。
     expect(await assignmentRows(id)).toEqual([{ staff_id: SHOP_A.staffA2, role: 'PRIMARY' }]);
     expect(await assignmentRows(holder.payload.data!.id)).toEqual([{ staff_id: SHOP_A.staffA1, role: 'PRIMARY' }]);
