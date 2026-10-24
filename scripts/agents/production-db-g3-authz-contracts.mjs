@@ -44,7 +44,8 @@ export const ISSUE_46_CLOSURE_COVERAGE = Object.freeze({
 // 都會承接並可能破壞先前所有 create_tour_order 契約，因此必須觸發其測試所經過的全部家族。
 // 下表各家族 migrations 欄位只是「該家族自己的」觸發編號（逐檔核對 supabase/migrations）；
 // 完整的 create_tour_order 改寫者集合（本體／SECURITY／ACL）以下方 CREATE_TOUR_ORDER_WRITER_PREFIXES 為準，會再併入每個家族。
-// accept／reject／cancel／expire_tour_* 的最後改寫者為 0111（0130 之後沒有任何 migration 再動）；
+// accept／reject／cancel／expire_tour_* 的最後改寫者：accept／reject 為 0111；cancel／expire 為 0138（#46 INSTANT 私人團釋放，
+// 簽章不變、保留 0111 的 seats_reserved 守門），故 tour-request-accept 家族也由 0138 觸發；
 // 0136 另外明確 grant select on trip_plan_seasons（0128 新表），故 seasonal 也由 0136 觸發。
 // 單一來源：所有改寫 public.create_tour_order「本體／SECURITY 屬性／EXECUTE ACL」的 migration 編號
 // （create or replace function、alter function、grant／revoke … on function public.create_tour_order）。
@@ -93,7 +94,7 @@ export const CREATE_TOUR_ORDER_UNRESOLVED_EXECUTE_EXCLUSIONS = Object.freeze({
   '0118': 'trigger 語法 execute function set_updated_at()，無動態 SQL',
   '0123': 'trigger 語法 execute function public.prevent_retired_richmenu_asset()，無動態 SQL；檔內沒有 create_tour_order',
   '0128': 'trigger 語法 execute function public.set_updated_at()，無動態 SQL；檔內沒有 create_tour_order',
-  '0138': 'trigger 語法 execute function public.trg_*_occupancy()（三處，固定函式名）與 has_function_privilege 的 \'EXECUTE\' 字面量，無動態 SQL；檔內只以 create_tour_order_quoted 的 PERFORM／賦值呼叫，沒有任何 create_tour_order 的 create/alter/grant/revoke/rename',
+  '0138': 'trigger 語法 execute function public.trg_*_occupancy()（三處，固定函式名）、has_function_privilege 的 \'EXECUTE\' 字面量，以及 helper 函式的 grant／revoke … execute on function（固定函式名與角色，非動態），無動態 SQL；檔內只以 create_tour_order_quoted 的 PERFORM／賦值呼叫，沒有任何 create_tour_order 的 create/alter/grant/revoke/rename',
 });
 // 原始文字掃描（不剝註解）比剝註解後多出的命中：每筆都必須是「只出現在註解」，測試會驗證該旗標在剝註解後確實消失，
 // 且此表與實際差集精確相等，因此無法用來隱藏真正的程式碼。key 為 migration 編號。
@@ -255,7 +256,7 @@ export function scanCreateTourOrderDdl(sqlText) {
 const ISSUE_46_CLOSURE_FAMILY_TABLE = Object.freeze([
   Object.freeze({
     file: 'tests/integration/api/tour-request-accept.46.test.ts',
-    migrations: Object.freeze(['0111', '0130', '0132', '0136']),
+    migrations: Object.freeze(['0111', '0130', '0132', '0136', '0138']),
     cleanup: Object.freeze({migration:'0111_issue_46_guide_request_accept',table:'tour_orders',filterColumn:'note',filterOperator:'like',filterValue:'request-accept-46-%'}),
   }),
   Object.freeze({
@@ -300,7 +301,7 @@ export function closureRequiredAssertionsForPlan(plan) {
     all || planHasClosureMigration(plan, ISSUE_46_CLOSURE_FILE_MIGRATIONS[row.file] ?? []));
 }
 
-export const PRODUCTION_DB_G3_AUTHZ_CONTRACTS = Object.freeze({
+const BASE_G3_AUTHZ_CONTRACTS = Object.freeze({
   // Remote G3 requires every semantic case; the isolated raw catalog case
   // remains explicitly NOT_RUN remotely and cannot establish catalog evidence.
   '0135_issue_46_guide_interval_availability': Object.freeze({
@@ -774,6 +775,21 @@ export const PRODUCTION_DB_G3_AUTHZ_CONTRACTS = Object.freeze({
         fragment: '未登入與已登入使用者都不得直接呼叫 create_booking_addon／delete_booking_addon rpc',
       }),
     ]),
+  }),
+});
+
+// 0138（#46 INSTANT 占用排他）改寫了 0135 的 guide_staff_interval_available 本體（時長改讀 duration snapshot），
+// 因此 0138 必須通過 0135 predicate 契約的同一組測試檔與斷言；0138 自己的 canonical 整合測試（占用 trigger、
+// create_instant_tour_order 並發／ACL）由 TEST 排程 slice 補入 requiredFiles 後才算完整 AUTHZ 覆蓋。
+const CONTRACT_0135 = BASE_G3_AUTHZ_CONTRACTS['0135_issue_46_guide_interval_availability'];
+export const PRODUCTION_DB_G3_AUTHZ_CONTRACTS = Object.freeze({
+  ...BASE_G3_AUTHZ_CONTRACTS,
+  '0138_issue_46_instant_occupancy': Object.freeze({
+    requiredFiles: CONTRACT_0135.requiredFiles,
+    requiredAssertions: CONTRACT_0135.requiredAssertions,
+    localOnlyPending: CONTRACT_0135.localOnlyPending,
+    tenantBoundaryAssertions: CONTRACT_0135.tenantBoundaryAssertions,
+    negativeRoleAssertions: CONTRACT_0135.negativeRoleAssertions,
   }),
 });
 

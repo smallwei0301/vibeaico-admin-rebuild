@@ -47,7 +47,7 @@ export type InstantOrderFailure = {
   message: string;
   /** PRICE_CHANGED 時的現價（RPC detail）。 */
   quote?: { unitPrice: number; total: number };
-  /** INVALID_START 的原因（WALL_CLOCK／NOT_IN_START_TIMES／LEAD_TIME／BEYOND_WINDOW）。 */
+  /** 原因細節（RPC detail），見 mapInstantOrderError。 */
   reason?: string;
 };
 
@@ -59,6 +59,8 @@ export type InstantOrderSuccess = {
   totalAmount?: number;
   startsAt?: string;
   endsAt?: string;
+  /** 訂單狀態（新建為 PENDING；冪等重送時為原單當下狀態）。 */
+  status?: string;
   /** true＝同一 idempotency key 重送，回的是原單。 */
   deduped: boolean;
 };
@@ -142,7 +144,12 @@ export function mapInstantOrderError(error: RpcError): InstantOrderFailure | nul
   const base = BY_CODE[sqlstate];
   const failure: InstantOrderFailure = { ok: false, ...base };
   if (base.kind === 'PRICE_CHANGED') failure.quote = parseQuote(error.details);
-  if (base.kind === 'INVALID_START' && error.details) failure.reason = String(error.details);
+  // INVALID_START：WALL_CLOCK／NOT_IN_START_TIMES／LEAD_TIME／BEYOND_WINDOW；
+  // IDEMPOTENCY_KEY_REUSED：REQUEST_MISMATCH／ORDER_CANCELLED（原單已取消或逾期，須換新 key 重新下單）；
+  // INSTANT_NOT_CONFIGURED：LEAD_LT_HOLD 等。
+  if ((base.kind === 'INVALID_START' || base.kind === 'IDEMPOTENCY_KEY_REUSED' || base.kind === 'INSTANT_NOT_CONFIGURED') && error.details) {
+    failure.reason = String(error.details);
+  }
   return failure;
 }
 
@@ -159,6 +166,7 @@ function parseSuccess(data: unknown): InstantOrderSuccess {
     totalAmount: row.totalAmount == null ? undefined : Number(row.totalAmount),
     startsAt: typeof row.startsAt === 'string' ? row.startsAt : undefined,
     endsAt: typeof row.endsAt === 'string' ? row.endsAt : undefined,
+    status: typeof row.status === 'string' ? row.status : undefined,
     deduped: row.deduped === true,
   };
 }

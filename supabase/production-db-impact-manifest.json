@@ -1314,10 +1314,6 @@
           "objectKey": "public.tour_orders.ux_tour_orders_tenant_idempotency"
         },
         {
-          "surface": "indexes",
-          "objectKey": "public.trip_departure_staff.i_trip_departure_staff_tenant_staff"
-        },
-        {
           "surface": "triggers",
           "objectKey": "public.bookings.trg_bookings_staff_occupancy"
         },

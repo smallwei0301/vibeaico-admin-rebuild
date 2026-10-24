@@ -71,4 +71,13 @@ describe('#46 INSTANT 建單 wrapper', () => {
     const { client } = admin({ error: { code: 'P0022', message: 'SLOT_TAKEN' } });
     await expect(createInstantTourOrder(client, INPUT)).resolves.toMatchObject({ ok: false, kind: 'SLOT_TAKEN', status: 409 });
   });
+
+  it('冪等重送：回傳原單 status；原單已取消（P0025 ORDER_CANCELLED）回衝突並帶原因', async () => {
+    const ok = admin({ data: { orderId: 'o', departureId: 'd', status: 'CONFIRMED', deduped: true } });
+    await expect(createInstantTourOrder(ok.client, INPUT)).resolves.toMatchObject({ ok: true, status: 'CONFIRMED', deduped: true });
+    const cancelled = admin({ error: { code: 'P0025', message: 'IDEMPOTENCY_KEY_REUSED', details: 'ORDER_CANCELLED' } });
+    await expect(createInstantTourOrder(cancelled.client, INPUT)).resolves.toMatchObject({
+      ok: false, kind: 'IDEMPOTENCY_KEY_REUSED', status: 409, reason: 'ORDER_CANCELLED',
+    });
+  });
 });

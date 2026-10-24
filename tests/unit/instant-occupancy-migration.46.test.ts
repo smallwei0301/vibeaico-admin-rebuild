@@ -127,4 +127,37 @@ describe('#46 0138 INSTANT occupancy migration 原始碼守門', () => {
   it('冪等：tour_orders.idempotency_key＋(tenant,key) partial unique index', () => {
     expect(code).toMatch(/create unique index if not exists ux_tour_orders_tenant_idempotency\s+on public\.tour_orders \(tenant_id, idempotency_key\) where idempotency_key is not null;/);
   });
+
+  it('B2：重用 CANCELLED 團次前必須確認沒有任何非 CANCELLED 訂單', () => {
+    const body = fn('create_instant_tour_order');
+    expect(body).toMatch(/v_slot\.status <> 'CANCELLED' or v_slot\.seats_booked <> 0\s+or exists \(select 1 from public\.tour_orders o0[\s\S]*?o0\.status <> 'CANCELLED'\)\) then\s+raise exception 'SLOT_TAKEN'/);
+  });
+
+  it('冪等：同 key 比對 total／customer／contact，原單已取消回 P0025（不回 deduped 成功）', () => {
+    const body = fn('create_instant_tour_order');
+    expect(body).toMatch(/v_prev\.total_amount <> p_expected_total/);
+    expect(body).toMatch(/v_prev\.customer_id is distinct from p_customer/);
+    expect(body).toMatch(/v_prev\.contact is distinct from coalesce\(p_contact/);
+    expect(body).toMatch(/v_prev\.status = 'CANCELLED' then\s+raise exception 'IDEMPOTENCY_KEY_REUSED' using errcode = 'P0025'/);
+    expect(body).toMatch(/'status', v_prev\.status/);
+  });
+
+  it('提前量不得小於保留時數（否則 INSTANT_NOT_CONFIGURED）', () => {
+    expect(fn('create_instant_tour_order')).toMatch(/instant_min_lead_minutes::numeric < v_plan\.request_hold_hours \* 60[\s\S]*?P0024/);
+  });
+
+  it('多人指派：tds trigger 先依 staff id 排序對全團取鎖', () => {
+    const body = fn('trg_trip_departure_staff_occupancy');
+    expect(body).toMatch(/order by x\.staff_id[\s\S]*?lock_staff_occupancy[\s\S]*?assert_staff_not_occupied/);
+  });
+
+  it('不重複建立 0092 已有的 (tenant_id, staff_id) 索引', () => {
+    expect(code).not.toMatch(/create index[^;]*trip_departure_staff/i);
+  });
+
+  it('tenant_timezone_name：無設定列／無鍵用預設，無效值 raise P0026（不靜默改台北）', () => {
+    const body = fn('tenant_timezone_name');
+    expect(body).toMatch(/raise exception 'TENANT_TIMEZONE_INVALID' using errcode = 'P0026'/);
+    expect(body).toMatch(/not \(v_basic \? 'timezone'\) then\s+return 'Asia\/Taipei'/);
+  });
 });

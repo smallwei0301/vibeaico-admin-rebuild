@@ -83,6 +83,24 @@ export function overlaps(a: Interval, b: Interval): boolean {
 }
 
 /**
+ * 團次占用分鐘數 snapshot 的建立公式。**必須與 0138 同步**：
+ * `trip_departures.duration_minutes_snapshot` 在 INSERT 時（`trg_trip_departures_duration_snapshot`）與回填時
+ * 取 `greatest(plan.duration_minutes, round(trips.duration_hours * 60))`，且只在行程時長已知（> 0）時才有值，
+ * 否則為 NULL＝整日占用。app 端驗證「尚未建立」的團次時必須用同一個公式，否則 app 判定可排、DB 的
+ * 占用 trigger 卻回 STAFF_OCCUPIED（行程 2 小時、方案 240 分的反例）。
+ * 已存在的團次不用此公式，直接讀自己的 `duration_minutes_snapshot`。
+ */
+export function departureSnapshotMinutes(
+  planMinutes: number | null | undefined,
+  tripHours: number | null | undefined,
+): number | null {
+  if (tripHours == null || !(Number(tripHours) > 0)) return null;
+  const fromTrip = Math.round(Number(tripHours) * 60);
+  const fromPlan = planMinutes != null && Number(planMinutes) > 0 ? Number(planMinutes) : 0;
+  return Math.max(fromTrip, fromPlan);
+}
+
+/**
  * 團次的佔用區間。
  *
  * - 有 `startTime` 且時長已知 → `[start, start + duration]`

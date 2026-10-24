@@ -111,8 +111,7 @@ end $$;
 
 create unique index if not exists ux_tour_orders_tenant_idempotency
   on public.tour_orders (tenant_id, idempotency_key) where idempotency_key is not null;
-create index if not exists i_trip_departure_staff_tenant_staff
-  on public.trip_departure_staff (tenant_id, staff_id);
+-- (tenant_id, staff_id) 索引已由 0092 的 ix_trip_departure_staff_staff 提供，不重複建立。
 
 -- PB-026：add column if not exists 遇到同名但形狀不同的既有欄位會靜默跳過。
 do $$
@@ -172,19 +171,39 @@ comment on column public.trip_departures.duration_minutes_snapshot is
   '#46：建團當下 snapshot 的占用分鐘數；NULL＝時長未知，占用整個租戶日（保守）。0135 predicate 與 staff-availability.ts 同讀此欄。';
 
 -- ------------------------------------------------------------------ 共用占用 helper
+-- 時區來源：tenant_settings.basic.timezone。
+--   - 沒有 tenant_settings 列、或沒有 timezone 鍵：回正式預設 Asia/Taipei（與 0135 predicate 同一規則，
+--     舊租戶可能沒有設定列）。
+--   - 有 timezone 鍵但不是字串、或不是 pg_timezone_names 內的名稱：raise TENANT_TIMEZONE_INVALID（P0026），
+--     不靜默改用台北，以免用錯時區占用時段。
+-- 維持 security invoker（不用 definer：definer 的 owner 若非 bypassrls 會被 RLS 濾掉而看起來「沒有列」，
+-- 反而更容易靜默落到預設值——0136 教訓）。service_role 與租戶成員都讀得到自己租戶的設定列。
 create or replace function public.tenant_timezone_name(p_tenant uuid)
-returns text language sql stable security invoker set search_path = pg_catalog, public
+returns text language plpgsql stable security invoker set search_path = pg_catalog, public
 as $$
-  select coalesce((
-    select btrim(ts.basic ->> 'timezone')
-      from public.tenant_settings ts
-     where ts.tenant_id = p_tenant
-       and jsonb_typeof(ts.basic) = 'object'
-       and jsonb_typeof(ts.basic -> 'timezone') = 'string'
-       and exists (select 1 from pg_catalog.pg_timezone_names n where n.name = btrim(ts.basic ->> 'timezone'))
-  ), 'Asia/Taipei');
+declare
+  v_basic jsonb;
+  v_zone text;
+begin
+  select ts.basic into v_basic from public.tenant_settings ts where ts.tenant_id = p_tenant;
+  if v_basic is null or jsonb_typeof(v_basic) <> 'object' or not (v_basic ? 'timezone') then
+    return 'Asia/Taipei';
+  end if;
+  if jsonb_typeof(v_basic -> 'timezone') <> 'string' then
+    raise exception 'TENANT_TIMEZONE_INVALID' using errcode = 'P0026';
+  end if;
+  v_zone := btrim(v_basic ->> 'timezone');
+  if v_zone = '' or not exists (select 1 from pg_catalog.pg_timezone_names n where n.name = v_zone) then
+    raise exception 'TENANT_TIMEZONE_INVALID' using errcode = 'P0026';
+  end if;
+  return v_zone;
+end;
 $$;
 
+-- DST gap／fold：團次的牆上開始時間若落在不存在（gap）或重複（fold）的時間，這裡沿用 PostgreSQL 的
+-- 預設解析（gap 往後推、fold 取較早一次），最多與實際差一小時，且只影響占用 trigger 的重疊判斷。
+-- 嚴格拒絕 gap／fold 的是 INSTANT 下單（create_instant_tour_order）與 0135 predicate，不在這裡擴大行為面
+-- 去擋既有 writer。
 create or replace function public.departure_occupancy_range(
   p_departs_on date, p_start time, p_minutes integer, p_zone text
 ) returns tstzrange
@@ -284,6 +303,7 @@ returns trigger language plpgsql volatile security invoker set search_path = pg_
 as $$
 declare
   v_dep record;
+  v_lock uuid;
 begin
   if tg_op = 'UPDATE' and old.staff_id = new.staff_id and old.departure_id = new.departure_id then
     return null;
@@ -291,6 +311,17 @@ begin
   select d.id, d.departs_on, d.start_time, d.duration_minutes_snapshot, d.status into v_dep
     from public.trip_departures d where d.id = new.departure_id and d.tenant_id = new.tenant_id;
   if not found or v_dep.status = 'CANCELLED' then return null; end if;
+  -- 一次指派多人時（AFTER ROW 於語句結束後觸發，此時同團全部列皆可見）先依 staff id 排序對全團取鎖，
+  -- 避免不同交易以相反順序取得多把鎖而死結；assert 內再取同一把鎖為可重入。
+  for v_lock in
+    select x.staff_id from (
+      select ds.staff_id from public.trip_departure_staff ds
+       where ds.tenant_id = new.tenant_id and ds.departure_id = new.departure_id
+      union select new.staff_id
+    ) x order by x.staff_id
+  loop
+    perform public.lock_staff_occupancy(new.tenant_id, v_lock);
+  end loop;
   perform public.assert_staff_not_occupied(new.tenant_id, new.staff_id,
     public.departure_occupancy_range(v_dep.departs_on, v_dep.start_time, v_dep.duration_minutes_snapshot,
       public.tenant_timezone_name(new.tenant_id)),
@@ -563,19 +594,29 @@ begin
   -- 冪等：同 (tenant, key) 序列化；已有訂單回原單（不重複扣名額、不重複建團）。
   perform pg_advisory_xact_lock(hashtextextended('instant-order:' || p_tenant::text || ':' || p_idempotency_key, 0));
   select o.id, o.plan_id, o.party_size, o.departure_id, o.hold_expires_at, o.total_amount,
-         d.departs_on, d.start_time
+         o.status, o.customer_id, o.contact, d.departs_on, d.start_time
     into v_prev
     from public.tour_orders o
     join public.trip_departures d on d.id = o.departure_id and d.tenant_id = o.tenant_id
    where o.tenant_id = p_tenant and o.idempotency_key = p_idempotency_key;
   if found then
+    -- 同 key 必須是同一份請求：方案、人數、起始時刻、旅客確認的總額、客戶與聯絡資料皆一致；
+    -- 否則 P0025。原訂單已取消（含逾期取消）時也回 P0025，不把已失效的單當成成功回給旅客，
+    -- 讓呼叫端換新的 idempotency key 重新下單。
     if v_prev.plan_id <> p_plan or v_prev.party_size <> p_party_size
        or v_prev.start_time is null
-       or ((v_prev.departs_on + v_prev.start_time) at time zone v_zone) <> p_starts_at then
-      raise exception 'IDEMPOTENCY_KEY_REUSED' using errcode = 'P0025';
+       or ((v_prev.departs_on + v_prev.start_time) at time zone v_zone) <> p_starts_at
+       or v_prev.total_amount <> p_expected_total
+       or v_prev.customer_id is distinct from p_customer
+       or v_prev.contact is distinct from coalesce(p_contact, '{}'::jsonb) then
+      raise exception 'IDEMPOTENCY_KEY_REUSED' using errcode = 'P0025', detail = 'REQUEST_MISMATCH';
+    end if;
+    if v_prev.status = 'CANCELLED' then
+      raise exception 'IDEMPOTENCY_KEY_REUSED' using errcode = 'P0025', detail = 'ORDER_CANCELLED';
     end if;
     return jsonb_build_object('orderId', v_prev.id, 'departureId', v_prev.departure_id,
-      'holdExpiresAt', v_prev.hold_expires_at, 'totalAmount', v_prev.total_amount, 'deduped', true);
+      'holdExpiresAt', v_prev.hold_expires_at, 'totalAmount', v_prev.total_amount,
+      'status', v_prev.status, 'deduped', true);
   end if;
 
   select p.id, p.trip_id, p.sales_mode, p.participation_mode, p.active, p.max_party,
@@ -598,6 +639,12 @@ begin
      or v_plan.duration_minutes is null or v_plan.duration_minutes <= 0
      or v_plan.request_hold_hours is null or v_plan.request_hold_hours <= 0 then
     raise exception 'INSTANT_NOT_CONFIGURED' using errcode = 'P0024';
+  end if;
+  -- 最短提前量必須不小於付款保留時數：否則未付款的保留可能比出發時間還晚到期，導遊時段在出發後仍被占住。
+  -- 選擇「拒絕設定」而非把 hold 截短到出發前，理由是截短會讓旅客看到比方案宣告更短的付款期限，
+  -- 且需另開通知文案；由後台設定時就擋住較單純、可預期。
+  if v_plan.instant_min_lead_minutes::numeric < v_plan.request_hold_hours * 60 then
+    raise exception 'INSTANT_NOT_CONFIGURED' using errcode = 'P0024', detail = 'LEAD_LT_HOLD';
   end if;
 
   -- 起始時刻：租戶時區牆上時間必須整分、可往返、非 fold，且在方案清單內。
@@ -629,7 +676,12 @@ begin
    where d.tenant_id = p_tenant and d.plan_id = p_plan and d.departs_on = v_day and d.start_time = v_time
    for update;
   v_slot_found := found;
-  if v_slot_found and (v_slot.status <> 'CANCELLED' or v_slot.seats_booked <> 0) then
+  -- 只有「已取消、名額為 0、且該團下沒有任何非 CANCELLED 訂單」的同鍵團次才可重用；
+  -- 否則（例如舊的 PENDING 且 seats_reserved=false 的申請單仍掛在上面）重用後取消 INSTANT 單，
+  -- 團因仍有其他有效訂單而不會被釋放，導遊時段會永遠卡住。
+  if v_slot_found and (v_slot.status <> 'CANCELLED' or v_slot.seats_booked <> 0
+      or exists (select 1 from public.tour_orders o0
+                  where o0.departure_id = v_slot.id and o0.tenant_id = p_tenant and o0.status <> 'CANCELLED')) then
     raise exception 'SLOT_TAKEN' using errcode = 'P0022';
   end if;
 
@@ -679,7 +731,7 @@ begin
   update public.trip_departures set status = 'CLOSED' where id = v_dep and tenant_id = p_tenant;
 
   return jsonb_build_object('orderId', v_order, 'departureId', v_dep, 'holdExpiresAt', v_hold,
-    'startsAt', p_starts_at, 'endsAt', v_end, 'deduped', false);
+    'startsAt', p_starts_at, 'endsAt', v_end, 'status', 'PENDING', 'deduped', false);
 end;
 $$;
 

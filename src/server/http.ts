@@ -40,6 +40,9 @@ export function ok<T>(data?: T, init?: ResponseInit) {
   return NextResponse.json({ success: true, data }, init);
 }
 
+/** 導遊在該時段已有其他預約或團次（DB 占用 trigger 的 P0020 / STAFF_OCCUPIED）。 */
+export const STAFF_OCCUPIED_MESSAGE = '導遊該時段已有安排';
+
 /** `extra` 為選填的 `data` 酬載（例：#749 PRICE_CHANGED 帶現價 quote）；不傳時回應形狀與舊版完全相同。 */
 export function fail(status: number, message: string, code?: string, extra?: Record<string, unknown>) {
   return NextResponse.json({ success: false, message, code, ...(extra ? { data: extra } : {}) }, { status });

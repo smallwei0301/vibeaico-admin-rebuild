@@ -1,11 +1,11 @@
-import { handle, ok, fail, ERR } from '@/server/http';
+import { handle, ok, fail, ERR, STAFF_OCCUPIED_MESSAGE } from '@/server/http';
 import { requireTenantManager } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
 import { mapTripDeparture } from '@/server/mappers';
 import { departureUpdateSchema, timeValue } from '@/server/tour-domain';
 import {
   assertStaffBelongsToTenant, bookableStaffIds, checkAssignmentConflicts, departureSlot,
-  describeConflicts, readAssignments, resolveAssignment, writeAssignment,
+  describeConflicts, isStaffOccupiedError, readAssignments, resolveAssignment, writeAssignment,
 } from '@/server/departure-staff';
 
 import { departureFormationUpdate, readDepartureFormationTimeZone } from '@/server/departure-formation-snapshot';
@@ -65,7 +65,7 @@ export const PUT = handle(async (req, { params }: Context) => {
   });
   assertStaffBelongsToTenant(assignment, bookable);
 
-  const slot = await departureSlot(t.supabase, t.tenantId, current.trip_id, nextDate, nextTime);
+  const slot = await departureSlot(t.supabase, t.tenantId, current.trip_id, nextDate, nextTime, { departureId: id });
   const conflicts = nextStatus === 'CANCELLED'
     ? [] // 取消的團次釋放時間（§5.3），不必也不該再驗撞班
     : await checkAssignmentConflicts(t.supabase, t.tenantId, assignment, slot, slot.shiftDate,
@@ -91,6 +91,7 @@ export const PUT = handle(async (req, { params }: Context) => {
     : await t.supabase.from('trip_departures').update(patch)
       .eq('tenant_id', t.tenantId).eq('id', id).select('*, trip_plans(name)').maybeSingle();
   if (error?.code === '23505') return fail(409, '相同方案、日期與時間的團次已存在', ERR.CONFLICT);
+  if (isStaffOccupiedError(error)) return fail(409, STAFF_OCCUPIED_MESSAGE, ERR.STAFF_OCCUPIED);
   if (error) throw error;
   if (!data) return fail(404, '找不到此團次', ERR.NOT_FOUND);
 

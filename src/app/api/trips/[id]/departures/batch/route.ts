@@ -1,14 +1,14 @@
-import { handle, ok, fail, ERR } from '@/server/http';
+import { ApiHttpError, handle, ok, fail, ERR, STAFF_OCCUPIED_MESSAGE } from '@/server/http';
 import { requireTenantManager } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
 import { mapTripDeparture } from '@/server/mappers';
 import { dateRange, dateRangeLength, departureBatchSchema, timeValue } from '@/server/tour-domain';
 import {
-  assertStaffBelongsToTenant, bookableStaffIds, readAssignments, resolveAssignment, staffNames,
+  assertStaffBelongsToTenant, bookableStaffIds, discardUnassignedDeparture, readAssignments, resolveAssignment, staffNames,
   writeAssignment, type ResolvedAssignment,
 } from '@/server/departure-staff';
 import {
-  CONFLICT_REASON_TEXT, departureInterval, findStaffConflicts, loadStaffLoad, taipeiDayStartMs,
+  CONFLICT_REASON_TEXT, departureInterval, departureSnapshotMinutes, findStaffConflicts, loadStaffLoad, taipeiDayStartMs,
 } from '@/server/staff-availability';
 import type { DepartureConflict } from '@/lib/types';
 
@@ -26,7 +26,7 @@ export const POST = handle(async (req, { params }: Context) => {
   const rangeLength = dateRangeLength(body.from, body.to);
   if (rangeLength > MAX_DAYS) return fail(400, `批次開團最多一次 ${MAX_DAYS} 天`, ERR.VALIDATION);
   const dates = dateRange(body.from, body.to);
-  const { data: plan, error: planError } = await t.supabase.from('trip_plans').select('id, trip_id, min_to_depart, formation_deadline_days_before')
+  const { data: plan, error: planError } = await t.supabase.from('trip_plans').select('id, trip_id, min_to_depart, formation_deadline_days_before, duration_minutes')
     .eq('tenant_id', t.tenantId).eq('id', body.planId).maybeSingle();
   if (planError) throw planError;
   if (!plan || plan.trip_id !== id) return fail(404, '找不到此方案', ERR.NOT_FOUND);
@@ -59,6 +59,8 @@ export const POST = handle(async (req, { params }: Context) => {
     .select('duration_hours').eq('tenant_id', t.tenantId).eq('id', id).maybeSingle();
   if (tripError) throw tripError;
   const durationHours = tripRow?.duration_hours ?? null;
+  // 與 DB 的 duration snapshot 同公式（0138），否則 app 判定可排而 DB 占用 trigger 擋下。
+  const durationMinutes = departureSnapshotMinutes(plan.duration_minutes, durationHours);
   const startTime = body.startTime ? body.startTime : null;
 
   const load = selected.length > 0 && assignedIds.length > 0
@@ -77,7 +79,7 @@ export const POST = handle(async (req, { params }: Context) => {
   const candidates: string[] = [];
   const skipConflictingDate = (date: string): boolean => {
     if (!load) return false;
-    const slot = departureInterval({ departsOn: date, startTime, durationHours });
+    const slot = departureInterval({ departsOn: date, startTime, durationHours, durationMinutes });
     const dayConflicts = findStaffConflicts(assignedIds, slot, date, load);
     if (dayConflicts.length === 0) return false;
     skipped += 1;
@@ -134,10 +136,25 @@ export const POST = handle(async (req, { params }: Context) => {
     if (error) throw error;
     if (data) {
       createdIds.push(data.id);
-      await writeAssignment(t.supabase, t.tenantId, data.id, assignment);
+      try {
+        await writeAssignment(t.supabase, t.tenantId, data.id, assignment);
+      } catch (e) {
+        // 不留下沒有導遊的團；導遊撞班（DB 占用 trigger）視同該日期衝突略過，其餘錯誤照常拋出。
+        await discardUnassignedDeparture(t.supabase, t.tenantId, data.id);
+        createdIds.pop();
+        if (e instanceof ApiHttpError && e.code === ERR.STAFF_OCCUPIED) {
+          skipped += 1;
+          conflicts.push({
+            date, staffId: assignedIds[0] ?? '', staffName: names.get(assignedIds[0] ?? '') ?? '', reason: 'DEPARTURE',
+            text: STAFF_OCCUPIED_MESSAGE,
+          });
+          continue;
+        }
+        throw e;
+      }
       // 本批次剛建立的團次立刻計入負載，後面的日期才擋得住同批次的自我重疊。
       if (load) {
-        const slot = departureInterval({ departsOn: date, startTime, durationHours });
+        const slot = departureInterval({ departsOn: date, startTime, durationHours, durationMinutes });
         for (const staffId of assignedIds) {
           load.departures.push({ departureId: data.id, staffId, start: slot.start, end: slot.end });
         }
