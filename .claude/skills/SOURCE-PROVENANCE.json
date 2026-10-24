@@ -1,0 +1,716 @@
+{
+  "schemaVersion": 1,
+  "candidateIdentity": "NEW_ISSUE841_R02_NOT_HISTORICAL_PATCH_RESTORATION",
+  "originalRepository": "smallwei0301/vibeaico-admin-rebuild",
+  "originalHead": "cc44b2c445065466bc42ff28ea6b6fd50f7a8635",
+  "rulesMain": "0ca511ff9f45b825794653b6eb1a609cec661a37",
+  "sources": [
+    {
+      "path": ".claude/agents/impeccable-asset-producer.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/agents/impeccable-asset-producer.md",
+      "originalImportedBlob": "77b79e0983cd85456c9f0cfd08014c60b8a44cba",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/agents/impeccable-documenter.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/agents/impeccable-documenter.md",
+      "originalImportedBlob": "eb12233534675517c97b6ba526c6f8d7182d9f1a",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/agents/impeccable-finish-reviewer.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/agents/impeccable-finish-reviewer.md",
+      "originalImportedBlob": "74c372e23a1cc7e860ea0a3be6bc453b9da19b23",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/agents/impeccable-manual-edit-applier.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/agents/impeccable-manual-edit-applier.md",
+      "originalImportedBlob": "a1e179cbed669cf4f25267d5684fa813553df6a7",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/LICENSE",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "LICENSE",
+      "originalImportedBlob": "bb3f6d23b1f8025514a62a12b51b47d73e3c9aa9",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/SKILL.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/SKILL.md",
+      "originalImportedBlob": "a5e66fb2bb1588746ce309e6b41be5a099d3db2c",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/adapt.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/adapt.md",
+      "originalImportedBlob": "58d54aa3e6b1dfb34622d7b99e51c9c9c660b69a",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/adapt.native.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/adapt.native.md",
+      "originalImportedBlob": "f1ccd65d9788ffdfb5761824e6c51b8866f4cba5",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/android.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/android.md",
+      "originalImportedBlob": "1f67a6bb574960cccb1692f460cc5432baebad65",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/animate.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/animate.md",
+      "originalImportedBlob": "4ae4cc5fcd7ae4341f4f130ab67a7d9b03c00562",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/audit.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/audit.md",
+      "originalImportedBlob": "b3e1d7c98646501fcf150fb722f56f5d0eb38c2a",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/audit.native.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/audit.native.md",
+      "originalImportedBlob": "fbccb56f6e6fe64fc6b24d82977f392a6285848e",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/bolder.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/bolder.md",
+      "originalImportedBlob": "1cad2f1d1bbec240aaf39f2332e83c25dcc20cd0",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/clarify.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/clarify.md",
+      "originalImportedBlob": "3047a9d82b9cfa31b392e35c643d82bcdb50250a",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/colorize.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/colorize.md",
+      "originalImportedBlob": "dc45f88c5f81c61355a915c6ea1391b1a36c9ba8",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/component-review.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/component-review.md",
+      "originalImportedBlob": "16af0335b57a9fac63d5f7868b48dea9ff2410f2",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/craft-floor.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/craft-floor.md",
+      "originalImportedBlob": "9653b980895fa343127982ba575085c31726eecc",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/craft.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/craft.md",
+      "originalImportedBlob": "dbbc9402c07cdab21f2b6eb69279b8435fecfd7f",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/critique.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/critique.md",
+      "originalImportedBlob": "387fd6793875f190692d346d6cba1cb36bddd4cc",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/degraded/asset-producer.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/degraded/asset-producer.md",
+      "originalImportedBlob": "216dc91fc18bb4607bcf3cfb01ab982c65ba5eeb",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/degraded/documenter.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/degraded/documenter.md",
+      "originalImportedBlob": "e9dfb799bcece32233386bf9702bc3141d56d196",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/degraded/finish-reviewer.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/degraded/finish-reviewer.md",
+      "originalImportedBlob": "af7c451dfcbf2f753603a00089f35ac87aa575f9",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/degraded/manual-edit-applier.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/degraded/manual-edit-applier.md",
+      "originalImportedBlob": "ef5095b924623ce04e02188a6790ebd98a273bcd",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/delight.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/delight.md",
+      "originalImportedBlob": "798c43a5b735a5b75b67484c516821f1355dfbd6",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/distill.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/distill.md",
+      "originalImportedBlob": "7b93f0fb72bb296ad2cacd20428c6a0b6b4fb909",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/doctor.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/doctor.md",
+      "originalImportedBlob": "c7933af530fdb7c42336c823101b0cb080531685",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/document.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/document.md",
+      "originalImportedBlob": "033ff9b3e6754ea85e2a0316bf732b051138a7a5",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/generate.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/generate.md",
+      "originalImportedBlob": "4ca1ca08ea7ea54fe6fdc85baca0062e2590727b",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/hooks.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/hooks.md",
+      "originalImportedBlob": "d24c2a923b0b56834df26418b84e903154be96ca",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/init.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/init.md",
+      "originalImportedBlob": "25251a65e48fef527233695009c6c97b440ed04f",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/ios.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/ios.md",
+      "originalImportedBlob": "c6244dfe32176e5718d86211b7d1eb5601eb0860",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/layout.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/layout.md",
+      "originalImportedBlob": "7c13be125c644cee234884a06edb2f87e0b87048",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/live-setup.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/live-setup.md",
+      "originalImportedBlob": "816b34ada4c78ab1eab84b308582ff6360d6aa94",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/live.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/live.md",
+      "originalImportedBlob": "0df66f1e0a715e5789d554a7ca3af80752f8e64b",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/mode-operate.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/mode-operate.md",
+      "originalImportedBlob": "833775ba85f03bf65a4c1b23e39192f7653414e6",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/mode-persuade.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/mode-persuade.md",
+      "originalImportedBlob": "9c152d67064fb8453a7eaa89de20c35fc115b085",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/mode-read.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/mode-read.md",
+      "originalImportedBlob": "b30c4c9139e3094bd35c60738decb6109326153f",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/new-work.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/new-work.md",
+      "originalImportedBlob": "e754f664c6e0d6859b925d99f4cc9eb677f63695",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/onboard.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/onboard.md",
+      "originalImportedBlob": "d6a6de372d527d232c60f8317a077b5c5405b927",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/operate.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/operate.md",
+      "originalImportedBlob": "524f2c3ae9fa497284e9699f3ca5320cce5d05cf",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/overdrive.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/overdrive.md",
+      "originalImportedBlob": "764740e4e910a64d5b570c71b9347bb326a05bc8",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/polish.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/polish.md",
+      "originalImportedBlob": "ea300b3997247461ca0e159f8bbf8fa6c3d05662",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/quieter.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/quieter.md",
+      "originalImportedBlob": "5c1331c252b47bf2262b9a11248e54c56bf9c164",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/region-map.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/region-map.md",
+      "originalImportedBlob": "277508938ce94418aad1ea9487ceae2ef8eb2b2e",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/routing.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/routing.md",
+      "originalImportedBlob": "9ccd9d59e293c92f8998659760fd4d84de42e939",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/shape.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/shape.md",
+      "originalImportedBlob": "90a74ae813331cbce8fff6beb498ced77970fadf",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/typeset.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/typeset.md",
+      "originalImportedBlob": "60a5029d7a00ab52f2bd84dbcad7595658b0a6fd",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/visualize.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/visualize.md",
+      "originalImportedBlob": "40ac2e0ba2b0f58df36990cbc48642bbcba349a6",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/scripts/VERSION",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/scripts/VERSION",
+      "originalImportedBlob": "20f49513e15fe8c9e59ec1b906021854bd91aea8",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/scripts/command-metadata.json",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/scripts/command-metadata.json",
+      "originalImportedBlob": "89891ea4df179d5a07cf3aef42e84dafb1d05689",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/scripts/data/font-index-failures.json",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/scripts/data/font-index-failures.json",
+      "originalImportedBlob": "1aca67220413ef163570c75405b444d7a27a32be",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/scripts/data/font-index.json",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/scripts/data/font-index.json",
+      "originalImportedBlob": "9d2029971df232a72ff6584d264c104490521742",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/scripts/impeccable",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/scripts/impeccable",
+      "originalImportedBlob": "eb60f8667dd6924bc6271e9e1a0761ea5f945751",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/scripts/impeccable.cmd",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/scripts/impeccable.cmd",
+      "originalImportedBlob": "dc0fd33e5ac02ec325cb21af7cef39b201959a35",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/scripts/live-browser-dom.js",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/scripts/live-browser-dom.js",
+      "originalImportedBlob": "8646944982fcb5e36c111d134c5bf1e027bb27c6",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/scripts/live-browser-ignores.js",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/scripts/live-browser-ignores.js",
+      "originalImportedBlob": "1c8514c7bcd8b8d889a1763965326fb6adec24a1",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/scripts/live-browser-session.js",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/scripts/live-browser-session.js",
+      "originalImportedBlob": "ad9cdf008fdbeebd3da6a93d4ef408b5abff7420",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/scripts/live-browser.js",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/scripts/live-browser.js",
+      "originalImportedBlob": "c7eed77fb06fa81ef9841f61b5ac28d3bfe5a4f1",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/scripts/modern-screenshot.umd.js",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/scripts/modern-screenshot.umd.js",
+      "originalImportedBlob": "a9c5208f6b141d3bafdb8eb843d6fcbdcf23e370",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/extract.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/extract.md",
+      "originalImportedBlob": "086dab7d04adc601855b82f4b5d3d845831a6e12",
+      "upstreamBlob": "fb1cd199e3d8d298e2fcc46defb5fcd1f873d27e",
+      "match": "DOWNSTREAM_WHITESPACE_ONLY",
+      "evidence": "Original imported bytes were compared to the immutable upstream file; only trailing newline and trailing whitespace differ."
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/harden.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/harden.md",
+      "originalImportedBlob": "01d1d318b6660b063b7ad5a7f45f5bbdc66ee20b",
+      "upstreamBlob": "cbe2941e5e9959dc5b475da24d33aecbff090e5a",
+      "match": "DOWNSTREAM_WHITESPACE_ONLY",
+      "evidence": "Original imported bytes were compared to the immutable upstream file; only trailing newline and trailing whitespace differ."
+    },
+    {
+      "path": ".claude/skills/impeccable/reference/optimize.md",
+      "upstreamRepository": "pbakaus/impeccable",
+      "upstreamRevision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+      "upstreamPath": "plugin/skills/impeccable/reference/optimize.md",
+      "originalImportedBlob": "4407c113c86e0179408864aa9dc88cdf1148fe06",
+      "upstreamBlob": "cc6ce4925266bf3c4a7d40b5a435fe315cbf6f1a",
+      "match": "DOWNSTREAM_WHITESPACE_ONLY",
+      "evidence": "Original imported bytes were compared to the immutable upstream file; only trailing newline and trailing whitespace differ."
+    },
+    {
+      "path": ".claude/skills/animate-expo/RECIPES.md",
+      "upstreamRepository": "emilkowalski/skills",
+      "upstreamRevision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d",
+      "upstreamPath": "skills/animate-expo/RECIPES.md",
+      "originalImportedBlob": "a02e6b80f9dec86f196590f2f7a4fe3310ea1cb4",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/animate-expo/SKILL.md",
+      "upstreamRepository": "emilkowalski/skills",
+      "upstreamRevision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d",
+      "upstreamPath": "skills/animate-expo/SKILL.md",
+      "originalImportedBlob": "78b39e1d22e8c3c15be96ccebe04bf39792f3455",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/animate/RECIPES.md",
+      "upstreamRepository": "emilkowalski/skills",
+      "upstreamRevision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d",
+      "upstreamPath": "skills/animate/RECIPES.md",
+      "originalImportedBlob": "6744891261bdf0bb0473d77f2cc706f2d78b574e",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/animate/SKILL.md",
+      "upstreamRepository": "emilkowalski/skills",
+      "upstreamRevision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d",
+      "upstreamPath": "skills/animate/SKILL.md",
+      "originalImportedBlob": "7c3b20c6ed681b2d47c9ca9e3ee0e659ed47d032",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/animation-vocabulary/SKILL.md",
+      "upstreamRepository": "emilkowalski/skills",
+      "upstreamRevision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d",
+      "upstreamPath": "skills/animation-vocabulary/SKILL.md",
+      "originalImportedBlob": "5ab2976514c74a194ebf069506d95ff3a5a0084f",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/apple-design/SKILL.md",
+      "upstreamRepository": "emilkowalski/skills",
+      "upstreamRevision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d",
+      "upstreamPath": "skills/apple-design/SKILL.md",
+      "originalImportedBlob": "adf68c517f2d7d2781587d619de07f4de286da57",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/ask-sonner/API.md",
+      "upstreamRepository": "emilkowalski/skills",
+      "upstreamRevision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d",
+      "upstreamPath": "skills/ask-sonner/API.md",
+      "originalImportedBlob": "d2b0f3cf93d9495a8496275dc6e70199302df0f1",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/ask-sonner/SKILL.md",
+      "upstreamRepository": "emilkowalski/skills",
+      "upstreamRevision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d",
+      "upstreamPath": "skills/ask-sonner/SKILL.md",
+      "originalImportedBlob": "6cf9217f409315466ecfd7796de4591879983637",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/break-ui/CATALOG.md",
+      "upstreamRepository": "emilkowalski/skills",
+      "upstreamRevision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d",
+      "upstreamPath": "skills/break-ui/CATALOG.md",
+      "originalImportedBlob": "46962bb89445b8526ea94994a79b49508573b5fd",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/break-ui/SKILL.md",
+      "upstreamRepository": "emilkowalski/skills",
+      "upstreamRevision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d",
+      "upstreamPath": "skills/break-ui/SKILL.md",
+      "originalImportedBlob": "091a28d488662d2451131f1aaa60a6dcd2391932",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/emil-design-eng/LICENSE",
+      "upstreamRepository": "emilkowalski/skills",
+      "upstreamRevision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d",
+      "upstreamPath": "LICENSE",
+      "originalImportedBlob": "57b46f1fd11dc62351ea548104a88aa3f659c11b",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/emil-design-eng/SKILL.md",
+      "upstreamRepository": "emilkowalski/skills",
+      "upstreamRevision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d",
+      "upstreamPath": "skills/emil-design-eng/SKILL.md",
+      "originalImportedBlob": "62ce902af8dd32c590ea7203e9ab2edb1d6ef81a",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/find-animation-opportunities/SKILL.md",
+      "upstreamRepository": "emilkowalski/skills",
+      "upstreamRevision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d",
+      "upstreamPath": "skills/find-animation-opportunities/SKILL.md",
+      "originalImportedBlob": "d3b030fbca9abad9220a032f72d425c6b7fa2de8",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/improve-animations/AUDIT.md",
+      "upstreamRepository": "emilkowalski/skills",
+      "upstreamRevision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d",
+      "upstreamPath": "skills/improve-animations/AUDIT.md",
+      "originalImportedBlob": "94056154e532d695b8792ea67d701625b4f43b6e",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/improve-animations/PLAN-TEMPLATE.md",
+      "upstreamRepository": "emilkowalski/skills",
+      "upstreamRevision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d",
+      "upstreamPath": "skills/improve-animations/PLAN-TEMPLATE.md",
+      "originalImportedBlob": "239026b91f8032df191dde2085fd796b8c116d91",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/improve-animations/SKILL.md",
+      "upstreamRepository": "emilkowalski/skills",
+      "upstreamRevision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d",
+      "upstreamPath": "skills/improve-animations/SKILL.md",
+      "originalImportedBlob": "d6e77f37272329af0cc36f9eeedbe5226e86ce63",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/mobile-native/SKILL.md",
+      "upstreamRepository": "emilkowalski/skills",
+      "upstreamRevision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d",
+      "upstreamPath": "skills/mobile-native/SKILL.md",
+      "originalImportedBlob": "94bba21fcb990b850e06effbf5709c96a07446ad",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/pick-ui-library/SKILL.md",
+      "upstreamRepository": "emilkowalski/skills",
+      "upstreamRevision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d",
+      "upstreamPath": "skills/pick-ui-library/SKILL.md",
+      "originalImportedBlob": "5e0028e988b88d2a88a019fdc978b4732243e467",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/prototype/PICKER.md",
+      "upstreamRepository": "emilkowalski/skills",
+      "upstreamRevision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d",
+      "upstreamPath": "skills/prototype/PICKER.md",
+      "originalImportedBlob": "aaa88c0eba38eb01c00d4eb2b144e39f808fc26a",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/prototype/SKILL.md",
+      "upstreamRepository": "emilkowalski/skills",
+      "upstreamRevision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d",
+      "upstreamPath": "skills/prototype/SKILL.md",
+      "originalImportedBlob": "dbcc1a23c66933f7372c0aacbce2b0d7cc6100b6",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/review-animations/SKILL.md",
+      "upstreamRepository": "emilkowalski/skills",
+      "upstreamRevision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d",
+      "upstreamPath": "skills/review-animations/SKILL.md",
+      "originalImportedBlob": "577a64397267ce20960de2202950594d5bd6f9b6",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/review-animations/STANDARDS.md",
+      "upstreamRepository": "emilkowalski/skills",
+      "upstreamRevision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d",
+      "upstreamPath": "skills/review-animations/STANDARDS.md",
+      "originalImportedBlob": "863ea12ea94c1f7a47b5f7e1019e976aa82bd4cd",
+      "match": "EXACT_BLOB"
+    },
+    {
+      "path": ".claude/skills/write-swift/SKILL.md",
+      "upstreamRepository": "emilkowalski/skills",
+      "upstreamRevision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d",
+      "upstreamPath": "skills/write-swift/SKILL.md",
+      "originalImportedBlob": "1787a58af8658b3b179c7f51af60612aedad1c7c",
+      "upstreamBlob": "a09a8f693304fe1c04ed56d61dde9833a516849e",
+      "match": "DOWNSTREAM_WHITESPACE_ONLY",
+      "evidence": "Original imported bytes were compared to the immutable upstream file; only trailing newline and trailing whitespace differ."
+    }
+  ],
+  "upstreamNotice": {
+    "repository": "pbakaus/impeccable",
+    "revision": "ffeda44b00b1e39bd901621dcd3a7e44ba184ce1",
+    "path": "NOTICE.md",
+    "gitBlobSha1": "0468271c904ae334cfaf27da6f8df3d5f419a1f0"
+  },
+  "platformLicense": {
+    "repository": "ehmo/platform-design-skills",
+    "revision": "dc2be825d8b439caea78e9eaa8fb3ac23b0ff3e9",
+    "path": "LICENSE",
+    "gitBlobSha1": "14fac913ccf80234b1848540089a3bbcb6e5283d"
+  },
+  "downstreamChanges": [
+    "Removed engine scripts, engine agents and degraded helper references.",
+    "Rewrote operational references as pure advisory checklists; retained engine-independent design reference material.",
+    "Made canonical rules, existing tokens, components, i18n and actual user permissions superior in every retained skill/reference.",
+    "Removed automatic context-document creation, assumed Apply consent, tool-instruction precedence and installation recipes.",
+    "Preserved original Apache-2.0 and Emil MIT license bytes, added exact upstream NOTICE and platform MIT license."
+  ]
+}
