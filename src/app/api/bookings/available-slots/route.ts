@@ -43,7 +43,7 @@ import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { businessSettingsSchema } from '@/config/tenant-settings';
 import { queryEffectiveBlockTimes } from '@/server/block-times';
-import { departureInterval, overlaps as intervalOverlaps } from '@/server/staff-availability';
+import { existingDepartureInterval, oneRelated, overlaps as intervalOverlaps } from '@/server/staff-availability';
 
 const querySchema = z.object({
   serviceId: z.string().uuid(),
@@ -144,7 +144,7 @@ export const GET = handle(async (req) => {
     // 只看「當天」的團次即可：團次的佔用區間不會跨日（有時間時是 departs_on 當天
     // 的一段，沒時間時是 departs_on 整日），而本端點只算 q.date 這一天。
     t.supabase.from('trip_departure_staff')
-      .select('staff_id, trip_departures!inner(id, departs_on, start_time, status, trips!inner(duration_hours))')
+      .select('staff_id, trip_departures!inner(id, departs_on, start_time, status, trips!inner(duration_hours), trip_plans(duration_minutes))')
       .eq('tenant_id', t.tenantId)
       .neq('trip_departures.status', 'CANCELLED')
       .eq('trip_departures.departs_on', q.date),
@@ -158,14 +158,16 @@ export const GET = handle(async (req) => {
   const departureBusy: Array<{ staffId: string; start: number; end: number }> = [];
   for (const row of (assigned ?? []) as Array<Record<string, unknown>>) {
     const dep = (Array.isArray(row.trip_departures) ? row.trip_departures[0] : row.trip_departures) as
-      undefined | { id: string; departs_on: string; start_time: string | null; trips?: unknown };
+      undefined | { id: string; departs_on: string; start_time: string | null; trips?: unknown; trip_plans?: unknown };
     if (!dep) continue;
     const trip = (Array.isArray(dep.trips) ? dep.trips[0] : dep.trips) as
       undefined | { duration_hours: number | null };
-    const interval = departureInterval({
+    const plan = oneRelated<{ duration_minutes: number | null }>(dep.trip_plans);
+    const interval = existingDepartureInterval({
       departsOn: dep.departs_on,
       startTime: dep.start_time == null ? null : String(dep.start_time).slice(0, 5),
-      durationHours: trip?.duration_hours ?? null,
+      tripHours: trip?.duration_hours ?? null,
+      planMinutes: plan?.duration_minutes ?? null,
     });
     departureBusy.push({ staffId: String(row.staff_id), start: interval.start, end: interval.end });
   }

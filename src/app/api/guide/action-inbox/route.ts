@@ -21,7 +21,7 @@ import {
   type GuideActionInboxStaffConflictDetail,
 } from '@/lib/guide-action-inbox';
 import {
-  departureInterval, findStaffConflicts, loadStaffLoad,
+  existingDepartureInterval, findStaffConflicts, loadStaffLoad,
 } from '@/server/staff-availability';
 
 type RelatedName = { name?: string | null; title?: string | null } | { name?: string | null; title?: string | null }[] | null;
@@ -233,7 +233,7 @@ export const GET = handle(async () => {
     // 唯一權威的「需要決定」入口，人員指派問題留到成團決定之後才有意義追。
     t.supabase
       .from('trip_departures')
-      .select('id, trip_id, plan_id, departs_on, start_time, status, created_at, trips(title, duration_hours), trip_plans(name), trip_departure_staff(staff_id, role, staff(name))')
+      .select('id, trip_id, plan_id, departs_on, start_time, status, created_at, trips(title, duration_hours), trip_plans(name, duration_minutes), trip_departure_staff(staff_id, role, staff(name))')
       .eq('tenant_id', t.tenantId)
       .in('status', ['OPEN', 'CLOSED'])
       .gte('departs_on', today)
@@ -415,10 +415,11 @@ export const GET = handle(async () => {
       const startTime = row.start_time ? String(row.start_time).slice(0, 5) : '';
       const trip = relatedValue(row.trips as RelatedName) as
         { title?: string | null; duration_hours?: number | null } | null;
-      const slot = departureInterval({
+      const slot = existingDepartureInterval({
         departsOn: departureDate,
         startTime: row.start_time ? startTime : null,
-        durationHours: trip?.duration_hours ?? null,
+        tripHours: trip?.duration_hours ?? null,
+        planMinutes: (relatedValue(row.trip_plans as RelatedName) as { duration_minutes?: number | null } | null)?.duration_minutes ?? null,
       });
       const staffNameById = new Map<string, string>();
       const staffIds: string[] = [];
