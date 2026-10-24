@@ -463,6 +463,7 @@ declare
   v_policy text;
   v_basic jsonb;
   v_zone text;
+  v_canonical text;
   v_request tstzrange;
   v_shifts tstzrange[] := array[]::tstzrange[];
   v_coverage tstzmultirange;
@@ -489,8 +490,11 @@ begin
     if jsonb_typeof(v_basic->'timezone') <> 'string' then return false; end if;
     v_zone := btrim(v_basic->>'timezone');
   else v_zone := 'Asia/Taipei'; end if;
-  if v_zone is null or v_zone='' or not exists
-    (select 1 from pg_catalog.pg_timezone_names where name=v_zone) then return false; end if;
+  -- 與 tenant_timezone_name 同一段查詢：不分大小寫比對並取 canonical 名稱；查不到維持回 false（不 raise）。
+  select n.name into v_canonical from pg_catalog.pg_timezone_names n
+   where lower(n.name)=lower(v_zone) order by (n.name=v_zone) desc, n.name limit 1;
+  if v_zone is null or v_zone='' or v_canonical is null then return false; end if;
+  v_zone := v_canonical;
   v_request := tstzrange(p_start,p_end,'[)');
 
   if exists (select 1 from public.bookings b where b.tenant_id=p_tenant and b.staff_id=p_staff

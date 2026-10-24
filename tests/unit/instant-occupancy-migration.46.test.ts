@@ -217,4 +217,12 @@ describe('#46 0138 INSTANT occupancy migration 原始碼守門', () => {
     expect(sql).toMatch(/無法重新儲存指派/);
     expect(sql).toMatch(/只保證 READ COMMITTED/);
   });
+
+  it('0135 predicate 的時區驗證與 tenant_timezone_name 一致：不分大小寫、取 canonical，查不到回 false 不 raise', () => {
+    const body = fn('guide_staff_interval_available');
+    expect(body).toMatch(/lower\(n\.name\)=lower\(v_zone\)/);
+    expect(body).toMatch(/v_canonical is null then return false;/);
+    expect(body).toMatch(/v_zone := v_canonical;/);
+    expect(body).not.toMatch(/where name=v_zone/);
+  });
 });
