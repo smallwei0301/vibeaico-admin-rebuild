@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { inferMigrationRiskTier } from '../../scripts/agents/production-db-release-plan.mjs';
 
-const FILE = 'supabase/migrations/0138_issue_46_instant_occupancy.sql';
+const FILE = 'supabase/migrations/0139_issue_46_instant_occupancy_release.sql';
 const sql = readFileSync(FILE, 'utf8');
 const code = sql.split('\n').filter((line) => !line.trim().startsWith('--')).join('\n');
 
@@ -16,15 +16,15 @@ function fn(name: string): string {
 describe('#46 0138 INSTANT occupancy migration 原始碼守門', () => {
   it('編號是現存最大號＋1（無碰撞）', () => {
     const numbers = readdirSync('supabase/migrations').filter((f) => /^\d{4}_/.test(f)).map((f) => f.slice(0, 4));
-    expect(numbers.filter((n) => n === '0138')).toHaveLength(1);
-    expect(Math.max(...numbers.map(Number))).toBe(138);
+    expect(numbers.filter((n) => n === '0139')).toHaveLength(1);
+    expect(Math.max(...numbers.map(Number))).toBe(139);
   });
 
   it('單一交易（begin/commit）且含 PB-026 形狀斷言', () => {
     expect(code).toMatch(/^\s*begin;/m);
     expect(code).toMatch(/^\s*commit;\s*$/m);
-    expect(code).toMatch(/0138 形狀斷言失敗/);
-    expect(code).toMatch(/0138 後置斷言失敗/);
+    expect(code).toMatch(/0139 形狀斷言失敗/);
+    expect(code).toMatch(/0139 後置斷言失敗/);
   });
 
   it('duration snapshot：nullable int、check > 0、不回填既有團次（回填會使整支 migration 變成 BACKFILL 風險類別）', () => {
@@ -188,7 +188,7 @@ describe('#46 0138 INSTANT occupancy migration 原始碼守門', () => {
   });
 
   it('Production DB release 分類器守門：整支只有 AUTHZ 一種 specialized risk，且 migration 時期執行區塊不呼叫非白名單函式', () => {
-    const risk = inferMigrationRiskTier(sql, '0138_issue_46_instant_occupancy');
+    const risk = inferMigrationRiskTier(sql, '0139_issue_46_instant_occupancy_release');
     expect(risk).toBe('AUTHZ');
     // 所有頂層 DO 區塊（含前置條件、形狀斷言、後置斷言）不得再出現被分類器擋下的函式。
     const doBlocks = code.match(/^do \$\$[\s\S]*?^end \$\$;/gm) ?? [];
@@ -276,7 +276,7 @@ describe('#46 0138 INSTANT occupancy migration 原始碼守門', () => {
 
   it('G3 admission：guide-interval-availability 整合測試同時接受 0135 或 0138 的 exact release（兩支都沒有才 POLICY_SKIP）', () => {
     const src = readFileSync('tests/integration/db/guide-interval-availability.46.test.ts', 'utf8');
-    expect(src).toMatch(/const migrations = \[migration, '0138_issue_46_instant_occupancy'\];/);
+    expect(src).toMatch(/const migrations = \[migration, '0138_issue_46_instant_occupancy', '0139_issue_46_instant_occupancy_release'\];/);
     expect(src).toMatch(/for \(const name of migrations\)/);
     // 每支被選中的 migration 都做 exact 驗證。
     for (const token of ['selected.length !== 1', 'applied.length !== 1', 'selected[0].path !== path', 'selected[0].sha256 !== digest', 'applied[0].sha256 !== digest', 'applied[0].riskTier !== selected[0].riskTier', 'APPLIED_VERIFIED', 'REPLAY_VERIFIED']) {
@@ -286,7 +286,7 @@ describe('#46 0138 INSTANT occupancy migration 原始碼守門', () => {
     expect(src).not.toMatch(/row\.repoFile === migration\)/); // 不再只認 0135
     // 契約：0138 的 requiredFiles 與 0135 相同，只有這一個整合測試檔。
     const contracts = readFileSync('scripts/agents/production-db-g3-authz-contracts.mjs', 'utf8');
-    expect(contracts).toMatch(/'0138_issue_46_instant_occupancy': Object\.freeze\(\{\s+requiredFiles: CONTRACT_0135\.requiredFiles,/);
+    expect(contracts).toMatch(/'0139_issue_46_instant_occupancy_release'\]\.map\(\(name\) => \[name, Object\.freeze\(\{\s+requiredFiles: CONTRACT_0135\.requiredFiles,/);
   });
 
   it('guide-action-inbox 的 0138 探測：只有欄位不存在才視為未套用、其他錯誤拋出；不得使用 ctx.skip／it.skip', () => {

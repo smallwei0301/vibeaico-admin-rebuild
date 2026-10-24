@@ -95,6 +95,7 @@ export const CREATE_TOUR_ORDER_UNRESOLVED_EXECUTE_EXCLUSIONS = Object.freeze({
   '0123': 'trigger 語法 execute function public.prevent_retired_richmenu_asset()，無動態 SQL；檔內沒有 create_tour_order',
   '0128': 'trigger 語法 execute function public.set_updated_at()，無動態 SQL；檔內沒有 create_tour_order',
   '0138': 'trigger 語法 execute function public.trg_*_occupancy()／trg_trip_plans_instant_guide_same_tenant()（四處，固定函式名）、has_function_privilege 的 \'EXECUTE\' 字面量，以及 helper 函式的 grant／revoke … execute on function（固定函式名與角色，非動態），無動態 SQL；檔內只以 create_tour_order_quoted 的 PERFORM／賦值呼叫，沒有任何 create_tour_order 的 create/alter/grant/revoke/rename',
+  '0139': 'trigger 語法 execute function public.trg_*_occupancy()／trg_trip_plans_instant_guide_same_tenant()（四處，固定函式名）、以及 helper 函式的 grant／revoke … execute on function（固定函式名與角色，非動態），無動態 SQL；檔內只以 create_tour_order_quoted 的 PERFORM／賦值呼叫，沒有任何 create_tour_order 的 create/alter/grant/revoke/rename',
 });
 // 原始文字掃描（不剝註解）比剝註解後多出的命中：每筆都必須是「只出現在註解」，測試會驗證該旗標在剝註解後確實消失，
 // 且此表與實際差集精確相等，因此無法用來隱藏真正的程式碼。key 為 migration 編號。
@@ -256,7 +257,7 @@ export function scanCreateTourOrderDdl(sqlText) {
 const ISSUE_46_CLOSURE_FAMILY_TABLE = Object.freeze([
   Object.freeze({
     file: 'tests/integration/api/tour-request-accept.46.test.ts',
-    migrations: Object.freeze(['0111', '0130', '0132', '0136', '0138']),
+    migrations: Object.freeze(['0111', '0130', '0132', '0136', '0138', '0139']),
     cleanup: Object.freeze({migration:'0111_issue_46_guide_request_accept',table:'tour_orders',filterColumn:'note',filterOperator:'like',filterValue:'request-accept-46-%'}),
   }),
   Object.freeze({
@@ -784,13 +785,14 @@ const BASE_G3_AUTHZ_CONTRACTS = Object.freeze({
 const CONTRACT_0135 = BASE_G3_AUTHZ_CONTRACTS['0135_issue_46_guide_interval_availability'];
 export const PRODUCTION_DB_G3_AUTHZ_CONTRACTS = Object.freeze({
   ...BASE_G3_AUTHZ_CONTRACTS,
-  '0138_issue_46_instant_occupancy': Object.freeze({
+  // 0139 取代從未套用的 0138（同一組契約）；兩個 key 都保留，以免只含其中之一的 plan 失去契約。
+  ...Object.fromEntries(['0138_issue_46_instant_occupancy', '0139_issue_46_instant_occupancy_release'].map((name) => [name, Object.freeze({
     requiredFiles: CONTRACT_0135.requiredFiles,
     requiredAssertions: CONTRACT_0135.requiredAssertions,
     localOnlyPending: CONTRACT_0135.localOnlyPending,
     tenantBoundaryAssertions: CONTRACT_0135.tenantBoundaryAssertions,
     negativeRoleAssertions: CONTRACT_0135.negativeRoleAssertions,
-  }),
+  })])),
 });
 
 export function getProductionDbG3AuthzContract(repoFile) {

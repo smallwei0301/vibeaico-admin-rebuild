@@ -136,7 +136,7 @@ function isAllowedCanonicalTestPending(row, plan) {
   const target = '0135_issue_46_guide_interval_availability';
   const contract = getProductionDbG3AuthzContract(target);
   if (row.file === contract.requiredFiles[0]) {
-    const selected = plan.migrations.some((migration) => migration.repoFile === target || migration.repoFile === '0138_issue_46_instant_occupancy');
+    const selected = plan.migrations.some((migration) => migration.repoFile === target || migration.repoFile === '0138_issue_46_instant_occupancy' || migration.repoFile === '0139_issue_46_instant_occupancy_release');
     if (selected) return row.name === contract.localOnlyPending.fullName;
     return row.name.startsWith('#46 POLICY_SKIP/NOT_RUN: SOURCE_PREPARE not admitted; no hooks/fixtures/auth 0135 staff policy and service-only tenant interval predicate ')
       && [...contract.requiredAssertions, contract.localOnlyPending].some((assertion) =>
@@ -274,7 +274,7 @@ function cleanupScopes(plan) {
     scopes.push({ ...cleanup, migration: label });
   }
 
-  if (plan.migrations.some((migration) => migration.repoFile === '0135_issue_46_guide_interval_availability' || migration.repoFile === '0138_issue_46_instant_occupancy')) {
+  if (plan.migrations.some((migration) => migration.repoFile === '0135_issue_46_guide_interval_availability' || migration.repoFile === '0138_issue_46_instant_occupancy' || migration.repoFile === '0139_issue_46_instant_occupancy_release')) {
     scopes.push({migration:'0135_issue_46_guide_interval_availability',table:'tenants',filterColumn:'shop_code',filterOperator:'like',filterValue:'g46-%'});
   }
   if (plan.migrations.some((migration) => String(migration?.repoFile ?? '') === '0105_issue_44_traveler_risk_policies')) {

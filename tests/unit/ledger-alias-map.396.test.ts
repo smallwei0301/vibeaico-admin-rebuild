@@ -446,8 +446,9 @@ describe('#396 已提交的正式資料', () => {
   // 0114＋0129（#22 banner 影片上傳、#15 chat-images bucket）由 Owner 授權以 Supabase MCP 套用 main canonical 原文至正式庫（#1091，快照 81 → 83，EXACT 74 → 76，NOT_APPLIED 4 → 2）。
   // 0109（#41 schema precondition assertions）由 Owner 授權以 Supabase MCP 套用 main canonical 原文至正式庫（#1091，快照 83 → 84，EXACT 76 → 77，NOT_APPLIED 2 → 1）。
   // 0138 #46 INSTANT 自選時間（占用排他＋create_instant_tour_order），84 → 85 個檔案；未套用正式庫，快照維持 84。
-  it('repo 有 85 個 migration 檔案，正式庫快照有 84 筆 ledger row', () => {
-    expect(repoFiles).toHaveLength(85);
+  // 0139 取代 0138（0138 從未套用），85 → 86 個檔案；未套用正式庫，快照維持 84。
+  it('repo 有 86 個 migration 檔案，正式庫快照有 84 筆 ledger row', () => {
+    expect(repoFiles).toHaveLength(86);
     expect(snapshot.ledgerRowNames).toHaveLength(84);
   });
 
@@ -500,7 +501,7 @@ describe('#396 已提交的正式資料', () => {
     // release 有對應的審查與執行器。
     expect(counts.EXACT).toBe(77);
     expect(counts.ALIAS).toBe(6);
-    expect(counts.NOT_APPLIED ?? 0).toBe(2);
+    expect(counts.NOT_APPLIED ?? 0).toBe(3); // 既有 1 筆 VERIFIED_NOT_APPLIED＋0138（被 0139 取代、從未套用）＋0139（PENDING_APPLY）
     expect(counts.LEDGER_ONLY).toBe(1);
   });
 
@@ -787,7 +788,7 @@ describe('#396 NOT_APPLIED 的兩種狀態必須用列舉講清楚', () => {
     // 保留 main 那一版的意圖：釘住數量而不是只檢查「每一筆都有理由」，否則清單變空時
     // 這條規則會靜悄悄變成空轉。任何人日後新增或移除 NOT_APPLIED 都會先撞到這一行，
     // 被迫同時面對下面那條「必須有合法 notAppliedReason」的規則。
-    expect(notApplied.length).toBe(2);
+    expect(notApplied.length).toBe(3);
     for (const entry of notApplied) {
       expect(NOT_APPLIED_REASONS).toContain(entry.notAppliedReason);
     }

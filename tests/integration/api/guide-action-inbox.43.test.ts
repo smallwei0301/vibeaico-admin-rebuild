@@ -578,8 +578,8 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
   });
 
   /**
-   * schema admission gate：0138（#46 占用 trigger）是否已套用到目前的 TEST 資料庫。
-   * canonical TEST 在 0138 經 release 套用之前沒有 `trip_departures.duration_minutes_snapshot`，0138 專屬斷言
+   * schema admission gate：0138（#46 占用 trigger）是否已套用到目前的 TEST 資料庫（0138 或取代它的 0139 任一建立此欄位即視為已套用）。
+   * canonical TEST 在 0138 經 release 套用之前沒有 `trip_departures.duration_minutes_snapshot`，0138／0139 專屬斷言
    * 不得在那之前執行（會讓其他 PR 無謂地轉紅）。探測方式：選取該欄位，未套用時 PostgREST 回 42703 / PGRST204 類錯誤。
    */
   const has0138 = async (): Promise<boolean> => {

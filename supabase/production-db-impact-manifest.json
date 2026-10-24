@@ -1259,7 +1259,7 @@
       ]
     },
     {
-      "repoFile": "0138_issue_46_instant_occupancy",
+      "repoFile": "0139_issue_46_instant_occupancy_release",
       "impacts": [
         {
           "surface": "columns",
