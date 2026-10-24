@@ -1432,6 +1432,14 @@
         {
           "surface": "columns",
           "objectKey": "public.trip_departures.instant_private"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.update_trip_departure_with_staff(p_tenant uuid, p_departure uuid, p_departs_on date, p_change_start_time boolean, p_start_time time without time zone, p_status text, p_replace_staff boolean, p_primary uuid, p_assistants uuid[])"
+        },
+        {
+          "surface": "acl",
+          "objectKey": "function:public.update_trip_departure_with_staff(p_tenant uuid, p_departure uuid, p_departs_on date, p_change_start_time boolean, p_start_time time without time zone, p_status text, p_replace_staff boolean, p_primary uuid, p_assistants uuid[])"
         }
       ]
     }

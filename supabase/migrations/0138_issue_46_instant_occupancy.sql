@@ -36,6 +36,9 @@
 --   - 既有撞班（0138 之前留下的重疊）的團次，在衝突解決前無法重新儲存指派：replace_trip_departure_staff
 --     （0131，本檔不改）先刪後插，插入會被占用 trigger 以 STAFF_OCCUPIED 擋下並整筆回滾（原指派保留）。
 --     先調整其中一邊的時間或導遊即可。
+--   - ACTIVATE 之前，PATCH /api/trip-departures/:id 仍是兩步寫入（先 update 團次、再 replace 指派，各自一個交易）：
+--     0138 套用後到 ACTIVATE 之間，「同時改時間與導遊」會以舊導遊驗證新時間，舊導遊在新時間撞班就 fail-closed
+--     （409）。ACTIVATE PR 必須改呼叫本檔新增的 update_trip_departure_with_staff（單一交易、最終狀態驗證）。
 --   - 占用排他只保證 READ COMMITTED（Supabase 預設）：trigger 取 advisory lock 後以新 statement snapshot 重驗；
 --     REPEATABLE READ／SERIALIZABLE 交易看不到鎖等待期間他人已提交的列，不在保證範圍。
 --
@@ -830,6 +833,69 @@ grant execute on function public.create_instant_tour_order(
   uuid, uuid, timestamptz, integer, uuid, jsonb, text, text, numeric, text, public.tour_order_source, uuid
 ) to service_role;
 
+-- ------------------------------------------------------------------ update_trip_departure_with_staff
+-- 後台 PATCH 同時改時間（或狀態）與導遊時的原子入口。分兩步寫入時，第一步會用「舊導遊」驗證新時間，
+-- 舊導遊在新時間撞班就被擋，即使替換後的新導遊有空。這裡在同一交易內把兩個占用 constraint trigger 延後，
+-- 依序更新團次與替換指派，再 SET CONSTRAINTS IMMEDIATE 立即以「最終狀態」（團次新時間＋新指派）一次驗證：
+-- 延後的 trigger 在觸發當下才讀資料，看到的是更新後的團次與替換後的指派；失敗則整個 RPC 回滾（原時間與原指派保留）。
+-- 鎖序：團次列（FOR UPDATE）→ 導遊 advisory lock（在 trigger 內取得），與其他入口一致。
+-- 參數：p_departs_on／p_status 為 NULL＝不變；p_change_start_time＝false 時忽略 p_start_time（因為 NULL 是合法的時間值）；
+-- p_replace_staff＝false 時不動指派（只改時間）。其他非占用欄位（名額、備註…）仍由呼叫端另行更新。
+-- security invoker、僅 service_role。錯誤碼沿用：P0020 STAFF_OCCUPIED、P0002 DEPARTURE_NOT_FOUND／STAFF_NOT_FOUND、
+-- P0003 DUPLICATE_STAFF_ASSIGNMENT。
+create or replace function public.update_trip_departure_with_staff(
+  p_tenant           uuid,
+  p_departure        uuid,
+  p_departs_on       date,
+  p_change_start_time boolean,
+  p_start_time       time,
+  p_status           text,
+  p_replace_staff    boolean,
+  p_primary          uuid,
+  p_assistants       uuid[]
+) returns jsonb
+language plpgsql security invoker set search_path = pg_catalog, public
+as $$
+begin
+  if p_tenant is null or p_departure is null then
+    raise exception 'INVALID_ARGUMENTS' using errcode = 'P0003';
+  end if;
+  perform 1 from public.trip_departures d
+   where d.id = p_departure and d.tenant_id = p_tenant
+   for update;
+  if not found then
+    raise exception 'DEPARTURE_NOT_FOUND' using errcode = 'P0002';
+  end if;
+
+  set constraints public.trg_trip_departures_staff_occupancy, public.trg_trip_departure_staff_occupancy deferred;
+
+  update public.trip_departures d
+     set departs_on = coalesce(p_departs_on, d.departs_on),
+         start_time = case when p_change_start_time then p_start_time else d.start_time end,
+         status = coalesce(p_status::public.departure_status, d.status)
+   where d.id = p_departure and d.tenant_id = p_tenant;
+
+  if p_replace_staff then
+    perform public.replace_trip_departure_staff(p_tenant, p_departure, p_primary, coalesce(p_assistants, '{}'::uuid[]));
+  end if;
+
+  -- 以最終狀態驗證：立即執行延後的 trigger，衝突在此 raise（整個 RPC 回滾）。
+  set constraints public.trg_trip_departures_staff_occupancy, public.trg_trip_departure_staff_occupancy immediate;
+
+  return jsonb_build_object('departureId', p_departure);
+end;
+$$;
+
+revoke all on function public.update_trip_departure_with_staff(
+  uuid, uuid, date, boolean, time, text, boolean, uuid, uuid[]
+) from public;
+revoke all on function public.update_trip_departure_with_staff(
+  uuid, uuid, date, boolean, time, text, boolean, uuid, uuid[]
+) from anon, authenticated;
+grant execute on function public.update_trip_departure_with_staff(
+  uuid, uuid, date, boolean, time, text, boolean, uuid, uuid[]
+) to service_role;
+
 -- ------------------------------------------------------------------ cancel／expire：釋放 INSTANT 私人團
 -- 簽章與 0087／0100／0111 相同，本體以 0111 為基礎，僅在訂單取消後加「INSTANT 私人團無其他有效訂單 →
 -- CANCELLED」。CANCELLED 的團不再被 0135 predicate／占用 trigger 視為占用，導遊時段重新可售。
@@ -992,6 +1058,23 @@ begin
           and (has_function_privilege('anon', p.oid, 'EXECUTE') or has_function_privilege('authenticated', p.oid, 'EXECUTE')
                or not has_function_privilege('service_role', p.oid, 'EXECUTE'))) then
       raise exception '0138 後置斷言失敗：% ACL 被改動（應只給 service_role）', r.fn;
+    end if;
+  end loop;
+
+  -- ④b 原子改期＋改派 RPC：invoker、僅 service_role、含延後／立即驗證與團次列鎖。
+  select count(*) into v_n from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'update_trip_departure_with_staff';
+  if v_n <> 1 then raise exception '0138 後置斷言失敗：update_trip_departure_with_staff 應唯一，實際 %', v_n; end if;
+  for r in select p.oid, p.prosecdef from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+            where n.nspname = 'public' and p.proname = 'update_trip_departure_with_staff' loop
+    v_def := pg_get_functiondef(r.oid);
+    if r.prosecdef or v_def !~* 'deferred' or v_def !~* 'immediate' or v_def !~* 'replace_trip_departure_staff'
+       or v_def !~* 'for update' then
+      raise exception '0138 後置斷言失敗：update_trip_departure_with_staff 本體或屬性不符';
+    end if;
+    if has_function_privilege('anon', r.oid, 'EXECUTE') or has_function_privilege('authenticated', r.oid, 'EXECUTE')
+       or not has_function_privilege('service_role', r.oid, 'EXECUTE') then
+      raise exception '0138 後置斷言失敗：update_trip_departure_with_staff ACL 必須只給 service_role';
     end if;
   end loop;
 

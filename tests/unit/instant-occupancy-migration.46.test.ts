@@ -271,4 +271,33 @@ describe('#46 0138 INSTANT occupancy migration 原始碼守門', () => {
     expect(noComments).not.toMatch(/ctx\.skip|\.skip\(|it\.skip|test\.skip|describe\.skip|\.todo\(|skipIf/);
     expect(src).toMatch(/if \(!\(await has0138\(\)\)\) \{[\s\S]*?console\.info\('#46 POLICY_SKIP\/NOT_RUN[\s\S]*?return;/);
   });
+
+  it('update_trip_departure_with_staff：單一交易延後兩個占用 trigger、改團次與指派後立即以最終狀態驗證；invoker、僅 service_role', () => {
+    const body = fn('update_trip_departure_with_staff');
+    expect(body).toMatch(/security invoker/i);
+    expect(body).not.toMatch(/security definer/i);
+    // 鎖序：團次列 for update → 延後 → 更新團次 → replace 指派 → 立即驗證（導遊 advisory lock 在 trigger 內取得）。
+    const order = ['for update;', 'deferred;', 'update public.trip_departures d', 'replace_trip_departure_staff', 'immediate;'];
+    let last = -1;
+    for (const token of order) {
+      const at = body.indexOf(token, last + 1);
+      expect(at, `步驟 ${token} 缺漏或順序錯誤`).toBeGreaterThan(last);
+      last = at;
+    }
+    expect(body).toMatch(/set constraints public\.trg_trip_departures_staff_occupancy, public\.trg_trip_departure_staff_occupancy deferred/);
+    expect(body).toMatch(/set constraints public\.trg_trip_departures_staff_occupancy, public\.trg_trip_departure_staff_occupancy immediate/);
+    expect(body).toMatch(/raise exception 'DEPARTURE_NOT_FOUND' using errcode = 'P0002'/);
+    expect(body).toMatch(/case when p_change_start_time then p_start_time else d\.start_time end/);
+    const sig = 'uuid, uuid, date, boolean, time, text, boolean, uuid, uuid\\[\\]';
+    expect(code).toMatch(new RegExp(`revoke\\s+all\\s+on\\s+function\\s+public\\.update_trip_departure_with_staff\\(\\s*${sig}\\s*\\)\\s*from\\s+public;`, 'i'));
+    expect(code).toMatch(new RegExp(`from\\s+anon,\\s*authenticated;`, 'i'));
+    const grants = code.match(/grant\s+execute\s+on\s+function\s+public\.update_trip_departure_with_staff\([\s\S]*?;/gi) ?? [];
+    expect(grants).toHaveLength(1);
+    expect(grants[0]).toMatch(/to\s+service_role;$/i);
+  });
+
+  it('檔頭已知限制：ACTIVATE 前 PATCH 仍兩步寫入，需改用 update_trip_departure_with_staff', () => {
+    expect(sql).toMatch(/仍是兩步寫入/);
+    expect(sql).toMatch(/ACTIVATE PR 必須改呼叫本檔新增的 update_trip_departure_with_staff/);
+  });
 });
