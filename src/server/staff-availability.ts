@@ -83,6 +83,24 @@ export function overlaps(a: Interval, b: Interval): boolean {
 }
 
 /**
+ * 團次占用分鐘數公式：`greatest(plan.duration_minutes, round(trips.duration_hours * 60))`（行程時長未知／<=0 → null＝整日占用）。
+ * 與 #46 的 DB 占用 duration snapshot（0138）同一公式；0138 套用前，這是 app 端唯一的時長來源。
+ * 原註解：取 `greatest(plan.duration_minutes, round(trips.duration_hours * 60))`，且只在行程時長已知（> 0）時才有值，
+ * 否則為 NULL＝整日占用。app 端驗證「尚未建立」的團次時必須用同一個公式，否則 app 判定可排、DB 的
+ * 占用 trigger 卻回 STAFF_OCCUPIED（行程 2 小時、方案 240 分的反例）。
+ * 0138 套用且 ACTIVATE 之後，已存在的團次改讀自己的 `duration_minutes_snapshot`（本 PR 不讀該欄位）。
+ */
+export function departureSnapshotMinutes(
+  planMinutes: number | null | undefined,
+  tripHours: number | null | undefined,
+): number | null {
+  if (tripHours == null || !(Number(tripHours) > 0)) return null;
+  const fromTrip = Math.round(Number(tripHours) * 60);
+  const fromPlan = planMinutes != null && Number(planMinutes) > 0 ? Number(planMinutes) : 0;
+  return Math.max(fromTrip, fromPlan);
+}
+
+/**
  * 團次的佔用區間。
  *
  * - 有 `startTime` 且時長已知 → `[start, start + duration]`
@@ -95,11 +113,18 @@ export function departureInterval(input: {
   departsOn: string;
   startTime: string | null;
   durationHours: number | null;
+  /**
+   * #46：占用分鐘數（由 `departureSnapshotMinutes` 算出）。有帶（含 null）時優先於 `durationHours`：
+   * null＝時長未知，整日占用。未帶（undefined）時維持舊行為，只看行程 `duration_hours`。
+   */
+  durationMinutes?: number | null;
 }): Interval & { wholeDay: boolean } {
   const dayStart = taipeiDayStartMs(input.departsOn);
-  const minutes = input.durationHours != null && input.durationHours > 0
-    ? Math.round(input.durationHours * 60)
-    : null;
+  const minutes = input.durationMinutes !== undefined
+    ? (input.durationMinutes != null && input.durationMinutes > 0 ? Math.round(input.durationMinutes) : null)
+    : (input.durationHours != null && input.durationHours > 0
+      ? Math.round(input.durationHours * 60)
+      : null);
   if (!input.startTime || minutes == null) {
     return { start: dayStart, end: dayStart + DAY_MS, wholeDay: true };
   }

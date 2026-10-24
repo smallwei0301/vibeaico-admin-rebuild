@@ -23,6 +23,7 @@ export const ERR = {
   PRICE_CHANGED: 'TOUR_003',       // 公開下單：頁面金額與實際金額不符，回傳現價請旅客重新確認（#749）
   PRICE_UNVERIFIABLE: 'TOUR_004',  // 公開下單：季節價資料不完整，無法確認目前金額（#749，送出前 fast path 判定；價格最終以 create_tour_order_quoted 同交易比對為準）
   SEATS_UNAVAILABLE: 'TOUR_001',   // 團次名額不足（10 分冊 §2；併發搶最後一席的敗方）
+  STAFF_OCCUPIED: 'TOUR_006',      // 導遊該時段已有其他預約或團次（排他衝突，#46／#37）
   TOUR_REQUEST_NOT_ELIGIBLE: 'TOUR_002', // REQUEST 訂單非 PENDING 或方案非 REQUEST，不能接受／拒絕（#46）
   EXTERNAL_CONFIG_BLOCKED: 'EXT_001',    // 依賴的外部憑證／設定尚未到位（例：平台 ECPay 商店憑證，issue #25 C 段）
   PAYLOAD_TOO_LARGE: 'REQ_005',    // request body 超過應用層上限（#802，見 readJsonBody）
@@ -35,6 +36,9 @@ export const ERR = {
 export function ok<T>(data?: T, init?: ResponseInit) {
   return NextResponse.json({ success: true, data }, init);
 }
+
+/** 導遊在該時段已有其他預約或團次（DB 排他衝突：P0020 STAFF_OCCUPIED／23P01）。 */
+export const STAFF_OCCUPIED_MESSAGE = '導遊該時段已有安排';
 
 /** `extra` 為選填的 `data` 酬載（例：#749 PRICE_CHANGED 帶現價 quote）；不傳時回應形狀與舊版完全相同。 */
 export function fail(status: number, message: string, code?: string, extra?: Record<string, unknown>) {
