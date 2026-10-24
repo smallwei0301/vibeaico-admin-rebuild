@@ -1,9 +1,67 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 const source = readFileSync('.github/workflows/production-db-automation-readiness.yml', 'utf8');
 const caBundle = readFileSync('config/supabase-production-root-bundle.crt', 'utf8');
+const checkEvidenceScript = source
+  .split('      - name: Reconstruct exact-head required check evidence\n')[1]
+  .split('\n      - name: Download sanitized project-bound writer credential proof')[0]
+  .split('          script: |\n')[1]
+  .split('\n').map((line) => line.replace(/^ {12}/, '')).join('\n');
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+const mainSha = 'a'.repeat(40);
+type CheckRun = {
+  id: number; name: string; head_sha: string; status: string; conclusion: string | null;
+  started_at: string; completed_at: string | null;
+};
+type CheckQuery = {
+  owner: string; repo: string; ref: string; per_page: number; filter: string; page?: number;
+};
+
+function check(overrides: Partial<CheckRun> = {}): CheckRun {
+  return {
+    id: 201, name: 'check', head_sha: mainSha, status: 'completed', conclusion: 'success',
+    started_at: '2026-10-06T01:00:00Z', completed_at: '2026-10-06T01:01:00Z', ...overrides,
+  };
+}
+
+// Run the actual github-script body with page-shaped GitHub responses and isolated I/O.
+async function reconstructChecks(pages: (CheckRun[] | Error)[], script = checkEvidenceScript) {
+  const writeFileSync = vi.fn(); const setFailed = vi.fn();
+  const setTimeout = vi.fn((resolve: () => void, _delay: number) => resolve());
+  const listForRef = vi.fn(async ({ page = 1 }: CheckQuery) => {
+    const runs = pages[page - 1];
+    if (runs instanceof Error) throw runs;
+    if (!runs) throw new Error(`unexpected check page ${page}`);
+    return {
+      data: { check_runs: runs },
+      headers: { link: page < pages.length ? `<https://api.github.com/checks?page=${page + 1}>; rel="next"` : undefined },
+    };
+  });
+  const paginate = vi.fn(async (method: typeof listForRef, query: CheckQuery) => {
+    const all: CheckRun[] = [];
+    for (let page = 1; ; page += 1) {
+      const response = await method({ ...query, page });
+      all.push(...response.data.check_runs);
+      if (!response.headers.link) return all;
+    }
+  });
+  let error: unknown;
+  try {
+    await new AsyncFunction('require', 'process', 'github', 'context', 'core', 'setTimeout', script)(
+      (name: string) => {
+        if (name !== 'node:fs') throw new Error(`unexpected module ${name}`);
+        return { writeFileSync };
+      },
+      { env: { EXPECTED_MAIN_SHA: mainSha, RUNNER_TEMP: '/fake-runner-temp' } },
+      { rest: { checks: { listForRef } }, paginate },
+      { repo: { owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild' } },
+      { setFailed }, setTimeout,
+    );
+  } catch (caught) { error = caught; }
+  return { error, writeFileSync, setFailed, setTimeout, listForRef, paginate };
+}
 
 function position(text: string) {
   const index = source.indexOf(text);
@@ -74,6 +132,76 @@ describe('Production DB automation readiness workflow #447', () => {
     expect(source).toContain("status: 'EXACT_HEAD_CI_GREEN'");
     expect(source).toContain('checkRunId: latest.id');
     expect(source).toContain('mainSha: expected');
+  });
+
+  it('reads a successful exact-head required check beyond the first 100 check runs', async () => {
+    const firstPage = Array.from({ length: 100 }, (_, id) => check({ id, name: 'unrelated' }));
+    const result = await reconstructChecks([firstPage, [check()]]);
+    expect(result.error).toBeUndefined();
+    expect(result.setFailed).not.toHaveBeenCalled();
+    expect(result.paginate).toHaveBeenCalledWith(result.listForRef, {
+      owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', ref: mainSha, per_page: 100, filter: 'latest',
+    });
+    expect(result.listForRef.mock.calls.map(([query]) => query.page)).toEqual([1, 2]);
+    expect(result.setTimeout).not.toHaveBeenCalled();
+    expect(result.writeFileSync).toHaveBeenCalledTimes(1);
+    const [path, content] = result.writeFileSync.mock.calls[0];
+    expect(path).toBe('/fake-runner-temp/production-db-exact-head-ci-evidence.json');
+    expect(JSON.parse(content)).toEqual({
+      schemaVersion: 1, status: 'EXACT_HEAD_CI_GREEN', mainSha, checkName: 'check', checkRunId: 201,
+      conclusion: 'success', targetedCounterexampleSuitePassed: true,
+      observedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/), databaseMutationAuthorized: false,
+    });
+  });
+
+  it('rejects the latest page-two red check instead of accepting an older page-one green', async () => {
+    const result = await reconstructChecks([[check()], [check({
+      id: 202, conclusion: 'failure', completed_at: '2026-10-06T02:01:00Z',
+    })]]);
+    expect(result.error).toBeUndefined();
+    expect(result.setFailed).toHaveBeenCalledWith('latest exact-head check completed unsuccessfully: failure');
+    expect(result.listForRef.mock.calls.map(([query]) => query.page)).toEqual([1, 2]);
+    expect(result.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it('rejects a page-two green check for a different head and preserves the polling bound', async () => {
+    const result = await reconstructChecks([[], [check({ head_sha: 'b'.repeat(40) })]]);
+    expect(result.error).toBeUndefined();
+    expect(result.setFailed).toHaveBeenCalledWith('latest exact-head check did not become successful before timeout: missing/missing');
+    expect(result.paginate).toHaveBeenCalledTimes(60);
+    expect(result.listForRef).toHaveBeenCalledTimes(120);
+    expect(result.setTimeout).toHaveBeenCalledTimes(59);
+    expect(result.setTimeout.mock.calls.every(([, delay]) => delay === 5000)).toBe(true);
+    expect(result.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it.each(['in_progress', 'queued', 'unknown'])('does not fall back to an older green when page two is %s', async (status) => {
+    const result = await reconstructChecks([[check()], [check({
+      id: 202, status, conclusion: null, started_at: '2026-10-06T02:00:00Z', completed_at: null,
+    })]]);
+    expect(result.error).toBeUndefined();
+    expect(result.setFailed).toHaveBeenCalledWith(`latest exact-head check did not become successful before timeout: ${status}/missing`);
+    expect(result.paginate).toHaveBeenCalledTimes(60);
+    expect(result.setTimeout).toHaveBeenCalledTimes(59);
+    expect(result.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it.each([null, 'cancelled', 'timed_out', 'startup_failure', 'neutral'])('rejects page-two completed checks with conclusion %s', async (conclusion) => {
+    const result = await reconstructChecks([[check()], [check({
+      id: 202, conclusion, completed_at: '2026-10-06T02:01:00Z',
+    })]]);
+    expect(result.error).toBeUndefined();
+    expect(result.setFailed).toHaveBeenCalledWith(`latest exact-head check completed unsuccessfully: ${conclusion || 'missing'}`);
+    expect(result.setTimeout).not.toHaveBeenCalled();
+    expect(result.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it('fails closed if reading page two fails even when page one has a green check', async () => {
+    const result = await reconstructChecks([[check()], new Error('page two unavailable')]);
+    expect(result.error).toBeInstanceOf(Error);
+    expect((result.error as Error).message).toBe('page two unavailable');
+    expect(result.listForRef.mock.calls.map(([query]) => query.page)).toEqual([1, 2]);
+    expect(result.writeFileSync).not.toHaveBeenCalled();
   });
 
   it('runs the bounded Production DB counterexample suite before claiming it passed', () => {
