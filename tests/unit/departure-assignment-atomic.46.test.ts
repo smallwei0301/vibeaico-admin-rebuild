@@ -5,8 +5,10 @@ const state = vi.hoisted(() => ({ rpc: vi.fn() }));
 vi.mock('@/server/supabase', () => ({ createAdminSupabase: () => ({ rpc: state.rpc }) }));
 
 import { ApiHttpError, ERR, STAFF_OCCUPIED_MESSAGE } from '@/server/http';
-import { discardUnassignedDeparture, departureSlot, isStaffOccupiedError, writeAssignment } from '@/server/departure-staff';
-import { departureSnapshotMinutes } from '@/server/staff-availability';
+import {
+  discardUnassignedDeparture, departureSlot, isStaffOccupiedError, StaffOccupiedError, STAFF_UNAVAILABLE_MESSAGE, writeAssignment,
+} from '@/server/departure-staff';
+import { departureSnapshotMinutes, existingDepartureInterval, findStaffConflicts, loadStaffLoad } from '@/server/staff-availability';
 
 const A = { primaryStaffId: 's1', assistantStaffIds: ['s2'] };
 
@@ -29,6 +31,24 @@ describe('#46 writeAssignment 改走 replace_trip_departure_staff（刪插同一
     expect(err).toBeInstanceOf(ApiHttpError);
     expect(err).toMatchObject({ status: 409, code: ERR.STAFF_OCCUPIED, message: STAFF_OCCUPIED_MESSAGE });
     expect(STAFF_OCCUPIED_MESSAGE).toBe('導遊該時段已有安排');
+  });
+
+  it('P0020 detail 帶 staffId 時，StaffOccupiedError 記下實際撞班的導遊', async () => {
+    state.rpc.mockResolvedValue({ error: { code: 'P0020', message: 'STAFF_OCCUPIED', details: '{"kind":"BOOKING","staffId":"s2"}' } });
+    const err = await writeAssignment({} as never, 't', 'd', A).catch((e) => e);
+    expect(err).toBeInstanceOf(StaffOccupiedError);
+    expect(err.staffId).toBe('s2');
+  });
+
+  it('導遊在預檢後才停用（P0002 STAFF_NOT_FOUND）→ 409 中文訊息，不是 500；DEPARTURE_NOT_FOUND 不誤判', async () => {
+    state.rpc.mockResolvedValueOnce({ error: { code: 'P0002', message: 'STAFF_NOT_FOUND' } });
+    await expect(writeAssignment({} as never, 't', 'd', A)).rejects.toMatchObject({
+      status: 409, message: '導遊已停用或不存在，請重新選擇',
+    });
+    expect(STAFF_UNAVAILABLE_MESSAGE).toBe('導遊已停用或不存在，請重新選擇');
+    const other = { code: 'P0002', message: 'DEPARTURE_NOT_FOUND' };
+    state.rpc.mockResolvedValueOnce({ error: other });
+    await expect(writeAssignment({} as never, 't', 'd', A)).rejects.toBe(other);
   });
 
   it('重複指派 → 409 CONFLICT；未知錯誤原樣拋出', async () => {
@@ -97,6 +117,51 @@ describe('#46 app 端時長公式（與 DB snapshot 公式一致）', () => {
   });
 });
 
+describe('#46 既有團次的占用區間同樣用 greatest(plan, trip) 公式', () => {
+  const startMs = Date.UTC(2026, 9, 27, 1, 0); // 台北 09:00
+
+  it('existingDepartureInterval：方案 240 分、行程 2h → 占 240 分；行程時長未知 → 整日', () => {
+    const i = existingDepartureInterval({ departsOn: '2026-10-27', startTime: '09:00', tripHours: 2, planMinutes: 240 });
+    expect(i).toEqual({ start: startMs, end: startMs + 240 * 60_000, wholeDay: false });
+    expect(existingDepartureInterval({ departsOn: '2026-10-27', startTime: '09:00', tripHours: null, planMinutes: 240 }).wholeDay).toBe(true);
+  });
+
+  it('loadStaffLoad：既有團 09:00（方案 240、行程 2h）會擋下同導遊 11:30 的新團', async () => {
+    let selected = '';
+    const chain = (rows: unknown[], capture?: (c: string) => void) => {
+      const q: Record<string, unknown> = {};
+      for (const m of ['eq', 'in', 'lt', 'gt', 'gte', 'lte', 'neq', 'order', 'is', 'or']) q[m] = () => q;
+      q.select = (c: string) => { capture?.(c); return q; };
+      q.then = (res: (v: unknown) => unknown) => res({ data: rows, error: null });
+      return q;
+    };
+    const supabase = {
+      from: (table: string) => table === 'trip_departure_staff'
+        ? chain([{
+          departure_id: 'd1', staff_id: 's1',
+          trip_departures: { id: 'd1', departs_on: '2026-10-27', start_time: '09:00:00', status: 'OPEN', trips: { duration_hours: 2 }, trip_plans: { duration_minutes: 240 } },
+        }], (c) => { selected = c; })
+        : chain([]),
+    };
+    const load = await loadStaffLoad(supabase as never, 't', startMs - 3_600_000, startMs + 86_400_000);
+    expect(selected).toContain('trip_plans(duration_minutes)');
+    expect(selected).not.toContain('duration_minutes_snapshot');
+    const newSlot = { start: startMs + 150 * 60_000, end: startMs + 270 * 60_000 }; // 11:30–13:30
+    const conflicts = findStaffConflicts(['s1'], newSlot, '2026-10-27', load);
+    expect(conflicts.map((c) => c.reason)).toEqual(['DEPARTURE']);
+  });
+
+  it('available-slots 與 action-inbox 也改用共用函式並選出 plan.duration_minutes', () => {
+    const slots = readFileSync('src/app/api/bookings/available-slots/route.ts', 'utf8');
+    expect(slots).toMatch(/existingDepartureInterval\(/);
+    expect(slots).toMatch(/trip_plans\(duration_minutes\)/);
+    const inbox = readFileSync('src/app/api/guide/action-inbox/route.ts', 'utf8');
+    expect(inbox).toMatch(/existingDepartureInterval\(/);
+    expect(inbox).toMatch(/trip_plans\(name, duration_minutes\)/);
+    expect(inbox).not.toMatch(/departureInterval\(/);
+  });
+});
+
 describe('#46 route 接線守門', () => {
   const read = (p: string) => readFileSync(p, 'utf8');
   it('POST／batch 指派失敗時移除剛建的團次；PATCH 把團次 update 的 P0020 轉 409', () => {
@@ -104,6 +169,7 @@ describe('#46 route 接線守門', () => {
     const batch = read('src/app/api/trips/[id]/departures/batch/route.ts');
     expect(batch).toMatch(/await discardUnassignedDeparture/);
     expect(batch).toMatch(/e\.code === ERR\.STAFF_OCCUPIED/);
+    expect(batch).toMatch(/e instanceof StaffOccupiedError && e\.staffId \? \[e\.staffId\] : assignedIds/);
     expect(batch).toMatch(/departureSnapshotMinutes\(plan\.duration_minutes, durationHours\)/);
     expect(read('src/app/api/trip-departures/[id]/route.ts')).toMatch(/isStaffOccupiedError\(error\)\) return fail\(409, STAFF_OCCUPIED_MESSAGE/);
   });

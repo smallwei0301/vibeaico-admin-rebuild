@@ -169,6 +169,25 @@ export async function checkAssignmentConflicts(
   }));
 }
 
+/** 導遊撞班的 409；`staffId` 取自 DB 例外 detail（拿得到時），讓 batch 能記錄實際撞班的導遊。 */
+export class StaffOccupiedError extends ApiHttpError {
+  constructor(public staffId?: string) {
+    super(409, STAFF_OCCUPIED_MESSAGE, ERR.STAFF_OCCUPIED);
+  }
+}
+
+export const STAFF_UNAVAILABLE_MESSAGE = '導遊已停用或不存在，請重新選擇';
+
+function staffIdFromDetail(error: unknown): string | undefined {
+  try {
+    const detail = (error as { details?: string | null })?.details;
+    const id = detail ? (JSON.parse(detail) as { staffId?: unknown }).staffId : undefined;
+    return typeof id === 'string' ? id : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** DB 排他衝突：SQLSTATE P0020／message STAFF_OCCUPIED（0138 之後），或排他約束 23P01。 */
 export function isStaffOccupiedError(error: unknown): boolean {
   const e = error as { code?: string; message?: string } | null | undefined;
@@ -199,7 +218,11 @@ export async function writeAssignment(
     p_assistants: assignment.assistantStaffIds,
   });
   if (!error) return;
-  if (isStaffOccupiedError(error)) throw new ApiHttpError(409, STAFF_OCCUPIED_MESSAGE, ERR.STAFF_OCCUPIED);
+  if (isStaffOccupiedError(error)) throw new StaffOccupiedError(staffIdFromDetail(error));
+  // 預檢之後導遊才被停用或刪除的競態：RPC 以 P0002 STAFF_NOT_FOUND 拒絕，回 409 而不是 500。
+  if (String(error.message ?? '').includes('STAFF_NOT_FOUND')) {
+    throw new ApiHttpError(409, STAFF_UNAVAILABLE_MESSAGE, ERR.CONFLICT);
+  }
   if (error.code === '23505' || String(error.message ?? '').includes('DUPLICATE_STAFF_ASSIGNMENT')) {
     throw new ApiHttpError(409, '同一團次已有主導遊，或同一位導遊被重複指派', ERR.CONFLICT);
   }

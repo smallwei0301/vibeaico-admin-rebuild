@@ -4,7 +4,7 @@ import { requireFeature } from '@/server/features';
 import { mapTripDeparture } from '@/server/mappers';
 import { dateRange, dateRangeLength, departureBatchSchema, timeValue } from '@/server/tour-domain';
 import {
-  assertStaffBelongsToTenant, bookableStaffIds, discardUnassignedDeparture, readAssignments, resolveAssignment, staffNames,
+  assertStaffBelongsToTenant, bookableStaffIds, discardUnassignedDeparture, readAssignments, StaffOccupiedError, resolveAssignment, staffNames,
   writeAssignment, type ResolvedAssignment,
 } from '@/server/departure-staff';
 import {
@@ -144,10 +144,13 @@ export const POST = handle(async (req, { params }: Context) => {
         createdIds.pop();
         if (e instanceof ApiHttpError && e.code === ERR.STAFF_OCCUPIED) {
           skipped += 1;
-          conflicts.push({
-            date, staffId: assignedIds[0] ?? '', staffName: names.get(assignedIds[0] ?? '') ?? '', reason: 'DEPARTURE',
-            text: STAFF_OCCUPIED_MESSAGE,
-          });
+          // 記錄實際撞班的導遊；DB 沒回報是誰時，記錄這一團的全部導遊。
+          const hit = e instanceof StaffOccupiedError && e.staffId ? [e.staffId] : assignedIds;
+          for (const staffId of hit) {
+            conflicts.push({
+              date, staffId, staffName: names.get(staffId) ?? '', reason: 'DEPARTURE', text: STAFF_OCCUPIED_MESSAGE,
+            });
+          }
           continue;
         }
         throw e;

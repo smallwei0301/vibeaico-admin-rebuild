@@ -57,6 +57,8 @@ const DAY_SLOTS = '2027-05-13';
  * 移過去，所以看不出來）。與其在同一天上排時間拼圖，不如給它一天。
  */
 const DAY_EDIT = '2027-05-14';
+/** 「改派撞班回 409 且原指派保留」專用日期。 */
+const DAY_REASSIGN = '2027-05-15';
 /** B 店的員工，專供跨租戶拒絕測試；beforeAll 造、afterAll 刪。 */
 const STAFF_B = '73700000-0000-4000-8000-0000000000b1';
 
@@ -298,6 +300,26 @@ describe('雙向撞班', () => {
     });
     expect(second.response.status).toBe(409);
     expect(second.payload.message).toContain('其他團次');
+  });
+
+  it('PATCH 改派到已有同時段團次的導遊 → 409，且原指派保留（不被清空）', async () => {
+    const holder = await createDeparture({
+      planId: PLAN, departsOn: DAY_REASSIGN, startTime: '09:00', capacity: 8,
+      primaryStaffId: SHOP_A.staffA1,
+    });
+    expect(holder.response.status, holder.payload.message ?? '').toBe(200);
+    const target = await createDeparture({
+      planId: PLAN, departsOn: DAY_REASSIGN, startTime: '09:00', capacity: 8,
+      primaryStaffId: SHOP_A.staffA2,
+    });
+    expect(target.response.status, target.payload.message ?? '').toBe(200);
+    const id = target.payload.data!.id;
+
+    const patched = await api.put(`/api/trip-departures/${id}`, { primaryStaffId: SHOP_A.staffA1 });
+    expect(patched.status).toBe(409);
+    // 原指派必須原封不動；「刪了舊的、插入新的被擋」會讓這一團變成沒有導遊。
+    expect(await assignmentRows(id)).toEqual([{ staff_id: SHOP_A.staffA2, role: 'PRIMARY' }]);
+    expect(await assignmentRows(holder.payload.data!.id)).toEqual([{ staff_id: SHOP_A.staffA1, role: 'PRIMARY' }]);
   });
 
   it('ASSISTANT 也占用時間：以協同身分被指派的人，接不下同時段的另一團', async () => {
