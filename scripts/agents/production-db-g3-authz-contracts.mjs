@@ -94,7 +94,7 @@ export const CREATE_TOUR_ORDER_UNRESOLVED_EXECUTE_EXCLUSIONS = Object.freeze({
   '0118': 'trigger 語法 execute function set_updated_at()，無動態 SQL',
   '0123': 'trigger 語法 execute function public.prevent_retired_richmenu_asset()，無動態 SQL；檔內沒有 create_tour_order',
   '0128': 'trigger 語法 execute function public.set_updated_at()，無動態 SQL；檔內沒有 create_tour_order',
-  '0138': 'trigger 語法 execute function public.trg_*_occupancy()（三處，固定函式名）、has_function_privilege 的 \'EXECUTE\' 字面量，以及 helper 函式的 grant／revoke … execute on function（固定函式名與角色，非動態），無動態 SQL；檔內只以 create_tour_order_quoted 的 PERFORM／賦值呼叫，沒有任何 create_tour_order 的 create/alter/grant/revoke/rename',
+  '0138': 'trigger 語法 execute function public.trg_*_occupancy()／trg_trip_plans_instant_guide_same_tenant()（四處，固定函式名）、has_function_privilege 的 \'EXECUTE\' 字面量，以及 helper 函式的 grant／revoke … execute on function（固定函式名與角色，非動態），無動態 SQL；檔內只以 create_tour_order_quoted 的 PERFORM／賦值呼叫，沒有任何 create_tour_order 的 create/alter/grant/revoke/rename',
 });
 // 原始文字掃描（不剝註解）比剝註解後多出的命中：每筆都必須是「只出現在註解」，測試會驗證該旗標在剝註解後確實消失，
 // 且此表與實際差集精確相等，因此無法用來隱藏真正的程式碼。key 為 migration 編號。

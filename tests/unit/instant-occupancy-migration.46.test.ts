@@ -34,11 +34,14 @@ describe('#46 0138 INSTANT occupancy migration 原始碼守門', () => {
     expect(code.indexOf('update public.trip_departures d')).toBeLessThan(code.indexOf('create constraint trigger trg_bookings_staff_occupancy'));
   });
 
-  it('trip_plans INSTANT 規則欄位：預設 1440／60、導遊為同租戶複合 FK、非 INSTANT 不強制', () => {
+  it('trip_plans INSTANT 規則欄位：預設 1440／60、導遊單欄 FK＋同租戶 trigger（不依賴 staff 複合 key）、非 INSTANT 不強制', () => {
     expect(code).toMatch(/instant_start_times time\[\]/);
     expect(code).toMatch(/instant_min_lead_minutes integer not null default 1440/);
     expect(code).toMatch(/instant_max_advance_days integer not null default 60/);
-    expect(code).toMatch(/foreign key \(tenant_id, instant_guide_staff_id\) references public\.staff \(tenant_id, id\)/);
+    expect(code).toMatch(/foreign key \(instant_guide_staff_id\) references public\.staff \(id\)/);
+    expect(code).not.toMatch(/references public\.staff \(tenant_id, id\)/);
+    expect(code).not.toMatch(/staff_tenant_id_id_key/);
+    expect(fn('trg_trip_plans_instant_guide_same_tenant')).toMatch(/s\.id = new\.instant_guide_staff_id and s\.tenant_id = new\.tenant_id/);
     expect(code).not.toMatch(/sales_mode\s*(<>|=)\s*'INSTANT'[^;]*check/i);
   });
 

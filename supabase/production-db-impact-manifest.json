@@ -1404,6 +1404,14 @@
         {
           "surface": "acl",
           "objectKey": "function:public.tenant_timezone_name(p_tenant uuid)"
+        },
+        {
+          "surface": "triggers",
+          "objectKey": "public.trip_plans.trg_trip_plans_instant_guide_same_tenant"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.trg_trip_plans_instant_guide_same_tenant()"
         }
       ]
     }

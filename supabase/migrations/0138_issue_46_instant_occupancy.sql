@@ -53,14 +53,6 @@ begin
     or to_regprocedure('public.guide_staff_interval_available(uuid,uuid,timestamptz,timestamptz)') is null then
     raise exception '0138 前置條件失敗：缺少 0131／0135／0137 的 RPC';
   end if;
-  if not exists (
-    select 1 from pg_index i where i.indrelid = 'public.staff'::regclass and i.indisunique
-      and i.indnatts = 2
-      and (select array_agg(a.attname::text order by a.attname::text) from pg_attribute a
-            where a.attrelid = i.indrelid and a.attnum = any(i.indkey::int2[])) = array['id','tenant_id']
-  ) then
-    raise exception '0138 前置條件失敗：public.staff 缺少 unique (tenant_id, id)（0133）';
-  end if;
 end $$;
 
 -- ------------------------------------------------------------------ 欄位
@@ -98,9 +90,11 @@ begin
   end if;
   if not exists (select 1 from pg_constraint where conrelid = 'public.trip_plans'::regclass
     and conname = 'trip_plans_instant_guide_staff_fk') then
-    -- MATCH SIMPLE：instant_guide_staff_id 為 NULL 時不檢查；非 NULL 時必須同租戶。
+    -- 單欄 FK 指向 staff(id)（no action＝restrict 語意）。同租戶由下方 trigger 驗證，而不是複合 FK：
+    -- 複合 FK 會依賴 staff_tenant_id_id_key（0133），而 production-shaped 升級驗證（agent-schema-bootstrap）
+    -- 會刪除該 key，依賴物件會使 DROP CONSTRAINT 失敗。
     alter table public.trip_plans add constraint trip_plans_instant_guide_staff_fk
-      foreign key (tenant_id, instant_guide_staff_id) references public.staff (tenant_id, id);
+      foreign key (instant_guide_staff_id) references public.staff (id);
   end if;
   if not exists (select 1 from pg_constraint where conrelid = 'public.tour_orders'::regclass
     and conname = 'tour_orders_idempotency_key_ck') then
@@ -108,6 +102,25 @@ begin
       check (idempotency_key is null or length(idempotency_key) between 1 and 128);
   end if;
 end $$;
+
+create or replace function public.trg_trip_plans_instant_guide_same_tenant()
+returns trigger language plpgsql volatile security invoker set search_path = pg_catalog, public
+as $$
+begin
+  if new.instant_guide_staff_id is not null and not exists (
+    select 1 from public.staff s where s.id = new.instant_guide_staff_id and s.tenant_id = new.tenant_id
+  ) then
+    raise exception 'STAFF_NOT_FOUND' using errcode = 'P0002',
+      detail = 'instant_guide_staff_id 必須是同租戶的導遊';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_trip_plans_instant_guide_same_tenant on public.trip_plans;
+create trigger trg_trip_plans_instant_guide_same_tenant
+  before insert or update of instant_guide_staff_id, tenant_id on public.trip_plans
+  for each row execute function public.trg_trip_plans_instant_guide_same_tenant();
 
 create unique index if not exists ux_tour_orders_tenant_idempotency
   on public.tour_orders (tenant_id, idempotency_key) where idempotency_key is not null;
@@ -853,6 +866,15 @@ begin
       raise exception '0138 後置斷言失敗：% 未建立或未啟用', r.tg;
     end if;
   end loop;
+  if not exists (select 1 from pg_trigger t where t.tgrelid = 'public.trip_plans'::regclass
+      and t.tgname = 'trg_trip_plans_instant_guide_same_tenant' and not t.tgisinternal) then
+    raise exception '0138 後置斷言失敗：INSTANT 導遊同租戶 trigger 未建立';
+  end if;
+  if exists (select 1 from pg_constraint c where c.conrelid = 'public.trip_plans'::regclass
+      and c.conname = 'trip_plans_instant_guide_staff_fk'
+      and pg_get_constraintdef(c.oid) ~* 'tenant_id') then
+    raise exception '0138 後置斷言失敗：INSTANT 導遊 FK 不得依賴 staff 複合 key';
+  end if;
   if not exists (select 1 from pg_trigger t where t.tgrelid = 'public.trip_departures'::regclass
       and t.tgname = 'trg_trip_departures_duration_snapshot' and not t.tgisinternal) then
     raise exception '0138 後置斷言失敗：duration snapshot trigger 未建立';
