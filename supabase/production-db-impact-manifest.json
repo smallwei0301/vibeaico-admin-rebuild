@@ -1257,6 +1257,191 @@
           "objectKey": "function:public.create_tour_order_quoted(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone, p_expected_total numeric)"
         }
       ]
+    },
+    {
+      "repoFile": "0138_issue_46_instant_occupancy",
+      "impacts": [
+        {
+          "surface": "columns",
+          "objectKey": "public.trip_departures.duration_minutes_snapshot"
+        },
+        {
+          "surface": "columns",
+          "objectKey": "public.trip_plans.instant_start_times"
+        },
+        {
+          "surface": "columns",
+          "objectKey": "public.trip_plans.instant_min_lead_minutes"
+        },
+        {
+          "surface": "columns",
+          "objectKey": "public.trip_plans.instant_max_advance_days"
+        },
+        {
+          "surface": "columns",
+          "objectKey": "public.trip_plans.instant_guide_staff_id"
+        },
+        {
+          "surface": "columns",
+          "objectKey": "public.tour_orders.idempotency_key"
+        },
+        {
+          "surface": "constraints",
+          "objectKey": "public.trip_departures.trip_departures_duration_minutes_snapshot_ck"
+        },
+        {
+          "surface": "constraints",
+          "objectKey": "public.trip_plans.trip_plans_instant_start_times_ck"
+        },
+        {
+          "surface": "constraints",
+          "objectKey": "public.trip_plans.trip_plans_instant_min_lead_ck"
+        },
+        {
+          "surface": "constraints",
+          "objectKey": "public.trip_plans.trip_plans_instant_max_advance_ck"
+        },
+        {
+          "surface": "constraints",
+          "objectKey": "public.trip_plans.trip_plans_instant_guide_staff_fk"
+        },
+        {
+          "surface": "constraints",
+          "objectKey": "public.tour_orders.tour_orders_idempotency_key_ck"
+        },
+        {
+          "surface": "indexes",
+          "objectKey": "public.tour_orders.ux_tour_orders_tenant_idempotency"
+        },
+        {
+          "surface": "triggers",
+          "objectKey": "public.bookings.trg_bookings_staff_occupancy"
+        },
+        {
+          "surface": "triggers",
+          "objectKey": "public.trip_departure_staff.trg_trip_departure_staff_occupancy"
+        },
+        {
+          "surface": "triggers",
+          "objectKey": "public.trip_departures.trg_trip_departures_staff_occupancy"
+        },
+        {
+          "surface": "triggers",
+          "objectKey": "public.trip_departures.trg_trip_departures_duration_snapshot"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.cancel_tour_order(p_tenant uuid, p_order uuid, p_reason text)"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.create_instant_tour_order(p_tenant uuid, p_plan uuid, p_starts_at timestamp with time zone, p_party_size integer, p_customer uuid, p_contact jsonb, p_note text, p_idempotency_key text, p_expected_total numeric, p_order_no text, p_source tour_order_source, p_payment_method uuid)"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.departure_occupancy_range(p_departs_on date, p_start time without time zone, p_minutes integer, p_zone text)"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.expire_tour_order(p_tenant uuid, p_order uuid, p_reason text)"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.guide_staff_interval_available(p_tenant uuid, p_staff uuid, p_start timestamp with time zone, p_end timestamp with time zone)"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.instant_wall_clock_ambiguous(p_zone text, p_local timestamp without time zone, p_instant timestamp with time zone)"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.lock_staff_occupancy(p_tenant uuid, p_staff uuid)"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.tenant_timezone_name(p_tenant uuid)"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.trg_bookings_staff_occupancy()"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.trg_trip_departure_staff_occupancy()"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.trg_trip_departures_duration_snapshot()"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.trg_trip_departures_staff_occupancy()"
+        },
+        {
+          "surface": "acl",
+          "objectKey": "function:public.create_instant_tour_order(p_tenant uuid, p_plan uuid, p_starts_at timestamp with time zone, p_party_size integer, p_customer uuid, p_contact jsonb, p_note text, p_idempotency_key text, p_expected_total numeric, p_order_no text, p_source tour_order_source, p_payment_method uuid)"
+        },
+        {
+          "surface": "acl",
+          "objectKey": "function:public.departure_occupancy_range(p_departs_on date, p_start time without time zone, p_minutes integer, p_zone text)"
+        },
+        {
+          "surface": "acl",
+          "objectKey": "function:public.instant_wall_clock_ambiguous(p_zone text, p_local timestamp without time zone, p_instant timestamp with time zone)"
+        },
+        {
+          "surface": "acl",
+          "objectKey": "function:public.lock_staff_occupancy(p_tenant uuid, p_staff uuid)"
+        },
+        {
+          "surface": "acl",
+          "objectKey": "function:public.tenant_timezone_name(p_tenant uuid)"
+        },
+        {
+          "surface": "triggers",
+          "objectKey": "public.trip_plans.trg_trip_plans_instant_guide_same_tenant"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.trg_trip_plans_instant_guide_same_tenant()"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.departure_effective_minutes(p_snapshot integer, p_plan_minutes integer, p_trip_hours numeric)"
+        },
+        {
+          "surface": "acl",
+          "objectKey": "function:public.departure_effective_minutes(p_snapshot integer, p_plan_minutes integer, p_trip_hours numeric)"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.departure_range_for(p_departure uuid, p_zone text)"
+        },
+        {
+          "surface": "acl",
+          "objectKey": "function:public.departure_range_for(p_departure uuid, p_zone text)"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.assert_staff_not_occupied(p_tenant uuid, p_staff uuid, p_range tstzrange, p_except_departure uuid, p_except_booking uuid, p_zone text)"
+        },
+        {
+          "surface": "acl",
+          "objectKey": "function:public.assert_staff_not_occupied(p_tenant uuid, p_staff uuid, p_range tstzrange, p_except_departure uuid, p_except_booking uuid, p_zone text)"
+        },
+        {
+          "surface": "columns",
+          "objectKey": "public.trip_departures.instant_private"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.update_trip_departure_with_staff(p_tenant uuid, p_departure uuid, p_departs_on date, p_change_start_time boolean, p_start_time time without time zone, p_status text, p_replace_staff boolean, p_primary uuid, p_assistants uuid[])"
+        },
+        {
+          "surface": "acl",
+          "objectKey": "function:public.update_trip_departure_with_staff(p_tenant uuid, p_departure uuid, p_departs_on date, p_change_start_time boolean, p_start_time time without time zone, p_status text, p_replace_staff boolean, p_primary uuid, p_assistants uuid[])"
+        }
+      ]
     }
   ]
 }

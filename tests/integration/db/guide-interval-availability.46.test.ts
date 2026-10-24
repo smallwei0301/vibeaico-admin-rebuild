@@ -12,6 +12,9 @@ import { SHOP_A, SHOP_B } from '../../fixtures';
 const RPC = 'guide_staff_interval_available';
 let sql: ReturnType<typeof postgres> | undefined;
 const migration = '0135_issue_46_guide_interval_availability';
+/** 0138 重寫了同一支 predicate 本體（時長改用 departure_effective_minutes），G3 契約把 0138 綁到本檔同一組斷言；
+ * 0135 已在 Production（EXACT），之後只含 0138 的 release 也必須能 admit 本檔。 */
+const migrations = [migration, '0138_issue_46_instant_occupancy'];
 function admission() {
   const env = process.env;
   const url = new URL(env.TEST_SUPABASE_URL ?? 'http://not-admitted.invalid');
@@ -46,22 +49,29 @@ function admission() {
     || evidence.databaseMutationAuthorized !== false || !Array.isArray(plan.migrations) || !Array.isArray(evidence.migrations)) {
     throw new Error('#46 G3 release artifacts do not bind this exact main/run/TEST execution');
   }
-  const selected = plan.migrations.filter((row: { repoFile: string }) => row.repoFile === migration);
-  const applied = evidence.migrations.filter((row: { repoFile: string }) => row.repoFile === migration);
-  if (!selected.length && !applied.length) return { admitted: false, local: false };
-  const path = `supabase/migrations/${migration}.sql`;
-  const digest = createHash('sha256').update(readFileSync(path)).digest('hex');
-  if (selected.length !== 1 || applied.length !== 1 || selected[0].path !== path
-    || selected[0].sha256 !== digest || applied[0].sha256 !== digest
-    || applied[0].riskTier !== selected[0].riskTier
-    || !['APPLIED_VERIFIED', 'REPLAY_VERIFIED'].includes(applied[0].execution)) {
-    throw new Error('#46 G3 requires unique exact 0135 bytes with verified TEST apply/replay');
+  // 0135 或 0138 任一被 plan 選取並有 evidence 即 admit；兩支都沒有才不 admit。
+  // 每一支被選中的 migration 都做同樣的 exact 驗證（唯一、path、sha256、riskTier、execution）。
+  let admittedAny = false;
+  for (const name of migrations) {
+    const selected = plan.migrations.filter((row: { repoFile: string }) => row.repoFile === name);
+    const applied = evidence.migrations.filter((row: { repoFile: string }) => row.repoFile === name);
+    if (!selected.length && !applied.length) continue;
+    const path = `supabase/migrations/${name}.sql`;
+    const digest = createHash('sha256').update(readFileSync(path)).digest('hex');
+    if (selected.length !== 1 || applied.length !== 1 || selected[0].path !== path
+      || selected[0].sha256 !== digest || applied[0].sha256 !== digest
+      || applied[0].riskTier !== selected[0].riskTier
+      || !['APPLIED_VERIFIED', 'REPLAY_VERIFIED'].includes(applied[0].execution)) {
+      throw new Error(`#46 G3 requires unique exact ${name.slice(0, 4)} bytes with verified TEST apply/replay`);
+    }
+    admittedAny = true;
   }
+  if (!admittedAny) return { admitted: false, local: false };
   return { admitted: true, local: false };
 }
 const lane = admission();
 const isLocal = lane.local;
-if (!lane.admitted) console.info('#46 POLICY_SKIP/NOT_RUN: 0135 SOURCE_PREPARE has no admitted LOCAL or exact canonical G3 release; no fixtures/auth run.');
+if (!lane.admitted) console.info('#46 POLICY_SKIP/NOT_RUN: neither 0135 nor 0138 has an admitted LOCAL or exact canonical G3 release; no fixtures/auth run.');
 let admin: SupabaseClient;
 let anon: SupabaseClient;
 let owner: SupabaseClient;

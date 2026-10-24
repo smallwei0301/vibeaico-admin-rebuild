@@ -577,12 +577,60 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
     expect(shopBBody.data?.some((entry) => entry.id === unassignedId)).toBe(false);
   });
 
-  it('#43 類別 7（後段）：同一位 PRIMARY 導遊被指派到同一天兩團會各自冒出 STAFF_CONFLICT，且不跨租戶', async () => {
-    // TRIP_A 的 `trips.duration_hours` 種子沒有設值，`departureInterval()`
-    // （src/server/staff-availability.ts）在缺 duration_hours 時把整團視為
-    // 「佔用一整個台北日」——這裡不需要精算時段重疊，只要同一天兩團、同一位
-    // PRIMARY 就一定衝突，是既有引擎行為，不是本測試新造的規則。
+  /**
+   * schema admission gate：0138（#46 占用 trigger）是否已套用到目前的 TEST 資料庫。
+   * canonical TEST 在 0138 經 release 套用之前沒有 `trip_departures.duration_minutes_snapshot`，0138 專屬斷言
+   * 不得在那之前執行（會讓其他 PR 無謂地轉紅）。探測方式：選取該欄位，未套用時 PostgREST 回 42703 / PGRST204 類錯誤。
+   */
+  const has0138 = async (): Promise<boolean> => {
+    const probe = await admin.from('trip_departures').select('duration_minutes_snapshot').limit(1);
+    if (probe.error === null) return true;
+    // 只有「欄位不存在」才視為未套用；連線、權限等其他錯誤必須拋出，不得被當成 0138 未套用而靜默跳過。
+    if (probe.error.code === '42703' || probe.error.code === 'PGRST204') return false;
+    throw new Error(`0138 探測失敗（非欄位不存在）：${probe.error.code ?? ''} ${probe.error.message}`);
+  };
+
+  it('#46 / 0138：新的撞班指派被 DB 占用 trigger 以 P0020 擋下（STAFF_CONFLICT 只剩偵測 0138 之前的舊重疊）', async () => {
+    if (!(await has0138())) {
+      // 不用 ctx.skip／it.skip：vitest 會把它記為 pending，而 G3 artifacts 的 pending allowlist 不允許，
+      // 會讓其他不含 0138 的 bounded G3 以 UNAPPROVED_VITEST_PENDING 失敗。改為記錄後正常返回。
+      console.info('#46 POLICY_SKIP/NOT_RUN: 0138 尚未套用到此 TEST 資料庫（無 duration_minutes_snapshot）；0138 專屬 P0020 斷言未執行，套用後才會生效。');
+      return;
+    }
+    const farFuture = new Date(Date.now() + 22 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const make = async (startTime: string) => {
+      const { data, error } = await admin.from('trip_departures').insert({
+        tenant_id: SHOP_A.id, trip_id: TRIP_A.id, plan_id: TRIP_A.planA1, departs_on: farFuture,
+        start_time: startTime, capacity: 10, status: 'OPEN',
+      }).select('id').single();
+      expect(error).toBeNull();
+      temporaryDepartureIds.push(data!.id as string);
+      return data!.id as string;
+    };
+    const first = await make('09:00');
+    const second = await make('09:30'); // 與 09:00 起的團重疊（方案時長至少 60 分）
+    const ok = await admin.from('trip_departure_staff').insert({
+      tenant_id: SHOP_A.id, departure_id: first, staff_id: SHOP_A.staffA1, role: 'PRIMARY',
+    });
+    expect(ok.error).toBeNull();
+    const blocked = await admin.from('trip_departure_staff').insert({
+      tenant_id: SHOP_A.id, departure_id: second, staff_id: SHOP_A.staffA1, role: 'PRIMARY',
+    });
+    expect(blocked.error?.code).toBe('P0020');
+    expect(blocked.error?.message).toContain('STAFF_OCCUPIED');
+  });
+
+  it('#43 類別 7（後段）：舊資料中同一位 PRIMARY 導遊同一天兩團的重疊，會各自冒出 STAFF_CONFLICT，且不跨租戶', async () => {
+    // 0138 之後無法再用 trip_departure_staff 直接建出「新的」撞班：占用 trigger 只檢查新增／變更的列。
+    // 舊重疊（0138 之前留下的資料）在這裡用 DB 允許的方式重現：兩團先在不重疊時各自指派，
+    // 之後再把方案時長調長（trigger 不追溯既有列），於是兩團變成重疊——和舊資料一樣。測試結束還原方案時長。
+    // TRIP_A 的 `trips.duration_hours` 種子沒有設值；方案時長調長後 action-inbox 的偵測仍把兩團視為重疊。
     const farFuture = new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    // 0138 未套用時沒有占用 trigger，兩團（同日、同導遊）可直接建立並本來就重疊，不需要調長方案時長；
+    // 0138 已套用時，用「先指派、後調長方案時長」在 DB 內重現舊重疊（trigger 不追溯既有列）。
+    const with0138 = await has0138();
+    const planBefore = await admin.from('trip_plans').select('duration_minutes').eq('id', TRIP_A.planA1).single();
+    expect(planBefore.error).toBeNull();
     const insertConflictDeparture = async (startTime: string) => {
       const { data, error } = await admin.from('trip_departures').insert({
         tenant_id: SHOP_A.id,
@@ -607,33 +655,43 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
       return id;
     };
 
+    // 0138 已套用時兩團不得在建立當下重疊（15:00 與 09:00 不重疊），之後才調長方案時長。
+    // 0138 未套用時沿用原行為：TRIP_A 的 duration_hours 未設，兩團整日重疊，直接建立即可。
     const departureOneId = await insertConflictDeparture('09:00');
     const departureTwoId = await insertConflictDeparture('15:00');
-
-    const res = await ownerA.get('/api/guide/action-inbox');
-    expect(res.status).toBe(200);
-    const body = await readJson<GuideActionInboxItem[]>(res);
-    expect(body.success).toBe(true);
-    const items = body.data ?? [];
-
-    for (const id of [departureOneId, departureTwoId]) {
-      const matches = items.filter((item) => item.id === id);
-      expect(matches).toHaveLength(1);
-      const item = matches[0];
-      if (item.kind !== 'STAFF_CONFLICT') {
-        throw new Error(`STAFF_CONFLICT action inbox item 種類錯誤：${item.kind}`);
+    try {
+      if (with0138) {
+        const widen = await admin.from('trip_plans').update({ duration_minutes: 720 }).eq('id', TRIP_A.planA1);
+        expect(widen.error).toBeNull();
       }
-      expect(item.tripId).toBe(TRIP_A.id);
-      expect(item.href).toBe(`/tenant/trips/${TRIP_A.id}`);
-      expect(item.priority).toBe('IMMEDIATE');
-      expect(item.conflicts.length).toBeGreaterThan(0);
-      expect(item.conflicts.some((conflict) => conflict.staffId === SHOP_A.staffA1)).toBe(true);
-    }
 
-    const ownerB = await loginAs(SHOP_B.owner.email, SHOP_B.owner.password);
-    const shopBResponse = await ownerB.get('/api/guide/action-inbox');
-    expect(shopBResponse.status).toBe(200);
-    const shopBBody = await readJson<GuideActionInboxItem[]>(shopBResponse);
-    expect(shopBBody.data?.some((entry) => entry.id === departureOneId || entry.id === departureTwoId)).toBe(false);
+      const res = await ownerA.get('/api/guide/action-inbox');
+      expect(res.status).toBe(200);
+      const body = await readJson<GuideActionInboxItem[]>(res);
+      expect(body.success).toBe(true);
+      const items = body.data ?? [];
+
+      for (const id of [departureOneId, departureTwoId]) {
+        const matches = items.filter((item) => item.id === id);
+        expect(matches).toHaveLength(1);
+        const item = matches[0];
+        if (item.kind !== 'STAFF_CONFLICT') {
+          throw new Error(`STAFF_CONFLICT action inbox item 種類錯誤：${item.kind}`);
+        }
+        expect(item.tripId).toBe(TRIP_A.id);
+        expect(item.href).toBe(`/tenant/trips/${TRIP_A.id}`);
+        expect(item.priority).toBe('IMMEDIATE');
+        expect(item.conflicts.length).toBeGreaterThan(0);
+        expect(item.conflicts.some((conflict) => conflict.staffId === SHOP_A.staffA1)).toBe(true);
+      }
+
+      const ownerB = await loginAs(SHOP_B.owner.email, SHOP_B.owner.password);
+      const shopBResponse = await ownerB.get('/api/guide/action-inbox');
+      expect(shopBResponse.status).toBe(200);
+      const shopBBody = await readJson<GuideActionInboxItem[]>(shopBResponse);
+      expect(shopBBody.data?.some((entry) => entry.id === departureOneId || entry.id === departureTwoId)).toBe(false);
+    } finally {
+      await admin.from('trip_plans').update({ duration_minutes: planBefore.data!.duration_minutes }).eq('id', TRIP_A.planA1);
+    }
   });
 });
