@@ -1259,7 +1259,7 @@
       ]
     },
     {
-      "repoFile": "0138_issue_46_instant_occupancy",
+      "repoFile": "0139_issue_46_instant_occupancy_release",
       "impacts": [
         {
           "surface": "columns",
@@ -1288,10 +1288,6 @@
         {
           "surface": "constraints",
           "objectKey": "public.trip_departures.trip_departures_duration_minutes_snapshot_ck"
-        },
-        {
-          "surface": "constraints",
-          "objectKey": "public.trip_plans.trip_plans_instant_start_times_ck"
         },
         {
           "surface": "constraints",
