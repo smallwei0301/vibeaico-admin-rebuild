@@ -75,7 +75,7 @@ describe('#46 0138 INSTANT occupancy migration 原始碼守門', () => {
       expect(fn(name)).toMatch(/security invoker/i);
       expect(fn(name)).not.toMatch(/security definer/i);
     }
-    expect(code).toMatch(/revoke all on function public\.assert_staff_not_occupied\(uuid, uuid, tstzrange, uuid, uuid\) from public, anon;/);
+    expect(code).toMatch(/revoke all on function public\.assert_staff_not_occupied\(uuid, uuid, tstzrange, uuid, uuid, text\) from public, anon;/);
   });
 
   it('create_instant_tour_order：invoker、service_role only、單一交易內依序做完所有步驟', () => {
@@ -179,5 +179,42 @@ describe('#46 0138 INSTANT occupancy migration 原始碼守門', () => {
     const formula = 'greatest(pl.duration_minutes, round(t.duration_hours * 60)::integer)';
     expect(code.split(formula).length - 1).toBe(2);
     expect(code.match(/t\.duration_hours is not null and t\.duration_hours > 0/g)).toHaveLength(2);
+  });
+
+  it('M7：INSTANT 時段（同鍵團次）查詢必須 for update，與並發建單序列化', () => {
+    expect(fn('create_instant_tour_order')).toMatch(/where d\.tenant_id = p_tenant and d\.plan_id = p_plan and d\.departs_on = v_day and d\.start_time = v_time\s+for update;/);
+  });
+
+  it('B1：時區比對不分大小寫並回 canonical 名稱，查不到才 raise P0026', () => {
+    const body = fn('tenant_timezone_name');
+    expect(body).toMatch(/lower\(n\.name\) = lower\(v_zone\)/);
+    expect(body).toMatch(/return v_canonical;/);
+    expect(body).toMatch(/v_canonical is null then\s+raise exception 'TENANT_TIMEZONE_INVALID' using errcode = 'P0026'/);
+  });
+
+  it('B2：預約 trigger 在導遊與起訖都沒變且舊狀態已屬占用狀態時不重驗（PENDING→CONFIRMED、改備註）', () => {
+    const body = fn('trg_bookings_staff_occupancy');
+    expect(body).toMatch(/old\.status in \('PENDING', 'CONFIRMED'\)\s+then\s+return null;/);
+    expect(body).not.toMatch(/old\.status = new\.status/);
+    // 團次 trigger：只在日期、時間、時長變更或自 CANCELLED 復原時重驗（OPEN／CLOSED 切換與 seats 不重驗）。
+    const dep = fn('trg_trip_departures_staff_occupancy');
+    expect(dep).toMatch(/old\.status <> 'CANCELLED' and old\.departs_on = new\.departs_on/);
+    expect(code).toMatch(/after update of departs_on, start_time, status, duration_minutes_snapshot on public\.trip_departures/);
+  });
+
+  it('N1：INSTANT 的 v_end 與 snapshot 使用 departure_effective_minutes（同一公式）', () => {
+    const body = fn('create_instant_tour_order');
+    expect(body).toMatch(/v_minutes := public\.departure_effective_minutes\(null, v_plan\.duration_minutes, v_plan\.duration_hours\)/);
+    expect(body).toMatch(/v_end := p_starts_at \+ make_interval\(mins => v_minutes\)/);
+    expect(body).toMatch(/duration_minutes_snapshot = v_minutes/);
+  });
+
+  it('N5：時區只算一次，經 p_zone 傳給 assert；N2／N3 限制已寫在檔頭', () => {
+    expect(fn('assert_staff_not_occupied')).toMatch(/p_zone text default null/);
+    expect(fn('assert_staff_not_occupied')).toMatch(/coalesce\(p_zone, public\.tenant_timezone_name\(p_tenant\)\)/);
+    expect(fn('trg_trip_departures_staff_occupancy')).toMatch(/v_zone := public\.tenant_timezone_name[\s\S]*?v_range := public\.departure_range_for\(new\.id, v_zone\)[\s\S]*?v_range, new\.id, null, v_zone/);
+    expect(fn('trg_trip_departure_staff_occupancy')).toMatch(/v_zone := public\.tenant_timezone_name[\s\S]*?new\.departure_id, null, v_zone\)/);
+    expect(sql).toMatch(/無法重新儲存指派/);
+    expect(sql).toMatch(/只保證 READ COMMITTED/);
   });
 });

@@ -1331,10 +1331,6 @@
         },
         {
           "surface": "routines",
-          "objectKey": "public.assert_staff_not_occupied(p_tenant uuid, p_staff uuid, p_range tstzrange, p_except_departure uuid, p_except_booking uuid)"
-        },
-        {
-          "surface": "routines",
           "objectKey": "public.cancel_tour_order(p_tenant uuid, p_order uuid, p_reason text)"
         },
         {
@@ -1383,10 +1379,6 @@
         },
         {
           "surface": "acl",
-          "objectKey": "function:public.assert_staff_not_occupied(p_tenant uuid, p_staff uuid, p_range tstzrange, p_except_departure uuid, p_except_booking uuid)"
-        },
-        {
-          "surface": "acl",
           "objectKey": "function:public.create_instant_tour_order(p_tenant uuid, p_plan uuid, p_starts_at timestamp with time zone, p_party_size integer, p_customer uuid, p_contact jsonb, p_note text, p_idempotency_key text, p_expected_total numeric, p_order_no text, p_source tour_order_source, p_payment_method uuid)"
         },
         {
@@ -1428,6 +1420,14 @@
         {
           "surface": "acl",
           "objectKey": "function:public.departure_range_for(p_departure uuid, p_zone text)"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.assert_staff_not_occupied(p_tenant uuid, p_staff uuid, p_range tstzrange, p_except_departure uuid, p_except_booking uuid, p_zone text)"
+        },
+        {
+          "surface": "acl",
+          "objectKey": "function:public.assert_staff_not_occupied(p_tenant uuid, p_staff uuid, p_range tstzrange, p_except_departure uuid, p_except_booking uuid, p_zone text)"
         }
       ]
     }

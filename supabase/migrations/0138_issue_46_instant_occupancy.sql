@@ -32,6 +32,13 @@
 --   P0024 INSTANT_NOT_CONFIGURED｜P0025 IDEMPOTENCY_KEY_REUSED｜P0004 PRICE_CHANGED（0137）
 --   P0001 SEATS_UNAVAILABLE（reserve_seats）｜P0003 INVALID_ARGUMENTS／PARTY_SIZE_OUT_OF_RANGE。
 --
+-- ## 已知限制（有意不處理）
+--   - 既有撞班（0138 之前留下的重疊）的團次，在衝突解決前無法重新儲存指派：replace_trip_departure_staff
+--     （0131，本檔不改）先刪後插，插入會被占用 trigger 以 STAFF_OCCUPIED 擋下並整筆回滾（原指派保留）。
+--     先調整其中一邊的時間或導遊即可。
+--   - 占用排他只保證 READ COMMITTED（Supabase 預設）：trigger 取 advisory lock 後以新 statement snapshot 重驗；
+--     REPEATABLE READ／SERIALIZABLE 交易看不到鎖等待期間他人已提交的列，不在保證範圍。
+--
 -- ## 發布與範圍
 --   - 必須在 0111、0131、0132、0135、0136、0137 之後套用；僅新增 source，不套用到任何環境。
 --   - 規格 1.5.1：新 schema source 例外依據為 Owner 明確改優先序；Production 套用需 Owner 另行具名授權。
@@ -196,6 +203,7 @@ as $$
 declare
   v_basic jsonb;
   v_zone text;
+  v_canonical text;
 begin
   select ts.basic into v_basic from public.tenant_settings ts where ts.tenant_id = p_tenant;
   if v_basic is null or jsonb_typeof(v_basic) <> 'object' or not (v_basic ? 'timezone') then
@@ -205,10 +213,14 @@ begin
     raise exception 'TENANT_TIMEZONE_INVALID' using errcode = 'P0026';
   end if;
   v_zone := btrim(v_basic ->> 'timezone');
-  if v_zone = '' or not exists (select 1 from pg_catalog.pg_timezone_names n where n.name = v_zone) then
+  -- PostgreSQL 的 AT TIME ZONE 不分大小寫（'asia/taipei'、'utc' 都能用），所以這裡也不分大小寫比對，
+  -- 並回傳 pg_timezone_names 的 canonical 名稱；查不到才 raise，避免把原本可用的租戶設定誤判為無效。
+  select n.name into v_canonical from pg_catalog.pg_timezone_names n
+   where lower(n.name) = lower(v_zone) order by (n.name = v_zone) desc, n.name limit 1;
+  if v_zone = '' or v_canonical is null then
     raise exception 'TENANT_TIMEZONE_INVALID' using errcode = 'P0026';
   end if;
-  return v_zone;
+  return v_canonical;
 end;
 $$;
 
@@ -282,7 +294,8 @@ $$;
 -- 取鎖後重驗：呼叫端必須已確認本列需要檢查。多人時由呼叫端依 staff id 排序呼叫。
 -- READ COMMITTED 下每個 statement 取新 snapshot，等鎖結束後看得到對方已 commit 的列。
 create or replace function public.assert_staff_not_occupied(
-  p_tenant uuid, p_staff uuid, p_range tstzrange, p_except_departure uuid, p_except_booking uuid
+  p_tenant uuid, p_staff uuid, p_range tstzrange, p_except_departure uuid, p_except_booking uuid,
+  p_zone text default null
 ) returns void language plpgsql volatile security invoker set search_path = pg_catalog, public
 as $$
 declare
@@ -302,7 +315,7 @@ begin
       detail = json_build_object('kind', 'BOOKING', 'id', v_hit.id, 'staffId', p_staff,
         'start', v_hit.start_at, 'end', v_hit.end_at)::text;
   end if;
-  v_zone := public.tenant_timezone_name(p_tenant);
+  v_zone := coalesce(p_zone, public.tenant_timezone_name(p_tenant));
   select d.id, public.departure_range_for(d.id, v_zone) occ
     into v_hit
     from public.trip_departure_staff ds
@@ -328,8 +341,12 @@ returns trigger language plpgsql volatile security invoker set search_path = pg_
 as $$
 begin
   if new.staff_id is null or new.status not in ('PENDING', 'CONFIRMED') then return null; end if;
+  -- 新狀態已確定屬占用狀態（PENDING／CONFIRMED）。導遊與起訖時間都沒變、舊狀態也屬占用狀態
+  -- （例如 PENDING→CONFIRMED 或改備註）時占用事實沒有改變，不重驗：0138 之前留下的既有重疊
+  -- 不能因為只是確認預約而被擋下。
   if tg_op = 'UPDATE' and old.staff_id is not distinct from new.staff_id
-     and old.start_at = new.start_at and old.end_at = new.end_at and old.status = new.status then
+     and old.start_at = new.start_at and old.end_at = new.end_at
+     and old.status in ('PENDING', 'CONFIRMED') then
     return null;
   end if;
   perform public.assert_staff_not_occupied(new.tenant_id, new.staff_id,
@@ -344,6 +361,7 @@ as $$
 declare
   v_dep record;
   v_lock uuid;
+  v_zone text;
 begin
   if tg_op = 'UPDATE' and old.staff_id = new.staff_id and old.departure_id = new.departure_id then
     return null;
@@ -351,6 +369,7 @@ begin
   select d.id, d.departs_on, d.start_time, d.duration_minutes_snapshot, d.status into v_dep
     from public.trip_departures d where d.id = new.departure_id and d.tenant_id = new.tenant_id;
   if not found or v_dep.status = 'CANCELLED' then return null; end if;
+  v_zone := public.tenant_timezone_name(new.tenant_id); -- 只算一次，下面的範圍與 assert 共用
   -- 一次指派多人時（AFTER ROW 於語句結束後觸發，此時同團全部列皆可見）先依 staff id 排序對全團取鎖，
   -- 避免不同交易以相反順序取得多把鎖而死結；assert 內再取同一把鎖為可重入。
   for v_lock in
@@ -363,8 +382,8 @@ begin
     perform public.lock_staff_occupancy(new.tenant_id, v_lock);
   end loop;
   perform public.assert_staff_not_occupied(new.tenant_id, new.staff_id,
-    public.departure_range_for(new.departure_id, public.tenant_timezone_name(new.tenant_id)),
-    new.departure_id, null);
+    public.departure_range_for(new.departure_id, v_zone),
+    new.departure_id, null, v_zone);
   return null;
 end;
 $$;
@@ -375,6 +394,7 @@ as $$
 declare
   v_staff uuid;
   v_range tstzrange;
+  v_zone text;
 begin
   if new.status = 'CANCELLED' then return null; end if;
   if old.status <> 'CANCELLED' and old.departs_on = new.departs_on
@@ -382,13 +402,14 @@ begin
      and old.duration_minutes_snapshot is not distinct from new.duration_minutes_snapshot then
     return null;
   end if;
-  v_range := public.departure_range_for(new.id, public.tenant_timezone_name(new.tenant_id));
+  v_zone := public.tenant_timezone_name(new.tenant_id); -- 只算一次，範圍與每位導遊的 assert 共用
+  v_range := public.departure_range_for(new.id, v_zone);
   -- 依 staff id 排序取鎖，避免多人團次互相死結。
   for v_staff in
     select ds.staff_id from public.trip_departure_staff ds
      where ds.tenant_id = new.tenant_id and ds.departure_id = new.id order by ds.staff_id
   loop
-    perform public.assert_staff_not_occupied(new.tenant_id, v_staff, v_range, new.id, null);
+    perform public.assert_staff_not_occupied(new.tenant_id, v_staff, v_range, new.id, null, v_zone);
   end loop;
   return null;
 end;
@@ -420,14 +441,14 @@ revoke all on function public.departure_effective_minutes(integer, integer, nume
 revoke all on function public.departure_range_for(uuid, text) from public, anon;
 revoke all on function public.lock_staff_occupancy(uuid, uuid) from public, anon;
 revoke all on function public.instant_wall_clock_ambiguous(text, timestamp, timestamptz) from public, anon;
-revoke all on function public.assert_staff_not_occupied(uuid, uuid, tstzrange, uuid, uuid) from public, anon;
+revoke all on function public.assert_staff_not_occupied(uuid, uuid, tstzrange, uuid, uuid, text) from public, anon;
 grant execute on function public.tenant_timezone_name(uuid) to authenticated, service_role;
 grant execute on function public.departure_occupancy_range(date, time, integer, text) to authenticated, service_role;
 grant execute on function public.departure_effective_minutes(integer, integer, numeric) to authenticated, service_role;
 grant execute on function public.departure_range_for(uuid, text) to authenticated, service_role;
 grant execute on function public.lock_staff_occupancy(uuid, uuid) to authenticated, service_role;
 grant execute on function public.instant_wall_clock_ambiguous(text, timestamp, timestamptz) to authenticated, service_role;
-grant execute on function public.assert_staff_not_occupied(uuid, uuid, tstzrange, uuid, uuid) to authenticated, service_role;
+grant execute on function public.assert_staff_not_occupied(uuid, uuid, tstzrange, uuid, uuid, text) to authenticated, service_role;
 
 -- ------------------------------------------------------------------ 0135 predicate：snapshot 優先
 -- 與 0135 位元組相同，唯一差異：DEPARTURE 分支的時長由 pl.duration_minutes 改為 departure_effective_minutes
@@ -618,6 +639,7 @@ declare
   v_day     date;
   v_now     timestamptz := now();
   v_end     timestamptz;
+  v_minutes integer;
   v_prev    record;
   v_slot    record;
   v_slot_found boolean;
@@ -664,7 +686,7 @@ begin
   end if;
 
   select p.id, p.trip_id, p.sales_mode, p.participation_mode, p.active, p.max_party,
-         p.duration_minutes, p.instant_start_times, p.instant_min_lead_minutes,
+         p.duration_minutes, t.duration_hours, p.instant_start_times, p.instant_min_lead_minutes,
          p.instant_max_advance_days, p.instant_guide_staff_id, p.request_hold_hours,
          t.status as trip_status
     into v_plan
@@ -710,7 +732,9 @@ begin
     raise exception 'INVALID_START' using errcode = 'P0021', detail = 'BEYOND_WINDOW';
   end if;
 
-  v_end := p_starts_at + make_interval(mins => v_plan.duration_minutes);
+  -- 占用長度與全部占用判斷同一公式（departure_effective_minutes）；snapshot 也存這個值。
+  v_minutes := public.departure_effective_minutes(null, v_plan.duration_minutes, v_plan.duration_hours);
+  v_end := p_starts_at + make_interval(mins => v_minutes);
 
   -- 導遊鎖：與 constraint trigger 同一把 (tenant, staff) advisory lock，之後的檢查與寫入對所有 writer 序列化。
   perform public.lock_staff_occupancy(p_tenant, v_plan.instant_guide_staff_id);
@@ -739,7 +763,7 @@ begin
     v_dep := v_slot.id;
     update public.trip_departures
        set capacity = v_plan.max_party, seats_booked = 0,
-           duration_minutes_snapshot = v_plan.duration_minutes,
+           duration_minutes_snapshot = v_minutes,
            formation_status = 'FORMED', min_to_depart_snapshot = 1,
            formation_deadline_at = null, formed_at = v_now, formed_by = 'SYSTEM',
            formed_participants = p_party_size
@@ -754,7 +778,7 @@ begin
         duration_minutes_snapshot
       ) values (
         p_tenant, v_plan.trip_id, p_plan, v_day, v_time, v_plan.max_party, 0, 'OPEN', '',
-        'FORMED', 1, v_now, 'SYSTEM', p_party_size, v_plan.duration_minutes
+        'FORMED', 1, v_now, 'SYSTEM', p_party_size, v_minutes
       ) returning id into v_dep;
     exception when unique_violation then
       raise exception 'SLOT_TAKEN' using errcode = 'P0022';
