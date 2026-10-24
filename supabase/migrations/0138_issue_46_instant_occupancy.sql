@@ -1,0 +1,863 @@
+-- #46 INSTANT 自選時間 slice 1：資料庫與伺服器核心（SOURCE only，不含公開頁 UI／公開 route）。
+--
+-- Owner 決策（2026-10-23，https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/46#issuecomment-6377107200）：
+--   Q1 方案固定起始時刻清單（預設最短提前 24 小時、可售 60 天）。
+--   Q2 方案指定單一導遊（不自動分派）。
+--   Q3 建單即 snapshot hold_expires_at（沿用 trip_plans.request_hold_hours 單一來源，預設 12 小時），
+--      逾期由既有 expire_tour_order 取消並釋放 Departure。
+--   Q4 團與團間緩衝時間 0 分，本檔不做。
+--
+-- ## 本檔做的事
+--
+--   1. trip_departures.duration_minutes_snapshot（0135 檔頭要求的前置條件）：INSERT 時 snapshot、
+--      既有團次保守回填；0135 predicate 與 src/server/staff-availability.ts 改讀 snapshot。
+--      回填規則：只有「所屬行程 duration_hours 已知且 > 0」時才回填 greatest(plan.duration_minutes,
+--      round(duration_hours*60))；行程時長未知者維持 NULL＝整日占用（app 引擎既有的保守規則，
+--      寧可多擋）。這會讓原先 0135 用 plan.duration_minutes（預設 60）判斷的「行程時長未知」團次
+--      變成整日占用——只會更保守，不會放寬。
+--   2. trip_plans 新增 INSTANT 規則欄位 instant_start_times／instant_min_lead_minutes／
+--      instant_max_advance_days／instant_guide_staff_id。對非 INSTANT 方案不強制；「INSTANT 方案必須
+--      設定時刻清單與導遊」由 create_instant_tour_order 在執行時 fail closed（INSTANT_NOT_CONFIGURED），
+--      不加 DB check：既有 INSTANT 方案資料與 tests/integration/db/formation-state-model.41 會被擋，
+--      待後台表單 slice 補齊設定後再評估 NOT VALID→VALIDATE。
+--   3. 共用占用排他：bookings／trip_departure_staff／trip_departures 三個 writer 掛 constraint trigger，
+--      以 per-(tenant,staff) pg_advisory_xact_lock 序列化後重驗「新／變更列」與其他 PENDING/CONFIRMED
+--      預約、非 CANCELLED 團次的重疊，衝突 raise STAFF_OCCUPIED（errcode P0020）。
+--      不追溯既有重疊資料；不在 trigger 內判 shift／block／external（那是可接案偏好，由 predicate 判）。
+--   4. create_instant_tour_order：單一交易內驗規則、鎖導遊、重驗可用性、建 PRIVATE Departure＋PRIMARY、
+--      經 create_tour_order_quoted 建單（價格比對與 PRICE_CHANGED 回滾沿用 0137）、冪等。
+--   5. cancel_tour_order／expire_tour_order（簽章不變）：INSTANT 私人團無其他有效訂單時一併設 CANCELLED。
+--
+-- ## 錯誤碼（app 以 SQLSTATE 或 message 映射）
+--   P0020 STAFF_OCCUPIED｜P0021 INVALID_START｜P0022 SLOT_TAKEN｜P0023 INSTANT_NOT_AVAILABLE
+--   P0024 INSTANT_NOT_CONFIGURED｜P0025 IDEMPOTENCY_KEY_REUSED｜P0004 PRICE_CHANGED（0137）
+--   P0001 SEATS_UNAVAILABLE（reserve_seats）｜P0003 INVALID_ARGUMENTS／PARTY_SIZE_OUT_OF_RANGE。
+--
+-- ## 發布與範圍
+--   - 必須在 0111、0131、0132、0135、0136、0137 之後套用；僅新增 source，不套用到任何環境。
+--   - 規格 1.5.1：新 schema source 例外依據為 Owner 明確改優先序；Production 套用需 Owner 另行具名授權。
+--   - 觸發器改變所有 booking／團次 writer 的行為面：套用順序為 LOCAL_ISOLATED → canonical TEST。
+begin;
+
+-- ------------------------------------------------------------------ 前置形狀
+do $$
+begin
+  if to_regclass('public.trip_departures') is null or to_regclass('public.trip_plans') is null
+    or to_regclass('public.trip_departure_staff') is null or to_regclass('public.tour_orders') is null
+    or to_regclass('public.bookings') is null or to_regclass('public.staff') is null
+    or to_regclass('public.trips') is null or to_regclass('public.tenant_settings') is null then
+    raise exception '0138 前置條件失敗：缺少必要資料表（需 0066／0087／0092／0107／0110／0135）';
+  end if;
+  if to_regprocedure('public.create_tour_order_quoted(uuid,text,uuid,integer,uuid,jsonb,public.tour_order_source,uuid,text,timestamptz,numeric)') is null
+    or to_regprocedure('public.replace_trip_departure_staff(uuid,uuid,uuid,uuid[])') is null
+    or to_regprocedure('public.guide_staff_interval_available(uuid,uuid,timestamptz,timestamptz)') is null then
+    raise exception '0138 前置條件失敗：缺少 0131／0135／0137 的 RPC';
+  end if;
+  if not exists (
+    select 1 from pg_index i where i.indrelid = 'public.staff'::regclass and i.indisunique
+      and i.indnatts = 2
+      and (select array_agg(a.attname::text order by a.attname::text) from pg_attribute a
+            where a.attrelid = i.indrelid and a.attnum = any(i.indkey::int2[])) = array['id','tenant_id']
+  ) then
+    raise exception '0138 前置條件失敗：public.staff 缺少 unique (tenant_id, id)（0133）';
+  end if;
+end $$;
+
+-- ------------------------------------------------------------------ 欄位
+alter table public.trip_departures add column if not exists duration_minutes_snapshot integer;
+alter table public.trip_plans
+  add column if not exists instant_start_times time[],
+  add column if not exists instant_min_lead_minutes integer not null default 1440,
+  add column if not exists instant_max_advance_days integer not null default 60,
+  add column if not exists instant_guide_staff_id uuid;
+alter table public.tour_orders add column if not exists idempotency_key text;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conrelid = 'public.trip_departures'::regclass
+    and conname = 'trip_departures_duration_minutes_snapshot_ck') then
+    alter table public.trip_departures add constraint trip_departures_duration_minutes_snapshot_ck
+      check (duration_minutes_snapshot is null or duration_minutes_snapshot > 0);
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid = 'public.trip_plans'::regclass
+    and conname = 'trip_plans_instant_start_times_ck') then
+    alter table public.trip_plans add constraint trip_plans_instant_start_times_ck
+      check (instant_start_times is null
+        or (cardinality(instant_start_times) between 1 and 48
+            and array_position(instant_start_times, null::time) is null));
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid = 'public.trip_plans'::regclass
+    and conname = 'trip_plans_instant_min_lead_ck') then
+    alter table public.trip_plans add constraint trip_plans_instant_min_lead_ck
+      check (instant_min_lead_minutes between 0 and 525600);
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid = 'public.trip_plans'::regclass
+    and conname = 'trip_plans_instant_max_advance_ck') then
+    alter table public.trip_plans add constraint trip_plans_instant_max_advance_ck
+      check (instant_max_advance_days between 1 and 365);
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid = 'public.trip_plans'::regclass
+    and conname = 'trip_plans_instant_guide_staff_fk') then
+    -- MATCH SIMPLE：instant_guide_staff_id 為 NULL 時不檢查；非 NULL 時必須同租戶。
+    alter table public.trip_plans add constraint trip_plans_instant_guide_staff_fk
+      foreign key (tenant_id, instant_guide_staff_id) references public.staff (tenant_id, id);
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid = 'public.tour_orders'::regclass
+    and conname = 'tour_orders_idempotency_key_ck') then
+    alter table public.tour_orders add constraint tour_orders_idempotency_key_ck
+      check (idempotency_key is null or length(idempotency_key) between 1 and 128);
+  end if;
+end $$;
+
+create unique index if not exists ux_tour_orders_tenant_idempotency
+  on public.tour_orders (tenant_id, idempotency_key) where idempotency_key is not null;
+create index if not exists i_trip_departure_staff_tenant_staff
+  on public.trip_departure_staff (tenant_id, staff_id);
+
+-- PB-026：add column if not exists 遇到同名但形狀不同的既有欄位會靜默跳過。
+do $$
+declare r record; v_actual text;
+begin
+  for r in select * from (values
+    ('trip_departures','duration_minutes_snapshot','integer'),
+    ('trip_plans','instant_start_times','ARRAY'),
+    ('trip_plans','instant_min_lead_minutes','integer'),
+    ('trip_plans','instant_max_advance_days','integer'),
+    ('trip_plans','instant_guide_staff_id','uuid'),
+    ('tour_orders','idempotency_key','text')
+  ) as e(tbl, col, typ) loop
+    select data_type into v_actual from information_schema.columns
+     where table_schema='public' and table_name=r.tbl and column_name=r.col;
+    if v_actual is distinct from r.typ then
+      raise exception '0138 形狀斷言失敗：%.% 型別應為 %，實際 %', r.tbl, r.col, r.typ, v_actual;
+    end if;
+  end loop;
+  if (select udt_name from information_schema.columns where table_schema='public'
+      and table_name='trip_plans' and column_name='instant_start_times') <> '_time' then
+    raise exception '0138 形狀斷言失敗：trip_plans.instant_start_times 應為 time[]';
+  end if;
+end $$;
+
+-- ------------------------------------------------------------------ 既有團次保守回填
+-- 先回填、後建 trigger：回填不得被尚未存在的占用 trigger 以舊資料重疊擋下。
+update public.trip_departures d
+   set duration_minutes_snapshot = greatest(pl.duration_minutes, round(t.duration_hours * 60)::integer)
+  from public.trip_plans pl, public.trips t
+ where d.duration_minutes_snapshot is null
+   and pl.id = d.plan_id and pl.tenant_id = d.tenant_id
+   and t.id = d.trip_id and t.tenant_id = d.tenant_id
+   and t.duration_hours is not null and t.duration_hours > 0;
+
+create or replace function public.trg_trip_departures_duration_snapshot()
+returns trigger language plpgsql security invoker set search_path = pg_catalog, public
+as $$
+begin
+  if new.duration_minutes_snapshot is null then
+    select greatest(pl.duration_minutes, round(t.duration_hours * 60)::integer)
+      into new.duration_minutes_snapshot
+      from public.trip_plans pl join public.trips t on t.id = new.trip_id and t.tenant_id = new.tenant_id
+     where pl.id = new.plan_id and pl.tenant_id = new.tenant_id
+       and t.duration_hours is not null and t.duration_hours > 0;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_trip_departures_duration_snapshot on public.trip_departures;
+create trigger trg_trip_departures_duration_snapshot
+  before insert on public.trip_departures
+  for each row execute function public.trg_trip_departures_duration_snapshot();
+
+comment on column public.trip_departures.duration_minutes_snapshot is
+  '#46：建團當下 snapshot 的占用分鐘數；NULL＝時長未知，占用整個租戶日（保守）。0135 predicate 與 staff-availability.ts 同讀此欄。';
+
+-- ------------------------------------------------------------------ 共用占用 helper
+create or replace function public.tenant_timezone_name(p_tenant uuid)
+returns text language sql stable security invoker set search_path = pg_catalog, public
+as $$
+  select coalesce((
+    select btrim(ts.basic ->> 'timezone')
+      from public.tenant_settings ts
+     where ts.tenant_id = p_tenant
+       and jsonb_typeof(ts.basic) = 'object'
+       and jsonb_typeof(ts.basic -> 'timezone') = 'string'
+       and exists (select 1 from pg_catalog.pg_timezone_names n where n.name = btrim(ts.basic ->> 'timezone'))
+  ), 'Asia/Taipei');
+$$;
+
+create or replace function public.departure_occupancy_range(
+  p_departs_on date, p_start time, p_minutes integer, p_zone text
+) returns tstzrange
+language sql stable security invoker set search_path = pg_catalog, public
+as $$
+  select case
+    when p_start is null or p_minutes is null or p_minutes <= 0 then
+      tstzrange(p_departs_on::timestamp at time zone p_zone, (p_departs_on + 1)::timestamp at time zone p_zone, '[)')
+    else
+      tstzrange((p_departs_on + p_start) at time zone p_zone,
+        ((p_departs_on + p_start) at time zone p_zone) + make_interval(mins => p_minutes), '[)')
+  end;
+$$;
+
+create or replace function public.lock_staff_occupancy(p_tenant uuid, p_staff uuid)
+returns void language plpgsql volatile security invoker set search_path = pg_catalog, public
+as $$
+begin
+  perform pg_advisory_xact_lock(hashtextextended('staff-occupancy:' || p_tenant::text || ':' || p_staff::text, 0));
+end;
+$$;
+
+-- p_local 是該 instant 在 p_zone 的牆上時間；若同一牆上時間另有不同 instant（fold）回 true。
+create or replace function public.instant_wall_clock_ambiguous(p_zone text, p_local timestamp, p_instant timestamptz)
+returns boolean language sql stable security invoker set search_path = pg_catalog, public
+as $$
+  select exists (
+    select 1 from unnest(array[p_local::date - 1, p_local::date, p_local::date + 1]) sample(day)
+    cross join lateral (select sample.day::timestamp at time zone p_zone instant) observed
+    cross join lateral (select (observed.instant at time zone p_zone) - (observed.instant at time zone 'UTC') utc_offset) offsets
+    cross join lateral (select (p_local - offsets.utc_offset) at time zone 'UTC' instant) candidate
+    where candidate.instant <> p_instant and (candidate.instant at time zone p_zone) = p_local
+  );
+$$;
+
+-- 取鎖後重驗：呼叫端必須已確認本列需要檢查。多人時由呼叫端依 staff id 排序呼叫。
+-- READ COMMITTED 下每個 statement 取新 snapshot，等鎖結束後看得到對方已 commit 的列。
+create or replace function public.assert_staff_not_occupied(
+  p_tenant uuid, p_staff uuid, p_range tstzrange, p_except_departure uuid, p_except_booking uuid
+) returns void language plpgsql volatile security invoker set search_path = pg_catalog, public
+as $$
+declare
+  v_zone text;
+  v_hit record;
+begin
+  perform public.lock_staff_occupancy(p_tenant, p_staff);
+  select b.id, b.start_at, b.end_at into v_hit
+    from public.bookings b
+   where b.tenant_id = p_tenant and b.staff_id = p_staff
+     and b.status in ('PENDING', 'CONFIRMED')
+     and b.id is distinct from p_except_booking
+     and b.start_at < upper(p_range) and b.end_at > lower(p_range)
+   limit 1;
+  if found then
+    raise exception 'STAFF_OCCUPIED' using errcode = 'P0020',
+      detail = json_build_object('kind', 'BOOKING', 'id', v_hit.id, 'staffId', p_staff,
+        'start', v_hit.start_at, 'end', v_hit.end_at)::text;
+  end if;
+  v_zone := public.tenant_timezone_name(p_tenant);
+  select d.id, public.departure_occupancy_range(d.departs_on, d.start_time, d.duration_minutes_snapshot, v_zone) occ
+    into v_hit
+    from public.trip_departure_staff ds
+    join public.trip_departures d on d.id = ds.departure_id and d.tenant_id = ds.tenant_id
+   where ds.tenant_id = p_tenant and ds.staff_id = p_staff
+     and d.status <> 'CANCELLED'
+     and d.id is distinct from p_except_departure
+     -- 占用不會早於 departs_on 開始；僅排除出發日在請求區間之後的團次。
+     and d.departs_on <= ((upper(p_range) at time zone v_zone)::date)
+     and public.departure_occupancy_range(d.departs_on, d.start_time, d.duration_minutes_snapshot, v_zone) && p_range
+   limit 1;
+  if found then
+    raise exception 'STAFF_OCCUPIED' using errcode = 'P0020',
+      detail = json_build_object('kind', 'DEPARTURE', 'id', v_hit.id, 'staffId', p_staff,
+        'start', lower(v_hit.occ), 'end', upper(v_hit.occ))::text;
+  end if;
+end;
+$$;
+
+-- ------------------------------------------------------------------ 占用 constraint trigger
+create or replace function public.trg_bookings_staff_occupancy()
+returns trigger language plpgsql volatile security invoker set search_path = pg_catalog, public
+as $$
+begin
+  if new.staff_id is null or new.status not in ('PENDING', 'CONFIRMED') then return null; end if;
+  if tg_op = 'UPDATE' and old.staff_id is not distinct from new.staff_id
+     and old.start_at = new.start_at and old.end_at = new.end_at and old.status = new.status then
+    return null;
+  end if;
+  perform public.assert_staff_not_occupied(new.tenant_id, new.staff_id,
+    tstzrange(new.start_at, new.end_at, '[)'), null, new.id);
+  return null;
+end;
+$$;
+
+create or replace function public.trg_trip_departure_staff_occupancy()
+returns trigger language plpgsql volatile security invoker set search_path = pg_catalog, public
+as $$
+declare
+  v_dep record;
+begin
+  if tg_op = 'UPDATE' and old.staff_id = new.staff_id and old.departure_id = new.departure_id then
+    return null;
+  end if;
+  select d.id, d.departs_on, d.start_time, d.duration_minutes_snapshot, d.status into v_dep
+    from public.trip_departures d where d.id = new.departure_id and d.tenant_id = new.tenant_id;
+  if not found or v_dep.status = 'CANCELLED' then return null; end if;
+  perform public.assert_staff_not_occupied(new.tenant_id, new.staff_id,
+    public.departure_occupancy_range(v_dep.departs_on, v_dep.start_time, v_dep.duration_minutes_snapshot,
+      public.tenant_timezone_name(new.tenant_id)),
+    new.departure_id, null);
+  return null;
+end;
+$$;
+
+create or replace function public.trg_trip_departures_staff_occupancy()
+returns trigger language plpgsql volatile security invoker set search_path = pg_catalog, public
+as $$
+declare
+  v_staff uuid;
+  v_range tstzrange;
+begin
+  if new.status = 'CANCELLED' then return null; end if;
+  if old.status <> 'CANCELLED' and old.departs_on = new.departs_on
+     and old.start_time is not distinct from new.start_time
+     and old.duration_minutes_snapshot is not distinct from new.duration_minutes_snapshot then
+    return null;
+  end if;
+  v_range := public.departure_occupancy_range(new.departs_on, new.start_time,
+    new.duration_minutes_snapshot, public.tenant_timezone_name(new.tenant_id));
+  -- 依 staff id 排序取鎖，避免多人團次互相死結。
+  for v_staff in
+    select ds.staff_id from public.trip_departure_staff ds
+     where ds.tenant_id = new.tenant_id and ds.departure_id = new.id order by ds.staff_id
+  loop
+    perform public.assert_staff_not_occupied(new.tenant_id, v_staff, v_range, new.id, null);
+  end loop;
+  return null;
+end;
+$$;
+
+drop trigger if exists trg_bookings_staff_occupancy on public.bookings;
+create constraint trigger trg_bookings_staff_occupancy
+  after insert or update of staff_id, start_at, end_at, status on public.bookings
+  deferrable initially immediate
+  for each row execute function public.trg_bookings_staff_occupancy();
+
+drop trigger if exists trg_trip_departure_staff_occupancy on public.trip_departure_staff;
+create constraint trigger trg_trip_departure_staff_occupancy
+  after insert or update of staff_id, departure_id on public.trip_departure_staff
+  deferrable initially immediate
+  for each row execute function public.trg_trip_departure_staff_occupancy();
+
+drop trigger if exists trg_trip_departures_staff_occupancy on public.trip_departures;
+create constraint trigger trg_trip_departures_staff_occupancy
+  after update of departs_on, start_time, status, duration_minutes_snapshot on public.trip_departures
+  deferrable initially immediate
+  for each row execute function public.trg_trip_departures_staff_occupancy();
+
+-- trigger 內呼叫的 helper 以「寫入者」身分執行：bookings 可由 authenticated 租戶成員寫入，
+-- 因此 authenticated 必須保有 execute；anon／PUBLIC 不給。
+revoke all on function public.tenant_timezone_name(uuid) from public, anon;
+revoke all on function public.departure_occupancy_range(date, time, integer, text) from public, anon;
+revoke all on function public.lock_staff_occupancy(uuid, uuid) from public, anon;
+revoke all on function public.instant_wall_clock_ambiguous(text, timestamp, timestamptz) from public, anon;
+revoke all on function public.assert_staff_not_occupied(uuid, uuid, tstzrange, uuid, uuid) from public, anon;
+grant execute on function public.tenant_timezone_name(uuid) to authenticated, service_role;
+grant execute on function public.departure_occupancy_range(date, time, integer, text) to authenticated, service_role;
+grant execute on function public.lock_staff_occupancy(uuid, uuid) to authenticated, service_role;
+grant execute on function public.instant_wall_clock_ambiguous(text, timestamp, timestamptz) to authenticated, service_role;
+grant execute on function public.assert_staff_not_occupied(uuid, uuid, tstzrange, uuid, uuid) to authenticated, service_role;
+
+-- ------------------------------------------------------------------ 0135 predicate：snapshot 優先
+-- 與 0135 位元組相同，唯一差異：DEPARTURE 分支的時長由 pl.duration_minutes 改讀 d.duration_minutes_snapshot
+-- （NULL／<=0＝整日占用）。plan 仍 left join，僅用於血統有效性檢查。
+create or replace function public.guide_staff_interval_available(
+  p_tenant uuid, p_staff uuid, p_start timestamptz, p_end timestamptz
+) returns boolean
+language plpgsql stable security invoker set search_path = pg_catalog, public
+as $$
+declare
+  v_policy text;
+  v_basic jsonb;
+  v_zone text;
+  v_request tstzrange;
+  v_shifts tstzrange[] := array[]::tstzrange[];
+  v_coverage tstzmultirange;
+  v_start timestamptz;
+  v_end timestamptz;
+  v_local timestamp;
+  v_utc timestamptz;
+  v_i integer;
+  v_possible_start timestamptz;
+  v_possible_end timestamptz;
+  v_min timestamptz;
+  v_max timestamptz;
+  r record;
+begin
+  if p_tenant is null or p_staff is null or p_start is null or p_end is null
+    or not isfinite(p_start) or not isfinite(p_end) or p_end <= p_start then return false; end if;
+  select s.availability_policy into v_policy from public.staff s
+    where s.tenant_id=p_tenant and s.id=p_staff and s.active and s.bookable;
+  if not found or v_policy is null or v_policy not in ('DEFAULT_AVAILABLE','EXPLICIT_ONLY') then return false; end if;
+  select ts.basic into v_basic from public.tenant_settings ts where ts.tenant_id=p_tenant;
+  -- A missing legacy settings row/key alone uses the canonical tenant default.
+  if v_basic is not null and jsonb_typeof(v_basic) <> 'object' then return false; end if;
+  if v_basic ? 'timezone' then
+    if jsonb_typeof(v_basic->'timezone') <> 'string' then return false; end if;
+    v_zone := btrim(v_basic->>'timezone');
+  else v_zone := 'Asia/Taipei'; end if;
+  if v_zone is null or v_zone='' or not exists
+    (select 1 from pg_catalog.pg_timezone_names where name=v_zone) then return false; end if;
+  v_request := tstzrange(p_start,p_end,'[)');
+
+  if exists (select 1 from public.bookings b where b.tenant_id=p_tenant and b.staff_id=p_staff
+    and b.status in ('PENDING','CONFIRMED')
+    and (b.end_at <= b.start_at or not isfinite(b.start_at) or not isfinite(b.end_at)
+      or (b.start_at < p_end and b.end_at > p_start))) then return false; end if;
+
+  -- UTC intervals in the cache are authoritative, including retained last-good
+  -- events after ERROR. No invented freshness TTL or provider call here.
+  if exists (select 1 from public.external_calendar_events e
+    join public.external_calendars c on c.id=e.external_calendar_id
+    where c.tenant_id=p_tenant and c.active and (c.staff_id is null or c.staff_id=p_staff)
+    and (e.tenant_id<>p_tenant or e.end_at<=e.start_at
+      or not isfinite(e.start_at) or not isfinite(e.end_at)
+      or (e.start_at<p_end and e.end_at>p_start))) then return false; end if;
+  if exists (select 1 from public.external_calendar_events e
+    join public.external_calendars c on c.id=e.external_calendar_id
+    where e.tenant_id=p_tenant and c.tenant_id<>p_tenant
+      and c.active and (c.staff_id is null or c.staff_id=p_staff)) then return false; end if;
+
+  if exists (select 1 from public.block_times b where b.tenant_id=p_tenant
+    and (b.staff_id is null or b.staff_id=p_staff)
+    and (b.end_at<=b.start_at or not isfinite(b.start_at) or not isfinite(b.end_at)
+      or b.recurrence not in ('SINGLE','WEEKLY')
+      or (b.recurrence='WEEKLY' and (b.day_of_week is null or b.day_of_week not between 0 and 6))
+      or (b.recurrence='SINGLE' and b.start_at<p_end and b.end_at>p_start))) then return false; end if;
+
+  -- Each local wall-clock interval is resolved in the tenant zone. PostgreSQL
+  -- silently chooses offsets in gaps/folds; roundtrip and alternative-offset
+  -- checks below reject those inputs instead of reporting available.
+  for r in
+    select 'SHIFT'::text kind, sh.work_date+sh.start_time local_start,
+      sh.work_date+sh.end_time local_end, null::interval elapsed, false whole_day, true valid
+      from public.shifts sh where sh.tenant_id=p_tenant and sh.staff_id=p_staff
+        and v_policy='EXPLICIT_ONLY'
+    union all
+    select 'BLOCK', case when b.full_day then g.day::date::timestamp
+        else g.day::date+(b.start_at at time zone v_zone)::time end,
+      case when b.full_day then (g.day::date+1)::timestamp else null::timestamp end,
+      case when b.full_day then null::interval else b.end_at-b.start_at end, b.full_day, true
+      from public.block_times b
+      cross join lateral generate_series(
+        ((p_start at time zone v_zone)::date-ceil(extract(epoch from (b.end_at-b.start_at))/86400)::integer-2)::timestamp,
+        ((p_end at time zone v_zone)::date)::timestamp, interval '1 day') g(day)
+      where b.tenant_id=p_tenant and (b.staff_id is null or b.staff_id=p_staff)
+        and b.recurrence='WEEKLY' and extract(dow from g.day)=b.day_of_week
+        and g.day::date >= (b.start_at at time zone v_zone)::date
+    union all
+    select 'DEPARTURE', d.departs_on+coalesce(d.start_time,'00:00'::time),
+      case when d.start_time is null or d.duration_minutes_snapshot is null or d.duration_minutes_snapshot<=0
+        then (d.departs_on+1)::timestamp else null::timestamp end,
+      case when d.start_time is not null and d.duration_minutes_snapshot>0
+        then make_interval(mins=>d.duration_minutes_snapshot) else null::interval end,
+      d.start_time is null or d.duration_minutes_snapshot is null or d.duration_minutes_snapshot<=0,
+      d.tenant_id=p_tenant and pl.tenant_id=p_tenant and pl.trip_id=d.trip_id
+      from public.trip_departure_staff ds
+      left join public.trip_departures d on d.id=ds.departure_id
+      left join public.trip_plans pl on pl.id=d.plan_id
+      where ds.tenant_id=p_tenant and ds.staff_id=p_staff
+        and (d.status is null or d.status<>'CANCELLED')
+  loop
+    if r.valid is distinct from true or r.local_start is null then return false; end if;
+    -- Unknown duration is conservatively the tenant calendar day, not 24h UTC.
+    if r.whole_day then r.local_start := r.local_start::date::timestamp; end if;
+    if r.kind='SHIFT' and r.local_end<=r.local_start then return false; end if;
+    -- A wall-time anomaly matters only if this row can affect the requested
+    -- interval. Bound all offset candidates before rejecting gaps/folds: old
+    -- or future ambiguous shifts/departures must not poison unrelated dates.
+    -- Elapsed durations are retained, so multi-day occupancy is not truncated.
+    for v_i in 1..(case when r.local_end is null then 1 else 2 end) loop
+      v_local := case when v_i=1 then r.local_start else r.local_end end;
+      select min(candidate.instant), max(candidate.instant) into v_min,v_max
+        from unnest(array[v_local::date-1,v_local::date,v_local::date+1]) sample(day)
+        cross join lateral (select sample.day::timestamp at time zone v_zone instant) observed
+        cross join lateral (select (observed.instant at time zone v_zone)
+          -(observed.instant at time zone 'UTC') utc_offset) offsets
+        cross join lateral (select (v_local-offsets.utc_offset) at time zone 'UTC' instant) candidate;
+      v_min := least(v_min,v_local at time zone v_zone);
+      v_max := greatest(v_max,v_local at time zone v_zone);
+      if v_i=1 then
+        v_possible_start:=v_min;
+        v_possible_end:=v_max+r.elapsed;
+      else v_possible_end:=v_max; end if;
+    end loop;
+    if v_possible_end<=p_start or v_possible_start>=p_end then continue; end if;
+    for v_i in 1..(case when r.local_end is null then 1 else 2 end) loop
+      v_local := case when v_i=1 then r.local_start else r.local_end end;
+      v_utc := v_local at time zone v_zone;
+      if not isfinite(v_local) or (v_utc at time zone v_zone)<>v_local then return false; end if;
+      -- Obtain actual offsets from the surrounding tenant calendar dates,
+      -- rather than guessing a maximum number of repeated minutes. This also
+      -- finds the +11/-12 offsets of the Kwajalein 1969 23-hour backward change.
+      -- An offset is only evidence of ambiguity when its constructed UTC
+      -- candidate roundtrips to this exact wall clock and differs from v_utc.
+      if exists (
+        select 1 from unnest(array[v_local::date-1,v_local::date,v_local::date+1]) sample(day)
+        cross join lateral (select sample.day::timestamp at time zone v_zone instant) observed
+        cross join lateral (select (observed.instant at time zone v_zone)
+          -(observed.instant at time zone 'UTC') utc_offset) offsets
+        cross join lateral (select (v_local-offsets.utc_offset) at time zone 'UTC' instant) candidate
+        where candidate.instant<>v_utc and (candidate.instant at time zone v_zone)=v_local
+      ) then return false; end if;
+      if v_i=1 then v_start:=v_utc; else v_end:=v_utc; end if;
+    end loop;
+    if r.local_end is null then v_end:=v_start+r.elapsed; end if;
+    if v_end is null or v_end<=v_start or not isfinite(v_end) then return false; end if;
+    if r.kind='SHIFT' then v_shifts:=array_append(v_shifts,tstzrange(v_start,v_end,'[)'));
+    elsif v_start<p_end and v_end>p_start then return false; end if;
+  end loop;
+  if v_policy='EXPLICIT_ONLY' then
+    select range_agg(x) into v_coverage from unnest(v_shifts) x;
+    return coalesce(v_request <@ v_coverage,false);
+  end if;
+  return true;
+end;
+$$;
+
+revoke all on function public.guide_staff_interval_available(uuid,uuid,timestamptz,timestamptz) from public,anon,authenticated;
+grant execute on function public.guide_staff_interval_available(uuid,uuid,timestamptz,timestamptz) to service_role;
+
+-- ------------------------------------------------------------------ create_instant_tour_order
+-- 全程單一交易：任一步 raise（含 PRICE_CHANGED／SEATS_UNAVAILABLE）整筆回滾，不留私人團或空單。
+-- security invoker：由 service_role（公開 route 的 server）呼叫，不以函式 owner 放大權限（0136 教訓）。
+create or replace function public.create_instant_tour_order(
+  p_tenant          uuid,
+  p_plan            uuid,
+  p_starts_at       timestamptz,
+  p_party_size      integer,
+  p_customer        uuid,
+  p_contact         jsonb,
+  p_note            text,
+  p_idempotency_key text,
+  p_expected_total  numeric,
+  p_order_no        text,
+  p_source          public.tour_order_source,
+  p_payment_method  uuid
+) returns jsonb
+language plpgsql security invoker set search_path = pg_catalog, public
+as $$
+declare
+  v_plan    record;
+  v_zone    text;
+  v_local   timestamp;
+  v_time    time;
+  v_day     date;
+  v_now     timestamptz := now();
+  v_end     timestamptz;
+  v_prev    record;
+  v_slot    record;
+  v_slot_found boolean;
+  v_dep     uuid;
+  v_order   uuid;
+  v_hold    timestamptz;
+begin
+  if p_tenant is null or p_plan is null or p_starts_at is null or not isfinite(p_starts_at)
+     or p_party_size is null or p_party_size < 1
+     or p_order_no is null or length(btrim(p_order_no)) = 0
+     or p_expected_total is null or p_expected_total < 0
+     or p_idempotency_key is null or length(p_idempotency_key) not between 1 and 128 then
+    raise exception 'INVALID_ARGUMENTS' using errcode = 'P0003';
+  end if;
+
+  v_zone := public.tenant_timezone_name(p_tenant);
+
+  -- 冪等：同 (tenant, key) 序列化；已有訂單回原單（不重複扣名額、不重複建團）。
+  perform pg_advisory_xact_lock(hashtextextended('instant-order:' || p_tenant::text || ':' || p_idempotency_key, 0));
+  select o.id, o.plan_id, o.party_size, o.departure_id, o.hold_expires_at, o.total_amount,
+         d.departs_on, d.start_time
+    into v_prev
+    from public.tour_orders o
+    join public.trip_departures d on d.id = o.departure_id and d.tenant_id = o.tenant_id
+   where o.tenant_id = p_tenant and o.idempotency_key = p_idempotency_key;
+  if found then
+    if v_prev.plan_id <> p_plan or v_prev.party_size <> p_party_size
+       or v_prev.start_time is null
+       or ((v_prev.departs_on + v_prev.start_time) at time zone v_zone) <> p_starts_at then
+      raise exception 'IDEMPOTENCY_KEY_REUSED' using errcode = 'P0025';
+    end if;
+    return jsonb_build_object('orderId', v_prev.id, 'departureId', v_prev.departure_id,
+      'holdExpiresAt', v_prev.hold_expires_at, 'totalAmount', v_prev.total_amount, 'deduped', true);
+  end if;
+
+  select p.id, p.trip_id, p.sales_mode, p.participation_mode, p.active, p.max_party,
+         p.duration_minutes, p.instant_start_times, p.instant_min_lead_minutes,
+         p.instant_max_advance_days, p.instant_guide_staff_id, p.request_hold_hours,
+         t.status as trip_status
+    into v_plan
+    from public.trip_plans p
+    join public.trips t on t.id = p.trip_id and t.tenant_id = p.tenant_id
+   where p.id = p_plan and p.tenant_id = p_tenant
+   for share of p;
+  if not found then
+    raise exception 'PLAN_NOT_FOUND' using errcode = 'P0002';
+  end if;
+  if v_plan.sales_mode <> 'INSTANT' or not v_plan.active or v_plan.trip_status <> 'PUBLISHED' then
+    raise exception 'INSTANT_NOT_AVAILABLE' using errcode = 'P0023';
+  end if;
+  if v_plan.participation_mode <> 'PRIVATE' or v_plan.instant_start_times is null
+     or cardinality(v_plan.instant_start_times) = 0 or v_plan.instant_guide_staff_id is null
+     or v_plan.duration_minutes is null or v_plan.duration_minutes <= 0
+     or v_plan.request_hold_hours is null or v_plan.request_hold_hours <= 0 then
+    raise exception 'INSTANT_NOT_CONFIGURED' using errcode = 'P0024';
+  end if;
+
+  -- 起始時刻：租戶時區牆上時間必須整分、可往返、非 fold，且在方案清單內。
+  v_local := p_starts_at at time zone v_zone;
+  if v_local <> date_trunc('minute', v_local)
+     or (v_local at time zone v_zone) is distinct from p_starts_at
+     or public.instant_wall_clock_ambiguous(v_zone, v_local, p_starts_at) then
+    raise exception 'INVALID_START' using errcode = 'P0021', detail = 'WALL_CLOCK';
+  end if;
+  v_time := v_local::time;
+  v_day := v_local::date;
+  if not (v_time = any (v_plan.instant_start_times)) then
+    raise exception 'INVALID_START' using errcode = 'P0021', detail = 'NOT_IN_START_TIMES';
+  end if;
+  if p_starts_at < v_now + make_interval(mins => v_plan.instant_min_lead_minutes) then
+    raise exception 'INVALID_START' using errcode = 'P0021', detail = 'LEAD_TIME';
+  end if;
+  if v_day > (v_now at time zone v_zone)::date + v_plan.instant_max_advance_days then
+    raise exception 'INVALID_START' using errcode = 'P0021', detail = 'BEYOND_WINDOW';
+  end if;
+
+  v_end := p_starts_at + make_interval(mins => v_plan.duration_minutes);
+
+  -- 導遊鎖：與 constraint trigger 同一把 (tenant, staff) advisory lock，之後的檢查與寫入對所有 writer 序列化。
+  perform public.lock_staff_occupancy(p_tenant, v_plan.instant_guide_staff_id);
+
+  select d.id, d.status, d.seats_booked into v_slot
+    from public.trip_departures d
+   where d.tenant_id = p_tenant and d.plan_id = p_plan and d.departs_on = v_day and d.start_time = v_time
+   for update;
+  v_slot_found := found;
+  if v_slot_found and (v_slot.status <> 'CANCELLED' or v_slot.seats_booked <> 0) then
+    raise exception 'SLOT_TAKEN' using errcode = 'P0022';
+  end if;
+
+  if not public.guide_staff_interval_available(p_tenant, v_plan.instant_guide_staff_id, p_starts_at, v_end) then
+    raise exception 'STAFF_OCCUPIED' using errcode = 'P0020', detail = 'UNAVAILABLE';
+  end if;
+
+  if v_slot_found then
+    -- unique (tenant, plan, departs_on, start_time) 不放寬：重用同鍵已取消的私人團。
+    -- 先換導遊（團仍 CANCELLED，trigger 不檢查），最後 reopen 才由 trigger 重驗占用。
+    v_dep := v_slot.id;
+    update public.trip_departures
+       set capacity = v_plan.max_party, seats_booked = 0,
+           duration_minutes_snapshot = v_plan.duration_minutes,
+           formation_status = 'FORMED', min_to_depart_snapshot = 1,
+           formation_deadline_at = null, formed_at = v_now, formed_by = 'SYSTEM',
+           formed_participants = p_party_size
+     where id = v_dep and tenant_id = p_tenant;
+    perform public.replace_trip_departure_staff(p_tenant, v_dep, v_plan.instant_guide_staff_id, '{}'::uuid[]);
+    update public.trip_departures set status = 'OPEN' where id = v_dep and tenant_id = p_tenant;
+  else
+    begin
+      insert into public.trip_departures (
+        tenant_id, trip_id, plan_id, departs_on, start_time, capacity, seats_booked, status, note,
+        formation_status, min_to_depart_snapshot, formed_at, formed_by, formed_participants,
+        duration_minutes_snapshot
+      ) values (
+        p_tenant, v_plan.trip_id, p_plan, v_day, v_time, v_plan.max_party, 0, 'OPEN', '',
+        'FORMED', 1, v_now, 'SYSTEM', p_party_size, v_plan.duration_minutes
+      ) returning id into v_dep;
+    exception when unique_violation then
+      raise exception 'SLOT_TAKEN' using errcode = 'P0022';
+    end;
+    perform public.replace_trip_departure_staff(p_tenant, v_dep, v_plan.instant_guide_staff_id, '{}'::uuid[]);
+  end if;
+
+  -- Q3：建單即 snapshot 保留期限（單一來源 trip_plans.request_hold_hours）。
+  v_hold := v_now + (v_plan.request_hold_hours::double precision * interval '1 hour');
+  v_order := public.create_tour_order_quoted(
+    p_tenant, p_order_no, v_dep, p_party_size, p_customer, p_contact, p_source,
+    p_payment_method, p_note, v_hold, p_expected_total
+  );
+  update public.tour_orders set idempotency_key = p_idempotency_key
+   where id = v_order and tenant_id = p_tenant;
+
+  -- 私人團：名額已由 create_tour_order 鎖住，關閉以免他人加入。
+  update public.trip_departures set status = 'CLOSED' where id = v_dep and tenant_id = p_tenant;
+
+  return jsonb_build_object('orderId', v_order, 'departureId', v_dep, 'holdExpiresAt', v_hold,
+    'startsAt', p_starts_at, 'endsAt', v_end, 'deduped', false);
+end;
+$$;
+
+revoke all on function public.create_instant_tour_order(
+  uuid, uuid, timestamptz, integer, uuid, jsonb, text, text, numeric, text, public.tour_order_source, uuid
+) from public;
+revoke all on function public.create_instant_tour_order(
+  uuid, uuid, timestamptz, integer, uuid, jsonb, text, text, numeric, text, public.tour_order_source, uuid
+) from anon, authenticated;
+grant execute on function public.create_instant_tour_order(
+  uuid, uuid, timestamptz, integer, uuid, jsonb, text, text, numeric, text, public.tour_order_source, uuid
+) to service_role;
+
+-- ------------------------------------------------------------------ cancel／expire：釋放 INSTANT 私人團
+-- 簽章與 0087／0100／0111 相同，本體以 0111 為基礎，僅在訂單取消後加「INSTANT 私人團無其他有效訂單 →
+-- CANCELLED」。CANCELLED 的團不再被 0135 predicate／占用 trigger 視為占用，導遊時段重新可售。
+-- release_seats 仍只在 seats_reserved 為真時呼叫（0111 B1），不重複釋放。
+create or replace function public.cancel_tour_order(
+  p_tenant uuid,
+  p_order  uuid,
+  p_reason text
+) returns boolean as $$
+declare
+  v_order record;
+begin
+  select id, departure_id, party_size, status, seats_reserved into v_order
+    from public.tour_orders
+   where id = p_order and tenant_id = p_tenant
+   for update;
+  if not found then
+    return false;
+  end if;
+  if v_order.status in ('CANCELLED', 'COMPLETED') then
+    return false;
+  end if;
+
+  update public.tour_orders
+     set status = 'CANCELLED',
+         cancel_reason = coalesce(p_reason, ''),
+         seats_reserved = false,
+         updated_at = now()
+   where id = p_order and tenant_id = p_tenant;
+
+  if v_order.seats_reserved then
+    perform public.release_seats(v_order.departure_id, v_order.party_size);
+  end if;
+
+  update public.trip_departures d
+     set status = 'CANCELLED'
+   where d.id = v_order.departure_id and d.tenant_id = p_tenant and d.status <> 'CANCELLED'
+     and exists (select 1 from public.trip_plans pl
+                  where pl.id = d.plan_id and pl.tenant_id = d.tenant_id
+                    and pl.sales_mode = 'INSTANT' and pl.participation_mode = 'PRIVATE')
+     and not exists (select 1 from public.tour_orders o2
+                      where o2.departure_id = d.id and o2.tenant_id = d.tenant_id
+                        and o2.status <> 'CANCELLED');
+  return true;
+end; $$ language plpgsql security definer set search_path = public;
+
+create or replace function public.expire_tour_order(
+  p_tenant uuid,
+  p_order  uuid,
+  p_reason text
+) returns boolean as $$
+declare
+  v_order record;
+begin
+  select id, departure_id, party_size, seats_reserved into v_order
+    from public.tour_orders
+   where id = p_order
+     and tenant_id = p_tenant
+     and status = 'PENDING'
+     and hold_expires_at is not null
+     and hold_expires_at < now()
+   for update;
+
+  if not found then
+    return false;
+  end if;
+
+  update public.tour_orders
+     set status = 'CANCELLED',
+         cancel_reason = coalesce(p_reason, ''),
+         seats_reserved = false,
+         updated_at = now()
+   where id = p_order and tenant_id = p_tenant;
+
+  if v_order.seats_reserved then
+    perform public.release_seats(v_order.departure_id, v_order.party_size);
+  end if;
+
+  update public.trip_departures d
+     set status = 'CANCELLED'
+   where d.id = v_order.departure_id and d.tenant_id = p_tenant and d.status <> 'CANCELLED'
+     and exists (select 1 from public.trip_plans pl
+                  where pl.id = d.plan_id and pl.tenant_id = d.tenant_id
+                    and pl.sales_mode = 'INSTANT' and pl.participation_mode = 'PRIVATE')
+     and not exists (select 1 from public.tour_orders o2
+                      where o2.departure_id = d.id and o2.tenant_id = d.tenant_id
+                        and o2.status <> 'CANCELLED');
+  return true;
+end; $$ language plpgsql security definer set search_path = public;
+
+-- ------------------------------------------------------------------ 後置斷言（PB-026／PB-033）
+do $$
+declare
+  v_def text;
+  v_n   int;
+  r     record;
+begin
+  -- ① 三個 writer 的 trigger 都在，且是 constraint trigger。
+  for r in select * from (values
+    ('public.bookings'::regclass, 'trg_bookings_staff_occupancy'),
+    ('public.trip_departure_staff'::regclass, 'trg_trip_departure_staff_occupancy'),
+    ('public.trip_departures'::regclass, 'trg_trip_departures_staff_occupancy')
+  ) as e(rel, tg) loop
+    if not exists (select 1 from pg_trigger t where t.tgrelid = r.rel and t.tgname = r.tg
+        and t.tgconstraint <> 0 and not t.tgisinternal and t.tgenabled <> 'D') then
+      raise exception '0138 後置斷言失敗：% 未建立或未啟用', r.tg;
+    end if;
+  end loop;
+  if not exists (select 1 from pg_trigger t where t.tgrelid = 'public.trip_departures'::regclass
+      and t.tgname = 'trg_trip_departures_duration_snapshot' and not t.tgisinternal) then
+    raise exception '0138 後置斷言失敗：duration snapshot trigger 未建立';
+  end if;
+
+  -- ② RPC 唯一、security invoker、僅 service_role 可執行。
+  select count(*) into v_n from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'create_instant_tour_order';
+  if v_n <> 1 then raise exception '0138 後置斷言失敗：create_instant_tour_order 應唯一，實際 %', v_n; end if;
+  for r in select p.oid, p.prosecdef from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+            where n.nspname = 'public' and p.proname = 'create_instant_tour_order' loop
+    if r.prosecdef then raise exception '0138 後置斷言失敗：create_instant_tour_order 不得為 security definer'; end if;
+    v_def := pg_get_functiondef(r.oid);
+    if v_def !~* 'create_tour_order_quoted' or v_def !~* 'guide_staff_interval_available'
+       or v_def !~* 'lock_staff_occupancy' or v_def !~* 'request_hold_hours'
+       or v_def !~* 'replace_trip_departure_staff' or v_def !~* 'idempotency_key' then
+      raise exception '0138 後置斷言失敗：create_instant_tour_order 本體缺少必要步驟';
+    end if;
+    if has_function_privilege('anon', r.oid, 'EXECUTE') or has_function_privilege('authenticated', r.oid, 'EXECUTE')
+       or not has_function_privilege('service_role', r.oid, 'EXECUTE') then
+      raise exception '0138 後置斷言失敗：create_instant_tour_order ACL 必須只給 service_role';
+    end if;
+  end loop;
+
+  -- ③ 0135 predicate 已改讀 snapshot，ACL 維持 service_role only。
+  select pg_get_functiondef('public.guide_staff_interval_available(uuid,uuid,timestamptz,timestamptz)'::regprocedure) into v_def;
+  if v_def !~* 'duration_minutes_snapshot' or v_def ~* 'pl\.duration_minutes' then
+    raise exception '0138 後置斷言失敗：guide_staff_interval_available 未改讀 duration_minutes_snapshot';
+  end if;
+  if has_function_privilege('anon', 'public.guide_staff_interval_available(uuid,uuid,timestamptz,timestamptz)'::regprocedure, 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.guide_staff_interval_available(uuid,uuid,timestamptz,timestamptz)'::regprocedure, 'EXECUTE') then
+    raise exception '0138 後置斷言失敗：guide_staff_interval_available 不得對 anon／authenticated 開放';
+  end if;
+
+  -- ④ cancel／expire 簽章唯一，且同時保留 seats_reserved 守門與 INSTANT 釋放。
+  for r in select * from (values ('cancel_tour_order'), ('expire_tour_order')) as e(fn) loop
+    select count(*) into v_n from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = r.fn;
+    if v_n <> 1 then raise exception '0138 後置斷言失敗：% 應唯一，實際 %', r.fn, v_n; end if;
+    select pg_get_functiondef(p.oid) into v_def from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = r.fn;
+    if v_def !~* 'seats_reserved' or v_def !~* '''INSTANT''' or v_def !~* '''CANCELLED''' then
+      raise exception '0138 後置斷言失敗：% 缺少 seats_reserved 守門或 INSTANT 私人團釋放', r.fn;
+    end if;
+    if exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public' and p.proname = r.fn
+          and (has_function_privilege('anon', p.oid, 'EXECUTE') or has_function_privilege('authenticated', p.oid, 'EXECUTE')
+               or not has_function_privilege('service_role', p.oid, 'EXECUTE'))) then
+      raise exception '0138 後置斷言失敗：% ACL 被改動（應只給 service_role）', r.fn;
+    end if;
+  end loop;
+
+  -- ⑤ 冪等唯一索引存在。
+  if not exists (select 1 from pg_indexes where schemaname = 'public' and tablename = 'tour_orders'
+      and indexname = 'ux_tour_orders_tenant_idempotency') then
+    raise exception '0138 後置斷言失敗：ux_tour_orders_tenant_idempotency 不存在';
+  end if;
+end $$;
+
+commit;

@@ -702,6 +702,13 @@
       ],
       "classification": "EXACT",
       "evidence": "#755 0137 受控釋出（releaseId issue755-0d56-s0137-20261019031547，execute run 39201977122）已套用至正式庫（#749 create_tour_order_quoted）；provider ledger version 20261019031547。正式庫 ledger 快照已於 2026-10-19T05:01:50Z 重新擷取（68 筆），本筆 ledger row 名稱與 repo 檔名完全相同。"
+    },
+    {
+      "repoFile": "0138_issue_46_instant_occupancy",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#46 INSTANT 自選時間 slice 1（Owner 2026-10-23 Q1–Q4 裁示）：新增 trip_departures.duration_minutes_snapshot、trip_plans INSTANT 規則欄位、tour_orders.idempotency_key；bookings／trip_departure_staff／trip_departures 的共用占用 constraint trigger（STAFF_OCCUPIED）；service_role-only 的 SECURITY INVOKER create_instant_tour_order；cancel_tour_order／expire_tour_order 釋放 INSTANT 私人團；0135 predicate 改讀 snapshot。僅 SOURCE，尚未套用任何環境；套用順序 LOCAL_ISOLATED → canonical TEST，Production 需 Owner 具名授權。"
     }
   ]
 }
