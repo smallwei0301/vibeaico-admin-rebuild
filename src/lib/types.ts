@@ -516,6 +516,15 @@ export type TripPlan = {
   minToDepart?: number;
   /** 成團截止日＝出發日前 N 天。預設 7；0 代表可募集到出發日。 */
   formationDeadlineDaysBefore?: number;
+  /* ---- #46：INSTANT 自選時間規則（0138）。僅 salesMode = 'INSTANT' 使用；舊資料未帶。 ---- */
+  /** 固定起始時刻清單（店家時區 'HH:mm'）。INSTANT 方案必須非空，否則 RPC 以 INSTANT_NOT_CONFIGURED 拒絕。 */
+  instantStartTimes?: string[];
+  /** 最短提前量（分鐘），預設 1440（24 小時）。 */
+  instantMinLeadMinutes?: number;
+  /** 可售天數（店家時區日曆日），預設 60。 */
+  instantMaxAdvanceDays?: number;
+  /** 指定單一導遊（staff id）；不自動分派。 */
+  instantGuideStaffId?: string | null;
 };
 
 /** 販售季節（月/日區間，可跨年） */

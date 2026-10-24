@@ -95,11 +95,20 @@ export function departureInterval(input: {
   departsOn: string;
   startTime: string | null;
   durationHours: number | null;
+  /**
+   * #46：團次建立時 snapshot 的占用分鐘數（`trip_departures.duration_minutes_snapshot`）。
+   * 有帶（含 null）時優先於 `durationHours`——與 0138 之後的 `guide_staff_interval_available`
+   * 同一規則：snapshot 為 null＝時長未知，整日占用；不再回頭讀行程目前的 duration_hours。
+   * 未帶（undefined）時維持舊行為，供「尚未建立、沒有 snapshot」的候選時段使用。
+   */
+  durationMinutes?: number | null;
 }): Interval & { wholeDay: boolean } {
   const dayStart = taipeiDayStartMs(input.departsOn);
-  const minutes = input.durationHours != null && input.durationHours > 0
-    ? Math.round(input.durationHours * 60)
-    : null;
+  const minutes = input.durationMinutes !== undefined
+    ? (input.durationMinutes != null && input.durationMinutes > 0 ? Math.round(input.durationMinutes) : null)
+    : (input.durationHours != null && input.durationHours > 0
+      ? Math.round(input.durationHours * 60)
+      : null);
   if (!input.startTime || minutes == null) {
     return { start: dayStart, end: dayStart + DAY_MS, wholeDay: true };
   }
@@ -133,7 +142,7 @@ export async function loadStaffLoad(
     supabase.from('shifts').select('staff_id, work_date, start_time, end_time')
       .eq('tenant_id', tenantId).gte('work_date', fromDate).lte('work_date', toDate),
     supabase.from('trip_departure_staff')
-      .select('departure_id, staff_id, trip_departures!inner(id, departs_on, start_time, status, trips!inner(duration_hours))')
+      .select('departure_id, staff_id, trip_departures!inner(id, departs_on, start_time, status, duration_minutes_snapshot, trips!inner(duration_hours))')
       .eq('tenant_id', tenantId)
       .neq('trip_departures.status', 'CANCELLED')
       .gte('trip_departures.departs_on', fromDate)
@@ -162,7 +171,7 @@ export async function loadStaffLoad(
   const departures: StaffLoad['departures'] = [];
   for (const row of (assignRes.data ?? []) as Array<Record<string, unknown>>) {
     const dep = (Array.isArray(row.trip_departures) ? row.trip_departures[0] : row.trip_departures) as
-      undefined | { id: string; departs_on: string; start_time: string | null; trips?: unknown };
+      undefined | { id: string; departs_on: string; start_time: string | null; duration_minutes_snapshot?: number | null; trips?: unknown };
     if (!dep) continue;
     if (options.excludeDepartureId && dep.id === options.excludeDepartureId) continue;
     const trip = (Array.isArray(dep.trips) ? dep.trips[0] : dep.trips) as undefined | { duration_hours: number | null };
@@ -170,6 +179,8 @@ export async function loadStaffLoad(
       departsOn: dep.departs_on,
       startTime: dep.start_time == null ? null : String(dep.start_time).slice(0, 5),
       durationHours: trip?.duration_hours ?? null,
+      // #46：snapshot 優先（與 0138 的 DB predicate／占用 trigger 一致）。
+      durationMinutes: dep.duration_minutes_snapshot ?? null,
     });
     departures.push({
       departureId: dep.id,
