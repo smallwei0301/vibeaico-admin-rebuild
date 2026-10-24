@@ -129,7 +129,8 @@ describe('#46 0138 INSTANT occupancy migration 原始碼守門', () => {
     for (const name of ['cancel_tour_order', 'expire_tour_order']) {
       const body = fn(name);
       expect(body).toMatch(/if v_order\.seats_reserved then/);
-      expect(body).toMatch(/pl\.sales_mode = 'INSTANT' and pl\.participation_mode = 'PRIVATE'/);
+      expect(body).toMatch(/and d\.instant_private\n/);
+      expect(body).not.toMatch(/pl\.sales_mode|pl\.participation_mode/); // 不看方案「現在」的設定
       expect(body).toMatch(/set status = 'CANCELLED'/);
       expect(body).toMatch(/not exists \(select 1 from public\.tour_orders o2/);
     }
@@ -224,5 +225,24 @@ describe('#46 0138 INSTANT occupancy migration 原始碼守門', () => {
     expect(body).toMatch(/v_canonical is null then return false;/);
     expect(body).toMatch(/v_zone := v_canonical;/);
     expect(body).not.toMatch(/where name=v_zone/);
+  });
+
+  it('P2-a：instant_private 持久標記由 create_instant_tour_order 建團／重用時設 true，預設 false', () => {
+    expect(code).toMatch(/add column if not exists instant_private boolean not null default false;/);
+    const body = fn('create_instant_tour_order');
+    expect(body).toMatch(/instant_private = true/);
+    expect(body).toMatch(/duration_minutes_snapshot, instant_private\s+\) values \([\s\S]*?v_minutes, true\s+\) returning id into v_dep/);
+  });
+
+  it('P2-b：指派 trigger 先 for no key update 鎖團次列再取 staff 鎖；RPC 鎖序同為團次列 → 導遊', () => {
+    const body = fn('trg_trip_departure_staff_occupancy');
+    expect(body).toMatch(/from public\.trip_departures d where d\.id = new\.departure_id and d\.tenant_id = new\.tenant_id\s+for no key update;/);
+    expect(body.indexOf('for no key update')).toBeLessThan(body.indexOf('lock_staff_occupancy'));
+    const rpc = fn('create_instant_tour_order');
+    const firstSlotLock = rpc.search(/perform 1 from public\.trip_departures d[\s\S]*?for update;/);
+    expect(firstSlotLock).toBeGreaterThan(-1);
+    expect(firstSlotLock).toBeLessThan(rpc.indexOf('perform public.lock_staff_occupancy'));
+    // 取得導遊鎖後必須重讀並 for update（等鎖期間他人可能已提交同鍵團次）。
+    expect(rpc.indexOf('perform public.lock_staff_occupancy')).toBeLessThan(rpc.search(/select d\.id, d\.status, d\.seats_booked into v_slot[\s\S]*?for update;/));
   });
 });

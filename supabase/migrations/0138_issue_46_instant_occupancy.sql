@@ -63,6 +63,9 @@ end $$;
 
 -- ------------------------------------------------------------------ 欄位
 alter table public.trip_departures add column if not exists duration_minutes_snapshot integer;
+-- 持久標記：這個團次是 create_instant_tour_order 建立（或重用）的 INSTANT 私人團。cancel／expire 依此釋放，
+-- 不看方案「現在」的 sales_mode／participation_mode（店家建單後改方案不會讓私人團永遠不被釋放）。
+alter table public.trip_departures add column if not exists instant_private boolean not null default false;
 alter table public.trip_plans
   add column if not exists instant_start_times time[],
   add column if not exists instant_min_lead_minutes integer not null default 1440,
@@ -138,6 +141,7 @@ declare r record; v_actual text;
 begin
   for r in select * from (values
     ('trip_departures','duration_minutes_snapshot','integer'),
+    ('trip_departures','instant_private','boolean'),
     ('trip_plans','instant_start_times','ARRAY'),
     ('trip_plans','instant_min_lead_minutes','integer'),
     ('trip_plans','instant_max_advance_days','integer'),
@@ -366,8 +370,12 @@ begin
   if tg_op = 'UPDATE' and old.staff_id = new.staff_id and old.departure_id = new.departure_id then
     return null;
   end if;
+  -- 先鎖團次列（FOR NO KEY UPDATE，與改時間／狀態的 UPDATE 互斥），再取 staff advisory lock。
+  -- 全檔鎖序一致：團次列 → staff advisory（團次 UPDATE trigger、replace_trip_departure_staff、
+  -- create_instant_tour_order 皆同）。否則「A 指派尚未 commit、B 同時改同一團時間」會各自驗到舊狀態而漏判。
   select d.id, d.departs_on, d.start_time, d.duration_minutes_snapshot, d.status into v_dep
-    from public.trip_departures d where d.id = new.departure_id and d.tenant_id = new.tenant_id;
+    from public.trip_departures d where d.id = new.departure_id and d.tenant_id = new.tenant_id
+     for no key update;
   if not found or v_dep.status = 'CANCELLED' then return null; end if;
   v_zone := public.tenant_timezone_name(new.tenant_id); -- 只算一次，下面的範圍與 assert 共用
   -- 一次指派多人時（AFTER ROW 於語句結束後觸發，此時同團全部列皆可見）先依 staff id 排序對全團取鎖，
@@ -740,9 +748,14 @@ begin
   v_minutes := public.departure_effective_minutes(null, v_plan.duration_minutes, v_plan.duration_hours);
   v_end := p_starts_at + make_interval(mins => v_minutes);
 
+  -- 鎖序：團次列（若已存在）→ 導遊 advisory lock，與 trigger／replace_trip_departure_staff 一致，避免死結。
+  perform 1 from public.trip_departures d
+   where d.tenant_id = p_tenant and d.plan_id = p_plan and d.departs_on = v_day and d.start_time = v_time
+   for update;
   -- 導遊鎖：與 constraint trigger 同一把 (tenant, staff) advisory lock，之後的檢查與寫入對所有 writer 序列化。
   perform public.lock_staff_occupancy(p_tenant, v_plan.instant_guide_staff_id);
 
+  -- 取得導遊鎖後重讀（等鎖期間他人可能已提交同鍵團次）。
   select d.id, d.status, d.seats_booked into v_slot
     from public.trip_departures d
    where d.tenant_id = p_tenant and d.plan_id = p_plan and d.departs_on = v_day and d.start_time = v_time
@@ -770,7 +783,7 @@ begin
            duration_minutes_snapshot = v_minutes,
            formation_status = 'FORMED', min_to_depart_snapshot = 1,
            formation_deadline_at = null, formed_at = v_now, formed_by = 'SYSTEM',
-           formed_participants = p_party_size
+           formed_participants = p_party_size, instant_private = true
      where id = v_dep and tenant_id = p_tenant;
     perform public.replace_trip_departure_staff(p_tenant, v_dep, v_plan.instant_guide_staff_id, '{}'::uuid[]);
     update public.trip_departures set status = 'OPEN' where id = v_dep and tenant_id = p_tenant;
@@ -779,10 +792,10 @@ begin
       insert into public.trip_departures (
         tenant_id, trip_id, plan_id, departs_on, start_time, capacity, seats_booked, status, note,
         formation_status, min_to_depart_snapshot, formed_at, formed_by, formed_participants,
-        duration_minutes_snapshot
+        duration_minutes_snapshot, instant_private
       ) values (
         p_tenant, v_plan.trip_id, p_plan, v_day, v_time, v_plan.max_party, 0, 'OPEN', '',
-        'FORMED', 1, v_now, 'SYSTEM', p_party_size, v_minutes
+        'FORMED', 1, v_now, 'SYSTEM', p_party_size, v_minutes, true
       ) returning id into v_dep;
     exception when unique_violation then
       raise exception 'SLOT_TAKEN' using errcode = 'P0022';
@@ -854,9 +867,7 @@ begin
   update public.trip_departures d
      set status = 'CANCELLED'
    where d.id = v_order.departure_id and d.tenant_id = p_tenant and d.status <> 'CANCELLED'
-     and exists (select 1 from public.trip_plans pl
-                  where pl.id = d.plan_id and pl.tenant_id = d.tenant_id
-                    and pl.sales_mode = 'INSTANT' and pl.participation_mode = 'PRIVATE')
+     and d.instant_private
      and not exists (select 1 from public.tour_orders o2
                       where o2.departure_id = d.id and o2.tenant_id = d.tenant_id
                         and o2.status <> 'CANCELLED');
@@ -898,9 +909,7 @@ begin
   update public.trip_departures d
      set status = 'CANCELLED'
    where d.id = v_order.departure_id and d.tenant_id = p_tenant and d.status <> 'CANCELLED'
-     and exists (select 1 from public.trip_plans pl
-                  where pl.id = d.plan_id and pl.tenant_id = d.tenant_id
-                    and pl.sales_mode = 'INSTANT' and pl.participation_mode = 'PRIVATE')
+     and d.instant_private
      and not exists (select 1 from public.tour_orders o2
                       where o2.departure_id = d.id and o2.tenant_id = d.tenant_id
                         and o2.status <> 'CANCELLED');
@@ -975,7 +984,7 @@ begin
     if v_n <> 1 then raise exception '0138 後置斷言失敗：% 應唯一，實際 %', r.fn, v_n; end if;
     select pg_get_functiondef(p.oid) into v_def from pg_proc p join pg_namespace n on n.oid = p.pronamespace
      where n.nspname = 'public' and p.proname = r.fn;
-    if v_def !~* 'seats_reserved' or v_def !~* '''INSTANT''' or v_def !~* '''CANCELLED''' then
+    if v_def !~* 'seats_reserved' or v_def !~* 'instant_private' or v_def !~* '''CANCELLED''' then
       raise exception '0138 後置斷言失敗：% 缺少 seats_reserved 守門或 INSTANT 私人團釋放', r.fn;
     end if;
     if exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace

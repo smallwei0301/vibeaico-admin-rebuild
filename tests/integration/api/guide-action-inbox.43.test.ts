@@ -577,7 +577,21 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
     expect(shopBBody.data?.some((entry) => entry.id === unassignedId)).toBe(false);
   });
 
+  /**
+   * schema admission gate：0138（#46 占用 trigger）是否已套用到目前的 TEST 資料庫。
+   * canonical TEST 在 0138 經 release 套用之前沒有 `trip_departures.duration_minutes_snapshot`，0138 專屬斷言
+   * 不得在那之前執行（會讓其他 PR 無謂地轉紅）。探測方式：選取該欄位，未套用時 PostgREST 回 42703 / PGRST204 類錯誤。
+   */
+  const has0138 = async (): Promise<boolean> => {
+    const probe = await admin.from('trip_departures').select('duration_minutes_snapshot').limit(1);
+    return probe.error === null;
+  };
+
   it('#46 / 0138：新的撞班指派被 DB 占用 trigger 以 P0020 擋下（STAFF_CONFLICT 只剩偵測 0138 之前的舊重疊）', async () => {
+    if (!(await has0138())) {
+      console.info('#46 POLICY_SKIP/NOT_RUN: 0138 尚未套用到此 TEST 資料庫（無 duration_minutes_snapshot）；0138 專屬 P0020 斷言未執行，套用後才會生效。');
+      return;
+    }
     const farFuture = new Date(Date.now() + 22 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const make = async (startTime: string) => {
       const { data, error } = await admin.from('trip_departures').insert({
@@ -607,6 +621,9 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
     // 之後再把方案時長調長（trigger 不追溯既有列），於是兩團變成重疊——和舊資料一樣。測試結束還原方案時長。
     // TRIP_A 的 `trips.duration_hours` 種子沒有設值；方案時長調長後 action-inbox 的偵測仍把兩團視為重疊。
     const farFuture = new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    // 0138 未套用時沒有占用 trigger，兩團（同日、同導遊）可直接建立並本來就重疊，不需要調長方案時長；
+    // 0138 已套用時，用「先指派、後調長方案時長」在 DB 內重現舊重疊（trigger 不追溯既有列）。
+    const with0138 = await has0138();
     const planBefore = await admin.from('trip_plans').select('duration_minutes').eq('id', TRIP_A.planA1).single();
     expect(planBefore.error).toBeNull();
     const insertConflictDeparture = async (startTime: string) => {
@@ -633,11 +650,15 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
       return id;
     };
 
+    // 0138 已套用時兩團不得在建立當下重疊（15:00 與 09:00 不重疊），之後才調長方案時長。
+    // 0138 未套用時沿用原行為：TRIP_A 的 duration_hours 未設，兩團整日重疊，直接建立即可。
     const departureOneId = await insertConflictDeparture('09:00');
     const departureTwoId = await insertConflictDeparture('15:00');
     try {
-      const widen = await admin.from('trip_plans').update({ duration_minutes: 720 }).eq('id', TRIP_A.planA1);
-      expect(widen.error).toBeNull();
+      if (with0138) {
+        const widen = await admin.from('trip_plans').update({ duration_minutes: 720 }).eq('id', TRIP_A.planA1);
+        expect(widen.error).toBeNull();
+      }
 
       const res = await ownerA.get('/api/guide/action-inbox');
       expect(res.status).toBe(200);

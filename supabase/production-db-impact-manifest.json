@@ -1428,6 +1428,10 @@
         {
           "surface": "acl",
           "objectKey": "function:public.assert_staff_not_occupied(p_tenant uuid, p_staff uuid, p_range tstzrange, p_except_departure uuid, p_except_booking uuid, p_zone text)"
+        },
+        {
+          "surface": "columns",
+          "objectKey": "public.trip_departures.instant_private"
         }
       ]
     }
