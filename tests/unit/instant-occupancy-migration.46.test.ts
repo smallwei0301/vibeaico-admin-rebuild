@@ -245,4 +245,26 @@ describe('#46 0138 INSTANT occupancy migration 原始碼守門', () => {
     // 取得導遊鎖後必須重讀並 for update（等鎖期間他人可能已提交同鍵團次）。
     expect(rpc.indexOf('perform public.lock_staff_occupancy')).toBeLessThan(rpc.search(/select d\.id, d\.status, d\.seats_booked into v_slot[\s\S]*?for update;/));
   });
+
+  it('G3 admission：guide-interval-availability 整合測試同時接受 0135 或 0138 的 exact release（兩支都沒有才 POLICY_SKIP）', () => {
+    const src = readFileSync('tests/integration/db/guide-interval-availability.46.test.ts', 'utf8');
+    expect(src).toMatch(/const migrations = \[migration, '0138_issue_46_instant_occupancy'\];/);
+    expect(src).toMatch(/for \(const name of migrations\)/);
+    // 每支被選中的 migration 都做 exact 驗證。
+    for (const token of ['selected.length !== 1', 'applied.length !== 1', 'selected[0].path !== path', 'selected[0].sha256 !== digest', 'applied[0].sha256 !== digest', 'applied[0].riskTier !== selected[0].riskTier', 'APPLIED_VERIFIED', 'REPLAY_VERIFIED']) {
+      expect(src, token).toContain(token);
+    }
+    expect(src).toMatch(/if \(!admittedAny\) return \{ admitted: false, local: false \};/);
+    expect(src).not.toMatch(/row\.repoFile === migration\)/); // 不再只認 0135
+    // 契約：0138 的 requiredFiles 與 0135 相同，只有這一個整合測試檔。
+    const contracts = readFileSync('scripts/agents/production-db-g3-authz-contracts.mjs', 'utf8');
+    expect(contracts).toMatch(/'0138_issue_46_instant_occupancy': Object\.freeze\(\{\s+requiredFiles: CONTRACT_0135\.requiredFiles,/);
+  });
+
+  it('guide-action-inbox 的 0138 探測：只有欄位不存在才視為未套用，其他錯誤拋出；跳過用 ctx.skip', () => {
+    const src = readFileSync('tests/integration/api/guide-action-inbox.43.test.ts', 'utf8');
+    expect(src).toMatch(/probe\.error\.code === '42703' \|\| probe\.error\.code === 'PGRST204'/);
+    expect(src).toMatch(/throw new Error\(`0138 探測失敗/);
+    expect(src).toMatch(/async \(ctx\) => \{\s+if \(!\(await has0138\(\)\)\) \{[\s\S]*?ctx\.skip\(/);
+  });
 });

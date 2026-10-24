@@ -584,12 +584,16 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
    */
   const has0138 = async (): Promise<boolean> => {
     const probe = await admin.from('trip_departures').select('duration_minutes_snapshot').limit(1);
-    return probe.error === null;
+    if (probe.error === null) return true;
+    // 只有「欄位不存在」才視為未套用；連線、權限等其他錯誤必須拋出，不得被當成 0138 未套用而靜默跳過。
+    if (probe.error.code === '42703' || probe.error.code === 'PGRST204') return false;
+    throw new Error(`0138 探測失敗（非欄位不存在）：${probe.error.code ?? ''} ${probe.error.message}`);
   };
 
-  it('#46 / 0138：新的撞班指派被 DB 占用 trigger 以 P0020 擋下（STAFF_CONFLICT 只剩偵測 0138 之前的舊重疊）', async () => {
+  it('#46 / 0138：新的撞班指派被 DB 占用 trigger 以 P0020 擋下（STAFF_CONFLICT 只剩偵測 0138 之前的舊重疊）', async (ctx) => {
     if (!(await has0138())) {
-      console.info('#46 POLICY_SKIP/NOT_RUN: 0138 尚未套用到此 TEST 資料庫（無 duration_minutes_snapshot）；0138 專屬 P0020 斷言未執行，套用後才會生效。');
+      // 報表記為 skipped（不是假通過）：0138 尚未套用到此 TEST 資料庫，0138 專屬 P0020 斷言套用後才會生效。
+      ctx.skip('#46 POLICY_SKIP/NOT_RUN: 0138 尚未套用到此 TEST 資料庫（無 duration_minutes_snapshot）');
       return;
     }
     const farFuture = new Date(Date.now() + 22 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
