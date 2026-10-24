@@ -38,9 +38,10 @@
  * 儲存會把既有的協同導遊靜默刪掉。
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { ApiHttpError, ERR } from '@/server/http';
+import { ApiHttpError, ERR, STAFF_OCCUPIED_MESSAGE } from '@/server/http';
+import { createAdminSupabase } from '@/server/supabase';
 import {
-  CONFLICT_REASON_TEXT, departureInterval, findStaffConflicts, loadStaffLoad,
+  CONFLICT_REASON_TEXT, departureInterval, departureSnapshotMinutes, findStaffConflicts, loadStaffLoad,
   type Interval, type StaffConflict,
 } from '@/server/staff-availability';
 
@@ -168,41 +169,76 @@ export async function checkAssignmentConflicts(
   }));
 }
 
+/** 導遊撞班的 409；`staffId` 取自 DB 例外 detail（拿得到時），讓 batch 能記錄實際撞班的導遊。 */
+export class StaffOccupiedError extends ApiHttpError {
+  constructor(public staffId?: string) {
+    super(409, STAFF_OCCUPIED_MESSAGE, ERR.STAFF_OCCUPIED);
+  }
+}
+
+export const STAFF_UNAVAILABLE_MESSAGE = '導遊已停用或不存在，請重新選擇';
+
+function staffIdFromDetail(error: unknown): string | undefined {
+  try {
+    const detail = (error as { details?: string | null })?.details;
+    const id = detail ? (JSON.parse(detail) as { staffId?: unknown }).staffId : undefined;
+    return typeof id === 'string' ? id : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** DB 排他衝突：SQLSTATE P0020／message STAFF_OCCUPIED（0138 之後），或排他約束 23P01。 */
+export function isStaffOccupiedError(error: unknown): boolean {
+  const e = error as { code?: string; message?: string } | null | undefined;
+  return !!e && (e.code === 'P0020' || e.code === '23P01' || String(e.message ?? '').includes('STAFF_OCCUPIED'));
+}
+
 /**
  * 覆寫某一團的指派。
  *
- * 先刪後插，整段在一次請求內完成。這裡刻意**不**用「比對差異只動變的那幾筆」：
- * 團次的人員最多幾位，差異計算省不了多少，卻多出一整類「刪了沒插」「插了沒刪」
- * 的中間狀態。改派後原人員要立即釋放、新人員立即占用（§5.4），先刪後插最直接。
+ * 呼叫 `replace_trip_departure_staff`（0131）：刪除與插入在**同一個交易**。先前 app 端分兩次請求
+ * 先刪後插，插入被 0138 占用 trigger 擋下時，刪除已 commit，導遊會被清空；改為 RPC 後失敗即整體回滾，
+ * 原指派原封不動。RPC 只授權 service_role，所以這裡用 admin client；租戶授權已由呼叫端的
+ * `requireTenantManager()` 完成，RPC 另以 `p_tenant` 做同租戶檢查。
  *
- * ⚠️ 每團最多一位 PRIMARY 由 DB 的 partial unique index 保證；這裡若違反會拿到
- * 23505，一律轉成可讀的 409 而不是 500。
+ * ⚠️ 每團最多一位 PRIMARY 與同人不得重複由 RPC／DB 保證；違反一律轉成可讀的 409 而不是 500。
+ * 導遊撞班（P0020，或既有排他約束 23P01）轉成 409 `STAFF_OCCUPIED`。
  */
 export async function writeAssignment(
-  supabase: SupabaseClient,
+  _supabase: SupabaseClient,
   tenantId: string,
   departureId: string,
   assignment: ResolvedAssignment,
 ): Promise<void> {
-  const { error: delError } = await supabase.from('trip_departure_staff').delete()
-    .eq('tenant_id', tenantId).eq('departure_id', departureId);
-  if (delError) throw delError;
-
-  const rows = [
-    ...(assignment.primaryStaffId
-      ? [{ tenant_id: tenantId, departure_id: departureId, staff_id: assignment.primaryStaffId, role: 'PRIMARY' }]
-      : []),
-    ...assignment.assistantStaffIds.map((staffId) => ({
-      tenant_id: tenantId, departure_id: departureId, staff_id: staffId, role: 'ASSISTANT',
-    })),
-  ];
-  if (rows.length === 0) return;
-
-  const { error } = await supabase.from('trip_departure_staff').insert(rows);
-  if (error?.code === '23505') {
+  const { error } = await createAdminSupabase().rpc('replace_trip_departure_staff', {
+    p_tenant: tenantId,
+    p_departure: departureId,
+    p_primary: assignment.primaryStaffId,
+    p_assistants: assignment.assistantStaffIds,
+  });
+  if (!error) return;
+  if (isStaffOccupiedError(error)) throw new StaffOccupiedError(staffIdFromDetail(error));
+  // 預檢之後導遊才被停用或刪除的競態：RPC 以 P0002 STAFF_NOT_FOUND 拒絕，回 409 而不是 500。
+  if (String(error.message ?? '').includes('STAFF_NOT_FOUND')) {
+    throw new ApiHttpError(409, STAFF_UNAVAILABLE_MESSAGE, ERR.CONFLICT);
+  }
+  if (error.code === '23505' || String(error.message ?? '').includes('DUPLICATE_STAFF_ASSIGNMENT')) {
     throw new ApiHttpError(409, '同一團次已有主導遊，或同一位導遊被重複指派', ERR.CONFLICT);
   }
-  if (error) throw error;
+  throw error;
+}
+
+/**
+ * 新建團次後指派失敗時，移除剛建立、尚無導遊與訂單的團次，避免留下「沒有導遊的半成品」
+ * （issue #37 §3）。刪除失敗只記 log，仍由呼叫端拋出原始錯誤。
+ */
+export async function discardUnassignedDeparture(
+  supabase: SupabaseClient, tenantId: string, departureId: string,
+): Promise<void> {
+  const { error } = await supabase.from('trip_departures').delete()
+    .eq('tenant_id', tenantId).eq('id', departureId);
+  if (error) console.error('[departure-staff] 指派失敗後移除團次也失敗', departureId, error);
 }
 
 /** 讀回一團的指派（含姓名），給列表與編輯頁用。 */
@@ -234,16 +270,29 @@ export async function readAssignments(
   return result;
 }
 
-/** 團次的佔用區間 ＋ 它所屬的台北日期（班表判斷用）。 */
+/**
+ * 團次的佔用區間 ＋ 它所屬的台北日期（班表判斷用）。
+ *
+ * 時長＝`departureSnapshotMinutes(plan.duration_minutes, trips.duration_hours)`：與 #46 DB 建團時 snapshot 的公式相同
+ * （行程時長未知則整日）。給 `planId` 才讀方案；沒給則只看行程 `duration_hours`（舊行為）。
+ */
 export async function departureSlot(
   supabase: SupabaseClient, tenantId: string, tripId: string,
   departsOn: string, startTime: string | null,
+  source: { planId?: string } = {},
 ): Promise<Interval & { wholeDay: boolean; shiftDate: string }> {
   const { data, error } = await supabase.from('trips').select('duration_hours')
     .eq('tenant_id', tenantId).eq('id', tripId).maybeSingle();
   if (error) throw error;
-  const interval = departureInterval({
-    departsOn, startTime, durationHours: data?.duration_hours ?? null,
-  });
+  const durationHours = data?.duration_hours ?? null;
+  let durationMinutes: number | null | undefined;
+  if (source.planId) {
+    const { data: plan, error: planError } = await supabase.from('trip_plans').select('duration_minutes')
+      .eq('tenant_id', tenantId).eq('id', source.planId).maybeSingle();
+    if (planError) throw planError;
+    durationMinutes = departureSnapshotMinutes(
+      (plan as { duration_minutes?: number | null } | null)?.duration_minutes, durationHours);
+  }
+  const interval = departureInterval({ departsOn, startTime, durationHours, durationMinutes });
   return { ...interval, shiftDate: departsOn };
 }

@@ -83,6 +83,24 @@ export function overlaps(a: Interval, b: Interval): boolean {
 }
 
 /**
+ * 團次占用分鐘數公式：`greatest(plan.duration_minutes, round(trips.duration_hours * 60))`（行程時長未知／<=0 → null＝整日占用）。
+ * 與 #46 的 DB 占用 duration snapshot（0138）同一公式；0138 套用前，這是 app 端唯一的時長來源。
+ * 原註解：取 `greatest(plan.duration_minutes, round(trips.duration_hours * 60))`，且只在行程時長已知（> 0）時才有值，
+ * 否則為 NULL＝整日占用。app 端驗證「尚未建立」的團次時必須用同一個公式，否則 app 判定可排、DB 的
+ * 占用 trigger 卻回 STAFF_OCCUPIED（行程 2 小時、方案 240 分的反例）。
+ * 0138 套用且 ACTIVATE 之後，已存在的團次改讀自己的 `duration_minutes_snapshot`（本 PR 不讀該欄位）。
+ */
+export function departureSnapshotMinutes(
+  planMinutes: number | null | undefined,
+  tripHours: number | null | undefined,
+): number | null {
+  if (tripHours == null || !(Number(tripHours) > 0)) return null;
+  const fromTrip = Math.round(Number(tripHours) * 60);
+  const fromPlan = planMinutes != null && Number(planMinutes) > 0 ? Number(planMinutes) : 0;
+  return Math.max(fromTrip, fromPlan);
+}
+
+/**
  * 團次的佔用區間。
  *
  * - 有 `startTime` 且時長已知 → `[start, start + duration]`
@@ -95,16 +113,49 @@ export function departureInterval(input: {
   departsOn: string;
   startTime: string | null;
   durationHours: number | null;
+  /**
+   * #46：占用分鐘數（由 `departureSnapshotMinutes` 算出）。有帶（含 null）時優先於 `durationHours`：
+   * null＝時長未知，整日占用。未帶（undefined）時維持舊行為，只看行程 `duration_hours`。
+   */
+  durationMinutes?: number | null;
 }): Interval & { wholeDay: boolean } {
   const dayStart = taipeiDayStartMs(input.departsOn);
-  const minutes = input.durationHours != null && input.durationHours > 0
-    ? Math.round(input.durationHours * 60)
-    : null;
+  const minutes = input.durationMinutes !== undefined
+    ? (input.durationMinutes != null && input.durationMinutes > 0 ? Math.round(input.durationMinutes) : null)
+    : (input.durationHours != null && input.durationHours > 0
+      ? Math.round(input.durationHours * 60)
+      : null);
   if (!input.startTime || minutes == null) {
     return { start: dayStart, end: dayStart + DAY_MS, wholeDay: true };
   }
   const start = dayStart + hmToMin(input.startTime) * 60_000;
   return { start, end: start + minutes * 60_000, wholeDay: false };
+}
+
+/**
+ * 既有團次（來自 DB 列）的占用區間：時長一律走 `departureSnapshotMinutes(plan.duration_minutes, trips.duration_hours)`，
+ * 與新團同一公式。讀既有團次的所有地方（loadStaffLoad、可預約時段、行動收件匣）都必須用這個函式，
+ * 否則「既有團 09:00、方案 240 分、行程 2h」會被當成只占 2 小時，11:30 的新團就被誤判可排。
+ * 注意：這裡不讀 duration_minutes_snapshot（0138 之前不存在）。
+ */
+export function existingDepartureInterval(input: {
+  departsOn: string;
+  startTime: string | null;
+  tripHours: number | null | undefined;
+  planMinutes: number | null | undefined;
+}): Interval & { wholeDay: boolean } {
+  const durationHours = input.tripHours ?? null;
+  return departureInterval({
+    departsOn: input.departsOn,
+    startTime: input.startTime,
+    durationHours,
+    durationMinutes: departureSnapshotMinutes(input.planMinutes, durationHours),
+  });
+}
+
+/** PostgREST 巢狀關聯可能是物件或單元素陣列。 */
+export function oneRelated<T>(value: unknown): T | undefined {
+  return (Array.isArray(value) ? value[0] : value) as T | undefined;
 }
 
 /**
@@ -133,7 +184,7 @@ export async function loadStaffLoad(
     supabase.from('shifts').select('staff_id, work_date, start_time, end_time')
       .eq('tenant_id', tenantId).gte('work_date', fromDate).lte('work_date', toDate),
     supabase.from('trip_departure_staff')
-      .select('departure_id, staff_id, trip_departures!inner(id, departs_on, start_time, status, trips!inner(duration_hours))')
+      .select('departure_id, staff_id, trip_departures!inner(id, departs_on, start_time, status, trips!inner(duration_hours), trip_plans(duration_minutes))')
       .eq('tenant_id', tenantId)
       .neq('trip_departures.status', 'CANCELLED')
       .gte('trip_departures.departs_on', fromDate)
@@ -162,14 +213,16 @@ export async function loadStaffLoad(
   const departures: StaffLoad['departures'] = [];
   for (const row of (assignRes.data ?? []) as Array<Record<string, unknown>>) {
     const dep = (Array.isArray(row.trip_departures) ? row.trip_departures[0] : row.trip_departures) as
-      undefined | { id: string; departs_on: string; start_time: string | null; trips?: unknown };
+      undefined | { id: string; departs_on: string; start_time: string | null; trips?: unknown; trip_plans?: unknown };
     if (!dep) continue;
     if (options.excludeDepartureId && dep.id === options.excludeDepartureId) continue;
     const trip = (Array.isArray(dep.trips) ? dep.trips[0] : dep.trips) as undefined | { duration_hours: number | null };
-    const interval = departureInterval({
+    const plan = oneRelated<{ duration_minutes: number | null }>(dep.trip_plans);
+    const interval = existingDepartureInterval({
       departsOn: dep.departs_on,
       startTime: dep.start_time == null ? null : String(dep.start_time).slice(0, 5),
-      durationHours: trip?.duration_hours ?? null,
+      tripHours: trip?.duration_hours ?? null,
+      planMinutes: plan?.duration_minutes ?? null,
     });
     departures.push({
       departureId: dep.id,
