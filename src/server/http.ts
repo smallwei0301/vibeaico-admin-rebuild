@@ -23,10 +23,6 @@ export const ERR = {
   PRICE_CHANGED: 'TOUR_003',       // 公開下單：頁面金額與實際金額不符，回傳現價請旅客重新確認（#749）
   PRICE_UNVERIFIABLE: 'TOUR_004',  // 公開下單：季節價資料不完整，無法確認目前金額（#749，送出前 fast path 判定；價格最終以 create_tour_order_quoted 同交易比對為準）
   SEATS_UNAVAILABLE: 'TOUR_001',   // 團次名額不足（10 分冊 §2；併發搶最後一席的敗方）
-  SLOT_TAKEN: 'TOUR_005',          // INSTANT：該起始時刻已被成交（#46，唯一鍵／占用排他的敗方）
-  STAFF_OCCUPIED: 'TOUR_006',      // INSTANT：指定導遊該時段已被其他預約／團次占用或不可接案（#46）
-  INVALID_START: 'TOUR_007',       // INSTANT：起始時刻不在方案清單、不足提前量、超出可售天數或時區牆上時間不明確（#46）
-  INSTANT_UNAVAILABLE: 'TOUR_008', // INSTANT：方案非 INSTANT／未上架／未完成設定（#46）
   TOUR_REQUEST_NOT_ELIGIBLE: 'TOUR_002', // REQUEST 訂單非 PENDING 或方案非 REQUEST，不能接受／拒絕（#46）
   EXTERNAL_CONFIG_BLOCKED: 'EXT_001',    // 依賴的外部憑證／設定尚未到位（例：平台 ECPay 商店憑證，issue #25 C 段）
   PAYLOAD_TOO_LARGE: 'REQ_005',    // request body 超過應用層上限（#802，見 readJsonBody）
@@ -39,9 +35,6 @@ export const ERR = {
 export function ok<T>(data?: T, init?: ResponseInit) {
   return NextResponse.json({ success: true, data }, init);
 }
-
-/** 導遊在該時段已有其他預約或團次（DB 占用 trigger 的 P0020 / STAFF_OCCUPIED）。 */
-export const STAFF_OCCUPIED_MESSAGE = '導遊該時段已有安排';
 
 /** `extra` 為選填的 `data` 酬載（例：#749 PRICE_CHANGED 帶現價 quote）；不傳時回應形狀與舊版完全相同。 */
 export function fail(status: number, message: string, code?: string, extra?: Record<string, unknown>) {

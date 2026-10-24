@@ -5,7 +5,7 @@ import { mapTripDeparture } from '@/server/mappers';
 import { departureCreateSchema, timeValue } from '@/server/tour-domain';
 import {
   assertStaffBelongsToTenant, bookableStaffIds, checkAssignmentConflicts, departureSlot,
-  describeConflicts, discardUnassignedDeparture, readAssignments, resolveAssignment, writeAssignment,
+  describeConflicts, readAssignments, resolveAssignment, writeAssignment,
 } from '@/server/departure-staff';
 
 import { departureFormationSnapshot, readDepartureFormationTimeZone } from '@/server/departure-formation-snapshot';
@@ -60,7 +60,7 @@ export const POST = handle(async (req, { params }: Context) => {
   });
   assertStaffBelongsToTenant(assignment, bookable);
 
-  const slot = await departureSlot(t.supabase, t.tenantId, id, body.departsOn, startTime, { planId: body.planId });
+  const slot = await departureSlot(t.supabase, t.tenantId, id, body.departsOn, startTime);
   const conflicts = await checkAssignmentConflicts(
     t.supabase, t.tenantId, assignment, slot, slot.shiftDate,
   );
@@ -85,12 +85,7 @@ export const POST = handle(async (req, { params }: Context) => {
   if (error?.code === '23505') return fail(409, '相同方案、日期與時間的團次已存在', ERR.CONFLICT);
   if (error) throw error;
 
-  try {
-    await writeAssignment(t.supabase, t.tenantId, data.id, assignment);
-  } catch (e) {
-    await discardUnassignedDeparture(t.supabase, t.tenantId, data.id);
-    throw e;
-  }
+  await writeAssignment(t.supabase, t.tenantId, data.id, assignment);
   const assignments = await readAssignments(t.supabase, t.tenantId, [data.id]);
   return ok({ ...mapTripDeparture(data), ...assignments.get(data.id) });
 });

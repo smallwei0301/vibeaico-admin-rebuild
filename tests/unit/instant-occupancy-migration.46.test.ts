@@ -163,4 +163,10 @@ describe('#46 0138 INSTANT occupancy migration 原始碼守門', () => {
     expect(body).toMatch(/raise exception 'TENANT_TIMEZONE_INVALID' using errcode = 'P0026'/);
     expect(body).toMatch(/not \(v_basic \? 'timezone'\) then\s+return 'Asia\/Taipei'/);
   });
+
+  it('duration snapshot 公式：回填與 INSERT trigger 各一次，且只在行程時長已知時（app 端同公式由 ACTIVATE 的測試守）', () => {
+    const formula = 'greatest(pl.duration_minutes, round(t.duration_hours * 60)::integer)';
+    expect(code.split(formula).length - 1).toBe(2);
+    expect(code.match(/t\.duration_hours is not null and t\.duration_hours > 0/g)).toHaveLength(2);
+  });
 });
