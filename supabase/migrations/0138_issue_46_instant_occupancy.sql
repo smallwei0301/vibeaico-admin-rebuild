@@ -10,11 +10,10 @@
 -- ## 本檔做的事
 --
 --   1. trip_departures.duration_minutes_snapshot（0135 檔頭要求的前置條件）：INSERT 時 snapshot、
---      既有團次保守回填；0135 predicate 與 src/server/staff-availability.ts 改讀 snapshot。
---      回填規則：只有「所屬行程 duration_hours 已知且 > 0」時才回填 greatest(plan.duration_minutes,
---      round(duration_hours*60))；行程時長未知者維持 NULL＝整日占用（app 引擎既有的保守規則，
---      寧可多擋）。這會讓原先 0135 用 plan.duration_minutes（預設 60）判斷的「行程時長未知」團次
---      變成整日占用——只會更保守，不會放寬。
+--      既有團次保守回填（僅行程時長已知時；其餘維持 NULL）。實際占用一律取
+--      departure_effective_minutes＝greatest(snapshot, 目前 plan.duration_minutes, 行程時數*60)，
+--      snapshot 只會延長占用、不會縮短（方案事後調長時長仍延長既有團次，維持 0135 原行為）；
+--      三者皆未知才整日占用。此公式套用於 0135 predicate、departure_occupancy_range 的呼叫端與全部 trigger。
 --   2. trip_plans 新增 INSTANT 規則欄位 instant_start_times／instant_min_lead_minutes／
 --      instant_max_advance_days／instant_guide_staff_id。對非 INSTANT 方案不強制；「INSTANT 方案必須
 --      設定時刻清單與導遊」由 create_instant_tour_order 在執行時 fail closed（INSTANT_NOT_CONFIGURED），
@@ -181,7 +180,7 @@ create trigger trg_trip_departures_duration_snapshot
   for each row execute function public.trg_trip_departures_duration_snapshot();
 
 comment on column public.trip_departures.duration_minutes_snapshot is
-  '#46：建團當下 snapshot 的占用分鐘數；NULL＝時長未知，占用整個租戶日（保守）。0135 predicate 與 staff-availability.ts 同讀此欄。';
+  '#46：建團當下 snapshot 的占用分鐘數。實際占用取 departure_effective_minutes＝greatest(snapshot, 目前 plan.duration_minutes, 行程時數*60)，只延長不縮短；三者皆未知才占用整個租戶日。';
 
 -- ------------------------------------------------------------------ 共用占用 helper
 -- 時區來源：tenant_settings.basic.timezone。
@@ -252,6 +251,34 @@ as $$
   );
 $$;
 
+-- 團次占用分鐘數（最保守值）：greatest(snapshot, 目前 plan.duration_minutes, 行程 duration_hours*60)。
+-- snapshot 只會延長占用、不會縮短：方案事後調長時長，既有團次的占用隨之延長（0135 原行為），
+-- 調短則不會釋放建團當下凍結的較長值。三者都未知（<=0 或 NULL）時回 NULL＝整日占用。
+-- app 端 #1115 的 departureSnapshotMinutes 用同一個 greatest(plan, trip)；行程時長未知時 app 取整日（更保守）。
+create or replace function public.departure_effective_minutes(
+  p_snapshot integer, p_plan_minutes integer, p_trip_hours numeric
+) returns integer
+language sql immutable security invoker set search_path = pg_catalog, public
+as $$
+  select nullif(greatest(
+    coalesce(p_snapshot, 0),
+    coalesce(p_plan_minutes, 0),
+    case when p_trip_hours is not null and p_trip_hours > 0 then round(p_trip_hours * 60)::integer else 0 end
+  ), 0);
+$$;
+
+create or replace function public.departure_range_for(p_departure uuid, p_zone text)
+returns tstzrange
+language sql stable security invoker set search_path = pg_catalog, public
+as $$
+  select public.departure_occupancy_range(d.departs_on, d.start_time,
+           public.departure_effective_minutes(d.duration_minutes_snapshot, pl.duration_minutes, t.duration_hours), p_zone)
+    from public.trip_departures d
+    left join public.trip_plans pl on pl.id = d.plan_id and pl.tenant_id = d.tenant_id
+    left join public.trips t on t.id = d.trip_id and t.tenant_id = d.tenant_id
+   where d.id = p_departure;
+$$;
+
 -- 取鎖後重驗：呼叫端必須已確認本列需要檢查。多人時由呼叫端依 staff id 排序呼叫。
 -- READ COMMITTED 下每個 statement 取新 snapshot，等鎖結束後看得到對方已 commit 的列。
 create or replace function public.assert_staff_not_occupied(
@@ -276,7 +303,7 @@ begin
         'start', v_hit.start_at, 'end', v_hit.end_at)::text;
   end if;
   v_zone := public.tenant_timezone_name(p_tenant);
-  select d.id, public.departure_occupancy_range(d.departs_on, d.start_time, d.duration_minutes_snapshot, v_zone) occ
+  select d.id, public.departure_range_for(d.id, v_zone) occ
     into v_hit
     from public.trip_departure_staff ds
     join public.trip_departures d on d.id = ds.departure_id and d.tenant_id = ds.tenant_id
@@ -285,7 +312,7 @@ begin
      and d.id is distinct from p_except_departure
      -- 占用不會早於 departs_on 開始；僅排除出發日在請求區間之後的團次。
      and d.departs_on <= ((upper(p_range) at time zone v_zone)::date)
-     and public.departure_occupancy_range(d.departs_on, d.start_time, d.duration_minutes_snapshot, v_zone) && p_range
+     and public.departure_range_for(d.id, v_zone) && p_range
    limit 1;
   if found then
     raise exception 'STAFF_OCCUPIED' using errcode = 'P0020',
@@ -336,8 +363,7 @@ begin
     perform public.lock_staff_occupancy(new.tenant_id, v_lock);
   end loop;
   perform public.assert_staff_not_occupied(new.tenant_id, new.staff_id,
-    public.departure_occupancy_range(v_dep.departs_on, v_dep.start_time, v_dep.duration_minutes_snapshot,
-      public.tenant_timezone_name(new.tenant_id)),
+    public.departure_range_for(new.departure_id, public.tenant_timezone_name(new.tenant_id)),
     new.departure_id, null);
   return null;
 end;
@@ -356,8 +382,7 @@ begin
      and old.duration_minutes_snapshot is not distinct from new.duration_minutes_snapshot then
     return null;
   end if;
-  v_range := public.departure_occupancy_range(new.departs_on, new.start_time,
-    new.duration_minutes_snapshot, public.tenant_timezone_name(new.tenant_id));
+  v_range := public.departure_range_for(new.id, public.tenant_timezone_name(new.tenant_id));
   -- 依 staff id 排序取鎖，避免多人團次互相死結。
   for v_staff in
     select ds.staff_id from public.trip_departure_staff ds
@@ -391,17 +416,22 @@ create constraint trigger trg_trip_departures_staff_occupancy
 -- 因此 authenticated 必須保有 execute；anon／PUBLIC 不給。
 revoke all on function public.tenant_timezone_name(uuid) from public, anon;
 revoke all on function public.departure_occupancy_range(date, time, integer, text) from public, anon;
+revoke all on function public.departure_effective_minutes(integer, integer, numeric) from public, anon;
+revoke all on function public.departure_range_for(uuid, text) from public, anon;
 revoke all on function public.lock_staff_occupancy(uuid, uuid) from public, anon;
 revoke all on function public.instant_wall_clock_ambiguous(text, timestamp, timestamptz) from public, anon;
 revoke all on function public.assert_staff_not_occupied(uuid, uuid, tstzrange, uuid, uuid) from public, anon;
 grant execute on function public.tenant_timezone_name(uuid) to authenticated, service_role;
 grant execute on function public.departure_occupancy_range(date, time, integer, text) to authenticated, service_role;
+grant execute on function public.departure_effective_minutes(integer, integer, numeric) to authenticated, service_role;
+grant execute on function public.departure_range_for(uuid, text) to authenticated, service_role;
 grant execute on function public.lock_staff_occupancy(uuid, uuid) to authenticated, service_role;
 grant execute on function public.instant_wall_clock_ambiguous(text, timestamp, timestamptz) to authenticated, service_role;
 grant execute on function public.assert_staff_not_occupied(uuid, uuid, tstzrange, uuid, uuid) to authenticated, service_role;
 
 -- ------------------------------------------------------------------ 0135 predicate：snapshot 優先
--- 與 0135 位元組相同，唯一差異：DEPARTURE 分支的時長由 pl.duration_minutes 改讀 d.duration_minutes_snapshot
+-- 與 0135 位元組相同，唯一差異：DEPARTURE 分支的時長由 pl.duration_minutes 改為 departure_effective_minutes
+-- （greatest(snapshot, 目前 plan.duration_minutes, 行程時數*60)，只延長不縮短）
 -- （NULL／<=0＝整日占用）。plan 仍 left join，僅用於血統有效性檢查。
 create or replace function public.guide_staff_interval_available(
   p_tenant uuid, p_staff uuid, p_start timestamptz, p_end timestamptz
@@ -489,15 +519,16 @@ begin
         and g.day::date >= (b.start_at at time zone v_zone)::date
     union all
     select 'DEPARTURE', d.departs_on+coalesce(d.start_time,'00:00'::time),
-      case when d.start_time is null or d.duration_minutes_snapshot is null or d.duration_minutes_snapshot<=0
+      case when d.start_time is null or public.departure_effective_minutes(d.duration_minutes_snapshot, pl.duration_minutes, tr.duration_hours) is null
         then (d.departs_on+1)::timestamp else null::timestamp end,
-      case when d.start_time is not null and d.duration_minutes_snapshot>0
-        then make_interval(mins=>d.duration_minutes_snapshot) else null::interval end,
-      d.start_time is null or d.duration_minutes_snapshot is null or d.duration_minutes_snapshot<=0,
+      case when d.start_time is not null and public.departure_effective_minutes(d.duration_minutes_snapshot, pl.duration_minutes, tr.duration_hours) is not null
+        then make_interval(mins=>public.departure_effective_minutes(d.duration_minutes_snapshot, pl.duration_minutes, tr.duration_hours)) else null::interval end,
+      d.start_time is null or public.departure_effective_minutes(d.duration_minutes_snapshot, pl.duration_minutes, tr.duration_hours) is null,
       d.tenant_id=p_tenant and pl.tenant_id=p_tenant and pl.trip_id=d.trip_id
       from public.trip_departure_staff ds
       left join public.trip_departures d on d.id=ds.departure_id
       left join public.trip_plans pl on pl.id=d.plan_id
+      left join public.trips tr on tr.id=d.trip_id and tr.tenant_id=d.tenant_id
       where ds.tenant_id=p_tenant and ds.staff_id=p_staff
         and (d.status is null or d.status<>'CANCELLED')
   loop
@@ -901,8 +932,8 @@ begin
 
   -- ③ 0135 predicate 已改讀 snapshot，ACL 維持 service_role only。
   select pg_get_functiondef('public.guide_staff_interval_available(uuid,uuid,timestamptz,timestamptz)'::regprocedure) into v_def;
-  if v_def !~* 'duration_minutes_snapshot' or v_def ~* 'pl\.duration_minutes' then
-    raise exception '0138 後置斷言失敗：guide_staff_interval_available 未改讀 duration_minutes_snapshot';
+  if v_def !~* 'departure_effective_minutes' or v_def ~* 'make_interval\(mins=>pl\.duration_minutes' then
+    raise exception '0138 後置斷言失敗：guide_staff_interval_available 未改用 departure_effective_minutes';
   end if;
   if has_function_privilege('anon', 'public.guide_staff_interval_available(uuid,uuid,timestamptz,timestamptz)'::regprocedure, 'EXECUTE')
      or has_function_privilege('authenticated', 'public.guide_staff_interval_available(uuid,uuid,timestamptz,timestamptz)'::regprocedure, 'EXECUTE') then

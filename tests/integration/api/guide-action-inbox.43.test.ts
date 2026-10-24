@@ -577,12 +577,38 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
     expect(shopBBody.data?.some((entry) => entry.id === unassignedId)).toBe(false);
   });
 
-  it('#43 類別 7（後段）：同一位 PRIMARY 導遊被指派到同一天兩團會各自冒出 STAFF_CONFLICT，且不跨租戶', async () => {
-    // TRIP_A 的 `trips.duration_hours` 種子沒有設值，`departureInterval()`
-    // （src/server/staff-availability.ts）在缺 duration_hours 時把整團視為
-    // 「佔用一整個台北日」——這裡不需要精算時段重疊，只要同一天兩團、同一位
-    // PRIMARY 就一定衝突，是既有引擎行為，不是本測試新造的規則。
+  it('#46 / 0138：新的撞班指派被 DB 占用 trigger 以 P0020 擋下（STAFF_CONFLICT 只剩偵測 0138 之前的舊重疊）', async () => {
+    const farFuture = new Date(Date.now() + 22 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const make = async (startTime: string) => {
+      const { data, error } = await admin.from('trip_departures').insert({
+        tenant_id: SHOP_A.id, trip_id: TRIP_A.id, plan_id: TRIP_A.planA1, departs_on: farFuture,
+        start_time: startTime, capacity: 10, status: 'OPEN',
+      }).select('id').single();
+      expect(error).toBeNull();
+      temporaryDepartureIds.push(data!.id as string);
+      return data!.id as string;
+    };
+    const first = await make('09:00');
+    const second = await make('09:30'); // 與 09:00 起的團重疊（方案時長至少 60 分）
+    const ok = await admin.from('trip_departure_staff').insert({
+      tenant_id: SHOP_A.id, departure_id: first, staff_id: SHOP_A.staffA1, role: 'PRIMARY',
+    });
+    expect(ok.error).toBeNull();
+    const blocked = await admin.from('trip_departure_staff').insert({
+      tenant_id: SHOP_A.id, departure_id: second, staff_id: SHOP_A.staffA1, role: 'PRIMARY',
+    });
+    expect(blocked.error?.code).toBe('P0020');
+    expect(blocked.error?.message).toContain('STAFF_OCCUPIED');
+  });
+
+  it('#43 類別 7（後段）：舊資料中同一位 PRIMARY 導遊同一天兩團的重疊，會各自冒出 STAFF_CONFLICT，且不跨租戶', async () => {
+    // 0138 之後無法再用 trip_departure_staff 直接建出「新的」撞班：占用 trigger 只檢查新增／變更的列。
+    // 舊重疊（0138 之前留下的資料）在這裡用 DB 允許的方式重現：兩團先在不重疊時各自指派，
+    // 之後再把方案時長調長（trigger 不追溯既有列），於是兩團變成重疊——和舊資料一樣。測試結束還原方案時長。
+    // TRIP_A 的 `trips.duration_hours` 種子沒有設值；方案時長調長後 action-inbox 的偵測仍把兩團視為重疊。
     const farFuture = new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const planBefore = await admin.from('trip_plans').select('duration_minutes').eq('id', TRIP_A.planA1).single();
+    expect(planBefore.error).toBeNull();
     const insertConflictDeparture = async (startTime: string) => {
       const { data, error } = await admin.from('trip_departures').insert({
         tenant_id: SHOP_A.id,
@@ -609,31 +635,37 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
 
     const departureOneId = await insertConflictDeparture('09:00');
     const departureTwoId = await insertConflictDeparture('15:00');
+    try {
+      const widen = await admin.from('trip_plans').update({ duration_minutes: 720 }).eq('id', TRIP_A.planA1);
+      expect(widen.error).toBeNull();
 
-    const res = await ownerA.get('/api/guide/action-inbox');
-    expect(res.status).toBe(200);
-    const body = await readJson<GuideActionInboxItem[]>(res);
-    expect(body.success).toBe(true);
-    const items = body.data ?? [];
+      const res = await ownerA.get('/api/guide/action-inbox');
+      expect(res.status).toBe(200);
+      const body = await readJson<GuideActionInboxItem[]>(res);
+      expect(body.success).toBe(true);
+      const items = body.data ?? [];
 
-    for (const id of [departureOneId, departureTwoId]) {
-      const matches = items.filter((item) => item.id === id);
-      expect(matches).toHaveLength(1);
-      const item = matches[0];
-      if (item.kind !== 'STAFF_CONFLICT') {
-        throw new Error(`STAFF_CONFLICT action inbox item 種類錯誤：${item.kind}`);
+      for (const id of [departureOneId, departureTwoId]) {
+        const matches = items.filter((item) => item.id === id);
+        expect(matches).toHaveLength(1);
+        const item = matches[0];
+        if (item.kind !== 'STAFF_CONFLICT') {
+          throw new Error(`STAFF_CONFLICT action inbox item 種類錯誤：${item.kind}`);
+        }
+        expect(item.tripId).toBe(TRIP_A.id);
+        expect(item.href).toBe(`/tenant/trips/${TRIP_A.id}`);
+        expect(item.priority).toBe('IMMEDIATE');
+        expect(item.conflicts.length).toBeGreaterThan(0);
+        expect(item.conflicts.some((conflict) => conflict.staffId === SHOP_A.staffA1)).toBe(true);
       }
-      expect(item.tripId).toBe(TRIP_A.id);
-      expect(item.href).toBe(`/tenant/trips/${TRIP_A.id}`);
-      expect(item.priority).toBe('IMMEDIATE');
-      expect(item.conflicts.length).toBeGreaterThan(0);
-      expect(item.conflicts.some((conflict) => conflict.staffId === SHOP_A.staffA1)).toBe(true);
-    }
 
-    const ownerB = await loginAs(SHOP_B.owner.email, SHOP_B.owner.password);
-    const shopBResponse = await ownerB.get('/api/guide/action-inbox');
-    expect(shopBResponse.status).toBe(200);
-    const shopBBody = await readJson<GuideActionInboxItem[]>(shopBResponse);
-    expect(shopBBody.data?.some((entry) => entry.id === departureOneId || entry.id === departureTwoId)).toBe(false);
+      const ownerB = await loginAs(SHOP_B.owner.email, SHOP_B.owner.password);
+      const shopBResponse = await ownerB.get('/api/guide/action-inbox');
+      expect(shopBResponse.status).toBe(200);
+      const shopBBody = await readJson<GuideActionInboxItem[]>(shopBResponse);
+      expect(shopBBody.data?.some((entry) => entry.id === departureOneId || entry.id === departureTwoId)).toBe(false);
+    } finally {
+      await admin.from('trip_plans').update({ duration_minutes: planBefore.data!.duration_minutes }).eq('id', TRIP_A.planA1);
+    }
   });
 });

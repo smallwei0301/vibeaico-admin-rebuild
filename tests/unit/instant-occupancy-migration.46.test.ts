@@ -106,10 +106,21 @@ describe('#46 0138 INSTANT occupancy migration 原始碼守門', () => {
     expect(body).not.toMatch(/\b12\b/);
   });
 
-  it('0135 predicate 改讀 snapshot：不再引用 pl.duration_minutes，ACL 維持 service_role only', () => {
+  it('0135 predicate 與全部 trigger 改用 departure_effective_minutes（snapshot 只延長不縮短），ACL 維持 service_role only', () => {
     const body = fn('guide_staff_interval_available');
-    expect(body).toMatch(/d\.duration_minutes_snapshot/);
-    expect(body).not.toMatch(/pl\.duration_minutes/);
+    expect(body).toMatch(/departure_effective_minutes\(d\.duration_minutes_snapshot, pl\.duration_minutes, tr\.duration_hours\)/);
+    expect(body).not.toMatch(/make_interval\(mins=>pl\.duration_minutes/);
+    expect(body).toMatch(/left join public\.trips tr on tr\.id=d\.trip_id/);
+    const eff = fn('departure_effective_minutes');
+    expect(eff).toMatch(/greatest\(\s*coalesce\(p_snapshot, 0\),\s*coalesce\(p_plan_minutes, 0\),/);
+    expect(eff).toMatch(/round\(p_trip_hours \* 60\)/);
+    expect(eff).toMatch(/nullif\(greatest/);
+    // 占用範圍的所有呼叫端都經由 departure_range_for，不再直接用 snapshot 欄位算範圍。
+    expect(fn('departure_range_for')).toMatch(/departure_effective_minutes\(d\.duration_minutes_snapshot, pl\.duration_minutes, t\.duration_hours\)/);
+    expect(fn('assert_staff_not_occupied')).toMatch(/departure_range_for\(d\.id, v_zone\)/);
+    expect(fn('trg_trip_departure_staff_occupancy')).toMatch(/departure_range_for\(new\.departure_id/);
+    expect(fn('trg_trip_departures_staff_occupancy')).toMatch(/departure_range_for\(new\.id/);
+    expect(code).not.toMatch(/departure_occupancy_range\(\s*[\w.]+,\s*[\w.]+,\s*(?:d|new|v_dep)\.duration_minutes_snapshot/);
     expect(code).toMatch(/revoke all on function public\.guide_staff_interval_available\(uuid,uuid,timestamptz,timestamptz\) from public,anon,authenticated;/);
     expect(code).toMatch(/grant execute on function public\.guide_staff_interval_available\(uuid,uuid,timestamptz,timestamptz\) to service_role;/);
   });

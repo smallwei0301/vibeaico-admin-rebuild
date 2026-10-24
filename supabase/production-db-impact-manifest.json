@@ -1412,6 +1412,22 @@
         {
           "surface": "routines",
           "objectKey": "public.trg_trip_plans_instant_guide_same_tenant()"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.departure_effective_minutes(p_snapshot integer, p_plan_minutes integer, p_trip_hours numeric)"
+        },
+        {
+          "surface": "acl",
+          "objectKey": "function:public.departure_effective_minutes(p_snapshot integer, p_plan_minutes integer, p_trip_hours numeric)"
+        },
+        {
+          "surface": "routines",
+          "objectKey": "public.departure_range_for(p_departure uuid, p_zone text)"
+        },
+        {
+          "surface": "acl",
+          "objectKey": "function:public.departure_range_for(p_departure uuid, p_zone text)"
         }
       ]
     }
